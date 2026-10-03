@@ -1,6 +1,6 @@
 # The Mt. Collins power-on account (power-on sequence model, Mt. Collins first)
 
-Status: PLAN. Revised after the side-chat REQUEST_CHANGES on `e4e8a4a4d4`; it encodes rulings R1–R3 and the structural corrections before any implementation. Owner: calm-lynx-884, under eager-gull-22 (hw-boot).
+Status: PLAN. It encodes the side-chat rulings R1–R3 and Q1–Q2 and the corrections from the reviews of `e4e8a4a4d4` and `75f0bd113c`, all before any implementation. Owner: calm-lynx-884, under eager-gull-22 (hw-boot).
 
 ## 0. The requirement
 
@@ -13,6 +13,8 @@ The product is one **power-on account** per attempt: `gunbc.machine_intake_mtcol
 - **R1 (side chat, decided): #13041 lands first, and slice A replaces it atomically.** Slice A deletes `gunbc.machine_intake_boot_outcome` `HostBootObservation` and its authored datum `mtcollins1_post_firmware_set_boot_2026_10_03`. In the same change, it makes firmware convergence (`gunbc.fleet.mtcollins_firmware_converge` `boot_verdict`) consume an operation-specific readback projected from the **whole** session (§6). Reaching UEFI is a milestone, not an ending, so the projection never reads the ending alone. The former slice E is folded into A.
 - **R2 (decided): the opaque `CP:` reader is public, and it establishes only an opaque sequence relation.** It may say "cycle C of capture S ended after token X; reference capture R (digest, firmware and configuration scope) contains X followed by Y". It may not establish `DdrTraining` or any other `AmpereBootStage`, may not call Y a stage success, and may not locate an ending "at DdrTraining @ X". Semantic attribution belongs to the gunbc-private refinement slice (§8).
 - **R3 (decided): the refused SMpro pair belongs to the secondary-join subject and is not decoded there.** Socket 1's `CUR_BOOTSTAGE 0x0001` / `BOOTSTAGE 0x03ff` is `extdeps.ampere.smpro_register` `SmproBootProgressRefused`. It licenses no "stuck at PMpro" claim, no DDR claim, and no other last-stage claim. It is carried inside `gunbc.machine_intake_mtcollins1_socket1_investigation_observation` `MtCollins1SecondaryJoinOutcome` (#13025, on main), which this plan reuses and does not re-derive. It also gets an open question on the join subject.
+- **Q1 (decided): a component-owned console line establishes only that component's console milestone.** Examples: AMI `Press <DEL> or <ESC>` gives `UefiConsolePromptObserved`; `UEFI Interactive Shell v2.2` gives the stronger `UefiShellObserved`; `GNU GRUB`, `EFI stub:` and `Linux version` give their exact component milestones. A milestone never establishes an `AmpereBootStage`, stage completion, health or a successful handoff. It carries the exact line and its parser, the cycle, the capture digest and its ordering evidence.
+- **Q2 (decided): the account consumes one frozen, attempt-bound `AttemptConfigurationReceipt` taken before power-on** (§3). Historical rows supply topology only, never current occupancy: `mtcollins1_slots` is the 2026-09-10/11 16-DIMM census, and the `mtcollins1_physical_orientation` CPU rows are a 2026-09-23 operator report.
 - **Fact correction.** **Socket 0's** CCIX record is GPI-pending (gated): in `smpro-err-20261003T005609Z`, slave 0x9E (socket 0) reads `GPI_RAS_ERR 0x7E = 0x0002` beside the ERR_CCIX_RCA_LINKUP_FAIL record (`0xA6 = 0x0074`, `0xA7 = 0x2244`). **Socket 1's** record is ungated per the retained hand read the side chat cites. In that capture, socket 1's (0x9C) error registers mostly refused (`rsp=0xff`), so the ungated reading rests on the hand read. The first draft had this reversed.
 
 ## 2. What already exists and is reused (§3, §3b)
@@ -33,7 +35,7 @@ The product is one **power-on account** per attempt: `gunbc.machine_intake_mtcol
 | Kernel module refusals | `gunbc.machine_intake_kernel_module_decompression_observation` |
 | SOL collector, KVM, virtual media, handoff | `gunbc.machine_intake_sol_collector_observation`, `gunbc.machine_intake_mtcollins1_kvm_still`, the bundle's `MtCollins1MediaAttachRecord` / `MtCollins1HandoffMedia`, `extdeps.bmc.megarac` |
 | Harness phases | `gunbc.machine_intake_mtcollins1_boot_phase_timing` `MtCollins1BootPhase`. These are what our harness did, never firmware stages. |
-| Populated slots | `gunbc.machine_intake_mtcollins1_memory_census_observation` `mtcollins1_slots` |
+| Slot topology (J-label to socket/MC/slot), never current occupancy | `gunbc.machine_intake_mtcollins1_memory_census_observation` `mtcollins1_slots` (the 2026-09-10/11 census) |
 | Firmware versions | #13041 `gunbc.fleet.mtcollins_firmware_baseline` |
 | Authored outcome being replaced | #13041 `gunbc.machine_intake_boot_outcome` `HostBootObservation` |
 | The host | #13055 `gunbc.managed_host` `ManagedHost` |
@@ -46,20 +48,25 @@ These three things are independent, and none may stand in for another:
 2. **What we observed** (`ObservationCoverage`): one standing per carrier, saying whether it was read, refused, empty, partial or not taken, and why. An empty SOL capture is a coverage gap, never SoC silence. A BMC authentication refusal is a coverage gap on the BMC carrier, never a failed "BMC came up" stage.
 3. **Whether our workflow worked** (`CollectionOutcome`): media attach and handoff, override consumption, power-after, bundle write, credential residue. A media-read failure or a bundle-write failure is a collection outcome, never a host ending.
 
-Beside these sits the **attempt configuration** (`AttemptConfiguration`), the snapshot that questions like "every populated DIMM trained" and "active sockets = populated sockets" are asked against. It records:
-- installed CPUs per socket (part and fingerprint where known);
-- DIMMs per slot;
-- firmware versions (BMC, SCP, UEFI, CPLD);
-- the stimulus (the change under test, such as "J1+J17", "socket-1 CPU removed" or "firmware set 2026-10-02");
-- the expected topology.
+Beside these sits the **attempt configuration receipt** (`AttemptConfigurationReceipt`). It is frozen and bound to one attempt, it is taken before power-on, and the account consumes only it. The fold never queries mutable or historical global rows. The receipt separates:
 
-Each field is a typed reading or `NotRecorded { reason }`. With `NotRecorded`, every question that needs the field is an open question, never a default.
+- **expected configuration and policy**: the expected topology this attempt is judged against;
+- **the requested stimulus** (for example "remove the socket-1 CPU", "J1 only", "firmware set 2026-10-02") **from the applied-stimulus receipt**. For manual CPU or DIMM work, the applied receipt is a human completion/inspection receipt the workflow consumes. A workflow-authored request is not evidence that the change happened;
+- **the current physical population** per socket and per slot, each field with its standing: `LiveObserved { source }`, `OperatorAttested { receipt }`, `Conflicted { readings }` or `NotRecorded { reason }`;
+- **live firmware readbacks** (BMC, SCP, UEFI, CPLD), taken after the physical configuration is set and before actuation;
+- **provenance**: subject (the `ManagedHost` row), attempt, timestamp, artifact and digest.
+
+Static slot and orientation modules may map a label such as `J1` to topology. They may never supply current occupancy. A question that needs a field whose standing is `NotRecorded` or `Conflicted` becomes an open question, never a default.
 
 ### Cycles
 
 A power-on attempt is a **session of cycles**. The old firmware stopped on cycle 1 and reached UEFI on cycle 2 (run 37062170720). The new firmware repeats one stopped cycle 6 times (steps 1, 2 and 2b). One cycle can have socket 0 reaching Linux while socket 1 never joins. So:
 
-- **Cycle segmentation** comes from the console: each `DRAM FW version` banner opens a cycle. The SEL corroborates it with `System Boot Initiated` records in the window. Each cycle carries its own identity (index and capture span) and the capture digest.
+- **Cycle segmentation does not depend on reaching DRAM.**
+  - Cycle 1 opens on the admitted chassis-power-on effect.
+  - Each later cycle opens on typed restart/reset boundary evidence: SEL `System Boot Initiated` / `S5` records, power or reset observation, and console evidence.
+  - A `DRAM FW version` banner binds a console span to a cycle. It is not the sole authority that a cycle exists, because a host can stop in SMpro, PMpro or ATF before the banner, and an empty SOL can sit beside SEL and SMpro evidence of a boot.
+  - Each cycle carries its identity (index, boundary evidence, console span if any) and the capture digests.
 - **Within a cycle, standings are keyed by subject**, not by one total chain:
   - `Platform`: the BMC and chassis power;
   - `Socket { k }`: that socket's SMpro progress via `SmproBootProgress`, and its error records via #13058;
@@ -70,7 +77,7 @@ A power-on attempt is a **session of cycles**. The old firmware stopped on cycle
 
 ### Stage attribution rule (R2 applied)
 
-A **firmware stage** (`AmpereBootStage`) is established only by a public `AmpereBootStage` reading, which is an SMpro register pair decoded by `smpro_boot_progress_of` (`SmproBootProgressRead`). Console output establishes **console milestones**: things this capture printed, attributed to the component whose own text they are. Examples are "DRAM firmware block printed", "firmware summary printed", "GRUB banner", "EFI stub line", "kernel banner" and "census marker". A milestone never implies an `AmpereBootStage`. An opaque checkpoint token never implies either one. Whether a self-identifying banner may attribute a milestone to its component is question Q1 in §11. The plan assumes yes for milestones and no for stage numbering.
+A **firmware stage** (`AmpereBootStage`) is established only by a public `AmpereBootStage` reading, which is an SMpro register pair decoded by `smpro_boot_progress_of` (`SmproBootProgressRead`). Console output establishes **console milestones** (Q1): exact component-owned lines, such as the DRAM firmware block, the firmware summary, `UefiConsolePromptObserved`, `UefiShellObserved`, the GRUB banner, an EFI stub line, the kernel banner and the census marker. A milestone never implies an `AmpereBootStage`, completion, health or handoff. An opaque checkpoint token implies neither. This is structural: only the `Socket{k}` progress reading can carry `SmproBootProgressRead` and so an `AmpereBootStage`, while console subjects carry milestone readings that have no stage field (§5).
 
 ## 4. Mt. Collins: subjects, carriers, and what success, failure and silence look like
 
@@ -79,9 +86,9 @@ A **firmware stage** (`AmpereBootStage`) is established only by a public `Ampere
 | Platform: BMC | MegaRAC on standby | BMC reads, `mc info` | Answers. The reflash resets users and SEL (self-observed, 0.45.3). | Not applicable: a refused read is a coverage gap | Coverage gap |
 | Platform: chassis power | BMC → sequencer | Chassis read, SDR rails, SEL `Power Unit` | On, rails ok | Rail not ok (`mtcollins1_sensor_anomalies`) | Power never reads on |
 | Socket k: SMpro/PMpro progress | SMpro, PMpro | SMpro registers per pass | `SmproBootProgressRead` advancing | Reported status `Failed` | `SmproBootProgressRefused` is an open question, never a stage |
-| Socket k: error records | SMpro, PMpro | 0x7E, 0xA0–0xAD (#13058) | No pending record | `ERR_CCIX_RCA_LINKUP_FAIL` (loc 68, code 116). Self-observed on both sockets: socket 0 GPI-pending, socket 1 ungated. | Gate unavailable is an open question |
+| Socket k: error records | SMpro, PMpro | 0x7E, 0xA0–0xAD (#13058) | No pending record | Only a `PendingAndDecoded` record. On 2026-10-03, socket 0's `ERR_CCIX_RCA_LINKUP_FAIL` (loc 68, code 116) is the one current stated error | A matching payload under `GpiUnavailable` or ungated (socket 1 on 2026-10-03) is an anomalous raw record plus an open question. It is never a second `DecodedBootError` or `PendingErrorRecord` |
 | SecondaryJoin | PMpro, both sockets | Summary active sockets and inter-socket lines, socket-1 SMpro pair | `SecondaryJoined` | `SecondaryJoinTimeout` (a liveness finding, not a fault record) | `SecondaryJoinUnclassified { reason }` |
-| DramFirmware | DRAM firmware | Console block, roster, opaque `CP:` tokens | Roster closed with every populated slot listed (needs `AttemptConfiguration`) | `FirmwareConsoleReport` training refusal | Last token followed by restart or silence (the ending rule, §5) |
+| DramFirmware | DRAM firmware | Console block, roster, opaque `CP:` tokens | Roster closed with every populated slot listed (against the `AttemptConfigurationReceipt` population) | `FirmwareConsoleReport` training refusal | Last token followed by restart or silence (the ending rule, §5) |
 | Uefi | AMI Aptio | Summary, NVPARAM, POST, KVM | Summary printed, active sockets = expected | CPER/BERT records, summary mismatch | — |
 | BootLoader | GRUB from virtual media | Console | Kernel loaded | `GrubBootFailed` | `GrubStillTrying` |
 | KernelStub | Linux EFI stub | Console (`extdeps.linux.efi_stub`, v6.8) | Initrd loaded | `Failed to load initrd: 0x8000000000000001` (EFI_LOAD_ERROR, run 37069907299) | — |
@@ -101,7 +108,7 @@ A **firmware stage** (`AmpereBootStage`) is established only by a public `Ampere
 PowerOnAccount {
   attempt: AttemptIdentity,                       // run id, capture digests
   host: HostIdentity,                             // from ManagedHost (#13055); mtcollins1 is a row, not a constant
-  configuration: AttemptConfiguration,
+  configuration: AttemptConfigurationReceipt,       // frozen before power-on; the only configuration the fold reads
   account: HostAccount,
   coverage: ObservationCoverage,
   collection: CollectionOutcome,
@@ -118,9 +125,20 @@ HostAccount {
 
 BootCycleAccount { index: Int, span: CaptureSpan, standings: List<SubjectStanding>, checkpoints: CheckpointObservation }
 
-SubjectStanding { subject: PowerOnSubject, reading: SubjectReading }
-PowerOnSubject = Platform{part} | Socket{k} | SecondaryJoin | DramFirmware | Uefi | BootLoader | KernelStub | Kernel | Census
-SubjectReading = Established{by, stage?: AmpereBootStage} | StatedFailure{error} | Anomalous{anomalies, established_by} | NotEstablished
+SubjectStanding                                   // the reading's type is fixed by its subject, so no subject can carry another's evidence
+  = PlatformStanding { part: PlatformPart, reading: PlatformReading }
+  | SocketProgress { socket: Int, reading: SocketProgressReading }        // the ONLY carrier of an AmpereBootStage
+  | SocketErrorRecords { socket: Int, records: List<SocketRecordReading> }
+  | SecondaryJoinStanding { outcome: MtCollins1SecondaryJoinOutcome }
+  | ConsoleSubject { subject: ConsoleSubjectKind, reading: MilestoneReading }  // DramFirmware | Uefi | BootLoader | KernelStub | Kernel
+  | CensusStanding { reading: CensusReading }
+
+SocketProgressReading = ProgressRead { progress: SmproBootProgressRead, pass } | ProgressRefused { pair: SmproBootProgressRefused, pass }
+                      | ProgressStatedFailure { progress: SmproBootProgressRead } | ProgressNotRead { coverage_ref }
+SocketRecordReading = PendingDecoded { record: SmproInternalRecord }             // a stated error
+                    | UngatedRaw { raw, gate: SmproRecordGate }                  // anomaly + open question, never an error
+MilestoneReading = MilestoneObserved { milestone, line, parser, capture_sha256, order } | MilestoneStatedFailure { error, line }
+                 | MilestoneAnomalous { anomalies } | MilestoneNotObserved
 
 HostEnding                                       // what the HOST did last; says nothing about errors on the way
   = ReachedCensus                                 // may coexist with errors and degradations
@@ -128,10 +146,11 @@ HostEnding                                       // what the HOST did last; says
   | RestartedRepeatedly { cycles: Int, last_cycle_ended_after: CheckpointRelation?, cadence: RestartCadence,
                           console_errors: Nat, reset_cause: ResetCauseObservation }
   | StoppedWithoutRestart { last_cycle_ended_after: CheckpointRelation?, console_errors: Nat }
-  | HostEndingNotEstablished                      // the coverage says why; never a host claim
+  | HostEndingNotEstablished                      // only when the remaining HOST evidence establishes no ending
 
 Degradation = SocketNotJoined{outcome: MtCollins1SecondaryJoinOutcome} | ActiveSocketsBelowExpected{active, expected}
-            | DimmNotTrained{slot} | PendingErrorRecord{socket, record: SmproInternalRecord} | ...
+            | DimmNotTrained{slot}                                  // only against a receipt field LiveObserved/OperatorAttested
+            | PendingErrorRecord{socket, record: SmproInternalRecord}  // PendingAndDecoded only
 
 CheckpointObservation { capture_sha256, tokens: List<OpaqueToken>, malformed: List<String> }
 CheckpointRelation {                              // R2: an opaque relation, nothing more
@@ -152,22 +171,24 @@ CollectionOutcome { media, handoff, override, power_after, bundle_write, credent
 OpenQuestion { subject: PowerOnSubject, question: OpenQuestionKind }
 OpenQuestionKind = ResetCauseNotPubliclyReadable | RetryStatePersistence | CheckpointMeaningNotPubliclyModeled
                  | SmproPairRefused{socket} | RestartCadenceNotTimed | ConfigurationNotRecorded{field}
-                 | CarrierNotRead{carrier}
+                 | CarrierNotRead{carrier} | UngatedRecordUnexplained{socket} | ConfigurationConflicted{field}
 ```
 
 Laws, each with a discriminating RED in slice A:
 
 1. **`ReachedCensus` is orthogonal to errors.** A GPI-pending CCIX record plus a one-socket census yields `ReachedCensus` with `degradations` (`SocketNotJoined`, `PendingErrorRecord`). It is never `StoppedWithStatedFailure`.
 2. **Cycles are preserved.** Run 37062170720's console yields two cycles: cycle 1 ended after `00001a0a`, cycle 2 has the milestone "UEFI reached". The ending reflects the last cycle, and the milestone survives.
-3. **Coverage is not host behaviour.** An empty SOL, a BMC authentication refusal, or a bundle-write failure changes `coverage` or `collection` only. The ending becomes `HostEndingNotEstablished`, never silence or failure.
+3. **Coverage and collection never choose the host ending.** An empty SOL, a BMC authentication refusal or a bundle-write failure is recorded in `coverage` or `collection` and nothing else. If another carrier establishes `ReachedCensus`, the UEFI shell or a reset, that host result stands beside the coverage defect. `HostEndingNotEstablished` applies only when the remaining host evidence establishes no ending. Converse RED: `SOL = ReadEmpty` with a valid host-capture END marker yields `ReachedCensus` plus an SOL coverage gap.
 4. **No stage from a token.** No law or arm takes an `AmpereBootStage` from a `CP:` token. Mutating the last token changes only `CheckpointRelation`.
 5. **The refused pair is not a stage.** `SmproBootProgressRefused` on socket 1 produces `SecondaryJoin` evidence and an `SmproPairRefused` open question, and no `Socket{1}` stage.
-6. **Configuration-dependent questions need the configuration.** Without `AttemptConfiguration.dimms`, "every populated DIMM trained" is `ConfigurationNotRecorded`, never assumed.
+6. **Configuration-dependent questions need the receipt.** If the receipt's DIMM population is `NotRecorded` or `Conflicted`, "every populated DIMM trained" is an open question, never assumed. A historical row never stands in: a step-3 attempt whose receipt says "socket 1 CPU absent, J1 only" is judged against that receipt, never against `mtcollins1_slots` or the 2026-09-23 orientation report.
+7. **A cycle exists without DRAM.** A chassis power-on plus SMpro progress or SEL boundary evidence, with no `DRAM FW version` banner, yields one partial cycle whose console span is absent. It never yields zero cycles or `HostEndingNotEstablished` on that ground alone.
+8. **Ungated is not stated.** A `GpiUnavailable` or ungated record with the same payload as a pending one is `UngatedRaw` plus `UngatedRecordUnexplained`. It adds nothing to `errors` or `degradations`.
 
 ## 6. Consumption and the replacement migration (§3, §3c)
 
 **Firmware convergence (R1).** `gunbc.fleet.mtcollins_firmware_converge` `boot_verdict` stops taking `HostBootObservation?`. It takes `FirmwareSetBootReadback`, projected from the whole account by `firmware_set_boot_readback(account)`:
-- `BootReachedUefiAfterSet { cycle, degradations }`, when any cycle reached the UEFI milestone. A later restart or degradation is carried with it, not hidden.
+- `BootReachedUefiAfterSet { cycle, milestone, ending: HostEnding, degradations, account_ref }`, when any cycle reached a UEFI milestone. The session ending and a reference to the whole account travel with it, so a UEFI milestone cannot erase a later `RestartedRepeatedly` ending. Convergence decides with both in hand.
 - `BootProgressLostAfterSet { relation: CheckpointRelation, cadence, reset_cause }`, when no cycle reached UEFI and the ending is `RestartedRepeatedly` or `StoppedWithoutRestart`.
 - `BootReadbackUnobservable { coverage }`, otherwise.
 
@@ -180,12 +201,12 @@ Laws, each with a discriminating RED in slice A:
 | `…bundle` `mtcollins1_boot_bundle_findings` | bundle `mtcollins1_boot_bundle_text`, `mtcollins1_boot_outcome_after_bundle`; `…boot_run` `mtcollins1_boot_conclude` (`findings=` receipt line); bundle witness | The `PowerOnAccount` rendered through `std.observation` presentation. Receipt `findings=` becomes `account=` (one summary line) plus `coverage=` and `collection=` |
 | `…bundle` `mtcollins1_boot_outcome_with_findings` | `mtcollins1_boot_outcome_after_bundle`; bundle witness | Same role. It appends the account summary plus its errors and degradations to a refusal, and never flips the verdict (kept REDs) |
 | `bmc_all_failed_text` aggregate (the "unreachable" finding) | bundle findings | `coverage`: BMC carriers `Refused { cause }`. Retired as a host statement |
-| `processor_findings`, `memory_findings`, `socket_absent_finding` | bundle findings | `coverage` plus `Degradation` against `AttemptConfiguration` (BMC's inventory view vs the expected topology) |
+| `processor_findings`, `memory_findings`, `socket_absent_finding` | bundle findings | `coverage` plus `Degradation` against the `AttemptConfigurationReceipt` (BMC's inventory view vs the expected topology) |
 | `sel_findings` | bundle findings | Per-cycle SEL events: memory/processor events go to `DramFirmware` / `Socket` anomalies, and restart records go to cycle segmentation |
 | `sensor_findings` → `…bmc_sensor_observation` `mtcollins1_sensor_findings` | bundle; sensor witness | `mtcollins1_sensor_anomalies` (typed, in the sensor module) on `Platform{ChassisPower}` |
 | `smpro_findings` → `…smpro_observation` `mtcollins1_smpro_findings` | bundle (3 passes); SMpro witness | `Socket{k}` standings via `smpro_boot_progress_of`, and `SecondaryJoin` via `secondary_join_outcome`. The "sockets differ" string is retired: the difference is now the two typed standings |
 | `console_findings`: `…dram_console_observation` `ampere_dram_findings` | bundle; DRAM witness | `ampere_dram_untrained_sockets` (closed-roster rule, in the DRAM module) feeds `DegradationDimmNotTrained` / `DramFirmware` anomalies; malformed rows become `DramFirmware` anomalies |
-| `console_findings`: `socket_summary_findings` | bundle | `SecondaryJoin` via `secondary_join_outcome`, and `ActiveSocketsBelowExpected` against the configuration |
+| `console_findings`: `socket_summary_findings` | bundle | `SecondaryJoin` via `secondary_join_outcome`, and `ActiveSocketsBelowExpected` against the receipt's expected configuration |
 | `console_findings`: `…kernel_module_decompression_observation` `kernel_module_decompression_findings` | bundle; kernel-module witness | `Kernel` `StatedFailure { KernelModuleRefused }` |
 | `media_attach_findings`, `handoff_media_findings`, `override_findings`, `power_after_findings` | bundle; `megarac_media_convergence_witness_test` | `CollectionOutcome` (typed records, rendered once) |
 | credential-shred string | bundle findings | `CollectionOutcome.credential` |
@@ -224,7 +245,7 @@ The differences found when Mt. Jade lands become the onboarding checklist.
 
 1. **A: the power-on account, replacing every string finding and `HostBootObservation`, after #13041 lands.** It includes:
    - the public readers: opaque `CP:` (`gunbc.machine_intake_ampere_checkpoint_console_observation`), and the EFI stub and kernel lines (`extdeps.linux.efi_stub`, `extdeps.linux.boot_console`, read by `gunbc.machine_intake_linux_boot_console_observation`);
-   - the attempt configuration and coverage;
+   - the `AttemptConfigurationReceipt` (frozen before power-on, including the human completion/inspection receipt for manual changes), and coverage;
    - the account;
    - the convergence readback;
    - the bundle and receipt cutover;
@@ -236,11 +257,6 @@ The differences found when Mt. Jade lands become the onboarding checklist.
 4. **D: `ManagedHost`**, gated on #13055. If #13055 lands before A, it is folded into A.
 5. **P: the gunbc-private refinement slice** (§8).
 
-## 11. Questions still open for review
+## 11. Questions
 
-- **Q1.** May a self-identifying console banner (`DRAM FW version`, `UEFI RC version`, `GNU GRUB`, `EFI stub:`, `Linux version`) attribute a *console milestone* to its component, never an `AmpereBootStage`? Proposed: yes.
-- **Q2.** Where is `AttemptConfiguration` read at run time? Proposed sources:
-  - the census slot rows for DIMMs;
-  - the #13041 baseline readback for firmware versions;
-  - `mtcollins1_physical_orientation` for CPUs;
-  - a per-run stimulus row authored by the operator workflow. This is a receipt of the stimulus, not a claim about the host.
+None open. Q1 and Q2 were decided by the side chat on `75f0bd113c` and are encoded in §1, §3 and §5.
