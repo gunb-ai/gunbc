@@ -1,0 +1,36 @@
+module gunbc.materialization_store_budgets
+
+import std.types { List, NonEmptyStr }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.measure { ByteSize, byte_size }
+import std.cache_identity { typed_module_artifact_kind }
+import extdeps.realization.materialization_store_local { LocalStoreFamilyBudget, local_store_budget_sum, materialization_store_local_facts_at }
+import extdeps.cache.types { CacheInterfaceCatalogFacts }
+
+// THE DURABLE STORE'S BUDGETS ARE POLICY, AND POLICY IS THIS LAYER'S FACT (DESIGN section 3). The
+// transport (extdeps.realization.materialization_store_local) owns the budget's shape and its
+// enforcement and receives these rows as a parameter; the per-host figures live here, beside the
+// consumer that opens the durable root, so revising one never edits the transport. One root per host
+// is structural (std.materialization_store_grant DurableHostVolumeRoot names one path), so the host
+// ceiling is the declared sum of these rows and nothing else.
+
+// POLICY, NAMED AS POLICY: 4 GiB for typed-module results per host. It is not derived from a
+// measurement -- the only measured predecessor stored closure snapshots of ~3.65 GB each, which is not
+// the per-module grain the store holds -- and its REVISION TRIGGER is the TypecheckModuleRequest
+// consumer (PR C2) measuring real per-module entries on the durable root.
+data materialization_store_typed_module_budget_policy: ByteSize = byte_size(count: 4294967296)
+
+data materialization_store_durable_family_budgets: List<LocalStoreFamilyBudget> = [
+  LocalStoreFamilyBudget { family: typed_module_artifact_kind, budget: materialization_store_typed_module_budget_policy },
+]
+
+// The one host-wide figure: the sum of the durable root's declared family budgets.
+data materialization_store_host_ceiling_bytes: ByteSize = local_store_budget_sum(budgets: materialization_store_durable_family_budgets)
+
+// The catalog row for the store as DEPLOYED: the realization's facts at this layer's host ceiling.
+data materialization_store_local_facts: CacheInterfaceCatalogFacts = materialization_store_local_facts_at(ceiling: materialization_store_host_ceiling_bytes)
+
+// THE PRODUCTION CONSUMER IS A DECLARED FRONTIER (DESIGN section 3c): no process opens the durable
+// root in this change; the witnesses pass fixture rows of their own, and the host-ceiling control
+// reads the figure above.
+data materialization_store_durable_budgets_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: the TypecheckModuleRequest consumer (PR C2) opens DurableHostVolumeRoot through extdeps.realization.materialization_store_local passing materialization_store_durable_family_budgets. SUFFICIENT FOR: these rows bound a production store on every run that consumes it; until then they are read only by the host-ceiling control, and this row is retired by that landing and nothing else." as NonEmptyStr)
