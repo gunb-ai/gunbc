@@ -8,7 +8,7 @@ on:
       label:
         description: The rostered instrument to run (gunbc.instrument_targets); the run executes `gunbc test <label>` at the dispatched ref.
         required: true
-        options: [//gunbc/instruments:dag-emit-real-grammar-round-trips, //gunbc/instruments:self-host-behavioral-equivalence, //gunbc/instruments:type-declaration-use-census]
+        options: [//gunbc/instruments:dag-emit-real-grammar-round-trips, //gunbc/instruments:self-host-behavioral-equivalence, //gunbc/instruments:dependency-demand-census]
         type: choice
 permissions:
   contents: read

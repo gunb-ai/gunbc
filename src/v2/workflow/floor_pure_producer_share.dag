@@ -634,6 +634,10 @@ import v2.std.collection { List }
 // THE XL-2 LET-IN CAST ROW: v2.test.claim.body_cast_node bcn_let_in_value_cast_verdict assembles one
 // inline module through the production route and stores one Bool (the lowered body carries exactly
 // one cast node with its target), portable because it holds no Node and no closure.
+// THE dag BIND BLOCK-SCOPED ROW: v2.test.emit.dag_bind_let_block_scoped dbl_verdicts parses five emitted
+// token sequences once each and stores five Bool verdicts; each claim that paid its own parse measured
+// over the new-witness budget on the floor runs of #13099 (eval steps 72-105k). Portable because it
+// holds only Bools.
 // THE XL-2 IF-ARM AND STATEMENT-SPINE ROW IS THE SAME GROUND AT THIRTEEN SPECIMENS:
 // v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal iasl_outcomes drives one front
 // end over thirteen inline modules and stores one verdict arm per module, portable for the same reason.
@@ -652,8 +656,12 @@ import v2.std.collection { List }
 // THE XL-2 ELSE-ARM ROW IS THE SAME GROUND AT FIVE SPECIMENS: v2.test.claim.namespace_xl0.else_arm_nested_if
 // eam_outcomes drives one front end over five inline modules and stores one verdict arm per module.
 // THE IF-ARM-POSITION ROW IS THE SAME GROUND AT FOUR SPECIMENS: v2.test.claim.body_lowering.if_arm_position
-// iap_verdicts tokenizes, parses and normalizes four inline modules and stores four Bools. Its first floor
-// run (37073686904) refused all four claims over the enrolment margin, at 353k-687k eval steps each.
+// iap_verdicts tokenizes, parses and normalizes four inline modules and stores four Bools. Unshared,
+// each claim frame paid its own tokenize -> parse -> normalize, over the required floor's new-witness
+// enrolment margin (v2.workflow.required_floor claim_eval_step_budget_for_identity).
+// THE IF-ARM READER DIFFERENTIAL ROW IS THE SAME GROUND AT FOUR SPECIMENS:
+// v2.test.claim.cli.if_arm_reader_differential iard_fixture_censuses tokenizes and parses four inline
+// modules and stores three censuses (counts and rendered rows, no Node), portable for the same reason.
 // THE ARROW-LAMBDA BLOCK-BODY ROW IS THE SAME GROUND AT FIVE SPECIMENS: v2.test.claim.body_lowering.arrow_lambda_block_body
 // alb_verdicts normalizes five inline modules and stores five Bools; each would otherwise be over the floor's
 // new-witness enrolment margin (the required floor's claim_eval_step_budget_for_identity).
@@ -893,6 +901,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal.cav_outcomes",
   "v2.test.claim.normalize.authored_marker_spelling.ams_verdicts",
   "v2.test.claim.body_lowering.caret_symbol_value_lowering.csv_verdicts",
+  "v2.test.emit.dag_bind_let_block_scoped.dbl_verdicts",
   "v2.test.parse.type_decl_modifier_g0_parse_probe.caret_tree_atom_identities",
   "v2.test.claim.body_lowering.string_literal_value_lowering.slv_verdicts",
   "v2.test.claim.body_cast_node.bcn_let_in_value_cast_verdict",
@@ -912,6 +921,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.wildcard_arm_resolve.wc_outcomes",
   "v2.test.claim.namespace_xl0.else_arm_nested_if.eam_outcomes",
   "v2.test.claim.body_lowering.if_arm_position.iap_verdicts",
+  "v2.test.claim.cli.if_arm_reader_differential.iard_fixture_censuses",
   "v2.test.claim.body_lowering.arrow_lambda_block_body.alb_verdicts",
   "v2.test.cli.v2_native_cli.cli_probe_trailing_outcome",
   "v2.test.emit.closure_emit_arrow_body_refusal.arrow_body_probe_verdict",
@@ -1219,6 +1229,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.reference_conservation.infix_right_operand_subject",
   "v2.test.claim.namespace_xl0.reference_conservation.caret_symbol_payload_subject",
   "v2.test.claim.normalize.service_declaration_lowering.sdl_posix_census",
+  "v2.test.claim.compiler.dependency_demand_census.ddc_report",
+  "v2.test.claim.compiler.dependency_demand_census.ddc_app_production_refuses_at_the_clause",
   "v2.test.claim.normalize.service_declaration_lowering.sdl_shared_prefix_census",
   "v2.test.claim.normalize.service_spine.ss_two_under_one_prefix_paths",
   "v2.test.claim.normalize.service_spine.ss_body_against_declaration_refused",

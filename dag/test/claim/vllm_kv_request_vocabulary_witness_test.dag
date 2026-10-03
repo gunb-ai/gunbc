@@ -1,0 +1,92 @@
+module test.claim.vllm_kv_request_vocabulary_witness_test
+
+import std.types { Bool, String, NonEmptyStr }
+import v2.std.optional { Present, Absent }
+import extdeps.vllm.engine_args {
+  VllmKvCacheDtypeRequest, KvNvfp4, KvNvfp4DsMla, KvFp8DsMla,
+  vllm_kv_cache_dtype_wire, vllm_kv_cache_dtype_requests, vllm_kv_cache_dtype_request_matching_wire,
+  VllmIndexerKvDtypeRequest, IndexerKvDtypeOmitted, IndexerKvDtypeExplicit,
+  IndexerKvAuto, IndexerKvBf16, IndexerKvFp8, IndexerKvMxfp4,
+  vllm_indexer_kv_dtype_argv, vllm_indexer_kv_dtype_wire,
+  vllm_argv_indexer_kv_dtype, IndexerKvDtypeReadOmitted, IndexerKvDtypeReadExplicit, IndexerKvDtypeReadUnread,
+}
+import extdeps.vllm.runtime_defaults {
+  VllmDefaultsKnown, Vllm8d09804, Vllm487ecf187, Vllm1967a5627,
+  resolve_vllm_indexer_kv_dtype, IndexerKvDtypeResolved, IndexerKvDtypeNotARevisionField, IndexerKvDtypeUnresolvable,
+  ExplicitArgument, ExpectedFromClaimedSourceRevision, PredictedForBoundImage,
+}
+
+// THE SUBJECT IS THE CANONICAL REQUEST VOCABULARY: every main-KV request round-trips through its
+// upstream wire, the former selector "fp4" is upstream's nvfp4, and the sparse indexer's K-cache dtype
+// is a separate axis whose support each revision states for itself.
+test fn w_every_kv_request_round_trips_through_its_wire() -> Bool {
+  all(vllm_kv_cache_dtype_requests, k =>
+    match vllm_kv_cache_dtype_request_matching_wire(wire: vllm_kv_cache_dtype_wire(request: k)) {
+      Present { value: back } => (vllm_kv_cache_dtype_wire(request: back) as String) == (vllm_kv_cache_dtype_wire(request: k) as String)
+      Absent => false
+    })
+}
+
+// THE SPELLING NO RUNTIME ACCEPTS HAS NO REQUEST: "fp4" was the deleted selector vocabulary's wire.
+test fn w_the_retired_fp4_spelling_names_no_request_and_nvfp4_does() -> Bool {
+  (match vllm_kv_cache_dtype_request_matching_wire(wire: "fp4" as NonEmptyStr) { Present { value: _ } => false Absent => true })
+    && (vllm_kv_cache_dtype_wire(request: KvNvfp4) as String) == "nvfp4"
+    && (vllm_kv_cache_dtype_wire(request: KvNvfp4DsMla) as String) == "nvfp4_ds_mla"
+}
+
+test fn w_the_indexer_dtype_renders_and_reads_back() -> Bool {
+  let argv = vllm_indexer_kv_dtype_argv(r: IndexerKvDtypeExplicit { dtype: IndexerKvFp8 })
+  argv == ["--attention-config.indexer_kv_dtype", "fp8"]
+    && (match vllm_argv_indexer_kv_dtype(argv: argv) {
+      IndexerKvDtypeReadExplicit { dtype: d } => (vllm_indexer_kv_dtype_wire(d: d) as String) == "fp8"
+      IndexerKvDtypeReadOmitted => false
+      IndexerKvDtypeReadUnread { cause: _ } => false
+    })
+    && vllm_indexer_kv_dtype_argv(r: IndexerKvDtypeOmitted) == []
+    && (match vllm_argv_indexer_kv_dtype(argv: ["--attention-config.indexer_kv_dtype", "fp4"]) {
+      IndexerKvDtypeReadUnread { cause: _ } => true
+      IndexerKvDtypeReadExplicit { dtype: _ } => false
+      IndexerKvDtypeReadOmitted => false
+    })
+}
+
+// ── EACH REVISION ANSWERS FOR ITSELF, AND THE THREE ANSWERS DIFFER ───────────────────────────────
+test fn w_the_deployed_revision_defaults_the_indexer_to_auto_from_source() -> Bool {
+  match resolve_vllm_indexer_kv_dtype(request: IndexerKvDtypeOmitted, defaults: VllmDefaultsKnown { revision: Vllm8d09804 }) {
+    IndexerKvDtypeResolved { dtype: d, origin: o } =>
+      (vllm_indexer_kv_dtype_wire(d: d) as String) == "auto"
+        && (match o {
+          ExpectedFromClaimedSourceRevision { source_revision: _, field: _ } => true
+          ExplicitArgument { field: _ } => false
+          PredictedForBoundImage { image_digest: _, source_revision: _, binding_evidence: _, field: _ } => false
+        })
+    IndexerKvDtypeNotARevisionField { origin: _ } => false
+    IndexerKvDtypeUnresolvable { cause: _ } => false
+  }
+}
+
+test fn w_the_older_revision_defaults_to_bf16_and_refuses_auto() -> Bool {
+  (match resolve_vllm_indexer_kv_dtype(request: IndexerKvDtypeOmitted, defaults: VllmDefaultsKnown { revision: Vllm487ecf187 }) {
+    IndexerKvDtypeResolved { dtype: d, origin: _ } => (vllm_indexer_kv_dtype_wire(d: d) as String) == "bf16"
+    IndexerKvDtypeNotARevisionField { origin: _ } => false
+    IndexerKvDtypeUnresolvable { cause: _ } => false
+  })
+  && (match resolve_vllm_indexer_kv_dtype(request: IndexerKvDtypeExplicit { dtype: IndexerKvAuto }, defaults: VllmDefaultsKnown { revision: Vllm487ecf187 }) {
+    IndexerKvDtypeUnresolvable { cause: _ } => true
+    IndexerKvDtypeResolved { dtype: _, origin: _ } => false
+    IndexerKvDtypeNotARevisionField { origin: _ } => false
+  })
+}
+
+test fn w_a_revision_without_the_field_refuses_an_explicit_indexer_dtype() -> Bool {
+  (match resolve_vllm_indexer_kv_dtype(request: IndexerKvDtypeExplicit { dtype: IndexerKvMxfp4 }, defaults: VllmDefaultsKnown { revision: Vllm1967a5627 }) {
+    IndexerKvDtypeUnresolvable { cause: _ } => true
+    IndexerKvDtypeResolved { dtype: _, origin: _ } => false
+    IndexerKvDtypeNotARevisionField { origin: _ } => false
+  })
+  && (match resolve_vllm_indexer_kv_dtype(request: IndexerKvDtypeOmitted, defaults: VllmDefaultsKnown { revision: Vllm1967a5627 }) {
+    IndexerKvDtypeNotARevisionField { origin: _ } => true
+    IndexerKvDtypeResolved { dtype: _, origin: _ } => false
+    IndexerKvDtypeUnresolvable { cause: _ } => false
+  })
+}

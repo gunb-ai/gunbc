@@ -45,6 +45,7 @@ type TargetProducer
   | RequiredLaneResolutionCensusProducer
   | BareReferenceChannelOutcomeProducer
   | SelfHostBehavioralEquivalenceProducer
+  | DependencyDemandCensusProducer
   | NativeClaimProgramProducer { entry: String }
 
 // WHICH READING OF THE NATIVE CENSUS FAMILY A ROW TAKES. One producer spawns the emitted v2
