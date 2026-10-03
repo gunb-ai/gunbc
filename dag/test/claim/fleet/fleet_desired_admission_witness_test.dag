@@ -361,11 +361,15 @@ test fn the_admission_workflow_emits_rather_than_refusing() -> Bool {
 
 // THE EMISSION HALF. The pure decision above proves the gate decides correctly; it proves nothing
 // about what the workflow actually runs, so these read the emitted bytes.
+// THE workflow_run ABSENCE IS READ FROM THE TRIGGER BLOCK. The defect this guards was a workflow_run
+// TRIGGER; a job that reads the Actions API's `.workflow_run.id` field (the candidate fetch,
+// gunbc.fleet_desired_candidate) is not one, so the claim reads the text above `jobs:`.
 test fn the_admission_workflow_triggers_on_the_push_of_the_landed_revision() -> Bool {
   let yml = admission_yml()
+  let trigger = split(s: yml, delimiter: "jobs:").first()
   string_contains(s: yml, pattern: "push:")
     && string_contains(s: yml, pattern: "admit_fleet_desired_from_push_wet")
-    && !string_contains(s: yml, pattern: "workflow_run")
+    && !string_contains(s: trigger, pattern: "workflow_run")
 }
 
 // THE TRIGGER MUST FILTER ON THE BRANCH, NOT ONLY THE JOB. An unfiltered trigger creates a run for
