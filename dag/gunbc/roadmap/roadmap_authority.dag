@@ -320,6 +320,13 @@ fn v1_interpreter_primitive_roster_execution_contract() -> WorkItemExecutionCont
 // asserted here; R0 discriminating controls remain in
 // v1_interpreter_primitive_surface_witness_test.
 
+fn service_evidence_capture_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "dag/gunbc/roadmap/roadmap_service_evidence.dag" as FilePath,
+    function: "service_evidence_capture_acceptance_holds" as NonEmptyStr,
+  )
+}
+
 fn v1_interpreter_primitive_dispatch_authority_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
     entry: "dag/test/claim/v1_interpreter_primitive_dispatch_authority_acceptance_test.dag" as FilePath,
@@ -3126,15 +3133,18 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_SERVICE0EVIDENCE0CAPTURE0A",
       id: "service-evidence-capture",
       owner: "fleet",
-      carriers: carrier(path: "dag/std/observation.dag"),
-      line: ticket(t: level_fields(
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_service_evidence.dag"),
+      line: ticket(t: fields(
           headline: "Capture service evidence from the first qualifying run: usage, cache, placement, failures, recovery, intervention",
-          boundary: "From the first qualifying end-to-end run onward, every run emits joined receipts: workload class and resource request; wait, execution and completion time; cache hits, misses, shared misses and corrupt-hit refusals; placement and seat utilization; artifact bytes and egress; failure attribution and recovery action; operator intervention time; hardware health events; billable usage and credits; workspace recovery point and recovery time. Follows the process observability conformance domain (std.observation).",
-          approach: "DRAFT (operator 2026-10-03). Route acceptance and the dogfood start receipt are owned by factory-dogfood-route (gunbc#13077, gunbc.roadmap_dogfood_route DogfoodRouteReceipt); this node owns the joined service-evidence fields captured from that route's runs, so the two rows answer different questions and neither restates the other.",
-          red_control: "A run on the qualifying route that emits no receipt is not counted toward the dogfood window.",
+          boundary: "From the first qualifying end-to-end run onward, every run emits joined receipts: workload class and resource request; wait, execution and completion time; cache hits, misses, shared misses and corrupt-hit refusals; placement and seat utilization; artifact bytes and egress; failure attribution and recovery action; operator intervention time; hardware health events; billable usage and credits; workspace recovery point and recovery time. Follows the process observability conformance domain (std.observation). Route acceptance and the dogfood start receipt are owned by factory-dogfood-route (gunbc#13077); this node owns the joined service-evidence fields captured from that route's runs, as one per-attempt receipt computed on read by gunbc.roadmap_service_evidence service_evidence_observe_for_attempt, which consumes the readers that own each fact and measures nothing itself.",
           displaced_cost: "Evidence added late loses the observation period it should have covered, and the dogfood window cannot be backdated.",
-          handback: "DRAFT: per member, the executed drill or witness named by its instrument."
+          first_slice: "The receipt contract: the closed field roster, one source authority per field (a landed reader or a named unbuilt producer), the closed reading Observed | Owed | Refused, the validator and the attempt binding by launch identity -- red with every field owed, each to its reader's change (G3 metering #13073, G5 placement #13074, G1 shared computation #13097, G4 result returned #13075) or to the node that owns its missing producer. Each later slice binds one reader's Observed readings as its change lands.",
+          red_control: "A receipt with a field missing, duplicated or out of roster order is refused; an Observed reading on a field with no producer, or from a reader that does not own the field, is refused as re-measured; an attempt with no launch record is not joined; a run on the qualifying route that emits no receipt is not counted toward the dogfood window.",
+          out_of_scope: "Building the producers the receipt names as owed (egress, recovery action, operator intervention, hardware health, credits, workspace recovery) -- each is its owning node's work; storing the joined receipt (the dogfood start receipt pins it once); pricing.",
+          handback: "The module, its witnesses with one discriminating red per refusal, and per slice the reader bound and the fields it moved from owed to observed."
         )),
+      dispatch: dispatchable(),
+      execution: bound(contract: service_evidence_capture_execution_contract()),
       parent: in_project(project: "vm-service", contribution: "The operator's go/no-go on external customers is their own confidence from dogfooding; that confidence must rest on receipts captured from the first qualifying run, not reconstructed later."),
     ),
     roadmap_node(

@@ -1,0 +1,184 @@
+module test.claim.roadmap_service_evidence_witness_test
+
+import std.types { Bool, String, Int, List, NonEmptyStr }
+import extdeps.filesystem.filesystem_io {
+  FilesystemFileObservation, FilesystemFileIndeterminate,
+  filesystem_file_observation, filesystem_listing_observation, filesystem_read_outcome,
+}
+import extdeps.languages.json.emit { serialize_json }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap_launch_admission { LaunchIdentity, launch_identity_json, launch_identity_null_revision, Operator }
+import gunbc.roadmap_belt { ManualReady }
+import gunbc.roadmap_service_evidence {
+  ServiceEvidenceField, WorkloadClass, ResourceRequest, WaitTime, ExecutionTime, CompletionTime,
+  CacheHits, CacheMisses, CacheSharedMisses, CacheCorruptHitRefusals, Placement, SeatUtilization,
+  ArtifactBytes, Egress, FailureAttribution, RecoveryAction, OperatorInterventionTime, HardwareHealth,
+  BillableUsage, BillableCredits, WorkspaceRecoveryPoint, WorkspaceRecoveryTime,
+  ServiceEvidenceReader, MeteringReader, SessionPlacementReader, SharedComputationReader, ResultReturnedReader,
+  ServiceEvidenceReading, EvidenceObserved, EvidenceOwed, EvidenceRefused,
+  PendingReader, UnbuiltProducer, ServiceEvidenceFieldReading,
+  ServiceEvidenceObservation, ServiceEvidenceJoined, ServiceEvidenceAttemptUnlaunched, ServiceEvidenceRefused,
+  service_evidence_fields, service_evidence_field_wire, service_evidence_field_reading,
+  service_evidence_fields_defect, service_evidence_observe_from_launch,
+  service_evidence_receipt_wire, service_evidence_receipt_digest,
+}
+
+// The launch record is planted as the dispatch actuator writes it (launch_identity_json) and read
+// through the same composition the real reader uses (filesystem_file_observation over a listing and
+// a read), so each claim below exercises the real decoder and join, with only the bytes supplied.
+
+data attempt_dir: String = "/state/n1/a1"
+data launch_name: String = "launch-identity.json"
+
+fn launch_for(node: String) -> String {
+  serialize_json(v: launch_identity_json(id: LaunchIdentity {
+    node_id: node as NonEmptyStr as RoadmapNodeId,
+    cause: Operator,
+    mode: ManualReady,
+    instance_id: "witness-instance" as NonEmptyStr,
+    revision: launch_identity_null_revision(),
+  }))
+}
+
+fn planted(content: String) -> FilesystemFileObservation {
+  filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: attempt_dir, success: true, entries: join([launch_name, "\n"], ""), error: ""),
+    name: launch_name,
+    path: join([attempt_dir, "/", launch_name], ""),
+    read: filesystem_read_outcome(content: content, success: true, error: ""),
+  )
+}
+
+fn unplanted() -> FilesystemFileObservation {
+  filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: attempt_dir, success: true, entries: "", error: ""),
+    name: launch_name,
+    path: join([attempt_dir, "/", launch_name], ""),
+    read: filesystem_read_outcome(content: "", success: false, error: "not read: the listing did not name the entry"),
+  )
+}
+
+fn observe(launch: FilesystemFileObservation) -> ServiceEvidenceObservation {
+  service_evidence_observe_from_launch(node_id: "n1", attempt_key: "a1", launch: launch)
+}
+
+fn refused(o: ServiceEvidenceObservation) -> Bool {
+  match o { ServiceEvidenceRefused { reason: _ } => true  _ => false }
+}
+
+// ── the join over a launched attempt ──
+
+test fn a_launched_attempt_joins_one_reading_per_field_in_roster_order() -> Bool {
+  match observe(launch: planted(content: launch_for(node: "n1"))) {
+    ServiceEvidenceJoined { receipt } =>
+      receipt.node_id == "n1" && receipt.attempt_key == "a1"
+        && join(map(receipt.fields, r => service_evidence_field_wire(f: r.field)), ",") == join(map(service_evidence_fields, f => service_evidence_field_wire(f: f)), ",")
+        && match service_evidence_receipt_wire(r: receipt) { Present { value: _ } => true  Absent => false }
+        && match service_evidence_receipt_digest(r: receipt) { Present { value: d } => d != ""  Absent => false }
+    _ => false
+  }
+}
+
+// Nothing is observed while every reader is pending: no field defaults to a value.
+test fn with_every_reader_pending_no_field_is_observed_and_each_is_owed_by_its_named_producer() -> Bool {
+  all(service_evidence_fields, f => match service_evidence_field_reading(f: f) {
+    EvidenceOwed { producer: _ } => true
+    _ => false
+  })
+    && match service_evidence_field_reading(f: CacheCorruptHitRefusals) { EvidenceOwed { producer: PendingReader { reader: SharedComputationReader, pr } } => pr == 13097  _ => false }
+    && match service_evidence_field_reading(f: BillableUsage) { EvidenceOwed { producer: PendingReader { reader: MeteringReader, pr } } => pr == 13073  _ => false }
+    && match service_evidence_field_reading(f: FailureAttribution) { EvidenceOwed { producer: PendingReader { reader: ResultReturnedReader, pr } } => pr == 13075  _ => false }
+    && match service_evidence_field_reading(f: Placement) { EvidenceOwed { producer: PendingReader { reader: SessionPlacementReader, pr } } => pr == 13074  _ => false }
+    && match service_evidence_field_reading(f: HardwareHealth) { EvidenceOwed { producer: UnbuiltProducer { owner_node } } => owner_node == "fleet-health-0-live-receipt"  _ => false }
+    && match service_evidence_field_reading(f: Egress) { EvidenceOwed { producer: UnbuiltProducer { owner_node } } => owner_node == "service-evidence-capture"  _ => false }
+}
+
+// ── one discriminating red per observation refusal ──
+
+test fn an_attempt_with_no_launch_record_is_unlaunched_not_joined() -> Bool {
+  match observe(launch: unplanted()) { ServiceEvidenceAttemptUnlaunched => true  _ => false }
+}
+
+test fn a_launch_record_naming_another_node_refuses() -> Bool {
+  refused(o: observe(launch: planted(content: launch_for(node: "n2"))))
+}
+
+test fn a_launch_record_that_is_not_json_refuses() -> Bool {
+  refused(o: observe(launch: planted(content: "not json")))
+}
+
+test fn a_launch_record_missing_its_revision_refuses() -> Bool {
+  refused(o: observe(launch: planted(content: "{\"node_id\":\"n1\",\"cause\":\"operator\",\"mode\":\"manual_ready\",\"instance_id\":\"i\"}")))
+}
+
+test fn an_indeterminate_launch_read_refuses() -> Bool {
+  refused(o: observe(launch: FilesystemFileIndeterminate { cause: "listing failed" }))
+}
+
+// ── the validator: one discriminating red per join ──
+
+fn good_fields() -> List<ServiceEvidenceFieldReading> {
+  map(service_evidence_fields, f => ServiceEvidenceFieldReading { field: f, reading: service_evidence_field_reading(f: f) })
+}
+
+fn replacing(field: ServiceEvidenceField, reading: ServiceEvidenceReading) -> List<ServiceEvidenceFieldReading> {
+  map(good_fields(), r => if service_evidence_field_wire(f: r.field) == service_evidence_field_wire(f: field) {
+    ServiceEvidenceFieldReading { field: field, reading: reading }
+  } else { r })
+}
+
+fn defective(fields: List<ServiceEvidenceFieldReading>) -> Bool {
+  match service_evidence_fields_defect(node_id: "n1", attempt_key: "a1", fields: fields) { Present { value: _ } => true  Absent => false }
+}
+
+test fn the_joined_field_list_is_valid() -> Bool {
+  !defective(fields: good_fields())
+}
+
+// THE RE-MEASURED FIELD HAS NO ADMITTED CONSTRUCTOR. An Observed reading must name a
+// ServiceEvidenceReader, and the validator admits it only when that reader is the field's one
+// declared source: a field with no producer cannot be observed at all, and a reader that does not
+// own a field cannot observe it.
+test fn an_observed_value_on_a_field_with_no_producer_is_refused_as_re_measured() -> Bool {
+  defective(fields: replacing(field: Egress, reading: EvidenceObserved { value: "0", source: MeteringReader }))
+}
+
+test fn an_observed_value_from_a_reader_that_does_not_own_the_field_is_refused() -> Bool {
+  defective(fields: replacing(field: CacheHits, reading: EvidenceObserved { value: "3", source: MeteringReader }))
+    && !defective(fields: replacing(field: CacheHits, reading: EvidenceObserved { value: "3", source: SharedComputationReader }))
+}
+
+test fn a_missing_field_is_refused() -> Bool {
+  defective(fields: filter(good_fields(), r => service_evidence_field_wire(f: r.field) != "hardware_health"))
+}
+
+test fn a_duplicated_field_is_refused() -> Bool {
+  defective(fields: concat(good_fields(), [ServiceEvidenceFieldReading { field: WorkspaceRecoveryTime, reading: service_evidence_field_reading(f: WorkspaceRecoveryTime) }]))
+}
+
+test fn fields_out_of_roster_order_are_refused() -> Bool {
+  defective(fields: concat(filter(good_fields(), r => service_evidence_field_wire(f: r.field) != "workload_class"),
+    [ServiceEvidenceFieldReading { field: WorkloadClass, reading: service_evidence_field_reading(f: WorkloadClass) }]))
+}
+
+test fn owed_by_the_wrong_owner_is_refused() -> Bool {
+  defective(fields: replacing(field: BillableCredits, reading: EvidenceOwed { producer: UnbuiltProducer { owner_node: "service-evidence-capture" } }))
+}
+
+test fn owed_by_a_pending_reader_with_no_pull_request_is_refused() -> Bool {
+  defective(fields: replacing(field: WaitTime, reading: EvidenceOwed { producer: PendingReader { reader: SessionPlacementReader, pr: 0 } }))
+}
+
+test fn owed_by_a_reader_on_a_field_with_no_reader_is_refused() -> Bool {
+  defective(fields: replacing(field: RecoveryAction, reading: EvidenceOwed { producer: PendingReader { reader: ResultReturnedReader, pr: 13075 } }))
+}
+
+test fn refused_with_no_reason_is_refused_and_with_a_reason_is_admitted() -> Bool {
+  defective(fields: replacing(field: ArtifactBytes, reading: EvidenceRefused { reason: "" }))
+    && !defective(fields: replacing(field: ArtifactBytes, reading: EvidenceRefused { reason: "the store refused the read" }))
+}
+
+test fn an_empty_attempt_identity_is_refused() -> Bool {
+  match service_evidence_fields_defect(node_id: "n1", attempt_key: "", fields: good_fields()) { Present { value: _ } => true  Absent => false }
+    && match service_evidence_fields_defect(node_id: "", attempt_key: "a1", fields: good_fields()) { Present { value: _ } => true  Absent => false }
+}
