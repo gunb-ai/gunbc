@@ -123,7 +123,7 @@ fn status_route(text: String) -> String {
 }
 
 // `5xx` reaches the class production, `404` the guarded code production, `nonzero` the name.
-test fn status_patterns_take_class_code_and_name_routes_holds() -> Bool {
+fn status_patterns_take_class_code_and_name_routes_holds_verdict() -> Bool {
   (status_route(text: "5xx") == "class")
     && (status_route(text: "404") == "code")
     && (status_route(text: "nonzero") == "name")
@@ -151,7 +151,7 @@ fn field_edge_reading(text: String) -> String {
 }
 
 // `v` is the pun (bare route, bound to `v` itself); `w: y` the suffixed route, bound to `y`.
-test fn field_patterns_take_pun_and_suffix_routes_holds() -> Bool {
+fn field_patterns_take_pun_and_suffix_routes_holds_verdict() -> Bool {
   (field_edge_reading(text: "v") == "bare:v->v") && (field_edge_reading(text: "w: y") == "suffixed:w->y")
 }
 
@@ -185,7 +185,7 @@ fn param_routes(text: String) -> String {
 }
 
 // `a: Int` takes the bare route: no tail, no default.
-test fn a_plain_typed_param_takes_the_bare_route_holds() -> Bool {
+fn a_plain_typed_param_takes_the_bare_route_holds_verdict() -> Bool {
   param_routes(text: "(a: Int)") == "a"
 }
 
@@ -211,8 +211,44 @@ fn requires_route(text: String) -> String {
 
 // `requires none` and `requires opaque` take their word arms; `requires Filesystem` takes the guarded
 // type list, and no word is read as a type.
-test fn op_requires_take_word_and_type_list_routes_holds() -> Bool {
+fn op_requires_take_word_and_type_list_routes_holds_verdict() -> Bool {
   (requires_route(text: "requires none") == "none")
     && (requires_route(text: "requires opaque") == "opaque")
     && (requires_route(text: "requires Filesystem") == "list")
+}
+
+// ONE WARM FILL, ONE PARSE PER CLAIM INSIDE IT. Each claim's body is unchanged in its `_verdict` fn;
+// dcr_verdicts evaluates them once and the floor forces it at strict preparation
+// (v2.workflow.floor_pure_producer_share floor_cross_claim_pure_producers_warm), so no claim pays its
+// own parse against the new-witness budget. Portable because it holds only Bools.
+type DcrVerdicts {
+  status_patterns_take_class_code_and_name_routes_holds: Bool
+  field_patterns_take_pun_and_suffix_routes_holds: Bool
+  a_plain_typed_param_takes_the_bare_route_holds: Bool
+  op_requires_take_word_and_type_list_routes_holds: Bool
+}
+
+fn dcr_verdicts() -> DcrVerdicts {
+  DcrVerdicts {
+    status_patterns_take_class_code_and_name_routes_holds: status_patterns_take_class_code_and_name_routes_holds_verdict(),
+    field_patterns_take_pun_and_suffix_routes_holds: field_patterns_take_pun_and_suffix_routes_holds_verdict(),
+    a_plain_typed_param_takes_the_bare_route_holds: a_plain_typed_param_takes_the_bare_route_holds_verdict(),
+    op_requires_take_word_and_type_list_routes_holds: op_requires_take_word_and_type_list_routes_holds_verdict()
+  }
+}
+
+test fn status_patterns_take_class_code_and_name_routes_holds() -> Bool {
+  dcr_verdicts().status_patterns_take_class_code_and_name_routes_holds
+}
+
+test fn field_patterns_take_pun_and_suffix_routes_holds() -> Bool {
+  dcr_verdicts().field_patterns_take_pun_and_suffix_routes_holds
+}
+
+test fn a_plain_typed_param_takes_the_bare_route_holds() -> Bool {
+  dcr_verdicts().a_plain_typed_param_takes_the_bare_route_holds
+}
+
+test fn op_requires_take_word_and_type_list_routes_holds() -> Bool {
+  dcr_verdicts().op_requires_take_word_and_type_list_routes_holds
 }
