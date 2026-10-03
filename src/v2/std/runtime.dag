@@ -2,7 +2,6 @@ module v2.std.runtime
 
 import std.types { List }
 import v2.std.collection {
-  List,
   Map
 }
 import v2.std.optional {

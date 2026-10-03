@@ -5,7 +5,6 @@ import std.algebra { Cons, Empty, FreeMonoid, AbelianGroup, GroupCompletion, Ord
 import std.error_primitives { DivError, Result, DivideByZero, Ok, Err }
 import v2.std.algebra { TailAbsent, TailFound, fold_list, fold_list_node, length, list_map }
 import v2.std.collection {
-  List,
   list_at_optional
 }
 import v2.std.optional {
