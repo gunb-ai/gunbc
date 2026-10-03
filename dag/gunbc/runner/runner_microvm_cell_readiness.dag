@@ -318,7 +318,11 @@ fn admission_of_record(record: CellReadinessRecord, allocation_generation: Int) 
 type CellReservationRelease sole_constructor { cell: CellId, held_generation: Int, freed_generation: Int }
 
 fn cell_reservation_released_write(cell: CellId, held_generation: Int, freed_generation: Int) -> CellReadinessWrite
-  admit_callers: [decl_ref(module_path: "gunbc.workspace_allocation_lifecycle", decl_name: "workspace_advance_released_readiness")]
+  admit_callers: [
+    decl_ref(module_path: "gunbc.workspace_allocation_lifecycle", decl_name: "workspace_advance_released_readiness"),
+    decl_ref(module_path: "test.claim.runner.runner_microvm_cell_readiness_release_witness_test", decl_name: "a_released_reservation_advances_readiness_without_inventing_an_attempt"),
+    decl_ref(module_path: "test.claim.runner.runner_microvm_cell_readiness_release_witness_test", decl_name: "release_generation_advance_refuses_quarantine_and_skips"),
+  ]
 {
   WriteReservationReleased { receipt: CellReservationRelease { cell: cell, held_generation: held_generation, freed_generation: freed_generation } }
 }
