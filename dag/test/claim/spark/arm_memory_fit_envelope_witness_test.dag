@@ -1,6 +1,6 @@
 module test.claim.spark.arm_memory_fit_envelope_witness_test
 
-import std.types { Bool, NonEmptyStr }
+import std.types { Bool, NonEmptyStr, List, String }
 import std.nat { Nat }
 import std.measure { token_count, basis_point }
 import v2.std.optional { Present, Absent }
@@ -8,10 +8,18 @@ import extdeps.vllm.engine_args {
   PrefixCachingExplicit, KvFp8, EngramConfigOmitted, ModalityOmitted,
   VllmSchedulerAdmissionRequest, FullInputAdmissionExplicit, KvWatermarkExplicit, vllm_scheduler_admission_omitted, IndexerKvDtypeOmitted,
 }
-import gunbc.spark.serving_arm {
+import gunbc.spark.serving_arm { glm53_native_launch_policy,
   ServingLaunchProfile, serving_launch_profile, Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4,
 }
 import gunbc.spark.serving_capacity_intent { intent_max_active_sequences }
+import extdeps.docker.cli { DockerEnvAssignment }
+import gunbc.spark.arm_memory_fit {
+  engine_ready_timeout_for, EngineReadyTimeoutResolved, EngineReadyTimeoutUnreadable,
+  arm_memory_experiment_runtime, arm_experiment_churn_window_allowance, arm_experiment_churn_request_timeout,
+  arm_experiment_sampler_tail, arm_experiment_sampler_cadence,
+}
+import gunbc.spark.native_experiment_apply { spark_churn_window_seconds, spark_workload_variants }
+import std.measure { second, second_count }
 import gunbc.spark.arm_memory_fit {
   arm_memory_fit_subject_for_launch, ArmMemorySubjectReady, ArmMemorySubjectRefused,
   memory_proof_subject_for_launch, MemoryProofSubject, MemoryProofSubjectReady, MemoryProofSubjectRefused,
@@ -26,19 +34,16 @@ import gunbc.spark.arm_memory_fit {
 // directive rows.
 fn w_profile(ceiling: Nat, cold: Nat, admission: VllmSchedulerAdmissionRequest) -> ServingLaunchProfile {
   serving_launch_profile(
+    policy: glm53_native_launch_policy,
     max_model_len: token_count(count: 262144),
     max_num_batched_tokens: token_count(count: 2048),
     max_num_seqs: ceiling,
     guaranteed_cold_seqs: cold,
     decided_gpu_memory_basis_points: basis_point(count: 8567),
-    kv_cache_dtype: KvFp8,
     serve_port: 30000,
     served_alias: "glm-5.3-flash" as NonEmptyStr,
     prefix_caching: PrefixCachingExplicit { enabled: true },
-    engram: EngramConfigOmitted,
-    modality: ModalityOmitted,
     scheduler_admission: admission,
-    indexer_kv_dtype: IndexerKvDtypeOmitted,
   )
 }
 
@@ -50,14 +55,14 @@ fn w_gate() -> VllmSchedulerAdmissionRequest {
 }
 
 fn w_subject_seats(p: ServingLaunchProfile) -> Nat? {
-  match arm_memory_fit_subject_for_launch(checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, profile: p) {
+  match arm_memory_fit_subject_for_launch(runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, profile: p) {
     ArmMemorySubjectReady { subject: s } => Present { value: intent_max_active_sequences(i: s.intent) }
     ArmMemorySubjectRefused { cause: _ } => none
   }
 }
 
 fn w_proof_subject(p: ServingLaunchProfile) -> MemoryProofSubject? {
-  match memory_proof_subject_for_launch(checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, profile: p, launch_generation: "witness" as NonEmptyStr) {
+  match memory_proof_subject_for_launch(runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, profile: p, launch_generation: "witness" as NonEmptyStr) {
     MemoryProofSubjectReady { subject: s } => Present { value: s }
     MemoryProofSubjectRefused { cause: _ } => none
   }
@@ -110,4 +115,52 @@ test fn w_a_receipt_at_one_ceiling_does_not_discharge_a_ceiling_sensitive_term_a
             && memory_scaling_law_discharges_on(law: MemoryScalingPerSequenceFixed, measured_on: above, target: above)
       }
   }
+}
+
+// THE EXPERIMENT'S RUNTIME BOUND IS THE LAUNCH'S OWN (deforking cut 4): the ready timeout its environment
+// sets, upstream's default when it sets none, and a refusal when it is set twice or to a non-integer.
+fn w_ready_is(env: List<DockerEnvAssignment>, want: Nat) -> Bool {
+  match engine_ready_timeout_for(env: env) {
+    EngineReadyTimeoutResolved { timeout: t } => second_count(s: t) == want
+    EngineReadyTimeoutUnreadable { cause: _ } => false
+  }
+}
+
+fn w_ready_refuses(env: List<DockerEnvAssignment>) -> Bool {
+  match engine_ready_timeout_for(env: env) {
+    EngineReadyTimeoutResolved { timeout: _ } => false
+    EngineReadyTimeoutUnreadable { cause: _ } => true
+  }
+}
+
+fn w_assign(v: String) -> DockerEnvAssignment {
+  DockerEnvAssignment { name: "VLLM_ENGINE_READY_TIMEOUT_S" as NonEmptyStr, value: v }
+}
+
+test fn w_the_ready_timeout_is_read_from_the_launch_environment() -> Bool {
+  w_ready_is(env: [], want: 600)
+    && w_ready_is(env: [w_assign(v: "3600")], want: 3600)
+    && w_ready_refuses(env: [w_assign(v: "3600"), w_assign(v: "600")])
+    && w_ready_refuses(env: [w_assign(v: "an hour")])
+}
+
+// THE BOUND IS CHECKED AGAINST ITS OWN DEFINITION, NOT AGAINST A NUMBER COPIED FROM IT (review 74098):
+// at the largest seat ceiling either model launches at, the churn window the driver opens (a twelfth of
+// the admitted runtime) stays inside the allowance the bound reserves; the tail covers that allowance
+// plus the churn request timeout plus one cadence; and no declared workload variant's churn request
+// outlives the timeout the tail reserves for it.
+fn w_window_fits(ready: Nat, seqs: Nat) -> Bool {
+  let r = second(count: ready)
+  let total = second_count(s: arm_memory_experiment_runtime(ready_timeout: r, max_num_seqs: seqs))
+  spark_churn_window_seconds(admitted_seconds: total) <= second_count(s: arm_experiment_churn_window_allowance(ready_timeout: r, max_num_seqs: seqs))
+    && second_count(s: arm_experiment_sampler_tail(ready_timeout: r, max_num_seqs: seqs))
+       == second_count(s: arm_experiment_churn_window_allowance(ready_timeout: r, max_num_seqs: seqs)) + second_count(s: arm_experiment_churn_request_timeout) + second_count(s: arm_experiment_sampler_cadence)
+}
+
+test fn w_the_runtime_bound_satisfies_its_own_derivation() -> Bool {
+  w_window_fits(ready: 3600, seqs: 8)
+    && w_window_fits(ready: 600, seqs: 6)
+    && w_window_fits(ready: 3600, seqs: 16)
+    && w_window_fits(ready: 3600, seqs: 64)
+    && all(spark_workload_variants, v => v.request_timeout_seconds <= second_count(s: arm_experiment_churn_request_timeout))
 }

@@ -728,7 +728,8 @@ fn mbt_resolved() -> ResolvedTree {
     root: mbt_atom(s: ^mbt_unused_root),
     symbol_index: mbt_index(),
     resolved_declarations: empty_symbol_index(),
-    lexical_bindings: empty_map()
+    lexical_bindings: empty_map(),
+    unavailable_providers: []
   }
 }
 

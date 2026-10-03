@@ -6,12 +6,16 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef, ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+// The one row for the kernel smpro sysfs ABI document; extdeps.ampere.smpro_register cites it
+// from here rather than carrying a second copy of the URI.
+data ampere_smpro_sysfs_abi: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "amperecomputing.com/customer-connect/products/altra-family-software"
+    locator: "github.com/torvalds/linux/blob/995832b2cebe6969d1b42635db698803ee31294d/Documentation/ABI/testing/sysfs-bus-platform-devices-ampere-smpro"
   }
 }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ampere_smpro_sysfs_abi
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
