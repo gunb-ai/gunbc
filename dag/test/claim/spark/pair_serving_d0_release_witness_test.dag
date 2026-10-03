@@ -1,0 +1,240 @@
+module test.claim.spark.pair_serving_d0_release_witness
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, List }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import std.measure { kibibyte, mebibyte }
+import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, content_hash_equal }
+import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpected }
+import product.placement_supply { HostIdentity }
+import extdeps.systemd { Active }
+import extdeps.nvidia.system_management_interface { UsedMemoryReported }
+import extdeps.linux.proc_net_tcp { TcpSocketRow }
+import gunbc.compute.host_occupancy { HostOccupancyRead, HostOccupancyUnread, ServingUnitActive, GpuComputeProcess }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
+import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB, fabric_group_hosts }
+import gunbc.rung_drop { Standing, Retired }
+import gunbc.spark.pair_serving_realization { spark_pair_head_unit_name, spark_pair_worker_unit_name }
+import gunbc.spark.pair_incumbent_identity { DeclaredPairRealizationUnavailable }
+import gunbc.spark.released_baseline { QuiescentReservedBaseline }
+import gunbc.spark.pair_serving_authority {
+  PairServingGroupAuthority, PairServingActive, ReleasedToFleet, FencedRefusal, PairRealizationUnestablished, pair_serving_committed_hosts,
+}
+import std.scoped_authorization { OperatorGrant, AttemptIdentity, ClaimedBy, authorization_scope_eq, parse_intent_scopes }
+import gunbc.spark.pair_serving_d0 {
+  D0Subject, D0SuspendForSuccessor, D0ReleaseToFleet, RankVacancyReading, RankOccupancyReading, D0Observation,
+  IncumbentReading, IncumbentDidNotAnswer, IncumbentAnsweredUnread, IncumbentRouteUnread,
+  HeadEndpointQuiet, HeadEndpointListening, HeadEndpointEngineProcess,
+  D0Decision, D0DecidedRelease, D0DecidedFence, D0DecidedSuspend, D0DecidedRestore, D0HostNotQuiescent,
+  d0_decide, d0_decision_next, d0_decision_is_eligible,
+  d0_intent_text, parse_d0_intent_text, d0_release_scope, d0_required_scope,
+  D0ClaimAt, D0Recovery, D0RecoverAbort, d0_recovery,
+  d0_single_lifecycle_admits_under, d0_release_lifecycle_escalation_id,
+}
+import gunbc.spark.pair_serving_d0_authorization { d0_release_row_for, d0_live_subject_for, D0SubjectFor }
+import gunbc.spark.pair_serving_authority_log { AuthorityTransitionRecord }
+
+// ── THE RELEASE DECISION, OVER SUPPLIED READINGS ────────────────────────────────────────────────────
+//
+// The release settles through the same transaction as a suspension; what is new is the decision over
+// the readings and the subject's intent. Both are pure, so every arm is driven here with a constructed
+// observation; the fleet readings themselves are D0's observer's, executed by its wet door.
+
+fn rw_sha(hex: String) -> ContentHash? {
+  match sha256_hex_digest(hex: hex) {
+    Absent => none
+    Present { value: d } => Present { value: Sha256Hash(d) }
+  }
+}
+
+fn rw_release_subject() -> D0Subject {
+  D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), operation: D0ReleaseToFleet { cause: "witness cause" as NonEmptyStr, approval: "witness approval" as NonEmptyStr } }
+}
+
+fn rw_grant(h: ContentHash) -> OperatorGrant<D0Subject> {
+  OperatorGrant {
+    escalation_id: "rel-w" as NonEmptyStr,
+    subject: rw_release_subject(),
+    scopes: [d0_release_scope()],
+    purpose: "witness release" as NonEmptyStr,
+    attempt: "tx-rel" as AttemptIdentity,
+    intent_hash: h,
+    granted_by: "witness" as NonEmptyStr,
+    granted_at: "2026-10-03T00:00:00Z",
+    expires_at: "2026-10-04T00:00:00Z",
+  }
+}
+
+fn rw_lease(h: ContentHash) -> HeldLease {
+  held_lease(epoch: LeaseEpoch { lease_key: "tx-rel" as NonEmptyStr, resource_fingerprint: h, owner_fingerprint: h, generation: 1 }, observed: LeaseRunningExpected)
+}
+
+fn rw_active() -> PairServingGroupAuthority {
+  PairServingActive { group: FabricGroupA, exact_realization: PairRealizationUnestablished { obligation: "witness" as NonEmptyStr } }
+}
+
+fn rw_empty(h: HostIdentity) -> RankVacancyReading {
+  RankVacancyReading { host: h, reading: HostOccupancyRead { occupants: [], available: kibibyte(count: 120000000) } }
+}
+
+fn rw_quiet_vacancy() -> List<RankVacancyReading> {
+  map(fabric_group_hosts(g: FabricGroupA), h => rw_empty(h: h))
+}
+
+fn rw_quiet_route() -> IncumbentReading {
+  IncumbentDidNotAnswer { receipt: "the front door could not be connected" as NonEmptyStr, head: HeadEndpointQuiet }
+}
+
+fn rw_decide(h: ContentHash, incumbent: IncumbentReading, vacancy: List<RankVacancyReading>) -> D0Decision {
+  d0_decide(
+    declared: DeclaredPairRealizationUnavailable { group: FabricGroupA, obligation: "a release reads no declared realization" as NonEmptyStr },
+    observation: D0Observation { group: FabricGroupA, incumbent: incumbent, ranks: [] as List<RankOccupancyReading>, vacancy: vacancy },
+    active: rw_active(),
+    lease: rw_lease(h: h),
+    grant: rw_grant(h: h),
+  )
+}
+
+fn rw_with(scenario: fn(ContentHash) -> Bool) -> Bool {
+  match rw_sha(hex: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd") {
+    Absent => false
+    Present { value: h } => scenario(h)
+  }
+}
+
+fn rw_not_quiescent(d: D0Decision, fragment: String) -> Bool {
+  match d {
+    D0DecidedFence { next: FencedRefusal { group: _, hosts: _, cause: c, disposition_authority: _ }, cause: D0HostNotQuiescent { cause: _ } } => string_contains(s: c as String, pattern: fragment)
+    D0DecidedFence { next: _, cause: _ } => false
+    D0DecidedRelease { group: _, hosts: _ } => false
+    D0DecidedSuspend { next: _, reconciliation: _ } => false
+    D0DecidedRestore { next: _, key: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL: a silent route, a quiet head and every host read with no occupant releases --
+// and the next authority is ReleasedToFleet naming exactly the recorded receipt, which commits no host.
+test fn rw_every_host_quiescent_releases_under_the_receipt() -> Bool {
+  rw_with(scenario: fn(h) {
+    let d = rw_decide(h: h, incumbent: rw_quiet_route(), vacancy: rw_quiet_vacancy())
+    d0_decision_is_eligible(d: d)
+      && match d0_decision_next(d: d, entry_state: h) {
+        ReleasedToFleet { group: _, release_receipt: r } => content_hash_equal(left: r, right: h)
+        _ => false
+      }
+      && length(pair_serving_committed_hosts(a: d0_decision_next(d: d, entry_state: h))) == 0
+  })
+}
+
+// ONE REFUSAL PER OCCUPANT READING KIND.
+test fn rw_an_answering_front_door_refuses_the_release() -> Bool {
+  rw_with(scenario: fn(h) { rw_not_quiescent(d: rw_decide(h: h, incumbent: IncumbentAnsweredUnread { cause: "witness 500" as NonEmptyStr }, vacancy: rw_quiet_vacancy()), fragment: "front door answered") })
+}
+
+test fn rw_a_listener_on_the_head_refuses_the_release() -> Bool {
+  rw_with(scenario: fn(h) { rw_not_quiescent(d: rw_decide(h: h, incumbent: IncumbentDidNotAnswer { receipt: "curl 7" as NonEmptyStr, head: HeadEndpointListening { port: 30000, rows: [] as List<TcpSocketRow> } }, vacancy: rw_quiet_vacancy()), fragment: "LISTEN on port 30000") })
+}
+
+test fn rw_an_engine_process_on_the_head_refuses_the_release() -> Bool {
+  rw_with(scenario: fn(h) { rw_not_quiescent(d: rw_decide(h: h, incumbent: IncumbentDidNotAnswer { receipt: "curl 7" as NonEmptyStr, head: HeadEndpointEngineProcess { listing: "4242 vllm" } }, vacancy: rw_quiet_vacancy()), fragment: "engine process") })
+}
+
+test fn rw_a_running_serving_unit_on_any_host_refuses_the_release() -> Bool {
+  rw_with(scenario: fn(h) {
+    let vacancy = concat(
+      [RankVacancyReading { host: operator_host_srv7, reading: HostOccupancyRead { occupants: [ServingUnitActive { unit: spark_pair_worker_unit_name, state: Active }], available: kibibyte(count: 1) } }],
+      map(filter(fabric_group_hosts(g: FabricGroupA), x => (x as String) != (operator_host_srv7 as String)), x => rw_empty(h: x)))
+    rw_not_quiescent(d: rw_decide(h: h, incumbent: rw_quiet_route(), vacancy: vacancy), fragment: "srv7 is occupied")
+  })
+}
+
+test fn rw_a_gpu_process_on_any_host_refuses_the_release() -> Bool {
+  rw_with(scenario: fn(h) {
+    let vacancy = concat(
+      [RankVacancyReading { host: operator_host_srv8, reading: HostOccupancyRead { occupants: [GpuComputeProcess { pid: 99, process_name: "python3", used: UsedMemoryReported { used: mebibyte(count: 1000) } }], available: kibibyte(count: 1) } }],
+      map(filter(fabric_group_hosts(g: FabricGroupA), x => (x as String) != (operator_host_srv8 as String)), x => rw_empty(h: x)))
+    rw_not_quiescent(d: rw_decide(h: h, incumbent: rw_quiet_route(), vacancy: vacancy), fragment: "srv8 is occupied")
+  })
+}
+
+// ABSENCE IS NOT VACANCY: an unread host, and a host with no reading at all, refuse.
+test fn rw_an_unread_or_missing_host_refuses_the_release() -> Bool {
+  rw_with(scenario: fn(h) {
+    let unread = concat(
+      [RankVacancyReading { host: operator_host_srv5, reading: HostOccupancyUnread { cause: "witness: nvidia-smi did not run" } }],
+      map(filter(fabric_group_hosts(g: FabricGroupA), x => (x as String) != (operator_host_srv5 as String)), x => rw_empty(h: x)))
+    let missing = map(filter(fabric_group_hosts(g: FabricGroupA), x => (x as String) != (operator_host_srv6 as String)), x => rw_empty(h: x))
+    rw_not_quiescent(d: rw_decide(h: h, incumbent: rw_quiet_route(), vacancy: unread), fragment: "occupancy unread")
+      && rw_not_quiescent(d: rw_decide(h: h, incumbent: rw_quiet_route(), vacancy: missing), fragment: "no occupancy reading was taken")
+  })
+}
+
+// AN UNREAD ROUTE FENCES as D0's other unread readings do, never releases.
+test fn rw_an_unread_route_never_releases() -> Bool {
+  rw_with(scenario: fn(h) {
+    match rw_decide(h: h, incumbent: IncumbentRouteUnread { cause: "witness" as NonEmptyStr }, vacancy: rw_quiet_vacancy()) {
+      D0DecidedRelease { group: _, hosts: _ } => false
+      D0DecidedFence { next: _, cause: _ } => true
+      D0DecidedSuspend { next: _, reconciliation: _ } => false
+      D0DecidedRestore { next: _, key: _ } => false
+    }
+  })
+}
+
+// AN ALREADY-RELEASED GROUP IS REFUSED: a held claim with no write and an authority that is not Active
+// has nothing to do under this consent, so the recovery join aborts the claim rather than writing.
+test fn rw_an_already_released_group_is_refused() -> Bool {
+  rw_with(scenario: fn(h) {
+    match d0_recovery(
+      claim: D0ClaimAt { state: ClaimedBy { attempt: "tx-rel" as AttemptIdentity, claimed_at: "2026-10-03T00:00:00Z" }, generation: 1 },
+      transaction: "tx-rel" as NonEmptyStr,
+      lifecycle: Present { value: h },
+      executor: "srv1" as NonEmptyStr,
+      current: ReleasedToFleet { group: FabricGroupA, release_receipt: h },
+      transitions: [] as List<AuthorityTransitionRecord>,
+    ) {
+      D0RecoverAbort { claim_generation: _, cause: c } => string_contains(s: c, pattern: "not Active")
+      _ => false
+    }
+  })
+}
+
+// ── THE INTENT: A RELEASE ROUND-TRIPS UNDER ITS OWN SCOPE, AND IS NOT A SUSPENSION ─────────────────
+
+test fn rw_a_release_intent_round_trips_under_the_release_scope() -> Bool {
+  match d0_intent_text(subject: rw_release_subject(), group: FabricGroupA, transaction: "tx-rel" as NonEmptyStr) {
+    Absent => false
+    Present { value: text } =>
+      (match parse_d0_intent_text(text: text) {
+        Absent => false
+        Present { value: p } => match p.subject.operation {
+          D0ReleaseToFleet { cause: c, approval: a } => (c as String) == "witness cause" && (a as String) == "witness approval"
+          D0SuspendForSuccessor { successor: _, cleanup: _, term: _ } => false
+        }
+      })
+      && (match parse_intent_scopes(text: text) {
+        Absent => false
+        Present { value: f } => all(f.scopes, sc => authorization_scope_eq(a: sc, b: d0_release_scope())) && !any(f.scopes, sc => authorization_scope_eq(a: sc, b: d0_required_scope()))
+      })
+  }
+}
+
+// THE RELEASE IS REQUESTED BY ITS ROW: the row's escalation yields a release subject for Group A, any
+// other escalation the suspension for the keyed successor.
+test fn rw_the_approved_release_row_names_group_a_and_its_escalation() -> Bool {
+  match d0_release_row_for(group: FabricGroupA, escalation_id: "d0-group-a-release-glm53-2026-10-03" as NonEmptyStr) {
+    Absent => false
+    Present { value: r } => string_contains(s: r.approval as String, pattern: "operator approval 2026-10-03")
+  }
+    && match d0_release_row_for(group: FabricGroupA, escalation_id: "some-other-escalation" as NonEmptyStr) { Present { value: _ } => false  Absent => true }
+}
+
+// THE STORE WALL ADMITS EXACTLY THE RULED RELEASE LIFECYCLE: its escalation on Group A while the row
+// stands; another escalation, Group B, or the row retired all refuse.
+test fn rw_the_store_wall_admits_only_the_ruled_release_lifecycle() -> Bool {
+  d0_single_lifecycle_admits_under(standing: Standing, group: FabricGroupA, escalation_id: d0_release_lifecycle_escalation_id)
+    && !d0_single_lifecycle_admits_under(standing: Standing, group: FabricGroupA, escalation_id: "d0-group-a-something-else" as NonEmptyStr)
+    && !d0_single_lifecycle_admits_under(standing: Standing, group: FabricGroupB, escalation_id: d0_release_lifecycle_escalation_id)
+    && !d0_single_lifecycle_admits_under(standing: Retired { trigger_fired: "witness" as NonEmptyStr }, group: FabricGroupA, escalation_id: d0_release_lifecycle_escalation_id)
+}
