@@ -3,11 +3,17 @@ module test.claim.harness_turn_completion_test
 import std.types { Bool, String }
 import std.process { ExitSuccess, ExitFailure }
 import gunbc.harness.harness_turn {
-  HarnessTurnOutcome, TurnCompletedByArtifact, TurnStepBudgetExhausted,
+  HarnessTurnOutcome, TurnCompletedByArtifact, TurnStepBudgetExhausted, TurnSubmissionUndecodable,
   HarnessTurnCompletion, CompletesOnProviderStop, CompletesWhenEntryPresent,
   HarnessCompletionObservation, CompletionNotReached, CompletionReached, CompletionIndeterminate,
   harness_completion_observe, harness_outcome_label, harness_outcome_detail,
+  SubmissionGateObservation, GateArtifactAbsent, GateArtifactDeclared,
+  GateArtifactUndecodable, GateArtifactUnobservable,
+  SubmissionGateVerdict, GateProceed, GateRepair, GateRefuse,
+  harness_submission_gate_read, harness_submission_gate_judge,
+  harness_submission_repair_text, harness_submission_repair_bound,
 }
+import gunbc.roadmap.roadmap_submission { submission_text, WorkerSubmission, SubmissionBlocked }
 import gunbc.harness.harness_cli { harness_turn_exit }
 
 // A TURN THAT PRODUCED ITS ARTIFACT IS COMPLETE AND EXITS ZERO; the budget-exhausted turn beside it
@@ -29,5 +35,97 @@ test fn a_provider_stop_completion_is_never_reached() -> Bool {
     CompletionNotReached => true
     CompletionReached { path: _ } => false
     CompletionIndeterminate { cause: _ } => false
+  }
+}
+
+// THE GATE READS THROUGH THE REAL DECODER. Both production shapes are planted verbatim: the habit
+// format two workers wrote (no schema member, a known_limitations key) and a correct declaration.
+// The habit text must read undecodable with the decoder's own reason -- a gate that checked only
+// the file's presence would declare it, which is exactly the production defect this gate exists to
+// refuse (presence is not a declaration).
+data habit_text: String = "{\"readiness\": \"ready\", \"explanation\": \"did the work\", \"known_limitations\": [\"no soak\"]}"
+
+test fn a_present_but_undecodable_artifact_is_not_a_declaration() -> Bool {
+  match harness_submission_gate_read(artifact: Present { value: habit_text }) {
+    GateArtifactDeclared => false
+    GateArtifactAbsent => false
+    GateArtifactUnobservable { cause: _ } => false
+    GateArtifactUndecodable { reason } =>
+      string_contains(s: reason, pattern: "schema")
+        && match harness_submission_gate_judge(
+          observation: GateArtifactUndecodable { reason: reason },
+          repairs_used: 0,
+        ) {
+          GateProceed => false
+          GateRefuse { reason: _ } => false
+          GateRepair { reason: r } => r == reason
+        }
+  }
+}
+
+// THE REPAIR ROUND'S INPUT CARRIES THE DECODER'S EXACT REASON and spells the bound, so the worker
+// repairs against the message rather than a paraphrase and can see the bound approaching.
+test fn the_repair_round_reports_the_exact_reason_and_the_bound() -> Bool {
+  let text = harness_submission_repair_text(reason: "submission schema is roadmap-submission/v0, not roadmap-submission/v1", repairs_used: 1)
+  string_contains(s: text, pattern: "submission schema is roadmap-submission/v0, not roadmap-submission/v1")
+    && string_contains(s: text, pattern: "repair round 1 of 2")
+    && string_contains(s: text, pattern: ".gunbc-submission.json")
+}
+
+fn gate_proceeds(v: SubmissionGateVerdict) -> Bool {
+  match v { GateProceed => true  _ => false }
+}
+
+// ABSENT IS A YIELD AND DECODABLE IS NORMAL, whatever readiness the worker declared: the gate has
+// no opinion between ready, blocked and needs-context, and none between ending without an artifact
+// (a yield) and ending with a declaration.
+test fn an_absent_artifact_and_a_decodable_blocked_one_both_proceed() -> Bool {
+  let blocked = submission_text(submission: WorkerSubmission {
+    readiness: SubmissionBlocked,
+    explanation: "the acceptance run was still in flight when the budget died",
+    limitations: "acceptance unconfirmed",
+  })
+  gate_proceeds(v: harness_submission_gate_judge(observation: harness_submission_gate_read(artifact: none), repairs_used: 0))
+    && match harness_submission_gate_read(artifact: Present { value: blocked }) {
+      GateArtifactDeclared =>
+        gate_proceeds(v: harness_submission_gate_judge(observation: GateArtifactDeclared, repairs_used: 0))
+      _ => false
+    }
+}
+
+// THE BOUND ENDS THE TURN WITH THE FAILURE NAMED: at the repair bound the verdict refuses with the
+// decode reason, and the terminal outcome carries it through the label, the detail and the exit --
+// the belt reads a yield with a named cause, not a mystery. An unobservable artifact (a filesystem
+// fact no edit repairs) refuses immediately rather than spending a repair round.
+test fn the_exhausted_bound_and_the_unobservable_artifact_refuse_with_their_causes() -> Bool {
+  let at_bound = harness_submission_gate_judge(
+    observation: GateArtifactUndecodable { reason: "limitations field missing" },
+    repairs_used: harness_submission_repair_bound,
+  )
+  let unobservable = harness_submission_gate_judge(
+    observation: GateArtifactUnobservable { cause: "the worktree could not be listed" },
+    repairs_used: 0,
+  )
+  match at_bound {
+    GateRefuse { reason } =>
+      reason == "limitations field missing"
+        && match unobservable {
+          GateRefuse { reason: r } => r == "the worktree could not be listed"
+          _ => false
+        }
+        && harness_outcome_label(outcome: TurnSubmissionUndecodable { reason: reason, steps_taken: 4 }) == "submission-undecodable"
+        && string_contains(
+          s: harness_outcome_detail(outcome: TurnSubmissionUndecodable { reason: reason, steps_taken: 4 }),
+          pattern: "limitations field missing",
+        )
+        && string_contains(
+          s: harness_outcome_detail(outcome: TurnSubmissionUndecodable { reason: reason, steps_taken: 4 }),
+          pattern: "checkpoint",
+        )
+        && (match harness_turn_exit(outcome: TurnSubmissionUndecodable { reason: reason, steps_taken: 4 }) {
+          ExitSuccess => false
+          ExitFailure { code, reason: _ } => code == 1
+        })
+    _ => false
   }
 }

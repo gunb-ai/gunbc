@@ -355,6 +355,7 @@ fn decide_code_change_transition(request: CodeChangeTransitionRequest) -> CodeCh
 
 service gunbc.CodeChangeWorkflow {
   operation ClassifyGithubPrTerminalAnchor {
+    requires none
     input {
       pr: extdeps.github.pulls.PullRequest
     }
@@ -365,6 +366,7 @@ service gunbc.CodeChangeWorkflow {
   }
 
   operation DecideTransition {
+    requires none
     input {
       request: CodeChangeTransitionRequest
     }

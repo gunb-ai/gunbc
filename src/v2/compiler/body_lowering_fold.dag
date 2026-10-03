@@ -31,6 +31,7 @@ import v2.compiler.body_producer_forward {
   body_producer_forward_surface_identities
 }
 import v2.extdeps.languages.dag {
+  namespace_graft_namespace_body_node,
   ParseSubtreeAbsent,
   ParseSubtreeFind,
   ParseSubtreeFound,
@@ -10273,7 +10274,7 @@ fn body_lower_service_member(acc: Outcome<BodyLowerServiceAcc>, member: Node) ->
   })
 }
 
-fn body_lower_service_name_optional(captured: Node) -> Optional<Symbol> {
+fn body_lower_service_name_optional(captured: Node) -> Optional<List<Symbol>> {
   match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_qualified_name) {
     Absent => Absent
     Present { value: qn_shell } =>
@@ -10282,8 +10283,7 @@ fn body_lower_service_name_optional(captured: Node) -> Optional<Symbol> {
         Present { value: qn_capture } =>
           match parse_qualified_name_segments_from_capture(qn_capture: qn_capture, root: qn_shell) {
             Rejected { diagnostics: _ } => Absent
-            Accepted { value: segments, diagnostics: _ } =>
-              optional_present(value: symbol_intern_lexeme(lexeme: qualified_name_to_dotted_string(qn: segments)))
+            Accepted { value: segments, diagnostics: _ } => optional_present(value: segments)
           }
       }
   }
@@ -10320,11 +10320,11 @@ fn body_lower_service_decl(shell: Node, admit_set_aside: Bool) -> Outcome<BodyLo
                   )
                 Absent =>
               match a.set_aside {
-                Empty => body_lowering_lowered(o: outcome_accepted(value: body_lower_service_node(shell: shell, service_name: service_name, operations: a.operations)))
+                Empty => body_lowering_lowered(o: outcome_accepted(value: body_lower_service_node(shell: shell, service_path: service_name, operations: a.operations)))
                 Cons { head: _, tail: _ } =>
                   if admit_set_aside {
                     Accepted {
-                      value: BodyLowered { node: body_lower_service_node(shell: shell, service_name: service_name, operations: a.operations) },
+                      value: BodyLowered { node: body_lower_service_node(shell: shell, service_path: service_name, operations: a.operations) },
                       diagnostics: service_set_aside_diagnostics(xs: a.set_aside)
                     }
                   } else {
@@ -10371,20 +10371,41 @@ fn body_lower_service_second_operation_shell(operations: List<Edge>, shells: Lis
   }
 }
 
+// A SERVICE LOWERS UNDER ITS NAME AS A SPINE, ONE SEGMENT PER DOTTED PART (XL-2 service spine; ruling
+// 2026-10-01): `service shell.Find { operation Run .. }` is `shell -> <namespace body { Find -> payload
+// { Run -> Arrow } }>`, so its operation's declaration path is <module>.shell.Find.Run. Every segment but
+// the last is a MARKED namespace body (v2.extdeps.languages.dag namespace_graft_namespace_body_node), so
+// v2.compiler.namespace_graft merges the bodies of services sharing a prefix (the sixteen shell.* services
+// of dag/extdeps/shell.dag) into one namespace rather than refusing the repeated `shell`. The last segment
+// carries the operations' payload, which is not a namespace and never merges. A one-segment name (a
+// resource, `service S`) is the single edge it always was.
 // Closes the image body_lower_service_node_image builds: its returned node is the named root (v2.std.node
 // close_lowered_image).
-fn body_lower_service_node(shell: Node, service_name: Symbol, operations: List<Edge>) -> Node {
-  close_lowered_image(root: body_lower_service_node_image(shell: shell, service_name: service_name, operations: operations))
+fn body_lower_service_node(shell: Node, service_path: List<Symbol>, operations: List<Edge>) -> Node {
+  close_lowered_image(root: body_lower_service_node_image(shell: shell, service_path: service_path, operations: operations))
 }
 
-fn body_lower_service_node_image(shell: Node, service_name: Symbol, operations: List<Edge>) -> Node {
+fn body_lower_service_node_image(shell: Node, service_path: List<Symbol>, operations: List<Edge>) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Authored { name: service_name }, target: body_lower_payload_node(edges: operations, source: shell) }
-    ],
+    children: [body_lower_service_spine_edge(shell: shell, path: service_path, leaf: body_lower_payload_node(edges: operations, source: shell))],
     occurrence_id: shell.occurrence_id
   )
+}
+
+fn body_lower_service_spine_edge(shell: Node, path: List<Symbol>, leaf: Node) -> Edge {
+  match path {
+    Empty => Edge { label: Positional, target: leaf }
+    Cons { head: segment, tail: rest } =>
+      match rest {
+        Empty => Edge { label: Authored { name: segment }, target: leaf }
+        Cons { head: _, tail: _ } =>
+          Edge {
+            label: Authored { name: segment },
+            target: namespace_graft_namespace_body_node(edges: [body_lower_service_spine_edge(shell: shell, path: rest, leaf: leaf)], source: shell)
+          }
+      }
+  }
 }
 
 // A RESOURCE DECLARATION (v2.extdeps.languages.dag dag_grammar_resource_decl_expr). Its capabilities
@@ -10615,7 +10636,7 @@ fn body_lower_resource_finish(shell: Node, name: Symbol, a: BodyLowerResourceAcc
 
 fn body_lower_resource_decl(shell: Node) -> Outcome<BodyLowering> {
   bind_outcome(o: body_lower_resource_read(shell: shell), f: fn(r) {
-    body_lowering_lowered(o: outcome_accepted(value: body_lower_service_node(shell: shell, service_name: r.name, operations: r.capabilities)))
+    body_lowering_lowered(o: outcome_accepted(value: body_lower_service_node(shell: shell, service_path: [r.name], operations: r.capabilities)))
   })
 }
 

@@ -54,6 +54,18 @@ import gunbc.spark.serving_arm {
   serving_arm_admits_under,
   ServingLaunchProfile,
 }
+import gunbc.spark.arm_memory_fit {
+  ArmMemoryFitVerdict, ArmMemoryFitProved, ArmMemoryFitRefused, ArmMemoryFitUnestablished,
+  ArmMemorySubjectReady, ArmMemorySubjectRefused,
+  ArmMemoryExperimentPlan, ArmMemoryExperimentAdmitted, ArmMemoryExperimentRefused,
+  ArmMemoryComponent,
+  arm_memory_fit_subject_for_launch,
+  arm_memory_fit_verdict,
+  arm_memory_fit_experiment_plan,
+  arm_memory_subject_open_components,
+  arm_memory_launch_gate,
+}
+import gunbc.spark.serving_capacity_intent { ServingCapacityIntent }
 import gunbc.spark.serving_compatibility {
   CompatibilityAdmission,
   AdmitsNormalServing,
@@ -644,6 +656,114 @@ fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, t
   }
   }
 }
+}
+
+// ── THE MEMORY WALL, APPLIED AFTER EVERY OTHER WALL AND BEFORE ANY RENDER IS USED ──────────────
+//
+// WHY IT SITS BELOW THE EXECUTION WALLS. The measured walls answer what EXECUTION has already
+// established -- this exact tuple, refused or served -- and an unrun subject's first repair is
+// the bounded experiment that mints BOTH the execution receipt and the component memory receipts.
+// The memory wall is where the proof obligation binds, and it refuses the subject that passes
+// every execution wall with its missing terms named: the Group B arm carries no memory receipt
+// for any term, so its normal-serving plan refuses with the fit obligations where the weights-only
+// heuristic rendered lines.
+//
+// THE WALL CONSUMES A SEALED SUBJECT. arm_memory_fit_subject_for_launch is a mint, not a record:
+// it enforces the intent/profile join (the executable config priced and the executable config
+// rendered are one value), derives the checkpoint aggregate, and builds exactly one open rank
+// record per topology rank. Construction defects arrive here as typed refusals, not verdicts.
+//
+// THE EXPERIMENT ARM IS VERDICT-AWARE. FitProved admits either intent. FitRefused refuses both --
+// a shape that cannot fit under its most favorable reading has nothing a measurement can rescue.
+// FitUnestablished refuses normal serving, and admits a bounded experiment ONLY through a typed
+// experiment plan built from the subject's own open components, naming the targeted obligations,
+// a conservative envelope, a finite runtime, the receipts the run must mint, and the stop/cleanup
+// and no-enrollment contract.
+//
+// WHO IT BINDS, AND WHY NOT EVERY CALLER YET. The proof's component model is GLM-5.3-Flash's --
+// its prefill-transient and cache-roster terms read extdeps.zhipu.glm_5_3_flash's hybrid shape and
+// its experiment runtime is that model's ready timeout -- so pricing another checkpoint through it
+// would charge that checkpoint GLM's terms. It therefore binds the arm whose terms it models: Group
+// B's launch (gunbc.spark.glm_group_b_launch glm_group_b_launch_plan) plans through this function,
+// and no Group-B plan exists that did not pass it. The V4.1 arm on Group A plans through
+// plan_arm_launch_for directly, unchanged; generalizing the component model to that checkpoint is
+// the trigger for binding it there too.
+//
+// THE PLAN IS COMPUTED FIRST AND GATED SECOND. Planning is pure, so a plan the gate refuses is
+// discarded with nothing sent anywhere, and every execution-wall refusal keeps its own cause.
+fn plan_arm_launch_under_memory_fit(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, intent: ArmIntent, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>, container: ArmContainerIdentity) -> ArmLaunchPlan {
+  match plan_arm_launch_for(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, intent: intent, profile: profile, deployment_env: deployment_env, container: container) {
+    ArmLaunchRefused { cause: c } => ArmLaunchRefused { cause: c }
+    ArmLaunchPlanned { lines: ls, master: m } =>
+      match arm_memory_fit_subject_for_launch(checkpoint: checkpoint, runtime: runtime, topology: topology, profile: profile) {
+        ArmMemorySubjectRefused { cause: c } => ArmLaunchRefused { cause: c }
+        ArmMemorySubjectReady { subject: mem_subject } => {
+          let verdict = arm_memory_fit_verdict(subject: mem_subject)
+          match arm_memory_experiment_for_wall(
+            intent: intent,
+            verdict: verdict,
+            checkpoint: checkpoint,
+            runtime: runtime,
+            topology: topology,
+            profile: profile,
+            workload: mem_subject.intent,
+            open: arm_memory_subject_open_components(subject: mem_subject)) {
+            ArmWallExperimentRefused { cause: c } => ArmLaunchRefused { cause: c }
+            ArmWallExperimentNotRequired =>
+              arm_memory_gated_plan(gate: arm_memory_launch_gate(intent: intent, verdict: verdict, experiment: none), lines: ls, master: m)
+            ArmWallExperimentPlanned { plan: p } =>
+              arm_memory_gated_plan(gate: arm_memory_launch_gate(intent: intent, verdict: verdict, experiment: Present { value: p }), lines: ls, master: m)
+          }
+        }
+      }
+  }
+}
+
+// THE GATE'S ANSWER OVER THE ALREADY-PLANNED LINES. The gate answers with a cause or with nothing;
+// nothing passes the planned lines through unchanged, so the gated and ungated plans have exactly
+// one construction.
+fn arm_memory_gated_plan(gate: NonEmptyStr?, lines: List<ArmNodeLaunch>, master: Ipv4Address) -> ArmLaunchPlan {
+  match gate {
+    Present { value: c } => ArmLaunchRefused { cause: c }
+    Absent => ArmLaunchPlanned { lines: lines, master: master }
+  }
+}
+
+// THE EXPERIMENT PLAN, BUILT ONLY WHERE THE GATE NEEDS IT. A bounded experiment over an
+// Unestablished verdict goes through the plan mint with the subject's typed open components as
+// targets; a refused plan refuses the launch with the plan's own cause, carried as a typed arm
+// rather than smuggled through a fabricated plan. Every other intent/verdict pair needs no plan.
+// The gate remains the one authority on what a verdict admits.
+type ArmWallExperiment
+  = ArmWallExperimentNotRequired
+  | ArmWallExperimentPlanned { plan: ArmMemoryExperimentPlan }
+  | ArmWallExperimentRefused { cause: NonEmptyStr }
+
+fn arm_memory_experiment_for_wall(
+  intent: ArmIntent,
+  verdict: ArmMemoryFitVerdict,
+  checkpoint: ServingCheckpoint,
+  runtime: ServingRuntime,
+  topology: ServingTopology,
+  profile: ServingLaunchProfile,
+  workload: ServingCapacityIntent,
+  open: List<ArmMemoryComponent>,
+) -> ArmWallExperiment {
+  match intent {
+    ArmNormalServing => ArmWallExperimentNotRequired
+    ArmBoundedExperiment =>
+      match verdict {
+        ArmMemoryFitUnestablished { obligations: _ } =>
+          match arm_memory_fit_experiment_plan(
+            checkpoint: checkpoint, runtime: runtime, topology: topology,
+            workload: workload, policy_profile: profile, targets: open) {
+            ArmMemoryExperimentAdmitted { plan: p } => ArmWallExperimentPlanned { plan: p }
+            ArmMemoryExperimentRefused { cause: c } => ArmWallExperimentRefused { cause: c }
+          }
+        ArmMemoryFitProved { rank: _, phase: _, headroom_bytes: _ } => ArmWallExperimentNotRequired
+        ArmMemoryFitRefused { rank: _, phase: _, demand_lower: _, supply_upper: _, cause: _ } => ArmWallExperimentNotRequired
+      }
+  }
 }
 
 // ONE PLACE BUILDS THE LINE, so the spec a rank is created from and the command recorded beside it are

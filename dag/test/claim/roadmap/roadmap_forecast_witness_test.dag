@@ -120,6 +120,8 @@ fn fixture_node(id: String) -> RoadmapNode {
     execution: ExecutionContractUnspecified,
     owner: "fixture",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
 }
 

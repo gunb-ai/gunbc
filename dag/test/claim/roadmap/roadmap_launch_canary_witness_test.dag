@@ -1,6 +1,6 @@
 module test.claim.roadmap_launch_canary_witness
 
-import std.types { String, Bool, List }
+import std.types { String, Bool, List, NonEmptyStr }
 import gunbc.roadmap_model {
   RoadmapNodeId, RoadmapNodeIdentity, RoadmapNode, RoadmapEdge,
   ManualAcceptance,
@@ -17,7 +17,8 @@ import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_spawner { spawn_frontier, next_spawnable, node_unmet_parent_ids, node_closes_dependency, doc_all_nodes, doc_all_edges }
 import gunbc.roadmap_presentation {
   WorkLifecycle, OpenLifecycle, ReviewLifecycle, DoneLifecycle, SupersededLifecycle, work_lifecycle,
-  WorkScheduling, SchedulingReady, SchedulingUpcoming, SchedulingDone, SchedulingSuperseded, SchedulingUnplanned, work_scheduling }
+  WorkScheduling, SchedulingReady, SchedulingNotReady, SchedulingDone, SchedulingSuperseded, work_scheduling }
+import gunbc.roadmap.roadmap_readiness { ReadinessGap, GapDependencies, GapContract }
 import gunbc.roadmap_validation_oracle { OraclePinScope, OraclePinnable, OracleNotPinnable, validation_oracle_scopes }
 import gunbc.roadmap_dispatch_environment {
   DispatchEnvironmentAdmission, EnvironmentAdmitted, EnvironmentRefused,
@@ -25,7 +26,7 @@ import gunbc.roadmap_dispatch_environment {
 }
 import gunbc.roadmap_belt { ManualReady }
 import gunbc.roadmap_launch_admission {
-  LaunchAdmission, LaunchAdmitted, LaunchRefused, LaunchExecutionContractMissing, launch_graph_of_document, Operator,
+  LaunchAdmission, LaunchAdmitted, LaunchRefused, LaunchNotReady, launch_graph_of_document, Operator,
   launch_admission,
 }
 import test.claim.roadmap.roadmap_launch_admission_fixture { launch_fixture_standing_clear }
@@ -35,6 +36,8 @@ import gunbc.roadmap_launch_canary {
   roadmap_launch_canary_parent_node_id, roadmap_launch_canary_child_node_id,
   roadmap_launch_canary_edge, roadmap_launch_canary_execution_contract,
   roadmap_launch_canary_ticket, roadmap_launch_canary_oracle_entry, roadmap_launch_canary_oracle_function,
+  roadmap_launch_canary_parent_lineage,
+  roadmap_launch_canary_parent_centering_plan, roadmap_launch_canary_child_centering_plan,
 }
 import test.manual.roadmap_launch_canary_oracle {
   roadmap_launch_canary_nonce,
@@ -74,6 +77,18 @@ fn canary_node(
     execution: execution,
     owner: "",
     signoff: signoff,
+    parent: roadmap_launch_canary_parent_lineage(),
+    centering: Present { value: canary_plan_for(id: id) },
+  }
+}
+
+// The canaries carry every readiness fact a real node carries: each is a root of the synthetic
+// graph and each has its own centering plan (gunbc.roadmap_launch_canary).
+fn canary_plan_for(id: RoadmapNodeId) -> NonEmptyStr {
+  if id == roadmap_launch_canary_parent_node_id() {
+    roadmap_launch_canary_parent_centering_plan as NonEmptyStr
+  } else {
+    roadmap_launch_canary_child_centering_plan as NonEmptyStr
   }
 }
 
@@ -86,11 +101,14 @@ fn canary_parent(signoff: Signoff) -> RoadmapNode {
   )
 }
 
+// The child carries the same closing contract as the parent, so the only fact between it and
+// dispatch in the canary graph is its dependency on the parent; the unbound-contract case is its
+// own finding below (finding_unspecified_contract_is_on_the_frontier_but_not_ready).
 fn canary_child() -> RoadmapNode {
   canary_node(
     identity: roadmap_launch_canary_child_identity,
     id: roadmap_launch_canary_child_node_id(),
-    execution: ExecutionContractUnspecified,
+    execution: roadmap_launch_canary_execution_contract(),
     signoff: Unsigned,
   )
 }
@@ -140,13 +158,19 @@ fn blockers_of(doc: RoadmapDocument, id: RoadmapNodeId) -> List<String> {
   match scheduling_of(doc: doc, id: id) {
     Present { value: s } =>
       match s {
-        SchedulingUpcoming { blockers } => blockers
+        SchedulingNotReady { missing } => flat_map(missing, g => dependency_blockers_of(g: g))
         SchedulingReady => []
         SchedulingDone => []
         SchedulingSuperseded => []
-        SchedulingUnplanned => []
       }
     Absent => []
+  }
+}
+
+fn dependency_blockers_of(g: ReadinessGap) -> List<String> {
+  match g {
+    GapDependencies { blockers } => blockers
+    _ => []
   }
 }
 
@@ -157,10 +181,9 @@ fn is_ready(doc: RoadmapDocument, id: RoadmapNodeId) -> Bool {
     && (match scheduling_of(doc: doc, id: id) {
       Present { value: s } => match s {
         SchedulingReady => true
-        SchedulingUpcoming { blockers: _ } => false
+        SchedulingNotReady { missing: _ } => false
         SchedulingDone => false
         SchedulingSuperseded => false
-        SchedulingUnplanned => false
       }
       Absent => false
     })
@@ -217,6 +240,8 @@ fn canary_parent_derivable(signoff: Signoff) -> RoadmapNode {
     execution: roadmap_launch_canary_execution_contract(),
     owner: "",
     signoff: signoff,
+    parent: roadmap_launch_canary_parent_lineage(),
+    centering: Present { value: roadmap_launch_canary_parent_centering_plan as NonEmptyStr },
   }
 }
 
@@ -354,13 +379,13 @@ test fn witness_canary_contract_closes_with_pinnable_oracle() -> Bool {
   }
 }
 
-// Falsifier (d), the RLM-0 FINDING, now a REGRESSION CONTROL (RLM-1): a node with an unspecified
-// execution contract and every dependency closed is still on gunbc.roadmap_spawner's Ready frontier
-// (the frontier is a graph position, not a launch verdict) and gunbc.roadmap_dispatch_environment
-// still refuses the contract -- but the LAUNCH question now has one answer, from
-// gunbc.roadmap_launch_admission, and it refuses ExecutionContractMissing before any environment
-// probe. Two producers, one verdict; the split RLM-0 recorded is closed by the single admission.
-test fn finding_unspecified_contract_is_ready_but_environment_refuses() -> Bool {
+// Falsifier (d), the RLM-0 FINDING, now a REGRESSION CONTROL: a node with an unspecified execution
+// contract and every dependency closed is still on gunbc.roadmap_spawner's Ready frontier (the
+// frontier is a graph position, not a launch verdict) and gunbc.roadmap_dispatch_environment still
+// refuses the contract -- but READINESS has one answer (gunbc.roadmap.roadmap_readiness): the page
+// renders it not ready with exactly the contract missing, and the launch admission refuses with the
+// same missing fact before any environment probe. Two producers, one verdict.
+test fn finding_unspecified_contract_is_on_the_frontier_but_not_ready() -> Bool {
   let unbound = canary_node(
     identity: roadmap_launch_canary_child_identity,
     id: roadmap_launch_canary_child_node_id(),
@@ -368,7 +393,7 @@ test fn finding_unspecified_contract_is_ready_but_environment_refuses() -> Bool 
     signoff: Unsigned,
   )
   let doc = canary_doc(nodes: [unbound], edges: [])
-  let frontier_admits = is_ready(doc: doc, id: roadmap_launch_canary_child_node_id())
+  let frontier = spawn_frontier(doc: doc, merged: [])
   let environment = dispatch_environment_admission_decision(
     contract: ExecutionContractUnspecified,
     receipts: [],
@@ -382,13 +407,24 @@ test fn finding_unspecified_contract_is_ready_but_environment_refuses() -> Bool 
     node_id: roadmap_launch_canary_child_node_id() as String,
     reserved: 0,
   )
-  frontier_admits
+  any(frontier.ready, n => n.node == roadmap_launch_canary_child_node_id())
+    && !is_ready(doc: doc, id: roadmap_launch_canary_child_node_id())
+    && (match scheduling_of(doc: doc, id: roadmap_launch_canary_child_node_id()) {
+      Present { value: s } => match s {
+        SchedulingNotReady { missing } => count(missing) == 1 && all(missing, g => match g { GapContract { detail: _ } => true  _ => false })
+        _ => false
+      }
+      Absent => false
+    })
     && (match environment {
       EnvironmentRefused { receipts: _, validation_summary: _, reason: _ } => true
       EnvironmentAdmitted { receipts: _, validation_summary: _ } => false
     })
     && (match admission {
-      LaunchRefused { refusal } => match refusal { LaunchExecutionContractMissing { reason: _ } => true _ => false }
+      LaunchRefused { refusal } => match refusal {
+        LaunchNotReady { missing } => count(missing) == 1 && all(missing, g => match g { GapContract { detail: _ } => true  _ => false })
+        _ => false
+      }
       LaunchAdmitted { identity: _ } => false
     })
 }
