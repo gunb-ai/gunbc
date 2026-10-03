@@ -26,8 +26,11 @@ import gunbc.spark.pair_serving_authority {
   PairRealizationKeyed, PairRealizationUnestablished,
 }
 import gunbc.spark.serving_arm_launch { ArmNodeLaunch }
-import gunbc.spark.serving_arm { gb10_unified_pool_gib, serving_arm_admits, serving_arm_admits_under, deepseek_v41_measurement_profile, ServingArmAdmitted, ServingArmRefused, DeepseekV41FlashDba1be0a, FourSparkTp4 }
+import gunbc.spark.serving_arm { deepseek_v41_launch_policy, gb10_unified_pool_gib, serving_arm_admits, serving_arm_admits_under, ServingArmAdmitted, ServingArmRefused, DeepseekV41FlashDba1be0a, FourSparkTp4 }
 import gunbc.spark.native_serving_realization { GlmNativeUnitRender, GlmNativeUnitRendered, GlmNativeUnitRenderRefused }
+import gunbc.spark.serving_capacity_intent {
+  uniform_cold_seats, envelope_at_cold_floor, profile_for_envelope, ServingCapacityIntentAdmitted, ServingCapacityIntentRefused,
+}
 import gunbc.spark.v41_group_a_launch {
   V41GroupALaunchInputs, V41HostOccupancy, v41_dry_run_occupancy,
   V41GroupALaunchPlan, V41GroupALaunchPlanned, V41GroupALaunchUnestablished, V41GroupALaunchRefused,
@@ -224,6 +227,25 @@ test fn w_the_units_render_under_names_no_other_arm_uses() -> Bool {
   })
 }
 
+// THE UNITS ARE THE EXPERIMENT THE WALL ADMITTED: every rank renders bounded -- no restart, a finite
+// RuntimeMaxSec, one start, no [Install] -- because the plan and the render read one intent row
+// (gunbc.spark.v41_group_a_launch v41_group_a_intent). A persistent render (Restart=always, WantedBy)
+// of a launch admitted only as an experiment is the defect this row goes red on.
+test fn w_every_v41_unit_renders_as_the_bounded_experiment_it_was_admitted_as() -> Bool {
+  with_w_plan(f: fn(p, rk, ck) {
+    let rs = v41_group_a_unit_renders(p: p)
+    length(rs) == 4 && all(rs, r => match r {
+      GlmNativeUnitRenderRefused { unit_name: _, cause: _ } => false
+      GlmNativeUnitRendered { unit_name: _, text: t } =>
+        string_contains(s: t, pattern: "RuntimeMaxSec=")
+          && string_contains(s: t, pattern: "Restart=no")
+          && string_contains(s: t, pattern: "StartLimitBurst=1")
+          && !string_contains(s: t, pattern: "Restart=always")
+          && !string_contains(s: t, pattern: "WantedBy=")
+    })
+  })
+}
+
 // ── REFUSALS, EACH ASSERTING ITS REASON ───────────────────────────────────────────────────────
 
 // WITH NO REGISTRY READING INSIDE THE PRODUCED IMAGE, THE ARM WALL REFUSES -- and it is the arm wall's
@@ -252,13 +274,18 @@ test fn w_the_engram_page_cache_allowance_is_charged_to_the_pool() -> Bool {
       Present { value: p } => match v41_serving_runtime(held: p, registry_reading: Present { value: w_registry() }) {
         Absent => false
         Present { value: r } => {
-          let half = deepseek_v41_measurement_profile(
-            max_model_len: token_count(count: 262144), max_num_seqs: 16, max_num_batched_tokens: token_count(count: 8192),
-            gpu_memory_basis_points: basis_point(count: 5000), prefix_caching: PrefixCachingExplicit { enabled: false },
-            serve_port: 30000, served_alias: "witness" as NonEmptyStr)
-          match serving_arm_admits_under(checkpoint: DeepseekV41FlashDba1be0a, runtime: r, topology: FourSparkTp4, profile: Present { value: half }) {
-            ServingArmRefused { cause: c } => string_contains(s: c as String, pattern: "GiB declared page-cache allowance")
-            ServingArmAdmitted => false
+          match uniform_cold_seats(each: token_count(count: 262144), seats: 16, max_batched_tokens: token_count(count: 8192)) {
+            ServingCapacityIntentRefused { cause: _ } => false
+            ServingCapacityIntentAdmitted { intent: i } => {
+              let half = profile_for_envelope(
+                envelope: envelope_at_cold_floor(cold: i), policy: deepseek_v41_launch_policy,
+                decided_gpu_memory_basis_points: basis_point(count: 5000),
+                serve_port: 30000, served_alias: "witness" as NonEmptyStr, prefix_caching: PrefixCachingExplicit { enabled: false })
+              match serving_arm_admits_under(checkpoint: DeepseekV41FlashDba1be0a, runtime: r, topology: FourSparkTp4, profile: Present { value: half }) {
+                ServingArmRefused { cause: c } => string_contains(s: c as String, pattern: "GiB declared page-cache allowance")
+                ServingArmAdmitted => false
+              }
+            }
           }
         }
       }

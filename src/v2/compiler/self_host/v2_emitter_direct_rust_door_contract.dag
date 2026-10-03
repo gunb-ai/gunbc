@@ -1,5 +1,6 @@
 module v2.compiler.self_host.v2_emitter_direct_rust_door_contract
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.self_host.candidate_generation {
   ArtifactProduced,
@@ -31,7 +32,7 @@ import v2.extdeps.languages.rust {
   rust_fn_add_lex,
 }
 import v2.std.algebra { any }
-import v2.std.collection { empty_map, List }
+import v2.std.collection { empty_map}
 import v2.std.compilers.target_model {
   ProducedDeclUnwired,
   TargetModel,
