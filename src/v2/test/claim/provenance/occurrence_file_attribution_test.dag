@@ -26,7 +26,7 @@ import v2.cli.compile_cli {
 import v2.std.algebra { list_reverse, list_starts_with }
 import v2.std.text { char_eq }
 import v2.std.cross_tree.import_model { DagTree }
-import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual, WholeFile }
+import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual, WholeFile, diagnostics_has_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
@@ -430,5 +430,17 @@ fn native_route_roots_have_distinct_occurrences(roots: FreeMonoid<NormalizedTree
               }
           }
       }
+  }
+}
+
+// THE ACCEPTED FILES' ADVISORIES RIDE THE ASSEMBLY'S ACCEPTED OUTCOME. Both files are accepted and
+// each carries the grammar's overlap residue, so the located fold's Accepted outcome must carry that
+// reason. Before step 1b the fold matched each file's advisories away (`diagnostics: _`) and
+// answered `outcome_accepted`, so this reds on that arm. Reuses this module's one assembly.
+test fn accepted_files_advisories_ride_the_assembly_outcome_holds() -> Bool {
+  match attribution_roots() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: advised } =>
+      diagnostics_has_reason(d: advised, reason: ^parse_grammar_choice_overlap_residue)
   }
 }

@@ -53,8 +53,10 @@ import v2.std.diagnostic {
   Rejected,
   bind_outcome,
   bind_outcome_accepted,
+  diagnostics_merge,
   diagnostics_singleton,
   outcome_accepted,
+  outcome_with_diagnostics,
   outcome_rejected
 }
 import v2.std.node { Node }
@@ -65,7 +67,8 @@ import v2.std.text { String }
 type ProgramAssemblyFoldState
   = ProgramAssemblyFoldOk {
       roots: FreeMonoid<NormalizedTree>,
-      index: SourceRootIndex
+      index: SourceRootIndex,
+      advisories: Diagnostics
     }
   | ProgramAssemblyFoldFailed {
       diagnostics: NonEmptyDiagnostics
@@ -105,7 +108,8 @@ type ProgramAssemblyLocatedFoldState
       located: FreeMonoid<LocatedNormalizedTree>,
       index: SourceRootIndex,
       alloc: OccurrenceIdAllocator,
-      spans: SpanIndex
+      spans: SpanIndex,
+      advisories: Diagnostics
     }
   | ProgramAssemblyLocatedFoldFailed {
       diagnostics: NonEmptyDiagnostics,
@@ -126,10 +130,11 @@ fn program_assembly_fold_state_from_located(
   match state {
     ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: _ } =>
       ProgramAssemblyFoldFailed { diagnostics: d }
-    ProgramAssemblyLocatedFoldOk { located: located, index: idx, alloc: _, spans: _ } =>
+    ProgramAssemblyLocatedFoldOk { located: located, index: idx, alloc: _, spans: _, advisories: advised } =>
       ProgramAssemblyFoldOk {
         roots: list_map(xs: located, f: fn(item) { item.tree }),
-        index: idx
+        index: idx,
+        advisories: advised
       }
   }
 }
@@ -435,7 +440,7 @@ fn program_assembly_fold_step(
   match state {
     ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: spans } =>
       ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: spans }
-    ProgramAssemblyLocatedFoldOk { located: acc, index: idx, alloc: seed, spans: spans } =>
+    ProgramAssemblyLocatedFoldOk { located: acc, index: idx, alloc: seed, spans: spans, advisories: advised } =>
       let result = program_assembly_read_to_normalized_root_seeded(
         read: read,
         lm: lm,
@@ -446,7 +451,7 @@ fn program_assembly_fold_step(
       )
       let carried = span_index_merge(base: spans, incoming: result.spans)
       match result.produced {
-        Accepted { value: tree, diagnostics: _ } =>
+        Accepted { value: tree, diagnostics: file_advisories } =>
           match qualified_name_from_module_node(root: tree.root) {
             Accepted { value: qn, diagnostics: _ } =>
               ProgramAssemblyLocatedFoldOk {
@@ -456,7 +461,8 @@ fn program_assembly_fold_step(
                 ),
                 index: source_root_index_insert(index: idx, module: qn, root: read.source_root),
                 alloc: result.alloc,
-                spans: carried
+                spans: carried,
+                advisories: diagnostics_merge(outer: advised, inner: file_advisories)
               }
             Rejected { diagnostics: d } =>
               ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: carried }
@@ -519,7 +525,8 @@ fn program_assembly_fold_ingest_located(
         located: program_assembly_empty_located_roots(),
         index: source_root_index_empty(),
         alloc: occurrence_id_allocator_initial(),
-        spans: span_index_empty()
+        spans: span_index_empty(),
+        advisories: None
       }
     _ =>
       match prepare_grammar(grammar: lm.grammar) {
@@ -539,7 +546,8 @@ fn program_assembly_fold_ingest_located(
                   located: program_assembly_empty_located_roots(),
                   index: source_root_index_empty(),
                   alloc: occurrence_id_allocator_initial(),
-                  spans: span_index_empty()
+                  spans: span_index_empty(),
+                  advisories: None
                 },
                 cons: fn(state, read) {
                   program_assembly_fold_step(state: state, read: read, lm: lm, prepared: prepared, residue: residue, scope: scope)
@@ -564,8 +572,8 @@ fn located_module_roots_from_source_root_ingest(
   lm: LanguageModel
 ) -> Outcome<FreeMonoid<LocatedNormalizedTree>> {
   match program_assembly_fold_ingest_located(ingest: ingest, lm: lm) {
-    ProgramAssemblyLocatedFoldOk { located: located, index: _, alloc: _, spans: _ } =>
-      outcome_accepted(value: located)
+    ProgramAssemblyLocatedFoldOk { located: located, index: _, alloc: _, spans: _, advisories: advised } =>
+      outcome_with_diagnostics(value: located, diagnostics: advised)
     ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: _ } =>
       Rejected { diagnostics: d }
   }
@@ -586,8 +594,8 @@ fn located_roots_and_spans_from_source_root_ingest(
   lm: LanguageModel
 ) -> Outcome<LocatedIngestRoots> {
   match program_assembly_fold_ingest_located(ingest: ingest, lm: lm) {
-    ProgramAssemblyLocatedFoldOk { located: located, index: _, alloc: _, spans: spans } =>
-      outcome_accepted(value: LocatedIngestRoots { located: located, spans: spans })
+    ProgramAssemblyLocatedFoldOk { located: located, index: _, alloc: _, spans: spans, advisories: advised } =>
+      outcome_with_diagnostics(value: LocatedIngestRoots { located: located, spans: spans }, diagnostics: advised)
     ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: _ } =>
       Rejected { diagnostics: d }
   }
@@ -598,8 +606,8 @@ fn module_roots_from_source_root_ingest(
   lm: LanguageModel
 ) -> Outcome<FreeMonoid<NormalizedTree>> {
   match program_assembly_fold_ingest(ingest: ingest, lm: lm) {
-    ProgramAssemblyFoldOk { roots: roots, index: _ } =>
-      outcome_accepted(value: roots)
+    ProgramAssemblyFoldOk { roots: roots, index: _, advisories: advised } =>
+      outcome_with_diagnostics(value: roots, diagnostics: advised)
     ProgramAssemblyFoldFailed { diagnostics: d } =>
       Rejected { diagnostics: d }
   }
@@ -647,10 +655,10 @@ fn assemble_program_from_ingest_located(
   match program_assembly_fold_ingest_located(ingest: ingest, lm: lm) {
     ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: spans } =>
       IngestAssembly { spans: spans, program: Rejected { diagnostics: d } }
-    ProgramAssemblyLocatedFoldOk { located: located, index: idx, alloc: _, spans: spans } =>
+    ProgramAssemblyLocatedFoldOk { located: located, index: idx, alloc: _, spans: spans, advisories: advised } =>
       IngestAssembly {
         spans: spans,
-        program: bind_outcome(
+        program: bind_outcome_accepted(od: advised, inner: bind_outcome(
           o: validate_module_roots(roots: list_map(xs: located, f: fn(item) { item.tree })),
           f: fn(validated_roots) {
             resolve_with_admission_grounded(
@@ -661,7 +669,7 @@ fn assemble_program_from_ingest_located(
               active_roots: source_root_set_from_ingest(ingest: ingest)
             )
           }
-        )
+        ))
       }
   }
 }
