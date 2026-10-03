@@ -74,6 +74,11 @@ import gunbc.fleet_workflow_steps {
   ci_release_bins_upload_step,
   ci_release_bins_download_step,
   ci_release_bins_unpack_verify_step,
+  ci_release_bins_unpack_verify_step_for,
+  ci_release_bins_key_step_for,
+  ci_release_bins_outcome_step_for,
+  ci_release_build_step_for,
+  ci_release_bins_pack_step_for,
   ci_fleet_wif_auth_step,
   ci_fleet_key_agent_step,
   ci_fleet_key_agent_step_when,
@@ -413,6 +418,90 @@ fn fleet_converge_spark_target_description() -> String {
 }
 
 data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkV41CheckpointMaterialize, SparkV41RowStoreEncode, SparkV41RowStoreReadback, SparkV41EngramDifferential, SparkV41RuntimeImageBuild, SparkV41RuntimeImageDistribute, SparkV41GroupALaunch, SparkV41ServingLoad, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, ApprovalDeviceEnrolmentCodeIssue, MtCollins1Boot, MtCollins1FanObserve, MtCollins1UiBundleObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, FabricWriterIdentityObserve, PairServingD0, MicrovmRunnerGroupEnsure, GcpIamConverge, NamecheapObserve]
+// WHICH RELEASE PRODUCT A MODE'S JOB RUNS, NAMED PER MODE WITH NO WILDCARD (as the scope and fleet-key
+// matches above name theirs). A mode whose steps run only gunbc and claim_executor declares the
+// compiler pair (gunbc.fleet_release_bins_key compiler_pair_release_product): its build job then
+// builds two binaries instead of sixteen and the shared job verifies the pair. Every other mode keeps
+// the sixteen-binary pack. A mode moves to the pair only when its steps are read and found to run
+// nothing else -- a pair-only mode whose step invokes another release binary would find it absent.
+type FleetConvergeModeReleaseProduct = SixteenBinaryPack | CompilerPairOnly
+
+fn fleet_converge_mode_release_product(mode: FleetConvergeWorkflowMode) -> FleetConvergeModeReleaseProduct {
+  match mode {
+    FullHostPlan => SixteenBinaryPack
+    LaunchEnvironmentPlan => SixteenBinaryPack
+    AllocationStorePlan => SixteenBinaryPack
+    FleetApply => SixteenBinaryPack
+    OrgActionsObserve => SixteenBinaryPack
+    AppControlPlaneObserve => SixteenBinaryPack
+    MicrovmHostConverge => SixteenBinaryPack
+    MicrovmNetworkObserve => SixteenBinaryPack
+    MicrovmNetworkApply => SixteenBinaryPack
+    GuestImageObserve => SixteenBinaryPack
+    GuestImageConverge => SixteenBinaryPack
+    MicrovmBootProbe => SixteenBinaryPack
+    SparkGrants => SixteenBinaryPack
+    SparkBootstrap => SixteenBinaryPack
+    SparkServingApply => SixteenBinaryPack
+    SparkNativeServingApply => SixteenBinaryPack
+    SparkRuntimeImageProbe => SixteenBinaryPack
+    SparkWirelessLinkConverge => SixteenBinaryPack
+    SparkV41CheckpointMaterialize => SixteenBinaryPack
+    SparkV41RowStoreEncode => SixteenBinaryPack
+    SparkV41RowStoreReadback => SixteenBinaryPack
+    SparkV41EngramDifferential => SixteenBinaryPack
+    SparkV41RuntimeImageBuild => SixteenBinaryPack
+    SparkV41RuntimeImageDistribute => SixteenBinaryPack
+    SparkV41GroupALaunch => SixteenBinaryPack
+    SparkV41ServingLoad => SixteenBinaryPack
+    DashboardDeploy => SixteenBinaryPack
+    ApprovalBrokerDarkInstall => SixteenBinaryPack
+    MicrovmControllerInstall => SixteenBinaryPack
+    MicrovmSlotReserve => SixteenBinaryPack
+    MicrovmSlotStart => SixteenBinaryPack
+    RlmLaunchDeploymentReceipt => SixteenBinaryPack
+    HostResetReturn => SixteenBinaryPack
+    RunnerHostFileObserve => SixteenBinaryPack
+    RunnerHostFileConverge => SixteenBinaryPack
+    SitePxeEdgeObserve => SixteenBinaryPack
+    SitePxeEdgeConverge => SixteenBinaryPack
+    RunnerPasswordSessionToolConverge => SixteenBinaryPack
+    RunnerBrowserToolchainConverge => SixteenBinaryPack
+    R2MintPreflight => SixteenBinaryPack
+    R2ObjectWriteMint => SixteenBinaryPack
+    OrgRunnerRosterObserve => SixteenBinaryPack
+    ApprovalKeyringConverge => SixteenBinaryPack
+    ApprovalDeviceEnrolmentCodeIssue => CompilerPairOnly
+    MtCollins1Boot => SixteenBinaryPack
+    MtCollins1FanObserve => SixteenBinaryPack
+    MtCollins1UiBundleObserve => SixteenBinaryPack
+    MtCollins1KvmObserverObserve => SixteenBinaryPack
+    MtCollins1CensusImagePublish => SixteenBinaryPack
+    MtCollins1CensusMemberReadback => SixteenBinaryPack
+    MtCollins1CensusQemuHostObserve => SixteenBinaryPack
+    MtCollins1CensusQemuToolchainConverge => SixteenBinaryPack
+    HostCredentialCustodyConverge => SixteenBinaryPack
+    AppKeyVersionVerify => SixteenBinaryPack
+    R2BucketEnsure => SixteenBinaryPack
+    R2BucketAdminMint => SixteenBinaryPack
+    FabricWriterIdentityObserve => SixteenBinaryPack
+    PairServingD0 => SixteenBinaryPack
+    MicrovmRunnerGroupEnsure => SixteenBinaryPack
+    GcpIamConverge => SixteenBinaryPack
+    NamecheapObserve => SixteenBinaryPack
+  }
+}
+
+fn fleet_converge_compiler_pair_mode_wires() -> List<String> {
+  map(
+    filter(fleet_converge_workflow_modes, m => match fleet_converge_mode_release_product(mode: m) {
+      CompilerPairOnly => true
+      SixteenBinaryPack => false
+    }),
+    m => fleet_converge_workflow_mode_wire(mode: m),
+  )
+}
+
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
 // EVERY MODE IS NAMED, AND THE WILDCARD IS DELIBERATELY ABSENT. A `_ => none` would read the same
@@ -868,14 +957,14 @@ fn fleet_converge_build_job_steps() -> List<Step> {
 
 fn fleet_converge_build_job_own_steps() -> List<Step> {
   [
-    ci_release_bins_key_step(),
+    ci_release_bins_key_step_for(pair_modes: fleet_converge_compiler_pair_mode_wires()),
     ci_release_bins_lookup_step(),
     ci_release_bins_cache_step(),
-    ci_release_bins_outcome_step(),
+    ci_release_bins_outcome_step_for(pair_modes: fleet_converge_compiler_pair_mode_wires()),
     ci_cache_cargo_step(),
-    ci_release_build_step(),
+    ci_release_build_step_for(pair_modes: fleet_converge_compiler_pair_mode_wires()),
     fleet_converge_reset_observer_dispatch_admission_step(),
-    ci_release_bins_pack_step(),
+    ci_release_bins_pack_step_for(pair_modes: fleet_converge_compiler_pair_mode_wires()),
     ci_release_bins_upload_step(),
   ]
 }
@@ -3711,7 +3800,7 @@ fn fleet_converge_mtcollins1_boot_job() -> Job {
 fn fleet_converge_credential_prelude_steps() -> List<Step> {
   [
     ci_release_bins_download_step(),
-    ci_release_bins_unpack_verify_step(),
+    ci_release_bins_unpack_verify_step_for(pair_modes: fleet_converge_compiler_pair_mode_wires()),
     fleet_converge_pair_serving_d0_admit_step(),
     ci_fleet_wif_auth_step(),
     ci_fleet_key_agent_step_when(if_condition: Present { value: fleet_converge_fleet_ssh_key_step_if }),

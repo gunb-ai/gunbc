@@ -1282,6 +1282,47 @@ fn release_bins_canonical_address_script_for(product: ReleaseBinsProduct) -> Str
 fn release_bins_pack_object_script() -> String { release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_pack_object_statements())) }
 fn release_bins_canonical_consumer_script_for(product: ReleaseBinsProduct) -> String { release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_canonical_consumer_statements(product: product))) }
 
+// ── ONE STEP, TWO PRODUCTS, CHOSEN BY THE DISPATCHED MODE ─────────────────────────────────────
+//
+// A workflow whose modes need different products (gunbc.fleet_converge_workflow
+// fleet_converge_mode_release_product) keeps ONE step per stage -- step ids are job-scoped and the
+// stages' conditions read them -- and renders both products' scripts into it, selected by the
+// dispatched mode. The roster of pair modes is the workflow's, passed in; this module spells no mode.
+// An empty roster renders the sixteen-binary script alone, byte for byte as before.
+data release_bins_mode_env: String = "FLEET_CONVERGE_MODE"
+
+fn release_bins_mode_test_text(pair_modes: List<String>) -> String {
+  join(map(pair_modes, m => join(["[ \"$", "{", release_bins_mode_env, ":-}\" = '", m, "' ]"], "")), " || ")
+}
+
+fn release_bins_mode_dispatch(pair_modes: List<String>, pair_text: String, fleet_text: String) -> String {
+  if pair_modes == [] {
+    fleet_text
+  } else {
+    join(["if ", release_bins_mode_test_text(pair_modes: pair_modes), "; then\n", pair_text, "\nelse\n", fleet_text, "\nfi\n"], "")
+  }
+}
+
+fn release_bins_key_script_dispatch(pair_modes: List<String>) -> String {
+  release_bins_mode_dispatch(pair_modes: pair_modes, pair_text: release_bins_key_script_for(product: compiler_pair_release_product()), fleet_text: release_bins_key_script())
+}
+
+fn release_bins_outcome_script_dispatch(pair_modes: List<String>) -> String {
+  release_bins_mode_dispatch(pair_modes: pair_modes, pair_text: release_bins_outcome_script_for(product: compiler_pair_release_product()), fleet_text: release_bins_outcome_script())
+}
+
+fn release_bins_pack_script_dispatch(pair_modes: List<String>) -> String {
+  release_bins_mode_dispatch(pair_modes: pair_modes, pair_text: release_bins_pack_manifest_script_for(product: compiler_pair_release_product()), fleet_text: release_bins_pack_manifest_script())
+}
+
+fn release_bins_consumer_script_dispatch(pair_modes: List<String>) -> String {
+  release_bins_mode_dispatch(pair_modes: pair_modes, pair_text: release_bins_consumer_key_check_script_for(product: compiler_pair_release_product()), fleet_text: release_bins_consumer_key_check_script())
+}
+
+fn release_bins_build_script_dispatch(pair_modes: List<String>, fleet_build: String) -> String {
+  release_bins_mode_dispatch(pair_modes: pair_modes, pair_text: compiler_pair_release_product().build_line, fleet_text: fleet_build)
+}
+
 // THE EMITTED SCRIPTS, and the one admission the workflow generation consumes: if the fold refuses any
 // of them, gunbc.fleet_converge_workflow refuses to emit the workflow rather than emitting a step with
 // no script.
