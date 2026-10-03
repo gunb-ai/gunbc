@@ -465,3 +465,55 @@ test fn set_struct_hand_written_impls_carry_header_bounds() -> Bool {
 test fn set_coproduct_hand_written_impls_stay_at_the_bare_header() -> Bool {
   w_set_coproduct_hand_written_impls_stay_at_the_bare_header()
 }
+
+// A FN GENERIC THAT REACHES A Set ELEMENT CARRIES Ord. The Set is im::OrdSet on the Rust row, and
+// its bridges and its own PartialEq are declared `T: Ord`; the fn's generics are what those are
+// checked against. The fixture never spells `Set` in a signature: the first fn names HdrAud<P>,
+// which holds it one declaration down, and the second names HdrCtx<C, P>, two down -- so a rule
+// that read signature heads only passes neither, and a rule that stopped at one hop passes the
+// first and leaves the second bare.
+//
+// THE CONVERSE ARMS: C on the two-hop fn reaches no Set and must NOT gain Ord, and a fn over a
+// declared generic with no Set anywhere keeps exactly the bound it had. A spurious Ord is not free
+// -- it refuses every caller instantiating with an unordered type. The native half is
+// gunbc.instruments.native_emission_controls (set_fn_* cases).
+data hdr_set_fn_fixture: String = "module probe_hdr_set_fn\n\nimport std.types { Bool, Set }\n\ntype HdrAud<P>\n  = HdrEveryone\n  | HdrListed { members: Set<P> }\n\ntype HdrCtx<C, P> {\n  audience: HdrAud<P>\n  context: C\n}\n\ntype HdrBox<T> {\n  value: T\n}\n\nfn hdr_join<P>(left: HdrAud<P>, right: HdrAud<P>) -> HdrAud<P> {\n  match left {\n    HdrEveryone => HdrEveryone\n    HdrListed { members: left_members } => match right {\n      HdrEveryone => HdrEveryone\n      HdrListed { members: right_members } => HdrListed { members: set_union(left_members, right_members) }\n    }\n  }\n}\n\nfn hdr_ctx_join<C, P>(left: HdrCtx<C, P>, right: HdrCtx<C, P>) -> HdrAud<P> {\n  hdr_join(left: left.audience, right: right.audience)\n}\n\nfn hdr_unbox<T>(b: HdrBox<T>) -> T {\n  b.value\n}\n"
+
+fn w_fn_generic_reaching_a_set_element_carries_ord() -> Bool {
+  compile_dag_rust_emit_check(
+    hdr_set_fn_fixture,
+    "src/probe_hdr_set_fn.rs",
+    [
+      "pub fn hdr_join<P: Clone + Ord>(",
+      "pub fn hdr_ctx_join<C: Clone, P: Clone + Ord>("
+    ],
+    [
+      "pub fn hdr_join<P: Clone>(",
+      "compile_error"
+    ]
+  )
+}
+
+fn w_fn_generic_reaching_no_set_gains_no_ord() -> Bool {
+  compile_dag_rust_emit_check(
+    hdr_set_fn_fixture,
+    "src/probe_hdr_set_fn.rs",
+    [
+      "pub fn hdr_unbox<T: Clone>("
+    ],
+    [
+      "C: Clone + Ord",
+      "T: Clone + Ord",
+      "pub struct HdrCtx<C: Clone, P: Ord>",
+      "pub enum HdrAud<P: Ord>"
+    ]
+  )
+}
+
+test fn fn_generic_reaching_a_set_element_carries_ord() -> Bool {
+  w_fn_generic_reaching_a_set_element_carries_ord()
+}
+
+test fn fn_generic_reaching_no_set_gains_no_ord() -> Bool {
+  w_fn_generic_reaching_no_set_gains_no_ord()
+}

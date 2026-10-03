@@ -92,17 +92,72 @@ fn header_bound_cases() -> List<NativeEmissionCase> {
   ]
 }
 
+// RULE: a fn generic that reaches a Set element carries `Ord` (v1.compiler.emit_rust
+// v1_fn_signature_set_element_param_names). control_audience_within is the shape of
+// std.authorization_profile audience_subset: its only parameter type is ControlAudience<P>, which
+// holds the Set one declaration down, and its body reaches the host union bridge and `==` on the
+// Set. It emitted `<P: Clone>` and rustc refused both (E0277 `P: Ord`, E0369 on `Rc<OrdSet<P>>`).
+// control_context_within is the same fact TWO declarations down -- its signature names only
+// ControlContext<C, P> -- and it forwards to the first, so a walk that stopped at one hop would
+// leave it unbounded and its call would refuse.
+fn control_audience_within<P>(left: ControlAudience<P>, right: ControlAudience<P>) -> Bool {
+  match left {
+    ControlEveryone => match right {
+      ControlEveryone => true
+      ControlListed { members: members } => false
+    }
+    ControlListed { members: members } => match right {
+      ControlEveryone => true
+      ControlListed { members: right_members } => set_union(members, right_members) == right_members
+    }
+  }
+}
+
+fn control_context_within<C, P>(left: ControlContext<C, P>, right: ControlContext<C, P>) -> Bool {
+  control_audience_within(left: left.audience, right: right.audience)
+}
+
+fn set_element_bound_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase {
+      identity: "set_fn_a_subset_is_within",
+      held: control_audience_within(left: control_listed(names: ["a"]), right: control_listed(names: ["a", "b"]))
+    },
+    NativeEmissionCase {
+      identity: "set_fn_red_a_superset_is_not_within",
+      held: !control_audience_within(left: control_listed(names: ["a", "b"]), right: control_listed(names: ["a"]))
+    },
+    NativeEmissionCase {
+      identity: "set_fn_red_everyone_is_not_within_a_listing",
+      held: !control_audience_within(left: ControlEveryone, right: control_listed(names: ["a"]))
+    },
+    NativeEmissionCase {
+      identity: "set_fn_two_declarations_down_a_subset_is_within",
+      held: control_context_within(left: control_context(names: ["a"], context: "x"), right: control_context(names: ["a", "b"], context: "y"))
+    },
+    NativeEmissionCase {
+      identity: "set_fn_two_declarations_down_red_disjoint_is_not_within",
+      held: !control_context_within(left: control_context(names: ["c"], context: "x"), right: control_context(names: ["a", "b"], context: "x"))
+    }
+  ]
+}
+
 data native_emission_expected_identities: List<String> = [
   "set_struct_eq_same_members_in_another_order",
   "set_struct_eq_red_bare_field_differs",
   "set_struct_eq_red_set_member_differs",
   "set_struct_eq_red_everyone_is_not_a_listing",
   "set_and_list_struct_eq_same_fields",
-  "set_and_list_struct_eq_red_list_order_differs"
+  "set_and_list_struct_eq_red_list_order_differs",
+  "set_fn_a_subset_is_within",
+  "set_fn_red_a_superset_is_not_within",
+  "set_fn_red_everyone_is_not_within_a_listing",
+  "set_fn_two_declarations_down_a_subset_is_within",
+  "set_fn_two_declarations_down_red_disjoint_is_not_within"
 ]
 
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  header_bound_cases()
+  concat(header_bound_cases(), set_element_bound_cases())
 }
 
 fn case_row(c: NativeEmissionCase) -> String {

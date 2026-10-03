@@ -167,6 +167,7 @@ import v1.compiler.trait_derive_emit {
   v1_item_wf_propagated_clone_bounded_param_names,
   v1_map_key_required_type_names, v1_item_field_type_exprs, v1_with_map_key_requirement,
   v1_map_key_head_names_in_type_expr,
+  v1_type_expr_set_element_param_names,
   v1_clone_impl_required_type_params,
   v1_trait_derive_refuse,
   trait_derive_emit_fn_clone_bound_keyed_carrier_module,
@@ -8637,6 +8638,7 @@ fn v1_fn_bounds_by_param(
   clone_param_names: List<String>,
   eq_param_names: List<String>,
   map_key_param_names: List<String>,
+  set_element_param_names: List<String>,
   static_param_names: List<String>
 ) -> Map<String, List<String>> {
   let with_clone = clone_param_names |> fold(init: empty_map(), f: (m, n) => map_insert(m, n, ["Clone"]))
@@ -8652,7 +8654,13 @@ fn v1_fn_bounds_by_param(
       Absent => map_insert(m, n, rust_map_key_bound_traits())
     }
   )
-  static_param_names |> fold(init: with_key, f: (m, n) =>
+  let with_set = set_element_param_names |> fold(init: with_key, f: (m, n) =>
+    match map_get(m, n) {
+      Present { value: traits } => map_insert(m, n, concat(traits, rust_set_element_bound_traits()))
+      Absent => map_insert(m, n, rust_set_element_bound_traits())
+    }
+  )
+  static_param_names |> fold(init: with_set, f: (m, n) =>
     match map_get(m, n) {
       Present { value: traits } => map_insert(m, n, concat(traits, ["'static"]))
       Absent => map_insert(m, n, ["'static"])
@@ -8676,6 +8684,25 @@ fn v1_fn_signature_map_key_param_names(value_params: List<Node>, ret: Node, gene
   let from_params = value_params |> flat_map(p => v1_map_key_head_names_in_type_expr(type_expr: param_node_type_expr(n: p), source_indices: source_indices))
   let from_ret = v1_map_key_head_names_in_type_expr(type_expr: ret, source_indices: source_indices)
   unique_strings(items: concat(from_params, from_ret) |> filter(n => generic_param_names |> any(g => g == n)))
+}
+
+// A GENERIC THAT REACHES A Set ELEMENT CARRIES THE HOST ELEMENT BOUND. The Rust row for Set is
+// `im::OrdSet<T>`, whose every bridge (v1_rt::rc_set_union, rc_set_insert, set_contains) and whose
+// own PartialEq declare `T: Ord`; a fn generic over the element that emitted only `P: Clone`
+// refused at each bridge call and at `==` (E0277 / E0369 on std.authorization_profile
+// audience_subset and audience_join). It is the map-key rule above for the other ordered carrier,
+// and it is read the same way: from the SIGNATURE, so the bound is decided by the declared carrier
+// and not by inspecting the body for a bridge call. Unlike a map key, the Set is usually not
+// spelled in the signature -- `AudienceSet<P>` holds it one declaration down -- so the walk goes
+// through declared types (v1_type_expr_set_element_param_names) rather than reading heads only.
+fn rust_set_element_bound_traits() -> List<String> {
+  ["Ord"]
+}
+
+fn v1_fn_signature_set_element_param_names(value_params: List<Node>, ret: Node, generic_param_names: List<String>, type_decl_items: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let from_params = value_params |> flat_map(p => v1_type_expr_set_element_param_names(type_expr: param_node_type_expr(n: p), scope_param_names: generic_param_names, type_decl_items: type_decl_items, visited: [], source_indices: source_indices))
+  let from_ret = v1_type_expr_set_element_param_names(type_expr: ret, scope_param_names: generic_param_names, type_decl_items: type_decl_items, visited: [], source_indices: source_indices)
+  unique_strings(items: concat(from_params, from_ret))
 }
 
 // Node-consuming extraction for the equality bound, kept here rather than in
@@ -9300,6 +9327,13 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     generic_param_names: generic_param_names,
     source_indices: si
   )
+  let set_element_param_names = v1_fn_signature_set_element_param_names(
+    value_params: value_params,
+    ret: inferred,
+    generic_param_names: generic_param_names,
+    type_decl_items: emit_info.type_decl_items,
+    source_indices: si
+  )
   let returns_fn_field_record = type_has_fn_fields(name: rust_fn_sig_leaf_name(source_indices: si, n: inferred), emit_info: emit_info)
   let returns_arrow_or_fn_field_record = (inferred.params |> count) > 0 || returns_fn_field_record
   let call_forwarded_static_param_names = v1_call_forwarding_static_bound_param_names(
@@ -9319,9 +9353,10 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     clone_param_names: clone_param_names,
     eq_param_names: eq_param_names,
     map_key_param_names: map_key_param_names,
+    set_element_param_names: set_element_param_names,
     static_param_names: static_param_names
   )
-  let needs_bound = (clone_param_names |> count) > 0 || (eq_param_names |> count) > 0 || (map_key_param_names |> count) > 0 || (static_param_names |> count) > 0
+  let needs_bound = (clone_param_names |> count) > 0 || (eq_param_names |> count) > 0 || (map_key_param_names |> count) > 0 || (set_element_param_names |> count) > 0 || (static_param_names |> count) > 0
   let type_params_str = if needs_bound {
     v1_emit_type_params_with_bounds(params: type_params, bounds_by_param: bounds_by_param, source_indices: si)
   } else {

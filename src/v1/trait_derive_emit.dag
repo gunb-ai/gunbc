@@ -1016,6 +1016,101 @@ fn v1_item_ord_propagated_param_names(
   )
 }
 
+// WHICH GENERIC PARAMETERS OF A TYPE EXPRESSION REACH A Set ELEMENT, through any number of declared
+// types. The one-hop item rule above (v1_item_ord_propagated_param_names) answers this for a field
+// whose declared type holds the Set directly; a FN signature needs the transitive answer, because
+// its parameter may name `Outer<C, P>` whose field names `Inner<P>` whose field is `Set<P>`, and the
+// host bridges the body reaches (v1.compiler.runtime_rust rc_set_union / rc_set_insert:
+// `T: Ord + Clone`) are checked against the fn's own generics, not against a derive.
+//
+// own(te): head `Set` contributes every in-scope parameter occurring in its argument; a declared
+// head contributes the parameters occurring in exactly those argument positions whose DECLARATION
+// slot itself reaches a Set element (asked recursively of the declaration's own fields). Children
+// are walked for every head, so a Set nested inside any carrier is found. `visited` is the
+// declaration path, which makes a recursive type saturate instead of diverging -- the same
+// termination the Clone fixpoint gets from its round bound.
+fn v1_set_element_decl_slot_arg_param_names(
+  decl_params: List<Node>,
+  type_args: List<Node>,
+  affected_slot_names: List<String>,
+  scope_param_names: List<String>,
+  source_indices: Map<String, NewlineIndex>
+) -> List<String> {
+  match decl_params |> first {
+    Absent => []
+    Present { value: decl_param } =>
+      match type_args |> first {
+        Absent => []
+        Present { value: type_arg } =>
+          let slot_name = generic_param_name_at(n: decl_param, source_indices: source_indices)
+          let here = if affected_slot_names |> any(n => n == slot_name) {
+            scope_param_names |> filter(p => v1_type_expr_contains_param_name(param_name: p, type_expr: child_type_node(ch: type_arg), source_indices: source_indices))
+          } else {
+            []
+          }
+          concat(here, v1_set_element_decl_slot_arg_param_names(
+            decl_params: decl_params |> skip(1),
+            type_args: type_args |> skip(1),
+            affected_slot_names: affected_slot_names,
+            scope_param_names: scope_param_names,
+            source_indices: source_indices
+          ))
+      }
+  }
+}
+
+fn v1_type_expr_set_element_param_names(
+  type_expr: Node,
+  scope_param_names: List<String>,
+  type_decl_items: Map<String, Node>,
+  visited: List<String>,
+  source_indices: Map<String, NewlineIndex>
+) -> List<String> {
+  let head = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: type_expr))
+  let own = if head == "Set" {
+    scope_param_names |> filter(p =>
+      type_expr.children |> any(c => v1_type_expr_contains_param_name(param_name: p, type_expr: child_type_node(ch: c), source_indices: source_indices))
+    )
+  } else if visited |> any(v => v == head) {
+    []
+  } else {
+    match map_get(type_decl_items, head) {
+      Absent => []
+      Present { value: decl } =>
+        let decl_param_names = decl.params |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
+        let next_visited = concat(visited, [head])
+        let affected_slot_names = unique_strings(items: v1_item_field_type_exprs(item: decl, source_indices: source_indices) |> flat_map(te =>
+          v1_type_expr_set_element_param_names(
+            type_expr: te,
+            scope_param_names: decl_param_names,
+            type_decl_items: type_decl_items,
+            visited: next_visited,
+            source_indices: source_indices
+          )
+        ))
+        v1_set_element_decl_slot_arg_param_names(
+          decl_params: decl.params,
+          type_args: type_expr.children,
+          affected_slot_names: affected_slot_names,
+          scope_param_names: scope_param_names,
+          source_indices: source_indices
+        )
+    }
+  }
+  concat(
+    own,
+    type_expr.children |> flat_map(c =>
+      v1_type_expr_set_element_param_names(
+        type_expr: child_type_node(ch: c),
+        scope_param_names: scope_param_names,
+        type_decl_items: type_decl_items,
+        visited: visited,
+        source_indices: source_indices
+      )
+    )
+  )
+}
+
 fn v1_set_struct_debug_impl(
   name: String,
   generic_param_names: List<String>,
