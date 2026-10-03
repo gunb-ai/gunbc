@@ -47205,44 +47205,13 @@ mod reconcile_interior_probe {
     fn identity_rewire_warm_route() {
         use v1_stage0_v1_infer::phase_cpu;
         let roots = vec!["dag".to_string(), "src/v2".to_string()];
-        let corpus = super::read_source_corpus_once(&roots);
-        let gate_entry_index = super::build_multi_entry_index(&roots);
-        let seeds = super::required_floor_runner::required_floor_nominal_subject_seeds_from_corpus(
-            &corpus,
-            &gate_entry_index,
-        )
-        .expect("nominal floor seeds");
-        let module_seeds =
-            super::required_floor_runner::required_floor_nominal_closure_module_seeds(
-                &seeds.required_gate_authored_modules,
-                &seeds.local_repo_wet_schedule_rows,
-            );
-        let subject = super::assemble_prepared_subject_from_corpus(
-            &corpus,
-            &super::required_floor_runner::floor_prepared_subject_exclusions(),
-            Some((
-                &gate_entry_index,
-                &seeds.required_gate_prefixes,
-                &module_seeds,
-            )),
-        )
-        .expect("floor subject assembles");
-        drop(gate_entry_index);
-        let index = super::process_shared_index(&roots);
-        let n = subject.sources.len();
+        let entry = std::env::var("GUNBC_M2_ENTRY")
+            .unwrap_or_else(|_| "dag/gunbc/floor/typed_graph_exclusive_bytes.dag".to_string());
         phase_cpu::reset();
-        let (graph, _si, _diags) = super::resolved_graph_from_sources_with_index(
-            &index,
-            subject.sources,
-            super::ResolveTypecheckGate::Strict,
-            "identity-rewire-warm-route",
-            super::ResolvedGraphMemoShare::Ephemeral,
-        )
-        .expect("indexed resolve");
-        drop(corpus);
+        let (graph, _si) = super::resolve_entry_graph(&roots, &entry).expect("entry resolves");
         phase_cpu::report("m2");
         eprintln!(
-            "[m2-done] subject={n} graph={} heap_in_use_with_graph={} skip={}",
+            "[m2-done] entry={entry} graph={} heap_in_use_with_graph={} skip={}",
             graph.modules.len(),
             heap_in_use(),
             std::env::var_os("GUNBC_PROBE_SKIP_IDENTITY_REWIRE").is_some()
