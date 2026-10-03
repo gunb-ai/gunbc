@@ -153,6 +153,10 @@ type ReferenceConservationUnmeasured
 //     population, not this count.
 // `role_not_yet_read` and `role_reader_refused` carry the role producer's own gaps, so a binder the
 // producer could not read is a number here too; such a binder stays in `locus_erased`.
+// `advisories` IS THE ACCEPTED SUBJECT'S ADVISORIES, KEPT RATHER THAN MATCHED AWAY. A parse or
+// normalization that accepts may still attach non-fatal diagnostics; they used to be dropped at
+// reference_conservation_of_subject_admitted, so the census could not say an accepted module
+// carried any. They do not enter holds/accepted: an advisory is not a conservation fact.
 type ReferenceConservationReport {
   path: String
   authored: Int
@@ -167,10 +171,6 @@ type ReferenceConservationReport {
   test_marker_channel: Int
   dropped: FreeMonoid<DroppedReference>
   unmeasured: FreeMonoid<ReferenceConservationUnmeasured>
-  // THE ACCEPTED SUBJECT'S ADVISORIES, KEPT RATHER THAN MATCHED AWAY. A parse or normalization
-  // that accepts may still attach non-fatal diagnostics; they used to be dropped at
-  // reference_conservation_of_subject_admitted, so the census could not say an accepted module
-  // carried any. They do not enter holds/accepted: an advisory is not a conservation fact.
   advisories: Diagnostics
 }
 
@@ -1303,6 +1303,9 @@ fn dropped_reference_line(path: String, row: DroppedReference) -> String {
   path + ":" + authored_atom_extent_text(atom: row.atom) + " " + symbol_lexeme(sym: row.atom.identity) + " " + dropped_reference_cause_word(cause: row.cause) + " " + authored_atom_context_text(atom: row.atom)
 }
 
+// After the summary and dropped-reference lines, one `advisory <path> <reason>` line per advisory
+// the accepted subject carried, in chain order: the census's per-path record of what an accepted
+// module's front end attached without refusing.
 fn reference_conservation_report_lines(report: ReferenceConservationReport) -> FreeMonoid<String> {
   let summary = "module " + report.path + " authored=" + integer_int_to_decimal_string(value: report.authored) + " conserved=" + integer_int_to_decimal_string(value: report.conserved) + " locus_erased=" + integer_int_to_decimal_string(value: report.locus_erased) + " role_excluded=" + integer_int_to_decimal_string(value: report.role_excluded) + " header_channel=" + integer_int_to_decimal_string(value: report.header_channel) + " role_not_yet_read=" + integer_int_to_decimal_string(value: report.role_not_yet_read) + " role_reader_refused=" + integer_int_to_decimal_string(value: report.role_reader_refused) + " refused=" + integer_int_to_decimal_string(value: report.refused) + " import_channel=" + integer_int_to_decimal_string(value: report.import_channel) + " test_marker_channel=" + integer_int_to_decimal_string(value: report.test_marker_channel) + " dropped=" + integer_int_to_decimal_string(value: length(xs: report.dropped)) + " unmeasured=" + integer_int_to_decimal_string(value: length(xs: report.unmeasured))
   let with_dropped = fold_list(
@@ -1310,8 +1313,6 @@ fn reference_conservation_report_lines(report: ReferenceConservationReport) -> F
     empty: Cons { head: summary, tail: Empty },
     cons: fn(acc, row) { list_snoc_item(xs: acc, item: dropped_reference_line(path: report.path, row: row)) }
   )
-  // One line per advisory the accepted subject carried, by reason, in chain order: the census's
-  // per-path record of what an accepted module's front end attached without refusing.
   match report.advisories {
     None => with_dropped
     Some { diagnostics: d } =>
