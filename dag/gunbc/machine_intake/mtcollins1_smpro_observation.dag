@@ -25,6 +25,7 @@ import extdeps.ampere.smpro_register {
 }
 import extdeps.ampere.smpro_internal_error {
   SmproInternalRecord, smpro_internal_error_of, smpro_internal_warning_of, smpro_internal_record_text,
+  SmproProcessor, SmproProcessorSmpro, SmproProcessorPmpro, SmproRecordGate, smpro_record_gate, smpro_record_gate_lines,
 }
 import extdeps.ampere.scp_diagnostic { Failed }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
@@ -372,12 +373,15 @@ fn outcome_raw_text(o: SmproProbeOutcome) -> String {
 
 // ── the internal error records each socket reports (extdeps.ampere.smpro_internal_error) ─────────
 
-// One processor's record set on one socket, decoded only from words this pass actually read: a
-// record whose TYPE or any INFO/DATA word was not read is UNAVAILABLE with that word's reason, never
-// assembled from a zero standing in for the missing word.
-type SmproRecordSet
-  = SmproRecordsRead { error: SmproInternalRecord?, warning: SmproInternalRecord? }
-  | SmproRecordsUnavailable { reason: String }
+// One processor's record set on one socket, GATED as the driver gates it
+// (extdeps.ampere.smpro_internal_error smpro_record_gate): the socket's GPI_RAS_ERR from this same
+// pass decides whether a decoded TYPE/INFO/DATA record is the driver's record, ungated, or a
+// contradiction. A record is decoded only from words this pass actually read; when one was not, the
+// record is Absent and `missing` says which word, never a zero standing in for it.
+type SmproRecordSet {
+  gate: SmproRecordGate
+  missing: String?
+}
 
 type SmproSocketRecords {
   socket: Int
@@ -409,13 +413,23 @@ fn nth_word(ws: List<Int>, n: Int) -> Int {
   match ws.skip(n: n).first() { Absent => 0 Present { value: w } => w }
 }
 
+fn smpro_socket_gpi(outcomes: List<SmproProbeOutcome>, socket: Int) -> Int? {
+  match smpro_socket_word(outcomes: outcomes, socket: socket, register: smpro_gpi_ras_err_reg.name) {
+    Absent => none
+    Present { value: o } => smpro_outcome_word(o: o)
+  }
+}
+
 // Registers in TYPE, INFO_HI, INFO_LO, DATA_HI, DATA_LO, WARN_HI, WARN_LO order.
-fn smpro_record_set(outcomes: List<SmproProbeOutcome>, socket: Int, regs: List<SmproRegister>) -> SmproRecordSet {
+fn smpro_record_set(outcomes: List<SmproProbeOutcome>, socket: Int, processor: SmproProcessor, regs: List<SmproRegister>) -> SmproRecordSet {
+  let gpi = smpro_socket_gpi(outcomes: outcomes, socket: socket)
   match smpro_words_read(outcomes: outcomes, socket: socket, regs: regs) {
-    WordMissing { reason: r } => SmproRecordsUnavailable { reason: r }
-    AllWordsRead { words: w } => SmproRecordsRead {
-      error: smpro_internal_error_of(type_word: nth_word(ws: w, n: 0), info_hi: nth_word(ws: w, n: 1), info_lo: nth_word(ws: w, n: 2), data_hi: nth_word(ws: w, n: 3), data_lo: nth_word(ws: w, n: 4)),
-      warning: smpro_internal_warning_of(type_word: nth_word(ws: w, n: 0), warn_hi: nth_word(ws: w, n: 5), warn_lo: nth_word(ws: w, n: 6)),
+    WordMissing { reason: r } => SmproRecordSet { gate: smpro_record_gate(gpi: gpi, processor: processor, type_read: false, error: none, warning: none), missing: Present { value: r } }
+    AllWordsRead { words: w } => SmproRecordSet {
+      gate: smpro_record_gate(gpi: gpi, processor: processor, type_read: true,
+        error: smpro_internal_error_of(type_word: nth_word(ws: w, n: 0), info_hi: nth_word(ws: w, n: 1), info_lo: nth_word(ws: w, n: 2), data_hi: nth_word(ws: w, n: 3), data_lo: nth_word(ws: w, n: 4)),
+        warning: smpro_internal_warning_of(type_word: nth_word(ws: w, n: 0), warn_hi: nth_word(ws: w, n: 5), warn_lo: nth_word(ws: w, n: 6))),
+      missing: none,
     }
   }
 }
@@ -427,8 +441,8 @@ data mtcollins1_smpro_event_regs: List<SmproRegister> = [
 fn mtcollins1_smpro_socket_records(outcomes: List<SmproProbeOutcome>, socket: Int) -> SmproSocketRecords {
   SmproSocketRecords {
     socket: socket,
-    smpro: smpro_record_set(outcomes: outcomes, socket: socket, regs: [smpro_err_smpro_type_reg, smpro_err_smpro_info_hi_reg, smpro_err_smpro_info_lo_reg, smpro_err_smpro_data_hi_reg, smpro_err_smpro_data_lo_reg, smpro_warn_smpro_info_hi_reg, smpro_warn_smpro_info_lo_reg]),
-    pmpro: smpro_record_set(outcomes: outcomes, socket: socket, regs: [smpro_err_pmpro_type_reg, smpro_err_pmpro_info_hi_reg, smpro_err_pmpro_info_lo_reg, smpro_err_pmpro_data_hi_reg, smpro_err_pmpro_data_lo_reg, smpro_warn_pmpro_info_hi_reg, smpro_warn_pmpro_info_lo_reg]),
+    smpro: smpro_record_set(outcomes: outcomes, socket: socket, processor: SmproProcessorSmpro, regs: [smpro_err_smpro_type_reg, smpro_err_smpro_info_hi_reg, smpro_err_smpro_info_lo_reg, smpro_err_smpro_data_hi_reg, smpro_err_smpro_data_lo_reg, smpro_warn_smpro_info_hi_reg, smpro_warn_smpro_info_lo_reg]),
+    pmpro: smpro_record_set(outcomes: outcomes, socket: socket, processor: SmproProcessorPmpro, regs: [smpro_err_pmpro_type_reg, smpro_err_pmpro_info_hi_reg, smpro_err_pmpro_info_lo_reg, smpro_err_pmpro_data_hi_reg, smpro_err_pmpro_data_lo_reg, smpro_warn_pmpro_info_hi_reg, smpro_warn_pmpro_info_lo_reg]),
     nonzero_events: flat_map(mtcollins1_smpro_event_regs, reg => match match smpro_socket_word(outcomes: outcomes, socket: socket, register: reg.name) { Absent => none Present { value: x } => smpro_outcome_word(o: x) } {
       Present { value: w } => if w == 0 { [] } else { [concat(reg.name as String, " = ", to_string(w))] }
       Absent => []
@@ -441,24 +455,18 @@ fn mtcollins1_smpro_socket_records(outcomes: List<SmproProbeOutcome>, socket: In
 }
 
 fn record_set_lines(processor: String, rs: SmproRecordSet) -> List<String> {
-  match rs {
-    SmproRecordsUnavailable { reason: _ } => []
-    SmproRecordsRead { error: e, warning: w } => concat(
-      match e { Present { value: r } => [concat(processor, " ", smpro_internal_record_text(r: r))] Absent => [] },
-      match w { Present { value: r } => [concat(processor, " ", smpro_internal_record_text(r: r))] Absent => [] },
-    )
-  }
+  map(smpro_record_gate_lines(g: rs.gate), l => concat(processor, " ", l))
 }
 
 fn record_set_unavailable(processor: String, rs: SmproRecordSet) -> List<String> {
-  match rs {
-    SmproRecordsUnavailable { reason: why } => [concat(processor, " records UNAVAILABLE (", why, ")")]
-    SmproRecordsRead { error: _, warning: _ } => []
+  match rs.missing {
+    Present { value: why } => [concat(processor, " records UNAVAILABLE (", why, ")")]
+    Absent => []
   }
 }
 
-// Every decoded record or nonzero event a socket reports, one line each; empty when it reported
-// none or nothing could be decoded. Unavailability is the dossier's to say, not a finding.
+// Every gated record, ungated record, gate contradiction or nonzero event a socket reports, one line
+// each; empty when nothing was reported. A missing word is the dossier's to say, not a finding.
 fn mtcollins1_smpro_record_lines(r: SmproSocketRecords) -> List<String> {
   map(concat(concat(record_set_lines(processor: "SMpro", rs: r.smpro), record_set_lines(processor: "PMpro", rs: r.pmpro)), map(r.nonzero_events, e => concat("event ", e))),
     l => concat("SMpro socket ", to_string(r.socket), ": ", l))

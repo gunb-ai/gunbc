@@ -1,6 +1,6 @@
 module test.claim.machine_intake.smpro_internal_error_witness_test
 
-import v2.std.algebra { any, contains }
+import v2.std.algebra { any }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.optional { Present }
@@ -8,13 +8,15 @@ import extdeps.ampere.smpro_internal_error {
   SmproInternalRecord, SmproNamedCode, SmproCodeDefined, SmproCodeUndefined,
   SmproRecordKind, SmproErrorWithData, SmproErrorWithoutData, SmproWarning, SmproEnter, SmproExit,
   smpro_internal_error_of, smpro_internal_warning_of, smpro_internal_record_text,
+  SmproRecordGate, PendingAndDecoded, NotPending, GpiUnavailable, PendingWithClearOrMissingType, TypePresentWithoutPending,
+  SmproProcessorPmpro, smpro_record_gate,
 }
 import extdeps.ampere.smpro_register {
-  SmproRegister, smpro_manufacturer_id_reg, smpro_err_pmpro_type_reg, smpro_err_pmpro_info_lo_reg, smpro_err_pmpro_info_hi_reg,
+  SmproRegister, smpro_manufacturer_id_reg, smpro_gpi_ras_err_reg, smpro_err_pmpro_type_reg, smpro_err_pmpro_info_lo_reg, smpro_err_pmpro_info_hi_reg,
   smpro_err_pmpro_data_lo_reg, smpro_err_pmpro_data_hi_reg, smpro_warn_pmpro_info_lo_reg, smpro_warn_pmpro_info_hi_reg,
 }
 import gunbc.machine_intake_mtcollins1_smpro_error_reading {
-  SmproErrorWindow, SmproWindowPmproError, PmproErrorDecoded, PmproErrorWordsMissing,
+  SmproErrorWindow,
   mtcollins1_smpro_error_windows, mtcollins1_smpro_error_reads_20261003,
 }
 import gunbc.machine_intake_mtcollins1_smpro_observation {
@@ -133,18 +135,24 @@ fn window_at(n: Int) -> SmproErrorWindow? {
   mtcollins1_smpro_error_windows(reads: mtcollins1_smpro_error_reads_20261003).skip(n: n).first()
 }
 
-fn window_record(n: Int) -> SmproInternalRecord? {
-  match window_at(n: n) {
-    Absent => none
-    Present { value: w } => match w.pmpro_error { PmproErrorDecoded { record: r } => r PmproErrorWordsMissing { missing: _ } => none }
-  }
+fn window_gate(n: Int) -> SmproRecordGate? {
+  match window_at(n: n) { Absent => none Present { value: w } => Present { value: w.pmpro } }
 }
 
-fn window_decoded_empty(n: Int) -> Bool {
-  match window_at(n: n) {
-    Absent => false
-    Present { value: w } => match w.pmpro_error { PmproErrorDecoded { record: Absent } => true _ => false }
-  }
+fn gate_is_pending_ccix(g: SmproRecordGate?) -> Bool {
+  match g { Present { value: PendingAndDecoded { error: Present { value: r }, warning: _ } } => is_ccix_rca_linkup_fail(r: r) && kind_is_with_data(r: r) _ => false }
+}
+
+fn gate_is_ungated_ccix(g: SmproRecordGate?) -> Bool {
+  match g { Present { value: GpiUnavailable { ungated_error: Present { value: r }, ungated_warning: _ } } => is_ccix_rca_linkup_fail(r: r) && kind_is_without_data(r: r) _ => false }
+}
+
+fn gate_is_not_pending(g: SmproRecordGate?) -> Bool {
+  match g { Present { value: NotPending } => true _ => false }
+}
+
+fn gate_is_pending_without_record(g: SmproRecordGate?) -> Bool {
+  match g { Present { value: PendingWithClearOrMissingType } => true _ => false }
 }
 
 fn window_socket(n: Int) -> Int {
@@ -161,23 +169,42 @@ test fn the_capture_is_five_windows_in_socket_order_0_0_1_0_1() -> Bool {
     && window_socket(n: 0) == 0 && window_socket(n: 1) == 0 && window_socket(n: 2) == 1 && window_socket(n: 3) == 0 && window_socket(n: 4) == 1
 }
 
-test fn window_zero_socket_zero_reports_the_ccix_failure_with_data() -> Bool {
-  window_gpi(n: 0) == 2 && match window_record(n: 0) { Present { value: r } => is_ccix_rca_linkup_fail(r: r) && kind_is_with_data(r: r) Absent => false }
+// GPI_RAS_ERR bit 1 (PMpro) set and TYPE reports the record: the driver's own record.
+test fn window_zero_socket_zero_is_pending_and_decodes_the_ccix_failure() -> Bool {
+  window_gpi(n: 0) == 2 && gate_is_pending_ccix(g: window_gate(n: 0))
 }
 
-test fn window_one_socket_zero_has_no_record_so_it_is_not_sticky() -> Bool {
-  window_gpi(n: 1) == 0 && window_decoded_empty(n: 1)
+test fn window_one_socket_zero_is_not_pending_so_the_record_is_not_sticky() -> Bool {
+  window_gpi(n: 1) == 0 && gate_is_not_pending(g: window_gate(n: 1))
 }
 
-test fn socket_one_reports_the_same_failure_without_data_in_both_windows() -> Bool {
-  (match window_record(n: 2) { Present { value: r } => is_ccix_rca_linkup_fail(r: r) && kind_is_without_data(r: r) Absent => false })
-    && (match window_record(n: 4) { Present { value: r } => is_ccix_rca_linkup_fail(r: r) && kind_is_without_data(r: r) Absent => false })
-    && window_gpi(n: 2) == 0 - 1
+// Socket 1's windows read no GPI_RAS_ERR, so its CCIX record stands UNGATED, never as reported.
+test fn socket_one_record_stands_ungated_in_both_windows() -> Bool {
+  window_gpi(n: 2) == 0 - 1 && gate_is_ungated_ccix(g: window_gate(n: 2)) && gate_is_ungated_ccix(g: window_gate(n: 4))
 }
 
-// GPI_RAS_ERR says PMpro pending while TYPE is already clear: carried as read, not reconciled.
-test fn window_three_pending_bit_with_a_clear_type_is_no_record() -> Bool {
-  window_gpi(n: 3) == 2 && window_decoded_empty(n: 3)
+// GPI_RAS_ERR says PMpro pending while TYPE is already clear: its own arm, not "no record".
+test fn window_three_pending_with_a_clear_type_is_its_own_arm() -> Bool {
+  window_gpi(n: 3) == 2 && gate_is_pending_without_record(g: window_gate(n: 3))
+}
+
+fn ccix_record() -> SmproInternalRecord? {
+  smpro_internal_error_of(type_word: 2, info_hi: 8772, info_lo: 116, data_hi: 0, data_lo: 0)
+}
+
+// RED: TYPE reports a record while the PMpro pending bit is clear -- including when only the SMpro's
+// bit (bit 0) is set.
+test fn red_a_record_without_its_pending_bit_is_type_present_without_pending() -> Bool {
+  (match smpro_record_gate(gpi: Present { value: 0 }, processor: SmproProcessorPmpro, type_read: true, error: ccix_record(), warning: none) { TypePresentWithoutPending { error: _, warning: _ } => true _ => false })
+    && (match smpro_record_gate(gpi: Present { value: 1 }, processor: SmproProcessorPmpro, type_read: true, error: ccix_record(), warning: none) { TypePresentWithoutPending { error: _, warning: _ } => true _ => false })
+}
+
+test fn red_no_gpi_read_is_gpi_unavailable_never_pending() -> Bool {
+  match smpro_record_gate(gpi: none, processor: SmproProcessorPmpro, type_read: true, error: ccix_record(), warning: none) { GpiUnavailable { ungated_error: Present { value: _ }, ungated_warning: _ } => true _ => false }
+}
+
+test fn red_pending_with_unread_type_is_pending_with_clear_or_missing_type() -> Bool {
+  match smpro_record_gate(gpi: Present { value: 2 }, processor: SmproProcessorPmpro, type_read: false, error: none, warning: none) { PendingWithClearOrMissingType => true _ => false }
 }
 
 // ── the collector renders a decoded record as a finding (supplied outcomes) ────────────────────
@@ -199,9 +226,15 @@ fn pmpro_words(socket: Int, info_hi: String) -> List<SmproProbeOutcome> {
   ]
 }
 
-test fn a_read_pmpro_record_is_a_finding_naming_the_decode() -> Bool {
-  let f = mtcollins1_smpro_findings(outcomes: pmpro_words(socket: 1, info_hi: "22 44"))
+test fn a_pending_pmpro_record_is_a_finding_naming_the_decode() -> Bool {
+  let f = mtcollins1_smpro_findings(outcomes: concat(pmpro_words(socket: 1, info_hi: "22 44"), [read_ok(socket: 1, reg: smpro_gpi_ras_err_reg, stdout: "00 02")]))
   any(f, x => starts_with(s: x, prefix: "SMpro socket 1: PMpro error: ERR_CCIX_RCA_LINKUP_FAIL (116) at CCIX initialization (68), ENTER"))
+}
+
+test fn red_without_a_gpi_read_the_finding_says_ungated() -> Bool {
+  let f = mtcollins1_smpro_findings(outcomes: pmpro_words(socket: 1, info_hi: "22 44"))
+  any(f, x => starts_with(s: x, prefix: "SMpro socket 1: PMpro UNGATED (GPI_RAS_ERR not read in this window) error: ERR_CCIX_RCA_LINKUP_FAIL (116)"))
+    && !any(f, x => starts_with(s: x, prefix: "SMpro socket 1: PMpro error:"))
 }
 
 test fn red_a_missing_info_word_decodes_nothing_and_says_why() -> Bool {

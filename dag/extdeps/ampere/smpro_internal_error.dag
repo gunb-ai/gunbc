@@ -409,3 +409,67 @@ fn smpro_internal_record_text(r: SmproInternalRecord) -> String {
     match r.kind { SmproErrorWithData => concat(", data_hi ", to_string(r.data_hi), " data_lo ", to_string(r.data_lo)) SmproErrorWithoutData => "" SmproWarning => "" },
   )
 }
+
+// ── THE PENDING GATE (smpro-errmon smpro_internal_err_read / smpro_internal_warn_read) ──────────
+
+// The driver reads GPI_RAS_ERR first and returns NO record unless that processor's pending bit is set
+// -- bit 0 for the SMpro, bit 1 for the PMpro -- and only then reads TYPE, INFO and DATA. A record is
+// therefore the driver's only when its gate was read and set. Every other combination is kept as its
+// own arm rather than folded into "a record" or "no record":
+//   NotPending                      the gate was read clear and TYPE reports nothing;
+//   GpiUnavailable                  the gate was not read in the same window: a record TYPE reports is
+//                                   carried UNGATED, never promoted to the driver's record;
+//   PendingWithClearOrMissingType   the gate says pending but TYPE reports nothing or was not read;
+//   TypePresentWithoutPending       TYPE reports a record while the gate was read clear.
+type SmproProcessor
+  = SmproProcessorSmpro
+  | SmproProcessorPmpro
+
+type SmproRecordGate
+  = PendingAndDecoded { error: SmproInternalRecord?, warning: SmproInternalRecord? }
+  | NotPending
+  | GpiUnavailable { ungated_error: SmproInternalRecord?, ungated_warning: SmproInternalRecord? }
+  | PendingWithClearOrMissingType
+  | TypePresentWithoutPending { error: SmproInternalRecord?, warning: SmproInternalRecord? }
+
+fn smpro_pending_bit(gpi: Int, p: SmproProcessor) -> Bool {
+  match p {
+    SmproProcessorSmpro => gpi % 2 == 1
+    SmproProcessorPmpro => (gpi / 2) % 2 == 1
+  }
+}
+
+fn smpro_any_record(error: SmproInternalRecord?, warning: SmproInternalRecord?) -> Bool {
+  (match error { Present { value: _ } => true Absent => false }) || (match warning { Present { value: _ } => true Absent => false })
+}
+
+// gpi: the GPI_RAS_ERR word read in the same window, if read. error/warning: what TYPE/INFO/DATA
+// decode to, Absent when TYPE reports nothing or its words were not read (type_read says which).
+fn smpro_record_gate(gpi: Int?, processor: SmproProcessor, type_read: Bool, error: SmproInternalRecord?, warning: SmproInternalRecord?) -> SmproRecordGate {
+  let any = smpro_any_record(error: error, warning: warning)
+  match gpi {
+    Absent => GpiUnavailable { ungated_error: error, ungated_warning: warning }
+    Present { value: g } => if smpro_pending_bit(gpi: g, p: processor) {
+      if type_read && any { PendingAndDecoded { error: error, warning: warning } } else { PendingWithClearOrMissingType }
+    } else {
+      if any { TypePresentWithoutPending { error: error, warning: warning } } else { NotPending }
+    }
+  }
+}
+
+fn smpro_record_gate_lines(g: SmproRecordGate) -> List<String> {
+  let empty: List<String> = []
+  match g {
+    PendingAndDecoded { error: e, warning: w } => concat(
+      match e { Present { value: r } => [smpro_internal_record_text(r: r)] Absent => empty },
+      match w { Present { value: r } => [smpro_internal_record_text(r: r)] Absent => empty })
+    NotPending => empty
+    GpiUnavailable { ungated_error: e, ungated_warning: w } => concat(
+      match e { Present { value: r } => [concat("UNGATED (GPI_RAS_ERR not read in this window) ", smpro_internal_record_text(r: r))] Absent => empty },
+      match w { Present { value: r } => [concat("UNGATED (GPI_RAS_ERR not read in this window) ", smpro_internal_record_text(r: r))] Absent => empty })
+    PendingWithClearOrMissingType => ["pending in GPI_RAS_ERR, but TYPE reports no record or was not read"]
+    TypePresentWithoutPending { error: e, warning: w } => concat(
+      match e { Present { value: r } => [concat("TYPE reports a record while GPI_RAS_ERR is clear: ", smpro_internal_record_text(r: r))] Absent => empty },
+      match w { Present { value: r } => [concat("TYPE reports a record while GPI_RAS_ERR is clear: ", smpro_internal_record_text(r: r))] Absent => empty })
+  }
+}

@@ -10,7 +10,7 @@ import extdeps.ampere.smpro_register {
   smpro_gpi_ras_err_reg, smpro_err_pmpro_type_reg, smpro_err_pmpro_info_lo_reg, smpro_err_pmpro_info_hi_reg,
   smpro_err_pmpro_data_lo_reg, smpro_err_pmpro_data_hi_reg,
 }
-import extdeps.ampere.smpro_internal_error { SmproInternalRecord, smpro_internal_error_of }
+import extdeps.ampere.smpro_internal_error { SmproInternalRecord, SmproRecordGate, SmproProcessorPmpro, smpro_internal_error_of, smpro_record_gate }
 import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_targets }
 
 // ONE RAW SMpro ERROR-REGISTER READING FROM mtcollins1, 2026-10-03, AS RECEIVED: the operator's
@@ -129,16 +129,15 @@ fn word_of(window: List<SmproRawRegisterRead>, reg: SmproRegister) -> Int? {
   }
 }
 
-// The PMpro error record of one window, decoded only when every word it needs was read.
-type SmproWindowPmproError
-  = PmproErrorDecoded { record: SmproInternalRecord? }
-  | PmproErrorWordsMissing { missing: List<NonEmptyStr> }
-
+// The PMpro error record of one window, through the driver's pending gate with THIS window's
+// GPI_RAS_ERR read (the socket-1 windows read none, so their records stand UNGATED). The capture did
+// not read the WARN words, so no warning is decoded; `missing` names any error-record word not read.
 type SmproErrorWindow {
   first_stamp: NonEmptyStr
   socket: Int?
   gpi_ras_err: Int?
-  pmpro_error: SmproWindowPmproError
+  pmpro: SmproRecordGate
+  missing: List<NonEmptyStr>
 }
 
 data pmpro_error_record_regs: List<SmproRegister> = [
@@ -151,19 +150,21 @@ fn word_or_zero(window: List<SmproRawRegisterRead>, reg: SmproRegister) -> Int {
 
 fn smpro_error_window_of(window: List<SmproRawRegisterRead>) -> SmproErrorWindow {
   let missing = flat_map(pmpro_error_record_regs, reg => match word_of(window: window, reg: reg) { Present { value: _ } => [] Absent => [reg.name] })
+  let gpi = word_of(window: window, reg: smpro_gpi_ras_err_reg)
+  let all_read = count(missing) == 0
   SmproErrorWindow {
     first_stamp: match window.first() { Present { value: r } => r.stamp Absent => "(empty window)" },
     socket: match window.first() { Present { value: r } => socket_of_slave(slave_byte: r.slave_byte) Absent => none },
-    gpi_ras_err: word_of(window: window, reg: smpro_gpi_ras_err_reg),
-    pmpro_error: if count(missing) > 0 { PmproErrorWordsMissing { missing: missing } } else {
-      PmproErrorDecoded { record: smpro_internal_error_of(
+    gpi_ras_err: gpi,
+    pmpro: smpro_record_gate(gpi: gpi, processor: SmproProcessorPmpro, type_read: all_read, warning: none,
+      error: if all_read { smpro_internal_error_of(
         type_word: word_or_zero(window: window, reg: smpro_err_pmpro_type_reg),
         info_hi: word_or_zero(window: window, reg: smpro_err_pmpro_info_hi_reg),
         info_lo: word_or_zero(window: window, reg: smpro_err_pmpro_info_lo_reg),
         data_hi: word_or_zero(window: window, reg: smpro_err_pmpro_data_hi_reg),
         data_lo: word_or_zero(window: window, reg: smpro_err_pmpro_data_lo_reg),
-      ) }
-    },
+      ) } else { none }),
+    missing: missing,
   }
 }
 
