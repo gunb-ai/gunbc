@@ -9,7 +9,9 @@ import v2.std.diagnostic {
   Accepted,
   Diagnostic,
   Diagnostics,
+  None,
   Rejected,
+  Some,
   Unavailable,
   UserInputBoundary,
   diagnostics_merge,
@@ -66,7 +68,7 @@ fn construction_confinement_caller_reason() -> Symbol {
 }
 
 fn construction_confinement_diagnostic(reason: Symbol, at: Node) -> Diagnostics {
-  v2.std.diagnostic.Some {
+  Some {
     diagnostics: diagnostics_singleton(d: Diagnostic {
       reason: reason,
       at: node_locus(node: at),
@@ -95,13 +97,13 @@ fn construction_confinement_sealed_at(
       match c {
         ConstructionSealedToModule =>
           if construction_confinement_inside(module: module, path: path) {
-            v2.std.diagnostic.None
+            None
           } else {
             construction_confinement_diagnostic(reason: construction_confinement_sealed_reason(), at: n)
           }
-        CallersAdmitted { callers: _ } => v2.std.diagnostic.None
+        CallersAdmitted { callers: _ } => None
       }
-    Absent => v2.std.diagnostic.None
+    Absent => None
   }
 }
 
@@ -128,15 +130,15 @@ fn construction_confinement_reference_at(
           match caller {
             Present { value: d } =>
               if contains(xs: cs, item: d, eq: fn(a, b) { a == b }) {
-                v2.std.diagnostic.None
+                None
               } else {
                 construction_confinement_diagnostic(reason: construction_confinement_caller_reason(), at: n)
               }
             Absent => construction_confinement_diagnostic(reason: construction_confinement_caller_reason(), at: n)
           }
-        ConstructionSealedToModule => v2.std.diagnostic.None
+        ConstructionSealedToModule => None
       }
-    Absent => v2.std.diagnostic.None
+    Absent => None
   }
 }
 
@@ -149,15 +151,15 @@ fn construction_confinement_node(
 ) -> Diagnostics {
   let constructed = match construct_tag_path_optional(n: n) {
     Present { value: p } => construction_confinement_sealed_at(index: index, module: module, n: n, path: p)
-    Absent => v2.std.diagnostic.None
+    Absent => None
   }
   let cast = match construction_confinement_cast_target_path(n: n) {
     Present { value: p } => construction_confinement_sealed_at(index: index, module: module, n: n, path: p)
-    Absent => v2.std.diagnostic.None
+    Absent => None
   }
   let referenced = match declaration_reference_path_optional(node: n) {
     Present { value: p } => construction_confinement_reference_at(index: index, caller: caller, n: n, path: p)
-    Absent => v2.std.diagnostic.None
+    Absent => None
   }
   diagnostics_merge(outer: diagnostics_merge(outer: constructed, inner: cast), inner: referenced)
 }
@@ -170,7 +172,7 @@ fn construction_confinement_subtree(
 ) -> Diagnostics {
   fold_list(
     xs: node_subtree_nodes(root: root),
-    empty: v2.std.diagnostic.None,
+    empty: None,
     cons: fn(acc, n) {
       diagnostics_merge(outer: acc, inner: construction_confinement_node(index: index, module: module, caller: caller, n: n))
     }
@@ -205,7 +207,7 @@ fn construction_confinement_refusals(tree: ResolvedTree) -> Diagnostics {
     Present { value: body } =>
       fold_list(
         xs: body.children,
-        empty: v2.std.diagnostic.None,
+        empty: None,
         cons: fn(acc, e) {
           diagnostics_merge(outer: acc, inner: construction_confinement_member(index: tree.symbol_index, module: module, edge: e))
         }
