@@ -4256,7 +4256,7 @@ pub fn observe_declared_import_closure_symbol_binding(
 
 thread_local! {
     static COMPILE_DAG_RUST_EMIT_CHECK_MEMO: std::cell::RefCell<
-        std::collections::HashMap<String, bool>,
+        std::collections::HashMap<String, Result<bool, FixtureRenderRefusal>>,
     > = std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
@@ -11579,6 +11579,9 @@ pub enum WitnessRuntimeCause {
     /// An admitted cross-claim producer was the active subject when the unchanged CPU safety
     /// ceiling fired. The token makes the prospective-fill population countable without
     /// treating first-touch order as intrinsic claim cost.
+    /// A fixture compile instrument refused to answer (`FixtureRenderRefusal`): the read path
+    /// was not emitted by a clean compile, or the closure held no fixture module.
+    FixtureRenderRefused,
     FillBudgetExceeded,
     /// An `InterpError` with its own `ClaimOutcome` arm reached the untyped classifier anyway.
     /// Loud rather than absorbed: this is a defect in the mapping above, and a run that produces
@@ -11616,6 +11619,7 @@ impl WitnessRuntimeCause {
             WitnessRuntimeCause::ShellSpawnRefused => "shell-spawn-refused",
             WitnessRuntimeCause::CallContractMismatch => "call-contract-mismatch",
             WitnessRuntimeCause::FillBudgetExceeded => "fill-budget-exceeded",
+            WitnessRuntimeCause::FixtureRenderRefused => "fixture-render-refused",
             WitnessRuntimeCause::MappedOutcomeEscaped => "mapped-outcome-escaped",
         }
     }
@@ -11656,6 +11660,7 @@ impl WitnessRuntimeCause {
             E::ShellSpawnRefused { .. } => WitnessRuntimeCause::ShellSpawnRefused,
             E::CallContractMismatch { .. } => WitnessRuntimeCause::CallContractMismatch,
             E::FillBudgetExceeded { .. } => WitnessRuntimeCause::FillBudgetExceeded,
+            E::FixtureRenderRefused { .. } => WitnessRuntimeCause::FixtureRenderRefused,
             // The five that should never arrive. See the type comment.
             E::HostToolUnresolved { .. }
             | E::HermeticHostEffectRefused { .. }
@@ -42388,7 +42393,7 @@ pub fn run_floor_prepared_toll_receipt() {
     let warm_ms = warm_started.elapsed().as_millis();
     let item3_reclaimed = cold_ms.saturating_sub(warm_ms);
     eprintln!(
-        "[floor-toll-receipt] item3_compile_dag_rust_emit_check cold_ms={} warm_ms={} first={first} second={second} reclaimed_ms={}",
+        "[floor-toll-receipt] item3_compile_dag_rust_emit_check cold_ms={} warm_ms={} first={first:?} second={second:?} reclaimed_ms={}",
         cold_ms, warm_ms, item3_reclaimed
     );
 
