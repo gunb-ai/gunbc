@@ -285,7 +285,7 @@ type FirmwareConvergenceRefusal
   | AcPowerCycleTooShort { target: FirmwareTarget, observed: Second, minimum: Second }
   | ReadbackMismatch { target: FirmwareTarget, reason: String }
   | AcCycleNotAHumanStep { target: FirmwareTarget }
-  | BootProgressLostAfterFirmwareSet { last_checkpoint: Int, soc_silent_seconds: Int, initiator: ResetInitiator }
+  | BootProgressLostAfterFirmwareSet { last_checkpoint: Int, soc_silent: Second, initiator: ResetInitiator }
   | CpuSiliconSupportUnstated { socket: Nat, bios_family: NonEmptyStr }
   | NoRollbackImageRetained { target: FirmwareTarget, reason: NonEmptyStr }
   | RollbackImageNotTheInstalledVersion { target: FirmwareTarget }
@@ -607,7 +607,7 @@ fn boot_verdict(records: List<FlashStepRecord>, boot: HostBootObservation?) -> F
         Present { value: o } =>
           match o {
             HostReachedUefi => FirmwareBaselineConverged
-            PostDdrProgressLost { last_checkpoint: c, soc_silent_seconds: q, chassis_power_on_while_silent: _, next_cycle_logged_s5_and_system_restart: _, watchdog: _, initiator: i } => refused(cause: BootProgressLostAfterFirmwareSet { last_checkpoint: c, soc_silent_seconds: q, initiator: i })
+            PostDdrProgressLost { last_checkpoint: c, soc_silent: q, chassis_power_on_while_silent: _, next_cycle_logged_s5_and_system_restart: _, watchdog: _, initiator: i } => refused(cause: BootProgressLostAfterFirmwareSet { last_checkpoint: c, soc_silent: q, initiator: i })
             HostBootUnobservable { reason: r } => refused(cause: BootOutcomeUnobservable { reason: r })
           }
       }

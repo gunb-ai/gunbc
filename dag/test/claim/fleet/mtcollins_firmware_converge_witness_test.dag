@@ -511,7 +511,7 @@ test fn whole_set_reaching_uefi_converges() -> Bool {
 // RED, the 2026-10-02 observation: progress lost after DRAM at 0x1a0a, S5 then a cold start, initiator unobserved.
 test fn post_ddr_progress_lost_after_the_set_refuses() -> Bool {
   match refusal_of(verdict: run_booted(world: world_before(power_off: true), records: whole_set(), boot: Present { value: mtcollins1_post_firmware_set_boot_2026_10_03 })) {
-    Present { value: c } => match c { BootProgressLostAfterFirmwareSet { last_checkpoint: k, soc_silent_seconds: q, initiator: _ } => k == 6666 && q == 22  _ => false }
+    Present { value: c } => match c { BootProgressLostAfterFirmwareSet { last_checkpoint: k, soc_silent: q, initiator: _ } => k == 6666 && second_count(s: q) == 22  _ => false }
     Absent => false
   }
 }
