@@ -1897,21 +1897,52 @@ fn d0_dispatch(store: FabricStorageBinding, g: FabricGroup, group: String, curre
   d0_dispatch_with(store: store, g: g, group: group, current_hosts: current_hosts, scoped: scoped, tx: tx, esc: esc, executor: executor, at: at, now: now, current: current, basis: D0BasisBroker)
 }
 
+// THE TWO QUESTIONS THE DISPATCH ASKS, EACH ANSWERED EXHAUSTIVELY ONCE: is this admission admitted, and is
+// the consent claimed by this transaction. A new arm of either type is a compile error here, never a
+// silent "no".
+fn d0_admitted_of(a: D0GrantAdmission) -> AdmittedD0Grant? {
+  match a {
+    D0GrantAdmitted { admitted: x } => Present { value: x }
+    D0GrantForAnotherGroup { granted: _ } => none
+    D0GrantForAnotherPopulation { granted: _, current: _ } => none
+    D0GrantIntentUnavailable => none
+    D0GrantRefused { cause: _ } => none
+    D0GrantClaimLost { holder: _ } => none
+    D0GrantClaimUndecided { reason: _ } => none
+    D0GrantBindingUnavailable { claim: _ } => none
+  }
+}
+
+fn d0_claim_held_by(claim: D0ClaimReading, transaction: NonEmptyStr) -> Bool {
+  match claim {
+    D0ClaimAbsent => false
+    D0ClaimUnreadable { reason: _ } => false
+    D0ClaimAt { state: st, generation: _ } =>
+      match st {
+        ClaimedBy { attempt: who, claimed_at: _ } => (who as String) == (transaction as String)
+        Unclaimed => false
+        CompletedBy { attempt: _, completed_at: _ } => false
+        AbortedBy { attempt: _, aborted_at: _, cause: _ } => false
+      }
+  }
+}
+
+fn d0_not_moved_by_this_run(recovery: D0Recovery) -> ProcessExit {
+  exit_failure(reason: join([d0_recovery_text(r: recovery), "; the claim is completed and the authority was not moved by this run"], ""))
+}
+
 fn d0_dispatch_with(store: FabricStorageBinding, g: FabricGroup, group: String, current_hosts: List<HostIdentity>, scoped: ScopedAuthorization<D0Subject>, tx: NonEmptyStr, esc: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: Timestamp, current: CurrentAuthority, basis: D0AuthorizationBasis) -> ProcessExit {
   match current {
     CurrentAuthorityUnread { group: _, step: st, reason: why } => refuse(reason: join(["authority unread at ", st, ": ", why], ""))
     CurrentAuthorityRead { authority: cur, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: recs } => {
       let claim = d0_read_claim(store: store, escalation_id: esc)
-      let held_here = match claim {
-        D0ClaimAt { state: ClaimedBy { attempt: who, claimed_at: _ }, generation: _ } => (who as String) == (tx as String)
-        _ => false
-      }
+      let held_here = d0_claim_held_by(claim: claim, transaction: tx)
       let resumed = if held_here { resume_d0_grant_with(basis: basis, store: store, authorization: scoped, escalation_id: esc, group: g, transaction: tx, executor: executor) } else { D0GrantClaimLost { holder: "no claim held by this transaction" as NonEmptyStr } }
-      let lifecycle = match resumed {
-        D0GrantAdmitted { admitted: a } => Present { value: a.binding }
-        _ => none
+      let lifecycle = match d0_admitted_of(a: resumed) {
+        Present { value: a } => Present { value: a.binding }
+        Absent => none
       }
-      let resume_refusal = if held_here { (match resumed { D0GrantAdmitted { admitted: _ } => none  _ => Present { value: d0_admission_text(a: resumed, group: group) } }) } else { none }
+      let resume_refusal = if held_here { (match d0_admitted_of(a: resumed) { Present { value: _ } => none  Absent => Present { value: d0_admission_text(a: resumed, group: group) } }) } else { none }
       match resume_refusal {
         Present { value: why } => refuse(reason: join(["the claim is held by this transaction but its grant is not admitted on this resume: ", why], ""))
         Absent => {
@@ -1920,30 +1951,31 @@ fn d0_dispatch_with(store: FabricStorageBinding, g: FabricGroup, group: String, 
         D0RecoveryRefused { cause: c } => refuse(reason: c)
         D0RecoverStart => {
           let admission = admit_d0_grant_with(basis: basis, store: store, authorization: scoped, escalation_id: esc, group: g, current_hosts: current_hosts, transaction: tx, executor: executor, at: at, now: now)
-          match admission {
-            D0GrantAdmitted { admitted: admitted } => d0_run_admitted(store: store, g: g, current_hosts: current_hosts, admitted: admitted, transaction: tx, executor: executor, escalation_id: esc, at: at, now: now, claimed_here: true)
-            _ => refuse(reason: d0_admission_text(a: admission, group: group))
+          match d0_admitted_of(a: admission) {
+            Present { value: admitted } => d0_run_admitted(store: store, g: g, current_hosts: current_hosts, admitted: admitted, transaction: tx, executor: executor, escalation_id: esc, at: at, now: now, claimed_here: true)
+            Absent => refuse(reason: d0_admission_text(a: admission, group: group))
           }
         }
         D0RecoverFirstWrite { claim_generation: cg } =>
-          match resumed {
-            D0GrantAdmitted { admitted: admitted } =>
+          match d0_admitted_of(a: resumed) {
+            Present { value: admitted } =>
               match d0_population(subject: admitted.grant.subject, current: current_hosts) {
                 D0PopulationAgrees => d0_run_admitted(store: store, g: g, current_hosts: current_hosts, admitted: admitted, transaction: tx, executor: executor, escalation_id: esc, at: at, now: now, claimed_here: false)
                 D0PopulationDiffers { granted: gr, current: cu } => {
                   let cause = join(["the group's host population changed after the claim and before any write: authorized [", hosts_wire(hs: gr), "], current [", hosts_wire(hs: cu), "]"], "")
                   match d0_terminate_claim(store: store, escalation_id: esc, transaction: tx, held: cg, completed: false, cause: cause, now: now) {
                     D0ClaimTerminated => refuse(reason: join([cause, "; the claim is aborted and the authority was not moved"], ""))
-                    other => refuse(reason: join([cause, claim_terminal_text(t: other)], ""))
+                    D0ClaimNotAttempted { still_held_by: h } => refuse(reason: join([cause, claim_terminal_text(t: D0ClaimNotAttempted { still_held_by: h })], ""))
+                    D0ClaimUnterminated { detail: d } => refuse(reason: join([cause, claim_terminal_text(t: D0ClaimUnterminated { detail: d })], ""))
                   }
                 }
               }
-            _ => refuse(reason: join([d0_recovery_text(r: recovery), "; ", d0_admission_text(a: resumed, group: group)], ""))
+            Absent => refuse(reason: join([d0_recovery_text(r: recovery), "; ", d0_admission_text(a: resumed, group: group)], ""))
           }
         D0RecoverResume { claim_generation: _ } =>
-          match resumed {
-            D0GrantAdmitted { admitted: admitted } => d0_run_admitted(store: store, g: g, current_hosts: current_hosts, admitted: admitted, transaction: tx, executor: executor, escalation_id: esc, at: at, now: now, claimed_here: false)
-            _ => refuse(reason: join([d0_recovery_text(r: recovery), "; ", d0_admission_text(a: resumed, group: group)], ""))
+          match d0_admitted_of(a: resumed) {
+            Present { value: admitted } => d0_run_admitted(store: store, g: g, current_hosts: current_hosts, admitted: admitted, transaction: tx, executor: executor, escalation_id: esc, at: at, now: now, claimed_here: false)
+            Absent => refuse(reason: join([d0_recovery_text(r: recovery), "; ", d0_admission_text(a: resumed, group: group)], ""))
           }
         D0RecoverComplete { claim_generation: cg, settled: st } =>
           match placement_finalize(store: store, consumed: preparation_consumption(store: store, preparation: st.placement.id), actor: executor, at: at) {
@@ -1954,17 +1986,21 @@ fn d0_dispatch_with(store: FabricStorageBinding, g: FabricGroup, group: String, 
           match d0_terminate_claim(store: store, escalation_id: esc, transaction: tx, held: cg, completed: true, cause: "", now: now) {
             D0ClaimTerminated =>
               match st.next {
-                SuspendedForAuthorizedSuccessor { group: _, authorization: _, exact_candidate_realization: _, lease: _, cleanup: _ } => ExitSuccess
+                SuspendedForAuthorizedSuccessor { group: _, hosts: _, authorization: _, exact_candidate_realization: _, lease: _, cleanup: _ } => ExitSuccess
                 ReleasedToFleet { group: _, release_receipt: _ } => ExitSuccess
-                _ => exit_failure(reason: join([d0_recovery_text(r: recovery), "; the claim is completed and the authority was not moved by this run"], ""))
+                PairServingActive { group: _, exact_realization: _ } => d0_not_moved_by_this_run(recovery: recovery)
+                SuspensionPendingReconciliation { group: _, hosts: _, transaction: _, authorization_binding: _, lease: _ } => d0_not_moved_by_this_run(recovery: recovery)
+                FencedRefusal { group: _, hosts: _, cause: _, disposition_authority: _ } => d0_not_moved_by_this_run(recovery: recovery)
               }
-            other => exit_failure(reason: join([d0_recovery_text(r: recovery), claim_terminal_text(t: other)], ""))
+            D0ClaimNotAttempted { still_held_by: h } => exit_failure(reason: join([d0_recovery_text(r: recovery), claim_terminal_text(t: D0ClaimNotAttempted { still_held_by: h })], ""))
+            D0ClaimUnterminated { detail: d } => exit_failure(reason: join([d0_recovery_text(r: recovery), claim_terminal_text(t: D0ClaimUnterminated { detail: d })], ""))
           }
           }
         D0RecoverAbort { claim_generation: cg, cause: c } =>
           match d0_terminate_claim(store: store, escalation_id: esc, transaction: tx, held: cg, completed: false, cause: c, now: now) {
             D0ClaimTerminated => refuse(reason: join([d0_recovery_text(r: recovery), "; the claim is aborted"], ""))
-            other => refuse(reason: join([d0_recovery_text(r: recovery), claim_terminal_text(t: other)], ""))
+            D0ClaimNotAttempted { still_held_by: h } => refuse(reason: join([d0_recovery_text(r: recovery), claim_terminal_text(t: D0ClaimNotAttempted { still_held_by: h })], ""))
+            D0ClaimUnterminated { detail: d } => refuse(reason: join([d0_recovery_text(r: recovery), claim_terminal_text(t: D0ClaimUnterminated { detail: d })], ""))
           }
       }
       }
