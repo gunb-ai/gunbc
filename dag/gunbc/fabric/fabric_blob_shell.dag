@@ -65,14 +65,6 @@ type FabricBlobShellTarget
     }
   | FabricBlobShellUnreachable { cause: NonEmptyStr }
 
-fn pinned(c: OriginCredentialStanding) -> Bool {
-  match c {
-    OriginCredentialPinned { access_key_id: _, token_value: _ } => true
-    OriginCredentialUnminted { mint_entry: _ } => false
-    OriginCredentialMintEntryUnbuilt { secret_id: _ } => false
-  }
-}
-
 fn standing_cause(direction: String, c: OriginCredentialStanding) -> NonEmptyStr {
   match c {
     OriginCredentialPinned { access_key_id: _, token_value: _ } => concat("the cache ", direction) as NonEmptyStr
