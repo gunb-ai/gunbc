@@ -1,16 +1,9 @@
 module v2.test.claim.native_census.cascade_root_fan_out
 
 import v2.compiler.compile {
-  NativeCensusCascade,
   NativeCensusCascadeMemberOf,
-  NativeCensusCascadeNone,
   NativeCensusCascadeRoot,
-  NativeCensusCascadeUnattributed,
-  NativeCensusCauseFrontEnd,
-  NativeCensusCauseGroup,
-  NativeCensusCauseGroups,
   NativeCensusCauseMember,
-  NativeCensusCauseResolve,
   NativeCensusClosureFanOutCounted,
   NativeCensusClosureFanOutUnavailable,
   native_census_cause_group_rows,
@@ -62,10 +55,10 @@ data cascade_c_on_b_source: String = "module v2.census_cascade_c\n\nimport v2.st
 
 data cascade_d_source: String = "module v2.census_cascade_d\n\nimport v2.std.logic { Bool }\nimport v2.census_cascade_b { census_cascade_b_value }\nimport v2.census_cascade_c { census_cascade_c_value }\n\nfn census_cascade_d_value(p: Bool) -> Bool { census_cascade_c_value(p: census_cascade_b_value(p: p)) }\n"
 
-fn cascade_read(source: String, unit: Symbol) -> DagSourceReadWitness {
+fn cascade_read(source: String, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: source, fidelity: Lossless },
-    artifact: Artifact { kind: SourceFile, id: unit, file_path: "dag/census_cascade.dag" },
+    artifact: Artifact { kind: SourceFile, id: unit, file_path: path },
     compilation_unit: unit,
     source_root: DagTree
   }
@@ -73,17 +66,17 @@ fn cascade_read(source: String, unit: Symbol) -> DagSourceReadWitness {
 
 // c -> b -> a.
 data cascade_linear_ingest: SourceRootIngest = [
-  cascade_read(source: cascade_a_source, unit: ^census_cascade_a_cu),
-  cascade_read(source: cascade_b_source, unit: ^census_cascade_b_cu),
-  cascade_read(source: cascade_c_on_b_source, unit: ^census_cascade_c_cu)
+  cascade_read(source: cascade_a_source, unit: ^census_cascade_a_cu, path: "dag/census_cascade_a.dag"),
+  cascade_read(source: cascade_b_source, unit: ^census_cascade_b_cu, path: "dag/census_cascade_b.dag"),
+  cascade_read(source: cascade_c_on_b_source, unit: ^census_cascade_c_cu, path: "dag/census_cascade_c.dag")
 ]
 
 // d -> {b, c} -> a. Two import paths reach a from d; d is one module.
 data cascade_diamond_ingest: SourceRootIngest = [
-  cascade_read(source: cascade_a_source, unit: ^census_cascade_a_cu),
-  cascade_read(source: cascade_b_source, unit: ^census_cascade_b_cu),
-  cascade_read(source: cascade_c_on_a_source, unit: ^census_cascade_c_cu),
-  cascade_read(source: cascade_d_source, unit: ^census_cascade_d_cu)
+  cascade_read(source: cascade_a_source, unit: ^census_cascade_a_cu, path: "dag/census_cascade_a.dag"),
+  cascade_read(source: cascade_b_source, unit: ^census_cascade_b_cu, path: "dag/census_cascade_b.dag"),
+  cascade_read(source: cascade_c_on_a_source, unit: ^census_cascade_c_cu, path: "dag/census_cascade_c.dag"),
+  cascade_read(source: cascade_d_source, unit: ^census_cascade_d_cu, path: "dag/census_cascade_d.dag")
 ]
 
 // WHAT THE CENSUS REPORTED, reduced to what the claims read. `walls` counts every member that is
