@@ -79,6 +79,14 @@ fn http_client_get_argv(url: NonEmptyStr, max_time: Second) -> List<String> {
 // the URL still names the scheme, authority and path the server routes on, but the connection is
 // made to the socket file and the kernel attests the caller to the server. The exit codes are
 // PostStdinWithin's; a socket that is absent or not traversable is exit 7, could not connect.
+// Probe, A LIVENESS PROBE: one bounded connection attempt, answered as DATA on every arm. This is
+// the observation half of a readiness poll (the retry loop lives with the caller, which owns the
+// budget): StatusWithin REFUSES a nonzero curl, which is the wrong shape for polling a server that
+// is still warming up -- "connection refused" is an expected answer mid-startup, not a refusal.
+// Probe maps the curl exit code through untouched (7 refused, 28 timed out, 0 with an HTTP status
+// in stdout; `000` on stdout is curl's no-response marker per man curl(1), `-w %{http_code}`), so
+// the caller can distinguish "not up yet" from "up and wrong" without this operation inventing a
+// retry policy.
 service http.Client {
   operation Get {
     requires Network
@@ -290,6 +298,34 @@ service http.Client {
     }
     mock_response {
       0 => { body: "", success: false } "hermetic: no live registry; observation refuses rather than fabricate a body"
+    }
+  }
+
+  operation Probe {
+    requires Network
+    input { url: NonEmptyStr, connect_seconds: NonEmptyStr }
+    output {
+      status: String from "stdout"
+      answered: Bool from "exit_success"
+      exit_code: Int from "exit_code"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "curl",
+        "-sS",
+        "-o", "/dev/null",
+        "-w", "%{http_code}",
+        "--connect-timeout", "{connect_seconds}",
+        "{url}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => Unit
+    }
+    mock_response {
+      0 => { status: "", answered: false, exit_code: 7 } "hermetic: no live endpoint; a probe replay records that nothing answered"
     }
   }
 }
