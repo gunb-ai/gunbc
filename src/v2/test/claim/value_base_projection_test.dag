@@ -44,19 +44,51 @@ fn vbp_has_value_projection_of(o: Outcome<ResolvedTree>, field: Symbol) -> Bool 
   }
 }
 
+// EACH FIXTURE PROGRAM IS ASSEMBLED ONCE, by a NULLARY producer enrolled in
+// v2.workflow.floor_pure_producer_share floor_cross_claim_pure_producers_warm: source assembly is the real
+// route this file must exercise (the producer IS that route), and it dominates every claim, so it is paid
+// once in floor preparation and each claim reads the DECIDED, portable value. Claims over one program share
+// its producer.
+type VbpCallProjectionReading {
+  keeps_field: Bool
+  infers: Bool
+}
+
+fn vbp_call_projection_reading() -> VbpCallProjectionReading {
+  let assembled = tpb_assemble(src: vbp_call_projection)
+  VbpCallProjectionReading {
+    keeps_field: vbp_has_value_projection_of(o: assembled, field: ^reason),
+    infers: match vbp_infer_assembled(o: assembled) {
+      Accepted { value: _, diagnostics: _ } => true
+      Rejected { diagnostics: _ } => false
+    }
+  }
+}
+
+fn vbp_field_spelled_like_a_param_keeps_field() -> Bool {
+  vbp_has_value_projection_of(o: tpb_assemble(src: vbp_field_spelled_like_a_param), field: ^reason)
+}
+
+fn vbp_undeclared_field_is_counted() -> Bool {
+  match vbp_infer_assembled(o: tpb_assemble(src: vbp_undeclared_field)) {
+    Accepted { value: _, diagnostics: d } => diagnostics_has_reason(d: d, reason: ^infer_grounding_not_derived)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 // (1) A VALUE-BASE PROJECTION RESOLVES ITS BASE AND KEEPS ITS FIELD.
 test fn vbp_value_base_projection_keeps_its_field() -> Bool {
-  vbp_has_value_projection_of(o: tpb_assemble(src: vbp_call_projection), field: ^reason)
+  vbp_call_projection_reading().keeps_field
 }
 
 // (2) A BOUND NAME SPELLED LIKE THE FIELD IS NOT CAPTURED AS THE FIELD: `reason` is also a parameter of r,
 // and the projection still names the field.
 test fn vbp_a_param_spelled_like_the_field_is_not_captured() -> Bool {
-  vbp_has_value_projection_of(o: tpb_assemble(src: vbp_field_spelled_like_a_param), field: ^reason)
+  vbp_field_spelled_like_a_param_keeps_field()
 }
 
-fn vbp_infer(src: String) -> Outcome<Bool> {
-  match tpb_assemble(src: src) {
+fn vbp_infer_assembled(o: Outcome<ResolvedTree>) -> Outcome<Bool> {
+  match o {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: tree, diagnostics: _ } =>
       match infer(tree: tree) {
@@ -68,10 +100,7 @@ fn vbp_infer(src: String) -> Outcome<Bool> {
 
 // (3) THE PROJECTION INFERS.
 test fn vbp_call_result_projection_infers() -> Bool {
-  match vbp_infer(src: vbp_call_projection) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
+  vbp_call_projection_reading().infers
 }
 
 // (4) THE RESIDUE IS COUNTED, NOT ADMITTED: an undeclared field off a call result is accepted only because
@@ -80,8 +109,5 @@ test fn vbp_call_result_projection_infers() -> Bool {
 // gunbc.recurring_failure_mode application_result_type_not_derived_in_v2_infer; when application results
 // are typed, this flips to a refusal at the field and is inverted into its control.
 test fn vbp_undeclared_field_off_a_call_result_is_on_the_counted_frontier() -> Bool {
-  match vbp_infer(src: vbp_undeclared_field) {
-    Accepted { value: _, diagnostics: d } => diagnostics_has_reason(d: d, reason: ^infer_grounding_not_derived)
-    Rejected { diagnostics: _ } => false
-  }
+  vbp_undeclared_field_is_counted()
 }
