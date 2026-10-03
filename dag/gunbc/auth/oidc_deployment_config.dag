@@ -1,0 +1,318 @@
+module gunbc.auth.oidc_deployment_config
+
+// THE DEPLOYMENT CONFIG SEAM for the Google login: the OAuth client id, the client secret,
+// the redirect URI, and the login/session lifetime bounds arrive from a config FILE the
+// operator drops, never from rows in this tree — a client secret must never be a repository
+// fact, and the redirect URI's exact-match owned domain (tracker[-dev].gunb.ai) is a
+// deployment property, not a model one. THE PATH ARRIVES BY ENVIRONMENT, the spark-credential
+// pattern: GUNBC_OIDC_CONFIG_FILE names the file, the same mechanism the spark lane binds its
+// credential path by, and the file itself is owner-only (0600) like every credential file this
+// deployment keeps.
+//
+// ABSENT CONFIG IS A LOCATED REFUSAL, never a silent disable and never a fallback to anything:
+// the login route answers 503 naming the exact cause (env unset / file absent / unreadable /
+// malformed / a member missing), and nothing else in the serve breaks — every consumer folds
+// the read result, so an unconfigured deployment is a login that refuses loudly, not a tree
+// that fails to compile.
+//
+// THE CONFIG FILE SHAPE (one JSON object):
+//   {
+//     "schema": "gunbc-oidc-config/v1",
+//     "client_id": "<google oauth client id>",
+//     "client_secret": "<client secret>",
+//     "redirect_uri": "https://<host>/auth/google/callback",
+//     "admitted_audiences": ["<client id>"],
+//     "expected_hosted_domain": "gunb.ai",
+//     "session_lifetime_seconds": 43200,
+//     "login_transaction_lifetime_seconds": 600
+//   }
+// admitted_audiences defaults to [client_id] when the member is absent; the two lifetimes
+// bound the session and the login transaction respectively, and the issuer/authorization/
+// token endpoints are the tree's own rows (they are Google's protocol facts, not deployment
+// secrets, and gunbc.auth.oidc_id_token_verification owns the JWKS row the same way).
+
+import std.types { String, NonEmptyStr, Int, List, Secret }
+import std.algebra { trim }
+import std.nat { Nat }
+import std.checked_arithmetic { checked_int_to_nat }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io {
+  Filesystem, filesystem_read_outcome, filesystem_listing_observation, filesystem_file_observation,
+  filesystem_established_absence_detail,
+}
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
+import extdeps.languages.json.parse {
+  parse_json_document, json_field_string, json_field_int, json_field, json_document_gap_text,
+  JsonDocumentParsed, JsonDocumentUnreadable, FieldAbsent, FieldRead, FieldMalformed,
+}
+
+data oidc_config_env_var: NonEmptyStr = "GUNBC_OIDC_CONFIG_FILE" as NonEmptyStr
+
+data oidc_config_schema: String = "gunbc-oidc-config/v1"
+
+// THE ONE DEFAULT: admitted_audiences rides [client_id] when the operator names no roster.
+// The audience roster is the anti-substitution binding (a token minted for another client
+// refuses), and one client admitting exactly itself is the deployment's ordinary shape; an
+// explicit roster widens it, never the other way.
+type OidcDeploymentConfig {
+  client_id: NonEmptyStr
+  client_secret: Secret
+  redirect_uri: NonEmptyStr
+  admitted_audiences: List<NonEmptyStr>
+  expected_hosted_domain: NonEmptyStr
+  session_lifetime_seconds: Nat
+  login_transaction_lifetime_seconds: Nat
+}
+
+type OidcDeploymentConfigRead
+  = OidcDeploymentConfigLoaded { config: OidcDeploymentConfig }
+  | OidcDeploymentConfigUnavailable { cause: String }
+
+// THE READ, one refusal cause per wire fact: the env var unset, the path it names absent or
+// unreadable, the file not one JSON document, the schema member wrong, and each required
+// member absent, malformed, or empty — each named, in order, so the 503 an operator sees says
+// which fact to fix. Absence of the FILE is established from its directory's listing, never
+// from a failed read (the filesystem discipline the session store keeps).
+fn oidc_deployment_config_read() -> OidcDeploymentConfigRead {
+  let env_read = shell.Env.Get(name: oidc_config_env_var)
+  match env_read.value {
+    Absent =>
+      OidcDeploymentConfigUnavailable {
+        cause: join([oidc_config_env_var as String, " is not set in the serve process environment; drop the operator config file and name its path there"], ""),
+      }
+    Present { value: raw_path } =>
+      let path = trim(raw_path)
+      if path == "" {
+        OidcDeploymentConfigUnavailable {
+          cause: join([oidc_config_env_var as String, " names an empty path"], ""),
+        }
+      } else {
+        oidc_deployment_config_read_path(path: path)
+      }
+  }
+}
+
+fn oidc_deployment_config_read_path(path: String) -> OidcDeploymentConfigRead {
+  let slash = oidc_last_slash(path: path)
+  let directory = if slash < 0 { "." } else { substring(s: path, start: 0, end: slash + 1) }
+  let name = if slash < 0 { path } else { substring(s: path, start: slash + 1, end: string_length(s: path)) }
+  if name == "" {
+    OidcDeploymentConfigUnavailable { cause: join(["the config path ", path, " names no file"], "") }
+  } else {
+    let listing_result = Filesystem.List(path: directory)
+    let listing = filesystem_listing_observation(
+      directory: directory,
+      success: listing_result.success,
+      entries: listing_result.entries,
+      error: listing_result.error,
+    )
+    let read_result = Filesystem.Read(path: path)
+    match filesystem_file_observation(
+      listing: listing,
+      name: name,
+      path: path,
+      read: filesystem_read_outcome(content: read_result.content, success: read_result.success, error: read_result.error),
+    ) {
+      FilesystemFileAbsent(absence) =>
+        OidcDeploymentConfigUnavailable {
+          cause: join(["the config file ", path, " does not exist (", filesystem_established_absence_detail(absence: absence), ")"], ""),
+        }
+      FilesystemFileIndeterminate { cause: c } =>
+        OidcDeploymentConfigUnavailable { cause: join(["the config file ", path, " could not be read: ", c], "") }
+      FilesystemFileObservationsDisagree { path: _, cause: c } =>
+        OidcDeploymentConfigUnavailable { cause: join(["the config file ", path, " moved while being read: ", c], "") }
+      FilesystemFileSubjectRefused { directory: _, name: _, cause: c } =>
+        OidcDeploymentConfigUnavailable { cause: c }
+      FilesystemFileRead { path: _, content: c } =>
+        oidc_deployment_config_parse(content: c, path: path)
+    }
+  }
+}
+
+fn oidc_last_slash(path: String) -> Int {
+  oidc_last_slash_from(path: path, i: string_length(s: path) - 1)
+}
+
+fn oidc_last_slash_from(path: String, i: Int) -> Int {
+  if i < 0 {
+    -1
+  } else if char_at(path, i) == "/" {
+    i
+  } else {
+    oidc_last_slash_from(path: path, i: i - 1)
+  }
+}
+
+// THE DECODE: the schema row is checked first (a wrong-schema file is a different document,
+// refused as itself), then the required members, then the admitted-audiences default. Every
+// member refusal carries the member's name; a missing member is different from a malformed
+// one and both are named.
+fn oidc_deployment_config_parse(content: String, path: String) -> OidcDeploymentConfigRead {
+  match parse_json_document(s: content) {
+    JsonDocumentUnreadable { gap: g } =>
+      OidcDeploymentConfigUnavailable {
+        cause: join(["the config file ", path, " is not one JSON document: ", json_document_gap_text(gap: g)], ""),
+      }
+    JsonDocumentParsed { value: doc } =>
+      match json_field_string(obj: doc, key: "schema") {
+        FieldAbsent => OidcDeploymentConfigUnavailable { cause: "the config file has no schema member" }
+        FieldMalformed { cause: c } =>
+          OidcDeploymentConfigUnavailable { cause: join(["the config file's schema member refused: ", c], "") }
+        FieldRead { value: schema } =>
+          if schema != oidc_config_schema {
+            OidcDeploymentConfigUnavailable {
+              cause: join(["the config file's schema member is \"", schema, "\", not \"", oidc_config_schema, "\""], ""),
+            }
+          } else {
+            oidc_deployment_config_members(doc: doc, path: path)
+          }
+      }
+  }
+}
+
+fn oidc_config_required_string(doc: JsonValue, key: String) -> OidcConfigFieldString {
+  match json_field_string(obj: doc, key: key) {
+    FieldAbsent => OidcConfigFieldStringUnavailable { cause: join(["the config file has no ", key, " member"], "") }
+    FieldMalformed { cause: c } => OidcConfigFieldStringUnavailable { cause: join(["the config file's ", key, " member refused: ", c], "") }
+    FieldRead { value: v } =>
+      if v == "" {
+        OidcConfigFieldStringUnavailable { cause: join(["the config file's ", key, " member is empty"], "") }
+      } else {
+        OidcConfigFieldStringRead { value: v }
+      }
+  }
+}
+
+type OidcConfigFieldString
+  = OidcConfigFieldStringRead { value: String }
+  | OidcConfigFieldStringUnavailable { cause: String }
+
+fn oidc_deployment_config_members(doc: JsonValue, path: String) -> OidcDeploymentConfigRead {
+  match oidc_config_required_string(doc: doc, key: "client_id") {
+    OidcConfigFieldStringUnavailable { cause: c } => OidcDeploymentConfigUnavailable { cause: c }
+    OidcConfigFieldStringRead { value: client_id } =>
+      match oidc_config_required_string(doc: doc, key: "client_secret") {
+        OidcConfigFieldStringUnavailable { cause: c } => OidcDeploymentConfigUnavailable { cause: c }
+        OidcConfigFieldStringRead { value: client_secret } =>
+          match oidc_config_required_string(doc: doc, key: "redirect_uri") {
+            OidcConfigFieldStringUnavailable { cause: c } => OidcDeploymentConfigUnavailable { cause: c }
+            OidcConfigFieldStringRead { value: redirect_uri } =>
+              match oidc_config_required_int(doc: doc, key: "session_lifetime_seconds") {
+                OidcConfigFieldIntUnavailable { cause: c } => OidcDeploymentConfigUnavailable { cause: c }
+                OidcConfigFieldIntRead { value: session_lifetime } =>
+                  match oidc_config_required_int(doc: doc, key: "login_transaction_lifetime_seconds") {
+                    OidcConfigFieldIntUnavailable { cause: c } => OidcDeploymentConfigUnavailable { cause: c }
+                    OidcConfigFieldIntRead { value: transaction_lifetime } =>
+                      match oidc_config_required_string(doc: doc, key: "expected_hosted_domain") {
+                        OidcConfigFieldStringUnavailable { cause: c } => OidcDeploymentConfigUnavailable { cause: c }
+                        OidcConfigFieldStringRead { value: hosted_domain } =>
+                          oidc_deployment_config_finish(
+                            doc: doc,
+                            client_id: client_id,
+                            client_secret: client_secret,
+                            redirect_uri: redirect_uri,
+                            hosted_domain: hosted_domain,
+                            session_lifetime: session_lifetime,
+                            transaction_lifetime: transaction_lifetime,
+                          )
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn oidc_config_required_int(doc: JsonValue, key: String) -> OidcConfigFieldInt {
+  match json_field_int(obj: doc, key: key) {
+    FieldAbsent => OidcConfigFieldIntUnavailable { cause: join(["the config file has no ", key, " member"], "") }
+    FieldMalformed { cause: c } => OidcConfigFieldIntUnavailable { cause: join(["the config file's ", key, " member refused: ", c], "") }
+    FieldRead { value: v } =>
+      if v <= 0 {
+        OidcConfigFieldIntUnavailable { cause: join(["the config file's ", key, " member must be positive"], "") }
+      } else {
+        match checked_int_to_nat(n: v) {
+          Absent => OidcConfigFieldIntUnavailable { cause: join(["the config file's ", key, " member does not cross to Nat"], "") }
+          Present { value: n } => OidcConfigFieldIntRead { value: n }
+        }
+      }
+  }
+}
+
+type OidcConfigFieldInt
+  = OidcConfigFieldIntRead { value: Nat }
+  | OidcConfigFieldIntUnavailable { cause: String }
+
+fn oidc_deployment_config_finish(
+  doc: JsonValue,
+  client_id: String,
+  client_secret: String,
+  redirect_uri: String,
+  hosted_domain: String,
+  session_lifetime: Nat,
+  transaction_lifetime: Nat,
+) -> OidcDeploymentConfigRead {
+  match oidc_config_audiences(doc: doc, client_id: client_id) {
+    OidcConfigAudiencesUnavailable { cause: c } => OidcDeploymentConfigUnavailable { cause: c }
+    OidcConfigAudiencesRead { value: audiences } =>
+      OidcDeploymentConfigLoaded {
+        config: OidcDeploymentConfig {
+          client_id: client_id as NonEmptyStr,
+          client_secret: client_secret as Secret,
+          redirect_uri: redirect_uri as NonEmptyStr,
+          admitted_audiences: audiences,
+          expected_hosted_domain: hosted_domain as NonEmptyStr,
+          session_lifetime_seconds: session_lifetime,
+          login_transaction_lifetime_seconds: transaction_lifetime,
+        }
+      }
+  }
+}
+
+type OidcConfigAudiences
+  = OidcConfigAudiencesRead { value: List<NonEmptyStr> }
+  | OidcConfigAudiencesUnavailable { cause: String }
+
+// THE AUDIENCE ROSTER: absent member admits exactly the client id; a present member must be
+// an array of non-empty strings, and an empty roster refuses — a roster of nobody is the
+// fail-closed default the write probably meant to override.
+fn oidc_config_audiences(doc: JsonValue, client_id: String) -> OidcConfigAudiences {
+  match json_field(obj: doc, key: "admitted_audiences") {
+    FieldAbsent => OidcConfigAudiencesRead { value: [client_id as NonEmptyStr] }
+    FieldMalformed { cause: c } => OidcConfigAudiencesUnavailable { cause: join(["the config file's admitted_audiences member refused: ", c], "") }
+    FieldRead { value: v } =>
+      match v {
+        JsonNull => OidcConfigAudiencesRead { value: [client_id as NonEmptyStr] }
+        JsonArray { elements: elements } => oidc_config_audience_entries(elements: elements, client_id: client_id, audiences: [])
+        JsonBool { value: _ } => OidcConfigAudiencesUnavailable { cause: "the config file's admitted_audiences member is a bool, not an array" }
+        JsonNumber { lexeme: _ } => OidcConfigAudiencesUnavailable { cause: "the config file's admitted_audiences member is a number, not an array" }
+        JsonString { value: _ } => OidcConfigAudiencesUnavailable { cause: "the config file's admitted_audiences member is a string, not an array" }
+        JsonObject { members: _ } => OidcConfigAudiencesUnavailable { cause: "the config file's admitted_audiences member is an object, not an array" }
+      }
+  }
+}
+
+fn oidc_config_audience_entries(elements: List<JsonValue>, client_id: String, audiences: List<NonEmptyStr>) -> OidcConfigAudiences {
+  match elements.first() {
+    Absent =>
+      if count(audiences) == 0 {
+        OidcConfigAudiencesUnavailable { cause: "the config file's admitted_audiences roster is empty; name at least the client id" }
+      } else {
+        OidcConfigAudiencesRead { value: audiences }
+      }
+    Present { value: element } =>
+      match element {
+        JsonString { value: s } =>
+          if s == "" {
+            OidcConfigAudiencesUnavailable { cause: "the config file's admitted_audiences roster carries an empty entry" }
+          } else {
+            oidc_config_audience_entries(elements: elements.skip(n: 1), client_id: client_id, audiences: list_push(audiences, s as NonEmptyStr))
+          }
+        JsonNull => OidcConfigAudiencesUnavailable { cause: "the config file's admitted_audiences roster carries a null entry" }
+        JsonBool { value: _ } => OidcConfigAudiencesUnavailable { cause: "the config file's admitted_audiences roster carries a non-string entry" }
+        JsonNumber { lexeme: _ } => OidcConfigAudiencesUnavailable { cause: "the config file's admitted_audiences roster carries a non-string entry" }
+        JsonArray { elements: _ } => OidcConfigAudiencesUnavailable { cause: "the config file's admitted_audiences roster carries a nested array entry" }
+        JsonObject { members: _ } => OidcConfigAudiencesUnavailable { cause: "the config file's admitted_audiences roster carries an object entry" }
+      }
+  }
+}

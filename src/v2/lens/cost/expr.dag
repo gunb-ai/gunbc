@@ -22,7 +22,7 @@ import v2.std.diagnostic {
   Unavailable,
   textual_whole_file_locus
 }
-import v2.std.nat { Nat, Succ, Zero, nat_lte }
+import std.nat { Nat, Succ, Zero }
 
 type SizeExpr
   = SizeConst { value: Nat }
@@ -182,7 +182,7 @@ fn normalize_cost_expr_to_symbolic(expr: CostExpr) -> SymbolicCost {
         b: normalize_cost_expr_to_symbolic(expr: bd)
       )
     CostLog { base: b, argument: a } =>
-      if nat_lte(a: b, b: Succ { prev: Zero }) {
+      if b <= Succ { prev: Zero } {
         normalize_cost_expr_to_symbolic(
           expr: CostRefused {
             cause: InvalidLogBase {
