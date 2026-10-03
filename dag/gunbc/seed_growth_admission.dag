@@ -58,6 +58,7 @@ import gunbc.source_root_eval_driver_seed_growth { source_root_eval_driver_seed_
 import gunbc.gen_one_executable_keep_seed_growth { gen_one_executable_keep_seed_growth_justification }
 import gunbc.emitted_build_failure_retention_seed_growth { emitted_build_failure_retention_seed_growth_justification }
 import gunbc.native_claim_program_seed_growth { native_claim_program_seed_growth_justification }
+import gunbc.dependency_demand_census_seed_growth { dependency_demand_census_seed_growth_justification }
 import gunbc.native_route_refusal_summary_seed_growth { native_route_refusal_summary_seed_growth_justification }
 import gunbc.native_route_advisory_summary_seed_growth { native_route_advisory_summary_seed_growth_justification }
 import gunbc.observation_file_effect_seed_growth { observation_file_effect_seed_growth_justification }
@@ -292,6 +293,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     gen_one_executable_keep_seed_growth_justification,
     emitted_build_failure_retention_seed_growth_justification,
     native_claim_program_seed_growth_justification,
+    dependency_demand_census_seed_growth_justification,
     native_route_refusal_summary_seed_growth_justification,
     native_route_advisory_summary_seed_growth_justification,
     census_memo_seed_growth_justification,
@@ -465,12 +467,26 @@ fn seed_growth_live_lookup(live: Map<String, Bool>, key: String) -> Bool? {
 }
 
 fn seed_growth_stale_justifications(live_items: List<DeclarationRef>) -> List<String> {
+  seed_growth_stale_declarations(live_items: live_items)
+    |> map(r => declaration_ref_display_key(ref: r))
+}
+
+// THE ROSTER BINDING IS ONE STEP AND THE KEY RENDERING ANOTHER. The real-roster binding is its own
+// function so a witness can hold it to the COMPLETE roster (every row reported stale against a live
+// population that names none of them) without paying the display-key render of every row, which is
+// the expense and which no completeness assertion inspects.
+fn seed_growth_stale_declarations(live_items: List<DeclarationRef>) -> List<DeclarationRef> {
+  seed_growth_stale_over(roster: seed_growth_roster_all_declarations(), live_items: live_items)
+}
+
+// THE STALENESS RELATION OVER A SUPPLIED ROSTER. A witness of the relation's shape supplies a
+// small roster (DESIGN section 3, a witness discriminates at one interface).
+fn seed_growth_stale_over(roster: List<DeclarationRef>, live_items: List<DeclarationRef>) -> List<DeclarationRef> {
   let live = seed_growth_live_set(live_items: live_items)
   filter(
-    xs: seed_growth_roster_all_declarations(),
+    xs: roster,
     predicate: fn(r) { !seed_growth_live_has(live: live, r: r) }
   )
-    |> map(r => declaration_ref_display_key(ref: r))
 }
 
 fn seed_growth_unjustified_additions(added: List<DeclarationRef>) -> List<String> {

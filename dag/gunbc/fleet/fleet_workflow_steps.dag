@@ -754,6 +754,16 @@ data fleet_arm_mutation_group_glm_group_b_native: String = "gunbc-arm-mutation-g
 // apply keyed here queues behind D0 and behind every srv1 mutation whichever executor it names.
 data fleet_arm_mutation_group_deepseek_group_a: String = join([fleet_host_mutation_group_prefix, operator_host_srv1 as String], "")
 
+// A SUBJECT NARROWER THAN ITS HOST GETS ITS OWN KEY WHEN NO OTHER MODE MUTATES IT (operator request
+// 2026-10-03). The approval device store -- gunbc.auth.approval_device_redemption
+// approval_device_store_root on srv1 -- is written by the enrolment-code issue and by nothing else a
+// fleet-converge mode runs, so keying it to srv1's host domain serialised it behind Group A work it
+// shares no file with, and GitHub's one-pending-per-group rule CANCELLED queued enrolments when a
+// Spark dispatch arrived (run 37101585671). Two issues still queue behind each other here. Belt, not
+// the wall: each enrolment record is an O_EXCL commit (gunbc.auth.approval_device_redemption
+// commit_enrolment), so a host-wide srv1 converge that does not traverse this group cannot corrupt it.
+data fleet_subject_mutation_group_approval_device_store: String = join(["gunbc-subject-mutation-approval-device-store-", operator_host_srv1 as String], "")
+
 // The Int->Nat crossing is admitted at a function RETURN position (std.checked_arithmetic's own
 // note), so the sum of the positive per-step allowances crosses here and the public fn carries the
 // std.measure Minute duration rather than a bare scalar (review 57760 finding 1).
