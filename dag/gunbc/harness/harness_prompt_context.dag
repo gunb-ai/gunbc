@@ -1,0 +1,349 @@
+module gunbc.harness.harness_prompt_context
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef }
+import std.content_hash { content_hash_atom }
+import gunbc.roadmap_model { RoadmapNodeId }
+
+// A PROMPT IS A PROJECTION OF AN ADMITTED CONTEXT SNAPSHOT, not an authority and never an authored
+// string handed across a boundary (scoped review against 81e7c779, 2026-09-29; invariant repairs
+// from review 5358022153). This module models the snapshot and its inputs; provider envelopes
+// project from the plan LATE, and the digest receipts make "what the model was told"
+// reconstructable from durable inputs after any restart. WHAT THE TYPES GUARD AND WHAT THEY DO
+// NOT: input provenance, standing, and revision are typed; segment CONTENT is rendered prose,
+// digested but not structured. The value is that inputs are typed and revisioned -- a stale
+// authority revision invalidates the render, a withdrawn item cannot render -- not that the prose
+// is machine-checked. Semantic contradiction between two free-text inputs is not inferred here; a
+// conflict must be typed to refuse.
+//
+// THE STANDING OF A CONTEXT ITEM. Withdrawn exists so a retracted assumption cannot linger in a
+// conversation cache and resurface as a fact: it is a first-class state, not a deletion.
+type ContextStanding
+  = EstablishedObservation
+  | DerivedConclusion
+  | OwnerRuling
+  | InstructionInput
+  | Hypothesis
+  | OpenQuestion
+  | Withdrawn
+
+fn context_standing_key(standing: ContextStanding) -> String {
+  match standing {
+    EstablishedObservation => "established-observation"
+    DerivedConclusion => "derived-conclusion"
+    OwnerRuling => "owner-ruling"
+    InstructionInput => "instruction"
+    Hypothesis => "hypothesis"
+    OpenQuestion => "open-question"
+    Withdrawn => "withdrawn"
+  }
+}
+
+// THE TYPED PROMPT INPUT. Every segment of a rendered prompt traces to one of these; an input
+// carries the REVISION of its authority so a changed authority invalidates any snapshot that
+// consumed it, rather than the old render silently persisting. required marks the undroppable
+// population (active work contract, latest instruction, unresolved guidance, owner rulings, the
+// current revision); compaction and assembly both refuse rather than lose one.
+type PromptInput
+  = AuthorityInput { declaration: DeclarationRef, revision: String, required: Bool }
+  | WorkContractInput { node: RoadmapNodeId, revision: String, required: Bool }
+  | EvidenceInput { artifact: String, subject: String, standing: ContextStanding, required: Bool }
+  | ConversationTurnInput { turn_identity: String, parent_identity: String, required: Bool }
+  | GuidanceInput { receipt_identity: String, resolved: Bool, required: Bool }
+  | DerivedConclusionInput { conclusion_key: String, grounds: List<DeclarationRef>, required: Bool }
+
+// THE CANONICAL PREIMAGE IS LENGTH-PREFIXED, never separator-joined (review 5358022153): a field
+// containing a separator cannot manufacture the same preimage as another field sequence, and every
+// semantic field -- standing, resolution, requiredness -- participates, so a Hypothesis that
+// becomes an EstablishedObservation is a DIFFERENT input, not the same one restated.
+fn prompt_field_enc(s: String) -> String {
+  join([to_string(value: string_length(s: s)), ":", s], "")
+}
+
+fn prompt_bool_enc(b: Bool) -> String {
+  if b { "1:t" } else { "1:f" }
+}
+
+fn prompt_decl_ref_enc(d: DeclarationRef) -> String {
+  join([
+    prompt_field_enc(s: d.module_path as String),
+    prompt_field_enc(s: d.decl_name as String),
+  ], "")
+}
+
+fn prompt_input_canonical_text(input: PromptInput) -> String {
+  match input {
+    AuthorityInput { declaration, revision, required } =>
+      join(["18:authority-input/v2", prompt_decl_ref_enc(d: declaration), prompt_field_enc(s: revision), prompt_bool_enc(b: required)], "")
+    WorkContractInput { node, revision, required } =>
+      join(["20:work-contract-input/v2", prompt_field_enc(s: node as String), prompt_field_enc(s: revision), prompt_bool_enc(b: required)], "")
+    EvidenceInput { artifact, subject, standing, required } =>
+      join(["16:evidence-input/v2", prompt_field_enc(s: artifact), prompt_field_enc(s: subject), prompt_field_enc(s: context_standing_key(standing: standing)), prompt_bool_enc(b: required)], "")
+    ConversationTurnInput { turn_identity, parent_identity, required } =>
+      join(["24:conversation-turn-input/v2", prompt_field_enc(s: turn_identity), prompt_field_enc(s: parent_identity), prompt_bool_enc(b: required)], "")
+    GuidanceInput { receipt_identity, resolved, required } =>
+      join(["15:guidance-input/v2", prompt_field_enc(s: receipt_identity), prompt_bool_enc(b: resolved), prompt_bool_enc(b: required)], "")
+    DerivedConclusionInput { conclusion_key, grounds, required } =>
+      join(concat(
+        ["25:derived-conclusion-input/v2", prompt_field_enc(s: conclusion_key)],
+        map(grounds, g => prompt_decl_ref_enc(d: g)),
+        [prompt_bool_enc(b: required)],
+      ), "")
+  }
+}
+
+fn prompt_input_required(input: PromptInput) -> Bool {
+  match input {
+    AuthorityInput { declaration: _, revision: _, required } => required
+    WorkContractInput { node: _, revision: _, required } => required
+    EvidenceInput { artifact: _, subject: _, standing: _, required } => required
+    ConversationTurnInput { turn_identity: _, parent_identity: _, required } => required
+    GuidanceInput { receipt_identity: _, resolved: _, required } => required
+    DerivedConclusionInput { conclusion_key: _, grounds: _, required } => required
+  }
+}
+
+fn prompt_input_is_withdrawn(input: PromptInput) -> Bool {
+  match input {
+    EvidenceInput { artifact: _, subject: _, standing, required: _ } =>
+      match standing {
+        Withdrawn => true
+        EstablishedObservation => false
+        DerivedConclusion => false
+        OwnerRuling => false
+        InstructionInput => false
+        Hypothesis => false
+        OpenQuestion => false
+      }
+    AuthorityInput { declaration: _, revision: _, required: _ } => false
+    WorkContractInput { node: _, revision: _, required: _ } => false
+    ConversationTurnInput { turn_identity: _, parent_identity: _, required: _ } => false
+    GuidanceInput { receipt_identity: _, resolved: _, required: _ } => false
+    DerivedConclusionInput { conclusion_key: _, grounds: _, required: _ } => false
+  }
+}
+
+// THE SNAPSHOT: one immutable binding of inputs to an attempt lineage at an epoch and a source
+// revision. The alignment probes of one checkpoint share a snapshot identity and receive different
+// PROJECTIONS of it; they never share an undifferentiated conversation.
+type PromptContextSnapshot {
+  attempt_lineage: String
+  epoch: Int
+  source_revision: String
+  work_contract_revision: String
+  inputs: List<PromptInput>
+}
+
+fn prompt_snapshot_digest(snapshot: PromptContextSnapshot) -> String {
+  content_hash_atom(value: join([
+    "25:prompt-context-snapshot/v2",
+    prompt_field_enc(s: snapshot.attempt_lineage),
+    to_string(value: snapshot.epoch),
+    ":",
+    prompt_field_enc(s: snapshot.source_revision),
+    prompt_field_enc(s: snapshot.work_contract_revision),
+    join(map(snapshot.inputs, i => prompt_input_canonical_text(input: i)), ""),
+  ], "") as NonEmptyStr).digest as String
+}
+
+// A RENDERED SEGMENT: typed source, declared purpose, and the content digested at render time.
+// required is derived from the source input, never asserted beside it, so a segment cannot claim
+// undroppability its source does not have.
+type PromptSegment {
+  purpose: String
+  source: PromptInput
+  content: String
+  content_digest: String
+}
+
+fn prompt_segment_render(purpose: String, source: PromptInput, content: String) -> PromptSegment {
+  PromptSegment {
+    purpose: purpose,
+    source: source,
+    content: content,
+    content_digest: content_hash_atom(value: join(["18:prompt-segment/v2", prompt_field_enc(s: purpose), prompt_field_enc(s: content)], "") as NonEmptyStr).digest as String,
+  }
+}
+
+fn prompt_segment_required(segment: PromptSegment) -> Bool {
+  prompt_input_required(input: segment.source)
+}
+
+type PromptPlan {
+  snapshot: PromptContextSnapshot
+  snapshot_digest: String
+  ordered_segments: List<PromptSegment>
+}
+
+// THE ASSEMBLY REFUSALS, one per way the join can lie (review 5358022153). Assembly is an exact
+// join between the snapshot's eligible inputs and their renderings: a plan exists only when every
+// non-withdrawn input rendered exactly once, no withdrawn input rendered at all, and no segment's
+// source is foreign to the snapshot.
+type PromptAssemblyRefusal
+  = RequiredSourceUnrendered { input_key: String }
+  | MissingRendering { input_key: String }
+  | DuplicateRendering { input_key: String }
+  | UnexpectedRendering { source_key: String }
+  | WithdrawnSourceRendered { input_key: String }
+
+fn prompt_assembly_refusal_text(r: PromptAssemblyRefusal) -> String {
+  match r {
+    RequiredSourceUnrendered { input_key } => join(["a required input never rendered: ", input_key], "")
+    MissingRendering { input_key } => join(["an eligible input never rendered: ", input_key], "")
+    DuplicateRendering { input_key } => join(["an input rendered more than once: ", input_key], "")
+    UnexpectedRendering { source_key } => join(["a rendered segment's source is not an input of this snapshot: ", source_key], "")
+    WithdrawnSourceRendered { input_key } => join(["a withdrawn input reached the rendered plan: ", input_key], "")
+  }
+}
+
+type PromptPlanAssembly
+  = PromptPlanReady { plan: PromptPlan }
+  | PromptPlanRefused { refusals: List<PromptAssemblyRefusal> }
+
+fn prompt_assembly_input_fold(
+  rendered: List<PromptSegment>,
+  acc_in: { refusals: List<PromptAssemblyRefusal>, segments: List<PromptSegment> },
+  input: PromptInput,
+) -> { refusals: List<PromptAssemblyRefusal>, segments: List<PromptSegment> } {
+  let key = prompt_input_canonical_text(input: input)
+  let matching = filter(rendered, seg => prompt_input_canonical_text(input: seg.source) == key)
+  if prompt_input_is_withdrawn(input: input) {
+    if count(matching) > 0 {
+      { refusals: concat(acc_in.refusals, [WithdrawnSourceRendered { input_key: key }]), segments: acc_in.segments }
+    } else {
+      acc_in
+    }
+  } else if count(matching) == 0 {
+    if prompt_input_required(input: input) {
+      { refusals: concat(acc_in.refusals, [RequiredSourceUnrendered { input_key: key }]), segments: acc_in.segments }
+    } else {
+      { refusals: concat(acc_in.refusals, [MissingRendering { input_key: key }]), segments: acc_in.segments }
+    }
+  } else if count(matching) > 1 {
+    { refusals: concat(acc_in.refusals, [DuplicateRendering { input_key: key }]), segments: acc_in.segments }
+  } else {
+    match matching.first() {
+      Absent => acc_in
+      Present { value: seg } => {
+        let kept = { refusals: acc_in.refusals, segments: concat(acc_in.segments, [seg]) }
+        kept
+      }
+    }
+  }
+}
+
+// THE ASSEMBLY LAW: the plan's ordered segments are derived from the snapshot's input order -- the
+// caller's render order cannot reorder the prompt. Withdrawn inputs produce ZERO segments. Any
+// refusal at all refuses the plan; there is no partial prompt.
+fn prompt_plan_assemble(
+  snapshot: PromptContextSnapshot,
+  rendered: List<PromptSegment>,
+) -> PromptPlanAssembly {
+  let joined = fold(
+    snapshot.inputs,
+    init: { refusals: [] as List<PromptAssemblyRefusal>, segments: [] as List<PromptSegment> },
+    f: fn(acc, inp) { prompt_assembly_input_fold(rendered: rendered, acc_in: acc, input: inp) },
+  )
+  let foreign = filter(rendered, seg =>
+    !any(snapshot.inputs, i => prompt_input_canonical_text(input: i) == prompt_input_canonical_text(input: seg.source)))
+  let foreign_refusals = map(foreign, seg => UnexpectedRendering { source_key: prompt_input_canonical_text(input: seg.source) })
+  let all_refusals = concat(joined.refusals, foreign_refusals)
+  if count(all_refusals) > 0 {
+    PromptPlanRefused { refusals: all_refusals }
+  } else {
+    PromptPlanReady {
+      plan: PromptPlan {
+        snapshot: snapshot,
+        snapshot_digest: prompt_snapshot_digest(snapshot: snapshot),
+        ordered_segments: joined.segments,
+      },
+    }
+  }
+}
+
+// EXACT PROMPT BOUNDARIES (review 5358022153). Each extent names its source input and the rendered
+// span. The basis is declared honestly: the substrate's string_length counts characters for
+// non-ASCII text, so until a UTF-8 byte primitive exists the durable basis is char-count -- the
+// field is what keeps a future byte-exact realization distinguishable from this fallback rather
+// than silently reinterpreting old extents.
+type SemanticPromptExtent {
+  source_input_key: String
+  start: Int
+  end: Int
+  content_digest: String
+}
+
+type SemanticPromptArtifact {
+  text: String
+  semantic_digest: String
+  extent_basis: String
+  extents: List<SemanticPromptExtent>
+}
+
+fn semantic_prompt_render_fold(acc_in: { text: String, extents: List<SemanticPromptExtent> }, segment: PromptSegment) -> { text: String, extents: List<SemanticPromptExtent> } {
+  let start = if acc_in.text == "" { 0 } else { string_length(s: acc_in.text) + 1 }
+  let text = if acc_in.text == "" { segment.content } else { join([acc_in.text, "\n", segment.content], "") }
+  {
+    text: text,
+    extents: concat(acc_in.extents, [SemanticPromptExtent {
+      source_input_key: prompt_input_canonical_text(input: segment.source),
+      start: start,
+      end: string_length(s: text),
+      content_digest: segment.content_digest,
+    }]),
+  }
+}
+
+fn semantic_prompt_render(plan: PromptPlan) -> SemanticPromptArtifact {
+  let rendered = fold(
+    plan.ordered_segments,
+    init: { text: "", extents: [] as List<SemanticPromptExtent> },
+    f: fn(acc, segment) { semantic_prompt_render_fold(acc_in: acc, segment: segment) },
+  )
+  SemanticPromptArtifact {
+    text: rendered.text,
+    semantic_digest: content_hash_atom(value: join(["24:semantic-prompt-artifact/v1", rendered.text], "") as NonEmptyStr).digest as String,
+    extent_basis: "char-count-fallback",
+    extents: rendered.extents,
+  }
+}
+
+// THE PROVIDER PROJECTION'S OWN ARTIFACT: the semantic digest is shared across providers; the wire
+// digest is over the exact request bytes of THIS envelope, so an Anthropic and an OpenAI rendering
+// of one plan share a semantic identity and never share a wire identity.
+type ProviderPromptArtifact {
+  semantic_digest: String
+  provider_projection: String
+  wire_text: String
+  wire_digest: String
+}
+
+fn provider_prompt_artifact(semantic: SemanticPromptArtifact, provider_projection: String, wire_text: String) -> ProviderPromptArtifact {
+  ProviderPromptArtifact {
+    semantic_digest: semantic.semantic_digest,
+    provider_projection: provider_projection,
+    wire_text: wire_text,
+    wire_digest: content_hash_atom(value: join(["24:provider-prompt-artifact/v1", prompt_field_enc(s: provider_projection), wire_text], "") as NonEmptyStr).digest as String,
+  }
+}
+
+// THE RENDER RECEIPT, one per provider projection: which snapshot, which inputs, and the digests
+// of exactly what rendered. Cache-hit and cache-miss renders of the same plan must produce the
+// same semantic digest -- residency is a performance fact, never part of correctness.
+type PromptRenderReceipt {
+  plan_snapshot_digest: String
+  input_digests: List<String>
+  semantic_digest: String
+  provider_projection: String
+  wire_digest: String
+}
+
+fn prompt_render_receipt(plan: PromptPlan, wire: ProviderPromptArtifact) -> PromptRenderReceipt {
+  PromptRenderReceipt {
+    plan_snapshot_digest: plan.snapshot_digest,
+    input_digests: map(plan.snapshot.inputs, i => content_hash_atom(value: prompt_input_canonical_text(input: i) as NonEmptyStr).digest as String),
+    semantic_digest: wire.semantic_digest,
+    provider_projection: wire.provider_projection,
+    wire_digest: wire.wire_digest,
+  }
+}

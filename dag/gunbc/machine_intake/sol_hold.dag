@@ -1,7 +1,6 @@
 module gunbc.machine_intake_sol_hold
 
 import std.types { Bool, NonEmptyStr, Unit }
-import std.string_type { String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -289,6 +288,7 @@ data mtcollins1_sol_hold_owned_check_script: String = sol_hold_rendered(stmts: s
 
 service gunbc.machine_intake.sol_hold {
   operation ActivateHeld {
+    requires opaque
     input {
       bmc_host: NonEmptyStr
       username: NonEmptyStr
@@ -321,6 +321,7 @@ service gunbc.machine_intake.sol_hold {
   }
 
   operation ReleaseHeld {
+    requires none
     input {
       pid_path: NonEmptyStr
     }

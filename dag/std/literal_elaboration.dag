@@ -194,6 +194,53 @@ fn elaborate_literal_at(
   }
 }
 
+// KERNEL GROUNDING: THE PEANO MAP READ IN THE OTHER DIRECTION (operator ruling A, 2026-09-30,
+// superseding XL-0N for std.nat Nat). A LiteralHomomorphism says a STRUCTURAL destination supplies
+// a kernel literal through its own constructors: the kernel value is unfolded INTO the carrier. A
+// KernelGrounding says the converse about a carrier whose declaration is inductive and whose
+// REALIZATION is the kernel value itself: its constructors are views of kernel values, so every
+// constructor occurrence and every constructor pattern is folded OUT of the carrier into the
+// kernel value it denotes (zero is 0, succ { prev: n } is n + 1) before any realizer reads the
+// tree. The declaration stays the accepted inductive definition -- exhaustiveness, descent and
+// inhabitance are all judged on it -- and no realizer ever builds the unary tower.
+//
+// THE ROW NAMES THE CARRIER AND NOTHING ELSE. Which constructor is zero and which is successor is
+// read from the carrier's own declaration by the consumer (one nullary constructor, and one
+// constructor with exactly one field of the carrier's own type), so a row cannot disagree with
+// the declaration it is about, and a bound declaration that is NOT that shape is a refusal at the
+// consumer rather than a guess. Keyed on the exact DeclarationRef: a user-declared type of the
+// same shape, or of the same spelling in another module, has no row and stays structural.
+//
+// A DECLARATION IS NEVER BOTH. A carrier with a KernelGrounding row realizes as the kernel value,
+// so a kernel literal at its boundary is already its own value (DirectLiteral) and it must carry
+// no LiteralHomomorphism row; the two rosters partition the declarations they name.
+type KernelGrounding {
+  source_kind: LiteralSourceKind
+  carrier: DeclarationRef
+}
+
+type KernelGroundingLookup
+  = KernelGroundingFound { row: KernelGrounding }
+  | KernelGroundingAbsent
+  | KernelGroundingAmbiguous { row_count: Int }
+
+fn kernel_grounding_for(rows: List<KernelGrounding>, source_kind: LiteralSourceKind, carrier: DeclarationRef) -> KernelGroundingLookup {
+  let matching = rows |> filter(r =>
+    literal_source_kind_eq(a: r.source_kind, b: source_kind)
+      && declaration_ref_eq(a: r.carrier, b: carrier))
+  let n = matching |> count
+  if n == 0 {
+    KernelGroundingAbsent
+  } else if n == 1 {
+    match matching |> first {
+      Present { value: row } => KernelGroundingFound { row: row }
+      Absent => KernelGroundingAbsent
+    }
+  } else {
+    KernelGroundingAmbiguous { row_count: n }
+  }
+}
+
 // WHAT THE TYPED TREE CARRIES at an elaborated occurrence: the source kind, the exact destination,
 // and the homomorphism selected. The occurrence itself is the node this record sits on (its
 // occurrence identity), so it is not duplicated here. Only ViaHomomorphism occurrences carry a

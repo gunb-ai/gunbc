@@ -185,7 +185,7 @@ import v2.std.compilers.target_model {
   ValueProducing,
   derive_bodied_arrow_scaffold}
 import v2.std.logic { bool_node }
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { any, fold_list, for_all, is_empty, length, list_init, list_map, skip }
 import v2.std.diagnostic {
   Accepted,
@@ -667,7 +667,8 @@ fn dag_lex_rules() -> LexRuleSet {
       dag_literal_lex_rule(token_class: ^dag_token_gt, text: ">"),
       dag_literal_lex_rule(token_class: ^dag_token_question, text: "?"),
       dag_literal_lex_rule(token_class: ^dag_token_match_scrutinee_nop, text: "")
-    ]
+    ],
+    modes: []
   }
 }
 
@@ -1412,21 +1413,33 @@ fn dag_grammar_multiplicative_expr_helper() -> GrammarExpr {
 // prefix (negation), and this grammar carries no statement terminator, so `x` then a line `-1` could
 // be `x - 1` or two statements; neither reading is safe to pick silently. The seed refuses it
 // (v1.compiler.parse is_ambiguous_prefix_infix_newline_boundary, whose dual-role set is exactly
-// `-`), and so does this row: the refusal alternative is tried FIRST at every additive
-// continuation, it matches only a `-` preceded by a line break (v2.std.grammar AfterLineBreak, read
-// from the stream's layout), and where it matches the parse refuses at the `-` with
-// NewlineBeforeDualRoleOperator. A same-line `-` falls through to subtraction. Every expression
-// reaches this continuation, so the rule holds for every statement form -- including a block-headed
-// statement, which is an operand since block forms are primaries of binary_expr (#12817).
+// `-`), and so does this row: where a `-` preceded by a line break (v2.std.grammar AfterLineBreak,
+// read from the stream's layout) stands at an additive continuation, the parse refuses at the `-`
+// with NewlineBeforeDualRoleOperator. A same-line `-` is subtraction. Every expression reaches this
+// continuation, so the rule holds for every statement form -- including a block-headed statement,
+// which is an operand since block forms are primaries of binary_expr (#12817).
+// THE REFUSAL IS A GUARD, NOT AN ALTERNATIVE. Offered as a choice alternative beside subtraction,
+// both arms began with `-` and only their order kept them apart -- the overlap the zero-ambiguity
+// ruling (2026-10-02) forbids, inlined once per expansion of this helper. As the not-predicate of a
+// refusing match it sits in SEQUENCE before the operator: it consumes nothing, it raises the
+// refusal where the line-break `-` stands (a refusal survives the predicate, v2.compiler.parse
+// parse_expr_not_predicate), and elsewhere it admits, so the continuation is one route and no
+// choice remains here to overlap.
+fn dag_grammar_additive_newline_minus_guard() -> GrammarExpr {
+  grammar_expr_not_predicate(
+    element: grammar_expr_refuse_on_match(
+      element: grammar_expr_after_line_break(element: dag_grammar_terminal(token_class: ^dag_token_minus)),
+      reason: NewlineBeforeDualRoleOperator
+    )
+  )
+}
+
 fn dag_grammar_additive_expr_helper() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_multiplicative_expr_helper(),
     right: dag_grammar_repeat(
-      element: dag_grammar_choice(
-        left: grammar_expr_refuse_on_match(
-          element: grammar_expr_after_line_break(element: dag_grammar_terminal(token_class: ^dag_token_minus)),
-          reason: NewlineBeforeDualRoleOperator
-        ),
+      element: dag_grammar_sequence(
+        left: dag_grammar_additive_newline_minus_guard(),
         right: dag_grammar_sequence(
           left: dag_grammar_additive_op_choice(),
           right: dag_grammar_multiplicative_expr_helper()
@@ -7113,6 +7126,42 @@ data namespace_graft_module_body_identity: Symbol = ^namespace_graft_module_body
 // and a marked body stays a fully evidenced product.
 fn namespace_graft_module_body_marker_node() -> Node {
   dag_inhabitant_atom(id: namespace_graft_module_body_identity)
+}
+
+// THE MARK MEANS A NAMESPACE BODY, AND MARKED BODIES MERGE ON GRAFT (XL-2 service spine; ruling
+// 2026-10-01). A module body is one namespace body; so is the body under a shared service-name prefix:
+// `service shell.Find` and `service shell.Env` each lower to `shell -> <namespace body>`
+// (v2.compiler.body_lowering_fold body_lower_service_node), and v2.compiler.namespace_graft merges
+// same-named MARKED bodies into one, so an operation's declaration path is
+// <module>.<service segments...>.<Op>. Only marked bodies merge: two same-named declarations, or a
+// marked body and an unmarked declaration of one name, still refuse at the second. A namespace body
+// grants NO scope: a member of shell.Find does not see shell.Env's names, or the enclosing body's,
+// without qualification or an import; it is a path segment, never a lexical frame. NOTE FOR THE
+// EdgeLabel CUT (gunbc#12473): this mark is a namespace-body classification, so the per-segment
+// marker that cut classifies covers both the module body and a service-prefix body.
+fn namespace_graft_namespace_body_node(edges: List<Edge>, source: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: concat([dag_named_edge(name: ^grammar_production_identity_node_projection, target: namespace_graft_module_body_marker_node())], edges),
+    occurrence_id: source.occurrence_id
+  }
+}
+
+// A marked body's members -- its children without the mark -- PREPENDED onto `acc` (so in reverse
+// order): the one O(members) step the graft's group merge is built from, reversed once by its caller
+// (v2.compiler.namespace_graft namespace_graft_group_members). Written over FreeMonoid<Edge>, List's own
+// carrier, so the branch that keeps `acc` and the branch that conses agree on one type (the emitter does
+// not yet unify the List alias with a Cons literal: gunbc.recurring_failure_mode
+// carrier_alias_refuses_its_own_carriers_constructor).
+fn namespace_graft_namespace_body_members_onto(body: Node, acc: FreeMonoid<Edge>) -> FreeMonoid<Edge> {
+  fold(body.children, init: acc, f: fn(a, e) {
+    match e.label {
+      Authored { name: sym } =>
+        if sym == ^grammar_production_identity_node_projection { a } else { Cons { head: e, tail: a } }
+      StructuralLabel { label: _ } => Cons { head: e, tail: a }
+      Positional => Cons { head: e, tail: a }
+    }
+  })
 }
 
 fn namespace_graft_node_is_module_body(node: Node) -> Bool {

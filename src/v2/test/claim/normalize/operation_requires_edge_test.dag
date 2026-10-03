@@ -189,8 +189,8 @@ test fn no_requires_stream_is_what_tokenize_produces_holds() -> Bool {
 // decides over resolved members and the index; the members here are supplied as the declaration
 // references resolve produces for `N` and `m.N` -- one path under two labels -- and the index is the
 // census index of a module that declares N. The real route through normalize and resolve stays
-// exercised by a_requirement_naming_a_declared_resource_resolves_holds (a member resolving to a marked
-// resource path) and a_requirement_naming_a_record_refuses_located_RED, so supplying the members here
+// exercised by a_requirement_naming_a_declared_resource_resolves_at_resolve_holds (a member resolving to a marked
+// resource path) and a_requirement_naming_a_non_resource_refuses_at_resolve_RED, so supplying the members here
 // removes no execution of it.
 data resource_only_source: String = "module m\nresource N {\n  kind: Capability\n  mode: Read\n}\n"
 

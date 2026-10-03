@@ -162,7 +162,8 @@ fn add_body_ts_lex_with_minus() -> LexRules {
           head: ts_lex_rule(token_class: ^ts_token_minus, text: " - "),
           tail: Empty
         }
-      )
+      ),
+      modes: []
     }
   }
 }

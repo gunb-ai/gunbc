@@ -729,7 +729,8 @@ fn java_method_add_lex_rules() -> LexRuleSet {
       java_lex_rule(token_class: ^java_token_rparen, text: ") "),
       java_lex_rule(token_class: ^java_token_comma, text: ", "),
       java_lex_rule(token_class: ^java_token_semicolon, text: ";")
-    ]
+    ],
+    modes: []
   }
 }
 
@@ -801,7 +802,8 @@ fn java_lex_rules() -> LexRuleSet {
     rules: list_append(
       left: java_method_add_lex_rules().rules,
       right: java_extended_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 

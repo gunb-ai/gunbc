@@ -95,11 +95,13 @@ test fn edit_refuses_an_erased_retirement() -> Bool {
   )
 }
 
-// A retirement's cause may not be rewritten, and a retirement may not revert to active debt.
+// A retirement's cause may not be rewritten, and a retirement may not revert to active debt; the
+// one admitted transition is a retirement whose file was later deleted becoming FileDeleted.
 test fn edit_refuses_a_rewritten_cause_and_a_reverted_retirement() -> Bool {
-  refuses_exactly(
-    refusals: unimported_bare_provider_roster_edit(base: [a_imports_fixed], head: [a_file_deleted]),
-    expected: "RosterRetirementChanged dag/a.dag#f (Retired ImportsFixed -> Retired FileDeleted)",
+  count(unimported_bare_provider_roster_edit(base: [a_imports_fixed], head: [a_file_deleted])) == 0
+    && refuses_exactly(
+    refusals: unimported_bare_provider_roster_edit(base: [a_file_deleted], head: [a_imports_fixed]),
+    expected: "RosterRetirementChanged dag/a.dag#f (Retired FileDeleted -> Retired ImportsFixed)",
   )
     && refuses_exactly(
       refusals: unimported_bare_provider_roster_edit(base: [a_imports_fixed], head: [a_active]),
