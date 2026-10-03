@@ -27,28 +27,54 @@ fn aod_reason(src: String) -> Symbol {
   }
 }
 
+// EACH FIXTURE PROGRAM IS ASSEMBLED AND INFERRED ONCE, by a NULLARY producer enrolled in
+// v2.workflow.floor_pure_producer_share floor_cross_claim_pure_producers_warm; the claims read the decided reason.
+fn aod_bool_join_declared_int_reason() -> Symbol {
+  aod_reason(src: "module p\n\nfn f(a: Bool, b: Bool) -> Int {\n  a || b\n}\n")
+}
+
+fn aod_int_add_declared_bool_reason() -> Symbol {
+  aod_reason(src: "module p\n\nfn f(a: Int, b: Int) -> Bool {\n  a + b\n}\n")
+}
+
+fn aod_bool_add_reason() -> Symbol {
+  aod_reason(src: "module p\n\nfn f(a: Bool, b: Bool) -> Bool {\n  a + b\n}\n")
+}
+
+fn aod_int_join_reason() -> Symbol {
+  aod_reason(src: "module p\n\nfn f(a: Int, b: Int) -> Int {\n  a || b\n}\n")
+}
+
+fn aod_bool_join_ok_reason() -> Symbol {
+  aod_reason(src: "module p\n\nfn f(a: Bool, b: Bool) -> Bool {\n  a || b\n}\n")
+}
+
+fn aod_int_add_ok_reason() -> Symbol {
+  aod_reason(src: "module p\n\nfn g(a: Int, b: Int) -> Int {\n  a + b\n}\n")
+}
+
 // (1) `||` OVER BOOL DERIVES BOOL: declared Int, so the derived Bool body refuses. RED ON THE BASE: no arm
 // derived `||`, the body was underived, and the program was accepted with an undecidable advisory.
 test fn aod_bool_join_derives_bool() -> Bool {
-  aod_reason(src: "module p\n\nfn f(a: Bool, b: Bool) -> Int {\n  a || b\n}\n") == ^arrow_body_does_not_inhabit_declared_return
+  aod_bool_join_declared_int_reason() == ^arrow_body_does_not_inhabit_declared_return
 }
 
 // (2) `+` OVER INT STILL DERIVES INT, now through Int's ordered-ring row: declared Bool, so it refuses.
 test fn aod_int_add_still_derives_int() -> Bool {
-  aod_reason(src: "module p\n\nfn f(a: Int, b: Int) -> Bool {\n  a + b\n}\n") == ^arrow_body_does_not_inhabit_declared_return
+  aod_int_add_declared_bool_reason() == ^arrow_body_does_not_inhabit_declared_return
 }
 
 // (3) NO ROW, NO DERIVATION: Bool carries no ring add, and Int no lattice join -- each refuses at the operator.
 test fn aod_bool_add_refuses() -> Bool {
-  aod_reason(src: "module p\n\nfn f(a: Bool, b: Bool) -> Bool {\n  a + b\n}\n") == ^infer_transform_operand_type_mismatch
+  aod_bool_add_reason() == ^infer_transform_operand_type_mismatch
 }
 
 test fn aod_int_join_refuses() -> Bool {
-  aod_reason(src: "module p\n\nfn f(a: Int, b: Int) -> Int {\n  a || b\n}\n") == ^infer_transform_operand_type_mismatch
+  aod_int_join_reason() == ^infer_transform_operand_type_mismatch
 }
 
 // (4) THE ACCEPTED CONTROLS: each operator over its own carrier, declared correctly, is accepted.
 test fn aod_well_typed_operators_are_accepted() -> Bool {
-  aod_reason(src: "module p\n\nfn f(a: Bool, b: Bool) -> Bool {\n  a || b\n}\n") == ^accepted
-    && aod_reason(src: "module p\n\nfn g(a: Int, b: Int) -> Int {\n  a + b\n}\n") == ^accepted
+  aod_bool_join_ok_reason() == ^accepted
+    && aod_int_add_ok_reason() == ^accepted
 }
