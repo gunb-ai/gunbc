@@ -945,6 +945,12 @@ fn rust_host_text_carrier_elem_name(n: Node, source_indices: Map<String, Newline
 // answered true here (its name reads as its return leaf) ahead of every Arrow arm, so the type
 // argument rendered `String` (E0277 x2 at v2.std.compilers.target_model).
 //
+// NOT YET THE CHECKER'S AUTHORITY, AND DECLARED AS SUCH (gunbc.rung_drop text_boundary_identity_wall):
+// the checker decides text representation by declaration identity (v1.compiler.infer_env
+// text_representation_by_identity), which needs the TypeEnv census; these renderers hold no env, so
+// this arm keeps its provenance-keyed answer, measured to render the self-host crate byte-identically
+// to the pre-change emitter. The trigger that unifies them is the render paths carrying the env.
+//
 // The String arm is keyed on the resolved declaration's PROVENANCE, never on the spelling alone
 // (DESIGN section 3, and gunbc.recurring_failure_mode
 // alias_resolution_collides_with_kernel_spelling): v2.std.text declares `type String =
