@@ -181,7 +181,9 @@ data cli_verb_emit: String = "emit"
 // (v2.compiler.compile). It takes source roots only, and is deleted with its module.
 data cli_verb_if_arm_reader_differential: String = "if-arm-reader-differential"
 
-data cli_usage: String = "usage: <binary> emit --entry <module.path> --source-root <dir> [--source-root <dir>]... [--target <target>] | <binary> if-arm-reader-differential --source-root <dir> [--source-root <dir>]..."
+data cli_usage: String = "usage: <binary> emit --entry <module.path> --source-root <dir> [--source-root <dir>]... [--target <target>]"
+
+data cli_differential_usage: String = "usage: <binary> if-arm-reader-differential --source-root <dir> [--source-root <dir>]..."
 
 fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
   match state {
@@ -204,7 +206,7 @@ fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
       } else {
         CliParseFailed {
           reason: ^cli_unknown_option,
-          detail: concat(concat("unknown option ", arg), concat(" -- ", cli_usage))
+          detail: concat(concat("unknown option ", arg), concat(" -- ", cli_differential_usage))
         }
       }
     CliParseSeekDifferentialRootValue { roots: roots } =>
@@ -307,7 +309,7 @@ fn cli_parse_finish(state: CliParseState) -> CliPlan {
       if length(xs: roots) == 0 {
         CliPlanRefused {
           reason: ^cli_no_source_root,
-          detail: concat("if-arm-reader-differential needs at least one source root -- ", cli_usage)
+          detail: concat("if-arm-reader-differential needs at least one source root -- ", cli_differential_usage)
         }
       } else {
         CliPlanParsed { verb: CliIfArmReaderDifferential { source_roots: list_reverse(xs: roots) } }
