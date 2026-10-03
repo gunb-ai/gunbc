@@ -8,6 +8,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.exec.program { uncataloged_program }
 import extdeps.network.endpoint { SocketAddress, NetworkHost, render_network_host }
 import extdeps.access.posix { PosixLoginName }
 
@@ -178,7 +179,7 @@ fn ssh_stdio_forward_command(subject: ForwardingAdmissionSubject, options: List<
         Absent => none
         Present { value: relay_wire } => match render_network_host(host: subject.target.host) {
           Absent => none
-          Present { value: target_wire } => Present { value: argv_command(program: ssh_program,
+          Present { value: target_wire } => Present { value: argv_command(program: uncataloged_program(invocation: ssh_program),
             arguments: concat(flat_map(options, option => serialize_ssh_config_file_flag(option: option)),
               ["-W", join([target_wire as String, ":", to_string(subject.target.port)], ""), "-l", observed_login as String, relay_wire as String])) }
         }
