@@ -355,7 +355,8 @@ fn harness_bind_seat_waiting(
             Absent => HarnessSeatWait { binding: harness_bind_belt_seat(role: role, system_prompt: system_prompt, brief: brief, actor: actor, attempt: attempt), waits: wait }
           }
         }
-        _ => acc
+        HarnessSeatRefused { detail: _ } => acc
+        HarnessSeatBound { url: _, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: _, unit: _, class: _ } => acc
       },
   )
   waited.binding
