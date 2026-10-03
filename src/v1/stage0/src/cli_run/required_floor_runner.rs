@@ -6784,6 +6784,13 @@ pub(crate) fn derive_and_install_cross_claim_share(
         ));
     }
     let observe_ms = started.elapsed().as_millis();
+    for (producer, cause, claims_n, sites_n) in observer.open_producers() {
+        eprintln!(
+            "[cross-claim-share-unadmissible] producer={producer} cause={} claims={claims_n} \
+             sites={sites_n}",
+            cause.variant()
+        );
+    }
     let frame = floor_authority_frame(prepared, MODULE).map_err(|why| {
         format!(
             "REQUIRED-FLOOR REFUSAL cause=PureProducerShareRosterOutsidePreparedSubject \

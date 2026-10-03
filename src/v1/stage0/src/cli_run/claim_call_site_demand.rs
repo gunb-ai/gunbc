@@ -95,8 +95,17 @@ pub(crate) fn render_site(site: &SiteKey) -> String {
 }
 
 enum SiteFact {
-    Closed { producer: String, preimage: String },
+    Closed {
+        producer: String,
+        preimage: String,
+    },
     Unadmissible(CallSiteDemandCause),
+    /// An unadmissible site whose callee IS known, kept by producer so a reader can disposition
+    /// each producer (whose site is open, or effectful) by identity.
+    UnadmissibleOf {
+        producer: String,
+        cause: CallSiteDemandCause,
+    },
 }
 
 struct DeclFacts {
@@ -114,6 +123,7 @@ pub(crate) struct CallSiteDemandObserver<'a> {
     decls: HashMap<(String, String), Rc<Node>>,
     facts: HashMap<(String, String), Rc<DeclFacts>>,
     site_nodes: HashMap<SiteKey, (String, Rc<Node>)>,
+    open_producers: Vec<(String, CallSiteDemandCause, u64, u64)>,
 }
 
 #[derive(Default)]
@@ -144,6 +154,7 @@ impl<'a> CallSiteDemandObserver<'a> {
             decls,
             facts: HashMap::new(),
             site_nodes: HashMap::new(),
+            open_producers: Vec::new(),
         }
     }
 
@@ -169,6 +180,8 @@ impl<'a> CallSiteDemandObserver<'a> {
     ) -> (Vec<CallSiteDemandRow>, Vec<String>) {
         let mut closed: BTreeMap<(String, String), IdentityCell> = BTreeMap::new();
         let mut open: BTreeMap<CallSiteDemandCause, IdentityCell> = BTreeMap::new();
+        let mut open_by_producer: BTreeMap<(String, CallSiteDemandCause), IdentityCell> =
+            BTreeMap::new();
         let mut unresolved_claims = Vec::new();
         for (index, (module_path, function)) in claims.iter().enumerate() {
             let claim_number = index + 1;
@@ -195,6 +208,17 @@ impl<'a> CallSiteDemandObserver<'a> {
                             .entry((producer.clone(), preimage.clone()))
                             .or_default(),
                         SiteFact::Unadmissible(cause) => open.entry(*cause).or_default(),
+                        SiteFact::UnadmissibleOf { producer, cause } => {
+                            let by = open_by_producer
+                                .entry((producer.clone(), *cause))
+                                .or_default();
+                            if by.last_claim != claim_number {
+                                by.last_claim = claim_number;
+                                by.claims += 1;
+                            }
+                            by.sites.insert(site.clone());
+                            open.entry(*cause).or_default()
+                        }
                     };
                     if cell.last_claim != claim_number {
                         cell.last_claim = claim_number;
@@ -232,7 +256,19 @@ impl<'a> CallSiteDemandObserver<'a> {
                     sites: cell.sites.len() as u64,
                 }),
         );
+        self.open_producers = open_by_producer
+            .into_iter()
+            .map(|((producer, cause), cell)| {
+                (producer, cause, cell.claims, cell.sites.len() as u64)
+            })
+            .collect();
         (rows, unresolved_claims)
+    }
+
+    /// The last observation's unadmissible sites with a known callee, per (producer, cause):
+    /// (producer, cause, distinct claims, sites). Rendered by the floor for disposition only.
+    pub(crate) fn open_producers(&self) -> &[(String, CallSiteDemandCause, u64, u64)] {
+        &self.open_producers
     }
 
     fn facts_of(&mut self, decl: &(String, String)) -> Option<Rc<DeclFacts>> {
@@ -436,14 +472,20 @@ impl<'a> CallSiteDemandObserver<'a> {
             .get(&target)
             .is_some_and(|callee| !callee.uses.is_empty())
         {
-            return SiteFact::Unadmissible(CallSiteDemandCause::CalleeDeclaresEffects);
+            return SiteFact::UnadmissibleOf {
+                producer: format!("{}.{}", target.0, target.1),
+                cause: CallSiteDemandCause::CalleeDeclaresEffects,
+            };
         }
         match self.closed_arguments(module, call, binders) {
             Some(preimage) => SiteFact::Closed {
                 producer: format!("{}.{}", target.0, target.1),
                 preimage,
             },
-            None => SiteFact::Unadmissible(CallSiteDemandCause::ArgumentNotClosedConstant),
+            None => SiteFact::UnadmissibleOf {
+                producer: format!("{}.{}", target.0, target.1),
+                cause: CallSiteDemandCause::ArgumentNotClosedConstant,
+            },
         }
     }
 
