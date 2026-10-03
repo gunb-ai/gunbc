@@ -25,7 +25,7 @@ import gunbc.worker_lifecycle {
   WorkerProcessEvidence, WorkerProcessRunning, WorkerProcessExited, WorkerProcessAbsent, WorkerProcessUnobserved,
 }
 import gunbc.roadmap_belt { SpawnMode, Paused, ManualReady, AutomaticReady, spawn_mode_label, spawn_mode_of_label, BeltCapacity, belt_free_slots_int }
-import extdeps.languages.json.emit { JsonValue, JsonString, json_string, json_object, json_kv }
+import extdeps.languages.json.emit { JsonValue, JsonString, JsonKeyValue, json_string, json_object, json_kv }
 import extdeps.languages.json.parse {
   json_object_unique_member,
   JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
@@ -98,13 +98,17 @@ fn launch_identity_instance_text(id: LaunchIdentity) -> String { id.instance_id 
 fn launch_identity_revision_hex(id: LaunchIdentity) -> String { git_object_id_wire_hex(oid: id.revision) as String }
 
 fn launch_identity_json(id: LaunchIdentity) -> JsonValue {
-  json_object(members: [
+  json_object(members: launch_identity_json_members(id: id))
+}
+
+fn launch_identity_json_members(id: LaunchIdentity) -> List<JsonKeyValue> {
+  [
     json_kv(key: "node_id", value: json_string(s: launch_identity_node_id_text(id: id))),
     json_kv(key: "cause", value: json_string(s: launch_cause_label(c: id.cause))),
     json_kv(key: "mode", value: json_string(s: spawn_mode_label(m: id.mode))),
     json_kv(key: "instance_id", value: json_string(s: launch_identity_instance_text(id: id))),
     json_kv(key: "revision", value: json_string(s: launch_identity_revision_hex(id: id))),
-  ])
+  ]
 }
 
 type LaunchIdentityDecode
@@ -184,6 +188,49 @@ fn launch_identity_of_json(doc: JsonValue) -> LaunchIdentityDecode {
               }
           }
       }
+      }
+  }
+}
+
+// THE ATTEMPT LAUNCH RECORD: the launch identity as the belt persists it in ONE attempt's state,
+// bound to that attempt. The identity itself is minted at admission, before any attempt key exists,
+// and travels in admission and tick receipts where no attempt is meant -- so the binding lives on
+// the per-attempt record, not on LaunchIdentity. A record written before the binding existed
+// decodes as AttemptLaunchUnbound, a typed standing a consumer must refuse or accept by name; it is
+// never defaulted to the reader's own attempt. Readers that need only the identity keep reading it
+// with launch_identity_of_json, which ignores the extra member.
+type AttemptLaunchRecordDecode
+  = AttemptLaunchBound { identity: LaunchIdentity, attempt_key: NonEmptyStr }
+  | AttemptLaunchUnbound { identity: LaunchIdentity }
+  | AttemptLaunchUnreadable { reason: String }
+
+fn attempt_launch_record_json(id: LaunchIdentity, attempt_key: NonEmptyStr) -> JsonValue {
+  json_object(members: concat(launch_identity_json_members(id: id), [
+    json_kv(key: "attempt_key", value: json_string(s: attempt_key as String)),
+  ]))
+}
+
+// A present attempt_key member must be one non-empty string; any other shape is unreadable.
+fn attempt_launch_record_bound(doc: JsonValue, identity: LaunchIdentity) -> AttemptLaunchRecordDecode {
+  match launch_identity_member_string(doc: doc, key: "attempt_key") {
+    LaunchIdentityMemberRefused { reason } => AttemptLaunchUnreadable { reason: reason }
+    LaunchIdentityMemberString { value: k } =>
+      match launch_identity_non_empty(key: "attempt_key", value: k) {
+        LaunchIdentityMemberRefused { reason } => AttemptLaunchUnreadable { reason: reason }
+        LaunchIdentityMemberString { value: key } => AttemptLaunchBound { identity: identity, attempt_key: key as NonEmptyStr }
+      }
+  }
+}
+
+fn attempt_launch_record_of_json(doc: JsonValue) -> AttemptLaunchRecordDecode {
+  match launch_identity_of_json(doc: doc) {
+    LaunchIdentityUnreadable { reason } => AttemptLaunchUnreadable { reason: reason }
+    LaunchIdentityDecoded { identity } =>
+      match json_object_unique_member(v: doc, key: "attempt_key") {
+        JsonMemberAbsent => AttemptLaunchUnbound { identity: identity }
+        JsonMemberFound { value: _ } => attempt_launch_record_bound(doc: doc, identity: identity)
+        JsonMemberDuplicated { count: _ } => attempt_launch_record_bound(doc: doc, identity: identity)
+        JsonMemberNotAnObject => attempt_launch_record_bound(doc: doc, identity: identity)
       }
   }
 }

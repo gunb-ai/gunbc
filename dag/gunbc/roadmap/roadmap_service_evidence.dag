@@ -1,7 +1,6 @@
 module gunbc.roadmap_service_evidence
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
-import std.algebra { trim }
 import extdeps.filesystem.filesystem_io {
   FilesystemFileObservation, FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate,
   FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
@@ -13,9 +12,9 @@ import std.content_hash { content_hash_of_value }
 import std.materialization_provider { wire_content_hash_to_hex }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
-import gunbc.roadmap_dispatch_actuator { dispatch_attempt_launch_path_for_instance, dispatch_attempt_key_path_for_instance }
+import gunbc.roadmap_dispatch_actuator { dispatch_attempt_launch_path_for_instance }
 import gunbc.roadmap_launch_admission {
-  launch_identity_of_json, LaunchIdentityDecoded, LaunchIdentityUnreadable,
+  attempt_launch_record_of_json, AttemptLaunchBound, AttemptLaunchUnbound, AttemptLaunchUnreadable,
   launch_identity_node_id_text, launch_identity_instance_text, launch_identity_revision_hex,
 }
 
@@ -29,8 +28,9 @@ import gunbc.roadmap_launch_admission {
 // standing once, when the start is recorded.
 //
 // THE SHAPE (side-chat NO-LAND ruling on c8b743d, relayed by bold-bee-114):
-//   1. the effectful boundary BINDS the attempt from its durable records (launch identity and the
-//      attempt-key record) and GATHERS one typed input per reader, once per attempt;
+//   1. the effectful boundary BINDS the attempt from its durable launch record (which names the
+//      node, the dashboard instance and the attempt) and GATHERS one typed input per reader, once
+//      per attempt;
 //   2. the receipt is that binding and that bundle, nothing else -- it carries no reading, so no
 //      reading can be written into it;
 //   3. every field's reading is DERIVED from the bundle into one closed product
@@ -39,8 +39,10 @@ import gunbc.roadmap_launch_admission {
 //      today every input is pending, so no Observed reading can be produced at all.
 
 // ── 1. THE ATTEMPT BINDING ──
-// Admitted only when the launch record names the expected node AND the expected dashboard
-// instance, and the attempt-key record in the same attempt directory names the expected attempt.
+// Admitted only when the attempt's launch record (gunbc.roadmap_launch_admission
+// AttemptLaunchRecordDecode) names the expected node, the expected dashboard instance AND the
+// expected attempt. A legacy record that carries no attempt key is unbound and refuses: it cannot
+// say which attempt it belongs to, and such attempts never qualify for the dogfood clock.
 type AttemptBinding {
   instance_id: NonEmptyStr
   node_id: NonEmptyStr
@@ -64,11 +66,27 @@ fn file_refusal(o: FilesystemFileObservation, what: String) -> String? {
 }
 
 fn file_content(o: FilesystemFileObservation) -> String {
-  match o { FilesystemFileRead { path: _, content } => content  _ => "" }
+  match o {
+    FilesystemFileRead { path: _, content } => content
+    FilesystemFileAbsent(_) => ""
+    FilesystemFileIndeterminate { cause: _ } => ""
+    FilesystemFileObservationsDisagree { path: _, cause: _ } => ""
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => ""
+  }
 }
 
 fn launch_is_absent(o: FilesystemFileObservation) -> Bool {
-  match o { FilesystemFileAbsent(_) => true  _ => false }
+  match o {
+    FilesystemFileAbsent(_) => true
+    FilesystemFileRead { path: _, content: _ } => false
+    FilesystemFileIndeterminate { cause: _ } => false
+    FilesystemFileObservationsDisagree { path: _, cause: _ } => false
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: _ } => false
+  }
+}
+
+fn names_attempt(recorded: NonEmptyStr, attempt_key: String) -> Bool {
+  (recorded as String) == attempt_key
 }
 
 fn service_evidence_bind_attempt(
@@ -76,41 +94,35 @@ fn service_evidence_bind_attempt(
   node_id: String,
   attempt_key: String,
   launch: FilesystemFileObservation,
-  key_record: FilesystemFileObservation,
 ) -> AttemptBindingOutcome {
   if instance_id == "" { AttemptBindingRefused { reason: "instance_id is empty" } }
   else if node_id == "" { AttemptBindingRefused { reason: "node_id is empty" } }
   else if attempt_key == "" { AttemptBindingRefused { reason: "attempt_key is empty" } }
   else if launch_is_absent(o: launch) { AttemptUnlaunched }
   else {
-    match file_refusal(o: launch, what: "the attempt's launch identity") {
+    match file_refusal(o: launch, what: "the attempt's launch record") {
       Present { value: why } => AttemptBindingRefused { reason: why }
       Absent =>
         match parse_json_document(s: file_content(o: launch)) {
-          JsonDocumentUnreadable { gap: _ } => AttemptBindingRefused { reason: "the attempt's launch identity is not a JSON document" }
+          JsonDocumentUnreadable { gap: _ } => AttemptBindingRefused { reason: "the attempt's launch record is not a JSON document" }
           JsonDocumentParsed { value: doc } =>
-            match launch_identity_of_json(doc: doc) {
-              LaunchIdentityUnreadable { reason } => AttemptBindingRefused { reason: reason }
-              LaunchIdentityDecoded { identity } =>
+            match attempt_launch_record_of_json(doc: doc) {
+              AttemptLaunchUnreadable { reason } => AttemptBindingRefused { reason: reason }
+              AttemptLaunchUnbound { identity: _ } => AttemptBindingRefused { reason: "the attempt's launch record carries no attempt key, so it cannot be bound to this attempt" }
+              AttemptLaunchBound { identity, attempt_key: recorded } =>
                 if launch_identity_node_id_text(id: identity) != node_id {
-                  AttemptBindingRefused { reason: join(["the launch identity at this attempt's path names node ", launch_identity_node_id_text(id: identity)], "") }
+                  AttemptBindingRefused { reason: join(["the launch record at this attempt's path names node ", launch_identity_node_id_text(id: identity)], "") }
                 } else if launch_identity_instance_text(id: identity) != instance_id {
-                  AttemptBindingRefused { reason: join(["the launch identity at this attempt's path names instance ", launch_identity_instance_text(id: identity)], "") }
+                  AttemptBindingRefused { reason: join(["the launch record at this attempt's path names instance ", launch_identity_instance_text(id: identity)], "") }
+                } else if !names_attempt(recorded: recorded, attempt_key: attempt_key) {
+                  AttemptBindingRefused { reason: join(["the launch record at this attempt's path names attempt ", recorded as String], "") }
                 } else {
-                  match file_refusal(o: key_record, what: "the attempt-key record") {
-                    Present { value: why } => AttemptBindingRefused { reason: why }
-                    Absent =>
-                      if trim(file_content(o: key_record)) != attempt_key {
-                        AttemptBindingRefused { reason: join(["the attempt-key record at this attempt's path names attempt ", trim(file_content(o: key_record))], "") }
-                      } else {
-                        AttemptBound { binding: AttemptBinding {
-                          instance_id: instance_id as NonEmptyStr,
-                          node_id: node_id as NonEmptyStr,
-                          attempt_key: attempt_key as NonEmptyStr,
-                          revision_hex: launch_identity_revision_hex(id: identity) as NonEmptyStr,
-                        } }
-                      }
-                  }
+                  AttemptBound { binding: AttemptBinding {
+                    instance_id: instance_id as NonEmptyStr,
+                    node_id: node_id as NonEmptyStr,
+                    attempt_key: attempt_key as NonEmptyStr,
+                    revision_hex: launch_identity_revision_hex(id: identity) as NonEmptyStr,
+                  } }
                 }
             }
         }
@@ -310,7 +322,6 @@ fn service_evidence_observe_for_attempt(instance: HostDashboardInstance, node_id
     node_id: node_id as String,
     attempt_key: attempt_key,
     launch: filesystem_file_observation_of_path(path: dispatch_attempt_launch_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)),
-    key_record: filesystem_file_observation_of_path(path: dispatch_attempt_key_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)),
   ) {
     AttemptUnlaunched => ServiceEvidenceAttemptUnlaunched
     AttemptBindingRefused { reason } => ServiceEvidenceRefused { reason: reason }

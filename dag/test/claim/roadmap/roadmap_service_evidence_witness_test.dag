@@ -7,7 +7,7 @@ import extdeps.filesystem.filesystem_io {
 }
 import extdeps.languages.json.emit { serialize_json }
 import gunbc.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap_launch_admission { LaunchIdentity, launch_identity_json, launch_identity_null_revision, Operator }
+import gunbc.roadmap_launch_admission { LaunchIdentity, launch_identity_json, attempt_launch_record_json, launch_identity_null_revision, Operator }
 import gunbc.roadmap_belt { ManualReady }
 import gunbc.roadmap_service_evidence {
   AttemptBindingOutcome, AttemptBound, AttemptUnlaunched, AttemptBindingRefused,
@@ -18,28 +18,31 @@ import gunbc.roadmap_service_evidence {
   service_evidence_entries, service_evidence_owed_fields, service_evidence_receipt_wire, service_evidence_receipt_digest,
 }
 
-// The attempt's two durable records are planted as the dispatch actuator writes them -- the launch
-// identity through launch_identity_json, the attempt key as its raw text -- and read through the
-// composition the real reader uses (filesystem_file_observation over a listing and a read), so each
-// claim exercises the real decoder and the real binding with only the bytes supplied.
+// The attempt's launch record is planted as the belt writes it (attempt_launch_record_json; a legacy
+// record as launch_identity_json wrote it before the binding) and read through the composition the
+// real reader uses (filesystem_file_observation over a listing and a read), so each claim exercises
+// the real versioned decoder and the real binding with only the bytes supplied.
 
 data attempt_dir: String = "/state/n1/a1"
 data launch_name: String = "launch-identity.json"
-data key_name: String = "attempt-key"
 
-fn launch_for(node: String, instance: String) -> String {
-  serialize_json(v: launch_identity_json(id: LaunchIdentity {
+fn identity(node: String, instance: String) -> LaunchIdentity {
+  LaunchIdentity {
     node_id: node as NonEmptyStr as RoadmapNodeId,
     cause: Operator,
     mode: ManualReady,
     instance_id: instance as NonEmptyStr,
     revision: launch_identity_null_revision(),
-  }))
+  }
+}
+
+fn launch_for(node: String, instance: String, attempt: String) -> String {
+  serialize_json(v: attempt_launch_record_json(id: identity(node: node, instance: instance), attempt_key: attempt as NonEmptyStr))
 }
 
 fn planted(name: String, content: String) -> FilesystemFileObservation {
   filesystem_file_observation(
-    listing: filesystem_listing_observation(directory: attempt_dir, success: true, entries: join([launch_name, "\n", key_name, "\n"], ""), error: ""),
+    listing: filesystem_listing_observation(directory: attempt_dir, success: true, entries: join([launch_name, "\n"], ""), error: ""),
     name: name,
     path: join([attempt_dir, "/", name], ""),
     read: filesystem_read_outcome(content: content, success: true, error: ""),
@@ -55,12 +58,11 @@ fn unplanted(name: String) -> FilesystemFileObservation {
   )
 }
 
-fn bind(launch: FilesystemFileObservation, key: FilesystemFileObservation) -> AttemptBindingOutcome {
-  service_evidence_bind_attempt(instance_id: "i1", node_id: "n1", attempt_key: "a1", launch: launch, key_record: key)
+fn bind(launch: FilesystemFileObservation) -> AttemptBindingOutcome {
+  service_evidence_bind_attempt(instance_id: "i1", node_id: "n1", attempt_key: "a1", launch: launch)
 }
 
-fn good_launch() -> FilesystemFileObservation { planted(name: launch_name, content: launch_for(node: "n1", instance: "i1")) }
-fn good_key() -> FilesystemFileObservation { planted(name: key_name, content: "a1\n") }
+fn good_launch() -> FilesystemFileObservation { planted(name: launch_name, content: launch_for(node: "n1", instance: "i1", attempt: "a1")) }
 
 fn refused(o: AttemptBindingOutcome) -> Bool {
   match o { AttemptBindingRefused { reason: _ } => true  _ => false }
@@ -96,8 +98,8 @@ fn owed_unbuilt(r: ServiceEvidenceReading, owner: String) -> Bool {
 
 // ── the binding: one discriminating red per refusal ──
 
-test fn an_attempt_whose_launch_and_key_records_name_it_is_bound_with_the_launch_revision() -> Bool {
-  match bind(launch: good_launch(), key: good_key()) {
+test fn an_attempt_whose_launch_record_names_it_is_bound_with_the_launch_revision() -> Bool {
+  match bind(launch: good_launch()) {
     AttemptBound { binding } =>
       (binding.instance_id as String) == "i1" && (binding.node_id as String) == "n1" && (binding.attempt_key as String) == "a1"
         && (binding.revision_hex as String) == "0000000000000000000000000000000000000000"
@@ -106,43 +108,45 @@ test fn an_attempt_whose_launch_and_key_records_name_it_is_bound_with_the_launch
 }
 
 test fn an_attempt_with_no_launch_record_is_unlaunched_not_bound() -> Bool {
-  match bind(launch: unplanted(name: launch_name), key: good_key()) { AttemptUnlaunched => true  _ => false }
+  match bind(launch: unplanted(name: launch_name)) { AttemptUnlaunched => true  _ => false }
 }
 
 test fn a_launch_record_naming_another_node_refuses() -> Bool {
-  refused(o: bind(launch: planted(name: launch_name, content: launch_for(node: "n2", instance: "i1")), key: good_key()))
+  refused(o: bind(launch: planted(name: launch_name, content: launch_for(node: "n2", instance: "i1", attempt: "a1"))))
 }
 
 test fn a_launch_record_copied_from_another_instance_refuses() -> Bool {
-  refused(o: bind(launch: planted(name: launch_name, content: launch_for(node: "n1", instance: "i2")), key: good_key()))
+  refused(o: bind(launch: planted(name: launch_name, content: launch_for(node: "n1", instance: "i2", attempt: "a1"))))
 }
 
-// Attempt B's records copied into attempt A's directory: same node, same instance, so only the
-// attempt-key record can tell them apart.
-test fn records_copied_from_another_attempt_of_the_same_node_refuse() -> Bool {
-  refused(o: bind(launch: good_launch(), key: planted(name: key_name, content: "b2\n")))
+// Attempt B's launch bytes copied into attempt A's directory: same node, same instance, so only the
+// attempt key the record carries can tell them apart.
+test fn launch_bytes_copied_from_another_attempt_of_the_same_node_refuse() -> Bool {
+  refused(o: bind(launch: planted(name: launch_name, content: launch_for(node: "n1", instance: "i1", attempt: "b2"))))
 }
 
-test fn a_missing_attempt_key_record_refuses() -> Bool {
-  refused(o: bind(launch: good_launch(), key: unplanted(name: key_name)))
+// A record written before the binding existed carries no attempt key: it decodes as unbound and
+// refuses, never defaulting to the requested attempt.
+test fn a_legacy_launch_record_with_no_attempt_key_refuses() -> Bool {
+  refused(o: bind(launch: planted(name: launch_name, content: serialize_json(v: launch_identity_json(id: identity(node: "n1", instance: "i1"))))))
 }
 
 test fn a_launch_record_that_is_not_json_refuses() -> Bool {
-  refused(o: bind(launch: planted(name: launch_name, content: "not json"), key: good_key()))
+  refused(o: bind(launch: planted(name: launch_name, content: "not json")))
 }
 
 test fn a_launch_record_missing_its_revision_refuses() -> Bool {
-  refused(o: bind(launch: planted(name: launch_name, content: "{\"node_id\":\"n1\",\"cause\":\"operator\",\"mode\":\"manual_ready\",\"instance_id\":\"i1\"}"), key: good_key()))
+  refused(o: bind(launch: planted(name: launch_name, content: "{\"node_id\":\"n1\",\"cause\":\"operator\",\"mode\":\"manual_ready\",\"instance_id\":\"i1\",\"attempt_key\":\"a1\"}")))
 }
 
 test fn an_indeterminate_launch_read_refuses() -> Bool {
-  refused(o: bind(launch: FilesystemFileIndeterminate { cause: "listing failed" }, key: good_key()))
+  refused(o: bind(launch: FilesystemFileIndeterminate { cause: "listing failed" }))
 }
 
 test fn an_empty_identity_refuses_before_any_read() -> Bool {
-  refused(o: service_evidence_bind_attempt(instance_id: "", node_id: "n1", attempt_key: "a1", launch: good_launch(), key_record: good_key()))
-    && refused(o: service_evidence_bind_attempt(instance_id: "i1", node_id: "", attempt_key: "a1", launch: good_launch(), key_record: good_key()))
-    && refused(o: service_evidence_bind_attempt(instance_id: "i1", node_id: "n1", attempt_key: "", launch: good_launch(), key_record: good_key()))
+  refused(o: service_evidence_bind_attempt(instance_id: "", node_id: "n1", attempt_key: "a1", launch: good_launch()))
+    && refused(o: service_evidence_bind_attempt(instance_id: "i1", node_id: "", attempt_key: "a1", launch: good_launch()))
+    && refused(o: service_evidence_bind_attempt(instance_id: "i1", node_id: "n1", attempt_key: "", launch: good_launch()))
 }
 
 // ── the readings ──
@@ -170,11 +174,11 @@ test fn with_no_reader_on_main_every_field_is_owed_to_its_named_producer() -> Bo
 // The pinned wire is a function of the bound receipt: the same binding and inputs pin the same
 // digest, and a different attempt pins a different one.
 test fn the_pinned_digest_follows_the_binding() -> Bool {
-  match bind(launch: good_launch(), key: good_key()) {
+  match bind(launch: good_launch()) {
     AttemptBound { binding } => {
       let r = ServiceEvidenceReceipt { binding: binding, inputs: service_evidence_inputs_on_main() }
       service_evidence_receipt_digest(r: r) == service_evidence_receipt_digest(r: ServiceEvidenceReceipt { binding: binding, inputs: service_evidence_inputs_on_main() })
-        && match service_evidence_bind_attempt(instance_id: "i1", node_id: "n1", attempt_key: "b2", launch: good_launch(), key_record: planted(name: key_name, content: "b2")) {
+        && match service_evidence_bind_attempt(instance_id: "i1", node_id: "n1", attempt_key: "b2", launch: planted(name: launch_name, content: launch_for(node: "n1", instance: "i1", attempt: "b2"))) {
           AttemptBound { binding: other } => service_evidence_receipt_digest(r: r) != service_evidence_receipt_digest(r: ServiceEvidenceReceipt { binding: other, inputs: service_evidence_inputs_on_main() })
           _ => false
         }
