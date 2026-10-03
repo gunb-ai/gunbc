@@ -2997,21 +2997,14 @@ fn lookahead_prefix_refused_by(prefix: LookaheadPrefix, guards: List<List<FirstK
   )
 }
 
+// The empty prefix (a nullable alternative) is the both-nullable row's question, not this one's, so
+// it is not compared here -- exactly as the single-token FIRST check never counted it.
 fn lookahead_prefix_pair_overlaps(left: LookaheadPrefix, right: LookaheadPrefix) -> Bool {
   !is_empty(xs: lookahead_prefix_keys(p: left))
     && !is_empty(xs: lookahead_prefix_keys(p: right))
     && lookahead_prefix_keys_overlap(left: lookahead_prefix_keys(p: left), right: lookahead_prefix_keys(p: right))
     && !lookahead_prefix_refused_by(prefix: left, guards: lookahead_prefix_guards(p: right))
     && !lookahead_prefix_refused_by(prefix: right, guards: lookahead_prefix_guards(p: left))
-}
-
-// The empty prefix (a nullable alternative) is the both-nullable row's question, not this one's, so
-// it is not compared here -- exactly as the single-token FIRST check never counted it.
-fn lookahead_prefix_sets_overlap(left: List<LookaheadPrefix>, right: List<LookaheadPrefix>) -> Bool {
-  any(
-    xs: left,
-    predicate: fn(l) { any(xs: right, predicate: fn(r) { lookahead_prefix_pair_overlaps(left: l, right: r) }) }
-  )
 }
 
 fn lookahead_alternatives_overlap(
@@ -3021,22 +3014,37 @@ fn lookahead_alternatives_overlap(
   ctx: LookaheadContext
 ) -> Bool {
   let base = grammar_choice_lookahead_depth()
-  if lookahead_alternatives_overlap_at(left: left, rest: rest, head_keys: head_keys, depth: base, ctx: ctx) {
-    let guarded = fold_list(
-      xs: Cons { head: left, tail: rest },
-      empty: base,
-      cons: fn(acc, alt) { lookahead_max_int(a: acc, b: lookahead_leading_guard_length(expr: alt, ctx: ctx)) }
-    )
-    let depth = lookahead_min_int(a: guarded, b: grammar_choice_lookahead_depth_cap())
-    if depth > base {
-      lookahead_alternatives_overlap_at(left: left, rest: rest, head_keys: head_keys, depth: depth, ctx: ctx)
-    } else {
-      true
-    }
-  } else {
-    false
+  match lookahead_alternatives_overlap_at(left: left, rest: rest, head_keys: head_keys, depth: base, ctx: ctx) {
+    SiteDisjoint => false
+    SiteUnknown => true
+    SiteOverlaps { heads: heads } =>
+      let guarded = fold_list(
+        xs: Cons { head: left, tail: rest },
+        empty: base,
+        cons: fn(acc, alt) { lookahead_max_int(a: acc, b: lookahead_leading_guard_length(expr: alt, ctx: ctx)) }
+      )
+      let depth = lookahead_min_int(a: guarded, b: grammar_choice_lookahead_depth_cap())
+      if depth > base {
+        match lookahead_alternatives_overlap_at(left: left, rest: rest, head_keys: heads, depth: depth, ctx: ctx) {
+          SiteDisjoint => false
+          SiteUnknown => true
+          SiteOverlaps { heads: _ } => true
+        }
+      } else {
+        true
+      }
   }
 }
+
+// A SITE'S READ AT ONE DEPTH, and the first tokens of the prefix pairs that overlapped there. A
+// deeper read is restricted to those tokens: a prefix whose first token begins no overlapping pair
+// cannot overlap at any greater depth, so walking its continuations changes no answer. Measured on
+// the dag grammar, restarting the deeper read from the site's whole head set cost most of the
+// grammar's preparation (the `expr` site re-walked every identifier-led binary expression).
+type LookaheadSiteRead
+  = SiteDisjoint
+  | SiteOverlaps { heads: List<FirstKey> }
+  | SiteUnknown
 
 fn lookahead_max_int(a: Int, b: Int) -> Int { if a > b { a } else { b } }
 
@@ -3074,7 +3082,7 @@ fn lookahead_alternatives_overlap_at(
   head_keys: List<FirstKey>,
   depth: Int,
   ctx: LookaheadContext
-) -> Bool {
+) -> LookaheadSiteRead {
   let restrict = Present { value: head_keys }
   let left_prefixes = lookahead_prefixes(expr: left, depth: depth, head_keys: restrict, visiting: std.algebra.Empty, ctx: ctx)
   let right_prefixes = fold_list(
@@ -3088,14 +3096,44 @@ fn lookahead_alternatives_overlap_at(
     }
   )
   match left_prefixes {
-    LookaheadUnknown => true
+    LookaheadUnknown => SiteUnknown
     LookaheadKnown { prefixes: l } =>
       match right_prefixes {
-        LookaheadUnknown => true
-        LookaheadKnown { prefixes: r } => lookahead_prefix_sets_overlap(left: l, right: r)
+        LookaheadUnknown => SiteUnknown
+        LookaheadKnown { prefixes: r } => lookahead_site_read_of(left: l, right: r)
       }
   }
 }
+
+fn lookahead_site_read_of(left: List<LookaheadPrefix>, right: List<LookaheadPrefix>) -> LookaheadSiteRead {
+  let heads = fold_list(
+    xs: left,
+    empty: grammar_empty_terminal_list(),
+    cons: fn(outer, l) {
+      fold_list(
+        xs: right,
+        empty: outer,
+        cons: fn(inner, r) {
+          if lookahead_prefix_pair_overlaps(left: l, right: r) {
+            lookahead_heads_add(heads: lookahead_heads_add(heads: inner, prefix: l), prefix: r)
+          } else {
+            inner
+          }
+        }
+      )
+    }
+  )
+  if is_empty(xs: heads) { SiteDisjoint } else { SiteOverlaps { heads: heads } }
+}
+
+fn lookahead_heads_add(heads: List<FirstKey>, prefix: LookaheadPrefix) -> List<FirstKey> {
+  match list_head(xs: lookahead_prefix_keys(p: prefix)) {
+    HeadFound { value: k } => first_list_union(left: heads, right: Cons { head: lookahead_key_first(key: k), tail: std.algebra.Empty })
+    HeadAbsent => heads
+  }
+}
+
+fn lookahead_key_first(key: LookaheadKey) -> FirstKey { key.key }
 
 fn ordered_backtrack_row(
   production: Symbol,
