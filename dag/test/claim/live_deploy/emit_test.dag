@@ -87,7 +87,8 @@ import extdeps.tailscale.serve {
 }
 import extdeps.exec.command { shell_quote }
 import extdeps.posix.shell_command_language { posix_single_quote }
-import gunbc.shell_command_text { shell_privileged_command_text_of_argv }
+import gunbc.shell_command_text { shell_privileged_command_text_of_argv, shell_command_text_of_node }
+import gunbc.ci_deploy_sudoers { deploy_sudoers_elevated }
 import gunbc.live_deploy.operations {
   install_directory_command,
   rm_force_command,
@@ -152,7 +153,7 @@ import gunbc.ci_deploy_access {
   deploy_access_job_principal_refused_emit_poison,
   ci_deploy_srv1_access_or_refusal, DeployAccessReady, DeployAccessJobPrincipalRefused,
 }
-import gunbc.fleet_posix_accounts { DeployRunnerPrincipal }
+import gunbc.fleet_posix_accounts { DeployRunnerPrincipal, ci_runner_sudo_binary_path, SudoVisudo }
 import gunbc.host_axis_caps {
   deploy_memory_cap_apply_script_for_host,
   deploy_memory_cap_shadow_revert_script,
@@ -348,14 +349,31 @@ test fn witness_dependency_ensure_is_idempotent() -> Bool {
     && string_contains(s: tmux, pattern: deploy_effect_command(inv: apt_install_unelevated_effect(package: package_tmux)))
 }
 
+// THE STAGED-FILE VALIDATION, AS THE INSTALL ITSELF BUILDS IT. The install step is a bash command
+// node built by gunbc.ci_deploy_sudoers deploy_sudoers_elevated over the sudo elevation argv and the
+// fleet's visudo row; this is that same node with the same argv, rendered by the same serializer, so
+// the needle is the producer's own words rather than a hand spelling of them. The hand spelling
+// `sudo -n /usr/sbin/visudo -cf` went stale twice without the step changing meaning: #12602 spelled
+// sudo by its absolute path (extdeps.sudo sudo_program), and #12525 moved the install onto the bash
+// builder, which quotes every literal word. The stage path is a variable word the claim does not name.
+fn witness_sudoers_stage_visudo_check_text() -> String {
+  shell_command_text_of_node(stmt: deploy_sudoers_elevated(command: [ci_runner_sudo_binary_path(b: SudoVisudo) as String, "-cf"], tail: []))
+}
+
+// THE TWO PROBE NEGATIVES THIS CLAIM CARRIED ARE DELETED, NOT RE-SPELLED. They banned
+// `sudo -n /usr/sbin/visudo -V` and `sudo -n -l /usr/bin/tailscale` -- the bootstrap preflight's
+// probes. Under the quoting serializer neither spelling can occur, so both were permanently true and
+// carried nothing. Re-spelling them in the quoted form would be WRONG rather than merely redundant:
+// since #12168 those exact probes are emitted on purpose AFTER the drop-in lands
+// (gunbc.ci_deploy_sudoers deploy_sudoers_post_install_roster_probe_stmts). Their ORDER is the
+// safety fact, and test.claim.deploy_mutation_gate_witness owns it; what this claim keeps is that
+// no embedded preflight block exists, by its markers.
 test fn witness_apply_emits_no_embedded_preflight_and_only_sudoers() -> Bool {
   let sh = witness_apply_script()
   !string_contains(s: sh, pattern: "deploy-access-bootstrap-preflight")
     && !string_contains(s: sh, pattern: "whoami")
-    && !string_contains(s: sh, pattern: "sudo -n -l /usr/bin/tailscale >/dev/null 2>&1")
-    && !string_contains(s: sh, pattern: "sudo -n /usr/sbin/visudo -V >/dev/null")
     && !string_contains(s: sh, pattern: "deploy-access-preflight: PASS")
-    && string_contains(s: sh, pattern: "sudo -n /usr/sbin/visudo -cf")
+    && string_contains(s: sh, pattern: witness_sudoers_stage_visudo_check_text())
     && string_contains(s: sh, pattern: "/etc/sudoers.d/gunbc-deploy")
     && !string_contains(s: sh, pattern: "gunbc-deploy-privileged")
 }
@@ -367,18 +385,19 @@ test fn witness_apply_emits_no_embedded_preflight_and_only_sudoers() -> Bool {
 // per-claim ceiling of 72,300 (required floor run 34927164902), and the program carries nothing else
 // this claim names.
 //
-// THE PREAMBLE IS LITERALLY SHARED, which is what makes the two absence conjuncts hold at this grain
+// THE PREAMBLE IS LITERALLY SHARED, which is what makes the absence conjunct hold at this grain
 // rather than merely cost less: `live_deploy_retract_intent` concatenates
-// `deploy_apply_preamble_steps` -- the same steps the apply fold uses -- so a bootstrap preflight or
-// a tailscale sudo probe creeping back in would appear in exactly the text read here. The retract's
-// own remaining steps are artifact teardowns, which carry neither.
+// `deploy_apply_preamble_steps` -- the same steps the apply fold uses -- so a bootstrap preflight
+// creeping back in would appear in exactly the text read here. The retract's own remaining steps are
+// artifact teardowns, which carry none. (The tailscale sudo-probe negative is gone for the reason
+// witness_apply_emits_no_embedded_preflight_and_only_sudoers states: that probe is now emitted on
+// purpose after the install.)
 test fn witness_retract_preamble_acknowledges_shared_sudoers_install() -> Bool {
   let frame = pipeline_steps_text(steps: deploy_retract_frame_comments(spec: deployment_spec_srv1()))
   let preamble = witness_apply_preamble_text()
   string_contains(s: frame, pattern: "first retract-after-flip may be the dropin install")
     && !string_contains(s: preamble, pattern: "deploy-access-bootstrap-preflight")
-    && !string_contains(s: preamble, pattern: "sudo -n -l /usr/bin/tailscale >/dev/null 2>&1")
-    && string_contains(s: preamble, pattern: "sudo -n /usr/sbin/visudo -cf")
+    && string_contains(s: preamble, pattern: witness_sudoers_stage_visudo_check_text())
 }
 
 // THE PREAMBLE, READ SEPARATELY, SO AN ABSENCE CLAIM DOES NOT LOSE HALF ITS SUBJECT.
