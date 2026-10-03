@@ -71,7 +71,7 @@ import v2.std.qualified_name { QualifiedName, declaration_reference_path_optiona
 import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
 import v2.std.type_binder { type_param_names }
 import v2.std.logic { Bool }
-import v2.std.algebra { any, fold_list }
+import v2.std.algebra { any, fold_list, length }
 
 data fold_lowering_note: String = "The un-forked forward lowering for fold — the first slice of the general body producer that replaces both the removed cost-shape fork and the hand-rolled MVP shapes. A surface fold has NO dedicated grammar production; it parses as an ordinary call (a ^dag_surface_primary_expr whose head ident, after the StampLexeme grammar fix, carries its NAME as an atom identity), so its lowering is a SEMANTIC desugaring keyed on the CALLEE identity (DESIGN §4: fold/recursion is sugar over Loop), never a lexeme scan. The input is the fold-call surface subtree — the primary_expr captured child, a sequence(head_ident, call_suffix) — read the homogeneous way cost_coverage locates fn bodies and the qualified-name parser reads sequence heads: fold_call_head_symbol reads the sequence-left head projection (the callee ^fold); fold_call_lowering reads the collection, init and step from their declared slots (named, else at the position std.algebra collection_fold_shape declares), and fold_recurrence_encoding builds the full fold encoding Bind { acc := init, Loop { step, domain, carrier, bound, realized: head } } (gunbc.plans.for_while_loop_sugar §2.3), bounded by the fold-iteration measure ^dag_surface_fold_iteration_measure (registered Strict in v2.std.cardinality.measure_descent_fact_registry, so loop_multiplicity derives its termination). Fail-closed twice: a call whose head is not ^fold refuses with ^fold_lowering_not_a_fold_call, and a fold call carrying no fn-literal iteration body refuses with ^fold_lowering_shape_invalid — never fabricates a loop. Verified end-to-end on real source (v2.test.claim.complexity.fold_lowering): fold(xs, init: 0, f: fn(acc, x) { acc }) lowers to an encoding whose Loop terminates; v2.test.claim.fold_encoding pins each operand at its authored occurrence. This unit is the same desugaring the whole-tree body producer will run on every located fold call once corpus resolution/walking is affordable; the caller supplies the located call subtree."
 
@@ -815,23 +815,36 @@ fn fold_realized_member_role(realized: Node) -> Optional<FoldMemberRole> {
 // is not one of these, or is not an instantiation at all -- is Absent, and the caller must say so rather
 // than guess a member.
 fn fold_collection_member_type(domain_type: Node) -> Optional<Node> {
-  match domain_type.kind {
-    TypeNode { connective: Instantiation } =>
-      match node_positional_child_targets(node: domain_type) {
-        Cons { head: head, tail: Cons { head: member, tail: Empty } } =>
-          match declaration_reference_path_optional(node: head) {
-            Present { value: path } =>
-              if qualified_name_to_dotted_string(qn: path) == "v2.std.collection.List"
-                || qualified_name_to_dotted_string(qn: path) == "std.algebra.FreeMonoid" {
-                optional_present(value: member)
-              } else {
-                optional_absent()
-              }
-            Absent => optional_absent()
-          }
-        _ => optional_absent()
-      }
-    _ => optional_absent()
+  let args = node_positional_child_targets(node: domain_type)
+  if fold_node_is_instantiation(n: domain_type) && length(xs: args) == 2 {
+    match list_at_optional(xs: args, index: 0) {
+      Absent => optional_absent()
+      Present { value: head } =>
+        match declaration_reference_path_optional(node: head) {
+          Absent => optional_absent()
+          Present { value: path } =>
+            if qualified_name_to_dotted_string(qn: path) == "v2.std.collection.List"
+              || qualified_name_to_dotted_string(qn: path) == "std.algebra.FreeMonoid" {
+              list_at_optional(xs: args, index: 1)
+            } else {
+              optional_absent()
+            }
+        }
+    }
+  } else {
+    optional_absent()
+  }
+}
+
+fn fold_node_is_instantiation(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Instantiation } => true
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -892,7 +905,8 @@ fn fold_step_formal_at(step: Node, position: Int) -> Optional<FoldMemberFormal> 
 fn fold_step_body_node(step: Node) -> Optional<Node> {
   match arrow_body_target_lookup(children: step.children) {
     Found { target: body } => optional_present(value: body)
-    _ => optional_absent()
+    Ambiguous => optional_absent()
+    Absent => optional_absent()
   }
 }
 
@@ -908,17 +922,14 @@ fn fold_step_declared_return(step: Node) -> Optional<Node> {
 
 // The step callable of a fold encoding's Loop: its one positional child.
 fn fold_loop_step(loop_node: Node) -> Optional<Node> {
-  match node_positional_child_targets(node: loop_node) {
-    Cons { head: step, tail: Empty } => optional_present(value: step)
-    _ => optional_absent()
-  }
+  let positional = node_positional_child_targets(node: loop_node)
+  if length(xs: positional) == 1 { list_at_optional(xs: positional, index: 0) } else { optional_absent() }
 }
 
 fn fold_type_is_variable_of(t: Node, step: Node) -> Bool {
-  match t.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      any(xs: type_param_names(n: step), predicate: fn(v) { v == id })
-    _ => false
+  match node_atom_identity_optional(node: t) {
+    Present { value: id } => any(xs: type_param_names(n: step), predicate: fn(v) { v == id })
+    Absent => false
   }
 }
 
