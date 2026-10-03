@@ -416,8 +416,10 @@ import gunbc.scm.object_store {
   PathUniqueManifestEntries,
   path_unique_of_record, path_unique_with_path_bound, path_unique_with_path_removed,
   store_path_unique_manifest, UniqueManifestStored, UniqueManifestLocatorCollision,
+  find_object, store_rostered_lookup, scm_object_identity, authored_source_object,
+  CorpusManifestRecord, authored_source_target_locator,
 }
-import gunbc.scm.repository_envelope { RepositoryEnvelope, empty_repository, commit_at_reference }
+import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit, empty_repository, commit_at_reference, merge_base, MergeBaseDerived, MergeBaseNotDerived, RepositoryIndexHasNoObjectRoster }
 import std.list { distinct_by_key }
 import gunbc.scm.checkout { recover_corpus, CorpusRecovered, CorpusRecoveryRefused, RecoveredSourceFile }
 import gunbc.scm.ancestry { RepositoryCommitRef, RootCommit, DescendsFrom, repository_commit_ref_eq }
@@ -426,7 +428,7 @@ import gunbc.scm.write_spine {
   StagedCommitMinted, StagedCommitCandidateRefused, StagedCommitNothingToFreeze,
   StagedCommitAllocatorInvalid, StagedCommitSourceUnrecoverable,
 }
-import gunbc.scm.repository_load { load_repository, RepositoryLoaded, RepositoryLoadRefused, RepositoryLoadRefusal, RepositoryFileUnreadable, RepositoryDocumentUnparseable, RepositoryDocumentRefused }
+import gunbc.scm.repository_load { load_repository, load_repository_indexed, materialize_objects, ObjectsMaterialized, ObjectMaterializationRefused, RepositoryLoaded, RepositoryLoadRefused, RepositoryLoadRefusal, RepositoryFileUnreadable, RepositoryDocumentUnparseable, RepositoryDocumentRefused }
 import gunbc.scm.repository_save {
   save_repository_sharded_guarded,
   RepositoryGuardedSaveOutcome,
@@ -5787,7 +5789,7 @@ fn belt_scm_envelope_observe(projects_dir: String, path: String, entry_name: Str
   } else if !filesystem_listing_names_entry(listing: listing.entries, name: entry_name) {
     EnvelopeReady { envelope: empty_repository(), generation: GenerationExpectedAbsent }
   } else {
-    match load_repository(path: path) {
+    match load_repository_indexed(path: path) {
       RepositoryLoaded { path: _, envelope, generation } =>
         EnvelopeReady { envelope: envelope, generation: GenerationExpected(generation) }
       RepositoryLoadRefused { cause } =>
@@ -5808,8 +5810,15 @@ fn belt_scm_load_refusal_detail(cause: RepositoryLoadRefusal) -> String {
       join(["the envelope file could not be read: ", path, " (", error, ")"], "")
     RepositoryDocumentUnparseable { path, gap: _ } =>
       join(["the envelope file is not JSON: ", path], "")
-    RepositoryDocumentRefused { path, cause: _ } =>
-      join(["the envelope document is refused by the repository schema: ", path], "")
+    RepositoryDocumentRefused { path, cause } =>
+      match cause {
+        RepositoryIndexHasNoObjectRoster { found } =>
+          join([
+            "the envelope at ", path, " is ", found,
+            ", whose index carries no object roster, so the belt cannot read only what it needs; migrate it once, outside a tick (gunbc.scm.repository_convert scm_convert_repository_cli)",
+          ], "")
+        _ => join(["the envelope document is refused by the repository schema: ", path], "")
+      }
   }
 }
 
@@ -6226,9 +6235,35 @@ type BeltDeltaFold {
   refused: String?
 }
 
+// A RE-BOUND PATH WHOSE BYTES THE REPOSITORY ALREADY PERSISTS (a revert, a file restored to an
+// earlier content) is materialized before it is stored: the identity law refuses two contents under
+// one identity, and that comparison needs the one persisted object -- read from exactly its shard
+// (gunbc.scm.repository_load materialize_objects), never by decoding the repository. Bytes the
+// repository has never held need no read at all.
+type BeltDeltaResident
+  = DeltaResident { store: ObjectStore }
+  | DeltaResidentRefused { detail: String }
+
+fn belt_scm_delta_resident_for(path: String, store: ObjectStore, text: String) -> BeltDeltaResident {
+  let identity = scm_object_identity(object: authored_source_object(text: text))
+  match find_object(store: store, identity: identity) {
+    Present { value: _ } => DeltaResident { store: store }
+    Absent =>
+      match store_rostered_lookup(store: store, identity: identity) {
+        Absent => DeltaResident { store: store }
+        Present { value: _ } =>
+          match materialize_objects(envelope_path: path, store: store, identities: [identity]) {
+            ObjectMaterializationRefused { detail } => DeltaResidentRefused { detail: detail }
+            ObjectsMaterialized { store: next, read_shards: _ } => DeltaResident { store: next }
+          }
+      }
+  }
+}
+
 fn belt_scm_delta_fold_step(
   instance: HostDashboardInstance,
   worktree: String,
+  path_of_envelope: String,
   acc: BeltDeltaFold,
   change: WorktreeChange,
 ) -> BeltDeltaFold {
@@ -6257,7 +6292,17 @@ fn belt_scm_delta_fold_step(
               },
             }
           } else {
-            match store_authored_source(store: acc.store, text: read.content) {
+            match belt_scm_delta_resident_for(path: path_of_envelope, store: acc.store, text: read.content) {
+              DeltaResidentRefused { detail } =>
+                BeltDeltaFold {
+                  store: acc.store,
+                  unique: acc.unique,
+                  refused: Present {
+                    value: join(["the changed path ", path as String, " re-binds bytes the repository already holds, and they could not be read back: ", detail], ""),
+                  },
+                }
+              DeltaResident { store: resident } =>
+            match store_authored_source(store: resident, text: read.content) {
               SourceLocatorCollision { identity: _, existing: _, incoming: _ } =>
                 BeltDeltaFold {
                   store: acc.store,
@@ -6279,6 +6324,7 @@ fn belt_scm_delta_fold_step(
                   ),
                   refused: none,
                 }
+            }
             }
           }
         }
@@ -6312,6 +6358,56 @@ fn belt_scm_delta_capture(
     Absent =>
       ScmCapturePoisoned { detail: "the seeded base commit is not a commit of its own envelope, which is envelope damage" }
     Present { value: base_commit } =>
+      if base_commit.message != join(["project base: ", base_sha], "") {
+        ScmCaptureRefused {
+          detail: join([
+            "stale base: the attempt branches from ", base_sha,
+            " but the project repository's base commit records '", base_commit.message,
+            "'; applying the worktree's change set against one base onto the other's tree would mint a candidate that is neither, so the capture refuses until the repository's base advances to this attempt's base",
+          ], ""),
+        }
+      } else {
+      match materialize_objects(envelope_path: path, store: seeded.store, identities: [base_commit.root.locator]) {
+        ObjectMaterializationRefused { detail } =>
+          ScmCaptureRefused { detail: join(["the base commit's manifest could not be read from its shard: ", detail], "") }
+        ObjectsMaterialized { store: with_base, read_shards: _ } =>
+          belt_scm_delta_capture_over(
+            instance: instance,
+            worktree: worktree,
+            seeded: RepositoryEnvelope {
+              store: with_base,
+              commits: seeded.commits,
+              commit_allocator: seeded.commit_allocator,
+              checked_out: seeded.checked_out,
+              staged: seeded.staged,
+            },
+            generation: generation,
+            head_ref: head_ref,
+            base_ref: base_ref,
+            base_sha: base_sha,
+            path: path,
+            message: message,
+            base_commit: base_commit,
+          )
+      }
+      }
+  }
+}
+
+// THE CAPTURE'S ONE CONTENT DEMAND ON HISTORY IS ITS BASE MANIFEST, materialized above from its own
+// shard; everything else the capture reads is the worktree's change set.
+fn belt_scm_delta_capture_over(
+  instance: HostDashboardInstance,
+  worktree: String,
+  seeded: RepositoryEnvelope,
+  generation: RepositoryGenerationExpectation,
+  base_ref: RepositoryCommitRef,
+  head_ref: RepositoryCommitRef?,
+  base_sha: String,
+  path: String,
+  message: String,
+  base_commit: RepositoryCommit,
+) -> BeltScmCapture {
       match find_corpus_manifest_record(store: seeded.store, identity: base_commit.root.locator) {
         CorpusManifestAbsent { identity: _ } =>
           ScmCapturePoisoned { detail: "the seeded base's manifest is absent from the store" }
@@ -6361,7 +6457,7 @@ fn belt_scm_delta_capture(
                       unique: path_unique_of_record(base: base_record),
                       refused: none,
                     },
-                    f: (acc, change) => belt_scm_delta_fold_step(instance: instance, worktree: worktree, acc: acc, change: change),
+                    f: (acc, change) => belt_scm_delta_fold_step(instance: instance, worktree: worktree, path_of_envelope: path, acc: acc, change: change),
                   )
                   match folded.refused {
                     Present { value: detail } => ScmCaptureRefused { detail: detail }
@@ -6454,7 +6550,6 @@ fn belt_scm_delta_capture(
               }
           }
       }
-  }
 }
 
 // THE CANDIDATE CAPTURE SEQUENCE. The SCM capture comes FIRST: the candidate's authoritative
@@ -10146,17 +10241,92 @@ fn belt_integration_receipt_record_state(
 // capture records no locator and refuses as binding-unverifiable rather than being guessed at.
 // Both refusals land BEFORE fanin_integrate_candidate, so no merge is ever minted against an
 // unauthenticated binding; the honest capture falls through to the merge unchanged.
+// THE INTEGRATE'S CONTENT DEMAND IS THE THREE MERGE-SIDE MANIFESTS: the integration head's, the
+// candidate's and their merge base's. The envelope is loaded indexed (the index alone), the merge
+// base is derived from the commit table -- which the index carries -- and exactly those three roots
+// are materialized from their singleton shards; the merge reads entries, and completeness answers
+// from the roster. A merge-base refusal reads nothing: squash_merge re-derives the same refusal from
+// the same commits.
+fn belt_integrate_materialize_sides(
+  path: String,
+  envelope: RepositoryEnvelope,
+  head: RepositoryCommitRef,
+  candidate: RepositoryCommitRef,
+) -> BeltDeltaResident {
+  match merge_base(repository: envelope, target: head, source: candidate) {
+    MergeBaseNotDerived { refusal: _ } => DeltaResident { store: envelope.store }
+    MergeBaseDerived { anchors } =>
+      match materialize_objects(
+        envelope_path: path,
+        store: envelope.store,
+        identities: [
+          anchors.base.commit.root.locator,
+          anchors.source.commit.root.locator,
+          anchors.target.commit.root.locator,
+        ],
+      ) {
+        ObjectMaterializationRefused { detail } => DeltaResidentRefused { detail: detail }
+        ObjectsMaterialized { store, read_shards: _ } => DeltaResident { store: store }
+      }
+  }
+}
+
+// A CAPTURE TAKEN AGAINST ANOTHER BASE IS NEVER INTEGRATED. Until 2026-10-03 the capture applied a
+// worktree delta computed against the ATTEMPT's base onto the repository's base manifest without
+// comparing the two, so a candidate from an attempt on a different base recorded a tree that is
+// neither base plus work nor anything real (srv2: three such candidates, one integrated). The
+// capture now refuses that state; this gate refuses to integrate one already recorded, durably, as
+// an integration-blocked receipt naming both bases -- the standing is derived from the attempt's
+// recorded spawn base and the repository's base commit, never guessed.
+fn belt_integrate_stale_base_detail(envelope: RepositoryEnvelope, base: BeltBaseSha) -> String? {
+  match base {
+    BaseShaUnobserved { reason } => Present { value: join(["the capturing attempt's base is unobservable, so whether its candidate was captured against the repository's base is unknown: ", reason], "") }
+    BaseShaObserved { base_sha } =>
+      match belt_scm_root_commit_ref(envelope: envelope) {
+        Absent => Present { value: "the project repository holds no base commit, so no candidate can be admitted against it" }
+        Present { value: root_ref } =>
+          match commit_at_reference(commits: envelope.commits, reference: root_ref) {
+            Absent => Present { value: "the project repository's base commit is not a commit of its own envelope, which is envelope damage" }
+            Present { value: root_commit } =>
+              if root_commit.message == join(["project base: ", base_sha], "") {
+                none
+              } else {
+                Present {
+                  value: join([
+                    "stale capture: the candidate was captured from an attempt on base ", base_sha,
+                    " but the project repository's base commit records '", root_commit.message,
+                    "', so its recorded tree is not that attempt's tree and it is not integrated",
+                  ], ""),
+                }
+              }
+          }
+      }
+  }
+}
+
 fn belt_integrate_into_envelope(
   instance: HostDashboardInstance,
   worktree: String,
   capture: SubmissionCapture,
   project_key: String,
   dir: String,
+  attempt_base: BeltBaseSha,
 ) -> BeltEnvelopeIntegration {
-  match load_repository(path: capture.scm_repository) {
+  match load_repository_indexed(path: capture.scm_repository) {
     RepositoryLoadRefused { cause } =>
       EnvelopeIntegrationUnreadable { detail: belt_scm_load_refusal_detail(cause: cause) }
-    RepositoryLoaded { path: _, envelope, generation } => {
+    RepositoryLoaded { path: _, envelope, generation } =>
+      match belt_integrate_stale_base_detail(envelope: envelope, base: attempt_base) {
+        Present { value: detail } =>
+          match attempt_base {
+            BaseShaUnobserved { reason: _ } => EnvelopeIntegrationUnreadable { detail: detail }
+            BaseShaObserved { base_sha: _ } =>
+              match belt_integration_receipt_record_state(instance: instance, worktree: worktree, dir: dir, capture: capture, project_key: project_key, state: IntegrationBlocked { detail: detail }) {
+                IntegrationReceiptRecorded => EnvelopeIntegrationBlocked { detail: detail }
+                IntegrationReceiptRecordFailed { detail: d } => EnvelopeIntegrationUnreadable { detail: d }
+              }
+          }
+        Absent => {
       let candidate = RepositoryCommitRef { identity: MintedId { ordinal: capture.scm_commit_ordinal } }
       match envelope.checked_out {
         Absent =>
@@ -10193,8 +10363,18 @@ fn belt_integrate_into_envelope(
                 }
               }
               Absent =>
+            match belt_integrate_materialize_sides(path: capture.scm_repository, envelope: envelope, head: head, candidate: candidate) {
+              DeltaResidentRefused { detail } =>
+                EnvelopeIntegrationUnreadable { detail: join(["a merge side's manifest could not be read from its shard: ", detail], "") }
+              DeltaResident { store: sides } =>
             match fanin_integrate_candidate(
-              repository: envelope,
+              repository: RepositoryEnvelope {
+                store: sides,
+                commits: envelope.commits,
+                commit_allocator: envelope.commit_allocator,
+                checked_out: envelope.checked_out,
+                staged: envelope.staged,
+              },
               integration_head: head,
               candidate: candidate,
               message: join(["integrate ", capture.head_sha, " into ", project_key], ""),
@@ -10253,9 +10433,11 @@ fn belt_integrate_into_envelope(
               FaninRefused { detail } => EnvelopeIntegrationUnreadable { detail: detail }
             }
             }
+            }
           }
       }
     }
+      }
   }
 }
 
@@ -10375,6 +10557,11 @@ fn belt_integrate_candidate_core_for_instance(
                     capture: capture,
                     project_key: project_key,
                     dir: belt_attempt_integration_dir_for_instance(
+                      instance: instance,
+                      node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
+                      attempt_key: attempt_key,
+                    ),
+                    attempt_base: belt_scm_base_sha_observe(
                       instance: instance,
                       node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
                       attempt_key: attempt_key,
@@ -10695,6 +10882,83 @@ fn belt_publish_project_materialize(
   }
 }
 
+// THE PUBLISH'S CONTENT DEMAND IS THE HEAD'S DELTA AGAINST THE BASE IT IS WRITTEN OVER. The
+// integration worktree is checked out clean at the intake base, and the envelope's root commit IS
+// that base's tree (the seed stages `git show <base>:<path>` for every tracked path and records the
+// sha in the root's message), so every head entry bound to the same source as the root's entry at
+// that path is already on disk byte-for-byte. Only the entries the head re-binds or adds are
+// recovered -- their sources materialized from exactly their shards -- and written. The equivalence
+// rests on the root being the base the worktree holds; when the root does not name this base (an
+// envelope from the pre-seeding capture design, or a base that moved), the delta is underivable and
+// the publish REFUSES, typed, rather than widening to a whole-corpus recovery. Paths the head removed
+// are left as the base has them, exactly as the whole-corpus write left them.
+type BeltPublishDelta
+  = PublishDeltaFiles { files: List<RecoveredSourceFile> }
+  | PublishDeltaRefused { detail: String }
+
+fn belt_publish_changed_entries(head: CorpusManifestRecord, root: CorpusManifestRecord) -> List<CorpusManifestEntry> {
+  let bound = path_unique_of_record(base: root).bindings
+  filter(head.entries, e => match map_get(bound, key: e.path) {
+    Absent => true
+    Present { value: held } => (held.source.locator.digest as String) != (e.source.locator.digest as String)
+  })
+}
+
+fn belt_publish_head_delta(
+  path: String,
+  envelope: RepositoryEnvelope,
+  head_commit: RepositoryCommit,
+  base_sha: String,
+) -> BeltPublishDelta {
+  match belt_scm_root_commit_ref(envelope: envelope) {
+    Absent => PublishDeltaRefused { detail: "the project envelope holds no root commit, so the base the integration worktree holds has no manifest to diff against" }
+    Present { value: root_ref } =>
+      match commit_at_reference(commits: envelope.commits, reference: root_ref) {
+        Absent => PublishDeltaRefused { detail: "the root commit is not a commit of its own envelope, which is envelope damage" }
+        Present { value: root_commit } =>
+          if root_commit.message != join(["project base: ", base_sha], "") {
+            PublishDeltaRefused {
+              detail: join([
+                "the envelope's root commit does not record the intake base ", base_sha,
+                " the integration worktree is checked out at, so which head entries that checkout already holds is underivable; the publish refuses rather than recovering the whole corpus",
+              ], ""),
+            }
+          } else {
+            match materialize_objects(envelope_path: path, store: envelope.store, identities: [head_commit.root.locator, root_commit.root.locator]) {
+              ObjectMaterializationRefused { detail } => PublishDeltaRefused { detail: join(["the head or base manifest could not be read from its shard: ", detail], "") }
+              ObjectsMaterialized { store: with_manifests, read_shards: _ } =>
+                match find_corpus_manifest_record(store: with_manifests, identity: head_commit.root.locator) {
+                  CorpusManifestAbsent { identity: _ } => PublishDeltaRefused { detail: "the integration head's manifest is absent from the store" }
+                  CorpusManifestIsAuthoredSource { identity: _ } => PublishDeltaRefused { detail: "the integration head's root is an authored source, which is store damage" }
+                  CorpusManifestIsSemanticNode { identity: _ } => PublishDeltaRefused { detail: "the integration head's root is a semantic node, which is store damage" }
+                  CorpusManifestFound(head_record) =>
+                    match find_corpus_manifest_record(store: with_manifests, identity: root_commit.root.locator) {
+                      CorpusManifestAbsent { identity: _ } => PublishDeltaRefused { detail: "the base manifest is absent from the store" }
+                      CorpusManifestIsAuthoredSource { identity: _ } => PublishDeltaRefused { detail: "the base root is an authored source, which is store damage" }
+                      CorpusManifestIsSemanticNode { identity: _ } => PublishDeltaRefused { detail: "the base root is a semantic node, which is store damage" }
+                      CorpusManifestFound(root_record) => {
+                        let changed = belt_publish_changed_entries(head: head_record, root: root_record)
+                        match materialize_objects(
+                          envelope_path: path,
+                          store: with_manifests,
+                          identities: map(changed, e => authored_source_target_locator(target: e.source)),
+                        ) {
+                          ObjectMaterializationRefused { detail } => PublishDeltaRefused { detail: join(["a changed source could not be read from its shard: ", detail], "") }
+                          ObjectsMaterialized { store: with_sources, read_shards: _ } =>
+                            match recover_corpus(store: with_sources, entries: changed) {
+                              CorpusRecoveryRefused { cause: _ } => PublishDeltaRefused { detail: "the integration head's changed corpus is unrecoverable from the store" }
+                              CorpusRecovered { files } => PublishDeltaFiles { files: files }
+                            }
+                        }
+                      }
+                    }
+                }
+            }
+          }
+      }
+  }
+}
+
 fn belt_publish_project_for_instance(
   instance: HostDashboardInstance,
   node_id: String,
@@ -10751,7 +11015,7 @@ fn belt_publish_project_for_instance(
                   }
                 ExecOk { stdout: _ } => {
                   let envelope_path = belt_scm_project_repository_path(instance: instance, project_key: project_key)
-                  match load_repository(path: envelope_path) {
+                  match load_repository_indexed(path: envelope_path) {
                     RepositoryLoadRefused { cause } =>
                       PublishEvidenceUnreadable { node_id: node_id, detail: belt_scm_load_refusal_detail(cause: cause) }
                     RepositoryLoaded { path: _, envelope, generation: _ } =>
@@ -10769,18 +11033,10 @@ fn belt_publish_project_for_instance(
                                 detail: "the integration head is not a commit of its own envelope, which is envelope damage",
                               }
                             Present { value: head_commit } =>
-                              match find_corpus_manifest_record(store: envelope.store, identity: head_commit.root.locator) {
-                                CorpusManifestAbsent { identity: _ } =>
-                                  PublishEvidenceUnreadable { node_id: node_id, detail: "the integration head's manifest is absent from the store" }
-                                CorpusManifestIsAuthoredSource { identity: _ } =>
-                                  PublishEvidenceUnreadable { node_id: node_id, detail: "the integration head's root is an authored source, which is store damage" }
-                                CorpusManifestIsSemanticNode { identity: _ } =>
-                                  PublishEvidenceUnreadable { node_id: node_id, detail: "the integration head's root is a semantic node, which is store damage" }
-                                CorpusManifestFound(record) =>
-                                  match recover_corpus(store: envelope.store, entries: record.entries) {
-                                    CorpusRecoveryRefused { cause: _ } =>
-                                      PublishEvidenceUnreadable { node_id: node_id, detail: "the integration head's corpus is unrecoverable from the store" }
-                                    CorpusRecovered { files } =>
+                              match belt_publish_head_delta(path: envelope_path, envelope: envelope, head_commit: head_commit, base_sha: base_sha) {
+                                PublishDeltaRefused { detail } =>
+                                  PublishEvidenceUnreadable { node_id: node_id, detail: detail }
+                                    PublishDeltaFiles { files } =>
                                       match belt_publish_project_materialize(instance: instance, worktree: worktree, files: files) {
                                         ScmCaptureRefused { detail } =>
                                           PublishEvidenceUnreadable { node_id: node_id, detail: detail }
@@ -10856,7 +11112,6 @@ fn belt_publish_project_for_instance(
                                               }
                                           }
                                       }
-                                  }
                               }
                           }
                       }

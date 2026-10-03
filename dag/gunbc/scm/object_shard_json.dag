@@ -10,7 +10,11 @@ import gunbc.scm.json_member {
   read_string_member, read_member_value, read_member,
   MemberString, MemberArray, MemberObject, MemberFailed, MemberValue, MemberLookupFailed,
 }
-import gunbc.scm.object_store { ScmObject, ObjectId, scm_object_identity, store_admission_store }
+import gunbc.scm.object_store {
+  ScmObject, ObjectId, scm_object_identity, store_admission_store,
+  SemanticNodeObject, AuthoredSourceObject, CorpusManifestObject,
+  RosteredObject, scm_object_kind,
+}
 import gunbc.scm.object_table_json { encode_object, EncodePositions, decode_object_table, DecodeAcc }
 
 // THE OBJECT SHARD, RE-GRAINED AT FIRST SAVE (2026-09-23): one shard per object put 7,050 host
@@ -262,9 +266,24 @@ fn object_shard_path_for(envelope_path: String, identity_digest: String) -> Stri
 // 2026-09-23: fourteen shards rewritten for a two-object change) -- the stored order loads back
 // exactly as written, and store mutations append, so a sealed shard's membership never moves and
 // no operation reads or rewrites a batch it did not change.
+//
+// A CORPUS MANIFEST IS ALWAYS ALONE IN ITS SHARD (2026-10-03, the affected-set capture). A capture's
+// one content demand on history is its base commit's manifest; while manifests shared batches with
+// the sources they name, reading that one manifest decoded up to shard_batch_size source objects
+// beside it (srv2's shards reached 23 MB). A manifest is the unit a commit freezes, so it is the
+// unit a shard holds: reading a commit's root is one manifest-sized decode at any repository size.
+// Sources and nodes keep the batched grain, where the per-file read count is what the batch bought.
 type ShardPartitionAcc {
   current: List<ScmObject>
   sealed: List<List<ScmObject>>
+}
+
+fn shard_partition_is_singleton(object: ScmObject) -> Bool {
+  match object {
+    CorpusManifestObject(_) => true
+    AuthoredSourceObject(_) => false
+    SemanticNodeObject(_) => false
+  }
 }
 
 fn shard_partition(objects: List<ScmObject>) -> List<List<ScmObject>> {
@@ -272,10 +291,12 @@ fn shard_partition(objects: List<ScmObject>) -> List<List<ScmObject>> {
     objects,
     init: ShardPartitionAcc { current: [], sealed: [] },
     f: fn(acc, o) {
-      if count(acc.current) >= shard_batch_size {
+      if shard_partition_is_singleton(object: o) {
+        ShardPartitionAcc { current: acc.current, sealed: concat([[o]], acc.sealed) }
+      } else if count(acc.current) >= shard_batch_size {
         ShardPartitionAcc {
           current: [o],
-          sealed: concat(acc.sealed, [reverse(acc.current)]),
+          sealed: concat([reverse(acc.current)], acc.sealed),
         }
       } else {
         ShardPartitionAcc {
@@ -286,10 +307,21 @@ fn shard_partition(objects: List<ScmObject>) -> List<List<ScmObject>> {
     },
   )
   if count(acc.current) == 0 {
-    acc.sealed
+    reverse(acc.sealed)
   } else {
-    concat(acc.sealed, [reverse(acc.current)])
+    reverse(concat([reverse(acc.current)], acc.sealed))
   }
+}
+
+// THE OBJECT ROSTER OF A PARTITION: one row per object, naming the shard that holds it. The writer
+// derives it from the same partition it writes, so a row can name only a shard this save writes.
+fn shard_rostered_rows(shard: List<ScmObject>) -> List<RosteredObject> {
+  let digest = shard_identity_of(member_digests: shard_members_of(objects: shard))
+  map(shard, o => RosteredObject { identity: scm_object_identity(object: o), kind: scm_object_kind(object: o), shard: digest })
+}
+
+fn partition_rostered_rows(partition: List<List<ScmObject>>) -> List<RosteredObject> {
+  partition |> flat_map(shard => shard_rostered_rows(shard: shard))
 }
 
 fn shard_roster_of(objects: List<ScmObject>) -> List<String> {
