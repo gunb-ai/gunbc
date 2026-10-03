@@ -3,7 +3,7 @@ module v2.test.parse.newline_dual_role_operator_parse
 import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_lex, dag_lex_rules, dag_target_model }
+import v2.extdeps.languages.dag { dag_lex, dag_lex_rules, dag_target_model, parse_production_emitted_identity_optional }
 import v2.std.algebra { fold_list }
 import v2.std.collection { map_lookup }
 import v2.std.compilers.lexing { lex_rule_set_matching_rules, lex_rule_token_class_optional }
@@ -32,7 +32,7 @@ import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
-import v2.std.optional { Absent, Present }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.parse_refusal_reason { NewlineBeforeDualRoleOperator, parse_refusal_reason_symbol }
 import v2.std.text { String }
 
@@ -104,10 +104,64 @@ test fn a_newline_minus_after_a_block_refuses_holds() -> Bool {
   n_refuses_at_minus(text: newline_minus_after_block_source, file: ^probe_nl_block, start: 58, end: 59)
 }
 
+// THE ROUTE, NOT ONLY THE VERDICT. The newline refusal is a not-predicate guard in sequence before
+// the additive operator, not a choice alternative beside subtraction (the 2026-10-02 zero-ambiguity
+// ruling: both arms began with `-`, so only order kept them apart). A same-line `-` must therefore
+// reach the subtraction route: its tree has exactly the binary_expr and unary_expr node counts of
+// the same declaration spelled with `+`, which has no prefix reading. A leading `-` takes the
+// negation route instead -- one unary_expr node more than the bare literal -- which is the control
+// that the count discriminates the two routes at all.
+data same_line_plus_source: String = "module probe.nl_plus\n\ndata d: Int = x + 1\n"
+
+data bare_literal_source: String = "module probe.nl_lit\n\ndata d: Int = 1\n"
+
+data leading_minus_source: String = "module probe.nl_neg\n\ndata d: Int = -1\n"
+
+fn n_count_emitted(root: Node, identity: Symbol) -> Int {
+  let own = match parse_production_emitted_identity_optional(node: root) {
+    Present { value: e } => if e == identity { 1 } else { 0 }
+    Absent => 0
+  }
+  fold(root.children, init: own, f: fn(acc, e) { acc + n_count_emitted(root: e.target, identity: identity) })
+}
+
+type NRouteCounts {
+  binary: Int
+  unary: Int
+}
+
+fn n_route_counts(text: String, file: Symbol) -> Optional<NRouteCounts> {
+  match n_tokenize_parse(text: text, file: file) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: tree, diagnostics: _ } =>
+      optional_present(
+        value: NRouteCounts {
+          binary: n_count_emitted(root: tree, identity: ^dag_surface_binary_expr),
+          unary: n_count_emitted(root: tree, identity: ^dag_surface_unary_expr)
+        }
+      )
+  }
+}
+
 test fn a_same_line_minus_is_subtraction_holds() -> Bool {
-  match n_tokenize_parse(text: same_line_minus_source, file: ^probe_nl_same) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+  match n_route_counts(text: same_line_minus_source, file: ^probe_nl_same) {
+    Present { value: minus } =>
+      match n_route_counts(text: same_line_plus_source, file: ^probe_nl_plus) {
+        Present { value: plus } => (minus.binary == plus.binary) && (minus.unary == plus.unary)
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+test fn a_leading_minus_is_negation_holds() -> Bool {
+  match n_route_counts(text: leading_minus_source, file: ^probe_nl_neg) {
+    Present { value: neg } =>
+      match n_route_counts(text: bare_literal_source, file: ^probe_nl_lit) {
+        Present { value: lit } => (neg.binary == lit.binary) && (neg.unary == lit.unary + 1)
+        Absent => false
+      }
+    Absent => false
   }
 }
 
