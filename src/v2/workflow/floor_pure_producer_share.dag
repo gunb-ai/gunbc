@@ -14,7 +14,7 @@ import std.materialization_ladder {
   RefusedUnmodeledWorldRead, ExemptFreshEffect, AcceptedBelowCostFloor, AcceptedSingleRecompute,
   AcceptedEffectIsTheUse, RefusedNatureConflict
 }
-import std.measure { byte_size }
+import std.measure { Nanosecond, byte_size, nanosecond, nanosecond_count }
 import v2.std.algebra { any, list_flat_map, list_map }
 
 // THE CROSS-CLAIM PURE-PRODUCER SHARE -- which pure computations the required floor may fill
@@ -412,8 +412,16 @@ fn floor_cross_claim_share_cost_floor_eval_steps() -> Int {
 // has measured without admitting a stall of any useful length. Re-derive the observation from
 // that run's [floor-shared-fill] claim= rows (fill_wall_ms over fill_eval_steps); change the
 // policy here, never by copying a new figure in.
-fn floor_cross_claim_fill_wall_ns_per_step_ceiling() -> Int {
-  25000
+//
+// THE UNIT IS IN THE TYPE (review 75137): the ceiling is a std.measure `Nanosecond` of wall per one
+// evaluator step, so a millisecond figure cannot be written here by mistake. The seed reads the
+// count through `nanosecond_count`, the one crossing std.measure declares for it.
+fn floor_cross_claim_fill_wall_per_step_ceiling() -> Nanosecond {
+  nanosecond(count: 25000)
+}
+
+fn floor_cross_claim_fill_wall_per_step_ceiling_nanosecond_count() -> Int {
+  nanosecond_count(n: floor_cross_claim_fill_wall_per_step_ceiling())
 }
 
 // The live derivation, over the refused and carried rows this file declares. The seed calls this.

@@ -7093,7 +7093,7 @@ thread_local! {
     /// THE WORK BOUND: wall is excused only in proportion to the evaluator steps the fill has
     /// performed, at this declared ceiling of nanoseconds per step
     /// (`v2.workflow.floor_pure_producer_share`
-    /// `floor_cross_claim_fill_wall_ns_per_step_ceiling`). A fill that is blocked or descheduled
+    /// `floor_cross_claim_fill_wall_per_step_ceiling`). A fill that is blocked or descheduled
     /// accrues wall without steps and is therefore not excused. Zero excuses nothing.
     static CROSS_CLAIM_FILL_NS_PER_STEP_CEILING: std::cell::Cell<u128> = const { std::cell::Cell::new(0) };
     /// The declared cost floor (evaluator steps) below which a derived share's fill is not

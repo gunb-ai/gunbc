@@ -7165,14 +7165,14 @@ pub(crate) fn derive_and_install_cross_claim_share(
     v1_interpreter::install_cross_claim_cost_floor_steps(cost_floor_steps);
     let ns_per_step_ceiling = match v1_interpreter::run_in_context(
         ctx,
-        &format!("{MODULE}.floor_cross_claim_fill_wall_ns_per_step_ceiling"),
+        &format!("{MODULE}.floor_cross_claim_fill_wall_per_step_ceiling_nanosecond_count"),
         false,
     ) {
         Ok(Value::Int(n)) if n > 0 => n as u64,
         other => {
             return Err(format!(
                 "REQUIRED-FLOOR REFUSAL cause=CrossClaimFillWallCeilingUnreadable -- \
-                 floor_cross_claim_fill_wall_ns_per_step_ceiling must be a positive Int, got {}",
+                 floor_cross_claim_fill_wall_per_step_ceiling_nanosecond_count must be a positive Int, got {}",
                 match other {
                     Ok(v) => ctx.format_value(&v),
                     Err(e) => e.to_string(),
