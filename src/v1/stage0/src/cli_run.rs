@@ -9746,7 +9746,28 @@ fn visit_bare_reference_providers(
         .iter()
         .map(String::as_str)
         .filter(|h| !candidates.names.contains(*h))
-        .filter(|h| v1_rt::map_get(&census.services, (*h).to_string()).is_none())
+        .filter(|h| {
+            // A namespace head need not itself be a service key: github.Api.Get
+            // resolves through github.Api. Keep the bare obligation if ANY use of
+            // that head has no service prefix, including a separate member access.
+            let prefix = format!("{h}.");
+            let mut chains = candidates
+                .dotted_chains
+                .iter()
+                .filter(|chain| chain.starts_with(&prefix))
+                .peekable();
+            chains.peek().is_none()
+                || chains.any(|chain| {
+                    let mut key = String::new();
+                    !chain.split('.').any(|segment| {
+                        if !key.is_empty() {
+                            key.push('.');
+                        }
+                        key.push_str(segment);
+                        v1_rt::map_get(&census.services, key.clone()).is_some()
+                    })
+                })
+        })
         .map(|h| h.to_string())
         .collect();
     let all_names: Vec<(String, bool)> = candidates
@@ -10267,6 +10288,52 @@ mod closure_edge_demand_tests {
         );
     }
 
+    #[test]
+    fn qualified_service_prefix_does_not_pull_an_unrelated_bare_helper() {
+        let service = "module svc.api\nservice github.Api {\n operation Get {\n input { id: Int }\n output { id: Int from \"id\" }\n readonly\n transport rest { method: GET, path: \"/x\" }\n }\n}\n";
+        let helper = "module helper\nfn github(value: Int) -> Int { value }\n";
+        for (extra, should_pull_helper) in [
+            ("", false),
+            ("fn bare() -> Int { github(value: 1) }\n", true),
+            ("fn member() -> Int { github.other }\n", true),
+        ] {
+            let consumer = format!(
+                "module svc.consumer\nimport svc.api\nfn run() -> Int {{ github.Api.Get(id: 1) }}\n{extra}"
+            );
+            let fixture = Fixture::new(&[
+                ("api.dag", service),
+                ("helper.dag", helper),
+                ("consumer.dag", &consumer),
+            ]);
+            let index = fixture.index();
+            let found =
+                unimported_bare_providers(&index.source_files["svc.consumer"], &index).unwrap();
+            assert_eq!(
+                found
+                    .iter()
+                    .any(|row| row.name == "github" && row.provider_module == "helper"),
+                should_pull_helper,
+                "extra={extra:?}: {found:?}"
+            );
+        }
+        // Resolving the service prefix must still demand the service's own import.
+        let fixture = Fixture::new(&[
+            ("api.dag", service),
+            ("helper.dag", helper),
+            ("other.dag", "module other\ndata value: Int = 1\n"),
+            ("consumer.dag", "module svc.consumer\nimport other { value }\nfn run() -> Int { github.Api.Get(id: 1) }\n"),
+        ]);
+        let index = fixture.index();
+        let found = unimported_bare_providers(&index.source_files["svc.consumer"], &index).unwrap();
+        assert!(
+            found
+                .iter()
+                .any(|row| row.name == "github.Api" && row.provider_module == "svc.api"),
+            "{found:?}"
+        );
+        assert!(!found.iter().any(|row| row.name == "github"), "{found:?}");
+    }
+
     /// THE ORIGINAL NON-CLOSURE AMBIGUITY SPECIMEN, KEPT, with its entry-local outcome paired with
     /// the mandatory global refusal (#12419 decision 5857893764). An entry whose closure never
     /// reaches the ambiguous consumer is admitted; the whole-pool demand -- the required floor's
@@ -10449,6 +10516,11 @@ mod closure_edge_demand_tests {
                 .is_some_and(|f| f.contains("bypassed")),
             "a judgment of OTHER roots is not a judgment of these"
         );
+        // The twin is a separate qualification subject, not a second resident
+        // production pool. Preserve the cross-root bypass check above, then end
+        // the bad subject's index lifetime before evaluating the clean subject.
+        drop(index);
+        reset_process_shared_index_for_test();
         let ok = run_required_bare_reference_admission(&twin_roots).unwrap();
         assert!(ok.contains("judged=2 pool=2"), "{ok}");
         assert_eq!(
@@ -43742,6 +43814,17 @@ fn claim_scope_for_with_memos(
             };
             let site_file = module.module.span.file.as_str();
             for name in refs.iter() {
+                // A kernel or container spelling binds the substrate, never a declaring module
+                // (`is_substrate_vocabulary`, the one rule every bare-name producer reads), so two
+                // corpus modules declaring `String` do not make a bare `String` contested. This
+                // held by accident while some import in each scope named one of the declarers;
+                // gunbc.rung_drop text_boundary_identity_wall deleted 71 such imports. Not redundant
+                // with the parse fix that carries a service exit arm's type as a type: bare `String`
+                // reads outside exit arms remain (measured: the floor refused gunbc.output_policy at
+                // 4 sites, e.g. extdeps.github.issues, with this skip removed).
+                if is_substrate_vocabulary(name) {
+                    continue;
+                }
                 let Some(claimants) = ambiguous.get(name) else {
                     continue;
                 };
