@@ -168,7 +168,7 @@ import v1.compiler.trait_derive_emit {
   v1_map_key_required_type_names, v1_item_field_type_exprs, v1_with_map_key_requirement,
   v1_map_key_head_names_in_type_expr,
   v1_clone_impl_required_type_params,
-  v1_trait_derive_refuse,
+  v1_trait_derive_refuse, v1_type_exprs_ambiguous_declared_head, v1_ambiguous_declared_head_refusal,
   trait_derive_emit_fn_clone_bound_keyed_carrier_module,
   rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible
 }
@@ -230,6 +230,7 @@ import v1.compiler.infer {
 import v1.compiler.infer_emit_info {
   EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
   lookup_emit_type_summary, lookup_emit_type_decl, empty_emit_graph_info,
+  TypeDeclIndex, type_decl_identity,
   emit_info_with_fn_type_context, emit_info_with_fn_return, emit_info_with_expected_type,
   is_enum_in_summaries, find_variant_parent, is_known_variant,
   variant_belongs_to_enum, variant_summary_key,
@@ -2196,11 +2197,10 @@ fn rust_nominal_ord_type_decl_ord_eligible(decl: Node, source_indices: Map<Strin
 }
 
 fn rust_nominal_ord_type_ref_eligible(elem_node: Node, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
-  let type_name = authored_name_at(source_indices: source_indices, node: elem_node)
   (elem_node.children |> count) == 0
     && (elem_node.params |> count) == 0
     && elem_node.connective == NoConnective
-    && match lookup_emit_type_decl(emit_info: emit_info, type_name: type_name) {
+    && match lookup_emit_type_decl(emit_info: emit_info, type_expr: elem_node, source_indices: source_indices) {
       Present { value: decl } => rust_nominal_ord_type_decl_ord_eligible(decl: decl, source_indices: source_indices)
       Absent => false
     }
@@ -3278,9 +3278,9 @@ fn v1_item_signature_type_exprs(item: Node) -> List<Node> {
   )
 }
 
-fn v1_map_key_seed_type_exprs(modules: List<TypedModule>, type_decl_items: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> List<Node> {
-  let declaration_field_exprs = map_keys(type_decl_items) |> flat_map(type_name =>
-    match map_get(type_decl_items, type_name) {
+fn v1_map_key_seed_type_exprs(modules: List<TypedModule>, type_decl_items: TypeDeclIndex, source_indices: Map<String, NewlineIndex>) -> List<Node> {
+  let declaration_field_exprs = map_keys(type_decl_items.by_identity) |> flat_map(type_name =>
+    match map_get(type_decl_items.by_identity, type_name) {
       Present { value: item } => v1_item_field_type_exprs(item: item, source_indices: source_indices)
       Absent => []
     }
@@ -7477,7 +7477,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
         if (item.params |> count) == 0 && (rust_opaque_kernel_alias_type_eligible(name: item_text) || rust_opaque_declaration_has_exact_row(module_path: module_name, name: item_text)) {
           rust_opaque_kernel_alias_type_decl(name: item_text, module_path: module_name)
         } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
-          emit_zero_param_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, item_text), source_indices: env.source_indices)
+          emit_zero_param_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, type_decl_identity(owner_module: env.module_path, decl_name: item_text)), source_indices: env.source_indices)
         } else {
           match rust_declaration_checkpoint_grounding_at(module_path: module_name, decl_name: item_text, decision: declaration_realization(item: item, dag_name: item_text, target: Rust)) {
             Present { value: host } =>
@@ -7553,7 +7553,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
                   ";"
                 )
               } else if is_parametric_opaque_type_decl_item(item: item, source_indices: env.source_indices) {
-                emit_parametric_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, item_text), source_indices: env.source_indices)
+                emit_parametric_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, type_decl_identity(owner_module: env.module_path, decl_name: item_text)), source_indices: env.source_indices)
               } else {
                 ""
               }
@@ -7726,7 +7726,7 @@ fn function_type_params_have_collision(type_params: List<Node>) -> Bool {
 // is the out-of-step state this note describes, reached through a second door.
 fn emit_item_header_clone_param_names(
   item: Node,
-  item_name: String,
+  item_identity: String,
   has_fn_fields: Bool,
   generic_param_names: List<String>,
   emit_info: EmitGraphInfo,
@@ -7734,7 +7734,7 @@ fn emit_item_header_clone_param_names(
 ) -> List<String> {
   if has_fn_fields {
     v1_item_wf_propagated_clone_bounded_param_names(
-      item_name: item_name,
+      item_identity: item_identity,
       item: item,
       generic_param_names: generic_param_names,
       bounds: emit_info.clone_bounded_type_params,
@@ -7743,7 +7743,7 @@ fn emit_item_header_clone_param_names(
     )
   } else {
     v1_item_clone_bounded_param_names(
-      item_name: item_name,
+      item_identity: item_identity,
       generic_param_names: generic_param_names,
       bounds: emit_info.clone_bounded_type_params
     )
@@ -7774,7 +7774,14 @@ fn emit_type_params_from_clone_param_names(
 // (`emit_type_params_from_clone_param_names`) while the GroupCompletion impl header is rendered in
 // extdeps, so the tree answers "where does a Rust bound get spelled" two different ways.
 fn emit_item_clone_bound_refusal(item: Node, item_name: String, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
-  if (item.params |> count) == 0 {
+  let ambiguous_head = v1_type_exprs_ambiguous_declared_head(
+    type_exprs: v1_item_field_type_exprs(item: item, source_indices: source_indices),
+    type_decl_items: emit_info.type_decl_items,
+    source_indices: source_indices
+  )
+  if ambiguous_head != "" {
+    v1_ambiguous_declared_head_refusal(subject: concat("item '", item_name, "'"), leaf: ambiguous_head)
+  } else if (item.params |> count) == 0 {
     ""
   } else {
     let head = v1_item_clone_undecided_head(
@@ -7861,7 +7868,7 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
     let has_fn_fields = type_has_fn_fields(name: item_text, emit_info: emit_info)
     let header_clone_param_names = emit_item_header_clone_param_names(
       item: item,
-      item_name: item_text,
+      item_identity: type_decl_identity(owner_module: env.module_path, decl_name: item_text),
       has_fn_fields: has_fn_fields,
       generic_param_names: item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)),
       emit_info: emit_info,
@@ -7906,7 +7913,7 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
     let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
     let header_clone_param_names = emit_item_header_clone_param_names(
       item: item,
-      item_name: item_text,
+      item_identity: type_decl_identity(owner_module: env.module_path, decl_name: item_text),
       has_fn_fields: false,
       generic_param_names: generic_param_names,
       emit_info: emit_info,
@@ -7999,8 +8006,8 @@ fn item_seals_construction(item: Node) -> Bool {
 // resolves through the emitter's own declaration index (`type_decl_items`) and then
 // asks the declaration -- so the answer still comes from the declaration node, with
 // the index acting as the lookup rather than as the authority.
-fn type_name_seals_construction(type_name: String, emit_info: EmitGraphInfo) -> Bool {
-  match lookup_emit_type_decl(emit_info: emit_info, type_name: type_name) {
+fn type_reference_seals_construction(type_expr: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match lookup_emit_type_decl(emit_info: emit_info, type_expr: type_expr, source_indices: source_indices) {
     Present { value: decl } => item_seals_construction(item: decl)
     Absent => false
   }
@@ -8034,7 +8041,7 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
     children: children,
     shared_types: shared_types,
     has_fn_fields: has_fn_fields,
-    map_key_required: set_contains(emit_info.map_key_required_type_names, name),
+    map_key_required: set_contains(emit_info.map_key_required_type_names, type_decl_identity(owner_module: env.module_path, decl_name: name)),
     generic_param_names: generic_param_names,
     source_indices: env.source_indices,
     header_clone_param_names: header_clone_param_names,
@@ -8216,7 +8223,7 @@ fn enum_derives(name: String, children: List<Node>, has_fn_fields: Bool, deseria
   v1_emit_enum_derives(
     children: children,
     has_fn_fields: has_fn_fields,
-    map_key_required: set_contains(emit_info.map_key_required_type_names, name),
+    map_key_required: set_contains(emit_info.map_key_required_type_names, type_decl_identity(owner_module: env.module_path, decl_name: name)),
     deserialize_forbidden: deserialize_forbidden,
     generic_param_names: generic_param_names,
     source_indices: source_indices
@@ -9242,6 +9249,16 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     return concat("compile_error!(\"type param name collides with a value param in fn '", name, "' — a value param shares its name with a declared type param; rename the value param or dissolve via ParamKind/params-slot partition\");\n")
   }
   let generic_param_names = type_params |> map(p => generic_param_name_at(n: p, source_indices: si))
+  let ambiguous_signature_head = if (generic_param_names |> count) == 0 { "" } else {
+    v1_type_exprs_ambiguous_declared_head(
+      type_exprs: concat(value_params |> map(p => param_node_type_expr(n: p)), [inferred]),
+      type_decl_items: emit_info.type_decl_items,
+      source_indices: si
+    )
+  }
+  if ambiguous_signature_head != "" {
+    return concat(v1_ambiguous_declared_head_refusal(subject: concat("generic fn '", name, "'"), leaf: ambiguous_signature_head), "\n")
+  }
   let body_emit_info = emit_info_with_fn_return(
     emit_info: emit_info_with_fn_type_context(emit_info: emit_info, generic_param_names: generic_param_names, env: scope.type_env),
     fn_return_type: Present { value: inferred }
@@ -10963,7 +10980,7 @@ fn type_expr_reaches_sealed_carrier(n: Node, emit_info: EmitGraphInfo, source_in
   } else if name == "" || emit_map_has(m: seen, key: name) {
     false
   } else {
-    match lookup_emit_type_decl(emit_info: emit_info, type_name: name) {
+    match lookup_emit_type_decl(emit_info: emit_info, type_expr: n, source_indices: source_indices) {
       Present { value: decl } =>
         if item_seals_construction(item: decl) {
           true
@@ -11066,7 +11083,7 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
               _ => false
             }
             let field_is_boxed = field_access_field_is_boxed(base: base, field: field, scope: scope, shared_types: shared_types, emit_info: emit_info)
-            if type_name_seals_construction(type_name: authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_type(n: base)), emit_info: emit_info) {
+            if type_reference_seals_construction(type_expr: resolved_type(n: base), emit_info: emit_info, source_indices: scope.type_env.source_indices) {
               concat(base_str, ".", emit_ident(name: field, target: Rust), "()")
             } else if field_is_boxed {
               apply_type_template1(template: sharing.deref_clone, arg0: concat(base_str, ".", emit_ident(name: field, target: Rust)))

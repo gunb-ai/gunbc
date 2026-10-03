@@ -15,8 +15,11 @@ import v1.std.core {
   param_node_name_at,
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
   ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
-  LeafOwner,
+  LeafOwner, SingleOwner, LeafAmbiguous,
+  SourceSpan, qualified_last_segment,
+  DeclaredCallableIdentity, callable_identity,
 }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
 import v1.compiler.infer_env { TypeEnv, empty_symbol_index, empty_type_env }
 import v1.compiler.infer_types {
   TextJudgment, TextJudgedIn, TextNotAsked, TextNotAskedInVariantFieldSummary, TextNotAskedForCallableComponentResidue,
@@ -134,9 +137,148 @@ type DataVariantWireSpelling
   | DataVariantUntagged
   | DataVariantSpellingRefused { reason: String }
 
+// THE TYPE-DECLARATION INDEX IS KEYED ON THE DECLARATION, NOT ON ITS LEAF SPELLING. It was a
+// Map<leaf, Node> with last write wins, so a closure declaring one leaf in two modules (std.access
+// AccessRequest, five parameters, beside gunbc.auth.access_request AccessRequest, one) handed every
+// reader of either the declaration folded last, and the Clone-bound fixpoint printed one type's
+// header from the other's parameter list. The key is the item registry's own identity
+// (v1.std.core callable_identity over DeclaredCallableIdentity), so there is one key space for a
+// declaration across the registry and this index. A reader holds a type REFERENCE, which carries no
+// module in its spelling; resolve_type_decl_reference below is the one route from a reference to a
+// row, and its ambiguous arm is a value the reader must write an arm for.
+type TypeDeclIndex {
+  by_identity: Map<String, Node>
+  identity_by_declaring_span: Map<String, String>
+  leaf_owners: Map<String, LeafOwner>
+}
+
+type TypeDeclResolution
+  = TypeDeclResolved { identity: String, decl: Node }
+  | TypeDeclLeafAmbiguous { leaf: String }
+  | TypeDeclNotDeclared
+
+fn empty_type_decl_index() -> TypeDeclIndex {
+  TypeDeclIndex { by_identity: empty_map(), identity_by_declaring_span: empty_map(), leaf_owners: empty_map() }
+}
+
+fn type_decl_identity(owner_module: String, decl_name: String) -> String {
+  callable_identity(id: DeclaredCallableIdentity { owner_module_path: owner_module, decl_name: decl_name })
+}
+
+fn declaring_span_key(sp: SourceSpan) -> String {
+  concat(sp.file, "@", to_string(sp.start))
+}
+
+fn type_decl_leaf_owner_after(prior: LeafOwner?, owner_module: String) -> LeafOwner {
+  match prior {
+    Present { value: SingleOwner { module: m } } => if m == owner_module { SingleOwner { module: m } } else { LeafAmbiguous }
+    Present { value: LeafAmbiguous } => LeafAmbiguous
+    Absent => SingleOwner { module: owner_module }
+  }
+}
+
+fn type_decl_index_insert(index: TypeDeclIndex, owner_module: String, decl_name: String, item: Node) -> TypeDeclIndex {
+  let identity = type_decl_identity(owner_module: owner_module, decl_name: decl_name)
+  TypeDeclIndex {
+    by_identity: map_insert(index.by_identity, identity, item),
+    identity_by_declaring_span: match item.ident_span {
+      Present { value: sp } => map_insert(index.identity_by_declaring_span, declaring_span_key(sp: sp), identity)
+      Absent => index.identity_by_declaring_span
+    },
+    leaf_owners: map_insert(index.leaf_owners, decl_name, type_decl_leaf_owner_after(prior: map_get(index.leaf_owners, decl_name), owner_module: owner_module))
+  }
+}
+
+fn type_decl_resolution_at_identity(index: TypeDeclIndex, identity: String) -> TypeDeclResolution {
+  match map_get(index.by_identity, identity) {
+    Present { value: decl } => TypeDeclResolved { identity: identity, decl: decl }
+    Absent => TypeDeclNotDeclared
+  }
+}
+
+// THE SPELLING ARM, for a holder of a name and nothing else. One declarer resolves; two do not, and
+// the answer says so rather than naming either.
+fn resolve_type_decl_leaf(index: TypeDeclIndex, leaf: String) -> TypeDeclResolution {
+  match map_get(index.leaf_owners, leaf) {
+    Present { value: SingleOwner { module: m } } => type_decl_resolution_at_identity(index: index, identity: type_decl_identity(owner_module: m, decl_name: leaf))
+    Present { value: LeafAmbiguous } => TypeDeclLeafAmbiguous { leaf: leaf }
+    Absent => TypeDeclNotDeclared
+  }
+}
+
+// REFERENCE -> DECLARATION, IN THE ORDER OF HOW MUCH THE NODE ITSELF SAYS. The identity resolve
+// recorded on the reference (Node.declaration, written by v1.compiler.infer_resolve
+// reference_with_declaration from the binding in the scope the reference was authored in) is the
+// authority. The other two arms are INTERIM and exist because resolve does not yet stamp every type
+// reference the emitter reads: the node being a declaration node itself, joined on its declaring
+// span (the join v1.compiler.infer_env binding_declares_span makes), and then the spelling, which
+// answers for a leaf one module declares and REFUSES for a leaf two declare. A reference to one of
+// an item's own type parameters names a binder, not a declaration.
+// THE INTERIM ARMS ARE COUNTED, NOT ASSUMED RARE: the route is a value, and
+// v1.tests.claim.carrier_realization_census writes it per reference position (emitter_decl_route),
+// so each resolution that falls past the carried identity is one located row.
+type TypeDeclReferenceRoute
+  = RouteCarriedDeclaration
+  | RouteCarriedBinder
+  | RouteDeclaringSpan
+  | RouteLeafSpelling
+
+type TypeDeclRoutedResolution {
+  route: TypeDeclReferenceRoute
+  resolution: TypeDeclResolution
+}
+
+data type_decl_reference_interim_arms_dissolve_on: DissolutionCondition = unbound_dissolution(description: "RouteDeclaringSpan and RouteLeafSpelling dissolve when EVERY type reference the Rust emitter reads carries a declaration stamp: v1.tests.claim.carrier_realization_census reports emitter_decl_route carried_declaration or carried_binder at every position whose resolution is Resolved, over the self-host and dag closures, at identity grain. One stamped position, or one closure, is not that capability. Then resolve_type_decl_routed keeps its first arm, TypeDeclIndex drops identity_by_declaring_span and leaf_owners, and TypeDeclLeafAmbiguous has no producer.")
+
+fn resolve_type_decl_routed(index: TypeDeclIndex, type_expr: Node, source_indices: Map<String, NewlineIndex>) -> TypeDeclRoutedResolution {
+  match type_expr.declaration {
+    Present { value: d } =>
+      match d.field {
+        WholeDeclaration => TypeDeclRoutedResolution { route: RouteCarriedDeclaration, resolution: type_decl_resolution_at_identity(index: index, identity: type_decl_identity(owner_module: d.module_path as String, decl_name: d.decl_name as String)) }
+        NamedField { field_name: _ } => TypeDeclRoutedResolution { route: RouteCarriedBinder, resolution: TypeDeclNotDeclared }
+        TypeParameter { name: _ } => TypeDeclRoutedResolution { route: RouteCarriedBinder, resolution: TypeDeclNotDeclared }
+      }
+    Absent =>
+      let by_span = match type_expr.ident_span {
+        Present { value: sp } => map_get(index.identity_by_declaring_span, declaring_span_key(sp: sp))
+        Absent => none
+      }
+      match by_span {
+        Present { value: identity } => TypeDeclRoutedResolution { route: RouteDeclaringSpan, resolution: type_decl_resolution_at_identity(index: index, identity: identity) }
+        Absent => TypeDeclRoutedResolution { route: RouteLeafSpelling, resolution: resolve_type_decl_leaf(index: index, leaf: qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: type_expr))) }
+      }
+  }
+}
+
+fn resolve_type_decl_reference(index: TypeDeclIndex, type_expr: Node, source_indices: Map<String, NewlineIndex>) -> TypeDeclResolution {
+  resolve_type_decl_routed(index: index, type_expr: type_expr, source_indices: source_indices).resolution
+}
+
+fn type_decl_routed_resolution_label(routed: TypeDeclRoutedResolution) -> String {
+  let route = match routed.route {
+    RouteCarriedDeclaration => "carried_declaration"
+    RouteCarriedBinder => "carried_binder"
+    RouteDeclaringSpan => "declaring_span"
+    RouteLeafSpelling => "leaf_spelling"
+  }
+  match routed.resolution {
+    TypeDeclResolved { identity: identity, decl: _ } => concat(route, ":Resolved:", identity)
+    TypeDeclLeafAmbiguous { leaf: leaf } => concat(route, ":LeafAmbiguous:", leaf)
+    TypeDeclNotDeclared => concat(route, ":NotDeclared")
+  }
+}
+
+fn type_decl_of_reference(index: TypeDeclIndex, type_expr: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match resolve_type_decl_reference(index: index, type_expr: type_expr, source_indices: source_indices) {
+    TypeDeclResolved { identity: _, decl: decl } => Present { value: decl }
+    TypeDeclLeafAmbiguous { leaf: _ } => none
+    TypeDeclNotDeclared => none
+  }
+}
+
 type EmitGraphInfo {
   type_summaries: Map<String, TypeSummary>
-  type_decl_items: Map<String, Node>
+  type_decl_items: TypeDeclIndex
   data_variant_wire_spellings: Map<String, DataVariantWireSpelling>
   fn_decl_items: Map<String, Node>
   recursive_type_set: Set<String>
@@ -166,7 +308,7 @@ type EmitGraphInfo {
 
 type EmitInfoBuildState {
   type_summaries: Map<String, TypeSummary>
-  type_decl_items: Map<String, Node>
+  type_decl_items: TypeDeclIndex
   fn_decl_items: Map<String, Node>
   structural_alias_fn_surface_names: Map<String, List<String>>
   structural_alias_direct_fn_names: Set<String>
@@ -176,7 +318,7 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
   EmitGraphInfo {
     item_leaf_owner_modules: empty_map(),
     type_summaries: empty_map(),
-    type_decl_items: empty_map(),
+    type_decl_items: empty_type_decl_index(),
     data_variant_wire_spellings: empty_map(),
     fn_decl_items: empty_map(),
     recursive_type_set: empty_set(),
@@ -299,8 +441,8 @@ fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> Type
   map_get(emit_info.type_summaries, type_name)
 }
 
-fn lookup_emit_type_decl(emit_info: EmitGraphInfo, type_name: String) -> Node? {
-  map_get(emit_info.type_decl_items, type_name)
+fn lookup_emit_type_decl(emit_info: EmitGraphInfo, type_expr: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  type_decl_of_reference(index: emit_info.type_decl_items, type_expr: type_expr, source_indices: source_indices)
 }
 
 fn emit_graph_records_type_decl(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -633,7 +775,7 @@ fn structural_alias_direct_fn_names_with(names: Set<String>, name: String, inclu
   if include { set_insert(names, name) } else { names }
 }
 
-fn add_emit_item_summary(state: EmitInfoBuildState, item: Node, source_indices: Map<String, NewlineIndex>) -> EmitInfoBuildState {
+fn add_emit_item_summary(state: EmitInfoBuildState, module_name: String, item: Node, source_indices: Map<String, NewlineIndex>) -> EmitInfoBuildState {
   let decl_name = authored_name_at(source_indices: source_indices, node: item)
   let alias_rhs = resolved_type(n: item)
   let alias_rhs_name = authored_name_at(source_indices: source_indices, node: alias_rhs)
@@ -652,7 +794,7 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node, source_indices: 
   let state = if decl_name != "" && emit_graph_records_type_decl(item: item, source_indices: source_indices) {
     EmitInfoBuildState {
       type_summaries: state.type_summaries,
-      type_decl_items: map_insert(state.type_decl_items, decl_name, item),
+      type_decl_items: type_decl_index_insert(index: state.type_decl_items, owner_module: module_name, decl_name: decl_name, item: item),
       fn_decl_items: state.fn_decl_items,
       structural_alias_fn_surface_names: structural_alias_fn_surface_names,
       structural_alias_direct_fn_names: structural_alias_direct_fn_names

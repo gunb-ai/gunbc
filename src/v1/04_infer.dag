@@ -189,7 +189,7 @@ import v1.compiler.infer_emit_info {
   TypeSummary, EmitGraphInfo, EmitInfoBuildState,
   empty_emit_graph_info, empty_type_env, lookup_emit_type_summary,
   build_struct_field_summaries, build_enum_field_summaries,
-  add_emit_item_summary, derive_variant_to_enum, close_fn_fields
+  add_emit_item_summary, derive_variant_to_enum, close_fn_fields, empty_type_decl_index
 }
 import v1.compiler.infer_items {
   ItemKind, FnItem, TypeItem, DataItem, ServiceItem, OtherItem,
@@ -16985,7 +16985,7 @@ fn same_declaration_site(a: Node, b: Node) -> Bool {
 fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> EmitGraphInfo {
   let init = EmitInfoBuildState {
     type_summaries: empty_map(),
-    type_decl_items: empty_map(),
+    type_decl_items: empty_type_decl_index(),
     fn_decl_items: empty_map(),
     structural_alias_fn_surface_names: empty_map(),
     structural_alias_direct_fn_names: empty_set()
@@ -16996,7 +16996,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
       if item_declares_kernel_grounded_carrier(item: item, module_name: module_name, source_indices: typed_module.type_env.source_indices) {
         inner_state
       } else {
-        add_emit_item_summary(state: inner_state, item: item, source_indices: typed_module.type_env.source_indices)
+        add_emit_item_summary(state: inner_state, module_name: module_name, item: item, source_indices: typed_module.type_env.source_indices)
       }
     )
   )
