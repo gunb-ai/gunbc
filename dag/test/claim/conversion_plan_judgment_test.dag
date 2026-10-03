@@ -6,7 +6,7 @@ import std.literal_elaboration { UnicodeScalarSequenceUnfold }
 import std.coercion {
   ConversionPlan, ConversionPlanJudgment, ConversionPlanAdmitted, ConversionPlanAbsent,
   ConversionPlanAmbiguous, ConversionPlanEndpointMismatch, ConversionPlanHasNoPhase,
-  UnfoldPhase, judge_conversion_plan, judge_text_conversion_plan, ConversionPlanEndpointNotText,
+  UnfoldPhase, judge_conversion_plan, unicode_scalar_unfold, unicode_scalar_fold, judge_text_conversion_plan, ConversionPlanEndpointNotText,
   HostText, CodePointSequence, NotText, TextRepresentationUnidentified,
 }
 import gunbc.structural_realization_bindings { conversion_plan_rows }
@@ -14,22 +14,23 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE NAMED-CONVERSION-PLAN JUDGMENT (std.coercion judge_conversion_plan), DRIVEN BY SUPPLIED PLAN
-// REFERENCES. The surface that names a plan at a crossing site awaits the operator's syntax ruling,
-// so the site's half is supplied here as values: the identity the site named and the two
-// declarations it resolved. The a_ claims run the corpus's own conversion_plan_rows, so the
+// THE NAMED-CONVERSION-PLAN JUDGMENT (std.coercion judge_conversion_plan), DRIVEN BY SUPPLIED CALLEES.
+// Under ruling O5 a site names a plan by calling the function the row names; the site's half is
+// supplied here as values: the callee it resolved and the two declarations at its boundary. The a_ claims run the corpus's own conversion_plan_rows, so the
 // production rows are the subject; the r_ claims each discriminate one refusal arm.
 
 fn host_text() -> DeclarationRef { decl_ref(module_path: "std.types", decl_name: "String") }
 fn code_point_sequence() -> DeclarationRef { decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid") }
+fn unfold_route() -> DeclarationRef { decl_ref(module_path: "std.coercion", decl_name: "unicode_scalar_unfold") }
+fn fold_route() -> DeclarationRef { decl_ref(module_path: "std.coercion", decl_name: "unicode_scalar_fold") }
 fn scalar() -> DeclarationRef { decl_ref(module_path: "std.types", decl_name: "Char") }
 
-fn judge_host_to_structural(rows: List<ConversionPlan>, identity: String) -> ConversionPlanJudgment {
-  judge_conversion_plan(rows: rows, identity: identity, source: host_text(), source_element: Absent, target: code_point_sequence(), target_element: Present { value: scalar() })
+fn judge_host_to_structural(rows: List<ConversionPlan>, route: DeclarationRef) -> ConversionPlanJudgment {
+  judge_conversion_plan(rows: rows, route: route, source: host_text(), source_element: Absent, target: code_point_sequence(), target_element: Present { value: scalar() })
 }
 
-fn judge_structural_to_host(rows: List<ConversionPlan>, identity: String) -> ConversionPlanJudgment {
-  judge_conversion_plan(rows: rows, identity: identity, source: code_point_sequence(), source_element: Present { value: scalar() }, target: host_text(), target_element: Absent)
+fn judge_structural_to_host(rows: List<ConversionPlan>, route: DeclarationRef) -> ConversionPlanJudgment {
+  judge_conversion_plan(rows: rows, route: route, source: code_point_sequence(), source_element: Present { value: scalar() }, target: host_text(), target_element: Absent)
 }
 
 fn admitted_identity(j: ConversionPlanJudgment) -> String {
@@ -40,24 +41,24 @@ fn admitted_identity(j: ConversionPlanJudgment) -> String {
 }
 
 test fn a_unfold_admits_host_to_structural() -> Bool {
-  admitted_identity(j: judge_host_to_structural(rows: conversion_plan_rows, identity: "unicode_scalar_unfold")) == "unicode_scalar_unfold"
+  admitted_identity(j: judge_host_to_structural(rows: conversion_plan_rows, route: unfold_route())) == "unicode_scalar_unfold"
 }
 
 test fn a_fold_admits_structural_to_host() -> Bool {
-  admitted_identity(j: judge_structural_to_host(rows: conversion_plan_rows, identity: "unicode_scalar_fold")) == "unicode_scalar_fold"
+  admitted_identity(j: judge_structural_to_host(rows: conversion_plan_rows, route: fold_route())) == "unicode_scalar_fold"
 }
 
 // The inverse is its own row, not the unfold reread backwards: naming the fold for a
 // host->structural crossing refuses.
 test fn r_fold_named_for_host_to_structural_refuses() -> Bool {
-  match judge_host_to_structural(rows: conversion_plan_rows, identity: "unicode_scalar_fold") {
+  match judge_host_to_structural(rows: conversion_plan_rows, route: fold_route()) {
     ConversionPlanEndpointMismatch { plan: _ } => true
     _ => false
   }
 }
 
 test fn r_unfold_named_for_structural_to_host_refuses() -> Bool {
-  match judge_structural_to_host(rows: conversion_plan_rows, identity: "unicode_scalar_unfold") {
+  match judge_structural_to_host(rows: conversion_plan_rows, route: unfold_route()) {
     ConversionPlanEndpointMismatch { plan: _ } => true
     _ => false
   }
@@ -65,15 +66,15 @@ test fn r_unfold_named_for_structural_to_host_refuses() -> Bool {
 
 // An element mismatch is an endpoint mismatch: FreeMonoid over another element is a plain list.
 test fn r_unfold_into_non_char_sequence_refuses() -> Bool {
-  match judge_conversion_plan(rows: conversion_plan_rows, identity: "unicode_scalar_unfold", source: host_text(), source_element: Absent, target: code_point_sequence(), target_element: Present { value: decl_ref(module_path: "std.types", decl_name: "Int") }) {
+  match judge_conversion_plan(rows: conversion_plan_rows, route: unfold_route(), source: host_text(), source_element: Absent, target: code_point_sequence(), target_element: Present { value: decl_ref(module_path: "std.types", decl_name: "Int") }) {
     ConversionPlanEndpointMismatch { plan: _ } => true
     _ => false
   }
 }
 
 test fn r_unknown_plan_refuses() -> Bool {
-  match judge_host_to_structural(rows: conversion_plan_rows, identity: "utf8_bytes") {
-    ConversionPlanAbsent { identity: _ } => true
+  match judge_host_to_structural(rows: conversion_plan_rows, route: decl_ref(module_path: "std.coercion", decl_name: "utf8_bytes")) {
+    ConversionPlanAbsent { route: _ } => true
     _ => false
   }
 }
@@ -81,6 +82,7 @@ test fn r_unknown_plan_refuses() -> Bool {
 fn unfold_row() -> ConversionPlan {
   ConversionPlan {
     identity: "unicode_scalar_unfold" as NonEmptyStr,
+    route: unfold_route(),
     source: host_text(),
     source_element: Absent,
     target: code_point_sequence(),
@@ -90,8 +92,8 @@ fn unfold_row() -> ConversionPlan {
 }
 
 test fn r_duplicated_identity_refuses_rather_than_picks() -> Bool {
-  match judge_host_to_structural(rows: [unfold_row(), unfold_row()], identity: "unicode_scalar_unfold") {
-    ConversionPlanAmbiguous { identity: _, row_count: n } => n == 2
+  match judge_host_to_structural(rows: [unfold_row(), unfold_row()], route: unfold_route()) {
+    ConversionPlanAmbiguous { route: _, row_count: n } => n == 2
     _ => false
   }
 }
@@ -99,29 +101,30 @@ test fn r_duplicated_identity_refuses_rather_than_picks() -> Bool {
 test fn r_plan_with_no_phase_refuses() -> Bool {
   let hollow = ConversionPlan {
     identity: "hollow" as NonEmptyStr,
+    route: decl_ref(module_path: "test.claim.conversion_plan_judgment_test", decl_name: "hollow_route"),
     source: host_text(),
     source_element: Absent,
     target: code_point_sequence(),
     target_element: Present { value: scalar() },
     phases: []
   }
-  match judge_host_to_structural(rows: [hollow], identity: "hollow") {
-    ConversionPlanHasNoPhase { identity: _ } => true
+  match judge_host_to_structural(rows: [hollow], route: decl_ref(module_path: "test.claim.conversion_plan_judgment_test", decl_name: "hollow_route")) {
+    ConversionPlanHasNoPhase { route: _ } => true
     _ => false
   }
 }
 
 // THE CHECKER-FACING FORM: the site presents the two text representations it read by identity.
 test fn a_text_unfold_admits_host_reading_to_code_point_reading() -> Bool {
-  admitted_identity(j: judge_text_conversion_plan(rows: conversion_plan_rows, identity: "unicode_scalar_unfold", source: HostText, target: CodePointSequence)) == "unicode_scalar_unfold"
+  admitted_identity(j: judge_text_conversion_plan(rows: conversion_plan_rows, route: unfold_route(), source: HostText, target: CodePointSequence)) == "unicode_scalar_unfold"
 }
 
 test fn a_text_fold_admits_code_point_reading_to_host_reading() -> Bool {
-  admitted_identity(j: judge_text_conversion_plan(rows: conversion_plan_rows, identity: "unicode_scalar_fold", source: CodePointSequence, target: HostText)) == "unicode_scalar_fold"
+  admitted_identity(j: judge_text_conversion_plan(rows: conversion_plan_rows, route: fold_route(), source: CodePointSequence, target: HostText)) == "unicode_scalar_fold"
 }
 
 test fn r_text_plan_wrong_direction_refuses() -> Bool {
-  match judge_text_conversion_plan(rows: conversion_plan_rows, identity: "unicode_scalar_unfold", source: CodePointSequence, target: HostText) {
+  match judge_text_conversion_plan(rows: conversion_plan_rows, route: unfold_route(), source: CodePointSequence, target: HostText) {
     ConversionPlanEndpointMismatch { plan: _ } => true
     _ => false
   }
@@ -129,15 +132,35 @@ test fn r_text_plan_wrong_direction_refuses() -> Bool {
 
 // A plan is never selected for a side the checker could not identify, nor for one that is not text.
 test fn r_text_plan_from_unidentified_side_refuses() -> Bool {
-  match judge_text_conversion_plan(rows: conversion_plan_rows, identity: "unicode_scalar_unfold", source: TextRepresentationUnidentified, target: CodePointSequence) {
+  match judge_text_conversion_plan(rows: conversion_plan_rows, route: unfold_route(), source: TextRepresentationUnidentified, target: CodePointSequence) {
     ConversionPlanEndpointNotText { source: _, target: _ } => true
     _ => false
   }
 }
 
 test fn r_text_plan_into_non_text_refuses() -> Bool {
-  match judge_text_conversion_plan(rows: conversion_plan_rows, identity: "unicode_scalar_unfold", source: HostText, target: NotText) {
+  match judge_text_conversion_plan(rows: conversion_plan_rows, route: unfold_route(), source: HostText, target: NotText) {
     ConversionPlanEndpointNotText { source: _, target: _ } => true
     _ => false
   }
+}
+
+// A call to a function no row names is not a route, even when its signature has the right shape:
+// admission is by the row naming the callee, never by the callee's type.
+test fn r_call_to_unnamed_function_is_not_a_route() -> Bool {
+  match judge_text_conversion_plan(rows: conversion_plan_rows, route: decl_ref(module_path: "v2.std.text", decl_name: "string_head"), source: HostText, target: CodePointSequence) {
+    ConversionPlanAbsent { route: _ } => true
+    _ => false
+  }
+}
+
+// THE ROUTES EXECUTE: the functions the rows name realize their phase -- one element per Unicode
+// scalar (never per UTF-8 byte), and the fold inverts the unfold on non-ASCII and astral text.
+test fn a_unfold_is_one_element_per_scalar() -> Bool {
+  (unicode_scalar_unfold(s: "hé😀") |> count) == 3
+}
+
+test fn a_fold_inverts_unfold_on_non_ascii_and_astral_text() -> Bool {
+  unicode_scalar_fold(xs: unicode_scalar_unfold(s: "hé😀")) == "hé😀"
+    && unicode_scalar_fold(xs: unicode_scalar_unfold(s: "")) == ""
 }

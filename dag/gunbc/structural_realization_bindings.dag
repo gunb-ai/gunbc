@@ -87,6 +87,7 @@ data literal_homomorphism_rows: List<LiteralHomomorphism> = [
 data conversion_plan_rows: List<ConversionPlan> = [
   ConversionPlan {
     identity: "unicode_scalar_unfold" as NonEmptyStr,
+    route: decl_ref(module_path: "std.coercion", decl_name: "unicode_scalar_unfold"),
     source: decl_ref(module_path: "std.types", decl_name: "String"),
     source_element: Absent,
     target: decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid"),
@@ -95,6 +96,7 @@ data conversion_plan_rows: List<ConversionPlan> = [
   },
   ConversionPlan {
     identity: "unicode_scalar_fold" as NonEmptyStr,
+    route: decl_ref(module_path: "std.coercion", decl_name: "unicode_scalar_fold"),
     source: decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid"),
     source_element: Present { value: decl_ref(module_path: "std.types", decl_name: "Char") },
     target: decl_ref(module_path: "std.types", decl_name: "String"),

@@ -360,6 +360,7 @@ type ConversionPhase
 
 type ConversionPlan {
   identity: NonEmptyStr
+  route: DeclarationRef
   source: DeclarationRef
   source_element: DeclarationRef?
   target: DeclarationRef
@@ -367,15 +368,21 @@ type ConversionPlan {
   phases: List<ConversionPhase>
 }
 
+// HOW A SITE NAMES A PLAN (operator ruling O5, 2026-10-03, applied by sharp-raven-357): with no
+// grammar change. Each plan row names an ORDINARY DECLARED FUNCTION by its declaration identity
+// (route), the author calls that function, and the call is admitted as the named route BECAUSE a
+// row names the callee. The judgment is therefore keyed on the callee's declaration, never on a
+// spelling the site supplies.
+//
 // What a crossing site that names a plan is answered with. Only ConversionPlanAdmitted admits;
 // every other arm is a located refusal at the site that named the plan. A crossing that names NO
 // plan never reaches this judgment and is refused by the text wall as before.
 type ConversionPlanJudgment
   = ConversionPlanAdmitted { plan: ConversionPlan }
-  | ConversionPlanAbsent { identity: String }
-  | ConversionPlanAmbiguous { identity: String, row_count: Int }
+  | ConversionPlanAbsent { route: DeclarationRef }
+  | ConversionPlanAmbiguous { route: DeclarationRef, row_count: Int }
   | ConversionPlanEndpointMismatch { plan: ConversionPlan }
-  | ConversionPlanHasNoPhase { identity: String }
+  | ConversionPlanHasNoPhase { route: DeclarationRef }
   | ConversionPlanEndpointNotText { source: TextRepresentation, target: TextRepresentation }
 
 fn conversion_plan_element_eq(a: DeclarationRef?, b: DeclarationRef?) -> Bool {
@@ -402,30 +409,30 @@ fn conversion_plan_endpoints_match(
     && conversion_plan_element_eq(a: plan.target_element, b: target_element)
 }
 
-// The site presents the plan identity it named and the two declarations it resolved (already
+// The site presents the callee it resolved and the two declarations at its boundary (already
 // peeled, as for literal elaboration). Zero or several rows under the identity refuse rather than
 // pick; a found plan whose endpoints are not the site's refuses rather than being reread in the
 // other direction (the inverse is its own row).
 fn judge_conversion_plan(
   rows: List<ConversionPlan>,
-  identity: String,
+  route: DeclarationRef,
   source: DeclarationRef,
   source_element: DeclarationRef?,
   target: DeclarationRef,
   target_element: DeclarationRef?
 ) -> ConversionPlanJudgment {
-  let named = rows |> filter(r => r.identity == identity)
+  let named = rows |> filter(r => declaration_ref_eq(a: r.route, b: route))
   let n = named |> count
   if n == 0 {
-    ConversionPlanAbsent { identity: identity }
+    ConversionPlanAbsent { route: route }
   } else if n > 1 {
-    ConversionPlanAmbiguous { identity: identity, row_count: n }
+    ConversionPlanAmbiguous { route: route, row_count: n }
   } else {
     match named |> first {
-      Absent => ConversionPlanAbsent { identity: identity }
+      Absent => ConversionPlanAbsent { route: route }
       Present { value: plan } =>
         if (plan.phases |> count) == 0 {
-          ConversionPlanHasNoPhase { identity: identity }
+          ConversionPlanHasNoPhase { route: route }
         } else if conversion_plan_endpoints_match(plan: plan, source: source, source_element: source_element, target: target, target_element: target_element) {
           ConversionPlanAdmitted { plan: plan }
         } else {
@@ -459,7 +466,7 @@ fn text_plan_endpoint(rep: TextRepresentation) -> TextPlanEndpoint {
 
 fn judge_text_conversion_plan(
   rows: List<ConversionPlan>,
-  identity: String,
+  route: DeclarationRef,
   source: TextRepresentation,
   target: TextRepresentation
 ) -> ConversionPlanJudgment {
@@ -469,7 +476,22 @@ fn judge_text_conversion_plan(
       match text_plan_endpoint(rep: target) {
         TextPlanEndpointUnkeyed => ConversionPlanEndpointNotText { source: source, target: target }
         TextPlanEndpointKeyed { declaration: td, element: te } =>
-          judge_conversion_plan(rows: rows, identity: identity, source: sd, source_element: se, target: td, target_element: te)
+          judge_conversion_plan(rows: rows, route: route, source: sd, source_element: se, target: td, target_element: te)
       }
   }
+}
+
+// THE TWO DECLARED ROUTE FUNCTIONS the conversion_plan_rows name. Each body is the realization of its
+// row's one phase and nothing else: the unfold reads host text's Unicode scalars (the kernel scalar
+// decomposition v1.compiler.infer unfold_scalar_sequence_image also uses for literals), and the fold
+// writes them back as host text through the kernel's linear slice writer. A .dag fold over
+// from_code_point and concat would re-express the inverse with a copied accumulator, quadratic in the
+// text length, so the kernel writer stays the realization (DESIGN section 6, bare minimum cost).
+// These are the ONLY sanctioned callers of those two kernel operations for a text crossing.
+fn unicode_scalar_unfold(s: String) -> FreeMonoid<Char> {
+  chars(s)
+}
+
+fn unicode_scalar_fold(xs: FreeMonoid<Char>) -> String {
+  chars_to_string(chars: xs, start: 0, end: xs |> count)
 }
