@@ -2347,7 +2347,15 @@ fn expr_first_fold_from_prepared(
 // production, a guard that is not plain, a guard string longer than the prefix it would cover --
 // answers by subtracting nothing or by LookaheadUnknown, and Unknown keeps the row. So the proof
 // removes rows and never widens: a guard that misses one prefix is the near miss that keeps its row.
+// THE DECLARED LOOKAHEAD: every candidate site is read at the base depth, and a site whose
+// alternatives still share a prefix there is read again only as deep as its own longest proved-plain
+// guard, never past the cap. Depth is therefore the guard's own claim, made where it is authored: an
+// unguarded site pays two tokens, and a guard of three tokens (`{ name :` against a block, `( name ,`
+// against a grouped expression) buys exactly the read that can prove it. Read at the cap everywhere,
+// the walk tripled the grammar's preparation, paid at every unguarded site that could not use it.
 fn grammar_choice_lookahead_depth() -> Int { 2 }
+
+fn grammar_choice_lookahead_depth_cap() -> Int { 3 }
 
 type LookaheadContext {
   productions: Map<Symbol, GrammarProduction>
@@ -2998,7 +3006,61 @@ fn lookahead_alternatives_overlap(
   head_keys: List<FirstKey>,
   ctx: LookaheadContext
 ) -> Bool {
-  let depth = grammar_choice_lookahead_depth()
+  let base = grammar_choice_lookahead_depth()
+  if lookahead_alternatives_overlap_at(left: left, rest: rest, head_keys: head_keys, depth: base, ctx: ctx) {
+    let guarded = fold_list(
+      xs: Cons { head: left, tail: rest },
+      empty: base,
+      cons: fn(acc, alt) { lookahead_max_int(a: acc, b: lookahead_leading_guard_length(expr: alt, ctx: ctx)) }
+    )
+    let depth = lookahead_min_int(a: guarded, b: grammar_choice_lookahead_depth_cap())
+    if depth > base {
+      lookahead_alternatives_overlap_at(left: left, rest: rest, head_keys: head_keys, depth: depth, ctx: ctx)
+    } else {
+      true
+    }
+  } else {
+    false
+  }
+}
+
+fn lookahead_max_int(a: Int, b: Int) -> Int { if a > b { a } else { b } }
+
+fn lookahead_min_int(a: Int, b: Int) -> Int { if a < b { a } else { b } }
+
+// The longest string of an alternative's leading proved-plain guard; 0 when it has none.
+fn lookahead_leading_guard_length(expr: GrammarExpr, ctx: LookaheadContext) -> Int {
+  match expr {
+    Sequence { left: left, right: _ } =>
+      match lookahead_leading_guard(expr: left) {
+        Present { value: guard } =>
+          match lookahead_guard_strings(expr: guard, visiting: std.algebra.Empty, ctx: ctx) {
+            Present { value: strings } =>
+              fold_list(xs: strings, empty: 0, cons: fn(acc, g) { lookahead_max_int(a: acc, b: length(xs: g)) })
+            Absent => 0
+          }
+        Absent => 0
+      }
+    Terminal { token_class: _, stamp: _ } => 0
+    LiteralTerminal { token_class: _, lexeme: _ } => 0
+    Nonterminal { production: _ } => 0
+    Choice { left: _, right: _ } => 0
+    Optional { element: _ } => 0
+    Repeat { element: _ } => 0
+    Expect { element: _, reason: _ } => 0
+    RefuseOnMatch { element: _, reason: _ } => 0
+    AfterLineBreak { element: _ } => 0
+    NotPredicate { element: _ } => 0
+  }
+}
+
+fn lookahead_alternatives_overlap_at(
+  left: GrammarExpr,
+  rest: List<GrammarExpr>,
+  head_keys: List<FirstKey>,
+  depth: Int,
+  ctx: LookaheadContext
+) -> Bool {
   let restrict = Present { value: head_keys }
   let left_prefixes = lookahead_prefixes(expr: left, depth: depth, head_keys: restrict, visiting: std.algebra.Empty, ctx: ctx)
   let right_prefixes = fold_list(
