@@ -1,5 +1,6 @@
 module gunbc.spark.vllm_runtime_image_build
 
+import extdeps.crypto.hash { digest_shell_verify_line, sha256_digest }
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Secret }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { trim }
@@ -379,7 +380,7 @@ fn glm53_derived_prepare_script() -> String {
     fold(flashinfer_0_7_0_dev20260910_wheels, init: "", f: (acc, w) => join([
       acc,
       "curl -fsSL -o ", dir, "/", w.filename as String, " ", flashinfer_0_7_0_dev20260910_wheel_url(w: w) as String, "\n",
-      "echo '", w.sha256.hex as String, "  ", dir, "/", w.filename as String, "' | sha256sum -c -\n",
+      digest_shell_verify_line(digest: sha256_digest(hex: w.sha256.hex as String as NonEmptyStr), file_path: join([dir, "/", w.filename as String], "") as NonEmptyStr), "\n",
     ], "")),
   ], "")
 }
@@ -566,7 +567,7 @@ fn glm53_kvplan_dockerfile_path() -> NonEmptyStr {
 }
 
 fn sha256_check_line(dir: String, f: PinnedSourceFile) -> String {
-  join(["echo '", f.sha256_hex as String, "  ", dir, "/", f.path as String, "' | sha256sum -c -\n"], "")
+  join([digest_shell_verify_line(digest: sha256_digest(hex: f.sha256_hex), file_path: join([dir, "/", f.path as String], "") as NonEmptyStr), "\n"], "")
 }
 
 // feature:remote-shell-body-emission — dissolve-on: the bounded-remote-operation-sequence capability
@@ -583,7 +584,7 @@ fn glm53_kvplan_prepare_script() -> String {
     "mkdir -p ", dir, "/vllm/v1/engine\n",
     join(map(glm53_kvplan_pre_patch_pins, f => join(["cp ", src, "/", f.path as String, " ", dir, "/", f.path as String, "\n"], "")), ""),
     join(map(glm53_kvplan_pre_patch_pins, f => sha256_check_line(dir: dir, f: f)), ""),
-    "echo '", glm53_kvplan_patch_sha256 as String, "  ", glm53_kvplan_patch_remote_path() as String, "' | sha256sum -c -\n",
+    digest_shell_verify_line(digest: sha256_digest(hex: glm53_kvplan_patch_sha256), file_path: glm53_kvplan_patch_remote_path()), "\n",
     "cd ", dir, "\n",
     "git apply --check ", glm53_kvplan_patch_remote_path() as String, "\n",
     "git apply ", glm53_kvplan_patch_remote_path() as String, "\n",

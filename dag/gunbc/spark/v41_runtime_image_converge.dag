@@ -1,5 +1,6 @@
 module gunbc.spark.v41_runtime_image_converge
 
+import extdeps.crypto.hash { digest_shell_verify_line, sha256_digest }
 import std.types { String, Bool, List, NonEmptyStr, FilePath }
 
 import v2.std.optional { Present, Absent }
@@ -103,7 +104,7 @@ fn v41_wheel_verify_script(wheels: List<FlashInferWheel>) -> String {
     fold(wheels, init: "", f: (acc, w) => join([
       acc,
       "curl -fsSL -o ", dir, "/", w.filename as String, " ", flashinfer_0_7_1rc1_wheel_url(w: w) as String, "\n",
-      "echo '", w.sha256.hex as String, "  ", dir, "/", w.filename as String, "' | sha256sum -c -\n",
+      digest_shell_verify_line(digest: sha256_digest(hex: w.sha256.hex as String as NonEmptyStr), file_path: join([dir, "/", w.filename as String], "") as NonEmptyStr), "\n",
     ], "")),
   ], "")
 }
