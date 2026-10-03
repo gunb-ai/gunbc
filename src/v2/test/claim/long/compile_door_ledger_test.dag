@@ -42,10 +42,9 @@ fn affected_rows() -> List<DoorLedgerRow> {
 // THE HISTOGRAM IS OF FATAL CAUSES (advisories step 2). Read at the head, this set showed the
 // grammar overlap residue once and resolve_reason_unbound_symbol twice; read at the fatal element it
 // is member_not_a_binder twice and resolve_reason_unbound_symbol once (measured locally on the
-// step-2 branch). member_not_a_binder has NO ownership row in
-// v2.workflow.compile_door_cause_ownership, so all_refused_causes_attributed refuses this set: the
-// head-grain reading had hidden an unowned fatal cause behind the residue. The row is owed by
-// whichever lane owns that resolve refusal; it is not invented here.
+// step-2 branch). member_not_a_binder is owned at FatalGrain in
+// v2.workflow.compile_door_cause_ownership: both refusals sit at the module surface node, which the
+// lifecycle_carrier and unit_modeling lenses misjudge as a record carrier (the row's diagnosis).
 test fn ledger_cause_histogram_over_mixed_affected_set() -> Bool {
   let rows = affected_rows()
   ledger_refused_count(rows: rows) == 3

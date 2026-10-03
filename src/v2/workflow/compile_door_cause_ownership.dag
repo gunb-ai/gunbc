@@ -91,6 +91,12 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "no per-cause trigger — lexer coverage is the same grammar-surgery class (nimble-boar-198). Measured 2026-09-09 at HEAD grain by the gunbc.witness_v2_native_route census (6 modules, the annotation-channel and comment-wall syntax among them)"
   },
   CauseOwnership {
+    cause: ^member_not_a_binder,
+    grain: FatalGrain,
+    lane: MigrationOwned,
+    flip_trigger: "v2.lens.lifecycle_carrier and v2.lens.unit_modeling judge only record and payload type nodes, never a module's surface node, so member_not_a_binder is unreachable at a dag_surface_module locus on the door subject. DIAGNOSIS (advisories step 2, bold-lynx-438): reading the fatal element exposed this cause on dag/std/error_primitives.dag and dag/std/bit.dag, both located at the synthetic dag_surface_module node, not at any field. Both lenses fold every TypeNode's Authored children through v2.std.node_query member_edge_type_node and refuse a child that is not a binder; a module's surface node carries its declarations as Authored children, none of them binders, so any module that reaches the lens gate refuses there. That is a lens defect (the carrier predicate admits the module node), not a correct refusal of these subjects. The parse_grammar_choice_overlap_residue head had masked it at head grain"
+  },
+  CauseOwnership {
     cause: ^parse_g0_tokens_remain,
     grain: FatalGrain,
     lane: MigrationOwned,

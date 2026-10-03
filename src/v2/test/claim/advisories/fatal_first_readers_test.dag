@@ -18,8 +18,8 @@ import v2.std.node { Symbol }
 fn residue_headed_chain(fatal: Symbol) -> NonEmptyDiagnostics {
   NonEmptyDiagnostics {
     head: Diagnostic {
-      reason: ^parse_grammar_choice_overlap_residue,
-      at: invariant_port_locus(port: ^fatal_first_readers, invariant: ^parse_grammar_choice_overlap_residue),
+      reason: ^shared_advisory_head,
+      at: invariant_port_locus(port: ^fatal_first_readers, invariant: ^shared_advisory_head),
       correction: Unavailable { reason: ExternalContractUnknown }
     },
     tail: [
