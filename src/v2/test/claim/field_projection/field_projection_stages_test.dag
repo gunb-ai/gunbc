@@ -54,6 +54,17 @@ import v2.test.lens_common.infer_fixture {
 import v2.std.diagnostic { outcome_accepted }
 import v2.std.node { Authored, Edge }
 import v2.std.qualified_name { declaration_reference_node, parameter_reference_node }
+import v2.test.lens_common.resolve_fixture {
+  ClaimLoweredModule,
+  ClaimLoweredParam,
+  claim_lowered_atom,
+  claim_lowered_function,
+  claim_lowered_minted,
+  claim_lowered_path,
+  claim_lowered_record,
+  claim_resolve_lowered
+}
+import v2.std.node_query { construct_node }
 
 // WHERE A FIELD PROJECTION STOPS TODAY, measured stage by stage rather than asserted. The normalized
 // shape exists and is documented as a declared frontier: v2.std.node_query field_projection_node
@@ -655,9 +666,6 @@ test fn fps_a_match_binder_projection_is_in_the_resolved_tree_holds() -> Bool {
 // world than the evidence supports, and do not under-assert either). If this holds, the repair is scoped to
 // namespace segments as intended. If it does not, the repair HAS over-prohibited and that is a defect to
 // fix rather than a frontier to declare -- the row's reason, not merely its verdict, is what says which.
-fn fps_root_data_projection_source() -> Outcome<ResolvedTree> {
-  fps_assemble(src: "module p\n\ntype Box {\n  tree: Int\n}\n\ndata cfg: Box = Box { tree: 1 }\n\nfn f() -> Int {\n  cfg.tree\n}\n")
-}
 
 // MEASURED, AND IT IS NOT YET SUPPORTED -- BY A ROUTE THE DOTTED-PATH DECISION NEITHER CAUSED NOR FIXED.
 // `cfg.tree` where `cfg` is a module-level `data` value refuses at resolve with resolve_reason_unbound_symbol.
@@ -676,10 +684,62 @@ fn fps_root_data_projection_source() -> Outcome<ResolvedTree> {
 // NEXT TRIGGER: a module-level value binding that the scope chain answers for. Until then the 3d repair's
 // scope claim is "a namespace segment may not be projected through", and this row is what keeps it from
 // being read as "only a lexical binder may have fields".
-fn fps_root_data_projection_reading() -> FpsReading { fps_reading_of(o: fps_root_data_projection_source()) }
+// SUPPLIED AT RESOLVE'S BOUNDARY: the subject is which head the scope chain binds for `cfg.tree`, so the
+// module goes into REAL resolve as a lowered tree (v2.test.lens_common.resolve_fixture) rather than being
+// lowered from text. The real-path rows over authored source in this file are the inhabitance for the
+// lower -> resolve boundary.
+fn fps_lowered_box_module(f_body: Node) -> ClaimLoweredModule {
+  ClaimLoweredModule {
+    module: [^p],
+    members: [
+      Edge { label: Authored { name: ^Box }, target: claim_lowered_record(fields: [ClaimLoweredParam { name: ^tree, type_node: claim_lowered_atom(identity: ^Int, n: 11) }], site: 10) },
+      Edge {
+        label: Authored { name: ^cfg },
+        target: claim_lowered_function(
+          site: 20,
+          params: [],
+          codomain: claim_lowered_atom(identity: ^Box, n: 21),
+          body: construct_node(
+            reference: claim_lowered_path(segments: [^Box], n: 23),
+            field_edges: [Edge { label: Authored { name: ^tree }, target: claim_int_literal(lexeme: "1", n: 26) }],
+            source: claim_lowered_atom(identity: ^fps_construct_site, n: 22)
+          )
+        )
+      },
+      Edge { label: Authored { name: ^f }, target: claim_lowered_function(site: 30, params: [], codomain: claim_lowered_atom(identity: ^Int, n: 31), body: f_body) }
+    ],
+    records: [^Box],
+    imports: []
+  }
+}
+
+// The dotted path `cfg.tree`, its outer cell minted at 40 and `cfg` at 41.
+fn fps_root_data_path() -> Node {
+  claim_lowered_path(segments: [^cfg, ^tree], n: 40)
+}
+
+fn fps_root_data_projection_resolution() -> Outcome<ResolvedTree> {
+  claim_resolve_lowered(modules: [fps_lowered_box_module(f_body: fps_root_data_path())], subject: [^p])
+}
+
+fn fps_root_data_projection_reading() -> FpsReading { fps_reading_of(o: fps_root_data_projection_resolution()) }
+
+// The refusal is anchored on the path or on its `cfg` head, the two nodes resolve could locate it at. That
+// is what keeps a supplied module resolve could not read from satisfying the row: such a refusal is
+// located elsewhere (measured: the same module with a literal body resolves).
+fn fps_root_data_refused_at_cfg() -> Bool {
+  match fps_root_data_projection_resolution() {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: r } =>
+      match r.head.at {
+        NodeLocus { anchor: a } => (a.at.occurrence_id == claim_lowered_minted(n: 40)) || (a.at.occurrence_id == claim_lowered_minted(n: 41))
+        _ => false
+      }
+  }
+}
 
 test fn fps_a_root_bound_data_value_is_not_yet_projectable_holds() -> Bool {
-  fps_root_data_projection_reading().resolve_refused_unbound
+  fps_root_data_projection_reading().resolve_refused_unbound && fps_root_data_refused_at_cfg()
 }
 
 // BOTH READINGS OF A DOTTED PATH, QUALIFIED TOGETHER. v2.compiler.resolve resolve_dotted_path_reading
