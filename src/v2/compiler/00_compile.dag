@@ -3603,7 +3603,7 @@ fn native_demand_census_read(
   match bind_outcome(
     o: program_assembly_phase_tokenize(read: read, lm: front.lm),
     f: fn(tokens) {
-      parse_module_prepared_seeded(tokens: tokens, prepared: front.prepared, validation_residue: front.residue, seed: state.context.alloc)
+      parse_module_prepared_seeded(tokens: tokens, prepared: front.prepared, seed: state.context.alloc)
     }
   ) {
     Rejected { diagnostics: d } =>
@@ -3890,9 +3890,8 @@ fn native_census_residual_rows(
 
 // THE CENSUS IS GROUPED BY THE CAUSE THAT FIRED, NEVER BY THE ONE THAT CAME FIRST. A refusal's
 // diagnostic list PREPENDS the advisories that were pending when the refusal fired
-// (rejected_with_pending), so its head is whatever advisory was queued first -- on the dag grammar
-// that is the overlap-residue advisory every file carries -- and grouping by it files every refusal
-// under one advisory that refused nothing. v2.std.diagnostic diagnostics_fatal is the one authority
+// (rejected_with_pending), so its head is whatever advisory was queued first, and grouping by it
+// files every refusal under an advisory that refused nothing. v2.std.diagnostic diagnostics_fatal is the one authority
 // for which element fired: a file refusal already carries its answer as `fatal_reason`
 // (native_test_file_refusal), and a resolve chain is asked the same question here. The head stays on
 // the member as `head_reason` so the reader still sees what rode along; it is a field, not a key.
