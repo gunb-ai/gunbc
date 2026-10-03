@@ -656,8 +656,12 @@ import v2.std.collection { List }
 // THE XL-2 ELSE-ARM ROW IS THE SAME GROUND AT FIVE SPECIMENS: v2.test.claim.namespace_xl0.else_arm_nested_if
 // eam_outcomes drives one front end over five inline modules and stores one verdict arm per module.
 // THE IF-ARM-POSITION ROW IS THE SAME GROUND AT FOUR SPECIMENS: v2.test.claim.body_lowering.if_arm_position
-// iap_verdicts tokenizes, parses and normalizes four inline modules and stores four Bools. Its first floor
-// run (37073686904) refused all four claims over the enrolment margin, at 353k-687k eval steps each.
+// iap_verdicts tokenizes, parses and normalizes four inline modules and stores four Bools. Unshared,
+// each claim frame paid its own tokenize -> parse -> normalize, over the required floor's new-witness
+// enrolment margin (v2.workflow.required_floor claim_eval_step_budget_for_identity).
+// THE IF-ARM READER DIFFERENTIAL ROW IS THE SAME GROUND AT FOUR SPECIMENS:
+// v2.test.claim.cli.if_arm_reader_differential iard_fixture_censuses tokenizes and parses four inline
+// modules and stores three censuses (counts and rendered rows, no Node), portable for the same reason.
 // THE ARROW-LAMBDA BLOCK-BODY ROW IS THE SAME GROUND AT FIVE SPECIMENS: v2.test.claim.body_lowering.arrow_lambda_block_body
 // alb_verdicts normalizes five inline modules and stores five Bools; each would otherwise be over the floor's
 // new-witness enrolment margin (the required floor's claim_eval_step_budget_for_identity).
@@ -917,6 +921,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.wildcard_arm_resolve.wc_outcomes",
   "v2.test.claim.namespace_xl0.else_arm_nested_if.eam_outcomes",
   "v2.test.claim.body_lowering.if_arm_position.iap_verdicts",
+  "v2.test.claim.cli.if_arm_reader_differential.iard_fixture_censuses",
   "v2.test.claim.body_lowering.arrow_lambda_block_body.alb_verdicts",
   "v2.test.cli.v2_native_cli.cli_probe_trailing_outcome",
   "v2.test.emit.closure_emit_arrow_body_refusal.arrow_body_probe_verdict",
