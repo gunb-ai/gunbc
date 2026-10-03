@@ -4,7 +4,7 @@ import v2.compiler.body_lowering_fold { body_lower_value_read }
 import v2.std.diagnostic { Accepted, NodeLocus, Rejected, diagnostics_fatal }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, content_hash, node_synthetic }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, content_hash, node_synthetic }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -25,7 +25,7 @@ fn vrd_atom(id: Symbol) -> Node {
 fn vrd_production(emitted: Symbol) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Named { name: ^grammar_production_identity_node_projection }, target: vrd_atom(id: emitted) }]
+    children: [Edge { label: Authored { name: ^grammar_production_identity_node_projection }, target: vrd_atom(id: emitted) }]
   )
 }
 

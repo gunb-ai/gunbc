@@ -9,7 +9,7 @@ import gunbc.native_witness_transition_receipt {
   native_at_small_scale_transition_receipt,
 }
 import v2.test.execution.native_selected_witness_bundle {
-  native_selected_witness_bundle_cutover_evidence_holds,
+  selected_logic_cutover_evidence_holds,
 }
 
 // THE TWO STANDING ARMS ARE ASSERTED TOGETHER ON PURPOSE. Either arm alone would pass against a
@@ -30,7 +30,7 @@ import v2.test.execution.native_selected_witness_bundle {
 // an unverified citation.
 //
 // THE MECHANISM IS THE LANGUAGE'S OWN RESOLVER, NOT A SECOND CENSUS. This module IMPORTS
-// native_selected_witness_bundle_cutover_evidence_holds. An import is resolved by the namespace
+// selected_logic_cutover_evidence_holds. An import is resolved by the namespace
 // authority, which refuses an unbound name and refuses a double-bound one, so 'resolves to EXACTLY
 // ONE declaration' is discharged by compilation rather than by a fold this file would have to
 // author -- construction over validation (DESIGN 5), and no fork of the G1 resolver. If the cited
@@ -38,6 +38,14 @@ import v2.test.execution.native_selected_witness_bundle {
 // The string equality below is what binds that compile-time fact to the AUTHORED field: if the
 // receipt's module_path or decl_name drifts away from the symbol actually imported, the equality
 // reds even though the import still resolves.
+//
+// THE IMPORT IS AN ORDINARY FN, NOT THE TEST WRAPPER, AND THAT IS THE POINT OF THE CHOICE. The
+// evidence logic used to live only in the test fn native_selected_witness_bundle_cutover_evidence_holds,
+// so proving this citation meant a test importing and calling another test -- the test-to-test
+// reference class the ledger in v1.compiler.compile tracked as debt. The logic now lives in an
+// ordinary fn that both callers share (the v2 test fn wraps it; this module imports it): importing
+// a non-TestMarked declaration is not a test-to-test reference, so the citation is proven at full
+// strength -- namespace resolution plus an executed call -- while the debt row is discharged.
 //
 // EXECUTING, NOT MERELY PRESENT. Resolution alone would prove the name exists, not that it names an
 // executing witness -- the proxy-assertion failure where a present-in-source symbol is mistaken for
@@ -105,7 +113,7 @@ fn citation_names_the_imported_evidence_symbol(
   let cited_module = receipt.executed_evidence.module_path as String
   let cited_decl = receipt.executed_evidence.decl_name as String
   cited_module == "v2.test.execution.native_selected_witness_bundle"
-    && cited_decl == "native_selected_witness_bundle_cutover_evidence_holds"
+    && cited_decl == "selected_logic_cutover_evidence_holds"
 }
 
 fn receipt_citing(
@@ -131,17 +139,17 @@ test fn a_citation_drifted_from_the_imported_symbol_is_rejected() -> Bool {
   return !citation_names_the_imported_evidence_symbol(
     receipt: receipt_citing(
       module_path: "v2.test.execution.native_selected_witness_bundle",
-      decl_name: "native_selected_witness_bundle_cutover_evidence_hold",
+      decl_name: "selected_logic_cutover_evidence_hold",
     ),
   )
     && !citation_names_the_imported_evidence_symbol(
       receipt: receipt_citing(
         module_path: "v2.test.execution.native_selected_witness_bundle_typo",
-        decl_name: "native_selected_witness_bundle_cutover_evidence_holds",
+        decl_name: "selected_logic_cutover_evidence_holds",
       ),
     )
 }
 
 test fn cited_evidence_declaration_is_an_executing_witness() -> Bool {
-  return native_selected_witness_bundle_cutover_evidence_holds()
+  return selected_logic_cutover_evidence_holds()
 }

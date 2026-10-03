@@ -1,6 +1,6 @@
 module product.compute_board.digital_control
 
-import std.types { String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List, brand }
 
 // THE BOARD'S DIGITAL CONTROL INTENT, LANGUAGE-NEUTRAL BY CONSTRUCTION. This is what a
 // board-management interlock DOES, expressed as signals and equations; it names no target language

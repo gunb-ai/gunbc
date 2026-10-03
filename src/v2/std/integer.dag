@@ -16,7 +16,7 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, outcome_accepted, outcome_rejected, invariant_port_locus, port_refusal_locus, Unavailable }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, is_empty_conj_root }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, is_empty_conj_root }
 import v2.std.node_query { find_named_child }
 import std.integer { Signedness, Signed, Unsigned }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural }
@@ -31,7 +31,7 @@ import v2.std.machine {
   Word64,
   Word128
 }
-import v2.std.nat { Nat, Zero, Succ, NatQuotient, nat_div_rem_by_succ }
+import std.nat { Nat, Zero, Succ, NatQuotient, nat_div_rem_by_succ }
 import v2.std.text { Char, CharAbsent, CharFound, String, string_head, string_tail }
 import std.bit { Word64 }
 type Int = GroupCompletion<Nat>
@@ -810,7 +810,7 @@ fn integer_inhabitant_atom(id: Symbol) -> Node {
 }
 
 fn integer_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn integer_bound_sign_node(sign: IntegerBoundSign) -> Node {

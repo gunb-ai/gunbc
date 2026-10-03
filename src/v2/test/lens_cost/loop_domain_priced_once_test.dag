@@ -4,17 +4,20 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.cost { ConstantCost, LinearCost, SumCost, cost_lens }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.nat { Succ, Zero }
+import std.nat { Succ, Zero }
 import v2.std.node {
   Atom,
   ComputationNode,
   Edge,
   Loop,
-  Named,
+  Authored,
   Node,
   Positional,
   Transform,
   TypeNode,
+  LoopBoundEdge,
+  LoopDomainEdge,
+  core_edge_label,
 }
 import v2.std.witness { Holds }
 
@@ -47,8 +50,8 @@ data loop_domain_last: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
     Edge { label: Positional, target: loop_domain_unit_work },
-    Edge { label: Named { name: ^loop_bound_edge }, target: loop_domain_measure },
-    Edge { label: Named { name: ^loop_domain_edge }, target: loop_domain_unit_work }
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: loop_domain_measure },
+    Edge { label: core_edge_label(marker: LoopDomainEdge), target: loop_domain_unit_work }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -56,9 +59,9 @@ data loop_domain_last: Node = Node {
 data loop_domain_first: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Named { name: ^loop_domain_edge }, target: loop_domain_unit_work },
+    Edge { label: core_edge_label(marker: LoopDomainEdge), target: loop_domain_unit_work },
     Edge { label: Positional, target: loop_domain_unit_work },
-    Edge { label: Named { name: ^loop_bound_edge }, target: loop_domain_measure }
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: loop_domain_measure }
   ],
   occurrence_id: OccurrenceSynthetic
 }

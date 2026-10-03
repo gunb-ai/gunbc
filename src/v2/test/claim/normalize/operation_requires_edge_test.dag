@@ -20,12 +20,12 @@ import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostic
 import v2.std.optional { Absent, Present }
 import v2.std.logic { Bool }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.node { Arrow, Atom, Conj, Edge, Found, Named, Node, Positional, Symbol, TypeNode, named_edge_target_lookup, node_subtree_nodes, symbol_intern_lexeme }
+import v2.std.node { Arrow, Atom, Conj, Edge, Found, Node, Positional, Symbol, TypeNode, node_subtree_nodes, symbol_intern_lexeme, ArrowResourceRequirementsEdge, Authored, core_edge_target_lookup, core_edge_label }
 import v2.std.integer { Int }
 import v2.std.text { String }
 
 // AN OPERATION'S DECLARED RESOURCE REQUIREMENTS (D13 step a; v2.std.node
-// ^arrow_resource_requirements_edge). `requires R, ..` lowers onto the operation Arrow
+// CoreEdgeLabel ArrowResourceRequirementsEdge). `requires R, ..` lowers onto the operation Arrow
 // (v2.compiler.body_lowering_fold body_lower_operation_requires) and v2.compiler.resolve
 // resolve_arrow_resource_requirements checks, in the Arrow's type scope, that every member names a
 // declared resource (v2.std.symbol_index symbol_index_declares_resource_at) at most once. These claims
@@ -52,7 +52,7 @@ fn census_of_stream(tokens: TokenStream) -> Outcome<CensusTree> {
 }
 
 fn node_carries_requirements_edge(n: Node) -> Bool {
-  match named_edge_target_lookup(children: n.children, name: ^arrow_resource_requirements_edge) {
+  match core_edge_target_lookup(children: n.children, marker: ArrowResourceRequirementsEdge) {
     Found { target: _ } => true
     _ => false
   }
@@ -190,8 +190,8 @@ test fn no_requires_stream_is_what_tokenize_produces_holds() -> Bool {
 // decides over resolved members and the index; the members here are supplied as the declaration
 // references resolve produces for `N` and `m.N` -- one path under two labels -- and the index is the
 // census index of a module that declares N. The real route through normalize and resolve stays
-// exercised by a_requirement_naming_a_declared_resource_resolves_holds (a member resolving to a marked
-// resource path) and a_requirement_naming_a_record_refuses_located_RED, so supplying the members here
+// exercised by a_requirement_naming_a_declared_resource_resolves_at_resolve_holds (a member resolving to a marked
+// resource path) and a_requirement_naming_a_non_resource_refuses_at_resolve_RED, so supplying the members here
 // removes no execution of it.
 data resource_only_source: String = "module m\nresource N {\n  kind: Capability\n  mode: Read\n}\n"
 
@@ -202,8 +202,8 @@ test fn one_resource_named_twice_is_refused_by_the_requirement_decision_RED() ->
       let index = symbol_index_fill_module_roots(index: empty_symbol_index(), roots: Cons { head: census_tree_binding_source(t: t), tail: Empty })
       let path = Cons { head: ^m, tail: Cons { head: ^N, tail: Empty } }
       let members = [
-        Edge { label: Named { name: ^N }, target: declaration_reference_node(qn: path, occurrence_id: OccurrenceSynthetic) },
-        Edge { label: Named { name: symbol_intern_lexeme(lexeme: "m.N") }, target: declaration_reference_node(qn: path, occurrence_id: OccurrenceSynthetic) }
+        Edge { label: Authored { name: ^N }, target: declaration_reference_node(qn: path, occurrence_id: OccurrenceSynthetic) },
+        Edge { label: Authored { name: symbol_intern_lexeme(lexeme: "m.N") }, target: declaration_reference_node(qn: path, occurrence_id: OccurrenceSynthetic) }
       ]
       match resolve_requirement_member_refusal_optional(index: index, members: members) {
         Present { value: d } => d.reason == ^resolve_reason_requirement_repeated
@@ -219,7 +219,7 @@ test fn one_resource_named_once_is_admitted_by_the_requirement_decision_holds() 
     Rejected { diagnostics: _ } => false
     Accepted { value: t, diagnostics: _ } =>
       let index = symbol_index_fill_module_roots(index: empty_symbol_index(), roots: Cons { head: census_tree_binding_source(t: t), tail: Empty })
-      let members = [Edge { label: Named { name: ^N }, target: declaration_reference_node(qn: Cons { head: ^m, tail: Cons { head: ^N, tail: Empty } }, occurrence_id: OccurrenceSynthetic) }]
+      let members = [Edge { label: Authored { name: ^N }, target: declaration_reference_node(qn: Cons { head: ^m, tail: Cons { head: ^N, tail: Empty } }, occurrence_id: OccurrenceSynthetic) }]
       match resolve_requirement_member_refusal_optional(index: index, members: members) {
         Present { value: _ } => false
         Absent => true
@@ -259,7 +259,7 @@ fn requirements_atom_count(root: Node, identity: Symbol) -> Int {
 }
 
 fn node_requirements_atom_count(n: Node, identity: Symbol) -> Int {
-  match named_edge_target_lookup(children: n.children, name: ^arrow_resource_requirements_edge) {
+  match core_edge_target_lookup(children: n.children, marker: ArrowResourceRequirementsEdge) {
     Found { target: t } =>
       match t.kind {
         TypeNode { connective: Atom { identity: id } } => if id == identity { 1 } else { 0 }
@@ -346,7 +346,7 @@ fn req_module_root() -> Node {
     children: [
       dag_named_edge(name: ^dag_surface_module_header, target: dag_grammar_atom(id: ^dag_surface_module_header)),
       dag_named_edge(name: ^dag_surface_module_header_qualified_name, target: fold_list_node(xs: Cons { head: ^m, tail: Empty }, item_node: fn(sym) { req_atom(sym: sym) })),
-      Edge { label: Named { name: ^T }, target: req_atom(sym: ^T) }
+      Edge { label: Authored { name: ^T }, target: req_atom(sym: ^T) }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -365,8 +365,8 @@ fn req_operation_arrow() -> Node {
       Edge { label: Positional, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic } },
       signature.order,
       Edge {
-        label: Named { name: ^arrow_resource_requirements_edge },
-        target: Node { kind: TypeNode { connective: Conj }, children: [Edge { label: Named { name: ^T }, target: req_atom(sym: ^T) }], occurrence_id: OccurrenceSynthetic }
+        label: core_edge_label(marker: ArrowResourceRequirementsEdge),
+        target: Node { kind: TypeNode { connective: Conj }, children: [Edge { label: Authored { name: ^T }, target: req_atom(sym: ^T) }], occurrence_id: OccurrenceSynthetic }
       }
     ],
     occurrence_id: OccurrenceSynthetic
