@@ -129,7 +129,7 @@ A practical realization is a short-lived signed request permit minted by success
 
 **Operator ruling (2026-10-03): converges are triggered manually today, and automated later.** Until they are automated, the manual trigger is one retry-safe action, the converge entry point, never a hand-run sequence of steps. Running it twice against a converged host is a Noop. The deployment hand-placed on srv2 for #13066 is the case this rules out: the admitted revision goes onto the host through the converge, not around it.
 
-**Still owed a decision:** which instance the model calls production. The naming decides which host a wrong-instance mistake reaches. The belt-tick module records one such near miss: a tick ran `git worktree add` into srv1's production tree.
+**Which deployment is prod: decided 2026-10-03.** The operator approved the deployment-risk conformance vocabulary. `DeploymentRiskClass = TestRisk | ProdRisk` is derived from one switchable row, `ProdRoleSelection = NoProdRole | ProdRoleHeldBy { deployment }`, and is never inferred from srv1, "live", main or a host name. The row initially holds the srv1 daily-workspace dashboard. Turning prod off is setting that row to `NoProdRole`. A TestRisk deployment that lacks its own `DeploymentExternalBindingSet` refuses rather than borrowing prod's. The migration that names it is a separate lane; this item only consumes it. The belt-tick near miss (a tick ran `git worktree add` into srv1's production tree) is one of the wrong-instance incidents that migration files as a recurring failure mode.
 
 **RED first:** admit a revision for srv2. Convergence brings the running deployment to it and reads it back. A running revision that differs from the admitted one is reported as drift.
 
