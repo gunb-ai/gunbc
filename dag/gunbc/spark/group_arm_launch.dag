@@ -6,7 +6,7 @@ import gunbc.fleet_wireless_link { observe_wireless_link, spark_wireless_link_de
 import extdeps.systemd.journalctl { journalctl_kernel_current_boot_argv }
 import gunbc.auth.standing_operator_grant { standing_grant_covers, StandingArmLaunch }
 import gunbc.spark.pair_serving_d0 { d0_standing_grants }
-import gunbc.spark.pair_serving_d0_door { StandingGrantRowStanding, StandingGrantRowOnMain, StandingGrantRowNotOnMain, standing_grant_row_judged, executed_grant_row, ExecutedGrantRowRead, ExecutedGrantRowUnread, standing_grant_main_ref, standing_grant_row_path }
+import gunbc.spark.pair_serving_d0_door { StandingGrantRowStanding, StandingGrantRowOnMain, StandingGrantRowNotOnMain, fresh_grant_row_standing }
 import extdeps.git
 import gunbc.output_policy { ExpectSuccess }
 import std.types { String, Bool, List, NonEmptyStr, GitRef, Int }
@@ -287,16 +287,8 @@ fn content_hash_text(h: ContentHash) -> String {
 // pair_serving_d0_door standing_grant_row_judged, review 74677): a grant row that is not byte-identical to
 // origin/main's covers nothing, and the launch refuses with the read's cause.
 // A LAUNCH IS ALWAYS A FRESH START: it has no frozen lifecycle to resume, so the row is judged against
-// origin/main at each launch's admission (D0 freezes the same judgement into its filing instead).
-fn launch_grant_row_standing() -> StandingGrantRowStanding {
-  match executed_grant_row() {
-    ExecutedGrantRowUnread { cause: c } => StandingGrantRowNotOnMain { cause: c }
-    ExecutedGrantRowRead { content: mine, digest: _ } => {
-      let main = git.Core.Show(ref: standing_grant_main_ref as GitRef, path: standing_grant_row_path, expect: ExpectSuccess)
-      standing_grant_row_judged(executed: mine, executed_read: true, on_main: main.content, main_read: main.success, main_stderr: main.stderr)
-    }
-  }
-}
+// origin/main at each launch's admission (gunbc.spark.pair_serving_d0_door fresh_grant_row_standing; D0
+// freezes the same judgement into its filing instead).
 
 fn group_arm_released_launch_causes(group: FabricGroup, hosts: List<HostIdentity>, grant_row: StandingGrantRowStanding) -> List<String> {
   match grant_row {
@@ -451,7 +443,7 @@ fn group_arm_launch_admission_live(
   incumbent: ArmDeclaredIncumbent,
 ) -> GroupArmLaunchAdmission {
   let held = spark_serving_admissible_hosts(subject: PairServingUnitOn { group: group })
-  let grant_row = launch_grant_row_standing()
+  let grant_row = fresh_grant_row_standing()
   match observe_executor_reach() {
     ExecutorReachUnknown { cause: c } => GroupArmLaunchAdmissionRefused { causes: [join(["the executor could not be identified, so the group's authority log could not be read: ", c], "")] }
     ExecutorReachKnown { short_hostname: executor, path: _ } =>
