@@ -4219,8 +4219,9 @@ data dag_kernel_value_type_roster: List<KernelValueType> = [
 // std.algebra record (add/mul/join) and the signature node (^ring_field_add, ..) are two representations of one
 // structure with no declared mapping is gunbc.recurring_failure_mode
 // algebra_structure_has_two_representations_with_no_declared_mapping, not resolved here.
-// CONSUMER: the v2 infer algebra-operator arm (the Bool join and Int add through one route), landing in the
-// change stacked on this one; until then these rows are a declared frontier read by that change alone.
+// CONSUMER: the v2 infer algebra-operator arm (v2.compiler.infer infer_algebra_field_result_type: the Bool join
+// and Int add through one route), landing in gunbc#13060, stacked on this change; until it lands these rows are a
+// declared frontier read only by v2.test.claim.dag_algebra_inhabitance.
 fn dag_int_algebra_inhabitance() -> AlgebraInhabitanceDecl {
   let inhabitant = integer_int_type_node()
   AlgebraInhabitanceDecl {
