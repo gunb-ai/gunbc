@@ -9,7 +9,7 @@ import std.fabric_blob { FabricBlobAddress, fabric_blob_object_name }
 import std.fabric_storage {
   FabricObject, FabricObjectRef,
   FabricHeadExpectation, ExpectHeadAbsent, ExpectHeadAt,
-  FabricHeadReading,
+  FabricHeadReading, FabricHeadAbsent, FabricHeadAt, fabric_object_ref_eq,
   FabricHeadAdvance, FabricHeadAdvanced, FabricHeadMoved, FabricHeadAdvanceRefused,
   FabricStorageFault,
 }
@@ -112,61 +112,84 @@ fn workspace_head_entry_object(entry: WorkspaceHeadEntry) -> FabricObject {
   }
 }
 
+// AN ENTRY TOGETHER WITH THE REF IT WAS READ UNDER, one value, so an entry without its ref (or a ref
+// without its entry) has no representation. The decoded closure read (std.fabric_storage
+// FabricClosureRead, newest first) maps onto it one-to-one.
+type WorkspaceStoredEntry {
+  ref: FabricObjectRef
+  entry: WorkspaceHeadEntry
+}
+
 // WHAT A WRITER ASKS THE HEAD FOR: the object to put, and the expectation to advance under. The
 // expectation is the head entry the writer built on -- absent only for the first revision of a new
-// workspace -- so the epoch fence above is the expectation itself.
+// workspace -- so the epoch fence above is the expectation itself. The writer must also never BUILD
+// on an entry of a later epoch: rebuilding on a fence would make the fence the expectation and the
+// advance would succeed, so a built-on entry whose epoch exceeds the new entry's is refused here,
+// before any put.
 type WorkspaceAdvancePlan {
   object: FabricObject
   expected: FabricHeadExpectation
 }
 
-fn workspace_advance_plan(entry: WorkspaceHeadEntry, built_on: FabricObjectRef?) -> WorkspaceAdvancePlan {
-  WorkspaceAdvancePlan {
-    object: workspace_head_entry_object(entry: entry),
-    expected: match built_on {
-      Present { value: b } => ExpectHeadAt { object: b }
-      Absent => ExpectHeadAbsent
-    },
+type WorkspaceAdvanceDecision
+  = WorkspaceAdvancePlanned { plan: WorkspaceAdvancePlan }
+  | WorkspaceAdvanceStaleEpoch { writer_epoch: Int, current_epoch: Int }
+
+fn workspace_advance_plan(entry: WorkspaceHeadEntry, built_on: WorkspaceStoredEntry?) -> WorkspaceAdvanceDecision {
+  match built_on {
+    Absent => WorkspaceAdvancePlanned { plan: WorkspaceAdvancePlan { object: workspace_head_entry_object(entry: entry), expected: ExpectHeadAbsent } }
+    Present { value: b } =>
+      if workspace_head_entry_epoch(entry: b.entry) > workspace_head_entry_epoch(entry: entry) {
+        WorkspaceAdvanceStaleEpoch { writer_epoch: workspace_head_entry_epoch(entry: entry), current_epoch: workspace_head_entry_epoch(entry: b.entry) }
+      } else {
+        WorkspaceAdvancePlanned { plan: WorkspaceAdvancePlan { object: workspace_head_entry_object(entry: entry), expected: ExpectHeadAt { object: b.ref } } }
+      }
   }
 }
 
 // THE COMMIT OUTCOME, CLASSIFIED FROM THE HEAD ADVANCE. A moved head whose entry carries a later
 // epoch is a stale writer: it must stop writing, its pending writes are not the workspace's, and it
 // must never retry. A moved head inside the writer's own epoch is a lost race against itself (a
-// duplicate checkpointer) and is retried by rebuilding on the observed head. The observed entry is
-// supplied decoded, because only the store's closure read can say what the moved head holds.
+// duplicate checkpointer) and is retried by rebuilding on the observed entry, through
+// workspace_advance_plan. A moved head whose entry the caller could not decode -- or whose decoded
+// ref is not the head the store reported -- is NOT a race: the epoch is unknown, so it is its own
+// arm, which a writer may not retry (DESIGN 5: a failure arm refuses, never widens).
 type WorkspaceCommit
   = WorkspaceCommitted { revision: FabricObjectRef }
   | WorkspaceCommitStaleEpoch { writer_epoch: Int, current_epoch: Int }
-  | WorkspaceCommitRaced { observed: FabricHeadReading }
+  | WorkspaceCommitRaced { observed: WorkspaceStoredEntry }
+  | WorkspaceCommitObservedUndecoded { observed: FabricHeadReading }
   | WorkspaceCommitFailed { fault: FabricStorageFault }
 
-fn workspace_commit_classify(writer: WorkspaceWriterEpoch, advance: FabricHeadAdvance, observed_entry: WorkspaceHeadEntry?) -> WorkspaceCommit {
+fn workspace_commit_classify(writer: WorkspaceWriterEpoch, advance: FabricHeadAdvance, observed_entry: WorkspaceStoredEntry?) -> WorkspaceCommit {
   match advance {
     FabricHeadAdvanced { object: o, generation: _ } => WorkspaceCommitted { revision: o }
     FabricHeadAdvanceRefused { fault: f } => WorkspaceCommitFailed { fault: f }
-    FabricHeadMoved { expected: _, observed: seen } => match observed_entry {
-      Present { value: e } =>
-        if workspace_head_entry_epoch(entry: e) > writer.epoch {
-          WorkspaceCommitStaleEpoch { writer_epoch: writer.epoch, current_epoch: workspace_head_entry_epoch(entry: e) }
-        } else {
-          WorkspaceCommitRaced { observed: seen }
-        }
-      Absent => WorkspaceCommitRaced { observed: seen }
-    }
+    FabricHeadMoved { expected: _, observed: seen } =>
+      match seen {
+        FabricHeadAbsent => WorkspaceCommitObservedUndecoded { observed: seen }
+        FabricHeadAt { object: head, generation: _ } =>
+          match observed_entry {
+            Absent => WorkspaceCommitObservedUndecoded { observed: seen }
+            Present { value: e } =>
+              if !fabric_object_ref_eq(a: e.ref, b: head) {
+                WorkspaceCommitObservedUndecoded { observed: seen }
+              } else {
+                if workspace_head_entry_epoch(entry: e.entry) > writer.epoch {
+                  WorkspaceCommitStaleEpoch { writer_epoch: writer.epoch, current_epoch: workspace_head_entry_epoch(entry: e.entry) }
+                } else {
+                  WorkspaceCommitRaced { observed: e }
+                }
+              }
+          }
+      }
   }
 }
 
 // RESTORE SELECTS THE LAST COMMITTED REVISION: walking newest first from the head, skip fences
 // (they commit no content) and take the first revision. A workspace with no revision restores empty;
 // it is never restored from anything but a committed entry, so uncommitted uploads -- chunks put
-// without a head advance -- are never read. Each entry travels WITH the ref it was read under, one
-// value, so an entry without its ref (or a ref without its entry) has no representation; the decoded
-// closure read (std.fabric_storage FabricClosureRead, newest first) maps onto this one-to-one.
-type WorkspaceStoredEntry {
-  ref: FabricObjectRef
-  entry: WorkspaceHeadEntry
-}
+// without a head advance -- are never read.
 
 type WorkspaceRestorePoint
   = WorkspaceRestoreRevision { revision: FabricObjectRef, entries: List<WorkspaceEntry> }

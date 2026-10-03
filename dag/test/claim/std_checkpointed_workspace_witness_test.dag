@@ -15,7 +15,8 @@ import std.fabric_storage {
 import std.checkpointed_workspace {
   WorkspaceWriterEpoch, WorkspaceEntry, WorkspaceHeadEntry, WorkspaceRevision, WorkspaceFence,
   workspace_head_entry_object, workspace_advance_plan, workspace_head_name,
-  WorkspaceCommitted, WorkspaceCommitStaleEpoch, WorkspaceCommitRaced, WorkspaceCommitFailed, workspace_commit_classify,
+  WorkspaceCommitted, WorkspaceCommitStaleEpoch, WorkspaceCommitRaced, WorkspaceCommitObservedUndecoded, WorkspaceCommitFailed, workspace_commit_classify,
+  WorkspaceAdvancePlanned, WorkspaceAdvanceStaleEpoch,
   WorkspaceStoredEntry, WorkspaceRestoreRevision, WorkspaceRestoreEmpty, workspace_restore_point,
   WorkspaceAge, WorkspaceCoverage, WorkspaceClean, WorkspaceDirty, oldest_uncommitted_write_age, WorkspaceAgeOf, WorkspaceAgeUndefined,
   workspace_coverage_after_write, workspace_coverage_after_commit,
@@ -56,17 +57,17 @@ fn stored(e: WorkspaceHeadEntry) -> WorkspaceStoredEntry { WorkspaceStoredEntry 
 test fn a_revision_links_its_parent_and_a_first_revision_expects_no_head() -> Bool {
   let o = workspace_head_entry_object(entry: fence2())
   let linked = match o.links { Cons { head: p, tail: _ } => fabric_object_ref_eq(a: p, b: ref_of(e: rev1()))  Empty => false }
-  let first = match workspace_advance_plan(entry: rev1(), built_on: none).expected { ExpectHeadAbsent => true  ExpectHeadAt { object: _ } => false }
+  let first = match workspace_advance_plan(entry: rev1(), built_on: none) { WorkspaceAdvancePlanned { plan: p } => match p.expected { ExpectHeadAbsent => true  ExpectHeadAt { object: _ } => false }  WorkspaceAdvanceStaleEpoch { writer_epoch: _, current_epoch: _ } => false }
   linked && first && (workspace_head_name(workspace: "ops") as String) == "workspace.ops.committed"
 }
 
 test fn a_moved_head_at_a_later_epoch_is_a_stale_writer_not_a_race() -> Bool {
   let moved = FabricHeadMoved { expected: ExpectHeadAt { object: ref_of(e: rev1()) }, observed: FabricHeadAt { object: ref_of(e: fence2()), generation: cas_generation_first() } }
-  let stale = match workspace_commit_classify(writer: epoch(n: 1), advance: moved, observed_entry: Present { value: fence2() }) {
+  let stale = match workspace_commit_classify(writer: epoch(n: 1), advance: moved, observed_entry: Present { value: stored(e: fence2()) }) {
     WorkspaceCommitStaleEpoch { writer_epoch: w, current_epoch: c } => w == 1 && c == 2
     _ => false
   }
-  let race = match workspace_commit_classify(writer: epoch(n: 2), advance: moved, observed_entry: Present { value: fence2() }) {
+  let race = match workspace_commit_classify(writer: epoch(n: 2), advance: moved, observed_entry: Present { value: stored(e: fence2()) }) {
     WorkspaceCommitRaced { observed: _ } => true
     _ => false
   }
@@ -78,7 +79,33 @@ test fn a_moved_head_at_a_later_epoch_is_a_stale_writer_not_a_race() -> Bool {
     WorkspaceCommitFailed { fault: _ } => true
     _ => false
   }
-  stale && race && ok && failed
+  // THE FENCE HOLDS WHEN THE ENTRY CANNOT BE DECODED: no observed entry, or one under a different
+  // ref than the head the store reported, is undecoded and never a retryable race.
+  let undecoded = match workspace_commit_classify(writer: epoch(n: 1), advance: moved, observed_entry: none) {
+    WorkspaceCommitObservedUndecoded { observed: _ } => true
+    _ => false
+  }
+  let mismatched = match workspace_commit_classify(writer: epoch(n: 1), advance: moved, observed_entry: Present { value: stored(e: rev1()) }) {
+    WorkspaceCommitObservedUndecoded { observed: _ } => true
+    _ => false
+  }
+  stale && race && ok && failed && undecoded && mismatched
+}
+
+// A WRITER MAY NOT BUILD ON A LATER EPOCH'S ENTRY: rebuilding on the fence would make the fence its
+// expectation and the advance would succeed, so the plan refuses before any put.
+test fn a_stale_writer_cannot_plan_on_top_of_a_fence() -> Bool {
+  let next = WorkspaceRevision { writer: epoch(n: 1), parent: Present { value: ref_of(e: fence2()) }, entries: one_entry() }
+  let refused = match workspace_advance_plan(entry: next, built_on: Present { value: stored(e: fence2()) }) {
+    WorkspaceAdvanceStaleEpoch { writer_epoch: w, current_epoch: c } => w == 1 && c == 2
+    WorkspaceAdvancePlanned { plan: _ } => false
+  }
+  let current = WorkspaceRevision { writer: epoch(n: 2), parent: Present { value: ref_of(e: fence2()) }, entries: one_entry() }
+  let admitted = match workspace_advance_plan(entry: current, built_on: Present { value: stored(e: fence2()) }) {
+    WorkspaceAdvancePlanned { plan: p } => match p.expected { ExpectHeadAt { object: o } => fabric_object_ref_eq(a: o, b: ref_of(e: fence2()))  ExpectHeadAbsent => false }
+    WorkspaceAdvanceStaleEpoch { writer_epoch: _, current_epoch: _ } => false
+  }
+  refused && admitted
 }
 
 test fn restore_skips_fences_to_the_last_committed_revision() -> Bool {
