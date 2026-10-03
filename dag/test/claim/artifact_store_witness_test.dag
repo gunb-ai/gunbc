@@ -13,11 +13,12 @@ import std.content_hash {
   as_content_hash_cryptographic,
   sha256_hex_digest,
 }
-import std.measure { ByteSize, byte_size, measure_count }
+import std.measure { ByteSize, byte_size, measure_count, second }
 import std.cache_interface {
   CapacityUnbounded, CapacityBounded,
   ByteCapacity, EntryCountCapacity, ExactLimit, EffectiveLimitUnobserved,
   ReplaceExisting, RefuseNewStore, LeastRecentlyUsed,
+  ProviderRetention, ReleasedAfterInterval,
 }
 import std.materialization_ladder {
   CacheProvider, CoversAllComputations, ReferenceTier, ArtifactTier, ContentKeyed,
@@ -26,7 +27,7 @@ import std.materialization_ladder {
 import std.artifact_store {
   ArtifactKey, ArtifactRealizationInput, artifact_key_hash, artifact_realization_digest,
   ArtifactStore, StoreReady, StoreRefusedRetention, store_over_provider,
-  ProviderScopeReleased, CapacityUnitMismatch, CapacityValueUnobserved,
+  ProviderScopeReleased, ProviderTimedReleaseUnrealized, CapacityUnitMismatch, CapacityValueUnobserved,
   RefuseNewStoreUnsupported,
   StoreHit, StoreMiss, store_get,
   StorePutReceipt, StorePutOutcome, StorePutAdmitted, StorePutDidNotFit,
@@ -74,6 +75,19 @@ data scopeexit_provider: CacheProvider = provider_row(
   coverage: CoversAllComputations,
   tier: ReferenceTier,
   retention: scope_released_retention(capacity: CapacityUnbounded)
+)
+
+// A byte ceiling in hand, but released by AGE: this LRU store has no clock, so it cannot be
+// what that provider does, however well its capacity is established.
+data timed_release_provider: CacheProvider = provider_row(
+  id: "timed-release-provider-test",
+  scope: [],
+  coverage: CoversAllComputations,
+  tier: ArtifactTier { keying: ContentKeyed },
+  retention: ProviderRetention {
+    release_policy: ReleasedAfterInterval { after_write: second(count: 604800) },
+    capacity: CapacityBounded { limit: ByteCapacity { limit: ExactLimit { value: byte_size(count: 100) } }, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } },
+  }
 )
 
 fn test_store() -> ArtifactStore {
@@ -152,6 +166,14 @@ test fn scope_released_provider_is_refused_with_the_scope_cause() -> Bool {
     StoreReady { store: _ } => false
     StoreRefusedRetention { provider_id: pid, declared: _, cause: c } =>
       (pid == "scoped-provider-test") && (c == ProviderScopeReleased)
+  }
+}
+
+test fn timed_release_provider_is_refused_not_realized_as_lru() -> Bool {
+  match store_over_provider(provider: timed_release_provider) {
+    StoreReady { store: _ } => false
+    StoreRefusedRetention { provider_id: pid, declared: _, cause: c } =>
+      (pid == "timed-release-provider-test") && (c == ProviderTimedReleaseUnrealized)
   }
 }
 
