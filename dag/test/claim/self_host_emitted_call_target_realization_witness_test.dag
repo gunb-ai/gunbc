@@ -148,7 +148,7 @@ test fn w_nonempty_record_data_value_keeps_the_map_spelling() -> Bool {
 // build_data_variant_wire_spellings), which this pair of rows now pins. The probe forces the JSON
 // path (the Holder record nests Marker) and constructs the fieldless variant with braces; the
 // bare spelling never reaches the arm (an ExprVar routes the whole value to direct construction
-// via data_value_has_cross_refs). It reds if the tag map is lost, and if the former
+// via data_value_is_json_literal_tree). It reds if the tag map is lost, and if the former
 // mis-serializations (null, or the compile_error! refusal) return.
 test fn w_variant_record_lit_on_the_json_data_path_spells_the_internal_tag() -> Bool {
   compile_dag_rust_emit_check(
