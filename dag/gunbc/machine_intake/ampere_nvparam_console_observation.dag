@@ -7,7 +7,7 @@ import v2.std.optional { Present }
 import extdeps.languages.json.parse { json_hex_nibble }
 import extdeps.ampere.nvparam {
   NvParamRegion, NvPreboot, NvManufacturing, NvUser, NvBoard,
-  NvParamKeyReading, NvParamKeyDefined, NvParamKeyUndefined, nvparam_key_of, nvparam_key_text,
+  NvParamKeyReading, NvParamKeyDefined, NvParamKeyUndefined, nvparam_key_of, nvparam_key_text, nvparam_bytes_per_parameter,
 }
 import gunbc.machine_intake_ampere_dram_console_observation { ampere_dram_console_line }
 
@@ -20,6 +20,10 @@ import gunbc.machine_intake_ampere_dram_console_observation { ampere_dram_consol
 //
 // The KEY's name comes from extdeps.ampere.nvparam (NVParamDef.h); a key the header does not define
 // stays its number. What a VALUE means is not stated by any public source and is not decoded.
+//
+// The loop steps Idx by NVPARAM_SIZE from each region's start, so a printed key is always on the
+// 8-byte stride; an off-stride key is malformed, while an on-stride key the header does not name
+// stays an explicit unknown.
 //
 // A ROW IS READ ONLY INSIDE A SECTION, and a section ends at any line that is not a row, so an
 // unrelated indented line elsewhere in a capture is never taken for a setting. A row whose hex and
@@ -64,6 +68,14 @@ fn hex_of(text: String) -> Int? {
   }
 }
 
+// PrintNVRAM's Val is a UINT32 printed with %X and with %d: the hex is 0..0xFFFFFFFF and the decimal
+// is that same 32 bits read as signed, so a value at or above 2^31 prints negative.
+data nvparam_uint32_max: Int = 4294967295
+
+fn nvparam_signed32_rendering(value: Int) -> Int {
+  if value >= 2147483648 { value - 4294967296 } else { value }
+}
+
 // "    KKKK: 0xV (D)" -> (key, value), or why it is not one.
 type NvParamRowRead
   = NvParamRowParsed { key: Int, value: Int }
@@ -85,8 +97,9 @@ fn nvparam_row_of(line: String) -> NvParamRowRead {
           Absent => NvParamRowRejected { reason: "the value is not hex" }
           Present { value: v } => match parse_int(s: dec_text) {
             Absent => NvParamRowRejected { reason: "the decimal rendering is missing or not a number" }
-            Present { value: d } => if d == v || d + 4294967296 == v { NvParamRowParsed { key: key, value: v } }
-              else { NvParamRowRejected { reason: "the hex and decimal renderings disagree" } }
+            Present { value: d } => if v > nvparam_uint32_max { NvParamRowRejected { reason: "the value exceeds the UINT32 Val PrintNVRAM prints" } }
+              else if d == nvparam_signed32_rendering(value: v) { NvParamRowParsed { key: key, value: v } }
+              else { NvParamRowRejected { reason: "the decimal is not the %d (signed 32-bit) rendering of the hex value" } }
           }
         }
       }
@@ -120,6 +133,8 @@ fn nvparam_read_step(state: NvParamReadState, raw: String) -> NvParamReadState {
           let base = nvparam_region_base(r: region)
           if k < base || k >= base + 16384 {
             NvParamReadState { section: state.section, observation: with_malformed(o: state.observation, m: NvParamMalformedRow { region: region, line: line, reason: "the key lies outside this section's region" }) }
+          } else if (k - base) % nvparam_bytes_per_parameter != 0 {
+            NvParamReadState { section: state.section, observation: with_malformed(o: state.observation, m: NvParamMalformedRow { region: region, line: line, reason: "the key is not on the 8-byte NVPARAM_SIZE stride from its region base" }) }
           } else {
             NvParamReadState { section: state.section, observation: with_setting(o: state.observation, s: NvParamSetting { region: region, key: nvparam_key_of(key: k), value: v }) }
           }
