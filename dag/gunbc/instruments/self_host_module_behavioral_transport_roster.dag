@@ -1,5 +1,6 @@
 module tools.self_host_module_behavioral_transport_roster
 
+import std.types { List }
 import tools.self_host_curated_seed_linked_harness {
   CuratedSeedLinkedClaimRun,
   CsslReceiptOutcome,
@@ -9,9 +10,6 @@ import tools.self_host_curated_seed_linked_harness {
   cssl_seed_linked_behavioral_receipt
 }
 import v2.std.algebra { fold_list }
-import v2.std.collection {
-  List
-}
 import v2.std.optional {
   Optional,
   Absent,

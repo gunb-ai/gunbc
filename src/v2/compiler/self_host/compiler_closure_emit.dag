@@ -2,7 +2,7 @@ module v2.compiler.self_host.compiler_closure_emit
 
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 import v2.compiler.name_resolve { Admission }
 import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.program_assembly { assemble_program_from_ingest_located }
@@ -12,7 +12,6 @@ import extdeps.communication.medium { Medium }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.lens.affected_set { AffectedSetClosureAcc, affected_set_closure }
 import v2.std.algebra { contains, length }
-import v2.std.collection { List }
 import v2.std.dependency {
   DependencyView,
   dependency_lens,

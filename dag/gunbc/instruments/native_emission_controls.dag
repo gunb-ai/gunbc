@@ -1,0 +1,126 @@
+module gunbc.instruments.native_emission_controls
+
+import std.types { Bool, List, Set, String }
+import v2.std.algebra { filter }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
+
+// THE NATIVE EMISSION CONTROLS: one small carrier per Rust-emitter rule, EMITTED, BUILT AND RUN as a
+// NativeClaimDriver entry (std.compiler_entry). `gunbc test //gunbc/instruments:native-emission-controls`
+// emits this closure, builds it and runs it; nothing here is interpreted. A textual witness over the
+// emitted header (test.claim.generic_item_clone_bound_witness) says what the emitter PRINTED; only
+// rustc says whether what it printed is a program, and only a run says whether that program answers
+// correctly. So each rule's control is a carrier whose emission did not compile before the rule and
+// a set of cases over it whose answers are decided here -- a positive and a red per carrier, because
+// an impl that compiled and answered `true` for everything would pass a positive alone.
+//
+// A CONTROL THAT STOPS COMPILING IS NO OBSERVATION FOR THE WHOLE PROGRAM, and that is the intended
+// reading: every carrier in this module is one that must emit as compilable Rust, so one refusal at
+// rustc is a red on the label rather than a missing row.
+//
+// THE ROSTER IS DECLARED, NOT DERIVED FROM THE CASES, for the reason
+// gunbc.instruments.native_crypto_vectors states: the reader joins rows to this list by identity, so
+// a case that was dropped is a missing row and not a smaller green.
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+// RULE: a hand-written impl header carries the item header's bounds (v1.compiler.trait_derive_emit
+// v1_set_impl_type_params / v1_freemonoid_impl_type_params). ControlContext<C, P> is the shape of
+// std.authorization_profile PublicationContext: P reaches a Set only through ControlAudience<P>, so
+// Debug and PartialEq leave the derive list and are written by hand with `P: Ord`, while the bare
+// `context: C` field earns `C: Clone` on the struct header. The hand-written headers used to print
+// `impl<C: PartialEq, P: Ord + PartialEq>`, which rustc refuses at `ControlContext<C, P>` (E0277:
+// `C: Clone` is not satisfied). ControlDisclosure adds the List<F> field of DisclosureRequest, whose
+// `==` needs `F: Clone` for the same reason.
+type ControlAudience<P>
+  = ControlEveryone
+  | ControlListed { members: Set<P> }
+
+type ControlContext<C, P> {
+  audience: ControlAudience<P>
+  context: C
+}
+
+type ControlDisclosure<P, F, C> {
+  principal: P
+  fields: List<F>
+  audience: ControlAudience<P>
+  context: C
+}
+
+type NativeEmissionCase {
+  identity: String
+  held: Bool
+}
+
+fn control_listed(names: List<String>) -> ControlAudience<String> {
+  ControlListed { members: names |> fold(init: empty_set(), f: (acc, n) => set_insert(acc, n)) }
+}
+
+fn control_context(names: List<String>, context: String) -> ControlContext<String, String> {
+  ControlContext { audience: control_listed(names: names), context: context }
+}
+
+fn control_disclosure(fields: List<String>, names: List<String>) -> ControlDisclosure<String, String, String> {
+  ControlDisclosure { principal: "p", fields: fields, audience: control_listed(names: names), context: "c" }
+}
+
+fn header_bound_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase {
+      identity: "set_struct_eq_same_members_in_another_order",
+      held: control_context(names: ["a", "b"], context: "x") == control_context(names: ["b", "a"], context: "x")
+    },
+    NativeEmissionCase {
+      identity: "set_struct_eq_red_bare_field_differs",
+      held: !(control_context(names: ["a", "b"], context: "x") == control_context(names: ["a", "b"], context: "y"))
+    },
+    NativeEmissionCase {
+      identity: "set_struct_eq_red_set_member_differs",
+      held: !(control_context(names: ["a", "b"], context: "x") == control_context(names: ["a", "c"], context: "x"))
+    },
+    NativeEmissionCase {
+      identity: "set_struct_eq_red_everyone_is_not_a_listing",
+      held: !(ControlContext { audience: ControlEveryone, context: "x" } == control_context(names: [], context: "x"))
+    },
+    NativeEmissionCase {
+      identity: "set_and_list_struct_eq_same_fields",
+      held: control_disclosure(fields: ["f", "g"], names: ["a"]) == control_disclosure(fields: ["f", "g"], names: ["a"])
+    },
+    NativeEmissionCase {
+      identity: "set_and_list_struct_eq_red_list_order_differs",
+      held: !(control_disclosure(fields: ["f", "g"], names: ["a"]) == control_disclosure(fields: ["g", "f"], names: ["a"]))
+    }
+  ]
+}
+
+data native_emission_expected_identities: List<String> = [
+  "set_struct_eq_same_members_in_another_order",
+  "set_struct_eq_red_bare_field_differs",
+  "set_struct_eq_red_set_member_differs",
+  "set_struct_eq_red_everyone_is_not_a_listing",
+  "set_and_list_struct_eq_same_fields",
+  "set_and_list_struct_eq_red_list_order_differs"
+]
+
+fn native_emission_cases() -> List<NativeEmissionCase> {
+  header_bound_cases()
+}
+
+fn case_row(c: NativeEmissionCase) -> String {
+  concat("case ", concat(c.identity, concat(if c.held { " held" } else { " not_held" }, concat(" observed=", concat(if c.held { "as_decided" } else { "other_answer" }, "\n")))))
+}
+
+fn native_claim_report() -> NativeClaimReport {
+  let cases = native_emission_cases()
+  let roster = concat("roster ", concat(native_emission_expected_identities |> join(separator: ","), "\n"))
+  let failed = cases |> filter(c => !c.held) |> map(c => c.identity)
+  let terminal = if (failed |> count) == 0 { held_terminal() } else { not_held_terminal(reason: concat("not held: ", failed |> join(separator: ","))) }
+  NativeClaimReport { stdout: concat(roster, cases |> map(c => case_row(c: c)) |> join(separator: "")), terminal: terminal }
+}
+
+fn held_terminal() -> NativeClaimTerminal {
+  NativeClaimHeld
+}
+
+fn not_held_terminal(reason: String) -> NativeClaimTerminal {
+  NativeClaimNotHeld { reason: reason }
+}
