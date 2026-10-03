@@ -64,6 +64,8 @@ test fn a_revision_links_its_parent_and_a_first_revision_expects_no_head() -> Bo
   linked && first && (workspace_head_name(workspace: "ops") as String) == "workspace.ops.committed"
 }
 
+// THE FENCE HOLDS WHEN THE ENTRY CANNOT BE DECODED: no observed entry, or one under a different ref
+// than the head the store reported, is undecoded and never a retryable race.
 test fn a_moved_head_at_a_later_epoch_is_a_stale_writer_not_a_race() -> Bool {
   let moved = FabricHeadMoved { expected: ExpectHeadAt { object: ref_of(e: rev1()) }, observed: FabricHeadAt { object: ref_of(e: fence2()), generation: cas_generation_first() } }
   let stale = match workspace_commit_classify(writer: epoch(n: 1), advance: moved, observed_entry: Present { value: stored(e: fence2()) }) {
@@ -82,8 +84,6 @@ test fn a_moved_head_at_a_later_epoch_is_a_stale_writer_not_a_race() -> Bool {
     WorkspaceCommitFailed { fault: _ } => true
     _ => false
   }
-  // THE FENCE HOLDS WHEN THE ENTRY CANNOT BE DECODED: no observed entry, or one under a different
-  // ref than the head the store reported, is undecoded and never a retryable race.
   let undecoded = match workspace_commit_classify(writer: epoch(n: 1), advance: moved, observed_entry: none) {
     WorkspaceCommitObservedUndecoded { observed: _ } => true
     _ => false
