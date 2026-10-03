@@ -90,7 +90,7 @@ data rust_source_prefix_tooling: String = "dag/gunbc/instruments/"
 // scaffold classifies as rust_source_prefix_tooling holds the self-host shim crates: hand Rust
 // standing in for primitive arms the emitted v2 closure does not yet realize, reaching v1_rt, and
 // assembled by tools.self_host_curated_seed_linked_harness into ONE Cargo package named
-// `v1_compiled` (cssl_v1_compiled_cargo_package_header). The namespace root is the crate name, by
+// `v1_compiled` (tools.emitted_crate_harness_manifest harness_lib_target_table). The namespace root is the crate name, by
 // the rule that gives src/v1/stage0/src/ the `v1_compiler` root -- the package the path compiles
 // into, spelled as Rust spells it. It is deliberately NOT `tools.`, the root the .dag instruments
 // beside these files declare: the citation gate (v1_compiler.declaration_index
