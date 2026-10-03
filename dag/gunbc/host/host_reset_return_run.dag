@@ -57,7 +57,6 @@ import gunbc.host_reset_return {
   SubjectHasNoRosterRow,
   UnitHoldStoreNotOnObserver,
   UnitHeldForMaintenance,
-  SubjectUnitHoldUndeclared,
   reset_preflight_refusal_wire,
   ResetDispatchAdmitted,
   ResetDispatchNotThisMode,
@@ -80,14 +79,8 @@ import gunbc.host_reset_return {
   subject_for_observer,
 }
 import gunbc.host_reset_subject_roster { reset_observer_peer_roster, reset_subject_for, reset_subject_roster }
-import gunbc.managed_host {
-  CredentialLocusReserved,
-  CredentialOnAccessorRoster,
-  ManagedHost,
-  ResetNoUnitHold,
-  ResetUnitHoldRequired,
-  ResetUnitHoldUndeclared,
-}
+import gunbc.managed_host { ManagedHost, ResetNoUnitHold, ResetUnitHoldRequired }
+import gunbc.machine_intake_bmc_secure { bmc_secured_account }
 import extdeps.bmc.access_profile { BmcAccessObserved, BmcAccessUnobserved }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_cdrom_selection }
@@ -436,8 +429,6 @@ fn reset_not_attempted(
 fn reset_unit_hold_gate(candidate: ManagedHost, proof: UnitHoldProof?) -> NonEmptyStr? {
   match candidate.unit_hold {
     ResetNoUnitHold => none
-    ResetUnitHoldUndeclared { reason: r } =>
-      Present { value: join(["subject ", candidate.host as String, " has no declared hold policy (", r as String, "); no controller write was attempted"], "") as NonEmptyStr }
     ResetUnitHoldRequired { key: k, store_host: _ } =>
       match proof {
         Absent => Present { value: join(["subject ", candidate.host as String, " is hold-gated and no unit hold proof was presented; no controller write was attempted"], "") as NonEmptyStr }
@@ -548,29 +539,20 @@ fn host_reset_return_issue_and_watch(
   let outcome = match reset_boot_selection(host: candidate) {
     Absent => return reset_not_attempted(selection: selection, attempt: attempt, route: route, identity: identity, cause: "the subject has no reset boot selection; no controller write was attempted")
     Present { value: boot } =>
-      match candidate.credential {
-        CredentialLocusReserved { locus: _ } =>
-          return reset_not_attempted(selection: selection, attempt: attempt, route: route, identity: identity, cause: "the subject's managed credential is a reserved locus off the accessor roster; no controller write was attempted")
-        CredentialOnAccessorRoster { accessor: _, secured_account: account } =>
-          match account {
-            Absent => return reset_not_attempted(selection: selection, attempt: attempt, route: route, identity: identity, cause: "the subject's BMC is not BmcSecured; no controller write was attempted")
-            Present { value: username } =>
-              match candidate.access {
-                BmcAccessUnobserved { endpoint: _ } =>
-                  return reset_not_attempted(selection: selection, attempt: attempt, route: route, identity: identity, cause: "the subject's controller access is unobserved; no controller write was attempted")
-                BmcAccessObserved { observation: o } =>
-                  match candidate.capability {
-                    Absent => return reset_not_attempted(selection: selection, attempt: attempt, route: route, identity: identity, cause: "the subject's firmware release has no capability row; no controller write was attempted")
-                    Present { value: row } =>
-                      oob_boot_handoff(
-                        observation: o,
-                        capability_row: row,
-                        username: username,
-                        password_file: password_file,
-                        selection: boot,
-                      )
-                  }
-              }
+      match bmc_secured_account(standing: candidate.secure) {
+        Absent => return reset_not_attempted(selection: selection, attempt: attempt, route: route, identity: identity, cause: "the subject's BMC is not BmcSecured; no controller write was attempted")
+        Present { value: username } =>
+          match candidate.access {
+            BmcAccessUnobserved { endpoint: _ } =>
+              return reset_not_attempted(selection: selection, attempt: attempt, route: route, identity: identity, cause: "the subject's controller access is unobserved; no controller write was attempted")
+            BmcAccessObserved { observation: o } =>
+              oob_boot_handoff(
+                observation: o,
+                capability_row: candidate.capability_row,
+                username: username,
+                password_file: password_file,
+                selection: boot,
+              )
           }
       }
   }
@@ -751,11 +733,6 @@ fn host_reset_return_wet() -> ProcessExit
           )
         Present { value: candidate } =>
           match candidate.unit_hold {
-            ResetUnitHoldUndeclared { reason: r } =>
-              host_reset_return_preflight_exit(
-                refusal: SubjectUnitHoldUndeclared { subject: subject, reason: r },
-                remedy: "nobody has decided whether a write to this subject must take its maintenance hold, so nothing was written to its controller",
-              )
             ResetNoUnitHold =>
               host_reset_return_attempt_exit(proof: none, candidate: candidate, observer: observer, subject: subject, route: route, password_file: password_file_raw as NonEmptyStr)
             ResetUnitHoldRequired { key: k, store_host: h } =>

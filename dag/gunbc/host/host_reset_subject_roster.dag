@@ -7,7 +7,8 @@ import gunbc.machine_intake_oob_boot_handoff {
   oob_boot_handoff_admission,
   oob_handoff_is_admitted,
 }
-import gunbc.managed_host { CredentialLocusReserved, CredentialOnAccessorRoster, ManagedHost, managed_hosts }
+import gunbc.managed_host { ManagedHost, managed_hosts }
+import gunbc.machine_intake_bmc_secure { bmc_secured_account }
 import gunbc.fleet_runner_connectivity { fleet_hosts }
 
 // WHICH HOSTS THIS FLEET MAY DRIVE BACK TO A KNOWN STATE THROUGH THEIR CONTROLLERS, and it is a
@@ -21,33 +22,24 @@ import gunbc.fleet_runner_connectivity { fleet_hosts }
 // naming authority underneath both: every identity here comes from gunbc.fleet_intent_network.
 //
 // MEMBERSHIP IS AN IDENTITY JOIN AGAINST THE ADMISSION THE ACTUATION ARM ALREADY PERFORMS. A managed
-// host is a reset subject exactly when its controller access is observed, its release capability row
-// exists, its managed credential is BmcSecured, and oob_boot_handoff_admission -- the same fold
-// gunbc.machine_intake_oob_boot_handoff runs before it writes anything to a controller -- admits the
-// observation against the row. So the roster cannot drift from the capability it claims to describe,
+// host is a reset subject exactly when its controller access is observed, its secure standing is
+// BmcSecured, and oob_boot_handoff_admission -- the same fold gunbc.machine_intake_oob_boot_handoff
+// runs before it writes anything to a controller -- admits the observation against its capability row. So the roster cannot drift from the capability it claims to describe,
 // and a host whose standings are unobserved is a non-member rather than a member with defaults.
 //
 // THE FOLD RUNS OVER EVERY MANAGED HOST, ADMITTED OR NOT, so the filter has something to refuse: a
-// roster assembled from already-admitted hosts would make its own filter unreachable. Today that is
-// mtcollins1, admitted, and mtjade1, whose access is unobserved.
+// roster assembled from already-admitted hosts would make its own filter unreachable.
 //
-// THE ADMISSION OF ONE MANAGED HOST, Absent when a standing the fold reads is not there to read.
+// THE ADMISSION OF ONE MANAGED HOST, Absent when its controller access is unobserved or its secure
+// standing names no account to drive it as.
 fn reset_subject_admission(host: ManagedHost) -> OobBootHandoffAdmission? {
-  match host.credential {
-    CredentialLocusReserved { locus: _ } => none
-    CredentialOnAccessorRoster { accessor: _, secured_account: account } =>
-      match account {
-        Absent => none
-        Present { value: _ } =>
-          match host.access {
-            BmcAccessUnobserved { endpoint: _ } => none
-            BmcAccessObserved { observation: o } =>
-              match host.capability {
-                Absent => none
-                Present { value: row } =>
-                  Present { value: oob_boot_handoff_admission(observation: o, capability_row: row) }
-              }
-          }
+  match bmc_secured_account(standing: host.secure) {
+    Absent => none
+    Present { value: _ } =>
+      match host.access {
+        BmcAccessUnobserved { endpoint: _ } => none
+        BmcAccessObserved { observation: o } =>
+          Present { value: oob_boot_handoff_admission(observation: o, capability_row: host.capability_row) }
       }
   }
 }
