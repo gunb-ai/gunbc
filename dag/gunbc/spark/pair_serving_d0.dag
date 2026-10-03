@@ -797,20 +797,34 @@ fn d0_standing_grant_for_subject(subject: D0Subject) -> StandingOperatorGrant? {
 // completes) could never be resumed. Its lifecycle is the grant's identity, which every run of the
 // request derives the same way. The run's window still bounds the run (authorize checks it); it is only
 // kept out of the identity. A broker grant's binding text is byte-identical to before.
-fn d0_binding_lifecycle_term(grant: OperatorGrant<D0Subject>) -> String {
-  match d0_standing_grant_for_subject(subject: grant.subject) {
-    Present { value: g } => join(["\nstanding_grant=", g.identity as String], "")
-    Absent => join(["\nexpires_at=", grant.expires_at], "")
+// THE TERM FOLLOWS THE AUTHORIZATION'S PROVENANCE, NOT THE SUBJECT'S COVERAGE (side-chat review of #13102).
+// A covered release the BROKER approved (the row was not on main at its fresh start) keeps broker lifecycle
+// identity and expiry; only an authorization actually ISSUED from the standing grant carries the grant's
+// identity. The door states which it issued, and every run of one lifecycle states the same: a fresh start
+// issues from the grant exactly when it froze the grant proof, and a rerun issues from it exactly when that
+// frozen proof is present.
+type D0AuthorizationBasis
+  = D0BasisBroker
+  | D0BasisStandingGrant { identity: NonEmptyStr }
+
+fn d0_binding_lifecycle_term(grant: OperatorGrant<D0Subject>, basis: D0AuthorizationBasis) -> String {
+  match basis {
+    D0BasisStandingGrant { identity: id } => join(["\nstanding_grant=", id as String], "")
+    D0BasisBroker => join(["\nexpires_at=", grant.expires_at], "")
   }
 }
 
 fn d0_binding_text(grant: OperatorGrant<D0Subject>, claim_generation: CasGeneration) -> String {
+  d0_binding_text_with(grant: grant, claim_generation: claim_generation, basis: D0BasisBroker)
+}
+
+fn d0_binding_text_with(grant: OperatorGrant<D0Subject>, claim_generation: CasGeneration, basis: D0AuthorizationBasis) -> String {
   join([
     "escalation=", grant.escalation_id as String,
     "\nattempt=", grant.attempt as String,
     "\nintent=", serialize_content_hash(hash: grant.intent_hash) as String,
     "\n", d0_subject_wire(subject: grant.subject),
-    d0_binding_lifecycle_term(grant: grant),
+    d0_binding_lifecycle_term(grant: grant, basis: basis),
     "\nclaim_generation=", to_string(cas_generation_count(g: claim_generation)),
     "\n",
   ], "")
@@ -826,8 +840,8 @@ type D0GrantAdmission
   | D0GrantClaimUndecided { reason: NonEmptyStr }
   | D0GrantBindingUnavailable { claim: D0ClaimTerminal }
 
-fn admitted_with_binding(grant: OperatorGrant<D0Subject>, generation: CasGeneration) -> AdmittedD0Grant? {
-  match sha256_of_text(text: d0_binding_text(grant: grant, claim_generation: generation)) {
+fn admitted_with_binding(grant: OperatorGrant<D0Subject>, generation: CasGeneration, basis: D0AuthorizationBasis) -> AdmittedD0Grant? {
+  match sha256_of_text(text: d0_binding_text_with(grant: grant, claim_generation: generation, basis: basis)) {
     Absent => none
     Present { value: b } => Present { value: AdmittedD0Grant { grant: grant, claim_generation: generation, binding: b } }
   }
@@ -873,6 +887,10 @@ fn d0_subject_standing(authorization: ScopedAuthorization<D0Subject>, group: Fab
 // START: the subject checks, the intent, the permission decision, then the claim; a binding that
 // cannot be digested AFTER the claim landed aborts the claim rather than stranding it.
 fn admit_d0_grant(store: FabricStorageBinding, authorization: ScopedAuthorization<D0Subject>, escalation_id: NonEmptyStr, group: FabricGroup, current_hosts: List<HostIdentity>, transaction: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: Timestamp) -> D0GrantAdmission {
+  admit_d0_grant_with(store: store, authorization: authorization, escalation_id: escalation_id, group: group, current_hosts: current_hosts, transaction: transaction, executor: executor, at: at, now: now, basis: D0BasisBroker)
+}
+
+fn admit_d0_grant_with(store: FabricStorageBinding, authorization: ScopedAuthorization<D0Subject>, escalation_id: NonEmptyStr, group: FabricGroup, current_hosts: List<HostIdentity>, transaction: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: Timestamp, basis: D0AuthorizationBasis) -> D0GrantAdmission {
   match d0_subject_standing(authorization: authorization, group: group, check_population: PopulationAgainst { current: current_hosts }) {
     D0SubjectNotGranted => D0GrantRefused { cause: d0_not_granted_cause(authorization: authorization, escalation_id: escalation_id, group: group) }
     D0SubjectDisagrees { admission: a } => a
@@ -887,7 +905,7 @@ fn admit_d0_grant(store: FabricStorageBinding, authorization: ScopedAuthorizatio
                 D0ClaimLost { holder: h } => D0GrantClaimLost { holder: h }
                 D0ClaimUndecided { reason: r } => D0GrantClaimUndecided { reason: r }
                 D0ClaimHeld { generation: gen } =>
-                  match admitted_with_binding(grant: permitted, generation: gen) {
+                  match admitted_with_binding(grant: permitted, generation: gen, basis: basis) {
                     Present { value: admitted } => D0GrantAdmitted { admitted: admitted }
                     Absent => D0GrantBindingUnavailable { claim: d0_terminate_claim(store: store, escalation_id: escalation_id, transaction: transaction, held: gen, completed: false, cause: "the authorization binding could not be digested after the claim landed", now: now) }
                   }
@@ -912,6 +930,10 @@ fn d0_not_granted_cause(authorization: ScopedAuthorization<D0Subject>, escalatio
 // re-decided, so an expired grant can still finish what it started. The binding is recomputed and
 // compared to the pending state's by the transaction.
 fn resume_d0_grant(store: FabricStorageBinding, authorization: ScopedAuthorization<D0Subject>, escalation_id: NonEmptyStr, group: FabricGroup, transaction: NonEmptyStr, executor: NonEmptyStr) -> D0GrantAdmission {
+  resume_d0_grant_with(store: store, authorization: authorization, escalation_id: escalation_id, group: group, transaction: transaction, executor: executor, basis: D0BasisBroker)
+}
+
+fn resume_d0_grant_with(store: FabricStorageBinding, authorization: ScopedAuthorization<D0Subject>, escalation_id: NonEmptyStr, group: FabricGroup, transaction: NonEmptyStr, executor: NonEmptyStr, basis: D0AuthorizationBasis) -> D0GrantAdmission {
   match d0_subject_standing(authorization: authorization, group: group, check_population: PopulationNotChecked) {
     D0SubjectNotGranted => D0GrantClaimLost { holder: "the authorization is not granted, so no claim of it can be resumed" as NonEmptyStr }
     D0SubjectDisagrees { admission: a } => a
@@ -920,7 +942,7 @@ fn resume_d0_grant(store: FabricStorageBinding, authorization: ScopedAuthorizati
         D0ClaimLost { holder: h } => D0GrantClaimLost { holder: h }
         D0ClaimUndecided { reason: r } => D0GrantClaimUndecided { reason: r }
         D0ClaimHeld { generation: gen } =>
-          match admitted_with_binding(grant: g, generation: gen) {
+          match admitted_with_binding(grant: g, generation: gen, basis: basis) {
             Present { value: admitted } => D0GrantAdmitted { admitted: admitted }
             Absent => D0GrantBindingUnavailable { claim: D0ClaimUnterminated { detail: "the claim stays held: a resume that cannot digest its binding leaves the transaction to a later rerun" } }
           }
@@ -1872,6 +1894,10 @@ fn claim_terminal_text(t: D0ClaimTerminal) -> String {
 //   Complete    → the claim's terminal only; the authority is not touched
 //   Abort       → the claim's terminal only
 fn d0_dispatch(store: FabricStorageBinding, g: FabricGroup, group: String, current_hosts: List<HostIdentity>, scoped: ScopedAuthorization<D0Subject>, tx: NonEmptyStr, esc: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: Timestamp, current: CurrentAuthority) -> ProcessExit {
+  d0_dispatch_with(store: store, g: g, group: group, current_hosts: current_hosts, scoped: scoped, tx: tx, esc: esc, executor: executor, at: at, now: now, current: current, basis: D0BasisBroker)
+}
+
+fn d0_dispatch_with(store: FabricStorageBinding, g: FabricGroup, group: String, current_hosts: List<HostIdentity>, scoped: ScopedAuthorization<D0Subject>, tx: NonEmptyStr, esc: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: Timestamp, current: CurrentAuthority, basis: D0AuthorizationBasis) -> ProcessExit {
   match current {
     CurrentAuthorityUnread { group: _, step: st, reason: why } => refuse(reason: join(["authority unread at ", st, ": ", why], ""))
     CurrentAuthorityRead { authority: cur, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: recs } => {
@@ -1880,7 +1906,7 @@ fn d0_dispatch(store: FabricStorageBinding, g: FabricGroup, group: String, curre
         D0ClaimAt { state: ClaimedBy { attempt: who, claimed_at: _ }, generation: _ } => (who as String) == (tx as String)
         _ => false
       }
-      let resumed = if held_here { resume_d0_grant(store: store, authorization: scoped, escalation_id: esc, group: g, transaction: tx, executor: executor) } else { D0GrantClaimLost { holder: "no claim held by this transaction" as NonEmptyStr } }
+      let resumed = if held_here { resume_d0_grant_with(basis: basis, store: store, authorization: scoped, escalation_id: esc, group: g, transaction: tx, executor: executor) } else { D0GrantClaimLost { holder: "no claim held by this transaction" as NonEmptyStr } }
       let lifecycle = match resumed {
         D0GrantAdmitted { admitted: a } => Present { value: a.binding }
         _ => none
@@ -1893,7 +1919,7 @@ fn d0_dispatch(store: FabricStorageBinding, g: FabricGroup, group: String, curre
       match recovery {
         D0RecoveryRefused { cause: c } => refuse(reason: c)
         D0RecoverStart => {
-          let admission = admit_d0_grant(store: store, authorization: scoped, escalation_id: esc, group: g, current_hosts: current_hosts, transaction: tx, executor: executor, at: at, now: now)
+          let admission = admit_d0_grant_with(basis: basis, store: store, authorization: scoped, escalation_id: esc, group: g, current_hosts: current_hosts, transaction: tx, executor: executor, at: at, now: now)
           match admission {
             D0GrantAdmitted { admitted: admitted } => d0_run_admitted(store: store, g: g, current_hosts: current_hosts, admitted: admitted, transaction: tx, executor: executor, escalation_id: esc, at: at, now: now, claimed_here: true)
             _ => refuse(reason: d0_admission_text(a: admission, group: group))
