@@ -1,0 +1,103 @@
+module gunbc.fabric_storage_state_provision
+
+import std.types { String, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.measure { second }
+import std.content_hash { as_content_hash_cryptographic, sha256_hex_digest }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import extdeps.crypto.sha2 { sha256_hex }
+import std.effect_grant { Write, NamespacePosition, ServiceOpTree }
+import std.scoped_authorization { AuthorizationRequest, AuthorizationScope, AttemptIdentity }
+import extdeps.languages.json.emit { json_object, json_kv, json_string, serialize_json }
+import extdeps.cloud.gcp.secret_ref { secret_ref_secret_resource }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.secret_provision { SecretProvisionAttemptIdentity }
+import gunbc.auth.approved_gcp_access { approved_gcp_access_for_request, approved_gcp_file_request, ApprovedGcpAccessReady, ApprovedGcpAccessRefused }
+import gunbc.auth.approval_gate { approval_instant_now, approval_expires_at, ApprovalFiled, ApprovalFilingRefused }
+import gunbc.auth.approval_run_identity { run_attempt }
+import gunbc.auth.approval_mac_key_provision { provision_one, standing_ok, standing_line }
+import gunbc.auth.approved_secret_grants { secret_grants_via_approval }
+import gunbc.auth.fleet_secret_accessor_roster { fabric_state_key_accessor_row, fleet_accessor_grant }
+import gunbc.fabric_storage_state_policy { fabric_state_key_secret_ref }
+
+// The reviewed convergence workload supplies this credential only after its app approval gate.
+// No operator bearer-file fallback and no implied grant from a local host login.
+data fabric_state_provision_token_variable: NonEmptyStr = "FABRIC_STATE_PROVISION_ACCESS_TOKEN"
+
+type FabricStateProvisionRequest
+  = FabricStateProvisionRequested { request: AuthorizationRequest<NonEmptyStr> }
+  | FabricStateProvisionUnrequestable { reason: String }
+
+// THE INTENT the material approval binds, derived once; the request below only digests it.
+fn fabric_state_provision_intent(attempt: AttemptIdentity) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "attempt", value: json_string(s: attempt as String)),
+    json_kv(key: "secret", value: json_string(s: secret_ref_secret_resource(ref: fabric_state_key_secret_ref))),
+    json_kv(key: "version", value: json_string(s: fabric_state_key_secret_ref.version as String)),
+    json_kv(key: "material", value: json_string(s: "fresh HMAC-SHA256 key; initial version only; no replacement")),
+  ]))
+}
+
+fn fabric_state_provision_request(attempt: AttemptIdentity) -> FabricStateProvisionRequest {
+  let resource = secret_ref_secret_resource(ref: fabric_state_key_secret_ref)
+  let intent = fabric_state_provision_intent(attempt: attempt)
+  match sha256_hex_digest(hex: sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: intent)))) {
+    Absent => FabricStateProvisionUnrequestable { reason: "Provisioning intent digest unreadable" }
+    Present { value: digest } => FabricStateProvisionRequested { request: AuthorizationRequest {
+      escalation_id: join(["fabric-state-material-", digest.hex as String, "-", attempt as String], "") as NonEmptyStr,
+      scopes: [AuthorizationScope { verb: Write, resource: NamespacePosition { tree: ServiceOpTree { service: "secretmanager.googleapis.com" }, path: split(s: resource, delimiter: "/") }, action: "gunbc.fabric-state.provision-material" }],
+      subject: intent as NonEmptyStr,
+      purpose: join(["Ensure ", resource, " exists with initial HMAC-SHA256 version ", fabric_state_key_secret_ref.version as String,
+        "; never replace existing material. Accessor policy and host installation are separate convergence effects."], "") as NonEmptyStr,
+      attempt: attempt, intent_hash: as_content_hash_cryptographic(digest: digest), destructive: false,
+    } }
+  }
+}
+
+// IAM policy uses the existing grant authority and its separately gated credential. Neither
+// entry can use material provisioning approval to authorize an accessor-policy mutation.
+fn request_fabric_state_key_access() -> ProcessExit {
+  secret_grants_via_approval(grants: [fleet_accessor_grant(row: fabric_state_key_accessor_row)], request_only: true)
+}
+
+fn converge_fabric_state_key_access() -> ProcessExit {
+  secret_grants_via_approval(grants: [fleet_accessor_grant(row: fabric_state_key_accessor_row)], request_only: false)
+}
+
+// File the concrete bounded intent through the existing broker/app. It does not acquire a GCP token.
+fn request_fabric_state_key() -> CliWireResponse {
+  match run_attempt() {
+    Absent => CliWirePrintable { bytes: "No admitted convergence run identity", exit: exit_failure(reason: "run-bound approval requires the reviewed workload context") }
+    Present { value: attempt } => match fabric_state_provision_request(attempt: attempt) {
+      FabricStateProvisionUnrequestable { reason } => CliWirePrintable { bytes: reason, exit: exit_failure(reason: reason) }
+      FabricStateProvisionRequested { request } => match approval_instant_now() {
+        Absent => CliWirePrintable { bytes: "Approval clock unreadable", exit: exit_failure(reason: "approval clock unreadable") }
+        Present { value: now } => match approved_gcp_file_request(request: request, issued_at: now,
+          expires_at: approval_expires_at(issued: now, window: second(count: 1800)), body_file_name: "fabric-state-provision-request.json") {
+          ApprovalFiled => CliWirePrintable { bytes: join(["Approval requested: ", request.escalation_id as String, "\n", request.purpose as String], ""), exit: ExitSuccess }
+          ApprovalFilingRefused { reason } => CliWirePrintable { bytes: reason, exit: exit_failure(reason: reason) }
+        }
+      }
+    }
+  }
+}
+
+// Re-derive and re-admit the exact plan at apply time before reading the actuation credential.
+// Reuses the existing observe/create/snapshot/add/readback secret actuator only.
+// The supplied principal must not carry policy mutation authority.
+fn provision_fabric_state_key() -> CliWireResponse {
+  match run_attempt() {
+    Absent => CliWirePrintable { bytes: "No admitted convergence run identity", exit: exit_failure(reason: "run-bound approval requires the reviewed workload context") }
+    Present { value: attempt } => match fabric_state_provision_request(attempt: attempt) {
+      FabricStateProvisionUnrequestable { reason } => CliWirePrintable { bytes: reason, exit: exit_failure(reason: reason) }
+      FabricStateProvisionRequested { request } => match approved_gcp_access_for_request(request: request, token_variable: fabric_state_provision_token_variable) {
+        ApprovedGcpAccessRefused { reason } => CliWirePrintable { bytes: reason, exit: exit_failure(reason: reason) }
+        ApprovedGcpAccessReady { authorization: _, token } => {
+          let key = provision_one(ref: fabric_state_key_secret_ref, token: token, attempt: attempt as String as SecretProvisionAttemptIdentity)
+          CliWirePrintable { bytes: standing_line(s: key),
+            exit: if standing_ok(s: key) { ExitSuccess } else { exit_failure(reason: "fabric state key was not verified") } }
+        }
+      }
+    }
+  }
+}

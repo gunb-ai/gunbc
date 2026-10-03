@@ -16322,55 +16322,6 @@ pub fn emit_type_params_from_clone_param_names(
     }
 }
 
-pub fn emit_item_type_params_with_clone_bounds(
-    item_name: String,
-    params: Rc<Vec<Rc<Node>>>,
-    emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    {
-        let generic_param_names = Rc::new({
-            let mut __result = Vec::new();
-            for p in params.iter().cloned() {
-                __result.push(crate::v1_std_core::generic_param_name_at(
-                    p.clone(),
-                    source_indices.clone(),
-                ));
-            }
-            __result
-        });
-        let clone_param_names =
-            crate::v1_compiler_trait_derive_emit::v1_item_clone_bounded_param_names(
-                item_name.clone(),
-                generic_param_names.clone(),
-                emit_info.clone_bounded_type_params.clone(),
-            );
-        if ((clone_param_names.clone().len() as i64) > 0) {
-            crate::v1_compiler_trait_derive_emit::v1_emit_type_params_with_clone_bounds(
-                params.clone(),
-                clone_param_names.clone(),
-                source_indices.clone(),
-            )
-        } else {
-            emit_type_params(params.clone(), source_indices.clone())
-        }
-    }
-}
-
-pub fn v1_carrier_param_needs_clone_bound(
-    item_name: String,
-    generic_param_names: Rc<Vec<String>>,
-    emit_info: Rc<EmitGraphInfo>,
-) -> bool {
-    ((crate::v1_compiler_trait_derive_emit::v1_item_clone_bounded_param_names(
-        item_name.clone(),
-        generic_param_names.clone(),
-        emit_info.clone_bounded_type_params.clone(),
-    )
-    .len() as i64)
-        > 0)
-}
-
 pub fn emit_item_clone_bound_refusal(
     item: Rc<Node>,
     item_name: String,
@@ -16435,32 +16386,6 @@ pub fn emit_type_def_from_connective(
                     emit_info.clone(),
                     env.source_indices.clone(),
                 );
-                let capability_surface =
-                    crate::v1_compiler_trait_derive_emit::v1_emit_struct_from_capability_table(
-                        env.module_path.clone(),
-                        item_text.clone(),
-                        item.children.clone(),
-                        shared_types.clone(),
-                        has_fn_fields.clone(),
-                        v1_rt::set_contains(
-                            &emit_info.map_key_required_type_names.clone(),
-                            item_text.clone(),
-                        ),
-                        Rc::new({
-                            let mut __result = Vec::new();
-                            for p in item.params.clone().iter().cloned() {
-                                __result.push(crate::v1_std_core::generic_param_name_at(
-                                    p.clone(),
-                                    env.source_indices.clone(),
-                                ));
-                            }
-                            __result
-                        }),
-                        env.source_indices.clone(),
-                        ((header_clone_param_names.clone().len() as i64) > 0),
-                        deserialize_forbidden.clone(),
-                        emit_info.type_decl_items.clone(),
-                    );
                 let type_params = emit_type_params_from_clone_param_names(
                     item.params.clone(),
                     header_clone_param_names.clone(),
@@ -16486,6 +16411,7 @@ pub fn emit_type_def_from_connective(
                     item_text.clone(),
                     type_params.clone(),
                     generic_param_names.clone(),
+                    header_clone_param_names.clone(),
                     item.children.clone(),
                     recursive_types.clone(),
                     shared_types.clone(),
@@ -16636,12 +16562,6 @@ pub fn emit_type_def_from_connective(
                                     )
                                 }
                             };
-                            let type_params = emit_item_type_params_with_clone_bounds(
-                                item_text.clone(),
-                                item.params.clone(),
-                                emit_info.clone(),
-                                env.source_indices.clone(),
-                            );
                             let generic_param_names = Rc::new({
                                 let mut __result = Vec::new();
                                 for p in item.params.clone().iter().cloned() {
@@ -16652,6 +16572,19 @@ pub fn emit_type_def_from_connective(
                                 }
                                 __result
                             });
+                            let header_clone_param_names = emit_item_header_clone_param_names(
+                                item.clone(),
+                                item_text.clone(),
+                                false,
+                                generic_param_names.clone(),
+                                emit_info.clone(),
+                                env.source_indices.clone(),
+                            );
+                            let type_params = emit_type_params_from_clone_param_names(
+                                item.params.clone(),
+                                header_clone_param_names.clone(),
+                                env.source_indices.clone(),
+                            );
                             let clone_bound_refusal = emit_item_clone_bound_refusal(
                                 item.clone(),
                                 item_text.clone(),
@@ -16662,6 +16595,7 @@ pub fn emit_type_def_from_connective(
                                 item_text.clone(),
                                 type_params.clone(),
                                 generic_param_names.clone(),
+                                header_clone_param_names.clone(),
                                 item.children.clone(),
                                 recursive_types.clone(),
                                 shared_types.clone(),
@@ -16920,6 +16854,7 @@ pub fn emit_struct_from_children(
     name: String,
     type_params: String,
     generic_param_names: Rc<Vec<String>>,
+    header_clone_param_names: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
     recursive_types: Rc<BTreeSet<String>>,
     shared_types: Rc<BTreeSet<String>>,
@@ -16939,11 +16874,7 @@ pub fn emit_struct_from_children(
             v1_rt::set_contains(&emit_info.map_key_required_type_names.clone(), name.clone()),
             generic_param_names.clone(),
             env.source_indices.clone(),
-            v1_carrier_param_needs_clone_bound(
-                name.clone(),
-                generic_param_names.clone(),
-                emit_info.clone(),
-            ),
+            header_clone_param_names.clone(),
             deserialize_forbidden.clone(),
             emit_info.type_decl_items.clone(),
         );
@@ -17545,6 +17476,7 @@ pub fn emit_enum_from_children(
     name: String,
     type_params: String,
     generic_param_names: Rc<Vec<String>>,
+    header_clone_param_names: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
     recursive_types: Rc<BTreeSet<String>>,
     shared_types: Rc<BTreeSet<String>>,
@@ -17644,6 +17576,7 @@ pub fn emit_enum_from_children(
             name.clone(),
             children.clone(),
             generic_param_names.clone(),
+            header_clone_param_names.clone(),
             env.source_indices.clone(),
         );
         let with_accessors = if (accessor_impl.clone() == "".to_string()) {
