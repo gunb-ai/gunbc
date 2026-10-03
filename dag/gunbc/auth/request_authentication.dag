@@ -194,6 +194,8 @@ fn serve_route_action_label(action: ServeRouteAction) -> NonEmptyStr {
   }
 }
 
+// Allocation writes are never admitted by this generic human gate: their authority is
+// gunbc.workspace_allocation_admission, which binds the request to a resource grant.
 // THE ACTION-AUTHORIZATION POLICY. assign/comment: any authenticated gunb.ai human -- the hd
 // gate already ran inside the verdict, so the principal arriving here IS a Workspace human.
 // approve: the exact stable-principal roster (the ruling's first production cut; hd alone is
@@ -293,8 +295,6 @@ fn human_action_authorization_decision(
       match action {
         ServeActionAssignIssue => Permit
         ServeActionCommentIssue => Permit
-        // Allocation writes are never admitted by the generic human gate: their authority is
-        // gunbc.workspace_allocation_admission, which binds the request to a resource grant.
         ServeActionCreateAllocation => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "allocation-specific authorization required" })
         ServeActionReleaseAllocation => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "allocation-specific authorization required" })
         ServeActionApproveDecision =>
