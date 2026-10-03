@@ -57,22 +57,43 @@ data src_fold_step_fn_literal_block: String = "module m.t\nfn t(xs: List<Int>) -
 
 data src_fold_step_arrow_expr: String = "module m.t\nfn t(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: (acc, x) => acc + x)\n}\n"
 
+// ONE PRODUCER FOR EVERY CLAIM, enrolled WARM in v2.workflow.floor_pure_producer_share: each verdict
+// pays a full tokenize -> parse -> normalize, which is over the new-witness enrolment margin per claim.
+// The stored value is five Bools (no Node, no closure), so it is portable.
+type AlbVerdicts {
+  fold_step_arrow_block: Bool,
+  fold_step_arrow_block_let_record: Bool,
+  value_arrow_block: Bool,
+  fold_step_fn_literal_block: Bool,
+  fold_step_arrow_expr: Bool,
+}
+
+fn alb_verdicts() -> AlbVerdicts {
+  AlbVerdicts {
+    fold_step_arrow_block: normalize_outcome(src: src_fold_step_arrow_block) == "ACCEPTED",
+    fold_step_arrow_block_let_record: normalize_outcome(src: src_fold_step_arrow_block_let_record) == "ACCEPTED",
+    value_arrow_block: normalize_outcome(src: src_value_arrow_block) == "ACCEPTED",
+    fold_step_fn_literal_block: normalize_outcome(src: src_fold_step_fn_literal_block) == "ACCEPTED",
+    fold_step_arrow_expr: normalize_outcome(src: src_fold_step_arrow_expr) == "ACCEPTED",
+  }
+}
+
 test fn fold_step_arrow_block_body_lowers_holds() -> Bool {
-  normalize_outcome(src: src_fold_step_arrow_block) == "ACCEPTED"
+  alb_verdicts().fold_step_arrow_block
 }
 
 test fn fold_step_arrow_block_with_let_and_record_lowers_holds() -> Bool {
-  normalize_outcome(src: src_fold_step_arrow_block_let_record) == "ACCEPTED"
+  alb_verdicts().fold_step_arrow_block_let_record
 }
 
 test fn value_position_arrow_block_body_lowers_holds() -> Bool {
-  normalize_outcome(src: src_value_arrow_block) == "ACCEPTED"
+  alb_verdicts().value_arrow_block
 }
 
 test fn fold_step_fn_literal_block_control_holds() -> Bool {
-  normalize_outcome(src: src_fold_step_fn_literal_block) == "ACCEPTED"
+  alb_verdicts().fold_step_fn_literal_block
 }
 
 test fn fold_step_arrow_expression_body_control_holds() -> Bool {
-  normalize_outcome(src: src_fold_step_arrow_expr) == "ACCEPTED"
+  alb_verdicts().fold_step_arrow_expr
 }
