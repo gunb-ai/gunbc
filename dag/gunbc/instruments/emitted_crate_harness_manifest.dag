@@ -1,7 +1,7 @@
 module tools.emitted_crate_harness_manifest
 
 import std.logic { Bool }
-import extdeps.filesystem.filesystem_io { FilesystemEstablishedAbsence, FilesystemFileObservation }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemEstablishedAbsence, FilesystemFileObservation }
 import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import v2.std.text { String }
 
@@ -41,8 +41,8 @@ fn harness_emitted_manifest_observation_of(o: FilesystemFileObservation) -> Harn
   match o {
     FilesystemFileRead { path: _, content: content } =>
       HarnessEmittedManifestRead { content: content }
-    FilesystemFileAbsent(established: e) =>
-      HarnessEmittedManifestAbsent(established: e)
+    FilesystemFileAbsent(e) =>
+      HarnessEmittedManifestAbsent(e)
     FilesystemFileIndeterminate { cause: c } =>
       HarnessEmittedManifestUnobservable { cause: c }
     FilesystemFileObservationsDisagree { path: _, cause: c } =>
@@ -120,8 +120,8 @@ fn plan_harness_manifest(
           content: harness_manifest_over_emitted(emitted: content, target: target, linkage: linkage)
         }
       }
-    HarnessEmittedManifestAbsent(established: e) =>
-      EmittedManifestAbsentConfirmed(established: e)
+    HarnessEmittedManifestAbsent(e) =>
+      EmittedManifestAbsentConfirmed(e)
     HarnessEmittedManifestUnobservable { cause: c } =>
       EmittedManifestUnobservable { cause: c }
   }
@@ -138,7 +138,7 @@ fn derive_harness_manifest_in_place(
   let observed = harness_emitted_manifest_observation_of(o: filesystem_file_observation_of_path(path: path))
   match plan_harness_manifest(emitted: observed, target: target, linkage: linkage) {
     EmittedManifestNotUsable => EmittedManifestNotUsable { path: path }
-    EmittedManifestAbsentConfirmed(established: e) => EmittedManifestAbsent { path: path, established: e }
+    EmittedManifestAbsentConfirmed(e) => EmittedManifestAbsent { path: path, established: e }
     EmittedManifestUnobservable { cause: c } => EmittedManifestUnobservable { path: path, cause: c }
     HarnessManifestPlanned { content: content } => {
       let written = Filesystem.Write(path: path, content: content)

@@ -78,7 +78,7 @@ test fn only_the_witness_target_declares_the_witness_binary() -> Bool {
 fn plan_refuses(o: HarnessEmittedManifestObservation) -> Bool {
   match plan_harness_manifest(emitted: o, target: WitnessBinTarget, linkage: SeedLinked { root: "/r" }) {
     EmittedManifestNotUsable => true
-    EmittedManifestAbsentConfirmed(established: _) => true
+    EmittedManifestAbsentConfirmed(_) => true
     EmittedManifestUnobservable { cause: _ } => true
     HarnessManifestPlanned { content: _ } => false
   }
@@ -88,7 +88,7 @@ fn plan_is_unobservable_refusal(o: HarnessEmittedManifestObservation) -> Bool {
   match plan_harness_manifest(emitted: o, target: WitnessBinTarget, linkage: SeedLinked { root: "/r" }) {
     EmittedManifestUnobservable { cause: _ } => true
     EmittedManifestNotUsable => false
-    EmittedManifestAbsentConfirmed(established: _) => false
+    EmittedManifestAbsentConfirmed(_) => false
     HarnessManifestPlanned { content: _ } => false
   }
 }
@@ -96,7 +96,7 @@ fn plan_is_unobservable_refusal(o: HarnessEmittedManifestObservation) -> Bool {
 fn planned_content(o: HarnessEmittedManifestObservation) -> String {
   match plan_harness_manifest(emitted: o, target: WitnessBinTarget, linkage: SeedLinked { root: "/r" }) {
     EmittedManifestNotUsable => ""
-    EmittedManifestAbsentConfirmed(established: _) => ""
+    EmittedManifestAbsentConfirmed(_) => ""
     EmittedManifestUnobservable { cause: _ } => ""
     HarnessManifestPlanned { content: c } => c
   }
@@ -125,10 +125,10 @@ test fn an_unobservable_manifest_refuses_as_unobservable_never_as_an_established
 // The absence world stays its own world: established by a listing that succeeded and did not name
 // the file, it is carried as established, not as an observation failure -- and it never plans.
 test fn an_established_absence_refuses_as_absence_and_never_plans() -> Bool {
-  match plan_harness_manifest(emitted: HarnessEmittedManifestAbsent(established: supplied_absence), target: WitnessBinTarget, linkage: SeedLinked { root: "/r" }) {
-    EmittedManifestAbsentConfirmed(established: e) =>
-      plan_refuses(o: HarnessEmittedManifestAbsent(established: supplied_absence))
-        && !plan_is_unobservable_refusal(o: HarnessEmittedManifestAbsent(established: supplied_absence))
+  match plan_harness_manifest(emitted: HarnessEmittedManifestAbsent(supplied_absence), target: WitnessBinTarget, linkage: SeedLinked { root: "/r" }) {
+    EmittedManifestAbsentConfirmed(e) =>
+      plan_refuses(o: HarnessEmittedManifestAbsent(supplied_absence))
+        && !plan_is_unobservable_refusal(o: HarnessEmittedManifestAbsent(supplied_absence))
         && e.name == "Cargo.toml"
     EmittedManifestNotUsable => false
     EmittedManifestUnobservable { cause: _ } => false
