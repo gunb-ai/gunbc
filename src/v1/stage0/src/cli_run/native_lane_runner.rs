@@ -2567,10 +2567,11 @@ pub struct NativeCensusRun {
     pub file_refusals: u64,
     pub residual_rows: u64,
     pub modules: u64,
+    pub advised_files: u64,
 }
 
 /// `gunbc test //gunbc/instruments:v2-native-census`: the emitted compiler's `census-resolve` verb
-/// over the given roots. The child's stdout -- one `file_refusal`, `census_residual` and
+/// over the given roots. The child's stdout -- one `file_refusal`, `accepted_file_advisories`, `census_residual` and
 /// `cause_group` line per row, then the terminal -- is relayed whole, because those rows ARE the
 /// census; only the terminal is decoded, and every field it must carry is required, none defaulted.
 pub fn run_v2_native_census(source_roots: &[String]) -> Result<NativeCensusRun, String> {
@@ -2591,6 +2592,14 @@ pub fn run_v2_native_census(source_roots: &[String]) -> Result<NativeCensusRun, 
     })?;
     eprint!("{}", String::from_utf8_lossy(&output.stderr));
     print!("{stdout}");
+    decode_native_census_output(&stdout, output.status.code())
+}
+
+/// The census-resolve stdout, decoded. Only the terminal's counts are carried out, but the
+/// advisory population is checked against its rows: `advised_files` is required, and a count the
+/// printed `accepted_file_advisories` rows do not match refuses, so a receipt saved from this
+/// stdout cannot claim an advisory population it does not carry.
+fn decode_native_census_output(stdout: &str, exit: Option<i32>) -> Result<NativeCensusRun, String> {
     let terminal = stdout
         .lines()
         .rev()
@@ -2601,8 +2610,7 @@ pub fn run_v2_native_census(source_roots: &[String]) -> Result<NativeCensusRun, 
         })
         .ok_or_else(|| {
             format!(
-                "V2-NATIVE-CENSUS REFUSAL cause=NoTerminalMarker — the census run (exit {:?}) printed no terminal marker",
-                output.status.code()
+                "V2-NATIVE-CENSUS REFUSAL cause=NoTerminalMarker — the census run (exit {exit:?}) printed no terminal marker"
             )
         })?;
     if terminal.get("_terminal").and_then(|t| t.as_str()) != Some("complete")
@@ -2617,11 +2625,24 @@ pub fn run_v2_native_census(source_roots: &[String]) -> Result<NativeCensusRun, 
             format!("V2-NATIVE-CENSUS REFUSAL cause=TerminalFieldMissing — no {key}: {terminal}")
         })
     };
+    let advised_files = need_u64("advised_files")?;
+    let advisory_rows = stdout
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .filter(|v| v.get("accepted_file_advisories").is_some())
+        .count() as u64;
+    if advisory_rows != advised_files {
+        return Err(format!(
+            "V2-NATIVE-CENSUS REFUSAL cause=AdvisoryRowsDisagree — the terminal reports \
+             advised_files={advised_files} but {advisory_rows} accepted_file_advisories rows were printed"
+        ));
+    }
     Ok(NativeCensusRun {
         cause_groups: need_u64("cause_groups")?,
         file_refusals: need_u64("file_refusals")?,
         residual_rows: need_u64("residual_rows")?,
         modules: need_u64("modules")?,
+        advised_files,
     })
 }
 
@@ -3217,6 +3238,30 @@ mod tests {
 
     /// THE MARKER'S COUNT AND THE ROWS MUST AGREE. A run that reports more advised files than it
     /// printed rows dropped some, and the decode refuses rather than reporting the short list.
+    #[test]
+    fn census_resolve_advisory_rows_reach_the_receipt() {
+        let terminal = "{\"_terminal\":\"complete\",\"mode\":\"census-resolve\",\"modules\":3,\
+                        \"file_refusals\":0,\"advised_files\":1,\"residual_rows\":0,\"cause_groups\":0}\n";
+        let with_row = format!(
+            "{{\"accepted_file_advisories\":{{\"path\":\"a.dag\",\"head\":\"r\",\"tail\":[]}}}}\n{terminal}"
+        );
+        let run = decode_native_census_output(&with_row, Some(0)).expect("rows match the count");
+        assert_eq!(run.advised_files, 1);
+        // DISCRIMINATING: the same terminal without its row -- the receipt census-resolve wrote
+        // before it printed advisories -- refuses rather than carrying a count with no population.
+        let cause = decode_native_census_output(terminal, Some(0))
+            .err()
+            .expect("must refuse");
+        assert!(cause.contains("AdvisoryRowsDisagree"), "got: {cause}");
+        // And a terminal with no advised_files at all (the old verb's marker) refuses too.
+        let old = "{\"_terminal\":\"complete\",\"mode\":\"census-resolve\",\"modules\":3,\
+                   \"file_refusals\":0,\"residual_rows\":0,\"cause_groups\":0}\n";
+        let cause = decode_native_census_output(old, Some(0))
+            .err()
+            .expect("must refuse");
+        assert!(cause.contains("no advised_files"), "got: {cause}");
+    }
+
     #[test]
     fn advised_files_count_disagreeing_with_rows_refuses() {
         let stdout = concat!(
