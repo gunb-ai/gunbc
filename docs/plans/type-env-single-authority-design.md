@@ -845,3 +845,10 @@ trace marks in `04_infer.dag`.
   - the closure-grain classification and the shared contested-name walk, which are on the PR-2 branch (kept as provenance);
   - the reconcile-interior attribution;
   - the deletion of the identity rewire, which landed as #13076.
+
+### Warm-route attribution: both hypotheses falsified (neat-boar-16, srv1, 2026-10-03)
+- **The run.** Pin `558cecb` (MAIN representation), entry `dag/std/decision.dag`, cold and warm as separate processes, both rc=0. The instrument is the sequential class drop of `typed_graph_byte_attribution` on the warm-route probe branch `calm-pike-525/warm-route-bytes-probe`. Figures are in neat-boar-16's report and are not copied here.
+- **H1 FALSIFIED** (the warm delta lives in the type_env union maps). Those maps free essentially nothing in either arm.
+- **H2 FALSIFIED** (decoded Node trees lose their structural sharing). No graph class shows a warm/cold difference.
+- **What the miss shows.** In BOTH arms, dropping the entry's whole typed graph frees a tiny fraction of the process heap. So the probe measured the wrong population: neither the warm-route delta nor most of the cold heap is held by the entry's graph. What holds it is process-lifetime state beside the graph: the shared index, the persisted-store decode, the resident pools. Both hypotheses shared the premise that the cost sits in the entry's graph, and that premise is what the run refuted.
+- **Next.** Attribute the process-lifetime residency by the same sequential drop, at the same pin and entry: shared-index generations, resident pools, and the typed-store decode. Predictions are stated before that run. Until then the warm-route lead is unattributed, and no repair is proposed.
