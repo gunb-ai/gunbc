@@ -1,0 +1,219 @@
+module test.claim.roadmap.roadmap_readiness_witness_test
+
+import std.types { String, Int, List, Bool, NonEmptyStr }
+import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapEdge, NodeParent, Closes }
+import gunbc.roadmap_status { Unsigned, TicketFields }
+import gunbc.roadmap_belt { ManualReady }
+import gunbc.roadmap_authority {
+  roadmap_node, ticket, dispatchable, bound, in_project, admitted_root, plan, fields, carrier,
+  closing_contract_candidates, closing_contract_task_for,
+}
+import gunbc.roadmap_launch_canary { roadmap_launch_canary_execution_contract }
+import gunbc.roadmap.roadmap_lineage { lineage_walk, LineageRooted, LineageNoParent, LineageUndeclared, LineageCyclic }
+import gunbc.roadmap.roadmap_readiness {
+  NodeReadiness, ReadyToDispatch, NotReady, ReadinessGap, readiness_gap_label, readiness_text,
+}
+import gunbc.roadmap_launch_admission {
+  Operator, LaunchAdmission, LaunchAdmitted, LaunchRefused, LaunchNotReady,
+  launch_admission, launch_graph_of_document,
+}
+import gunbc.roadmap_presentation {
+  WorkScheduling, SchedulingReady, SchedulingNotReady, SchedulingDone, SchedulingSuperseded, work_scheduling,
+}
+import test.claim.roadmap_launch_canary_witness { canary_doc }
+import test.claim.roadmap.roadmap_launch_admission_fixture { launch_fixture_standing_clear }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// READINESS IS ONE VALUE (operator ruling, 2026-09-30), witnessed on a PLANTED graph so every clause
+// discriminates on a constructed input rather than the live authority:
+// (1) all facts present => Dispatchable, and the launch admission ADMITS and the page reads Ready;
+// (2) an absent fact => NotReady naming exactly that fact, at the admission AND on the page, for
+//     each of centering, parent and root (an undeclared project);
+// (3) the closing-contract minting mints the "write the closing check" task for the one node whose
+//     ONLY missing fact is its contract, and for nothing else -- not the root, not the stubbed
+//     project, not a node missing its centering -- and the minted task's lineage resolves through
+//     its target (Closes) to the root, carrying its target's plan.
+// The positive control (1) comes first, so an inert predicate that refuses everything cannot pass.
+
+fn rw_fields(headline: String) -> TicketFields {
+  fields(
+    headline: headline,
+    boundary: "planted readiness fixture",
+    displaced_cost: "none",
+    first_slice: "none",
+    red_control: "its own readiness",
+    out_of_scope: "everything",
+    handback: "none",
+  )
+}
+
+fn rw_root() -> RoadmapNode {
+  roadmap_node(identity: "rnfx_READINESSROOT00000000", id: "rw-root", owner: "fixture", carriers: [],
+    line: ticket(t: rw_fields(headline: "root")), parent: admitted_root())
+}
+
+fn rw_project() -> RoadmapNode {
+  roadmap_node(identity: "rnfx_READINESSPROJECT000000", id: "rw-project", owner: "fixture", carriers: [],
+    line: ticket(t: rw_fields(headline: "project")),
+    parent: in_project(project: "rw-root", contribution: "the planted project serves the planted root"))
+}
+
+fn rw_task(id: String, parent: NodeParent?, centering: NonEmptyStr?, with_contract: Bool) -> RoadmapNode {
+  if with_contract {
+    roadmap_node(identity: concat("rnfx_", id), id: id, owner: "fixture", carriers: [],
+      line: ticket(t: rw_fields(headline: id)),
+      dispatch: dispatchable(),
+      execution: bound(contract: roadmap_launch_canary_execution_contract()),
+      parent: parent, centering: centering)
+  } else {
+    roadmap_node(identity: concat("rnfx_", id), id: id, owner: "fixture", carriers: [],
+      line: ticket(t: rw_fields(headline: id)),
+      dispatch: dispatchable(),
+      parent: parent, centering: centering)
+  }
+}
+
+fn member() -> NodeParent? {
+  in_project(project: "rw-project", contribution: "the planted task serves the planted project")
+}
+
+fn rw_ready() -> RoadmapNode { rw_task(id: "rw-ready", parent: member(), centering: plan(text: "do the planted thing"), with_contract: true) }
+fn rw_no_centering() -> RoadmapNode { rw_task(id: "rw-no-centering", parent: member(), centering: none, with_contract: true) }
+fn rw_only_contract() -> RoadmapNode { rw_task(id: "rw-only-contract", parent: member(), centering: plan(text: "write the planted closing check"), with_contract: false) }
+fn rw_orphan() -> RoadmapNode { rw_task(id: "rw-orphan", parent: none, centering: plan(text: "planted"), with_contract: true) }
+fn rw_unrooted() -> RoadmapNode {
+  rw_task(id: "rw-unrooted", parent: in_project(project: "rw-undeclared", contribution: "names a project nobody declared"), centering: plan(text: "planted"), with_contract: true)
+}
+
+fn rw_nodes() -> List<RoadmapNode> {
+  [rw_root(), rw_project(), rw_ready(), rw_no_centering(), rw_only_contract(), rw_orphan(), rw_unrooted()]
+}
+
+fn rw_node(id: String) -> RoadmapNode {
+  match rw_nodes() |> filter(n => (n.node as String) == id) |> first {
+    Present { value: n } => n
+    Absent => rw_root()
+  }
+}
+
+fn admit(id: String) -> LaunchAdmission {
+  launch_admission(
+    cause: Operator,
+    standing: launch_fixture_standing_clear(mode: ManualReady),
+    graph: launch_graph_of_document(doc: canary_doc(nodes: rw_nodes(), edges: [])),
+    merged: [],
+    node_id: id,
+    reserved: 0,
+  )
+}
+
+fn page(id: String) -> WorkScheduling {
+  work_scheduling(rn: rw_node(id: id), nodes: rw_nodes(), edges: [])
+}
+
+fn labels(missing: List<ReadinessGap>) -> List<String> {
+  missing |> map(g => readiness_gap_label(g: g))
+}
+
+fn admission_missing_exactly(id: String, gap: String) -> Bool {
+  match admit(id: id) {
+    LaunchAdmitted { identity: _ } => false
+    LaunchRefused { refusal } => match refusal {
+      LaunchNotReady { missing } => labels(missing: missing) == [gap]
+      _ => false
+    }
+  }
+}
+
+fn page_missing_exactly(id: String, gap: String) -> Bool {
+  match page(id: id) {
+    SchedulingNotReady { missing } =>
+      labels(missing: missing) == [gap]
+        && readiness_text(r: NotReady { missing: missing }) == concat("not ready: missing ", gap)
+    SchedulingReady => false
+    SchedulingDone => false
+    SchedulingSuperseded => false
+  }
+}
+
+// (1) POSITIVE CONTROL: every fact present -- the admission admits and the page reads ready.
+test fn a_node_with_every_fact_is_dispatchable_at_admission_and_on_the_page() -> Bool {
+  (match admit(id: "rw-ready") {
+    LaunchAdmitted { identity: _ } => true
+    LaunchRefused { refusal: _ } => false
+  })
+    && (match page(id: "rw-ready") {
+      SchedulingReady => true
+      SchedulingNotReady { missing: _ } => false
+      SchedulingDone => false
+      SchedulingSuperseded => false
+    })
+}
+
+// (2) Each absent fact is named, by the same value, at both surfaces.
+test fn a_missing_centering_is_named_at_admission_and_on_the_page() -> Bool {
+  admission_missing_exactly(id: "rw-no-centering", gap: "centering")
+    && page_missing_exactly(id: "rw-no-centering", gap: "centering")
+}
+
+test fn a_missing_parent_is_named_at_admission_and_on_the_page() -> Bool {
+  admission_missing_exactly(id: "rw-orphan", gap: "parent")
+    && page_missing_exactly(id: "rw-orphan", gap: "parent")
+}
+
+test fn a_parent_that_never_reaches_the_root_is_named_at_admission_and_on_the_page() -> Bool {
+  admission_missing_exactly(id: "rw-unrooted", gap: "root")
+    && page_missing_exactly(id: "rw-unrooted", gap: "root")
+}
+
+test fn a_missing_contract_is_named_at_admission_and_on_the_page() -> Bool {
+  admission_missing_exactly(id: "rw-only-contract", gap: "contract")
+    && page_missing_exactly(id: "rw-only-contract", gap: "contract")
+}
+
+// A stubbed container supplies no centering, no contract and no size: it is never ready, and the
+// page names all three rather than calling it ready or merely blocked.
+test fn a_stubbed_project_is_not_ready_on_three_facts() -> Bool {
+  match page(id: "rw-project") {
+    SchedulingNotReady { missing } => labels(missing: missing) == ["centering", "dispatch binding", "contract"]
+    SchedulingReady => false
+    SchedulingDone => false
+    SchedulingSuperseded => false
+  }
+}
+
+// (3) Minting: exactly the only-contract-missing node mints, and nothing else does.
+test fn only_a_node_missing_just_its_contract_mints_a_closing_check_task() -> Bool {
+  let minted = closing_contract_candidates(nodes: rw_nodes(), edges: [], accepted: [], withheld: [])
+  count(minted) == 1
+    && all(minted, n => (n.node as String) == "rw-only-contract")
+    && !any(minted, n => (n.node as String) == "rw-root" || (n.node as String) == "rw-project" || (n.node as String) == "rw-no-centering")
+}
+
+// The minted task is rooted through its target and carries its target's plan, so it is itself
+// ready to dispatch: its lineage is [task, the target's projects..., root].
+test fn the_minted_task_resolves_through_its_target_and_carries_its_plan() -> Bool {
+  let task = closing_contract_task_for(n: rw_only_contract())
+  let universe = concat(rw_nodes(), [task])
+  (match task.parent {
+    Present { value: p } => match p { Closes { target } => target == "rw-only-contract"  _ => false }
+    Absent => false
+  })
+    && task.centering == rw_only_contract().centering
+    && (match lineage_walk(node_id: task.node as String, nodes: universe) {
+      LineageRooted { ids } => ids == ["rw-only-contract-closing-contract", "rw-project", "rw-root"]
+      LineageNoParent { walked: _, at: _ } => false
+      LineageUndeclared { walked: _, node_id: _ } => false
+      LineageCyclic { node_id: _ } => false
+    })
+}
+
+// Accepting the node's prerequisite gate is what the deps fact reads: an unmet declared edge keeps
+// an otherwise only-contract-missing node from minting.
+test fn an_unmet_prerequisite_keeps_the_closing_check_task_unminted() -> Bool {
+  let edges = [RoadmapEdge { child: "rw-only-contract" as NonEmptyStr as RoadmapNodeId, parent: "rw-ready" as NonEmptyStr as RoadmapNodeId }]
+  count(closing_contract_candidates(nodes: rw_nodes(), edges: edges, accepted: [], withheld: [])) == 0
+    && count(closing_contract_candidates(nodes: rw_nodes(), edges: edges, accepted: ["rw-ready" as NonEmptyStr as RoadmapNodeId], withheld: [])) == 1
+}

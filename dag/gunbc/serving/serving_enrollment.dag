@@ -6,6 +6,8 @@ import v2.std.optional { Present, Absent }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { host_lan_address }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire }
+import gunbc.spark.group_b_serving_capacity { group_b_restoration_intent }
+import gunbc.spark.serving_capacity_intent { intent_max_active_sequences }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
 import gunbc.spark.pair_serving_realization { spark_pair_serve_port }
 import gunbc.spark.fabric_serving_assignment {
@@ -133,11 +135,12 @@ data serving_pair_route_turn_ceiling: ServingRouteTurnCeiling = CeilingByDeclare
 // reading one as the other would make every sequence the engine can hold a sequence we have decided to
 // sell. It used to delegate to the retired exl3 canary's operator bound of 1, a first-boot limit on a
 // different engine that no longer answers.
-data serving_group_b_route_turn_ceiling: ServingRouteTurnCeiling = CeilingByDeclaredPolicy {
-  count: 4,
-  decider: "bright-eagle-728 (roadmap direction)" as NonEmptyStr,
-  decided_on: "2026-09-18" as NonEmptyStr,
-  basis: "nothing derives it and the route reports no scheduler population, as for group A. The converged native arm schedules up to 16 sequences, which bounds this from above and does not set it. Four matches group A's allocation and its reasoning: admission takes the MINIMUM of this and the route's own present-tense signal, so a wrong value costs throughput and never correctness, and superseding it is one row" as NonEmptyStr,
+data serving_group_b_route_turn_ceiling: ServingRouteTurnCeiling = CeilingFromRouteLaunch {
+  count: match group_b_restoration_intent() {
+    Present { value: i } => intent_max_active_sequences(i: i)
+    Absent => 1
+  },
+  basis: "owner ruling 2026-09-28 ('don't hardcode it to 8, make it equivalent to whatever the fabric offer is offering'): the ceiling derives from the qualified capacity intent's max_active_sequences — the exact block fold's seat count, currently 8 at 262144 — so the offer and the admission can never fork; the intent refusing or moving IS the ceiling changing. The engine's max-num-seqs renders the same value underneath, and admission still takes the MINIMUM of this and the route's live signal. Supersedes the 2026-09-18 placeholder (4, 'nothing derives it'). A refused intent fails closed to 1 rather than inventing capacity." as NonEmptyStr,
 }
 
 // EACH ROUTE'S CEILING COMES FROM ITS OWN ROW, which is why this is a match and not a table. The
