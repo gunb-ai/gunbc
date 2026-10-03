@@ -1,6 +1,7 @@
 module gunbc.fleet_release_bins_key
 
 import std.types { String, List, Bool, Int, list_length }
+import std.measure { Second, second, second_count, seconds_per_day }
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected, outcome_accepted }
 import v2.workflow.bash_emit { bash_emit_stmts }
@@ -1220,7 +1221,22 @@ data release_bins_pack_object_name: String = "pack.tar"
 // THE CANDIDATE HAND-OFF: the merge-queue floor uploads the compiler pair's pack object under this
 // artifact name, and fleet-desired downloads it by the same row. One spelling for both ends.
 data compiler_pair_candidate_artifact_name: String = "compiler-pair-candidate"
-data compiler_pair_candidate_retention_days: Int = 1
+
+// THE CANDIDATE'S RETENTION IS A DURATION (std.measure Second), not a day count: fleet-desired runs on
+// the landing it follows, so one day covers it. GitHub's upload-artifact takes whole days, so the
+// emitter converts at that boundary (compiler_pair_candidate_retention_whole_days); the duration is
+// authored as whole days and test.claim.long.fleet_release_bins_key_witness holds that it stays one.
+fn compiler_pair_candidate_retention() -> Second {
+  second(count: 1 * seconds_per_day())
+}
+
+fn compiler_pair_candidate_retention_whole_days() -> Int {
+  (second_count(s: compiler_pair_candidate_retention()) / seconds_per_day()) as Int
+}
+
+fn compiler_pair_candidate_retention_is_whole_days() -> Bool {
+  second_count(s: compiler_pair_candidate_retention()) % seconds_per_day() == 0
+}
 
 fn release_bins_pack_object_path_expression() -> String {
   join(["${{ runner.temp }}/", release_bins_pack_object_name], "")
