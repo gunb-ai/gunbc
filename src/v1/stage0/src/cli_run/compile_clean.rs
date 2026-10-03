@@ -1545,7 +1545,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TextRepresentationUnidentifiedAtBoundary { .. } => {
             "TextRepresentationUnidentifiedAtBoundary"
         }
-        CompilerDiagnostic::TextCrossingHasNoImplicitRoute { .. } => "TextCrossingHasNoImplicitRoute",
+        CompilerDiagnostic::TextCrossingHasNoImplicitRoute { .. } => {
+            "TextCrossingHasNoImplicitRoute"
+        }
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { .. } => {
             "FrontierOccurrenceBudgetExceeded"
         }
