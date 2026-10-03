@@ -76,6 +76,9 @@ service coreutils.Stat {
       0 => Unit
       nonzero => String "stat could not read the path"
     }
+    mock_response {
+      0 => { size_text: "0", success: true } "hermetic coreutils.Stat.PathSize: the empty file's size. A literal, as every extdeps mock arm is (crypto.Sha256Sum.File's note records the interpolation that never replayed), and chosen to agree with that mock's empty-input digest, so a hermetic reading of a staged file describes one consistent file -- the empty one -- rather than a digest of nothing beside the size of something."
+    }
   }
 
   operation PathDevice {
