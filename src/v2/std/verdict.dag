@@ -3,9 +3,6 @@ module v2.std.verdict
 import std.types { List }
 import std.algebra { Monoid }
 import v2.std.algebra { is_empty }
-import v2.std.collection {
-  List
-}
 import v2.std.optional {
   Optional,
   Absent
