@@ -13,7 +13,7 @@ import gunbc.spark.v41_row_store_encode_run { v41_encode_run_receipt_path }
 import gunbc.spark.v41_row_store_readback_run { v41_readback_run_receipt_path }
 import gunbc.spark.v41_engram_differential_run { v41_differential_receipt_path }
 import gunbc.spark.v41_runtime_image_converge { v41_distribution_receipt_path }
-import gunbc.spark.arm_group_launch_dispatch { arm_group_launch_plan_path, arm_group_launch_receipt_path }
+import gunbc.spark.arm_group_launch_dispatch { arm_group_launch_plan_path, arm_group_launch_receipt_path, arm_group_observe_receipt_path }
 import gunbc.spark.v41_serving_load { v41_serving_load_receipt_path }
 import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_access_url, secret_ref_version_resource }
@@ -1083,6 +1083,11 @@ data gunbc_ci_spark_v41_runtime_image_distribute_target: GunbcRunStepTarget = Gu
 // THE ARM GROUP LAUNCH (gunbc.spark.arm_group_launch_dispatch): one dry-plan entry and one wet entry for
 // every arm the dispatch rosters, the arm chosen by closed dispatch inputs. The same prelude: the session
 // host is the dispatch's target.
+data gunbc_ci_spark_arm_group_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/spark/arm_group_launch_dispatch.dag",
+  function: "arm_group_observe_ci",
+}
+
 data gunbc_ci_spark_arm_group_launch_plan_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/spark/arm_group_launch_dispatch.dag",
   function: "arm_group_launch_plan_ci",
@@ -2842,6 +2847,17 @@ fn gunbc_ci_spark_v41_runtime_image_distribute_invoke() -> String {
     function: gunbc_ci_spark_v41_runtime_image_distribute_target.function,
     claim_run: false,
     receipt_rel: v41_distribution_receipt_path
+  )
+}
+
+fn gunbc_ci_spark_arm_group_observe_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: gunbc_ci_spark_grant_install_credential_prelude(),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_spark_arm_group_observe_target.entry,
+    function: gunbc_ci_spark_arm_group_observe_target.function,
+    claim_run: false,
+    receipt_rel: arm_group_observe_receipt_path
   )
 }
 

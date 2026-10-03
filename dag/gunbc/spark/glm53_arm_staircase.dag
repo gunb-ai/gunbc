@@ -17,7 +17,7 @@ import gunbc.spark.serving_arm_launch { ArmContainerIdentity, glm_native_shm_siz
 import gunbc.spark.native_serving_realization { ArmUnitIdentity }
 import gunbc.spark.pair_serving_realization { spark_pair_serve_port }
 import gunbc.spark.glm_group_b_launch { glm_group_b_deployment_env }
-import gunbc.spark.group_b_serving_capacity { group_b_restoration_utilization }
+import gunbc.spark.group_b_serving_capacity { group_b_restoration_utilization, group_b_restoration_window_tokens, group_b_restoration_max_batched_tokens, group_b_experiment_subject_seats }
 import gunbc.spark.group_arm_launch { GroupArmLaunchInputs, GroupArmLaunchPlan, GroupArmLaunchAdmission, GroupArmLaunchAdmitted, GroupArmLaunchAdmissionRefused, group_arm_plan_hosts, ArmDeclaredIncumbent, NoIncumbentDeclared, IncumbentDeclared, ArmIncumbentUnit, ArmSuccessorStanding, group_arm_launch_plan, group_arm_row_successor, arm_successor_wire, group_arm_launch_admission_live, group_arm_dry_run_occupancy, group_arm_dry_run_report, ArmDryPlan, ArmWetSession, ArmPreApplyPassed, group_arm_read_occupancy, group_arm_memory_need, group_arm_apply_admitted }
 
 // ── THE GLM-5.3-FLASH STAIRCASE ON GROUP A: THE ARM'S INPUTS, AND NOTHING ELSE ─────────────────
@@ -107,16 +107,15 @@ fn glm53_step_of_wire(word: String) -> Glm53StaircaseStep? {
 
 // ── THE COLD GUARANTEE IS THE SAME AT EVERY STEP: 8 x 262144 ──────────────────────────────────
 //
-// THE BATCH IS GROUP B'S MEASURED-SAFE 2048 (gunbc.spark.group_b_serving_capacity
-// group_b_restoration_intent_admission), the batched ceiling the GLM arm has run its cold eight under on
-// GB10s; the staircase moves the CEILING, not the prefill shape, so a step's receipt differs from the
+// THE FLOOR IS THE GLM ARM'S COLD SERVICE, IMPORTED, NOT RESTATED: its window, its eight cold seats and
+// the batched ceiling it runs them under on GB10s are gunbc.spark.group_b_serving_capacity's rows
+// (group_b_restoration_window_tokens, group_b_experiment_subject_seats,
+// group_b_restoration_max_batched_tokens), so the floor cannot drift from the service it guarantees
+// (review 74379). The staircase moves the CEILING, not the prefill shape, so a step's receipt differs from the
 // last in one axis.
-data glm53_staircase_cold_window: Nat = 262144
-data glm53_staircase_cold_seats: Nat = 8
-data glm53_staircase_max_batched_tokens: Nat = 2048
 
 fn glm53_staircase_cold_intent() -> ServingCapacityIntent? {
-  match uniform_cold_seats(each: token_count(count: glm53_staircase_cold_window), seats: glm53_staircase_cold_seats, max_batched_tokens: token_count(count: glm53_staircase_max_batched_tokens)) {
+  match uniform_cold_seats(each: token_count(count: group_b_restoration_window_tokens), seats: group_b_experiment_subject_seats, max_batched_tokens: token_count(count: group_b_restoration_max_batched_tokens)) {
     ServingCapacityIntentRefused { cause: _ } => none
     ServingCapacityIntentAdmitted { intent: i } => Present { value: i }
   }

@@ -4,7 +4,8 @@ import std.types { String, List, NonEmptyStr }
 import v2.std.optional { Present, Absent }
 import std.process { ProcessExit, exit_failure }
 import gunbc.fleet_multi_principal_probe { env_var_nonempty }
-import gunbc.spark.group_arm_launch { ArmDryPlan, ArmWetSession, group_arm_dry_plan_write, group_arm_launch_wet }
+import gunbc.spark.group_arm_launch { ArmDryPlan, ArmWetSession, group_arm_dry_plan_write, group_arm_launch_wet, group_arm_occupancy_observe_session }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA }
 import gunbc.spark.v41_group_a_launch { v41_group_a_dry_plan, v41_group_a_wet_session }
 import gunbc.spark.glm53_arm_staircase {
   Glm53StaircaseStep, Glm53IncumbentChoice, glm53_staircase_steps, glm53_step_wire, glm53_step_of_wire,
@@ -117,5 +118,25 @@ fn arm_group_launch_ci_wet() -> ProcessExit {
   match arm_group_launch_selection_from_env() {
     ArmGroupLaunchSelectionRefused { cause: c } => exit_failure(reason: c)
     ArmGroupLaunchSelected { choice: c } => group_arm_launch_wet(arm: arm_group_launch_wet_session_of(c: c), receipt_path: arm_group_launch_receipt_path)
+  }
+}
+
+fn arm_group_of(c: ArmGroupLaunchChoice) -> FabricGroup {
+  match c {
+    ArmV41GroupA => FabricGroupA
+    ArmGlm53GroupAStep { step: _, incumbent: _ } => FabricGroupA
+  }
+}
+
+data arm_group_observe_receipt_path: String = "target/arm-group-observe-receipt.txt"
+
+// THE READ-ONLY OBSERVE ENTRY (mode spark_arm_group_observe): the chosen arm's GROUP, every host's
+// running units, containers and GPU processes with their owning cgroups. Only the arm input is read --
+// the group is the arm's -- so a step or incumbent given beside it is ignored by the observation and
+// still refused for V4.1 by the selection, as everywhere else.
+fn arm_group_observe_ci() -> ProcessExit {
+  match arm_group_launch_selection_from_env() {
+    ArmGroupLaunchSelectionRefused { cause: c } => exit_failure(reason: c)
+    ArmGroupLaunchSelected { choice: c } => group_arm_launch_wet(arm: group_arm_occupancy_observe_session(group: arm_group_of(c: c)), receipt_path: arm_group_observe_receipt_path)
   }
 }

@@ -414,6 +414,14 @@ fn docker_ps_running_command(filter: DockerPsFilter) -> ArgvCommand {
   argv_command(program: docker_program(), arguments: ["ps", "--filter", docker_ps_filter_wire(f: filter), "--quiet"])
 }
 
+// EVERY RUNNING CONTAINER, UNFILTERED (`docker ps --no-trunc`, docs.docker.com/reference/cli/docker/
+// container/ls/): the default table -- id, image, command, created, status, ports, names -- with no
+// field cut short. It is an OBSERVATION's read, for a reader that must see what runs before it can
+// name it; an effect that asks about one container asks by filter above.
+fn docker_ps_running_all_command() -> ArgvCommand {
+  argv_command(program: docker_program(), arguments: ["ps", "--no-trunc"])
+}
+
 fn docker_container_inspect_command(name: NonEmptyStr) -> ArgvCommand {
   argv_command(program: docker_program(), arguments: ["container", "inspect", name as String])
 }

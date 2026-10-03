@@ -172,6 +172,7 @@ import gunbc.ci_spec {
   gunbc_ci_spark_v41_index_selection_invoke,
   gunbc_ci_spark_v41_runtime_image_build_invoke,
   gunbc_ci_spark_v41_runtime_image_distribute_invoke,
+  gunbc_ci_spark_arm_group_observe_invoke,
   gunbc_ci_spark_arm_group_launch_plan_invoke,
   gunbc_ci_spark_arm_group_launch_invoke,
   gunbc_ci_spark_v41_serving_load_invoke,
@@ -284,6 +285,7 @@ type FleetConvergeWorkflowMode
   | SparkV41EngramDifferential
   | SparkV41RuntimeImageBuild
   | SparkV41RuntimeImageDistribute
+  | SparkArmGroupObserve
   | SparkArmGroupLaunchPlan
   | SparkArmGroupLaunch
   | SparkV41ServingLoad
@@ -348,6 +350,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     SparkV41EngramDifferential => "spark_v41_engram_differential"
     SparkV41RuntimeImageBuild => "spark_v41_runtime_image_build"
     SparkV41RuntimeImageDistribute => "spark_v41_runtime_image_distribute"
+    SparkArmGroupObserve => "spark_arm_group_observe"
     SparkArmGroupLaunchPlan => "spark_arm_group_launch_plan"
     SparkArmGroupLaunch => "spark_arm_group_launch"
     SparkV41ServingLoad => "spark_v41_serving_load"
@@ -409,7 +412,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkV41CheckpointMaterialize, SparkV41RowStoreEncode, SparkV41RowStoreReadback, SparkV41EngramDifferential, SparkV41RuntimeImageBuild, SparkV41RuntimeImageDistribute, SparkArmGroupLaunchPlan, SparkArmGroupLaunch, SparkV41ServingLoad, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, ApprovalDeviceEnrolmentCodeIssue, MtCollins1Boot, MtCollins1FanObserve, MtCollins1UiBundleObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, FabricWriterIdentityObserve, PairServingD0, MicrovmRunnerGroupEnsure, GcpIamConverge, NamecheapObserve]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkV41CheckpointMaterialize, SparkV41RowStoreEncode, SparkV41RowStoreReadback, SparkV41EngramDifferential, SparkV41RuntimeImageBuild, SparkV41RuntimeImageDistribute, SparkArmGroupObserve, SparkArmGroupLaunchPlan, SparkArmGroupLaunch, SparkV41ServingLoad, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, ApprovalDeviceEnrolmentCodeIssue, MtCollins1Boot, MtCollins1FanObserve, MtCollins1UiBundleObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, FabricWriterIdentityObserve, PairServingD0, MicrovmRunnerGroupEnsure, GcpIamConverge, NamecheapObserve]
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
 // EVERY MODE IS NAMED, AND THE WILDCARD IS DELIBERATELY ABSENT. A `_ => none` would read the same
@@ -456,6 +459,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     SparkV41EngramDifferential => none
     SparkV41RuntimeImageBuild => none
     SparkV41RuntimeImageDistribute => none
+    SparkArmGroupObserve => none
     SparkArmGroupLaunchPlan => none
     SparkArmGroupLaunch => none
     SparkV41ServingLoad => none
@@ -594,6 +598,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     SparkV41EngramDifferential => FleetSshKeyConsumed
     SparkV41RuntimeImageBuild => FleetSshKeyConsumed
     SparkV41RuntimeImageDistribute => FleetSshKeyConsumed
+    SparkArmGroupObserve => FleetSshKeyConsumed
     SparkArmGroupLaunchPlan => FleetSshKeyConsumed
     SparkArmGroupLaunch => FleetSshKeyConsumed
     SparkV41ServingLoad => FleetSshKeyConsumed
@@ -1220,6 +1225,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     SparkV41EngramDifferential => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
     SparkV41RuntimeImageBuild => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
     SparkV41RuntimeImageDistribute => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
+    SparkArmGroupObserve => ExecutorDomain
     SparkArmGroupLaunchPlan => ExecutorDomain
     SparkArmGroupLaunch => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
     SparkV41ServingLoad => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
@@ -1290,6 +1296,7 @@ data fleet_converge_spark_v41_engram_differential_step_if: String = fleet_conver
 
 data fleet_converge_spark_v41_runtime_image_build_step_if: String = fleet_converge_mode_step_if(mode: SparkV41RuntimeImageBuild)
 data fleet_converge_spark_v41_runtime_image_distribute_step_if: String = fleet_converge_mode_step_if(mode: SparkV41RuntimeImageDistribute)
+data fleet_converge_spark_arm_group_observe_step_if: String = fleet_converge_mode_step_if(mode: SparkArmGroupObserve)
 data fleet_converge_spark_arm_group_launch_plan_step_if: String = fleet_converge_mode_step_if(mode: SparkArmGroupLaunchPlan)
 data fleet_converge_spark_arm_group_launch_step_if: String = fleet_converge_mode_step_if(mode: SparkArmGroupLaunch)
 data fleet_converge_spark_v41_serving_load_step_if: String = fleet_converge_mode_step_if(mode: SparkV41ServingLoad)
@@ -3320,6 +3327,23 @@ fn fleet_converge_arm_group_launch_env() -> List<YamlKeyValue> {
   ]
 }
 
+// THE READ-ONLY OBSERVE: the chosen arm's group, per host every running service unit, running container
+// and GPU compute process with its owning cgroup. It changes nothing on any host; it is how a declared
+// incumbent is recorded when nobody can hand it over.
+fn fleet_converge_spark_arm_group_observe_step() -> Step {
+  RunStep {
+    name: Present { value: "Spark arm group OBSERVE (read-only: every host's running units, containers and GPU processes with their owning cgroups; nothing is changed)" },
+    id: Present { value: "spark_arm_group_observe" },
+    run: gunbc_ci_spark_arm_group_observe_invoke(),
+    shell: none,
+    env: Present { value: fleet_converge_arm_group_launch_env() },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_spark_arm_group_observe_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
+  }
+}
+
 fn fleet_converge_spark_arm_group_launch_plan_step() -> Step {
   RunStep {
     name: Present { value: "Spark arm group launch PLAN (the chosen arm's plan, units, scripts, declared incumbent and admission verdict; no host is touched)" },
@@ -3748,6 +3772,7 @@ fn fleet_converge_job() -> Job {
         fleet_converge_spark_v41_engram_differential_step(),
         fleet_converge_spark_v41_runtime_image_build_step(),
         fleet_converge_spark_v41_runtime_image_distribute_step(),
+        fleet_converge_spark_arm_group_observe_step(),
         fleet_converge_spark_arm_group_launch_plan_step(),
         fleet_converge_spark_arm_group_launch_step(),
         fleet_converge_spark_v41_serving_load_step(),
@@ -3927,6 +3952,7 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     SparkV41EngramDifferential => fleet_converge_shared_job_id
     SparkV41RuntimeImageBuild => fleet_converge_shared_job_id
     SparkV41RuntimeImageDistribute => fleet_converge_shared_job_id
+    SparkArmGroupObserve => fleet_converge_shared_job_id
     SparkArmGroupLaunchPlan => fleet_converge_shared_job_id
     SparkArmGroupLaunch => fleet_converge_shared_job_id
     SparkV41ServingLoad => fleet_converge_shared_job_id
