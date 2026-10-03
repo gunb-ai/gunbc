@@ -1,5 +1,6 @@
 module v2.lens.edit_locus
 
+import v2.std.algebra { length }
 
 type RepoPath = String
 
