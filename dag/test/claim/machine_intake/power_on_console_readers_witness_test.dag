@@ -1,0 +1,126 @@
+module test.claim.machine_intake.power_on_console_readers_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, String }
+import gunbc.machine_intake_ampere_checkpoint_console_observation {
+  AmpereCheckpointsNotPrinted, AmpereCheckpointsObserved,
+  CheckpointReferenceContinues, CheckpointLastWordNotInReference, CheckpointSubjectHasNoWord,
+  ampere_checkpoint_console_observation, ampere_checkpoint_reference_comparison, ampere_checkpoint_last_word,
+}
+import gunbc.machine_intake_linux_boot_console_observation {
+  InitrdFailureNotPrinted, InitrdLoadFailed, EfiLoadError, KernelPanicNotPrinted, KernelPanicked,
+  linux_boot_console_observation,
+}
+import gunbc.machine_intake_host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED FIXTURES: EXACT BYTES of real mtcollins1 SOL captures, escaped only as .dag string
+// syntax requires. Each names its source file, the file's sha256, the line range and the excerpt's
+// sha256.
+// branch mtcollins1-captures-2026-10-03, mtcollins1/step1-j1j17-20261003T042447Z/sol.raw
+// (sha256 6f33812ce2af74aacf9deba90931aa9144b1ba974532ae9e890b90a57c5900c1), lines 138-205: the
+// loop's last two cycles and the cut seventh banner; excerpt sha256 edbcaabead8194544201251f9a8a5eb26ba3dfbb8da1caec9627487f260d153d.
+data step1_last_two_cycles: String = "NOTICE:  DRAM FW version 220414\r\nCP: 0ff00900\r\nMEMC param:\r\n  mcu_enable_mask = 00000001 [default: 000000ff]\r\nMCU param:\r\n  ecc_en = 00000002 [default: 00000001]\r\nDRAM populated DIMMs:\r\n  SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK    \r\nCP: 3ff00100\r\nCP: 3ff00200\r\nCP: 00f01902\r\nCP: 0ff00a00\r\nCP: 0ff00b01\r\nCP: 00f01901\r\nCP: 00f01904\r\nCP: 00f02901\r\nCP: 00f01905\r\nCP: 00f02902\r\nCP: 00f02903\r\nCP: 00f02904\r\nCP: 00f01907\r\nCP: 00f01906\r\nCP: 00f01908\r\nCP: 00f01909\r\nCP: 0ff00b02\r\nCP: 0ff00c00\r\nCP: 3ff00300\r\nCP: 00001a02\r\nCP: 00001a03\r\nCP: 00001a04\r\nCP: 00001a05\r\nCP: 00f01a07\r\nCP: 00001a09\r\nCP: 00001a0a\r\nNOTICE:  DRAM FW version 220414\r\nCP: 0ff00900\r\nMEMC param:\r\n  mcu_enable_mask = 00000001 [default: 000000ff]\r\nMCU param:\r\n  ecc_en = 00000002 [default: 00000001]\r\nDRAM populated DIMMs:\r\n  SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK    \r\nCP: 3ff00100\r\nCP: 3ff00200\r\nCP: 00f01902\r\nCP: 0ff00a00\r\nCP: 0ff00b01\r\nCP: 00f01901\r\nCP: 00f01904\r\nCP: 00f02901\r\nCP: 00f01905\r\nCP: 00f02902\r\nCP: 00f02903\r\nCP: 00f02904\r\nCP: 00f01907\r\nCP: 00f01906\r\nCP: 00f01908\r\nCP: 00f01909\r\nCP: 0ff00b02\r\nCP: 0ff00c00\r\nCP: 3ff00300\r\nCP: 00001a02\r\nCP: 00001a03\r\nCP: 00001a04\r\nCP: 00001a05\r\nCP: 00f01a07\r\nCP: 00001a09\r\nCP: 00001a0a\r\n"
+
+// artifacts/bmc/mtcollins1-hw-census-sol.log (sha256
+// 1e0c4bc3ab7f635f5522c23832e6d5db33d7c3b07e9467cea1f9814167bd0de8), lines 3-442: the two-socket
+// census boot's DRAM firmware block through its last checkpoint, the reference the bundle reads
+// (gunbc.machine_intake_mtcollins1_memory_census_observation mtcollins1_census_sol_artifact_path);
+// excerpt sha256 e87d801372e5e3db712e9808ba29aacd8836ddd30541ebf66e98b204c43e1cdf.
+data reference_good_boot_checkpoints: String = "NOTICE:  DRAM FW version 210525\r\nCP: 0ff00900\r\nCP: 1ff00900\r\nDRAM populated DIMMs:\r\n  SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK    \r\n  SK0 MC1 S0: RDIMM[ad:80] 16GB 2666 ECC 2R x8 RCD[b3:80] HMA82GR7AFR8N-VK    \r\n  SK0 MC2 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK    \r\n  SK0 MC3 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK    \r\n  SK0 MC4 S0: RDIMM[ad:80] 16GB 2666 ECC 2R x8 RCD[b3:80] HMA82GR7AFR8N-VK    \r\n  SK0 MC5 S0: RDIMM[ad:80] 16GB 2666 ECC 2R x8 RCD[32:86] HMA82GR7CJR8N-VK    \r\n  SK0 MC6 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[b3:80] HMA82GR7AFR4N-VK    \r\n  SK0 MC7 S0: RDIMM[ad:80] 16GB 2666 ECC 2R x8 RCD[32:86] HMA82GR7AFR8N-VK    \r\n  SK1 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK    \r\n  SK1 MC1 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK    \r\n  SK1 MC2 S0: RDIMM[ad:80] 16GB 2666 ECC 2R x8 RCD[32:86] HMA82GR7AFR8N-VK    \r\n  SK1 MC3 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK    \r\n  SK1 MC4 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK    \r\n  SK1 MC5 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[b3:80] HMA82GR7AFR4N-VK    \r\n  SK1 MC6 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[b3:80] HMA82GR7AFR4N-VK    \r\n  SK1 MC7 S0: RDIMM[ad:80] 16GB 2666 ECC 2R x8 RCD[32:86] HMA82GR7AFR8N-VK    \r\nCP: 3ff00100\r\nCP: 3ff00200\r\nCP: 00f01902\r\nCP: 01f01902\r\nCP: 02f01902\r\nCP: 03f01902\r\nCP: 04f01902\r\nCP: 05f01902\r\nCP: 06f01902\r\nCP: 07f01902\r\nCP: 10f01902\r\nCP: 11f01902\r\nCP: 12f01902\r\nCP: 13f01902\r\nCP: 14f01902\r\nCP: 15f01902\r\nCP: 16f01902\r\nCP: 17f01902\r\nCP: 0ff00a00\r\nCP: 0ff00b01\r\nCP: 00f01901\r\nCP: 01f01901\r\nCP: 02f01901\r\nCP: 03f01901\r\nCP: 04f01901\r\nCP: 05f01901\r\nCP: 06f01901\r\nCP: 07f01901\r\nCP: 00f01904\r\nCP: 01f01904\r\nCP: 02f01904\r\nCP: 03f01904\r\nCP: 04f01904\r\nCP: 05f01904\r\nCP: 06f01904\r\nCP: 07f01904\r\nCP: 00f02901\r\nCP: 00f01905\r\nCP: 00f02902\r\nCP: 00f02903\r\nCP: 00f02904\r\nCP: 01f02901\r\nCP: 01f01905\r\nCP: 01f02902\r\nCP: 01f02903\r\nCP: 01f02904\r\nCP: 02f02901\r\nCP: 02f01905\r\nCP: 02f02902\r\nCP: 02f02903\r\nCP: 02f02904\r\nCP: 03f02901\r\nCP: 03f01905\r\nCP: 03f02902\r\nCP: 03f02903\r\nCP: 03f02904\r\nCP: 04f02901\r\nCP: 04f01905\r\nCP: 04f02902\r\nCP: 04f02903\r\nCP: 04f02904\r\nCP: 05f02901\r\nCP: 05f01905\r\nCP: 05f02902\r\nCP: 05f02903\r\nCP: 05f02904\r\nCP: 06f02901\r\nCP: 06f01905\r\nCP: 06f02902\r\nCP: 06f02903\r\nCP: 06f02904\r\nCP: 07f02901\r\nCP: 07f01905\r\nCP: 07f02902\r\nCP: 07f02903\r\nCP: 07f02904\r\nCP: 00f01907\r\nCP: 00f01906\r\nCP: 00f01908\r\nCP: 00f01909\r\nCP: 01f01907\r\nCP: 01f01906\r\nCP: 01f01908\r\nCP: 01f01909\r\nCP: 02f01907\r\nCP: 02f01906\r\nCP: 02f01908\r\nCP: 02f01909\r\nCP: 03f01907\r\nCP: 03f01906\r\nCP: 03f01908\r\nCP: 03f01909\r\nCP: 04f01907\r\nCP: 04f01906\r\nCP: 04f01908\r\nCP: 04f01909\r\nCP: 05f01907\r\nCP: 05f01906\r\nCP: 05f01908\r\nCP: 05f01909\r\nCP: 06f01907\r\nCP: 06f01906\r\nCP: 06f01908\r\nCP: 06f01909\r\nCP: 07f01907\r\nCP: 07f01906\r\nCP: 07f01908\r\nCP: 07f01909\r\nCP: 0ff00b02\r\nCP: 0ff00c00\r\nCP: 1ff00a00\r\nCP: 1ff00b01\r\nCP: 10f01901\r\nCP: 11f01901\r\nCP: 12f01901\r\nCP: 13f01901\r\nCP: 14f01901\r\nCP: 15f01901\r\nCP: 16f01901\r\nCP: 17f01901\r\nCP: 10f01904\r\nCP: 11f01904\r\nCP: 12f01904\r\nCP: 13f01904\r\nCP: 14f01904\r\nCP: 15f01904\r\nCP: 16f01904\r\nCP: 17f01904\r\nCP: 10f02901\r\nCP: 10f01905\r\nCP: 10f02902\r\nCP: 10f02903\r\nCP: 10f02904\r\nCP: 11f02901\r\nCP: 11f01905\r\nCP: 11f02902\r\nCP: 11f02903\r\nCP: 11f02904\r\nCP: 12f02901\r\nCP: 12f01905\r\nCP: 12f02902\r\nCP: 12f02903\r\nCP: 12f02904\r\nCP: 13f02901\r\nCP: 13f01905\r\nCP: 13f02902\r\nCP: 13f02903\r\nCP: 13f02904\r\nCP: 14f02901\r\nCP: 14f01905\r\nCP: 14f02902\r\nCP: 14f02903\r\nCP: 14f02904\r\nCP: 15f02901\r\nCP: 15f01905\r\nCP: 15f02902\r\nCP: 15f02903\r\nCP: 15f02904\r\nCP: 16f02901\r\nCP: 16f01905\r\nCP: 16f02902\r\nCP: 16f02903\r\nCP: 16f02904\r\nCP: 17f02901\r\nCP: 17f01905\r\nCP: 17f02902\r\nCP: 17f02903\r\nCP: 17f02904\r\nCP: 10f01907\r\nCP: 10f01906\r\nCP: 10f01908\r\nCP: 10f01909\r\nCP: 11f01907\r\nCP: 11f01906\r\nCP: 11f01908\r\nCP: 11f01909\r\nCP: 12f01907\r\nCP: 12f01906\r\nCP: 12f01908\r\nCP: 12f01909\r\nCP: 13f01907\r\nCP: 13f01906\r\nCP: 13f01908\r\nCP: 13f01909\r\nCP: 14f01907\r\nCP: 14f01906\r\nCP: 14f01908\r\nCP: 14f01909\r\nCP: 15f01907\r\nCP: 15f01906\r\nCP: 15f01908\r\nCP: 15f01909\r\nCP: 16f01907\r\nCP: 16f01906\r\nCP: 16f01908\r\nCP: 16f01909\r\nCP: 17f01907\r\nCP: 17f01906\r\nCP: 17f01908\r\nCP: 17f01909\r\nCP: 1ff00b02\r\nCP: 1ff00c00\r\nCP: 3ff00300\r\nCP: 00001a02\r\nCP: 01001a02\r\nCP: 02001a02\r\nCP: 03001a02\r\nCP: 04001a02\r\nCP: 05001a02\r\nCP: 06001a02\r\nCP: 07001a02\r\nCP: 10001a02\r\nCP: 11001a02\r\nCP: 12001a02\r\nCP: 13001a02\r\nCP: 14001a02\r\nCP: 15001a02\r\nCP: 16001a02\r\nCP: 17001a02\r\nCP: 00001a03\r\nCP: 01001a03\r\nCP: 02001a03\r\nCP: 03001a03\r\nCP: 04001a03\r\nCP: 05001a03\r\nCP: 06001a03\r\nCP: 07001a03\r\nCP: 10001a03\r\nCP: 11001a03\r\nCP: 12001a03\r\nCP: 13001a03\r\nCP: 14001a03\r\nCP: 15001a03\r\nCP: 16001a03\r\nCP: 17001a03\r\nCP: 00001a04\r\nCP: 01001a04\r\nCP: 02001a04\r\nCP: 03001a04\r\nCP: 04001a04\r\nCP: 05001a04\r\nCP: 06001a04\r\nCP: 07001a04\r\nCP: 10001a04\r\nCP: 11001a04\r\nCP: 12001a04\r\nCP: 13001a04\r\nCP: 14001a04\r\nCP: 15001a04\r\nCP: 16001a04\r\nCP: 17001a04\r\nCP: 00001a05\r\nCP: 01101a02\r\nCP: 02001a05\r\nCP: 03001a05\r\nCP: 04101a02\r\nCP: 05101a02\r\nCP: 06001a05\r\nCP: 07101a02\r\nCP: 10001a05\r\nCP: 11001a05\r\nCP: 12101a02\r\nCP: 13001a05\r\nCP: 14001a05\r\nCP: 15001a05\r\nCP: 16001a05\r\nCP: 17101a02\r\nCP: 01101a03\r\nCP: 04101a03\r\nCP: 05101a03\r\nCP: 07101a03\r\nCP: 12101a03\r\nCP: 17101a03\r\nCP: 00f01a07\r\nCP: 01101a04\r\nCP: 02f01a07\r\nCP: 04101a04\r\nCP: 05101a04\r\nCP: 03f01a07\r\nCP: 07101a04\r\nCP: 12101a04\r\nCP: 17101a04\r\nCP: 06f01a07\r\nCP: 00001a09\r\nCP: 01001a05\r\nCP: 02001a09\r\nCP: 10f01a07\r\nCP: 04001a05\r\nCP: 11f01a07\r\nCP: 05001a05\r\nCP: 03001a09\r\nCP: 13f01a07\r\nCP: 07001a05\r\nCP: 14f01a07\r\nCP: 12001a05\r\nCP: 15f01a07\r\nCP: 17001a05\r\nCP: 16f01a07\r\nCP: 06001a09\r\nCP: 10001a09\r\nCP: 11001a09\r\nCP: 13001a09\r\nCP: 01101a05\r\nCP: 14001a09\r\nCP: 15001a09\r\nCP: 16001a09\r\nCP: 04101a05\r\nCP: 05101a05\r\nCP: 12101a05\r\nCP: 07101a05\r\nCP: 17101a05\r\nCP: 01f01a07\r\nCP: 01001a09\r\nCP: 05f01a07\r\nCP: 04f01a07\r\nCP: 05001a09\r\nCP: 04001a09\r\nCP: 12f01a07\r\nCP: 07f01a07\r\nCP: 12001a09\r\nCP: 07001a09\r\nCP: 17f01a07\r\nCP: 17001a09\r\nCP: 04101a09\r\nCP: 01101a09\r\nCP: 07101a09\r\nCP: 17101a09\r\nCP: 00001a0a\r\nCP: 14001a0a\r\nCP: 05101a09\r\nCP: 13001a0a\r\nCP: 10001a0a\r\nCP: 12101a09\r\nCP: 03001a0a\r\nCP: 11001a0a\r\nCP: 15001a0a\r\nCP: 06001a0a\r\nCP: 16001a0a\r\nCP: 02001a0a\r\nCP: 01001a0a\r\nCP: 04001a0a\r\nCP: 17001a0a\r\nCP: 07001a0a\r\nCP: 05001a0a\r\nCP: 12001a0a\r\nCP: 13001a0b\r\nCP: 13001a0c\r\nCP: 13001a0c\r\nCP: 03001a0b\r\nCP: 03001a0c\r\nCP: 03001a0c\r\nCP: 10001a0b\r\nCP: 10001a0c\r\nCP: 14001a0b\r\nCP: 00001a0b\r\nCP: 14001a0c\r\nCP: 00001a0c\r\nCP: 10001a0c\r\nCP: 06001a0b\r\nCP: 16001a0b\r\nCP: 15001a0b\r\nCP: 16001a0c\r\nCP: 06001a0c\r\nCP: 14001a0c\r\nCP: 15001a0c\r\nCP: 00001a0c\r\nCP: 02001a0b\r\nCP: 11001a0b\r\nCP: 16001a0c\r\nCP: 06001a0c\r\nCP: 15001a0c\r\nCP: 02001a0c\r\nCP: 11001a0c\r\nCP: 02001a0c\r\nCP: 11001a0c\r\nCP: 17001a0b\r\nCP: 17001a0c\r\nCP: 17001a0c\r\nCP: 17101a0b\r\nCP: 07001a0b\r\nCP: 17101a0c\r\nCP: 04001a0b\r\nCP: 07001a0c\r\nCP: 17101a0c\r\nCP: 04001a0c\r\nCP: 01001a0b\r\nCP: 07001a0c\r\nCP: 01001a0c\r\nCP: 04001a0c\r\nCP: 07101a0b\r\nCP: 04101a0b\r\nCP: 01001a0c\r\nCP: 12001a0b\r\nCP: 07101a0c\r\nCP: 04101a0c\r\nCP: 01101a0b\r\nCP: 12001a0c\r\nCP: 07101a0c\r\nCP: 01101a0c\r\nCP: 05001a0b\r\nCP: 12001a0c\r\nCP: 04101a0c\r\nCP: 05001a0c\r\nCP: 12101a0b\r\nCP: 01101a0c\r\nCP: 12101a0c\r\nCP: 05001a0c\r\nCP: 05101a0b\r\nCP: 12101a0c\r\nCP: 05101a0c\r\nCP: 05101a0c\r\nCP: 3ff00400\r\nCP: 0ff01000\r\nCP: 1ff01000\r\nCP: 0ff01101\r\nCP: 1ff01101\r\nDRAM ECC Initialization: [6] [ ==>                  ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [12] [ ===>                 ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [18] [ ====>                ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [25] [ ======>              ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [31] [ =======>             ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [37] [ ========>            ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [43] [ =========>           ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [50] [ ===========>         ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [56] [ ============>        ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [62] [ =============>       ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [68] [ ==============>      ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [75] [ ================>    ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [81] [ =================>   ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [87] [ ==================>  ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [93] [ ===================> ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [100] [ ==================== ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\r\nCP: 0ff01200\r\nCP: 1ff01200\r\nCP: 3ff00800\r\n"
+
+// run 37069907299, artifact mtcollins1-boot-receipts, file mtcollins1-boot-sol.capture (sha256
+// bfddc9ff3856bbdba500ee6b03571634a5b080588796c18c1b007ecc16361bf9), lines 426-431; excerpt
+// sha256 12111d44b87cc877e42bf58be0f0dcf3671a5c1a1081c1a3cf86abbc03c37adc.
+data run_37069907299_stub_and_banner: String = "EFI stub: WARNING: Working around broken SetVirtualAddressMap()\r\nEFI stub: ERROR: Failed to load initrd: 0x8000000000000001\r\nEFI stub: Generating empty DTB\r\nEFI stub: Exiting boot services...\r\n[    0.000000] Booting Linux on physical CPU 0x0000120000 [0x413fd0c1]\r\n[    0.000000] Linux version 6.8.0-71-generic (buildd@bos03-arm64-036) (aarch64-linux-gnu-gcc-13 (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0, GNU ld (GNU Binutils for Ubuntu) 2.42) #71-Ubuntu SMP PREEMPT_DYNAMIC Tue Jul 22 16:44:45 UTC 2025 (Ubuntu 6.8.0-71.71-generic 6.8.12)\r\n"
+
+// the same file, line 1879; excerpt sha256 a602607e3bd95133ca09a71f3d24f3227cf4fd92e33bd108be22bf11b3848e51.
+data run_37069907299_panic: String = "[    9.962666] Kernel panic - not syncing: VFS: Unable to mount root fs on unknown-block(0,0)\r\n"
+
+// the same file, line 1899, the panic's end marker; excerpt sha256 b54cbc78545d7e4d0bc4ad452d7f63d92af9b5742cc43613f829522cb3136ef1.
+data run_37069907299_panic_end: String = "[   10.055713] ---[ end Kernel panic - not syncing: VFS: Unable to mount root fs on unknown-block(0,0) ]---\r\n"
+
+// artifacts/bmc/mtcollins1-first-own-image-boot.log (sha256
+// 19076537c45f8f7ad3c82cf14abd6d9d17fa2875dc0e5fce227f9aa532f4feb3), lines 849-854: a stub that
+// loaded its initrd; excerpt sha256 a109b1b2cc1770667eb891bd42472e7cc3358e3976e4d97aac632fc05b8d8498.
+data own_image_stub_and_banner: String = "EFI stub: Booting Linux Kernel...\nEFI stub: WARNING: Working around broken SetVirtualAddressMap()\nEFI stub: Generating empty DTB\nEFI stub: Exiting boot services...\n[    0.000000] Booting Linux on physical CPU 0x0000120000 [0x413fd0c1]\n[    0.000000] Linux version 6.12.108 (briansrls@srv2) (gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0, GNU ld (GNU Binutils for Ubuntu) 2.42) #3 SMP PREEMPT Sun Sep  6 19:47:30 UTC 2026\n"
+
+fn lines_of(text: String) -> List<String> {
+  host_capture_lines(capture: HostCaptureLiveStream { text: text })
+}
+
+fn last_word_digits(text: String) -> String {
+  match ampere_checkpoint_console_observation(lines: lines_of(text: text)) {
+    AmpereCheckpointsNotPrinted => ""
+    AmpereCheckpointsObserved { last_cycle: c, cycles_printed: _ } => match ampere_checkpoint_last_word(c: c) { Absent => "" Present { value: w } => w.digits as String }
+  }
+}
+
+fn without_line(text: String, line: String) -> String {
+  join(filter(split(s: text, delimiter: "\n"), l => l != line), "\n")
+}
+
+test fn the_step1_loop_last_cycle_ends_at_00001a0a() -> Bool {
+  match ampere_checkpoint_console_observation(lines: lines_of(text: step1_last_two_cycles)) {
+    AmpereCheckpointsObserved { last_cycle: c, cycles_printed: n } =>
+      n == 2 && count(c.malformed) == 0 && count(c.words) == 27
+        && (match ampere_checkpoint_last_word(c: c) { Present { value: w } => (w.digits as String) == "00001a0a" Absent => false })
+    AmpereCheckpointsNotPrinted => false
+  }
+}
+
+test fn dropping_the_last_word_moves_the_stop_to_00001a09() -> Bool {
+  last_word_digits(text: without_line(text: step1_last_two_cycles, line: "CP: 00001a0a\r")) == "00001a09"
+}
+
+test fn the_good_reference_continues_past_00001a0a() -> Bool {
+  match ampere_checkpoint_reference_comparison(
+    subject: ampere_checkpoint_console_observation(lines: lines_of(text: step1_last_two_cycles)),
+    reference: ampere_checkpoint_console_observation(lines: lines_of(text: reference_good_boot_checkpoints)),
+  ) {
+    CheckpointReferenceContinues { last: l, next: n, remaining: r, occurrences: k } =>
+      (l.digits as String) == "00001a0a" && (n.digits as String) == "14001a0a" && r == 91 && k == 1
+    _ => false
+  }
+}
+
+test fn a_word_the_reference_never_printed_is_not_placed_in_it() -> Bool {
+  match ampere_checkpoint_reference_comparison(
+    subject: ampere_checkpoint_console_observation(lines: ["CP: deadbeef"]),
+    reference: ampere_checkpoint_console_observation(lines: lines_of(text: reference_good_boot_checkpoints)),
+  ) {
+    CheckpointLastWordNotInReference { last: l } => (l.digits as String) == "deadbeef"
+    _ => false
+  }
+}
+
+test fn a_short_word_is_kept_as_malformed_not_dropped() -> Bool {
+  match ampere_checkpoint_console_observation(lines: ["NOTICE:  DRAM FW version 220414", "CP: 0ff00900", "CP: 1a0a"]) {
+    AmpereCheckpointsObserved { last_cycle: c, cycles_printed: n } => n == 1 && count(c.words) == 1 && c.malformed == ["CP: 1a0a"]
+    AmpereCheckpointsNotPrinted => false
+  }
+}
+
+test fn a_console_without_checkpoints_says_so() -> Bool {
+  (match ampere_checkpoint_console_observation(lines: lines_of(text: run_37069907299_panic)) { AmpereCheckpointsNotPrinted => true _ => false })
+    && (match ampere_checkpoint_reference_comparison(subject: AmpereCheckpointsNotPrinted, reference: AmpereCheckpointsNotPrinted) { CheckpointSubjectHasNoWord => true _ => false })
+}
+
+test fn run_37069907299_states_an_initrd_efi_load_error_and_a_panic() -> Bool {
+  let o = linux_boot_console_observation(lines: concat(lines_of(text: run_37069907299_stub_and_banner), concat(lines_of(text: run_37069907299_panic), lines_of(text: run_37069907299_panic_end))))
+  o.stub_lines == 4 && o.kernel_banner_printed
+    && (match o.initrd { InitrdLoadFailed { status: s, line: _ } => (match s { EfiLoadError => true _ => false }) _ => false })
+    && (match o.panic { KernelPanicked { reason: r } => (r as String) == "VFS: Unable to mount root fs on unknown-block(0,0)" KernelPanicNotPrinted => false })
+}
+
+test fn the_panic_end_marker_alone_is_not_a_panic() -> Bool {
+  match linux_boot_console_observation(lines: lines_of(text: run_37069907299_panic_end)).panic { KernelPanicNotPrinted => true KernelPanicked { reason: _ } => false }
+}
+
+test fn a_stub_that_loaded_its_initrd_states_no_failure() -> Bool {
+  let o = linux_boot_console_observation(lines: lines_of(text: own_image_stub_and_banner))
+  o.stub_lines == 4 && o.kernel_banner_printed
+    && (match o.initrd { InitrdFailureNotPrinted => true _ => false })
+    && (match o.panic { KernelPanicNotPrinted => true _ => false })
+}
