@@ -1,7 +1,7 @@
 module extdeps.transports.file_declared
 
 import std.types { String }
-import v2.std.optional { Absent, Present }
+import v2.std.optional { Present }
 
 // THE DECLARED VOCABULARY OF THE FILE TRANSPORT (XL-2 PR3a, moved here in PR3b-i): what an operation
 // AUTHORS for this transport -- its binding fields, the channels its `from "key"` names -- apart from
@@ -29,7 +29,7 @@ fn file_output_channel_of_key(key: String) -> FileOutputChannel? {
   else if key == "error" { Present { value: FileError } }
   else if key == "error_kind" { Present { value: FileErrorKind } }
   else if key == "content" || key == "entries" { Present { value: FileContent } }
-  else { Absent }
+  else { none }
 }
 
 // THE FIELDS A `transport file { .. }` BLOCK DECLARES: the operation's declared request, not
@@ -41,5 +41,5 @@ type FileBindingField
 fn file_binding_field_of_key(key: String) -> FileBindingField? {
   if key == "path" { Present { value: FileBindingPath } }
   else if key == "verb" { Present { value: FileBindingVerb } }
-  else { Absent }
+  else { none }
 }

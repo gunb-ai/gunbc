@@ -239,7 +239,7 @@ fn module_root_pick_step(acc: AnnotationSubject?, row: AnnotationSubject) -> Ann
 fn module_root_subject(subjects: List<AnnotationSubject>) -> AnnotationSubject? {
   fold(
     subjects,
-    init: Absent,
+    init: none,
     f: (acc, row) => module_root_pick_step(acc: acc, row: row)
   )
 }
@@ -264,10 +264,10 @@ fn module_header_gap_subject(
   preceded_by_annotation_line: Bool
 ) -> AnnotationSubject? {
   if preceded_by_blank_line || preceded_by_annotation_line {
-    Absent
+    none
   } else {
     match module_root_subject(subjects: subjects) {
-      Absent => Absent
+      Absent => none
       Present { value: mod_subject } =>
         let first_member_start = earliest_member_start_after(
           subjects: subjects,
@@ -278,7 +278,7 @@ fn module_header_gap_subject(
           && origin.end <= first_member_start {
           Present { value: mod_subject }
         } else {
-          Absent
+          none
         }
     }
   }
@@ -301,7 +301,7 @@ fn annotation_subject_pick(
     Absent =>
       fold(
         subjects,
-        init: AnnotationSubjectPick { contained: false, following: Absent },
+        init: AnnotationSubjectPick { contained: false, following: none },
         f: (acc, subject) =>
           if origin.start >= subject.span.start && origin.end <= subject.span.end {
             AnnotationSubjectPick { contained: true, following: acc.following }
@@ -534,7 +534,7 @@ fn attach_annotations(
 ) -> AnnotationAttachmentResult {
   let acc = fold(
     captures,
-    init: AnnotationAttachAcc { rows: [], refusals: [], pending: Absent, pending_adjacent: false },
+    init: AnnotationAttachAcc { rows: [], refusals: [], pending: none, pending_adjacent: false },
     f: (acc, capture) =>
       annotation_attach_step(acc: acc, capture: capture, subjects: subjects)
   )

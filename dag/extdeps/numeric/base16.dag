@@ -140,7 +140,7 @@ fn base16_is_upper_digit_code_point(cp: Int) -> Bool {
 // char_at, so the wrapper is deleted rather than guarded -- the caller's convention cannot repair an
 // operation whose own contract is wrong, and there is no second contract to keep honest.
 fn base16_lower_digit_value_at(cp: Int) -> Int? {
-  fold(base16_digit_rows, init: Absent, f: (acc, row) =>
+  fold(base16_digit_rows, init: none, f: (acc, row) =>
     if code_point(row.lower) == cp { Present { value: row.value } } else { acc })
 }
 
@@ -155,10 +155,10 @@ fn base16_decode_lower_from(hex: String, i: Int, len: Int, acc: List<Int>) -> Li
     Present { value: acc }
   } else {
     match base16_lower_digit_value_at(cp: code_point(char_at(hex, i))) {
-      Absent => Absent
+      Absent => none
       Present { value: high } =>
         match base16_lower_digit_value_at(cp: code_point(char_at(hex, i + 1))) {
-          Absent => Absent
+          Absent => none
           Present { value: low } =>
             base16_decode_lower_from(hex: hex, i: i + 2, len: len, acc: acc |> list_push(high * 16 + low))
         }
@@ -169,10 +169,10 @@ fn base16_decode_lower_from(hex: String, i: Int, len: Int, acc: List<Int>) -> Li
 fn base16_decode_lower(hex: String) -> QualifiedOctets? {
   let len = string_length(hex)
   if len % 2 != 0 {
-    Absent
+    none
   } else {
     match base16_decode_lower_from(hex: hex, i: 0, len: len, acc: []) {
-      Absent => Absent
+      Absent => none
       Present { value: members } => Present { value: qualified_octets(members: members) }
     }
   }
@@ -182,7 +182,7 @@ fn base16_decode_lower(hex: String) -> QualifiedOctets? {
 // prints in uppercase (/proc/net/tcp) or a wire that admits either spelling, and refuse a code
 // point that is in neither column.
 fn base16_digit_value_at(cp: Int) -> Int? {
-  fold(base16_digit_rows, init: Absent, f: (acc, row) =>
+  fold(base16_digit_rows, init: none, f: (acc, row) =>
     if code_point(row.lower) == cp || code_point(row.upper) == cp { Present { value: row.value } } else { acc })
 }
 
@@ -193,13 +193,13 @@ fn base16_digit_value_at(cp: Int) -> Int? {
 // different operation (base16_decode_lower yields octets).
 fn base16_word_value(word: String, max_digits: Int) -> Int? {
   let cps = word |> chars
-  if length(cps) == 0 || length(cps) > max_digits || max_digits > 15 { Absent } else {
+  if length(cps) == 0 || length(cps) > max_digits || max_digits > 15 { none } else {
     fold(cps, init: Present { value: 0 }, f: (acc, cp) =>
       match acc {
-        Absent => Absent
+        Absent => none
         Present { value: v } =>
           match base16_digit_value_at(cp: cp) {
-            Absent => Absent
+            Absent => none
             Present { value: d } => Present { value: v * 16 + d }
           }
       })

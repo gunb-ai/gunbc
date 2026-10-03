@@ -86,7 +86,7 @@ type ResidencyObservation
 fn residency_observed_bytes(o: ResidencyObservation) -> ByteSize? {
   match o {
     ResidencyObserved { bytes: b } => Present { value: b }
-    ResidencyUnobservable { axis: _, reason: _ } => Absent
+    ResidencyUnobservable { axis: _, reason: _ } => none
   }
 }
 

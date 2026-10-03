@@ -121,14 +121,14 @@ fn cost_time_axis_established<S>(axis: CostTimeAxis<S>) -> Measure<Time, S, Nat>
   match axis {
     CostTimeMeasured { value: t } => Present { value: t }
     CostTimePredicted { value: t } => Present { value: t }
-    CostTimeUnestablished => Absent
+    CostTimeUnestablished => none
   }
 }
 
 fn cost_account_time_count<S>(account: CostAccount<S>) -> Nat? {
   match cost_time_axis_established(axis: account.time) {
     Present { value: t } => Present { value: measure_count(m: t) }
-    Absent => Absent
+    Absent => none
   }
 }
 

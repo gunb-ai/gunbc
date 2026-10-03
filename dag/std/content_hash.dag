@@ -104,7 +104,7 @@ fn sha256_hex_digest(hex: String) -> Sha256Digest? {
   if content_hash_validate_lower_hex_length(text: hex, expected_hex_digits: 64) {
     Present { value: Sha256Digest { hex: hex as Sha256DigestHex } }
   } else {
-    Absent
+    none
   }
 }
 
@@ -112,7 +112,7 @@ fn sha1_hex_digest(hex: String) -> Sha1Digest? {
   if content_hash_validate_lower_hex_length(text: hex, expected_hex_digits: 40) {
     Present { value: Sha1Digest { hex: hex as Sha1DigestHex } }
   } else {
-    Absent
+    none
   }
 }
 
@@ -120,7 +120,7 @@ fn sha512_hex_digest(hex: String) -> Sha512Digest? {
   if content_hash_validate_lower_hex_length(text: hex, expected_hex_digits: 128) {
     Present { value: Sha512Digest { hex: hex as Sha512DigestHex } }
   } else {
-    Absent
+    none
   }
 }
 
@@ -128,7 +128,7 @@ fn fnv1a64_structural_hex_digest(hex: String) -> Fnv1a64Structural? {
   if content_hash_validate_lower_hex_length(text: hex, expected_hex_digits: 16) {
     Present { value: structural_content_hash(digest: hex as Fnv1a64StructuralDigestHex) }
   } else {
-    Absent
+    none
   }
 }
 
@@ -156,7 +156,7 @@ fn content_hash_from_structural_digest(digest: String) -> ContentHash? {
   match fnv1a64_structural_hex_digest(hex: digest) {
     Present { value: structural } =>
       Present { value: as_content_hash_structural(structural: structural) }
-    Absent => Absent
+    Absent => none
   }
 }
 
@@ -302,25 +302,25 @@ fn serialize_content_hash(hash: ContentHash) -> NonEmptyStr {
 fn parse_content_hash_candidate(wire: String) -> ContentHash? {
   if starts_with(s: wire, prefix: "sha256:") {
     match get(xs: split(s: wire, delimiter: "sha256:"), index: 1) {
-      Absent => Absent
+      Absent => none
       Present { value: hex } =>
         match sha256_hex_digest(hex: hex) {
-          Absent => Absent
+          Absent => none
           Present { value: d } => Present { value: as_content_hash_cryptographic(digest: d) }
         }
     }
   } else if starts_with(s: wire, prefix: "sha512:") {
     match get(xs: split(s: wire, delimiter: "sha512:"), index: 1) {
-      Absent => Absent
+      Absent => none
       Present { value: hex } =>
         match sha512_hex_digest(hex: hex) {
-          Absent => Absent
+          Absent => none
           Present { value: d } => Present { value: as_content_hash_sha512(digest: d) }
         }
     }
   } else if content_hash_validate_lower_hex_length(text: wire, expected_hex_digits: 40) {
     match sha1_hex_digest(hex: wire) {
-      Absent => Absent
+      Absent => none
       Present { value: d } => Present { value: as_content_hash_sha1(digest: d) }
     }
   } else {
@@ -334,12 +334,12 @@ fn parse_content_hash_candidate(wire: String) -> ContentHash? {
 // round-trip check below is what makes a wrong length a refusal rather than a guess.
 fn parse_content_hash(wire: String) -> ContentHash? {
   match parse_content_hash_candidate(wire: wire) {
-    Absent => Absent
+    Absent => none
     Present { value: parsed } =>
       if (serialize_content_hash(hash: parsed) as String) == wire {
         Present { value: parsed }
       } else {
-        Absent
+        none
       }
   }
 }

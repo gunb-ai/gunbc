@@ -109,15 +109,15 @@ fn proportional_divisor_to_int(d: ProportionalDivisor) -> Int {
 fn peano_literal_materialization_cap() -> Int { 256 }
 
 fn positive_descent_amount_from_positive_int(k: Int) -> PositiveDescentAmount? {
-  if k <= 0 { Absent }
+  if k <= 0 { none }
   else {
-    if k > peano_literal_materialization_cap() { Absent }
+    if k > peano_literal_materialization_cap() { none }
     else {
       if k == 1 { Present { value: OneStep } }
       else {
         match positive_descent_amount_from_positive_int(k: k - 1) {
           Present { value: prev } => Present { value: AdditionalStep { previous: prev } }
-          Absent => Absent
+          Absent => none
         }
       }
     }
@@ -125,15 +125,15 @@ fn positive_descent_amount_from_positive_int(k: Int) -> PositiveDescentAmount? {
 }
 
 fn proportional_divisor_from_int_at_least_two(k: Int) -> ProportionalDivisor? {
-  if k < 2 { Absent }
+  if k < 2 { none }
   else {
-    if k > peano_literal_materialization_cap() { Absent }
+    if k > peano_literal_materialization_cap() { none }
     else {
       if k == 2 { Present { value: DivideByTwo } }
       else {
         match proportional_divisor_from_int_at_least_two(k: k - 1) {
           Present { value: prev } => Present { value: StrictlyLarger { inner: prev } }
-          Absent => Absent
+          Absent => none
         }
       }
     }

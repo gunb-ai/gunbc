@@ -601,7 +601,7 @@ fn occurrence_transport_index_build(
     index.entries,
     init: OccurrenceTransportIndexBuild {
       entries_by_id: empty_map(),
-      refusal: Absent,
+      refusal: none,
     },
     f: (build, entry) =>
       match build.refusal {
@@ -632,7 +632,7 @@ fn occurrence_transport_index_build(
                     entry.projection.occurrence.value,
                     entry
                   ),
-                  refusal: Absent,
+                  refusal: none,
                 }
               } else {
                 OccurrenceTransportIndexBuild {
@@ -665,7 +665,7 @@ fn occurrence_transport_role_index_build(
     init: OccurrenceTransportRoleIndexBuild {
       declarations_by_id: empty_map(),
       references_by_id: empty_map(),
-      refusal: Absent,
+      refusal: none,
     },
     f: (build, declaration) =>
       match build.refusal {
@@ -694,7 +694,7 @@ fn occurrence_transport_role_index_build(
                   declaration
                 ),
                 references_by_id: build.references_by_id,
-                refusal: Absent,
+                refusal: none,
               }
           }
       }
@@ -732,7 +732,7 @@ fn occurrence_transport_role_index_build(
                       reference.occurrence.value,
                       reference
                     ),
-                    refusal: Absent,
+                    refusal: none,
                   }
               }
           }
@@ -767,7 +767,7 @@ fn declaration_occurrence_refusal(
                 diagnostic_span: declaration.diagnostic_span,
               },
             }
-          Absent => Absent
+          Absent => none
         }
       } else {
         Present {
@@ -807,7 +807,7 @@ fn reference_occurrence_refusal(
                 diagnostic_span: reference.diagnostic_span,
               },
             }
-          Absent => Absent
+          Absent => none
         }
       } else {
         Present {
@@ -857,7 +857,7 @@ fn occurrence_transport_validate(
         Absent =>
           let declaration_refusal = fold(
             transport.declarations,
-            init: Absent,
+            init: none,
             f: (refusal, declaration) =>
               match refusal {
                 Present { value: _ } => refusal
@@ -873,7 +873,7 @@ fn occurrence_transport_validate(
             Absent =>
               let reference_refusal = fold(
                 transport.references,
-                init: Absent,
+                init: none,
                 f: (refusal, reference) =>
                   match refusal {
                     Present { value: _ } => refusal
@@ -906,7 +906,7 @@ fn occurrence_transport_refusal(
 ) -> OccurrenceTransportRefusal? {
   match occurrence_transport_validate(transport: transport) {
     OccurrenceTransportRefused { refusal: refusal } => Present { value: refusal }
-    OccurrenceTransportValidated { transport: _ } => Absent
+    OccurrenceTransportValidated { transport: _ } => none
   }
 }
 

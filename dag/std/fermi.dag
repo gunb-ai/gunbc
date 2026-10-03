@@ -71,6 +71,6 @@ fn timeout_for_depth(depth: FermiDepth) -> Milliseconds? {
   let matches = filter(fermi_timeouts, t => t.depth == depth)
   match matches |> first {
     Present { value: t } => Present { value: t.timeout_ms }
-    Absent => Absent
+    Absent => none
   }
 }

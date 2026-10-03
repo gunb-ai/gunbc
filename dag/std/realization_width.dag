@@ -219,7 +219,7 @@ fn shard_balance_slot_for_cost(cost: CostAccount<Nano>, baseline: CostAccount<Na
   match cost.time {
     CostTimeMeasured { value: _ } => cost_account_time_count(account: cost)
     CostTimePredicted { value: _ } => cost_account_time_count(account: baseline)
-    CostTimeUnestablished => Absent
+    CostTimeUnestablished => none
   }
 }
 

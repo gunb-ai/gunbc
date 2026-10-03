@@ -2,7 +2,7 @@ module std.nat
 
 import std.types { List, Bool }
 import std.algebra { CommutativeMonoid, CommutativeSemiring, Ordering, Less, Equal, Greater }
-import v2.std.optional { Absent, Present }
+import v2.std.optional { Present }
 
 // THE NATURALS, DECLARED AS WHAT THEY ARE (operator ruling A, 2026-09-30). The carrier is the
 // accepted inductive definition -- zero, and the successor of a natural -- and it is the ONLY
@@ -108,7 +108,7 @@ fn nat_div_rem_by_succ(a: Nat, divisor_prev: Nat) -> NatQuotient {
 // answered: each caller says what a zero divisor means in its own domain.
 fn nat_ceil_div(a: Nat, b: Nat) -> Nat? {
   if b == 0 {
-    Absent
+    none
   } else {
     let carry = if a % b == 0 { 0 } else { 1 }
     Present { value: a / b + carry }

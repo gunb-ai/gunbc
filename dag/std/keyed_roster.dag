@@ -82,8 +82,8 @@ fn keyed_roster_locate_second_row<K, V>(
     }
   }) {
     KeyedRosterSecondRowScanFound { row: row } => Present { value: row }
-    KeyedRosterSecondRowScanAbsent => Absent
-    KeyedRosterSecondRowScanAwaitingSecond => Absent
+    KeyedRosterSecondRowScanAbsent => none
+    KeyedRosterSecondRowScanAwaitingSecond => none
   }
 }
 
@@ -92,7 +92,7 @@ fn keyed_roster_locate_first_row<K, V>(
   wanted_key: K,
   key_eq: fn(K, K) -> Bool,
 ) -> KeyedRow<K, V>? {
-  fold(rows, init: Absent, f: fn(acc, row) {
+  fold(rows, init: none, f: fn(acc, row) {
     match acc {
       Present { value: _ } => acc
       Absent =>
@@ -109,7 +109,7 @@ fn keyed_roster_locate_duplicate<K, V>(
   rows: List<KeyedRow<K, V>>,
   key_eq: fn(K, K) -> Bool,
 ) -> KeyedRosterDuplicateEvidence<K, V>? {
-  fold(rows, init: Absent, f: fn(acc, row) {
+  fold(rows, init: none, f: fn(acc, row) {
     match acc {
       Present { value: _ } => acc
       Absent =>
