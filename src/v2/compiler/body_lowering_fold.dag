@@ -9683,9 +9683,17 @@ fn body_lower_type_decl_modifier_slot(slot: Node) -> TypeDeclModifierSlotRead {
       }
     Absent =>
       match element.kind {
-        TypeNode { connective: Conj } =>
-          if count(element.children) == 0 { TypeDeclModifierSlotEmpty } else { TypeDeclModifierSlotUnreadable { at: element } }
-        _ => TypeDeclModifierSlotUnreadable { at: element }
+        TypeNode { connective: c } =>
+          match c {
+            Conj =>
+              if count(element.children) == 0 { TypeDeclModifierSlotEmpty } else { TypeDeclModifierSlotUnreadable { at: element } }
+            Atom { identity: _ } => TypeDeclModifierSlotUnreadable { at: element }
+            Disj => TypeDeclModifierSlotUnreadable { at: element }
+            Arrow => TypeDeclModifierSlotUnreadable { at: element }
+            Cardinality => TypeDeclModifierSlotUnreadable { at: element }
+            Instantiation => TypeDeclModifierSlotUnreadable { at: element }
+          }
+        ComputationNode { behavior: _ } => TypeDeclModifierSlotUnreadable { at: element }
       }
   }
 }
