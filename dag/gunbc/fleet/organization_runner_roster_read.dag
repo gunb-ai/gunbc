@@ -14,7 +14,7 @@ import std.page_fold {
   page_fold_begin, page_fold_demand, page_fold_observe, page_fold_finish, page_fold_refusal_key
 }
 import extdeps.uri { uri_wire }
-import extdeps.languages.json.emit { JsonValue, JsonString, JsonArray }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
 import extdeps.languages.json.parse {
   parse_json_document,
   JsonDocumentParsed,

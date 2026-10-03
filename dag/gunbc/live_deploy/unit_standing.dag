@@ -343,7 +343,15 @@ fn timer_on_boot_duration(directives: List<SystemdTimerDirective>) -> Microsecon
   fold(directives, init: none, f: (acc, d) =>
     match acc {
       Present { value: v } => Present { value: v }
-      Absent => match d { OnBootSec { duration: t } => systemd_duration_usec(text: t as String) TimerUnit { target: _ } => none OnCalendar { expression: _ } => none OnUnitInactiveSec { duration: _ } => none AccuracySec { duration: _ } => none RandomizedDelaySec { duration: _ } => none Persistent { enabled: _ } => none }
+      Absent => match d {
+        TimerUnit { target: _ } => none
+        OnCalendar { expression: _ } => none
+        OnBootSec { duration: t } => systemd_duration_usec(text: t as String)
+        OnUnitInactiveSec { duration: _ } => none
+        AccuracySec { duration: _ } => none
+        RandomizedDelaySec { duration: _ } => none
+        Persistent { enabled: _ } => none
+      }
     })
 }
 
@@ -351,7 +359,15 @@ fn timer_on_unit_inactive_duration(directives: List<SystemdTimerDirective>) -> M
   fold(directives, init: none, f: (acc, d) =>
     match acc {
       Present { value: v } => Present { value: v }
-      Absent => match d { OnUnitInactiveSec { duration: t } => systemd_duration_usec(text: t as String) TimerUnit { target: _ } => none OnCalendar { expression: _ } => none OnBootSec { duration: _ } => none AccuracySec { duration: _ } => none RandomizedDelaySec { duration: _ } => none Persistent { enabled: _ } => none }
+      Absent => match d {
+        TimerUnit { target: _ } => none
+        OnCalendar { expression: _ } => none
+        OnBootSec { duration: _ } => none
+        OnUnitInactiveSec { duration: t } => systemd_duration_usec(text: t as String)
+        AccuracySec { duration: _ } => none
+        RandomizedDelaySec { duration: _ } => none
+        Persistent { enabled: _ } => none
+      }
     })
 }
 
@@ -359,7 +375,15 @@ fn timer_accuracy_duration(directives: List<SystemdTimerDirective>) -> Microseco
   fold(directives, init: none, f: (acc, d) =>
     match acc {
       Present { value: v } => Present { value: v }
-      Absent => match d { AccuracySec { duration: t } => systemd_duration_usec(text: t as String) TimerUnit { target: _ } => none OnCalendar { expression: _ } => none OnBootSec { duration: _ } => none OnUnitInactiveSec { duration: _ } => none RandomizedDelaySec { duration: _ } => none Persistent { enabled: _ } => none }
+      Absent => match d {
+        TimerUnit { target: _ } => none
+        OnCalendar { expression: _ } => none
+        OnBootSec { duration: _ } => none
+        OnUnitInactiveSec { duration: _ } => none
+        AccuracySec { duration: t } => systemd_duration_usec(text: t as String)
+        RandomizedDelaySec { duration: _ } => none
+        Persistent { enabled: _ } => none
+      }
     })
 }
 

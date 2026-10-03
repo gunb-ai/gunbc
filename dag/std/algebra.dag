@@ -425,7 +425,16 @@ fn template_step_position(t: AlgebraFieldTemplate) -> Int? {
   template_param_position(t: t, admits: fn(p) {
     match p {
       CallableOf { params: _, return_type: _ } => true
-      _ => false
+      ReceiverSelf => false
+      ReceiverElement => false
+      ReceiverKey => false
+      ReceiverValue => false
+      NamedTemplate { name: _ } => false
+      ContainerOf { source: _, element: _ } => false
+      OptionalOf { inner: _ } => false
+      WitnessOf { inner: _ } => false
+      TupleOf { first: _, second: _ } => false
+      AlgebraTypeVariable { id: _ } => false
     }
   })
 }
@@ -445,7 +454,16 @@ fn template_accumulator_position(t: AlgebraFieldTemplate) -> Int? {
       Absent =>
         match p {
           CallableOf { params: _, return_type: r } => Present { value: r }
-          _ => none
+          ReceiverSelf => none
+          ReceiverElement => none
+          ReceiverKey => none
+          ReceiverValue => none
+          NamedTemplate { name: _ } => none
+          ContainerOf { source: _, element: _ } => none
+          OptionalOf { inner: _ } => none
+          WitnessOf { inner: _ } => none
+          TupleOf { first: _, second: _ } => none
+          AlgebraTypeVariable { id: _ } => none
         }
     }
   })
@@ -458,7 +476,16 @@ fn template_accumulator_position(t: AlgebraFieldTemplate) -> Int? {
         template_param_position(t: t, admits: fn(p) {
           match p {
             CallableOf { params: _, return_type: _ } => false
-            _ => p == acc_type
+            ReceiverSelf => p == acc_type
+            ReceiverElement => p == acc_type
+            ReceiverKey => p == acc_type
+            ReceiverValue => p == acc_type
+            NamedTemplate { name: _ } => p == acc_type
+            ContainerOf { source: _, element: _ } => p == acc_type
+            OptionalOf { inner: _ } => p == acc_type
+            WitnessOf { inner: _ } => p == acc_type
+            TupleOf { first: _, second: _ } => p == acc_type
+            AlgebraTypeVariable { id: _ } => p == acc_type
           }
         })
       }

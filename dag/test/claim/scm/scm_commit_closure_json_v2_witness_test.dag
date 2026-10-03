@@ -337,10 +337,11 @@ test fn scm_image_survives_serialization_to_text_and_back() -> Bool {
 // SHARING IS MEASURED ON THE ENCODED FORM, AND THE FIRST VERSION OF THIS CLAIM WAS NOT.
 //
 // It asserted that the DECODED store held two objects. That observation is structurally incapable of
-// failing: decode routes every object through insert_from_structure, and insert_derived answers the
-// idempotent arm for a record it already holds, so an encoder that inlined the shared atom once per
-// parent would still decode to exactly two objects. The claim would have been green whether or not
-// sharing survived -- measuring the deduplicator rather than the encoding.
+// failing: decode admits every object through the store-admission accumulator, whose
+// present-and-equal arm answers idempotently for a record it already holds, so an encoder that
+// inlined the shared atom once per parent would still decode to exactly two objects. The claim
+// would have been green whether or not sharing survived -- measuring the deduplicator rather than
+// the encoding.
 //
 // Counting entries in the emitted `objects` array is the measurement that can go red: an expanding
 // encoder writes three, a sharing one writes two.
