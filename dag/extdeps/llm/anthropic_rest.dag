@@ -14,26 +14,12 @@ import std.types { NonEmptyStr, Unit }
 import extdeps.api_rate_limit { UpstreamRateLimit, RateLimitPeriod, PerMinute }
 import std.resources { Network }
 import extdeps.ietf.http_semantics { POST }
-import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "docs.anthropic.com/en/api/messages"
+    locator: "docs.anthropic.com/en/docs/claude-code"
   }
-}
-
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
-      module_path: "extdeps.llm.anthropic_rest",
-      decl_name: "llm.Anthropic",
-      field: WholeDeclaration
-    }
-  },
-  first_citation: extdeps_external_authority_anchor,
-  further_citations: []
 }
 
 service llm.Anthropic {

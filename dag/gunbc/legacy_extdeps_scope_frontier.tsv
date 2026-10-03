@@ -20,6 +20,7 @@ dag/extdeps/bmc.dag
 dag/extdeps/bmc/http.dag
 dag/extdeps/bmc/openbmc.dag
 dag/extdeps/bmc/openbmc_fan_control.dag
+dag/extdeps/bmc/openbmc_operation.dag
 dag/extdeps/bmc/os_install_actuator_toolchain.dag
 dag/extdeps/bmc/redfish.dag
 dag/extdeps/bmc/serial_console.dag
@@ -194,6 +195,7 @@ dag/extdeps/linux/proc_meminfo.dag
 dag/extdeps/linux/usb_gadget.dag
 dag/extdeps/llm/anthropic.dag
 dag/extdeps/llm/anthropic_errors.dag
+dag/extdeps/llm/anthropic_rest.dag
 dag/extdeps/llm/cli.dag
 dag/extdeps/llm/cli_lifecycle.dag
 dag/extdeps/llm/codex_auth.dag
