@@ -29,7 +29,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // subject the floor's own reading by construction.
 data required_lane_resolution_census_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
-    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "ModuleIdentityPopulation", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_lane_resolution_census", decl_name: "ModuleIdentityPopulation", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_lane_resolution_census", decl_name: "source_root_ingest_module_identities", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_lane_resolution_census", decl_name: "required_floor_nominal_subject_module_identities", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_lane_resolution_census", decl_name: "entry_closure_module_identities", field: WholeDeclaration },
