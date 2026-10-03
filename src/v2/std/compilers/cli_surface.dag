@@ -134,7 +134,10 @@ type CliSurface sole_constructor { arguments: List<CliArgument> }
 // path, a hostname -- the gunbc.command_runner runner entry points and, added 2026-10-02
 // (session/witty-wren-554), gunbc.codex_app_server_press.codex_press_account_trip_invocation,
 // which holds the bundled Codex executable's projected path and the CODEX_HOME binding as argv
-// words riding shell.Exec.RunArgvStdin. It is enumerable on the fingers of one hand today, which
+// words riding shell.Exec.RunArgvStdin; and the same date's gunbc.host_effect_realize
+// run_argv_over_host_effect_transport / run_argv_stdin_over_host_effect_transport, which carry the
+// host-effect staging fold's extdeps-built commands over shell.Exec.RunArgv and RunArgvStdin. It
+// is enumerable on the fingers of one hand today, which
 // is what makes the restriction honest rather than aspirational. Adding another is an edit to
 // this list in the
 // declaring module: a conspicuous, counted review event rather than an import written elsewhere.
@@ -149,6 +152,14 @@ fn cli_surface_of_literal_words(words: List<String>) -> CliSurface
     decl_ref(
       module_path: "gunbc.codex_app_server_press",
       decl_name: "codex_press_account_trip_invocation",
+    ),
+    decl_ref(
+      module_path: "gunbc.host_effect_realize",
+      decl_name: "run_argv_over_host_effect_transport",
+    ),
+    decl_ref(
+      module_path: "gunbc.host_effect_realize",
+      decl_name: "run_argv_stdin_over_host_effect_transport",
     ),
   ]
   = CliSurface {

@@ -44,38 +44,26 @@ test fn witness_production_entry_point_selects_the_compile_pool_effect() -> Bool
   }
 }
 
-// The install body must not re-assemble the staging and install that gunbc.live_deploy.operations already
-// owns. These assert the delegation by its observable residue: the unit bytes reach the host through a
-// printf redirect built by deploy_stage_write_command, and the privileged copy through
-// deploy_stage_install_command -- so a hand-rolled `cat` heredoc or a hand-spelled `sudo -n install`
-// reds here. RED is authorable: the first draft of this function contained exactly those two.
-test fn witness_install_body_delegates_to_the_deploy_staging_authority() -> Bool {
-  let body = compile_pool_slice_install_body(
-    slice_unit: gunbc_managed_compile_pool_slice,
-    slice_unit_file: compile_pool_slice_unit_file(
-      slice_unit: gunbc_managed_compile_pool_slice,
-      sized: byte_size(17179869184),
-    ),
-  )
-  (string_contains(s: body, pattern: "<<") == false)
-    && (string_contains(s: body, pattern: "cat > ") == false)
-    && string_contains(s: body, pattern: "printf")
-    && string_contains(s: body, pattern: "/etc/systemd/system/")
-}
-
-// START, NEVER RESTART: stopping a slice kills every process in it, so a restart here would terminate the
-// compilers the pool exists to hold.
-test fn witness_install_body_starts_and_never_restarts_the_slice() -> Bool {
-  let body = compile_pool_slice_install_body(
-    slice_unit: gunbc_managed_compile_pool_slice,
-    slice_unit_file: compile_pool_slice_unit_file(
-      slice_unit: gunbc_managed_compile_pool_slice,
-      sized: byte_size(17179869184),
-    ),
-  )
-  string_contains(s: body, pattern: "systemctl")
-    && (string_contains(s: body, pattern: "restart") == false)
-}
+// THE SCRIPT TRANSPORT THESE TWO WITNESSES PROJECTED IS GONE: compile_pool_slice_install_body was
+// deleted with the shell transport and replaced by the typed staging fold
+// gunbc.host_effect_realize.compile_pool_slice_install_staging, so both witnesses lost their subject
+// and are retired here rather than restated against a shape that no longer exists. Where each
+// property went, by name:
+//
+//   DELEGATION (was witness_install_body_delegates_to_the_deploy_staging_authority): the property was
+//   "the body does not re-assemble what gunbc.live_deploy.operations owns" -- a property OF THE BODY,
+//   and there is no body. Its no-shell-control-word half is carried forward as the surface probe
+//   compile_pool_slice_install_surface_carries_no_shell_control_word
+//   (dag/test/claim/build_cache_endpoint_observe_test.dag), and every operation the fold names is
+//   argv-pinned by that module's positive control
+//   compile_pool_install_staging_preserves_install_semantics.
+//
+//   START, NEVER RESTART (was witness_install_body_starts_and_never_restarts_the_slice): stopping a
+//   slice kills every process in it, so a restart here would terminate the compilers the pool exists
+//   to hold. That same positive control exact-pins all five operation argvs, start's among them --
+//   ["/usr/bin/sudo","-n","systemctl","start","gunbc-compile-pool.slice"] -- so a restart would have
+//   to appear in one of five pinned vectors to exist at all; a second witness restating the pin would
+//   be a second authority for one fact.
 
 test fn witness_compile_pool_effect_routes_to_the_host_cell() -> Bool {
   match resolve_host_effect_cell(target: HostOs { node: srv1_host }, effect: EnsureCompilePoolSlice {}) {
