@@ -6365,10 +6365,41 @@ pub(crate) fn install_pure_producer_share(
     let mut admitted_nodes = Vec::new();
     let mut admitted_qualified: Vec<String> = Vec::new();
     let carried_producers: Vec<String> = carried_rows.iter().map(|r| r.producer.clone()).collect();
-    // THE ONLY PRODUCERS ADMITTED HERE ARE THE CARRIED-INPUT ONES. Plain pure producers are no
-    // longer a roster: they are derived from the planned claims' call-site demand once planning
-    // has fixed the claims (`derive_and_install_cross_claim_share`).
-    for qualified in carried_producers.iter() {
+    // The frozen runtime-identity residual: producers whose every call site carries arguments
+    // computed inside the claim, so the derivation cannot join their demand before the run. The
+    // population is closed in `.dag` (`FrozenRuntimeIdentityProducer`); the tier keys and verifies
+    // their fills by declaration and argument row like any other.
+    let residual_name = format!(
+        "{FLOOR_PURE_PRODUCER_SHARE_MODULE}.floor_cross_claim_runtime_identity_residual_producers"
+    );
+    let residual_producers: Vec<String> = {
+        let value = v1_interpreter::run_in_context(&roster_frame, &residual_name, false).map_err(
+            |e| {
+                format!(
+                    "REQUIRED-FLOOR REFUSAL cause=RuntimeIdentityResidualUnreadable --                      {residual_name} did not evaluate: {e}"
+                )
+            },
+        )?;
+        let items = v1_interpreter::list_value_items(&roster_frame, &value).ok_or_else(|| {
+            format!(
+                "REQUIRED-FLOOR REFUSAL cause=RuntimeIdentityResidualUnreadable --                  {residual_name} is not a list"
+            )
+        })?;
+        let mut out = Vec::new();
+        for item in &items {
+            let v1_interpreter::Value::Str(producer) = item else {
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=RuntimeIdentityResidualUnreadable --                      {residual_name} carries a member that is not a String"
+                ));
+            };
+            out.push(producer.to_string());
+        }
+        out
+    };
+    // THE PRODUCERS ADMITTED HERE ARE THE CARRIED-INPUT ONES AND THE FROZEN RESIDUAL. Plain pure
+    // producers are no longer a roster: they are derived from the planned claims' call-site
+    // demand once planning has fixed the claims (`derive_and_install_cross_claim_share`).
+    for qualified in carried_producers.iter().chain(residual_producers.iter()) {
         let (module, decl) = match qualified.rsplit_once('.') {
             Some((module, decl)) => (module.to_string(), decl),
             None => (qualified.clone(), qualified.as_str()),

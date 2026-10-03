@@ -112,7 +112,7 @@ struct Ledger {
     unattributed_hits: u64,
     /// The same hits by identity: (frame tag, phase, cache, key) -> count. The aggregate above
     /// stays the sum of these; this is what lets a reader disposition each one.
-    unattributed_by_key: BTreeMap<(&'static str, String, &'static str, String), u64>,
+    unattributed_by_key: BTreeMap<(SharedFillUnattributedFrame, String, &'static str, String), u64>,
 }
 
 thread_local! {
@@ -189,7 +189,12 @@ pub(crate) fn record_hit(cache: &'static str, key: &str) {
             ledger.unattributed_hits += 1;
             *ledger
                 .unattributed_by_key
-                .entry(("outside-fold", phase, cache, key.to_string()))
+                .entry((
+                    SharedFillUnattributedFrame::OutsideFold,
+                    phase,
+                    cache,
+                    key.to_string(),
+                ))
                 .or_default() += 1;
         });
         return;
@@ -211,7 +216,7 @@ pub(crate) fn record_hit(cache: &'static str, key: &str) {
                 *ledger
                     .unattributed_by_key
                     .entry((
-                        "in-claim-without-fill",
+                        SharedFillUnattributedFrame::InClaimWithoutFill,
                         "claim".to_string(),
                         cache,
                         key.to_string(),
@@ -294,14 +299,31 @@ pub(crate) fn render_shared_fill_total_text_mirror(
     )
 }
 
+/// Mirror of `gunbc.observation_ci_render` `SharedFillUnattributedFrame`: the closed set of frames
+/// an unattributed hit can be read in, so a tag is never passed as free text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum SharedFillUnattributedFrame {
+    OutsideFold,
+    InClaimWithoutFill,
+}
+
+/// Mirror of `gunbc.observation_ci_render` `shared_fill_unattributed_frame_tag`.
+fn shared_fill_unattributed_frame_tag(frame: SharedFillUnattributedFrame) -> &'static str {
+    match frame {
+        SharedFillUnattributedFrame::OutsideFold => "outside-fold",
+        SharedFillUnattributedFrame::InClaimWithoutFill => "in-claim-without-fill",
+    }
+}
+
 /// Mirror of `gunbc.observation_ci_render` `ci_shared_fill_unattributed_text`.
 pub(crate) fn render_shared_fill_unattributed_text_mirror(
-    frame: &str,
+    frame: SharedFillUnattributedFrame,
     phase: &str,
     cache: &str,
     key: &str,
     hits: u64,
 ) -> String {
+    let frame = shared_fill_unattributed_frame_tag(frame);
     format!(
         "[floor-shared-fill-unattributed] frame={frame} phase={phase} cache={cache} key={key} \
          hits={hits}"
@@ -385,7 +407,7 @@ pub(crate) fn report() -> String {
         }
         for ((frame, phase, cache, key), hits) in &ledger.unattributed_by_key {
             out.push_str(&render_shared_fill_unattributed_text_mirror(
-                frame, phase, cache, key, *hits,
+                *frame, phase, cache, key, *hits,
             ));
             out.push('\n');
         }
@@ -435,6 +457,31 @@ mod tests {
             render_shared_fill_total_text_mirror(9, 60000, 42000, 0),
             "[floor-shared-fill] TOTAL fills=9 fill_ms=60000 shared_fill_ms=42000 \
              unattributed_hits=0"
+        );
+        // The same two literals as `test.claim.observation_ci_render_witness_test`
+        // `w_shared_fill_unattributed_line_names_frame_phase_and_key`, one per frame arm.
+        assert_eq!(
+            render_shared_fill_unattributed_text_mirror(
+                SharedFillUnattributedFrame::OutsideFold,
+                "cross-claim-share-derivation",
+                "cross_claim_pure_share",
+                "rust_target_model_staging",
+                3,
+            ),
+            "[floor-shared-fill-unattributed] frame=outside-fold \
+             phase=cross-claim-share-derivation cache=cross_claim_pure_share \
+             key=rust_target_model_staging hits=3"
+        );
+        assert_eq!(
+            render_shared_fill_unattributed_text_mirror(
+                SharedFillUnattributedFrame::InClaimWithoutFill,
+                "claim",
+                "cross_claim_pure_share",
+                "prepare_grammar",
+                40,
+            ),
+            "[floor-shared-fill-unattributed] frame=in-claim-without-fill phase=claim \
+             cache=cross_claim_pure_share key=prepare_grammar hits=40"
         );
     }
 

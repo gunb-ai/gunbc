@@ -33,7 +33,7 @@ import v2.std.algebra { any, list_flat_map, list_map }
 // row, before it fit its enrolment margin. The roster is deleted. Admission is now the fold
 // below, over one observation row per COMPUTATION IDENTITY reached by the run's PLANNED claims:
 // a pure call reached by more than one planned claim with one closed identity is admitted, and
-// nothing else is. Because the observation is over the planned claims' reach, the admitted set
+// nothing else is -- save the five-member frozen residual below, whose identity exists only at run time. Because the observation is over the planned claims' reach, the admitted set
 // is also exactly what this run can demand -- a producer no planned claim reaches is never filled.
 //
 // THE KEY IS THE FULL COMPUTATION IDENTITY (std.computation_identity, DESIGN section 3b keys
@@ -1242,6 +1242,78 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     ]
   }
 ]
+
+// ── THE FROZEN RUNTIME-IDENTITY RESIDUAL ──────────────────────────────────────────────────
+//
+// WHAT THE DERIVATION DOES NOT REPRODUCE. Five producers of the deleted hand roster are called only
+// with arguments that are values computed inside the claim (a serialized node, a grammar row), so
+// every one of their call sites observes as `ArgumentNotClosedConstant` and the fold above can
+// neither prove nor refute that two claims demand one identity. The recurrence is real -- the
+// same script statements and grammar rows are demanded by many claims -- but it is a fact about
+// runtime argument values, and no argument row is fixed before the claim runs.
+//
+// DISPOSITION (sharp-raven-357, 2026-10-03): kept as a FROZEN residual, DESIGN section 3's
+// frozen-X carve-out -- no Y can hold this boundary yet, so X stays and takes no new rows. The
+// population is CLOSED: the members are the arms of `FrozenRuntimeIdentityProducer`, the data row
+// is derived from every arm, and the witness joins it by identity, so a sixth member is a refusal
+// rather than an append. A producer with non-closed arguments that is NOT one of these is counted
+// with its cause and never admitted.
+//
+// PURITY IS UNCHANGED BY THIS ROW. Admission here says only that the tier MAY retain the
+// producer's fills. Every fill is still keyed by the resolved declaration AND the full argument
+// row, and a hit is served only after the stored argument preimage is compared equal to the
+// caller's (std.computation_identity; the hand roster served these the same way -- keyed by
+// declaration and arguments, never by name alone).
+//
+// TRIGGER (the capability, DESIGN section 4b(3)): per-call runtime-argument demand identity
+// available to .dag (demand-engine M1.b). With it the observation carries these sites' identities
+// like any closed site, the fold decides them, and this residual is deleted whole.
+type FrozenRuntimeIdentityProducer
+  = BashFoldSerializeNode
+  | BashFoldRelationRowWitness
+  | GrammarRelationRowForEmitted
+  | FormalProductionsFromCatalogNode
+  | TargetProjectArrowBodyToValueExpression
+
+type RuntimeIdentityShareRow {
+  member: FrozenRuntimeIdentityProducer
+  producer: String
+  cause: CallSiteDemandCause
+}
+
+fn frozen_runtime_identity_producer_declaration(member: FrozenRuntimeIdentityProducer) -> String {
+  match member {
+    BashFoldSerializeNode => "v2.workflow.bash_command_fold_serialize.bash_fold_serialize_node"
+    BashFoldRelationRowWitness => "v2.extdeps.languages.bash_command_fold.bash_fold_relation_row_witness"
+    GrammarRelationRowForEmitted => "v2.compiler.target_serialize.grammar_relation_row_for_emitted"
+    FormalProductionsFromCatalogNode => "v2.std.grammar.formal_productions_from_catalog_node"
+    TargetProjectArrowBodyToValueExpression => "v2.std.compilers.target_model.target_project_arrow_body_to_value_expression"
+  }
+}
+
+fn runtime_identity_share_row(member: FrozenRuntimeIdentityProducer) -> RuntimeIdentityShareRow {
+  RuntimeIdentityShareRow {
+    member: member,
+    producer: frozen_runtime_identity_producer_declaration(member: member),
+    cause: ArgumentNotClosedConstant
+  }
+}
+
+data floor_cross_claim_runtime_identity_residual: List<RuntimeIdentityShareRow> = [
+  runtime_identity_share_row(member: BashFoldSerializeNode),
+  runtime_identity_share_row(member: BashFoldRelationRowWitness),
+  runtime_identity_share_row(member: GrammarRelationRowForEmitted),
+  runtime_identity_share_row(member: FormalProductionsFromCatalogNode),
+  runtime_identity_share_row(member: TargetProjectArrowBodyToValueExpression)
+]
+
+fn runtime_identity_residual_producers(rows: List<RuntimeIdentityShareRow>) -> List<String> {
+  list_map(xs: rows, f: fn(r) { r.producer })
+}
+
+fn floor_cross_claim_runtime_identity_residual_producers() -> List<String> {
+  runtime_identity_residual_producers(rows: floor_cross_claim_runtime_identity_residual)
+}
 
 // ── REFUSED CANDIDATES: THE ROWS THIS ROSTER MEASURED AND TURNED DOWN ─────────────────────
 //

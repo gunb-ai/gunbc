@@ -19,7 +19,9 @@ import v2.workflow.floor_pure_producer_share {
   SingleClaimFillDebtModule, SingleClaimFillDebtClaim, ActiveFillDebt, RetiredFillDebt, RestructuredPerWitnessRule,
   fill_debt_active_claims,
   derive_cross_claim_share, floor_cross_claim_share_derivation,
-  cross_claim_share_derivation_reconciles, derived_share_producers
+  cross_claim_share_derivation_reconciles, derived_share_producers,
+  RuntimeIdentityShareRow, floor_cross_claim_runtime_identity_residual,
+  floor_cross_claim_runtime_identity_residual_producers
 }
 import std.computation_identity { ComputationIdentity, NormalizedIdentical, IdentityUnknown, MissingConcept }
 import std.types { List }
@@ -278,6 +280,34 @@ test fn the_derivation_partitions_every_closed_observation() -> Bool {
   cross_claim_share_derivation_reconciles(observations: observations, derivation: d)
     && (length(xs: d.admitted) == 1)
     && (length(xs: d.declined) == 2)
+}
+
+// THE FROZEN RESIDUAL IS CLOSED, joined by IDENTITY and in both directions: each of the five
+// declarations the ruling names is a member, and the population has no sixth. The literals are the
+// ruling's own closed set (sharp-raven-357, 2026-10-03), not a measurement of this tree, so adding
+// a member reds here until the ruling itself changes.
+fn residual_has(producer: String) -> Bool {
+  length(xs: filter(xs: floor_cross_claim_runtime_identity_residual_producers(), predicate: fn(p) { p == producer })) == 1
+}
+
+test fn the_frozen_runtime_identity_residual_is_exactly_the_ruled_five() -> Bool {
+  residual_has(producer: "v2.workflow.bash_command_fold_serialize.bash_fold_serialize_node")
+    && residual_has(producer: "v2.extdeps.languages.bash_command_fold.bash_fold_relation_row_witness")
+    && residual_has(producer: "v2.compiler.target_serialize.grammar_relation_row_for_emitted")
+    && residual_has(producer: "v2.std.grammar.formal_productions_from_catalog_node")
+    && residual_has(producer: "v2.std.compilers.target_model.target_project_arrow_body_to_value_expression")
+    && (length(xs: floor_cross_claim_runtime_identity_residual_producers()) == 5)
+}
+
+// Every member carries the one cause that admits a producer to the residual: its arguments are
+// not closed constants. A row minted with any other cause is not a residual member.
+test fn every_residual_member_carries_the_non_closed_argument_cause() -> Bool {
+  length(xs: filter(xs: floor_cross_claim_runtime_identity_residual, predicate: fn(r) {
+    match r.cause {
+      ArgumentNotClosedConstant => false
+      _ => true
+    }
+  })) == 0
 }
 
 // THE LIVE POSITIVE CONTROL: the derivation the floor runs consults THIS TREE's refused rows. A
