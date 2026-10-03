@@ -19,6 +19,7 @@ import gunbc.dashboard_provider_readiness {
   ProviderRuntimeUnavailable,
 }
 import gunbc.host_layout { GunbcHostLayout }
+import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap_dashboard_instance {
   isolated_dashboard_instance,
   DashboardActuating,
@@ -163,6 +164,7 @@ fn witness_unplaced_executable_layout() -> GunbcHostLayout {
 test fn witness_red_control_observe_unplaced_executable_runs_the_producer() -> Bool {
   match observe_dashboard_provider_readiness(
     instance: isolated_dashboard_instance(
+      deployment: deployment_id(name: "witness-unplaced-provider" as NonEmptyStr),
       instance_id: "witness-unplaced-provider" as NonEmptyStr,
       layout: witness_unplaced_executable_layout(),
       root: "/witness/root" as FilePath,

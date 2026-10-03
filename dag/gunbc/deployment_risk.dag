@@ -1,0 +1,221 @@
+module gunbc.deployment_risk
+
+import std.types { String, NonEmptyStr, Int, List, Bool }
+import v2.std.collection { Present, Absent }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.ntfy.ntfy { NtfyTopic }
+import gunbc.auth.approval_notification { approval_ntfy_topic }
+import gunbc.auth.github_apps { DeclaredGitHubApp, gunbai_bot_declared }
+
+// DEPLOYMENT-RISK CONFORMANCE -- the home of the vocabulary the operator fixed on 2026-10-03
+// (side-chat ruling relayed by silent-lark-156). Three facts, kept apart (DESIGN 3):
+//
+//   1. WHICH deployment holds the prod role       -- ProdRoleSelection, one row, the only switch
+//   2. WHAT a class attaches to                   -- DeploymentExternalBindingSet, one per class
+//   3. WHAT harm a deployment could do if wrong   -- DeploymentHarmMagnitudeBet, a 4d bet
+//
+// The class is DERIVED from (1) and from nothing else. It is not authored on a deployment, it is
+// not inferred from a host name, "live", main, or a release stage, and the harm bet never decides
+// it: a bet that decided the class would be an estimate standing as a wall (DESIGN 4d).
+//
+// NOT IN THIS MODULE, deliberately: DeploymentReleaseStage (experiment, canary, serving, dark,
+// cut-over) is an independent axis. A canary on the prod deployment is a valid combination, so
+// folding stage into the class would be a meaning fork (DESIGN 3). It is the next candidate model
+// and has no carrier here.
+//
+// Machine qualification is a different subject. It shares DeploymentRiskClass only as what a
+// machine ADMITS (MachineQualificationPolicy { admits }); a machine is never itself ProdRisk and
+// never confers the prod role. That replacement of gunbc.machine_intake_phase
+// MachineOperatingEnvironment lands in its own one-motion migration on top of this module.
+
+// ── The subject ─────────────────────────────────────────────────────────────────────────────────
+// ONE CONVERGENCE SUBJECT whose desired state, mutable state and external attachments move
+// together. Not a host, a machine, a process, a release stage, or a dashboard instance_id: an
+// instance (gunbc.roadmap_dashboard_instance HostDashboardInstance) is a realization of a
+// deployment and carries this id, it does not stand for it. A record rather than a branded string
+// so equality is structural and cannot be satisfied by an unrelated string of the same spelling.
+type DeploymentId {
+  name: NonEmptyStr
+}
+
+fn deployment_id(name: NonEmptyStr) -> DeploymentId {
+  DeploymentId { name: name }
+}
+
+data srv1_daily_workspace_deployment: DeploymentId = DeploymentId { name: "srv1-daily-workspace" as NonEmptyStr }
+data srv1_lab_codex_feedback_deployment: DeploymentId = DeploymentId { name: "srv1-lab-codex-feedback" as NonEmptyStr }
+data srv2_preview_codex_feedback_deployment: DeploymentId = DeploymentId { name: "srv2-preview-codex-feedback" as NonEmptyStr }
+data srv2_deploy_deployment: DeploymentId = DeploymentId { name: "srv2-deploy" as NonEmptyStr }
+data srv2_lab_v1_deletion_deployment: DeploymentId = DeploymentId { name: "srv2-lab-v1-deletion" as NonEmptyStr }
+data macbook_local_deployment: DeploymentId = DeploymentId { name: "macbook-local" as NonEmptyStr }
+
+// ── The class ───────────────────────────────────────────────────────────────────────────────────
+// TWO POLES, because that is what the operator ruled ("prod is extreme risk, test is zero risk").
+// An ordered scale was considered and refused: every intermediate value would need a consequence
+// with a consumer (DESIGN 3c), and none exists. The magnitude lives on the bet, not here.
+type DeploymentRiskClass
+  = TestRisk
+  | ProdRisk
+
+// ── The switch ──────────────────────────────────────────────────────────────────────────────────
+// THE SOLE SWITCHABLE AUTHORITY. Moving prod, or turning it off, is an edit to this one row and
+// to nothing else: every role-following singleton (approval broker, fabric storage placement)
+// resolves through it. NoProdRole is a first-class arm, not an absent row, so "nothing is prod"
+// is a stated fact rather than a lookup that happened to miss.
+type ProdRoleSelection
+  = NoProdRole
+  | ProdRoleHeldBy { deployment: DeploymentId }
+
+// Initial value (operator, 2026-10-03): the srv1 daily-workspace dashboard deployment. Chosen
+// arbitrarily -- there are no external customers -- and expected to move.
+data prod_role_selection: ProdRoleSelection = ProdRoleHeldBy { deployment: srv1_daily_workspace_deployment }
+
+fn deployment_risk_class(selection: ProdRoleSelection, deployment: DeploymentId) -> DeploymentRiskClass {
+  match selection {
+    NoProdRole => TestRisk
+    ProdRoleHeldBy { deployment: holder } => if holder == deployment { ProdRisk } else { TestRisk }
+  }
+}
+
+// ── The bet ─────────────────────────────────────────────────────────────────────────────────────
+// A FERMI ORDER OF MAGNITUDE FOR THE HARM CONDITIONAL ON THE DEPLOYMENT DOING THE WRONG THING --
+// not a probability, not an SLA, and not the class. Harm is denominated in operator-hours to
+// recover, because time is the one value DESIGN 1 lets us assume is shared. ZeroHarm is its own
+// arm because a decade has no zero. Precedent for the typing: gunbc.spark.v41_capacity_measurement
+// V41ByteRangeBet, whose standing carries the reading that would settle it.
+type DeploymentHarmMagnitude
+  = ZeroHarm
+  | HarmDecade { log10_operator_hours: Int }
+
+type DeploymentHarmMagnitudeBet {
+  magnitude: DeploymentHarmMagnitude
+  standing: CitedFigureStanding
+}
+
+// ── The bindings ────────────────────────────────────────────────────────────────────────────────
+// THE EXTERNAL ATTACHMENTS OF EXACTLY ONE CLASS. A deployment reaches an external service only
+// through the set for its own derived class; if that exact set is absent it REFUSES. There is no
+// shared default, no merged namespace, and no arm that hands a TestRisk deployment the ProdRisk
+// set because the TestRisk one is missing -- that borrow is the absorbing fallback DESIGN 5 names.
+//
+// SCOPE AT THIS RUNG, stated so the type is not read as complete: the set carries the two
+// attachments the discriminating RED exercises -- the approval ntfy topic and the publication
+// GitHub App. The Codex account and home, admitted ref, R2/GCP/workload identity and OIDC client
+// join as fields in the split PRs that move each one (deployment-risk plan, deliverable 3), and
+// each of those PRs adds the TestRisk side or leaves its refusal standing.
+type DeploymentExternalBindingSet {
+  class: DeploymentRiskClass
+  approval_ntfy_topic: NtfyTopic
+  publication_app: DeclaredGitHubApp
+}
+
+// The ProdRisk set is today's single global binding, now named as the prod class's. NO TestRisk
+// set exists: no test-side topic or app has been provisioned, and minting one is an outward-facing
+// effect the operator approves first. So every TestRisk deployment refuses here, which is the
+// correct state until a test resource exists -- not a gap to paper over.
+data deployment_external_binding_sets: List<DeploymentExternalBindingSet> = [
+  DeploymentExternalBindingSet {
+    class: ProdRisk,
+    approval_ntfy_topic: approval_ntfy_topic,
+    publication_app: gunbai_bot_declared,
+  },
+]
+
+type DeploymentBindingResolution
+  = DeploymentBindingsResolved { deployment: DeploymentId, bindings: DeploymentExternalBindingSet }
+  | DeploymentBindingSetAbsent { deployment: DeploymentId, class: DeploymentRiskClass }
+  | DeploymentBindingSetAmbiguous { deployment: DeploymentId, class: DeploymentRiskClass, count: Int }
+
+fn binding_sets_for_class(
+  sets: List<DeploymentExternalBindingSet>,
+  class: DeploymentRiskClass,
+) -> List<DeploymentExternalBindingSet> {
+  filter(sets, s => s.class == class)
+}
+
+fn resolve_deployment_bindings(
+  selection: ProdRoleSelection,
+  sets: List<DeploymentExternalBindingSet>,
+  deployment: DeploymentId,
+) -> DeploymentBindingResolution {
+  let class = deployment_risk_class(selection: selection, deployment: deployment)
+  let exact = binding_sets_for_class(sets: sets, class: class)
+  match exact.first() {
+    Absent => DeploymentBindingSetAbsent { deployment: deployment, class: class }
+    Present { value: only } =>
+      if count(exact) == 1 {
+        DeploymentBindingsResolved { deployment: deployment, bindings: only }
+      } else {
+        DeploymentBindingSetAmbiguous { deployment: deployment, class: class, count: count(exact) }
+      }
+  }
+}
+
+// ── The interface ───────────────────────────────────────────────────────────────────────────────
+// WHAT EVERY CONVERGED DEPLOYMENT EXPOSES. It declares its identity and its harm bet; it consumes
+// its class and its bindings ONLY through deployment_risk_class and resolve_deployment_bindings
+// over prod_role_selection and deployment_external_binding_sets. The obligations a conforming
+// deployment carries, one per clause of the contract:
+//   - identity:  it names its DeploymentId and never another deployment's roots;
+//   - class:     it never authors a class; it derives one from prod_role_selection;
+//   - bindings:  every external attachment comes from its resolved set, never a literal;
+//   - refusal:   DeploymentBindingSetAbsent / Ambiguous stops the line, it never borrows;
+//   - retry:     its convergence is safe to re-run, and under today's operator policy it converges
+//                to AwaitingOperatorDisposition rather than self-repairing (gunbc#13124).
+// Not a DeploymentSpec (the desired realization convergence consumes), not an actuator, not a host
+// interface, not a release-stage model.
+type DeploymentRiskInterface {
+  deployment: DeploymentId
+  harm: DeploymentHarmMagnitudeBet
+}
+
+fn deployment_risk_interface_class(interface: DeploymentRiskInterface) -> DeploymentRiskClass {
+  deployment_risk_class(selection: prod_role_selection, deployment: interface.deployment)
+}
+
+fn deployment_risk_interface_bindings(interface: DeploymentRiskInterface) -> DeploymentBindingResolution {
+  resolve_deployment_bindings(
+    selection: prod_role_selection,
+    sets: deployment_external_binding_sets,
+    deployment: interface.deployment,
+  )
+}
+
+// THE BETS, one per deployment. Every one is TranscribedUncited: no incident cost has been
+// measured, and the read obligation names what would ground it. The daily workspace is the one
+// whose wrong action costs the operator's working day and the shared approval channel; the labs
+// and previews are disposable by construction. These values are bets and are consumed by nothing
+// that decides -- not the class, not a binding.
+fn uncited_harm_bet(magnitude: DeploymentHarmMagnitude, read_obligation: NonEmptyStr) -> DeploymentHarmMagnitudeBet {
+  DeploymentHarmMagnitudeBet { magnitude: magnitude, standing: TranscribedUncited { read_obligation: read_obligation } }
+}
+
+data deployment_risk_interfaces: List<DeploymentRiskInterface> = [
+  DeploymentRiskInterface {
+    deployment: srv1_daily_workspace_deployment,
+    harm: uncited_harm_bet(
+      magnitude: HarmDecade { log10_operator_hours: 1 },
+      read_obligation: "operator-hours to recover, summed over the wrong-instance incidents filed under gunbc.recurring_failure_mode a_test_deployment_acts_on_the_prod_deployments_state" as NonEmptyStr,
+    ),
+  },
+  DeploymentRiskInterface {
+    deployment: srv1_lab_codex_feedback_deployment,
+    harm: uncited_harm_bet(magnitude: ZeroHarm, read_obligation: "a retract-and-reprovision of the lab costing no operator time beyond the run" as NonEmptyStr),
+  },
+  DeploymentRiskInterface {
+    deployment: srv2_preview_codex_feedback_deployment,
+    harm: uncited_harm_bet(magnitude: ZeroHarm, read_obligation: "a retract-and-reprovision of the preview costing no operator time beyond the run" as NonEmptyStr),
+  },
+  DeploymentRiskInterface {
+    deployment: srv2_deploy_deployment,
+    harm: uncited_harm_bet(magnitude: ZeroHarm, read_obligation: "a retract-and-reprovision of srv2-deploy costing no operator time beyond the run" as NonEmptyStr),
+  },
+  DeploymentRiskInterface {
+    deployment: srv2_lab_v1_deletion_deployment,
+    harm: uncited_harm_bet(magnitude: ZeroHarm, read_obligation: "a retract-and-reprovision of the lab costing no operator time beyond the run" as NonEmptyStr),
+  },
+  DeploymentRiskInterface {
+    deployment: macbook_local_deployment,
+    harm: uncited_harm_bet(magnitude: ZeroHarm, read_obligation: "a reset of the macbook-local instance root costing no operator time beyond the run" as NonEmptyStr),
+  },
+]
