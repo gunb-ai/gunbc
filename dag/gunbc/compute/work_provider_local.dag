@@ -91,7 +91,9 @@ import extdeps.realization.materialization_store_local {
   LocalStoreInitialization, LocalStoreInitialized, LocalStoreInitializationRefused, LocalStoreOpening, LocalStoreOpened, LocalStoreUnavailable,
   LocalStoreUnavailableCause, LocalStoreGrantRefused, LocalStoreNotInitialized, LocalStoreMarkerUnrecognized, LocalStoreMarkerUnavailable,
   local_store_initialize, local_store_lookup, local_store_commit, local_store_family_budget, local_store_family_provider,
-  LocalStoreStagedPart, LocalStorePartsLookup, local_store_lookup_parts, local_store_part_name,
+  LocalStoreStagedPart, LocalStorePartsLookup, local_store_lookup_parts, local_store_part_name, LocalStoreFamilyBudget,
+}
+import gunbc.materialization_store_budgets { materialization_store_durable_family_budgets
 }
 import std.fabric_blob { FabricBlobReading, fabric_blob_reading_path }
 import gunbc.compute.work_request {
@@ -880,7 +882,7 @@ fn compute_return_outputs(instance: HostDashboardInstance, layout: ComputeLayout
 // the store root's path, never re-spelled. A staged file is named by the work identity and the
 // declared output, and is removed once the commit has linked it.
 fn compute_staging_dir() -> String {
-  join([materialization_store_root_path(root: compute_store_root), "-staging"], "")
+  join([materialization_store_root_path(root: compute_durable_store.root), "-staging"], "")
 }
 
 fn compute_staged_path(layout: ComputeLayout, declared: String) -> String {
@@ -1538,7 +1540,7 @@ data compute_stuck_reservation_remedy: String = "THE REMEDY IS compute_recover_c
 // decision.
 fn compute_read_stored_outcome(materialization: ComputeMaterialization) -> ComputeStoreRead {
   match materialization.plan {
-    ComputeMemoized => compute_store_read(root: materialization.root, req: materialization.request)
+    ComputeMemoized => compute_store_read(store: materialization.store, req: materialization.request)
     ComputeRecomputed { verdict: _ } => ComputeStoreNotConsulted
   }
 }
@@ -1629,7 +1631,15 @@ fn compute_lease_drop_record(dropped: LeaseDrop, layout: ComputeLayout) -> HostR
 // this provider used to install binaries into is deleted, so there is no second, unbounded home for
 // them.
 
-data compute_store_root: MaterializationStoreRoot = DurableHostVolumeRoot
+// THE STORE A COMPUTE REQUEST USES: a root and the budgets it is opened under. The budgets are policy
+// (gunbc.materialization_store_budgets), handed to the transport as a parameter; production uses the
+// one durable root under that layer's rows, and a witness supplies a scratch root with fixture rows.
+type ComputeStore {
+  root: MaterializationStoreRoot
+  budgets: List<LocalStoreFamilyBudget>
+}
+
+data compute_durable_store: ComputeStore = ComputeStore { root: DurableHostVolumeRoot, budgets: materialization_store_durable_family_budgets }
 
 data compute_requests_frame: Frame = Frame { name: "compute-host-requests", kind: UnboundedSiblingsFrame }
 
@@ -1642,7 +1652,7 @@ type ComputeMaterializationJudgment
   | ComputeMaterializationRefused { detail: String }
 
 type ComputeMaterialization {
-  root: MaterializationStoreRoot
+  store: ComputeStore
   request: ArtifactRequest
   plan: ComputeMaterializationPlan
 }
@@ -1651,7 +1661,7 @@ type ComputeMaterialization {
 // declares), so the ladder judges against exactly the bound that will hold the bytes; a family the
 // root declares no budget for has no provider and the ladder refuses.
 fn compute_store_providers(family: ArtifactKindId) -> List<std.materialization_ladder.CacheProvider> {
-  match local_store_family_budget(root: compute_store_root, family: family) {
+  match local_store_family_budget(budgets: compute_durable_store.budgets, family: family) {
     Present { value: b } => [local_store_family_provider(family: family, budget: b.budget)]
     Absent => []
   }
@@ -1718,15 +1728,15 @@ type ComputeStoreOpen
 
 // Initialization is idempotent (an existing marker opens as the store it names), so opening and
 // initializing are one call; a missing root refuses, it is never created elsewhere.
-fn compute_store_open(root: MaterializationStoreRoot) -> ComputeStoreOpen {
-  match local_store_initialize(root: root, instance_label: "gunbc-compute" as NonEmptyStr) {
+fn compute_store_open(store: ComputeStore) -> ComputeStoreOpen {
+  match local_store_initialize(root: store.root, instance_label: "gunbc-compute" as NonEmptyStr, budgets: store.budgets) {
     LocalStoreInitializationRefused { root_path, cause } => ComputeStoreOpenRefused { detail: join(["the materialization store at ", root_path, " could not be initialized: ", compute_store_unavailable_detail(c: cause)], "") }
     LocalStoreInitialized { opening } => ComputeStoreOpened { opening: opening }
   }
 }
 
-fn compute_store_read(root: MaterializationStoreRoot, req: ArtifactRequest) -> ComputeStoreRead {
-  match compute_store_open(root: root) {
+fn compute_store_read(store: ComputeStore, req: ArtifactRequest) -> ComputeStoreRead {
+  match compute_store_open(store: store) {
     ComputeStoreOpenRefused { detail } => ComputeStoreRefused { detail: detail }
     ComputeStoreOpened { opening } =>
       match opening {
@@ -1798,7 +1808,7 @@ fn compute_store_commit(materialization: ComputeMaterialization, layout: Compute
           if !log.success {
             ComputeCommitRefused { detail: join(["the run log at ", layout.log_path, " could not be read, and a record without its log is not the run that happened: ", log.error], "") }
           } else {
-            match compute_store_open(root: materialization.root) {
+            match compute_store_open(store: materialization.store) {
               ComputeStoreOpenRefused { detail } => ComputeCommitRefused { detail: detail }
               ComputeStoreOpened { opening } =>
                 match opening {
@@ -1806,7 +1816,7 @@ fn compute_store_commit(materialization: ComputeMaterialization, layout: Compute
                   LocalStoreOpened { root, store, durability: _, sweep: _ } =>
                     {
                       let parts = compute_binary_parts(layout: layout, op: op)
-                      let committed = local_store_commit(root: root, store: store, req: materialization.request, payloads: [
+                      let committed = local_store_commit(root: root, budgets: materialization.store.budgets, store: store, req: materialization.request, payloads: [
                         ArtifactPayload { id: output_compute_work_outcome, content: document },
                         ArtifactPayload { id: output_compute_work_log, content: log.content },
                         ArtifactPayload { id: output_compute_work_outputs, content: compute_outputs_manifest(outputs: outputs) },
@@ -1848,8 +1858,8 @@ type ComputeDependencyRead
   = ComputeDependencyResolved { dependency: ComputeDependency }
   | ComputeDependencyRefused { detail: String }
 
-fn compute_dependency_read(root: MaterializationStoreRoot, build: ArtifactRequest) -> ComputeDependencyRead {
-  match compute_store_open(root: root) {
+fn compute_dependency_read(store: ComputeStore, build: ArtifactRequest) -> ComputeDependencyRead {
+  match compute_store_open(store: store) {
     ComputeStoreOpenRefused { detail } => ComputeDependencyRefused { detail: detail }
     ComputeStoreOpened { opening } =>
       match opening {
@@ -1972,7 +1982,7 @@ fn compute_provide_leaf(
       compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: detail } }, subject: subject, op: op)
     ComputeMaterializationPlanned { plan } => {
       let layout = compute_layout(instance: instance, identity_hex: compute_execution_identity(identity: identity, plan: plan, occurrence: clock_now_probed_at_or_unknown() as String))
-      let materialization = ComputeMaterialization { root: compute_store_root, request: request, plan: plan }
+      let materialization = ComputeMaterialization { store: compute_durable_store, request: request, plan: plan }
       match compute_read_stored_outcome(materialization: materialization) {
         ComputeStoreServed { ending, identity: stored_identity, document } =>
           ProvideAttached { identity: stored_identity, ending: ending, document: document, host_record: HostRecordWritten }
@@ -2393,7 +2403,7 @@ fn compute_provide_dependent(instance: HostDashboardInstance, commit: String, su
   if provide_result_succeeded(r: build) {
     let build_identity = provide_result_identity(r: build)
     let identity = compute_work_identity(subject: subject, op: op, toolchain: toolchain)
-    match compute_dependency_read(root: compute_store_root, build: ComputeWorkRequest { subject: subject, operation: work_default_build(), toolchain: toolchain }) {
+    match compute_dependency_read(store: compute_durable_store, build: ComputeWorkRequest { subject: subject, operation: work_default_build(), toolchain: toolchain }) {
       ComputeDependencyRefused { detail } =>
         provide_result_with_host_record(
           r: compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: DependencyNotSucceeded { dependency_identity: build_identity, ending: join(["succeeded, but ", detail], "") } }, subject: subject, op: op),

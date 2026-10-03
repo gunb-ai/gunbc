@@ -7,7 +7,7 @@ import std.algebra { trim }
 import std.measure { kibibyte, kibibyte_count }
 import std.durable_compare_and_set { CasGeneration, cas_generation_count, cas_generation_first }
 import gunbc.compute.work_provider_local {
-  ComputeLayout, ComputeMaterialization, ComputeRecomputed, compute_open_attempt, compute_refused_after_open, NoComputeDependency, ComputeMemoized,
+  ComputeLayout, ComputeStore, ComputeMaterialization, ComputeRecomputed, compute_open_attempt, compute_refused_after_open, NoComputeDependency, ComputeMemoized,
   compute_store_commit, ComputeCommitted, ComputeCommitNotOwed, ComputeCommitRefused,
   compute_store_read, ComputeStoreServed, ComputeStoreAbsent, ComputeStoreRefused, ComputeStoreNotConsulted,
   compute_dependency_read, ComputeDependencyResolved, ComputeDependencyRefused, VerifiedBuildBinaries,
@@ -21,6 +21,9 @@ import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.compute.host_capacity { ComputeReservationRefused }
 import std.materialization_provider { ComputeWorkRequest }
 import std.materialization_store_grant { DurableHostVolumeRoot, WitnessScratchRoot }
+import extdeps.realization.materialization_store_local { LocalStoreFamilyBudget }
+import std.cache_identity { compute_work_artifact_kind }
+import std.measure { byte_size }
 import gunbc.compute.work_class_grant { work_class_grant, work_class_grant_rows, work_class_of }
 import extdeps.git.object_store { git_object_id_from_untagged_hex }
 import gunbc.compute.work_request {
@@ -448,7 +451,7 @@ test fn a_refused_reservation_closes_the_slot_it_was_taken_under() -> Bool {
 // turns this red.
 test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() -> Bool {
   let root_path = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_matstore.XXXXXX").path
-  let root = WitnessScratchRoot { root: root_path }
+  let root = ComputeStore { root: WitnessScratchRoot { root: root_path }, budgets: [LocalStoreFamilyBudget { family: compute_work_artifact_kind, budget: byte_size(count: 1048576) }] }
   let layout = ComputeLayout {
     root: root_path, work_dir: join([root_path, "/w"], ""), checkout: root_path, out_dir: root_path,
     leases_dir: root_path, lease_path: root_path, staging_dir: root_path, target_dir: root_path,
@@ -464,11 +467,11 @@ test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() 
     WorkOutput { declared: "release/claim_batch", blob: "b2" },
   ], log_path: layout.log_path }
   let committed = compute_store_commit(
-    materialization: ComputeMaterialization { root: root, request: request, plan: ComputeMemoized },
+    materialization: ComputeMaterialization { store: root, request: request, plan: ComputeMemoized },
     layout: layout, op: work_default_build(), outcome: outcome,
     document: work_outcome_wire(o: outcome, subject: ExactTree { tree: tree }, op: work_default_build()))
-  let served = compute_store_read(root: root, req: request)
-  let resolved = compute_dependency_read(root: root, build: request)
+  let served = compute_store_read(store: root, req: request)
+  let resolved = compute_dependency_read(store: root, build: request)
   let stage_left = Filesystem.Read(path: join([root_path, "/w.gunbc"], "")).success
   let removed = shell.Remove.RecursiveForce(path: root_path)
   log.success && g.success && c.success

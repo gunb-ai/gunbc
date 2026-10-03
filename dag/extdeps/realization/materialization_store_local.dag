@@ -14,7 +14,7 @@ import extdeps.filesystem.filesystem_io {
   filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused,
   FilesystemDirectorySubjectRefused, filesystem_listing_entry_names,
   FilesystemDelete, FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused,
-  FilesystemDeleteKindUnrecognized, filesystem_delete,
+  FilesystemDeleteKindUnrecognized, filesystem_delete, FilesystemListingObservation,
 }
 import std.decimal { decimal_digits_only }
 import std.fabric_blob {
@@ -61,27 +61,28 @@ import std.artifact_store {
   store_over_provider, store_put, StorePutOutcome, StorePutAdmitted, StorePutDidNotFit,
   store_get, StoreHit, StoreMiss, store_bytes_used,
 }
-import std.cache_identity { ArtifactKindId, typed_module_artifact_kind, native_module_verdict_bundle_artifact_kind, compute_work_artifact_kind }
+import std.cache_identity { ArtifactKindId }
 import std.measure { ByteSize, byte_size, measure_count }
 import std.bytes { utf8_encode_bytes, bytes_octets }
 import std.durable_compare_and_set {
   cas_attempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   ExpectSlotAbsent, ExpectSlotGeneration, CasExpectation,
   CasReadableAbsent, CasReadablePresent, CasObservedReadable, CasObservedUnreadable,
-  cas_unreadable_slot_detail,
+  cas_unreadable_slot_detail, CasUnreadableSlot, CasStoreFailure,
+  CasSlotObservationRefused, CasGenerationPublicationRefused, CasGenerationSpaceExhausted,
 }
 import gunbc.durable_cas_file_store {
   admit_cas_attempt, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable,
   file_compare_and_set, observe_cas_slot_state, DefaultAccessCreateOnly,
   CasSlotRetention, KeepGenerationWindow, cas_generation_window, CasGenerationWindowAdmitted, CasGenerationWindowTooNarrow,
-  CasWindowReclamation, CasReclamationNotCommitted,
+  CasWindowReclamation, CasReclamationNotCommitted, CasAttemptAdmission,
 }
 import std.materialization_provider {
   ArtifactRequest, request_key, request_kind, evaluation_store_address,
   Admitted, FamilyRefused
 }
 import std.materialization_store_grant {
-  MaterializationStoreRoot, DurableHostVolumeRoot, WitnessScratchRoot,
+  MaterializationStoreRoot,
   MaterializationStoreDurability,
   materialization_store_root_path,
   materialization_store_durability,
@@ -257,7 +258,7 @@ fn local_store_create_new(path: String, content: String) -> FilesystemCreateNew 
   filesystem_create_new(path: path, success: w.success, error: w.error, error_kind: w.error_kind)
 }
 
-fn local_store_open(root: MaterializationStoreRoot) -> LocalStoreOpening {
+fn local_store_open(root: MaterializationStoreRoot, budgets: List<LocalStoreFamilyBudget>) -> LocalStoreOpening {
   let root_path = materialization_store_root_path(root: root)
   match materialization_store_admissible(root: root, verb: Read) {
     Deny { refusal: _ } =>
@@ -272,7 +273,7 @@ fn local_store_open(root: MaterializationStoreRoot) -> LocalStoreOpening {
       ) {
         LocalStoreUnavailable { root_path: p, cause: c } => LocalStoreUnavailable { root_path: p, cause: c }
         LocalStoreOpened { root: r, store: st, durability: d, sweep: _ } =>
-          LocalStoreOpened { root: r, store: st, durability: d, sweep: local_store_sweep(root: r) }
+          LocalStoreOpened { root: r, store: st, durability: d, sweep: local_store_sweep(root: r, budgets: budgets) }
       }
   }
 }
@@ -284,7 +285,7 @@ type LocalStoreInitialization
 // Initialization publishes the marker create-new and then OPENS the store it created, so the
 // returned opening is the same observation every later open makes -- a marker written by a
 // concurrent initializer with a different label opens as THAT store, never as ours.
-fn local_store_initialize(root: MaterializationStoreRoot, instance_label: NonEmptyStr) -> LocalStoreInitialization {
+fn local_store_initialize(root: MaterializationStoreRoot, instance_label: NonEmptyStr, budgets: List<LocalStoreFamilyBudget>) -> LocalStoreInitialization {
   let root_path = materialization_store_root_path(root: root)
   match materialization_store_admissible(root: root, verb: Write) {
     Deny { refusal: _ } =>
@@ -299,8 +300,8 @@ fn local_store_initialize(root: MaterializationStoreRoot, instance_label: NonEmp
       )) {
         StoreObjectPublishRefused { fault: f } =>
           LocalStoreInitializationRefused { root_path: root_path, cause: LocalStoreMarkerUnavailable { fault: f } }
-        StoreObjectPublished => LocalStoreInitialized { opening: local_store_open(root: root) }
-        StoreObjectOccupied => LocalStoreInitialized { opening: local_store_open(root: root) }
+        StoreObjectPublished => LocalStoreInitialized { opening: local_store_open(root: root, budgets: budgets) }
+        StoreObjectOccupied => LocalStoreInitialized { opening: local_store_open(root: root, budgets: budgets) }
       }
   }
 }
@@ -316,66 +317,21 @@ fn local_store_initialize(root: MaterializationStoreRoot, instance_label: NonEmp
 // family's budget refuses (StoreCommitDidNotFit) without evicting anything, and no family evicts
 // another's entries -- each family's accounting is its own index.
 //
-// ONE ROOT PER HOST is structural: DurableHostVolumeRoot is a nullary arm naming one path
-// (std.materialization_store_grant materialization_store_durable_root_path), so the host-wide ceiling
-// is local_store_host_ceiling_bytes and nothing else; WitnessScratchRoot is the fixture arm and
-// carries the fixture budgets below.
+// THE BUDGET VALUES ARE NOT THIS MODULE'S FACT (DESIGN section 3: interface, realization and policy
+// are three facts). This transport owns the SHAPE of a family budget and how one is enforced; how many
+// bytes a host grants a family is policy, owned by the store's consumer and passed in. The durable
+// policy rows and the host ceiling are gunbc.materialization_store_budgets; a witness passes fixture
+// rows of its own. Every operation that admits, evicts or sweeps takes the rows as a parameter, so
+// revising a policy never edits this module.
 
 type LocalStoreFamilyBudget {
   family: ArtifactKindId
   budget: ByteSize
 }
 
-// POLICY, NAMED AS POLICY: 4 GiB for typed-module results per host. It is not derived from a
-// measurement -- the only measured predecessor stored closure snapshots of ~3.65 GB each, which is not
-// the per-module grain this store holds -- and its REVISION TRIGGER is the TypecheckModuleRequest
-// consumer (PR C2) measuring real per-module entries on the durable root.
-data local_store_typed_module_budget_policy: ByteSize = byte_size(count: 4294967296)
-
-// THE COMPUTE FAMILY'S BUDGET IS RETAINED RECORDS x RECORD SIZE, and both factors are named.
-// Retained records: a build's record must stay served for as long as a dependent compile or claim run
-// of the same tree is in flight, and a host runs at most gunbc.compute.host_capacity compute_pool_slots
-// (2) compute units at once, so at most two builds can be under an outstanding dependent obligation.
-// Record size: one release build of the default bins -- gunbc 38814272 + claim_batch 36982312 bytes
-// under rustc 1.93.0, measured 2026-10-03 by `cargo build --release -p v1-compiler --bin gunbc --bin
-// claim_batch` + `stat -c %s` on a BuildBuddy runner. The text parts (outcome, log, output manifest)
-// are a rounding error beside them. The binaries become byte parts of this record when the staged
-// byte-part realization lands (C1b); until then the budget over-reserves for text-only records, which
-// is the direction a ceiling may err. REVISION TRIGGER: the compute family's own commits measured
-// on the durable root (occupancy index), or a change to compute_pool_slots.
-data local_store_compute_work_record_size_measured: ByteSize = byte_size(count: 75796584)
-
-data local_store_compute_work_retained_records: Nat = 2
-
-data local_store_compute_work_budget_policy: ByteSize = byte_size(count: measure_count(m: local_store_compute_work_record_size_measured) * local_store_compute_work_retained_records)
-
-data local_store_durable_family_budgets: List<LocalStoreFamilyBudget> = [
-  LocalStoreFamilyBudget { family: typed_module_artifact_kind, budget: local_store_typed_module_budget_policy },
-  LocalStoreFamilyBudget { family: compute_work_artifact_kind, budget: local_store_compute_work_budget_policy },
-]
-
-// Fixture budgets for WitnessScratchRoot: small enough that a wet witness overruns them in a few
-// commits, so eviction and the fit refusal are reached by execution.
-data local_store_witness_family_budgets: List<LocalStoreFamilyBudget> = [
-  LocalStoreFamilyBudget { family: native_module_verdict_bundle_artifact_kind, budget: byte_size(count: 4096) },
-  LocalStoreFamilyBudget { family: typed_module_artifact_kind, budget: byte_size(count: 4096) },
-  LocalStoreFamilyBudget { family: compute_work_artifact_kind, budget: byte_size(count: 4096) },
-]
-
-// The budgets are a fact of the ROOT, derived from it rather than passed in by a caller.
-fn local_store_family_budgets(root: MaterializationStoreRoot) -> List<LocalStoreFamilyBudget> {
-  match root {
-    DurableHostVolumeRoot => local_store_durable_family_budgets
-    WitnessScratchRoot { root: _ } => local_store_witness_family_budgets
-  }
-}
-
 fn local_store_budget_sum(budgets: List<LocalStoreFamilyBudget>) -> ByteSize {
   byte_size(count: fold(budgets, init: 0, f: (acc, b) => acc + measure_count(m: b.budget)))
 }
-
-// The one host-wide figure: the sum of the durable root's declared family budgets.
-data local_store_host_ceiling_bytes: ByteSize = local_store_budget_sum(budgets: local_store_durable_family_budgets)
 
 fn local_store_family_provider(family: ArtifactKindId, budget: ByteSize) -> CacheProvider {
   provider_row(
@@ -390,8 +346,8 @@ fn local_store_family_provider(family: ArtifactKindId, budget: ByteSize) -> Cach
   )
 }
 
-fn local_store_family_budget(root: MaterializationStoreRoot, family: ArtifactKindId) -> LocalStoreFamilyBudget? {
-  local_store_family_budgets(root: root) |> filter(b => b.family == family) |> first
+fn local_store_family_budget(budgets: List<LocalStoreFamilyBudget>, family: ArtifactKindId) -> LocalStoreFamilyBudget? {
+  budgets |> filter(b => b.family == family) |> first
 }
 
 // The object's size is its UTF-8 byte count, the same quantity std.materialization_object payload_part
@@ -574,8 +530,8 @@ fn local_store_index_decode(content: String) -> LocalStoreIndexDecode {
   }
 }
 
-fn local_store_doomed_bytes(index: LocalStoreIndex) -> Int {
-  fold(index.doomed, init: 0, f: (acc, d) => acc + measure_count(m: d.bytes))
+fn local_store_doomed_bytes(doomed: List<LocalStoreDoomedRow>) -> ByteSize {
+  byte_size(count: fold(doomed, init: 0, f: (acc, d) => acc + measure_count(m: d.bytes)))
 }
 
 fn local_store_row_key(name: String) -> ContentHash {
@@ -621,20 +577,52 @@ fn local_store_index_retention() -> CasSlotRetention? {
   }
 }
 
+// WHY THE INDEX COULD NOT BE USED, typed and located, never prose: the CAS layer's own causes are
+// carried as they are, so a receipt names the slot observation, the attempt admission or the store
+// failure that stopped the line. local_store_index_refusal_text is the ONE place they become text,
+// and only because std.materialization_object's realization-agnostic refusal carries a String.
+type LocalStoreIndexRefusal
+  = LocalStoreIndexWindowTooNarrow { k: Int }
+  | LocalStoreIndexSlotUnreadable { cause: CasUnreadableSlot }
+  | LocalStoreIndexUndecodable { detail: String }
+  | LocalStoreIndexAttemptNotAdmitted { admission: CasAttemptAdmission }
+  | LocalStoreIndexStoreRefused { cause: CasStoreFailure }
+  | LocalStoreIndexContended { attempts: Int }
+
+fn local_store_index_refusal_text(refusal: LocalStoreIndexRefusal) -> String {
+  match refusal {
+    LocalStoreIndexWindowTooNarrow { k: k } => concat("the occupancy index window is narrower than its floor: k = ", k as String)
+    LocalStoreIndexSlotUnreadable { cause: c } => concat("the occupancy index could not be read: ", cas_unreadable_slot_detail(cause: c))
+    LocalStoreIndexUndecodable { detail: d } => concat("the occupancy index is corrupt: ", d)
+    LocalStoreIndexAttemptNotAdmitted { admission: a } => match a {
+      CasAttemptDigestMismatch { claimed: _, actual: _ } => "the occupancy index write was not admitted: its digest did not match its bytes"
+      CasAttemptDigestIncomparable { claimed: _, actual: _ } => "the occupancy index write was not admitted: its digests are of incomparable families"
+      CasAttemptKeyNotSlotAddressable { key: k } => concat("the occupancy index write was not admitted: key is not slot-addressable: ", k as String)
+      CasAttemptAdmitted { verified: _ } => "the occupancy index write was admitted"
+    }
+    LocalStoreIndexStoreRefused { cause: c } => match c {
+      CasSlotObservationRefused { cause: u } => concat("the occupancy index slot could not be observed for the write: ", cas_unreadable_slot_detail(cause: u))
+      CasGenerationPublicationRefused { detail: d } => concat("the occupancy index generation could not be published: ", d as String)
+      CasGenerationSpaceExhausted { head: _ } => "the occupancy index slot exhausted its generation space"
+    }
+    LocalStoreIndexContended { attempts: n } => concat("the occupancy index kept moving under concurrent writers past the attempt bound: ", n as String)
+  }
+}
+
 type LocalStoreIndexRead
   = LocalStoreIndexAt { index: LocalStoreIndex, expected: CasExpectation }
-  | LocalStoreIndexUnavailable { cause: String }
+  | LocalStoreIndexUnavailable { refusal: LocalStoreIndexRefusal }
 
 fn local_store_read_index(root_path: String, family: ArtifactKindId) -> LocalStoreIndexRead {
   match local_store_index_retention() {
-    Absent => LocalStoreIndexUnavailable { cause: "the occupancy index window is narrower than its floor" }
+    Absent => LocalStoreIndexUnavailable { refusal: LocalStoreIndexWindowTooNarrow { k: local_store_index_window_k } }
     Present { value: retention } =>
       match observe_cas_slot_state(root: root_path as NonEmptyStr, key: local_store_index_key(family: family), retention: retention) {
-        CasObservedUnreadable { cause: c } => LocalStoreIndexUnavailable { cause: concat("the occupancy index could not be read: ", cas_unreadable_slot_detail(cause: c)) }
+        CasObservedUnreadable { cause: c } => LocalStoreIndexUnavailable { refusal: LocalStoreIndexSlotUnreadable { cause: c } }
         CasObservedReadable { readable: r } => match r {
           CasReadableAbsent => LocalStoreIndexAt { index: local_store_empty_index, expected: ExpectSlotAbsent }
           CasReadablePresent { version: v } => match local_store_index_decode(content: v.value as String) {
-            LocalStoreIndexCorrupt { detail: d } => LocalStoreIndexUnavailable { cause: concat("the occupancy index is corrupt: ", d) }
+            LocalStoreIndexCorrupt { detail: d } => LocalStoreIndexUnavailable { refusal: LocalStoreIndexUndecodable { detail: d } }
             LocalStoreIndexDecoded { index: i } => LocalStoreIndexAt { index: i, expected: ExpectSlotGeneration { generation: v.generation } }
           }
         }
@@ -645,23 +633,23 @@ fn local_store_read_index(root_path: String, family: ArtifactKindId) -> LocalSto
 type LocalStoreIndexWrite
   = LocalStoreIndexWritten { reclamation: CasWindowReclamation }
   | LocalStoreIndexLostRace
-  | LocalStoreIndexWriteRefused { cause: String }
+  | LocalStoreIndexWriteRefused { refusal: LocalStoreIndexRefusal }
 
 fn local_store_write_index(root_path: String, family: ArtifactKindId, expected: CasExpectation, index: LocalStoreIndex) -> LocalStoreIndexWrite {
   let content = local_store_index_encode(index: index) as NonEmptyStr
   match local_store_index_retention() {
-    Absent => LocalStoreIndexWriteRefused { cause: "the occupancy index window is narrower than its floor" }
+    Absent => LocalStoreIndexWriteRefused { refusal: LocalStoreIndexWindowTooNarrow { k: local_store_index_window_k } }
     Present { value: retention } =>
       match admit_cas_attempt(attempt: cas_attempt(key: local_store_index_key(family: family), expected: expected, proposed: content, proposed_content: content_hash_of_value(value: content))) {
-        CasAttemptDigestMismatch { claimed: _, actual: _ } => LocalStoreIndexWriteRefused { cause: "the occupancy index digest did not match its bytes" }
-        CasAttemptDigestIncomparable { claimed: _, actual: _ } => LocalStoreIndexWriteRefused { cause: "the occupancy index digest was incomparable" }
-        CasAttemptKeyNotSlotAddressable { key: _ } => LocalStoreIndexWriteRefused { cause: "the occupancy index key is not slot-addressable" }
+        CasAttemptDigestMismatch { claimed: c, actual: a } => LocalStoreIndexWriteRefused { refusal: LocalStoreIndexAttemptNotAdmitted { admission: CasAttemptDigestMismatch { claimed: c, actual: a } } }
+        CasAttemptDigestIncomparable { claimed: c, actual: a } => LocalStoreIndexWriteRefused { refusal: LocalStoreIndexAttemptNotAdmitted { admission: CasAttemptDigestIncomparable { claimed: c, actual: a } } }
+        CasAttemptKeyNotSlotAddressable { key: k } => LocalStoreIndexWriteRefused { refusal: LocalStoreIndexAttemptNotAdmitted { admission: CasAttemptKeyNotSlotAddressable { key: k } } }
         CasAttemptAdmitted { verified: v } => {
           let write = file_compare_and_set(root: root_path as NonEmptyStr, publication: DefaultAccessCreateOnly, retention: retention, verified: v)
           match write.outcome {
             CasCommitted { committed: _ } => LocalStoreIndexWritten { reclamation: write.reclamation }
             CasPreconditionFailed { expected: _, observed: _ } => LocalStoreIndexLostRace
-            CasStoreRefused { cause: c } => LocalStoreIndexWriteRefused { cause: "the occupancy index write was refused by the store" }
+            CasStoreRefused { cause: c } => LocalStoreIndexWriteRefused { refusal: LocalStoreIndexStoreRefused { cause: c } }
           }
         }
       }
@@ -674,25 +662,35 @@ fn local_store_write_index(root_path: String, family: ArtifactKindId, expected: 
 // name doomed and its bytes charged. Every path below is store_path(root, name) for a name the
 // recognizer admitted, so a delete never reaches outside the root.
 
-fn local_store_delete_confirmed(root_path: String, name: String) -> Bool {
-  let path = store_path(root_path: root_path, name: name)
-  let d = Filesystem.Delete(path: path)
-  match filesystem_delete(path: path, success: d.success, error: d.error, error_kind: d.error_kind) {
-    FilesystemDeleted { path: _ } => true
-    FilesystemDeleteTargetAbsent { path: _ } => true
-    FilesystemDeleteRefused { path: _, kind: _, error: _ } => false
-    FilesystemDeleteKindUnrecognized { path: _, observed: _, error: _ } => false
-  }
-}
-
-// One delete, observed once, so a receipt splits its results instead of searching for them.
+// One delete, observed once, carrying the host's typed answer itself: a receipt can say a delete was
+// refused for permission, for another known kind, or for a kind the classifier does not recognize.
 type LocalStoreDeleteAttempt {
   name: String
-  confirmed: Bool
+  outcome: FilesystemDelete
 }
 
 fn local_store_delete_attempts(root_path: String, names: List<String>) -> List<LocalStoreDeleteAttempt> {
-  names |> map(n => LocalStoreDeleteAttempt { name: n, confirmed: local_store_delete_confirmed(root_path: root_path, name: n) })
+  names |> map(n => {
+    let path = store_path(root_path: root_path, name: n)
+    let d = Filesystem.Delete(path: path)
+    LocalStoreDeleteAttempt { name: n, outcome: filesystem_delete(path: path, success: d.success, error: d.error, error_kind: d.error_kind) }
+  })
+}
+
+// The split a caller needs, made by matching the outcome once per attempt: the names now GONE (deleted
+// or already absent), and the attempts that left bytes behind, with their typed outcomes intact.
+type LocalStoreDeleteSplit {
+  gone: List<String>
+  refused: List<LocalStoreDeleteAttempt>
+}
+
+fn local_store_delete_split(attempts: List<LocalStoreDeleteAttempt>) -> LocalStoreDeleteSplit {
+  fold(attempts, init: LocalStoreDeleteSplit { gone: [], refused: [] }, f: (acc, t) => match t.outcome {
+    FilesystemDeleted { path: _ } => LocalStoreDeleteSplit { gone: acc.gone |> list_push(t.name), refused: acc.refused }
+    FilesystemDeleteTargetAbsent { path: _ } => LocalStoreDeleteSplit { gone: acc.gone |> list_push(t.name), refused: acc.refused }
+    FilesystemDeleteRefused { path: _, kind: _, error: _ } => LocalStoreDeleteSplit { gone: acc.gone, refused: acc.refused |> list_push(t) }
+    FilesystemDeleteKindUnrecognized { path: _, observed: _, error: _ } => LocalStoreDeleteSplit { gone: acc.gone, refused: acc.refused |> list_push(t) }
+  })
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -709,35 +707,39 @@ fn local_store_delete_attempts(root_path: String, names: List<String>) -> List<L
 data local_store_reservation_attempt_bound: Int = 8
 
 type LocalStoreReservation
-  = LocalStoreReserved { evicted: List<LocalStoreDoomedRow>, retired: List<String>, reclamation: CasWindowReclamation }
+  = LocalStoreReserved { budget: ByteSize, evicted: List<LocalStoreDoomedRow>, retired: List<String>, reclamation: CasWindowReclamation }
   | LocalStoreReservationRefused { refusal: StoreCommitRefusal }
+  | LocalStoreReservationIndexRefused { refusal: LocalStoreIndexRefusal }
+  | LocalStoreReservationProviderRefused { construction: StoreConstruction }
+  | LocalStoreReservationNotAttempted
 
-fn local_store_reserve(root: MaterializationStoreRoot, family: ArtifactKindId, name: String, bytes: ByteSize, attempt: Int) -> LocalStoreReservation {
+fn local_store_reserve(root: MaterializationStoreRoot, budgets: List<LocalStoreFamilyBudget>, family: ArtifactKindId, name: String, bytes: ByteSize, attempt: Int) -> LocalStoreReservation {
   let root_path = materialization_store_root_path(root: root)
   if attempt > local_store_reservation_attempt_bound {
-    LocalStoreReservationRefused { refusal: StoreCommitOccupancyUnavailable { cause: "the occupancy index kept moving under concurrent writers past the attempt bound" } }
+    LocalStoreReservationIndexRefused { refusal: LocalStoreIndexContended { attempts: local_store_reservation_attempt_bound } }
   } else {
-    match local_store_family_budget(root: root, family: family) {
+    match local_store_family_budget(budgets: budgets, family: family) {
       Absent => LocalStoreReservationRefused { refusal: StoreCommitBudgetUndeclared { family: family } }
       Present { value: b } =>
         match store_over_provider(provider: local_store_family_provider(family: family, budget: b.budget)) {
-          StoreRefusedRetention { provider_id: _, declared: _, cause: _ } =>
-            LocalStoreReservationRefused { refusal: StoreCommitOccupancyUnavailable { cause: "the family's provider row does not construct a bounded store" } }
+          StoreRefusedRetention { provider_id: pid, declared: dcl, cause: why } =>
+            LocalStoreReservationProviderRefused { construction: StoreRefusedRetention { provider_id: pid, declared: dcl, cause: why } }
           StoreReady { store: ready } =>
             match local_store_read_index(root_path: root_path, family: family) {
-              LocalStoreIndexUnavailable { cause: c } => LocalStoreReservationRefused { refusal: StoreCommitOccupancyUnavailable { cause: c } }
+              LocalStoreIndexUnavailable { refusal: r } => LocalStoreReservationIndexRefused { refusal: r }
               LocalStoreIndexAt { index: index, expected: expected } => {
-                let cleanup = local_store_delete_records_confirmed(root_path: root_path, records: index.doomed |> map(d => d.name))
-                let gone = local_store_name_set(names: cleanup |> filter(t => t.confirmed) |> map(t => t.name))
+                let cleanup = local_store_delete_records(root_path: root_path, records: index.doomed |> map(d => d.name))
+                let cleanup_split = local_store_record_delete_split(attempts: cleanup)
+                let gone = local_store_name_set(names: cleanup_split.gone)
                 let still_doomed = index.doomed |> filter(d => !set_contains(gone, d.name))
-                let undeleted = fold(still_doomed, init: 0, f: (acc, d) => acc + measure_count(m: d.bytes))
+                let undeleted = measure_count(m: local_store_doomed_bytes(doomed: still_doomed))
                 let budget_total = measure_count(m: ready.budget)
                 let artifact = measure_count(m: bytes)
                 let live_names = local_store_name_set(names: index.rows |> map(r => r.name))
                 if artifact > budget_total {
                   LocalStoreReservationRefused { refusal: StoreCommitDidNotFit { artifact_bytes: bytes, budget: ready.budget } }
                 } else if set_contains(live_names, name) {
-                  LocalStoreReserved { evicted: [], retired: [], reclamation: CasReclamationNotCommitted }
+                  LocalStoreReserved { budget: ready.budget, evicted: [], retired: [], reclamation: CasReclamationNotCommitted }
                 } else if artifact > budget_total - undeleted {
                   LocalStoreReservationRefused { refusal: StoreCommitCleanupOutstanding { artifact_bytes: bytes, budget: ready.budget, undeleted: byte_size(count: undeleted) } }
                 } else {
@@ -757,9 +759,9 @@ fn local_store_reserve(root: MaterializationStoreRoot, family: ArtifactKindId, n
                       }
                       match local_store_write_index(root_path: root_path, family: family, expected: expected, index: next_index) {
                         LocalStoreIndexWritten { reclamation: rc } =>
-                          LocalStoreReserved { evicted: evicted_rows |> map(r => LocalStoreDoomedRow { name: r.name, bytes: r.bytes }), retired: cleanup |> filter(t => t.confirmed) |> map(t => t.name), reclamation: rc }
-                        LocalStoreIndexLostRace => local_store_reserve(root: root, family: family, name: name, bytes: bytes, attempt: attempt + 1)
-                        LocalStoreIndexWriteRefused { cause: c } => LocalStoreReservationRefused { refusal: StoreCommitOccupancyUnavailable { cause: c } }
+                          LocalStoreReserved { budget: ready.budget, evicted: evicted_rows |> map(r => LocalStoreDoomedRow { name: r.name, bytes: r.bytes }), retired: cleanup_split.gone, reclamation: rc }
+                        LocalStoreIndexLostRace => local_store_reserve(root: root, budgets: budgets, family: family, name: name, bytes: bytes, attempt: attempt + 1)
+                        LocalStoreIndexWriteRefused { refusal: r } => LocalStoreReservationIndexRefused { refusal: r }
                       }
                     }
                   }
@@ -780,14 +782,14 @@ type LocalStorePostPublish
   = LocalStoreStillLive
   | LocalStoreEvictedAndRemoved
   | LocalStoreEvictedAndDoomed
-  | LocalStorePostPublishUnavailable { cause: String }
+  | LocalStorePostPublishUnavailable { refusal: LocalStoreIndexRefusal }
 
 fn local_store_doom(root_path: String, family: ArtifactKindId, name: String, bytes: ByteSize, attempt: Int) -> LocalStorePostPublish {
   if attempt > local_store_reservation_attempt_bound {
-    LocalStorePostPublishUnavailable { cause: "the occupancy index kept moving under concurrent writers past the attempt bound" }
+    LocalStorePostPublishUnavailable { refusal: LocalStoreIndexContended { attempts: local_store_reservation_attempt_bound } }
   } else {
     match local_store_read_index(root_path: root_path, family: family) {
-      LocalStoreIndexUnavailable { cause: c } => LocalStorePostPublishUnavailable { cause: c }
+      LocalStoreIndexUnavailable { refusal: r } => LocalStorePostPublishUnavailable { refusal: r }
       LocalStoreIndexAt { index: index, expected: expected } =>
         if index.rows |> any(r => r.name == name) {
           LocalStoreStillLive
@@ -798,7 +800,7 @@ fn local_store_doom(root_path: String, family: ArtifactKindId, name: String, byt
           match local_store_write_index(root_path: root_path, family: family, expected: expected, index: next_index) {
             LocalStoreIndexWritten { reclamation: _ } => LocalStoreEvictedAndDoomed
             LocalStoreIndexLostRace => local_store_doom(root_path: root_path, family: family, name: name, bytes: bytes, attempt: attempt + 1)
-            LocalStoreIndexWriteRefused { cause: c } => LocalStorePostPublishUnavailable { cause: c }
+            LocalStoreIndexWriteRefused { refusal: r } => LocalStorePostPublishUnavailable { refusal: r }
           }
         }
     }
@@ -807,11 +809,11 @@ fn local_store_doom(root_path: String, family: ArtifactKindId, name: String, byt
 
 fn local_store_post_publish(root_path: String, family: ArtifactKindId, name: String, bytes: ByteSize) -> LocalStorePostPublish {
   match local_store_read_index(root_path: root_path, family: family) {
-    LocalStoreIndexUnavailable { cause: c } => LocalStorePostPublishUnavailable { cause: c }
+    LocalStoreIndexUnavailable { refusal: r } => LocalStorePostPublishUnavailable { refusal: r }
     LocalStoreIndexAt { index: index, expected: _ } =>
       if index.rows |> any(r => r.name == name) {
         LocalStoreStillLive
-      } else if local_store_delete_records_confirmed(root_path: root_path, records: [name]) |> all(t => t.confirmed) {
+      } else if count(local_store_record_delete_split(attempts: local_store_delete_records(root_path: root_path, records: [name])).refused) == 0 {
         LocalStoreEvictedAndRemoved
       } else {
         local_store_doom(root_path: root_path, family: family, name: name, bytes: bytes, attempt: 1)
@@ -842,23 +844,69 @@ fn local_store_is_part_of(name: String, record: String) -> Bool {
 // A RECORD IS GONE only when the record file and every part file the root lists under it are gone,
 // each confirmed by the host. The record goes first, so no reader serves a record whose parts are
 // going; one listing serves every record in the call. A listing the host refuses confirms nothing, so
-// every record in the call stays doomed and charged rather than being assumed partless.
-fn local_store_delete_records_confirmed(root_path: String, records: List<String>) -> List<LocalStoreDeleteAttempt> {
+// every record in the call stays doomed and charged rather than being assumed partless. Each record's
+// answer is TYPED: which file the host refused and how, or that the root could not be listed.
+type LocalStoreRecordDelete
+  = LocalStoreRecordGone
+  | LocalStoreRecordFileRefused { attempt: LocalStoreDeleteAttempt }
+  | LocalStoreRecordPartsRefused { parts: List<LocalStoreDeleteAttempt> }
+  | LocalStoreRecordPartsUnlisted { listing: FilesystemListingObservation }
+
+type LocalStoreRecordDeleteAttempt {
+  name: String
+  outcome: LocalStoreRecordDelete
+}
+
+type LocalStoreRecordDeleteSplit {
+  gone: List<String>
+  refused: List<LocalStoreRecordDeleteAttempt>
+}
+
+fn local_store_record_delete_split(attempts: List<LocalStoreRecordDeleteAttempt>) -> LocalStoreRecordDeleteSplit {
+  fold(attempts, init: LocalStoreRecordDeleteSplit { gone: [], refused: [] }, f: (acc, t) => match t.outcome {
+    LocalStoreRecordGone => LocalStoreRecordDeleteSplit { gone: acc.gone |> list_push(t.name), refused: acc.refused }
+    LocalStoreRecordFileRefused { attempt: _ } => LocalStoreRecordDeleteSplit { gone: acc.gone, refused: acc.refused |> list_push(t) }
+    LocalStoreRecordPartsRefused { parts: _ } => LocalStoreRecordDeleteSplit { gone: acc.gone, refused: acc.refused |> list_push(t) }
+    LocalStoreRecordPartsUnlisted { listing: _ } => LocalStoreRecordDeleteSplit { gone: acc.gone, refused: acc.refused |> list_push(t) }
+  })
+}
+
+// One refused part filed under its record: one map lookup per refused part, never a scan.
+fn local_store_group_refused_part(by_record: Map<String, List<LocalStoreDeleteAttempt>>, attempt: LocalStoreDeleteAttempt) -> Map<String, List<LocalStoreDeleteAttempt>> {
+  let r = local_store_record_of(name: attempt.name)
+  match map_get(by_record, r) {
+    Present { value: xs } => map_insert(by_record, r, xs |> list_push(attempt))
+    Absent => map_insert(by_record, r, [attempt])
+  }
+}
+
+fn local_store_delete_records(root_path: String, records: List<String>) -> List<LocalStoreRecordDeleteAttempt> {
   if count(records) == 0 { [] } else {
-    let record_attempts = local_store_delete_attempts(root_path: root_path, names: records)
+    let record_split = local_store_delete_split(attempts: local_store_delete_attempts(root_path: root_path, names: records))
+    let record_refused: Map<String, LocalStoreDeleteAttempt> = fold(record_split.refused, init: empty_map(), f: (m, t) => map_insert(m, t.name, t))
     let listing = Filesystem.List(path: root_path)
-    match filesystem_listing_observation(directory: root_path, success: listing.success, entries: listing.entries, error: listing.error) {
+    let observed = filesystem_listing_observation(directory: root_path, success: listing.success, entries: listing.entries, error: listing.error)
+    match observed {
       FilesystemDirectoryListed(listed) => {
         let wanted = local_store_name_set(names: records)
-        let part_attempts = local_store_delete_attempts(
+        let part_split = local_store_delete_split(attempts: local_store_delete_attempts(
           root_path: root_path,
           names: filesystem_listing_entry_names(listing: listed) |> filter(n => local_store_is_part_name(name: n) && set_contains(wanted, local_store_record_of(name: n)))
-        )
-        let parts_left = local_store_name_set(names: part_attempts |> filter(t => !t.confirmed) |> map(t => local_store_record_of(name: t.name)))
-        record_attempts |> map(t => LocalStoreDeleteAttempt { name: t.name, confirmed: t.confirmed && !set_contains(parts_left, t.name) })
+        ))
+        let parts_refused: Map<String, List<LocalStoreDeleteAttempt>> = fold(part_split.refused, init: empty_map(), f: (m, t) => local_store_group_refused_part(by_record: m, attempt: t))
+        records |> map(r => LocalStoreRecordDeleteAttempt {
+          name: r,
+          outcome: match map_get(record_refused, r) {
+            Present { value: t } => LocalStoreRecordFileRefused { attempt: t }
+            Absent => match map_get(parts_refused, r) {
+              Present { value: ps } => LocalStoreRecordPartsRefused { parts: ps }
+              Absent => LocalStoreRecordGone
+            }
+          }
+        })
       }
-      FilesystemDirectoryListingRefused { directory: _, error: _ } => records |> map(r => LocalStoreDeleteAttempt { name: r, confirmed: false })
-      FilesystemDirectorySubjectRefused { directory: _, cause: _ } => records |> map(r => LocalStoreDeleteAttempt { name: r, confirmed: false })
+      FilesystemDirectoryListingRefused { directory: _, error: _ } => records |> map(r => LocalStoreRecordDeleteAttempt { name: r, outcome: LocalStoreRecordPartsUnlisted { listing: observed } })
+      FilesystemDirectorySubjectRefused { directory: _, cause: _ } => records |> map(r => LocalStoreRecordDeleteAttempt { name: r, outcome: LocalStoreRecordPartsUnlisted { listing: observed } })
     }
   }
 }
@@ -873,37 +921,48 @@ fn local_store_delete_records_confirmed(root_path: String, records: List<String>
 
 // LocalStoreSweepNotRun: the pure open decision never touches the filesystem, so it reports the
 // sweep as not run; the effectful local_store_open runs it once the marker has opened the store.
+// Why a sweep did not run, typed: the root's listing observation as the filesystem layer gave it, or
+// the family whose index could not be read with that index's typed refusal.
+type LocalStoreSweepRefusal
+  = LocalStoreSweepListingRefused { listing: FilesystemListingObservation }
+  | LocalStoreSweepIndexRefused { family: ArtifactKindId, refusal: LocalStoreIndexRefusal }
+
 type LocalStoreSweep
-  = LocalStoreSwept { removed: List<String>, delete_refused: List<String> }
-  | LocalStoreSweepUnavailable { cause: String }
+  = LocalStoreSwept { removed: List<String>, delete_refused: List<LocalStoreDeleteAttempt> }
+  | LocalStoreSweepUnavailable { refusal: LocalStoreSweepRefusal }
   | LocalStoreSweepNotRun
 
-fn local_store_indexed_names(root: MaterializationStoreRoot) -> List<String>? {
+type LocalStoreIndexedNames
+  = LocalStoreIndexedNamesRead { names: List<String> }
+  | LocalStoreIndexedNamesRefused { family: ArtifactKindId, refusal: LocalStoreIndexRefusal }
+
+fn local_store_indexed_names(root: MaterializationStoreRoot, budgets: List<LocalStoreFamilyBudget>) -> LocalStoreIndexedNames {
   let root_path = materialization_store_root_path(root: root)
-  fold(local_store_family_budgets(root: root), init: Present { value: [] }, f: (acc, b) => match acc {
-    Absent => none
-    Present { value: names } => match local_store_read_index(root_path: root_path, family: b.family) {
-      LocalStoreIndexUnavailable { cause: _ } => none
-      LocalStoreIndexAt { index: i, expected: _ } => Present { value: concat(concat(names, i.rows |> map(r => r.name)), i.doomed |> map(d => d.name)) }
+  fold(budgets, init: LocalStoreIndexedNamesRead { names: [] }, f: (acc, b) => match acc {
+    LocalStoreIndexedNamesRefused { family: f, refusal: r } => LocalStoreIndexedNamesRefused { family: f, refusal: r }
+    LocalStoreIndexedNamesRead { names: names } => match local_store_read_index(root_path: root_path, family: b.family) {
+      LocalStoreIndexUnavailable { refusal: r } => LocalStoreIndexedNamesRefused { family: b.family, refusal: r }
+      LocalStoreIndexAt { index: i, expected: _ } => LocalStoreIndexedNamesRead { names: concat(concat(names, i.rows |> map(r => r.name)), i.doomed |> map(d => d.name)) }
     }
   })
 }
 
-fn local_store_sweep(root: MaterializationStoreRoot) -> LocalStoreSweep {
+fn local_store_sweep(root: MaterializationStoreRoot, budgets: List<LocalStoreFamilyBudget>) -> LocalStoreSweep {
   let root_path = materialization_store_root_path(root: root)
   let listing = Filesystem.List(path: root_path)
-  match filesystem_listing_observation(directory: root_path, success: listing.success, entries: listing.entries, error: listing.error) {
-    FilesystemDirectorySubjectRefused { directory: _, cause: c } => LocalStoreSweepUnavailable { cause: c }
-    FilesystemDirectoryListingRefused { directory: _, error: e } => LocalStoreSweepUnavailable { cause: e }
+  let observed = filesystem_listing_observation(directory: root_path, success: listing.success, entries: listing.entries, error: listing.error)
+  match observed {
+    FilesystemDirectorySubjectRefused { directory: _, cause: _ } => LocalStoreSweepUnavailable { refusal: LocalStoreSweepListingRefused { listing: observed } }
+    FilesystemDirectoryListingRefused { directory: _, error: _ } => LocalStoreSweepUnavailable { refusal: LocalStoreSweepListingRefused { listing: observed } }
     FilesystemDirectoryListed(listed) =>
-      match local_store_indexed_names(root: root) {
-        Absent => LocalStoreSweepUnavailable { cause: "a family's occupancy index could not be read, so no object is swept" }
-        Present { value: indexed } => {
+      match local_store_indexed_names(root: root, budgets: budgets) {
+        LocalStoreIndexedNamesRefused { family: f, refusal: r } => LocalStoreSweepUnavailable { refusal: LocalStoreSweepIndexRefused { family: f, refusal: r } }
+        LocalStoreIndexedNamesRead { names: indexed } => {
           let indexed_set = local_store_name_set(names: indexed)
           let orphans = filesystem_listing_entry_names(listing: listed)
             |> filter(n => local_store_is_store_file_name(name: n) && !set_contains(indexed_set, local_store_record_of(name: n)))
-          let attempts = local_store_delete_attempts(root_path: root_path, names: orphans)
-          LocalStoreSwept { removed: attempts |> filter(t => t.confirmed) |> map(t => t.name), delete_refused: attempts |> filter(t => !t.confirmed) |> map(t => t.name) }
+          let split = local_store_delete_split(attempts: local_store_delete_attempts(root_path: root_path, names: orphans))
+          LocalStoreSwept { removed: split.gone, delete_refused: split.refused }
         }
       }
   }
@@ -918,12 +977,13 @@ fn local_store_sweep(root: MaterializationStoreRoot) -> LocalStoreSweep {
 type LocalStoreRecency
   = LocalStoreRecencyRecorded { family: ArtifactKindId, bumped: Int }
   | LocalStoreRecencyNothingToRecord { family: ArtifactKindId }
-  | LocalStoreRecencyLost { family: ArtifactKindId, cause: String }
+  | LocalStoreRecencyLost { family: ArtifactKindId, refusal: LocalStoreIndexRefusal }
+  | LocalStoreRecencyRaced { family: ArtifactKindId }
 
 fn local_store_record_recency(root: MaterializationStoreRoot, family: ArtifactKindId, served: List<String>) -> LocalStoreRecency {
   let root_path = materialization_store_root_path(root: root)
   match local_store_read_index(root_path: root_path, family: family) {
-    LocalStoreIndexUnavailable { cause: c } => LocalStoreRecencyLost { family: family, cause: c }
+    LocalStoreIndexUnavailable { refusal: r } => LocalStoreRecencyLost { family: family, refusal: r }
     LocalStoreIndexAt { index: index, expected: expected } => {
       let names = index.rows |> map(r => r.name)
       let held = local_store_name_set(names: names)
@@ -935,8 +995,8 @@ fn local_store_record_recency(root: MaterializationStoreRoot, family: ArtifactKi
         })
         match local_store_write_index(root_path: root_path, family: family, expected: expected, index: local_store_index_of(store: bumped, names: names, doomed: index.doomed)) {
           LocalStoreIndexWritten { reclamation: _ } => LocalStoreRecencyRecorded { family: family, bumped: count(hits) }
-          LocalStoreIndexLostRace => LocalStoreRecencyLost { family: family, cause: "another writer moved the index first" }
-          LocalStoreIndexWriteRefused { cause: c } => LocalStoreRecencyLost { family: family, cause: c }
+          LocalStoreIndexLostRace => LocalStoreRecencyRaced { family: family }
+          LocalStoreIndexWriteRefused { refusal: r } => LocalStoreRecencyLost { family: family, refusal: r }
         }
       }
     }
@@ -1038,19 +1098,33 @@ fn local_store_lookup(root: MaterializationStoreRoot, store: OpenedMaterializati
 }
 
 // THE COMMIT RECEIPT carries what the bound did beside the store-level commit: the names this commit
-// evicted, the evicted names whose delete the host did not confirm (they stay doomed and CHARGED until
-// a later reservation confirms them gone), the doomed names this commit's reservation retired, and the
-// index slot's own generation reclamation.
+// evicted, the eviction deletes the host did not confirm WITH their typed outcomes (those names stay
+// doomed and CHARGED until a later reservation confirms them gone), the doomed names this commit's
+// reservation retired, the index slot's own generation reclamation, and -- when the occupancy index
+// stopped the commit -- its typed refusal (the store-level StoreCommitOccupancyUnavailable carries
+// only its rendering, because std.materialization_object is realization-agnostic).
 type LocalStoreCommit {
   commit: StoreCommit
   evicted: List<String>
-  eviction_delete_refused: List<String>
+  eviction_delete_refused: List<LocalStoreRecordDeleteAttempt>
   retired: List<String>
   index_reclamation: CasWindowReclamation
+  index_refusal: LocalStoreIndexRefusal?
 }
 
 fn local_store_commit_refused(commit: StoreCommit) -> LocalStoreCommit {
-  LocalStoreCommit { commit: commit, evicted: [], eviction_delete_refused: [], retired: [], index_reclamation: CasReclamationNotCommitted }
+  LocalStoreCommit { commit: commit, evicted: [], eviction_delete_refused: [], retired: [], index_reclamation: CasReclamationNotCommitted, index_refusal: none }
+}
+
+fn local_store_commit_index_refused(key: ContentHash, refusal: LocalStoreIndexRefusal) -> LocalStoreCommit {
+  LocalStoreCommit {
+    commit: StoreCommitRefused { key: key, refusal: StoreCommitOccupancyUnavailable { cause: local_store_index_refusal_text(refusal: refusal) } },
+    evicted: [],
+    eviction_delete_refused: [],
+    retired: [],
+    index_reclamation: CasReclamationNotCommitted,
+    index_refusal: Present { value: refusal }
+  }
 }
 
 // THE SECOND HALF OF A COMMIT, after its reservation: delete what the reservation evicted, and ONLY
@@ -1073,20 +1147,25 @@ fn local_store_publish_reserved(
     StoreCommitPrepared { key: k, object_name: name, object: object, offered_digest: offered, offered_result: offered_result } =>
       match reservation {
         LocalStoreReservationRefused { refusal: r } => local_store_commit_refused(commit: StoreCommitRefused { key: k, refusal: r })
-        LocalStoreReserved { evicted: evicted, retired: retired, reclamation: rc } => {
+        LocalStoreReservationIndexRefused { refusal: r } => local_store_commit_index_refused(key: k, refusal: r)
+        LocalStoreReservationProviderRefused { construction: _ } =>
+          local_store_commit_refused(commit: StoreCommitRefused { key: k, refusal: StoreCommitOccupancyUnavailable { cause: concat("the family's provider row does not construct a bounded store: ", request_kind(req: req) as String) } })
+        LocalStoreReservationNotAttempted =>
+          local_store_commit_refused(commit: StoreCommitRefused { key: k, refusal: StoreCommitOccupancyUnavailable { cause: "a prepared commit was given no reservation attempt" } })
+        LocalStoreReserved { budget: budget, evicted: evicted, retired: retired, reclamation: rc } => {
           let bytes = byte_size(count: measure_count(m: local_store_object_bytes(object: object)) + local_store_parts_bytes(parts: blobs))
-          let deletes = local_store_delete_records_confirmed(root_path: root_path, records: evicted |> map(e => e.name))
-          let unconfirmed = deletes |> filter(t => !t.confirmed) |> map(t => t.name)
-          let unconfirmed_set = local_store_name_set(names: unconfirmed)
-          if count(unconfirmed) > 0 {
-            let undeleted = fold(evicted |> filter(e => set_contains(unconfirmed_set, e.name)), init: 0, f: (acc, e) => acc + measure_count(m: e.bytes))
-            let budget = match local_store_family_budget(root: root, family: request_kind(req: req)) { Present { value: b } => b.budget Absent => byte_size(count: 0) }
+          let deletes = local_store_delete_records(root_path: root_path, records: evicted |> map(e => e.name))
+          let split = local_store_record_delete_split(attempts: deletes)
+          let unconfirmed_set = local_store_name_set(names: split.refused |> map(t => t.name))
+          if count(split.refused) > 0 {
+            let undeleted = local_store_doomed_bytes(doomed: evicted |> filter(e => set_contains(unconfirmed_set, e.name)))
             LocalStoreCommit {
-              commit: StoreCommitRefused { key: k, refusal: StoreCommitCleanupOutstanding { artifact_bytes: bytes, budget: budget, undeleted: byte_size(count: undeleted) } },
+              commit: StoreCommitRefused { key: k, refusal: StoreCommitCleanupOutstanding { artifact_bytes: bytes, budget: budget, undeleted: undeleted } },
               evicted: evicted |> map(e => e.name),
-              eviction_delete_refused: unconfirmed,
+              eviction_delete_refused: split.refused,
               retired: retired,
-              index_reclamation: rc
+              index_reclamation: rc,
+              index_refusal: none
             }
           } else {
             let link_refusal = parts |> fold(init: none, f: (acc, p) => match acc {
@@ -1121,25 +1200,31 @@ fn local_store_publish_reserved(
               LocalStoreStillLive => settled
               LocalStoreEvictedAndRemoved => StoreCommitRefused { key: k, refusal: StoreCommitEvictedDuringPublish { name: name, removed: true } }
               LocalStoreEvictedAndDoomed => StoreCommitRefused { key: k, refusal: StoreCommitEvictedDuringPublish { name: name, removed: false } }
-              LocalStorePostPublishUnavailable { cause: c } =>
-                StoreCommitRefused { key: k, refusal: StoreCommitOccupancyUnavailable { cause: concat("after publishing, the occupancy index could not be re-read: ", c) } }
+              LocalStorePostPublishUnavailable { refusal: r } =>
+                StoreCommitRefused { key: k, refusal: StoreCommitOccupancyUnavailable { cause: concat("after publishing, the occupancy index could not be re-read: ", local_store_index_refusal_text(refusal: r)) } }
             }
-            LocalStoreCommit { commit: verdict, evicted: evicted |> map(e => e.name), eviction_delete_refused: [], retired: retired, index_reclamation: rc }
+            let post_refusal = match post {
+              LocalStorePostPublishUnavailable { refusal: r } => Present { value: r }
+              LocalStoreStillLive => none
+              LocalStoreEvictedAndRemoved => none
+              LocalStoreEvictedAndDoomed => none
+            }
+            LocalStoreCommit { commit: verdict, evicted: evicted |> map(e => e.name), eviction_delete_refused: [], retired: retired, index_reclamation: rc, index_refusal: post_refusal }
           }
         }
       }
   }
 }
 
-fn local_store_reserve_prepared(root: MaterializationStoreRoot, req: ArtifactRequest, prepared: StoreCommitPreparation, part_bytes: Int) -> LocalStoreReservation {
+fn local_store_reserve_prepared(root: MaterializationStoreRoot, budgets: List<LocalStoreFamilyBudget>, req: ArtifactRequest, prepared: StoreCommitPreparation, part_bytes: Int) -> LocalStoreReservation {
   let root_path = materialization_store_root_path(root: root)
   match prepared {
-    StoreCommitNotPrepared { commit: _ } => LocalStoreReserved { evicted: [], retired: [], reclamation: CasReclamationNotCommitted }
+    StoreCommitNotPrepared { commit: _ } => LocalStoreReservationNotAttempted
     StoreCommitPrepared { key: _, object_name: name, object: object, offered_digest: _, offered_result: _ } =>
       match materialization_store_admissible(root: root, verb: Write) {
         Deny { refusal: _ } =>
           LocalStoreReservationRefused { refusal: StoreCommitPublishRefused { fault: StoreFault { class: StoreFaultUnauthorized, detail: concat("write grant refused for ", root_path) } } }
-        Permit => local_store_reserve(root: root, family: request_kind(req: req), name: name, bytes: byte_size(count: measure_count(m: local_store_object_bytes(object: object)) + part_bytes), attempt: 1)
+        Permit => local_store_reserve(root: root, budgets: budgets, family: request_kind(req: req), name: name, bytes: byte_size(count: measure_count(m: local_store_object_bytes(object: object)) + part_bytes), attempt: 1)
       }
   }
 }
@@ -1213,6 +1298,7 @@ fn local_store_parts_bytes(parts: List<ArtifactBlobPart>) -> Int {
 // commit; a reserved row whose publish then fails occupies budget until evicted, bounded and named.
 fn local_store_commit(
   root: MaterializationStoreRoot,
+  budgets: List<LocalStoreFamilyBudget>,
   store: OpenedMaterializationStore,
   req: ArtifactRequest,
   payloads: List<ArtifactPayload>,
@@ -1230,7 +1316,7 @@ fn local_store_commit(
         store: store,
         req: req,
         prepared: prepared,
-        reservation: local_store_reserve_prepared(root: root, req: req, prepared: prepared, part_bytes: local_store_parts_bytes(parts: blobs)),
+        reservation: local_store_reserve_prepared(root: root, budgets: budgets, req: req, prepared: prepared, part_bytes: local_store_parts_bytes(parts: blobs)),
         parts: parts,
         blobs: blobs
       )
@@ -1245,8 +1331,8 @@ type LocalStoreBatchLookup
   = LocalStoreBatchLooked { store: OpenedMaterializationStore, lookups: List<StoreLookup> }
   | LocalStoreBatchUnavailable { root_path: String, cause: LocalStoreUnavailableCause }
 
-fn local_store_lookup_batch(root: MaterializationStoreRoot, reqs: List<ArtifactRequest>) -> LocalStoreBatchLookup {
-  match local_store_open(root: root) {
+fn local_store_lookup_batch(root: MaterializationStoreRoot, budgets: List<LocalStoreFamilyBudget>, reqs: List<ArtifactRequest>) -> LocalStoreBatchLookup {
+  match local_store_open(root: root, budgets: budgets) {
     LocalStoreUnavailable { root_path: p, cause: c } => LocalStoreBatchUnavailable { root_path: p, cause: c }
     LocalStoreOpened { root: r, store: s, durability: _, sweep: _ } =>
       LocalStoreBatchLooked { store: s, lookups: reqs |> map(req => local_store_lookup(root: r, store: s, req: req)) }
@@ -1254,9 +1340,12 @@ fn local_store_lookup_batch(root: MaterializationStoreRoot, reqs: List<ArtifactR
 }
 
 // ---------------------------------------------------------------------------------------------
-// The cache-interface row this realization's receipts name.
+// The cache-interface row this realization's receipts name, as a function of the ceiling it is deployed
+// at: everything below is a fact of this realization except that one figure, which is policy and is
+// applied by the deploying layer (gunbc.materialization_store_budgets materialization_store_local_facts).
 
-data materialization_store_local_facts: CacheInterfaceCatalogFacts = {
+fn materialization_store_local_facts_at(ceiling: ByteSize) -> CacheInterfaceCatalogFacts {
+  {
   identity: materialization_store_local_id
   backing_surface: "gunbc-materialization-store-persistent-host-volume"
   transport_encoding: CatalogCasContentEncoding
@@ -1276,7 +1365,7 @@ data materialization_store_local_facts: CacheInterfaceCatalogFacts = {
   placement: {
     value_shape: StructuredArtifact
     locality: PerHostFilesystem
-    retention: { release_policy: ReleasedNever, capacity: CapacityBounded { limit: ByteCapacity { limit: ExactLimit { value: local_store_host_ceiling_bytes } }, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } } }
+    retention: { release_policy: ReleasedNever, capacity: CapacityBounded { limit: ByteCapacity { limit: ExactLimit { value: ceiling } }, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } } }
     atomicity: WriteThenCommit
     auth: FilesystemPerms
     read_latency: LocalDiskUs
@@ -1293,9 +1382,10 @@ data materialization_store_local_facts: CacheInterfaceCatalogFacts = {
     {
       field: "retention"
       evidence: OperatorObserved {
-        note: "the host-wide ceiling is local_store_host_ceiling_bytes, the declared sum of the durable root's per-family budgets (local_store_durable_family_budgets); each family's store is constructed by std.artifact_store store_over_provider from its own CapacityBounded/ExactLimit/LeastRecentlyUsed provider row, so one family never evicts another's entries and an artifact over its family's budget refuses before any eviction. Occupancy is the family's windowed CAS index slot; recency is advisory and recorded once per process, and losing that write only makes eviction less precise. An open sweeps objects no index names."
+        note: "the host-wide ceiling is the deploying layer's figure (gunbc.materialization_store_budgets materialization_store_host_ceiling_bytes, the declared sum of materialization_store_durable_family_budgets), passed in as this function's ceiling; each family's store is constructed by std.artifact_store store_over_provider from its own CapacityBounded/ExactLimit/LeastRecentlyUsed provider row, so one family never evicts another's entries and an artifact over its family's budget refuses before any eviction. Occupancy is the family's windowed CAS index slot; recency is advisory and recorded once per process, and losing that write only makes eviction less precise. An open sweeps objects no index names."
         observed_at: Absent
       }
     },
   ]
+  }
 }
