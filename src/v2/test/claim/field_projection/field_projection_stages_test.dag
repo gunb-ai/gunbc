@@ -79,38 +79,27 @@ import v2.std.node_query { construct_node }
 //
 // This file establishes the first boundary before anything is repaired, so a later green is a change
 // in behaviour and not a change in what was being asked.
-// WHY EVERY ROW HERE EXECUTES THE WHOLE FRONT END, AND WHY THAT IS NOT CONVERTED AWAY. DESIGN
-// section 3's witness rule says a claim's inputs belong at the boundary it discriminates, as supplied
-// values, and the rows below supply none: each assembles authored text, resolves it and infers over it.
-// That was interrogated row by row against the rule rather than defended by habit, and the reason it
-// stands is the one DESIGN section 4b states for the top rung -- ASK WHETHER THE CHECK'S RED IS
-// AUTHORABLE BEFORE WRITING THE CHECK.
+// WHICH ROWS EXECUTE THE WHOLE FRONT END, AND WHY THE REST DO NOT (DESIGN section 3's witness rule,
+// applied row by row under gunbc#12506's restructure). A row's inputs belong at the ONE interface it
+// discriminates, as supplied values, and a row reaching through lowering and resolve to ask infer a question
+// paid 140-610k eval steps -- almost all of it lowering, which is linear in source text -- against a 72.3k
+// new-witness margin. So:
+//   * rows whose subject is INFER (or eval) take a resolved tree built by v2.test.lens_common.infer_fixture
+//     from the production constructors;
+//   * rows whose subject is RESOLVE take lowered modules into real resolve (v2.test.lens_common.resolve_fixture),
+//     or, where a whole two-module resolve is itself over the margin, the one resolve function the subject is
+//     (resolve_dotted_path_reading, closure_declarations_demand);
+//   * a property spanning resolve -> infer is SPLIT at that boundary, the resolve row asserting real resolve's
+//     output EQUALS a named value and the infer row taking exactly that value, so the join is entailed.
 //
-// THE SUBJECT OF THESE ROWS IS WHAT THE REAL INDEX AND THE REAL LOWERING PRODUCE, not what one
-// downstream function answers for a shape. The projection interface itself -- v2.compiler.infer
-// infer_field_projection_facts -- takes a receiver payload, a facts entry and a ResolvedTree, and
-// supplying those makes the answer a restatement of the fixture: "two fields of different declared
-// types ground differently" is a fact about the index the front end builds, and against a hand-built
-// index it is true by how the fixture was written. That red is not authorable, which makes the
-// converted row a decoration rather than a weaker wall, and DESIGN says a decoration is worse than an
-// absent check because it will be cited as coverage. THE EVAL ROWS AT THE END OF THIS FILE ARE THE
-// CONTRAST AND THE PRECEDENT: there the supplied value is a runtime aggregate whose field layout the
-// claim does NOT choose the answer from, so supplying it discriminates and costs almost nothing.
+// THE OBJECTION THIS BLOCK USED TO RECORD -- that against a supplied index each answer restates the fixture,
+// so the red is unauthorable -- is answered by where each supply stops: the supplied value is the input of
+// the judged stage, never its answer, and the judged stage runs for real. Where the supplied value is a stage's
+// OUTPUT (the named shapes of the split rows), a resolve row proves the real producer emits exactly it.
 //
-// SO THESE ROWS ARE THE EXECUTION OF THE REAL PATH -- the second half of the same rule, which forbids
-// supplying inputs anywhere if it removes the last execution of the producer. Deleting resolve's
-// projection lowering, or infer's declared-field read, must make a control here fail, and does.
-//
-// WHAT WOULD ACTUALLY MOVE THEIR COST is not a narrower claim but a provider for the demand: their
-// nullary source producers are pure functions of module-constant text, which is the shape
-// v2.workflow.floor_pure_producer_share already serves across claims for hundreds of peer fixtures,
-// including the per-fixture assembled and resolved trees rostered there. THAT ROUTE IS NOW TAKEN
-// (gunbc#12506, whose required floor refused twenty of these rows as enrolment_measured_over_margin):
-// each fixture program is read ONCE by a nullary `fps_*_reading` producer, enrolled WARM in
-// v2.workflow.floor_pure_producer_share, and every row over that program reads the decided value. The
-// producer IS the real path -- assemble, resolve and infer on authored text -- so no row stops
-// executing it; what stops is re-executing it once per row. The reading carries decided, portable
-// values only (Bools, an Optional<Bool>, an Optional<Node>), never a tree or a context.
+// AND THE REAL PATH STILL RUNS. The rows over authored source that several rows read (shared across them by
+// declared demand, v2.workflow.floor_pure_producer_share) are this file's inhabitance for the boundaries the
+// supplied rows start from: deleting resolve's lowering of the shape, or infer's read of it, reds them.
 data fps_artifact: Artifact = Artifact {
   kind: SourceFile,
   id: ^field_projection_stages_artifact,

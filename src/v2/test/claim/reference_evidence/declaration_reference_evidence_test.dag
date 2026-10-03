@@ -47,32 +47,27 @@ import v2.std.node { Authored, Edge, Positional }
 // occurrence, not to a declaring path, so `infer_parameter_scope_search` answers a different question
 // and is not replaced here. The refinement rows in v2.test.claim.body_cast_node are its standing
 // control and they pass on this base.
-// WHY EVERY ROW HERE EXECUTES THE WHOLE FRONT END, AND WHY THAT IS NOT CONVERTED AWAY. DESIGN
-// section 3's witness rule says a claim's inputs belong at the boundary it discriminates, as supplied
-// values, and the rows below supply none: each assembles authored text, resolves it and infers over it.
-// That was interrogated row by row against the rule rather than defended by habit, and the reason it
-// stands is the one DESIGN section 4b states for the top rung -- ASK WHETHER THE CHECK'S RED IS
-// AUTHORABLE BEFORE WRITING THE CHECK.
+// WHICH ROWS EXECUTE THE WHOLE FRONT END, AND WHY THE REST DO NOT (DESIGN section 3's witness rule,
+// applied row by row under gunbc#12506's restructure). A row's inputs belong at the ONE interface it
+// discriminates, as supplied values, and a row reaching through lowering and resolve to ask infer a question
+// paid 140-610k eval steps -- almost all of it lowering, which is linear in source text -- against a 72.3k
+// new-witness margin. So:
+//   * rows whose subject is INFER (or eval) take a resolved tree built by v2.test.lens_common.infer_fixture
+//     from the production constructors;
+//   * rows whose subject is RESOLVE take lowered modules into real resolve (v2.test.lens_common.resolve_fixture),
+//     or, where a whole two-module resolve is itself over the margin, the one resolve function the subject is
+//     (resolve_dotted_path_reading, closure_declarations_demand);
+//   * a property spanning resolve -> infer is SPLIT at that boundary, the resolve row asserting real resolve's
+//     output EQUALS a named value and the infer row taking exactly that value, so the join is entailed.
 //
-// THE SUBJECT OF THESE ROWS IS WHAT RESOLVE AND INFER PRODUCE FOR AUTHORED TEXT, not what one
-// downstream function answers for a shape. Every row asks whether a reference or a call GROUNDS, and
-// what it grounds to -- facts about the resolved-declaration index the front end mints and about the
-// declared-return spelling lowering leaves behind. Against a supplied index and supplied facts each of
-// those answers is a restatement of the fixture, so the row's red would not be authorable: it would
-// become a decoration, which DESIGN says is worse than an absent check because it will be cited as
-// coverage. The two same-leaf rows make this sharpest -- a hand-built index picks the declaration the
-// author intended, which is exactly the selection under test.
+// THE OBJECTION THIS BLOCK USED TO RECORD -- that against a supplied index each answer restates the fixture,
+// so the red is unauthorable -- is answered by where each supply stops: the supplied value is the input of
+// the judged stage, never its answer, and the judged stage runs for real. Where the supplied value is a stage's
+// OUTPUT (the named shapes of the split rows), a resolve row proves the real producer emits exactly it.
 //
-// SO THESE ROWS ARE THE EXECUTION OF THE REAL PATH -- the second half of the same rule, which forbids
-// supplying inputs anywhere if it removes the last execution of the producer. Deleting resolve's
-// projection lowering, or infer's declared-field read, must make a control here fail, and does.
-//
-// WHAT WOULD ACTUALLY MOVE THEIR COST is not a narrower claim but a provider for the demand: their
-// nullary source producers are pure functions of module-constant text, which is the shape
-// v2.workflow.floor_pure_producer_share serves across claims for hundreds of peer fixtures. gunbc#12506's
-// floor measured every row here past the new-witness enrolment margin, so each fixture's front end is now
-// one nullary producer listed there WARM (dre_reading, below): the demand is paid once per fixture, not
-// once per row, and no input is supplied, so the rows remain the real path's execution.
+// AND THE REAL PATH STILL RUNS. The rows over authored source that several rows read (shared across them by
+// declared demand, v2.workflow.floor_pure_producer_share) are this file's inhabitance for the boundaries the
+// supplied rows start from: deleting resolve's lowering of the shape, or infer's read of it, reds them.
 data dre_artifact: Artifact = Artifact {
   kind: SourceFile,
   id: ^declaration_reference_evidence_artifact,
@@ -484,7 +479,7 @@ fn dre_first_application_for(n: Node, wanted: Symbol) -> Optional<Node> {
 
 
 // Bool param AND Bool return, body is the parameter -- the same shape as the working Int case, so the
-// only variable against dre_execution_source is the literal body.
+// only variable against the bool-fn row's callee (dre_execution_reading) is the literal body.
 fn dre_bool_param_source() -> Outcome<ResolvedTree> {
   dre_assemble(src: "module p\n\nfn truth(only_arg: Bool) -> Bool {\n  only_arg\n}\n\nfn consumer(y: Bool) -> Bool {\n  truth(only_arg: y)\n}\n")
 }
