@@ -136,9 +136,11 @@ fn bash_test_path_kind_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^bash_token_test_rbracket }
   ]
 }
+data bash_test_path_kind_tokens_carried: List<ConcreteSyntaxToken> = bash_test_path_kind_tokens()
+
 
 data bash_test_path_kind_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_test_path_kind_tokens()
+  tokens: bash_test_path_kind_tokens_carried
 )
 
 fn bash_test_path_kind_lex() -> LexRules {
@@ -147,15 +149,19 @@ fn bash_test_path_kind_lex() -> LexRules {
     span(text: " ]", class: ^bash_token_test_rbracket)
   ]))
 }
+data bash_test_path_kind_lex_carried: LexRules = bash_test_path_kind_lex()
+
 
 fn bash_test_path_kind_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_test_path_kind,
     lhs: ^bash_production_test_path_kind,
-    tokens: bash_test_path_kind_tokens(),
+    tokens: bash_test_path_kind_tokens_carried,
     emitted: bash_test_path_kind_emitted
   )
 }
+data bash_test_path_kind_translation_rules_node_carried: Node = bash_test_path_kind_translation_rules_node()
+
 
 fn bash_test_path_kind_binding_spellings(op: String, operand: String) -> Map<Symbol, String> {
   map_insert(
@@ -167,19 +173,19 @@ fn bash_test_path_kind_binding_spellings(op: String, operand: String) -> Map<Sym
 fn bash_test_path_kind_target_model(op: String, operand: String) -> Outcome<TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
-      tokens: bash_test_path_kind_tokens(),
-      lex: bash_test_path_kind_lex(),
+      tokens: bash_test_path_kind_tokens_carried,
+      lex: bash_test_path_kind_lex_carried,
       binding_spellings: bash_test_path_kind_binding_spellings(op: op, operand: operand)
     ),
     f: fn(source_text) {
       outcome_accepted(
         bash_make_bound_tokens_target_model(
-          rules: bash_test_path_kind_translation_rules_node(),
+          rules: bash_test_path_kind_translation_rules_node_carried,
           source_literal: ^bash_test_path_kind_source_literal,
           production_name: ^bash_production_test_path_kind,
-          tokens: bash_test_path_kind_tokens(),
+          tokens: bash_test_path_kind_tokens_carried,
           source_text: render_target_text(t: source_text),
-          lex: bash_test_path_kind_lex(),
+          lex: bash_test_path_kind_lex_carried,
           binding_spellings: bash_test_path_kind_binding_spellings(op: op, operand: operand)
         )
       )
@@ -333,9 +339,11 @@ fn bash_stmt_if_else_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^bash_token_if_fi }
   ]
 }
+data bash_stmt_if_else_tokens_carried: List<ConcreteSyntaxToken> = bash_stmt_if_else_tokens()
+
 
 data bash_stmt_if_else_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_stmt_if_else_tokens()
+  tokens: bash_stmt_if_else_tokens_carried
 )
 
 fn bash_stmt_if_else_lex() -> LexRules {
@@ -346,15 +354,19 @@ fn bash_stmt_if_else_lex() -> LexRules {
     span(text: "; fi", class: ^bash_token_if_fi)
   ]))
 }
+data bash_stmt_if_else_lex_carried: LexRules = bash_stmt_if_else_lex()
+
 
 fn bash_stmt_if_else_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_stmt_if_else,
     lhs: ^bash_production_stmt_if_else,
-    tokens: bash_stmt_if_else_tokens(),
+    tokens: bash_stmt_if_else_tokens_carried,
     emitted: bash_stmt_if_else_emitted
   )
 }
+data bash_stmt_if_else_translation_rules_node_carried: Node = bash_stmt_if_else_translation_rules_node()
+
 
 fn bash_stmt_if_else_binding_spellings(
   cond: String,
@@ -373,8 +385,8 @@ fn bash_stmt_if_else_binding_spellings(
 fn bash_stmt_if_else_target_model(cond: String, then_body: String, else_body: String) -> Outcome<TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
-      tokens: bash_stmt_if_else_tokens(),
-      lex: bash_stmt_if_else_lex(),
+      tokens: bash_stmt_if_else_tokens_carried,
+      lex: bash_stmt_if_else_lex_carried,
       binding_spellings: bash_stmt_if_else_binding_spellings(
         cond: cond,
         then_body: then_body,
@@ -384,12 +396,12 @@ fn bash_stmt_if_else_target_model(cond: String, then_body: String, else_body: St
     f: fn(source_text) {
       outcome_accepted(
         bash_make_bound_tokens_target_model(
-          rules: bash_stmt_if_else_translation_rules_node(),
+          rules: bash_stmt_if_else_translation_rules_node_carried,
           source_literal: ^bash_stmt_if_else_source_literal,
           production_name: ^bash_production_stmt_if_else,
-          tokens: bash_stmt_if_else_tokens(),
+          tokens: bash_stmt_if_else_tokens_carried,
           source_text: render_target_text(t: source_text),
-          lex: bash_stmt_if_else_lex(),
+          lex: bash_stmt_if_else_lex_carried,
           binding_spellings: bash_stmt_if_else_binding_spellings(
             cond: cond,
             then_body: then_body,
@@ -419,9 +431,11 @@ fn bash_stmt_if_else_block_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^bash_token_if_fi_block }
   ]
 }
+data bash_stmt_if_else_block_tokens_carried: List<ConcreteSyntaxToken> = bash_stmt_if_else_block_tokens()
+
 
 data bash_stmt_if_else_block_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_stmt_if_else_block_tokens()
+  tokens: bash_stmt_if_else_block_tokens_carried
 )
 
 fn bash_stmt_if_else_block_lex() -> LexRules {
@@ -432,21 +446,25 @@ fn bash_stmt_if_else_block_lex() -> LexRules {
     span(text: "\nfi", class: ^bash_token_if_fi_block)
   ]))
 }
+data bash_stmt_if_else_block_lex_carried: LexRules = bash_stmt_if_else_block_lex()
+
 
 fn bash_stmt_if_else_block_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_stmt_if_else_block,
     lhs: ^bash_production_stmt_if_else_block,
-    tokens: bash_stmt_if_else_block_tokens(),
+    tokens: bash_stmt_if_else_block_tokens_carried,
     emitted: bash_stmt_if_else_block_emitted
   )
 }
+data bash_stmt_if_else_block_translation_rules_node_carried: Node = bash_stmt_if_else_block_translation_rules_node()
+
 
 fn bash_stmt_if_else_block_target_model(cond: String, then_body: String, else_body: String) -> Outcome<TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
-      tokens: bash_stmt_if_else_block_tokens(),
-      lex: bash_stmt_if_else_block_lex(),
+      tokens: bash_stmt_if_else_block_tokens_carried,
+      lex: bash_stmt_if_else_block_lex_carried,
       binding_spellings: bash_stmt_if_else_binding_spellings(
         cond: cond,
         then_body: then_body,
@@ -456,12 +474,12 @@ fn bash_stmt_if_else_block_target_model(cond: String, then_body: String, else_bo
     f: fn(source_text) {
       outcome_accepted(
         bash_make_bound_tokens_target_model(
-          rules: bash_stmt_if_else_block_translation_rules_node(),
+          rules: bash_stmt_if_else_block_translation_rules_node_carried,
           source_literal: ^bash_stmt_if_else_block_source_literal,
           production_name: ^bash_production_stmt_if_else_block,
-          tokens: bash_stmt_if_else_block_tokens(),
+          tokens: bash_stmt_if_else_block_tokens_carried,
           source_text: render_target_text(t: source_text),
-          lex: bash_stmt_if_else_block_lex(),
+          lex: bash_stmt_if_else_block_lex_carried,
           binding_spellings: bash_stmt_if_else_binding_spellings(
             cond: cond,
             then_body: then_body,
@@ -482,9 +500,11 @@ fn bash_test_str_eq_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^bash_token_test_rbracket }
   ]
 }
+data bash_test_str_eq_tokens_carried: List<ConcreteSyntaxToken> = bash_test_str_eq_tokens()
+
 
 data bash_test_str_eq_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_test_str_eq_tokens()
+  tokens: bash_test_str_eq_tokens_carried
 )
 
 fn bash_test_str_eq_lex() -> LexRules {
@@ -494,15 +514,19 @@ fn bash_test_str_eq_lex() -> LexRules {
     span(text: " ]", class: ^bash_token_test_rbracket)
   ]))
 }
+data bash_test_str_eq_lex_carried: LexRules = bash_test_str_eq_lex()
+
 
 fn bash_test_str_eq_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_test_str_eq,
     lhs: ^bash_production_test_str_eq,
-    tokens: bash_test_str_eq_tokens(),
+    tokens: bash_test_str_eq_tokens_carried,
     emitted: bash_test_str_eq_emitted
   )
 }
+data bash_test_str_eq_translation_rules_node_carried: Node = bash_test_str_eq_translation_rules_node()
+
 
 fn bash_test_str_eq_binding_spellings(lhs: String, rhs: String) -> Map<Symbol, String> {
   map_insert(
@@ -514,19 +538,19 @@ fn bash_test_str_eq_binding_spellings(lhs: String, rhs: String) -> Map<Symbol, S
 fn bash_test_str_eq_target_model(lhs: String, rhs: String) -> Outcome<TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
-      tokens: bash_test_str_eq_tokens(),
-      lex: bash_test_str_eq_lex(),
+      tokens: bash_test_str_eq_tokens_carried,
+      lex: bash_test_str_eq_lex_carried,
       binding_spellings: bash_test_str_eq_binding_spellings(lhs: lhs, rhs: rhs)
     ),
     f: fn(source_text) {
       outcome_accepted(
         bash_make_bound_tokens_target_model(
-          rules: bash_test_str_eq_translation_rules_node(),
+          rules: bash_test_str_eq_translation_rules_node_carried,
           source_literal: ^bash_test_str_eq_source_literal,
           production_name: ^bash_production_test_str_eq,
-          tokens: bash_test_str_eq_tokens(),
+          tokens: bash_test_str_eq_tokens_carried,
           source_text: render_target_text(t: source_text),
-          lex: bash_test_str_eq_lex(),
+          lex: bash_test_str_eq_lex_carried,
           binding_spellings: bash_test_str_eq_binding_spellings(lhs: lhs, rhs: rhs)
         )
       )
@@ -543,9 +567,11 @@ fn bash_test_str_not_eq_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^bash_token_test_rbracket }
   ]
 }
+data bash_test_str_not_eq_tokens_carried: List<ConcreteSyntaxToken> = bash_test_str_not_eq_tokens()
+
 
 data bash_test_str_not_eq_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_test_str_not_eq_tokens()
+  tokens: bash_test_str_not_eq_tokens_carried
 )
 
 fn bash_test_str_not_eq_lex() -> LexRules {
@@ -555,15 +581,19 @@ fn bash_test_str_not_eq_lex() -> LexRules {
     span(text: " ]", class: ^bash_token_test_rbracket)
   ]))
 }
+data bash_test_str_not_eq_lex_carried: LexRules = bash_test_str_not_eq_lex()
+
 
 fn bash_test_str_not_eq_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_test_str_not_eq,
     lhs: ^bash_production_test_str_not_eq,
-    tokens: bash_test_str_not_eq_tokens(),
+    tokens: bash_test_str_not_eq_tokens_carried,
     emitted: bash_test_str_not_eq_emitted
   )
 }
+data bash_test_str_not_eq_translation_rules_node_carried: Node = bash_test_str_not_eq_translation_rules_node()
+
 
 fn bash_test_str_not_eq_binding_spellings(lhs: String, rhs: String) -> Map<Symbol, String> {
   map_insert(
@@ -575,19 +605,19 @@ fn bash_test_str_not_eq_binding_spellings(lhs: String, rhs: String) -> Map<Symbo
 fn bash_test_str_not_eq_target_model(lhs: String, rhs: String) -> Outcome<TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
-      tokens: bash_test_str_not_eq_tokens(),
-      lex: bash_test_str_not_eq_lex(),
+      tokens: bash_test_str_not_eq_tokens_carried,
+      lex: bash_test_str_not_eq_lex_carried,
       binding_spellings: bash_test_str_not_eq_binding_spellings(lhs: lhs, rhs: rhs)
     ),
     f: fn(source_text) {
       outcome_accepted(
         bash_make_bound_tokens_target_model(
-          rules: bash_test_str_not_eq_translation_rules_node(),
+          rules: bash_test_str_not_eq_translation_rules_node_carried,
           source_literal: ^bash_test_str_not_eq_source_literal,
           production_name: ^bash_production_test_str_not_eq,
-          tokens: bash_test_str_not_eq_tokens(),
+          tokens: bash_test_str_not_eq_tokens_carried,
           source_text: render_target_text(t: source_text),
-          lex: bash_test_str_not_eq_lex(),
+          lex: bash_test_str_not_eq_lex_carried,
           binding_spellings: bash_test_str_not_eq_binding_spellings(lhs: lhs, rhs: rhs)
         )
       )
@@ -602,9 +632,11 @@ fn bash_test_str_empty_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^bash_token_test_rbracket }
   ]
 }
+data bash_test_str_empty_tokens_carried: List<ConcreteSyntaxToken> = bash_test_str_empty_tokens()
+
 
 data bash_test_str_empty_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_test_str_empty_tokens()
+  tokens: bash_test_str_empty_tokens_carried
 )
 
 fn bash_test_str_empty_lex() -> LexRules {
@@ -613,15 +645,19 @@ fn bash_test_str_empty_lex() -> LexRules {
     span(text: " ]", class: ^bash_token_test_rbracket)
   ]))
 }
+data bash_test_str_empty_lex_carried: LexRules = bash_test_str_empty_lex()
+
 
 fn bash_test_str_empty_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_test_str_empty,
     lhs: ^bash_production_test_str_empty,
-    tokens: bash_test_str_empty_tokens(),
+    tokens: bash_test_str_empty_tokens_carried,
     emitted: bash_test_str_empty_emitted
   )
 }
+data bash_test_str_empty_translation_rules_node_carried: Node = bash_test_str_empty_translation_rules_node()
+
 
 fn bash_test_str_empty_binding_spellings(operand: String) -> Map<Symbol, String> {
   map_insert(empty_map(), ^bash_test_str_empty_operand, operand)
@@ -630,19 +666,19 @@ fn bash_test_str_empty_binding_spellings(operand: String) -> Map<Symbol, String>
 fn bash_test_str_empty_target_model(operand: String) -> Outcome<TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
-      tokens: bash_test_str_empty_tokens(),
-      lex: bash_test_str_empty_lex(),
+      tokens: bash_test_str_empty_tokens_carried,
+      lex: bash_test_str_empty_lex_carried,
       binding_spellings: bash_test_str_empty_binding_spellings(operand: operand)
     ),
     f: fn(source_text) {
       outcome_accepted(
         bash_make_bound_tokens_target_model(
-          rules: bash_test_str_empty_translation_rules_node(),
+          rules: bash_test_str_empty_translation_rules_node_carried,
           source_literal: ^bash_test_str_empty_source_literal,
           production_name: ^bash_production_test_str_empty,
-          tokens: bash_test_str_empty_tokens(),
+          tokens: bash_test_str_empty_tokens_carried,
           source_text: render_target_text(t: source_text),
-          lex: bash_test_str_empty_lex(),
+          lex: bash_test_str_empty_lex_carried,
           binding_spellings: bash_test_str_empty_binding_spellings(operand: operand)
         )
       )
@@ -657,9 +693,11 @@ fn bash_test_str_nonempty_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^bash_token_test_rbracket }
   ]
 }
+data bash_test_str_nonempty_tokens_carried: List<ConcreteSyntaxToken> = bash_test_str_nonempty_tokens()
+
 
 data bash_test_str_nonempty_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_test_str_nonempty_tokens()
+  tokens: bash_test_str_nonempty_tokens_carried
 )
 
 fn bash_test_str_nonempty_lex() -> LexRules {
@@ -668,15 +706,19 @@ fn bash_test_str_nonempty_lex() -> LexRules {
     span(text: " ]", class: ^bash_token_test_rbracket)
   ]))
 }
+data bash_test_str_nonempty_lex_carried: LexRules = bash_test_str_nonempty_lex()
+
 
 fn bash_test_str_nonempty_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_test_str_nonempty,
     lhs: ^bash_production_test_str_nonempty,
-    tokens: bash_test_str_nonempty_tokens(),
+    tokens: bash_test_str_nonempty_tokens_carried,
     emitted: bash_test_str_nonempty_emitted
   )
 }
+data bash_test_str_nonempty_translation_rules_node_carried: Node = bash_test_str_nonempty_translation_rules_node()
+
 
 fn bash_test_str_nonempty_binding_spellings(operand: String) -> Map<Symbol, String> {
   map_insert(empty_map(), ^bash_test_str_nonempty_operand, operand)
@@ -685,19 +727,19 @@ fn bash_test_str_nonempty_binding_spellings(operand: String) -> Map<Symbol, Stri
 fn bash_test_str_nonempty_target_model(operand: String) -> Outcome<TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
-      tokens: bash_test_str_nonempty_tokens(),
-      lex: bash_test_str_nonempty_lex(),
+      tokens: bash_test_str_nonempty_tokens_carried,
+      lex: bash_test_str_nonempty_lex_carried,
       binding_spellings: bash_test_str_nonempty_binding_spellings(operand: operand)
     ),
     f: fn(source_text) {
       outcome_accepted(
         bash_make_bound_tokens_target_model(
-          rules: bash_test_str_nonempty_translation_rules_node(),
+          rules: bash_test_str_nonempty_translation_rules_node_carried,
           source_literal: ^bash_test_str_nonempty_source_literal,
           production_name: ^bash_production_test_str_nonempty,
-          tokens: bash_test_str_nonempty_tokens(),
+          tokens: bash_test_str_nonempty_tokens_carried,
           source_text: render_target_text(t: source_text),
-          lex: bash_test_str_nonempty_lex(),
+          lex: bash_test_str_nonempty_lex_carried,
           binding_spellings: bash_test_str_nonempty_binding_spellings(operand: operand)
         )
       )
@@ -713,9 +755,11 @@ fn bash_log_matches_grep_tokens() -> List<ConcreteSyntaxToken> {
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_log_matches_source }
   ]
 }
+data bash_log_matches_grep_tokens_carried: List<ConcreteSyntaxToken> = bash_log_matches_grep_tokens()
+
 
 data bash_log_matches_grep_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_log_matches_grep_tokens()
+  tokens: bash_log_matches_grep_tokens_carried
 )
 
 fn bash_log_matches_grep_lex() -> LexRules {
@@ -724,15 +768,19 @@ fn bash_log_matches_grep_lex() -> LexRules {
     span(text: " ", class: ^bash_token_grep_sp)
   ]))
 }
+data bash_log_matches_grep_lex_carried: LexRules = bash_log_matches_grep_lex()
+
 
 fn bash_log_matches_grep_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_log_matches_grep,
     lhs: ^bash_production_log_matches_grep,
-    tokens: bash_log_matches_grep_tokens(),
+    tokens: bash_log_matches_grep_tokens_carried,
     emitted: bash_log_matches_grep_emitted
   )
 }
+data bash_log_matches_grep_translation_rules_node_carried: Node = bash_log_matches_grep_translation_rules_node()
+
 
 fn bash_log_matches_grep_binding_spellings(pattern: String, source: String) -> Map<Symbol, String> {
   map_insert(
@@ -744,19 +792,19 @@ fn bash_log_matches_grep_binding_spellings(pattern: String, source: String) -> M
 fn bash_log_matches_grep_target_model(pattern: String, source: String) -> Outcome<TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
-      tokens: bash_log_matches_grep_tokens(),
-      lex: bash_log_matches_grep_lex(),
+      tokens: bash_log_matches_grep_tokens_carried,
+      lex: bash_log_matches_grep_lex_carried,
       binding_spellings: bash_log_matches_grep_binding_spellings(pattern: pattern, source: source)
     ),
     f: fn(source_text) {
       outcome_accepted(
         bash_make_bound_tokens_target_model(
-          rules: bash_log_matches_grep_translation_rules_node(),
+          rules: bash_log_matches_grep_translation_rules_node_carried,
           source_literal: ^bash_log_matches_grep_source_literal,
           production_name: ^bash_production_log_matches_grep,
-          tokens: bash_log_matches_grep_tokens(),
+          tokens: bash_log_matches_grep_tokens_carried,
           source_text: render_target_text(t: source_text),
-          lex: bash_log_matches_grep_lex(),
+          lex: bash_log_matches_grep_lex_carried,
           binding_spellings: bash_log_matches_grep_binding_spellings(pattern: pattern, source: source)
         )
       )
@@ -770,9 +818,11 @@ fn bash_stmt_or_ignore_fail_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^bash_token_or_ignore_fail_sep }
   ]
 }
+data bash_stmt_or_ignore_fail_tokens_carried: List<ConcreteSyntaxToken> = bash_stmt_or_ignore_fail_tokens()
+
 
 data bash_stmt_or_ignore_fail_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_stmt_or_ignore_fail_tokens()
+  tokens: bash_stmt_or_ignore_fail_tokens_carried
 )
 
 fn bash_stmt_or_ignore_fail_lex() -> LexRules {
@@ -780,15 +830,19 @@ fn bash_stmt_or_ignore_fail_lex() -> LexRules {
     span(text: " || true", class: ^bash_token_or_ignore_fail_sep)
   ]))
 }
+data bash_stmt_or_ignore_fail_lex_carried: LexRules = bash_stmt_or_ignore_fail_lex()
+
 
 fn bash_stmt_or_ignore_fail_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_stmt_or_ignore_fail,
     lhs: ^bash_production_stmt_or_ignore_fail,
-    tokens: bash_stmt_or_ignore_fail_tokens(),
+    tokens: bash_stmt_or_ignore_fail_tokens_carried,
     emitted: bash_stmt_or_ignore_fail_emitted
   )
 }
+data bash_stmt_or_ignore_fail_translation_rules_node_carried: Node = bash_stmt_or_ignore_fail_translation_rules_node()
+
 
 fn bash_stmt_or_ignore_fail_binding_spellings(stmt: String) -> Map<Symbol, String> {
   map_insert(empty_map(), ^bash_stmt_or_ignore_fail_stmt, stmt)
@@ -797,19 +851,19 @@ fn bash_stmt_or_ignore_fail_binding_spellings(stmt: String) -> Map<Symbol, Strin
 fn bash_stmt_or_ignore_fail_target_model(stmt: String) -> Outcome<TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
-      tokens: bash_stmt_or_ignore_fail_tokens(),
-      lex: bash_stmt_or_ignore_fail_lex(),
+      tokens: bash_stmt_or_ignore_fail_tokens_carried,
+      lex: bash_stmt_or_ignore_fail_lex_carried,
       binding_spellings: bash_stmt_or_ignore_fail_binding_spellings(stmt: stmt)
     ),
     f: fn(source_text) {
       outcome_accepted(
         bash_make_bound_tokens_target_model(
-          rules: bash_stmt_or_ignore_fail_translation_rules_node(),
+          rules: bash_stmt_or_ignore_fail_translation_rules_node_carried,
           source_literal: ^bash_stmt_or_ignore_fail_source_literal,
           production_name: ^bash_production_stmt_or_ignore_fail,
-          tokens: bash_stmt_or_ignore_fail_tokens(),
+          tokens: bash_stmt_or_ignore_fail_tokens_carried,
           source_text: render_target_text(t: source_text),
-          lex: bash_stmt_or_ignore_fail_lex(),
+          lex: bash_stmt_or_ignore_fail_lex_carried,
           binding_spellings: bash_stmt_or_ignore_fail_binding_spellings(stmt: stmt)
         )
       )
@@ -842,9 +896,11 @@ fn bash_stmt_while_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^bash_token_while_done }
   ]
 }
+data bash_stmt_while_tokens_carried: List<ConcreteSyntaxToken> = bash_stmt_while_tokens()
+
 
 data bash_stmt_while_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_stmt_while_tokens()
+  tokens: bash_stmt_while_tokens_carried
 )
 
 fn bash_stmt_while_lex() -> LexRules {
@@ -854,15 +910,19 @@ fn bash_stmt_while_lex() -> LexRules {
     span(text: "; done", class: ^bash_token_while_done)
   ]))
 }
+data bash_stmt_while_lex_carried: LexRules = bash_stmt_while_lex()
+
 
 fn bash_stmt_while_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_stmt_while,
     lhs: ^bash_production_stmt_while,
-    tokens: bash_stmt_while_tokens(),
+    tokens: bash_stmt_while_tokens_carried,
     emitted: bash_stmt_while_emitted
   )
 }
+data bash_stmt_while_translation_rules_node_carried: Node = bash_stmt_while_translation_rules_node()
+
 
 fn bash_stmt_while_binding_spellings(cond: String, body: String) -> Map<Symbol, String> {
   map_insert(
@@ -874,19 +934,19 @@ fn bash_stmt_while_binding_spellings(cond: String, body: String) -> Map<Symbol, 
 fn bash_stmt_while_target_model(cond: String, body: String) -> Outcome<TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
-      tokens: bash_stmt_while_tokens(),
-      lex: bash_stmt_while_lex(),
+      tokens: bash_stmt_while_tokens_carried,
+      lex: bash_stmt_while_lex_carried,
       binding_spellings: bash_stmt_while_binding_spellings(cond: cond, body: body)
     ),
     f: fn(source_text) {
       outcome_accepted(
         bash_make_bound_tokens_target_model(
-          rules: bash_stmt_while_translation_rules_node(),
+          rules: bash_stmt_while_translation_rules_node_carried,
           source_literal: ^bash_stmt_while_source_literal,
           production_name: ^bash_production_stmt_while,
-          tokens: bash_stmt_while_tokens(),
+          tokens: bash_stmt_while_tokens_carried,
           source_text: render_target_text(t: source_text),
-          lex: bash_stmt_while_lex(),
+          lex: bash_stmt_while_lex_carried,
           binding_spellings: bash_stmt_while_binding_spellings(cond: cond, body: body)
         )
       )
@@ -907,9 +967,11 @@ fn bash_test_int_ne_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^bash_token_test_rbracket }
   ]
 }
+data bash_test_int_ne_tokens_carried: List<ConcreteSyntaxToken> = bash_test_int_ne_tokens()
+
 
 data bash_test_int_ne_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_test_int_ne_tokens()
+  tokens: bash_test_int_ne_tokens_carried
 )
 
 fn bash_test_int_ne_lex() -> LexRules {
@@ -919,15 +981,19 @@ fn bash_test_int_ne_lex() -> LexRules {
     span(text: " ]", class: ^bash_token_test_rbracket)
   ]))
 }
+data bash_test_int_ne_lex_carried: LexRules = bash_test_int_ne_lex()
+
 
 fn bash_test_int_ne_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_test_int_ne,
     lhs: ^bash_production_test_int_ne,
-    tokens: bash_test_int_ne_tokens(),
+    tokens: bash_test_int_ne_tokens_carried,
     emitted: bash_test_int_ne_emitted
   )
 }
+data bash_test_int_ne_translation_rules_node_carried: Node = bash_test_int_ne_translation_rules_node()
+
 
 fn bash_test_int_ne_binding_spellings(lhs: String, rhs: String) -> Map<Symbol, String> {
   map_insert(
@@ -939,19 +1005,19 @@ fn bash_test_int_ne_binding_spellings(lhs: String, rhs: String) -> Map<Symbol, S
 fn bash_test_int_ne_target_model(lhs: String, rhs: String) -> Outcome<TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
-      tokens: bash_test_int_ne_tokens(),
-      lex: bash_test_int_ne_lex(),
+      tokens: bash_test_int_ne_tokens_carried,
+      lex: bash_test_int_ne_lex_carried,
       binding_spellings: bash_test_int_ne_binding_spellings(lhs: lhs, rhs: rhs)
     ),
     f: fn(source_text) {
       outcome_accepted(
         bash_make_bound_tokens_target_model(
-          rules: bash_test_int_ne_translation_rules_node(),
+          rules: bash_test_int_ne_translation_rules_node_carried,
           source_literal: ^bash_test_int_ne_source_literal,
           production_name: ^bash_production_test_int_ne,
-          tokens: bash_test_int_ne_tokens(),
+          tokens: bash_test_int_ne_tokens_carried,
           source_text: render_target_text(t: source_text),
-          lex: bash_test_int_ne_lex(),
+          lex: bash_test_int_ne_lex_carried,
           binding_spellings: bash_test_int_ne_binding_spellings(lhs: lhs, rhs: rhs)
         )
       )
