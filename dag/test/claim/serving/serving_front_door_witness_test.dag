@@ -1,0 +1,222 @@
+module test.claim.serving.serving_front_door_witness_test
+
+import v2.std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { NonEmptyStr, String, Bool, List, EpochSecs, Secret }
+import extdeps.crypto.mac { MacKey, MacVerification, MacTagMismatch, HmacSha256, mac_verify }
+import gunbc.auth.request_authentication {
+  RequestAuthenticationEvidence, FabricServiceEvidence, FabricServiceEvidenceSubmissionMac, AuthAbsent,
+  fabric_service_principal,
+}
+import gunbc.principal_projection { PrincipalRef }
+import product.capacity.lease { LeaseGrant, LeasePolicy, QuiescenceRequired, lease_grant, lease_fence_of }
+import product.capacity.event_chain { PartitionId, EventId, ChainEnvelope, ChainEvent, ChainWalk, ChainWalked }
+import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolReleased }
+import gunbc.serving.turn_admission { InteractiveQualitySensitive }
+import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
+import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch, vllm_endpoint_process_launch }
+import gunbc.serving.serving_front_door {
+  ServingSeatPermit, ServingSeatPermitClaims, FrontDoorIdentity, FrontDoorVerdict, FrontDoorForward, FrontDoorRefused,
+  FrontDoorRefusal, DoorCallerUnauthenticated, DoorPermitAbsent, DoorPermitMacRefused, DoorPermitForAnotherGroup,
+  DoorPermitForAnotherLaunch, DoorPermitExpired, DoorSeatReleased, DoorSeatNeverAdmitted, SeatPermitIssued,
+  SeatGrantCurrency, FrontDoorTally,
+  serving_seat_permit_claims, serving_seat_permit_signing_input, issue_serving_seat_permit, serving_seat_permit_key_id,
+  seat_grant_currency_of, front_door_admit, front_door_tally, front_door_tally_empty, front_door_refused_count,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── Supplied boundary values ──────────────────────────────────────────────────────────────────
+// The witness discriminates at ONE interface, front_door_admit: its inputs are SUPPLIED -- a grant
+// built through product.capacity.lease's own constructor, a ledger history built from the pool's own
+// event constructors, and a MAC verdict computed by the real bound HMAC over the claims' one signing
+// input. Nothing here runs placement; the claims projection serving_seat_permit_claims is the same
+// function harness_place_for mints from.
+
+data witness_key: MacKey = MacKey {
+  id: serving_seat_permit_key_id,
+  suite: HmacSha256,
+  material: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f" as Secret,
+}
+
+data witness_partition: PartitionId = "harness-seat/group-b/interactive-quality-sensitive" as PartitionId
+data witness_reference: NonEmptyStr = "attempt-7/offer/1000/1/head" as NonEmptyStr
+data witness_admitting: EventId = "ev-acquire-7" as EventId
+data witness_granted_at: EpochSecs = 1000
+data witness_term: EpochSecs = 600
+
+data group_b_launch: VllmEndpointProcessLaunch = vllm_endpoint_process_launch(
+  group: FabricGroupB, endpoint: "http://192.168.1.236:30000" as NonEmptyStr, process_start_field: "launch-1" as NonEmptyStr,
+)
+data group_b_relaunch: VllmEndpointProcessLaunch = vllm_endpoint_process_launch(
+  group: FabricGroupB, endpoint: "http://192.168.1.236:30000" as NonEmptyStr, process_start_field: "launch-2" as NonEmptyStr,
+)
+data group_a_launch: VllmEndpointProcessLaunch = vllm_endpoint_process_launch(
+  group: FabricGroupA, endpoint: "http://192.168.1.232:30000" as NonEmptyStr, process_start_field: "launch-1" as NonEmptyStr,
+)
+
+data group_b_door: FrontDoorIdentity = FrontDoorIdentity { group: FabricGroupB, launch: group_b_launch, suite: HmacSha256 }
+
+data witness_grant: LeaseGrant = lease_grant(
+  reference: witness_reference,
+  fence: lease_fence_of(admitting_event: witness_admitting, generation: 3),
+  granted_at: witness_granted_at,
+  policy: LeasePolicy { maximum_duration_seconds: witness_term, release_law: QuiescenceRequired },
+)
+
+data service_caller: RequestAuthenticationEvidence = FabricServiceEvidence {
+  kind: FabricServiceEvidenceSubmissionMac, authenticated_at: "2026-10-03T00:00:00Z",
+}
+
+fn claims_on(launch: VllmEndpointProcessLaunch, group_wire: String) -> ServingSeatPermitClaims {
+  serving_seat_permit_claims(
+    launch: launch, group_wire: group_wire, partition: witness_partition, class: InteractiveQualitySensitive,
+    grant: witness_grant, caller: fabric_service_principal(), work: "attempt-7" as NonEmptyStr,
+  )
+}
+
+fn permit_of(claims: ServingSeatPermitClaims) -> ServingSeatPermit? {
+  match issue_serving_seat_permit(claims: claims, key: witness_key) {
+    SeatPermitIssued { permit: p } => Present { value: p }
+    _ => none
+  }
+}
+
+fn envelope(id: NonEmptyStr, at: EpochSecs, payload: PoolEvent) -> ChainEnvelope<PoolEvent> {
+  ChainEnvelope { id: id as EventId, event: ChainEvent { partition: witness_partition, parent: none, recorded_at: at, actor: "harness" as NonEmptyStr, payload: payload } }
+}
+
+data held_history: ChainWalk<PoolEvent> = ChainWalked { oldest_first: [
+  envelope(id: "ev-acquire-7" as NonEmptyStr, at: 1000, payload: PoolAcquired { reference: witness_reference, amount: 1, term_seconds: 600 }),
+] }
+
+data released_history: ChainWalk<PoolEvent> = ChainWalked { oldest_first: [
+  envelope(id: "ev-acquire-7" as NonEmptyStr, at: 1000, payload: PoolAcquired { reference: witness_reference, amount: 1, term_seconds: 600 }),
+  envelope(id: "ev-release-7" as NonEmptyStr, at: 1100, payload: PoolReleased { reference: witness_reference, reason: "turn ended" as NonEmptyStr }),
+] }
+
+data empty_history: ChainWalk<PoolEvent> = ChainWalked { oldest_first: [] }
+
+fn mac_for(presented: ServingSeatPermit?) -> MacVerification {
+  match presented {
+    Absent => MacTagMismatch { key_id: witness_key.id }
+    Present { value: p } => mac_verify(key: witness_key, message: serving_seat_permit_signing_input(c: p.claims), tag_hex: p.tag_hex)
+  }
+}
+
+fn door_verdict(evidence: RequestAuthenticationEvidence, presented: ServingSeatPermit?, at: EpochSecs, history: ChainWalk<PoolEvent>) -> FrontDoorVerdict {
+  front_door_admit(
+    evidence: evidence, presented: presented, mac_result: mac_for(presented: presented), door: group_b_door, observed_at: at,
+    ledger: fn(partition, reference, grant) { seat_grant_currency_of(walk: history, reference: reference, grant: grant) },
+  )
+}
+
+fn good_permit() -> ServingSeatPermit? {
+  permit_of(claims: claims_on(launch: group_b_launch, group_wire: "group-b"))
+}
+
+// ── RED FIRST: the operator's case ───────────────────────────────────────────────────────────
+
+test fn a_valid_caller_with_no_seat_grant_is_refused_and_the_refusal_is_counted() -> Bool {
+  let v = door_verdict(evidence: service_caller, presented: none, at: 1100, history: held_history)
+  let tally = front_door_tally(tally: front_door_tally_empty, verdict: v)
+  let refused = match v {
+    FrontDoorRefused { cause: DoorPermitAbsent } => true
+    _ => false
+  }
+  refused && front_door_refused_count(tally: tally, cause: "permit-absent" as NonEmptyStr) == 1 && tally.forwarded == 0
+}
+
+test fn a_permit_granted_on_another_group_is_refused() -> Bool {
+  let v = door_verdict(evidence: service_caller, presented: permit_of(claims: claims_on(launch: group_a_launch, group_wire: "group-a")), at: 1100, history: held_history)
+  match v {
+    FrontDoorRefused { cause: DoorPermitForAnotherGroup { permit_group: _, door_group: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_permit_granted_against_another_launch_of_this_group_is_refused() -> Bool {
+  let v = door_verdict(evidence: service_caller, presented: permit_of(claims: claims_on(launch: group_b_relaunch, group_wire: "group-b")), at: 1100, history: held_history)
+  match v {
+    FrontDoorRefused { cause: DoorPermitForAnotherLaunch { permit_launch: _, door_launch: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_permit_observed_at_its_lease_expiry_is_refused() -> Bool {
+  let v = door_verdict(evidence: service_caller, presented: good_permit(), at: witness_granted_at + witness_term, history: held_history)
+  match v {
+    FrontDoorRefused { cause: DoorPermitExpired { expires_at: _, observed_at: _ } } => true
+    _ => false
+  }
+}
+
+// ── The positive control, on the same supplied values ────────────────────────────────────────
+
+test fn a_current_permit_for_this_door_presented_by_its_caller_is_forwarded() -> Bool {
+  match door_verdict(evidence: service_caller, presented: good_permit(), at: witness_granted_at + witness_term - 1, history: held_history) {
+    FrontDoorForward { claims: c } => (c.reference as String) == (witness_reference as String)
+    FrontDoorRefused { cause: _ } => false
+  }
+}
+
+// ── Neither axis alone forwards ──────────────────────────────────────────────────────────────
+
+test fn a_current_permit_with_no_caller_authentication_is_refused() -> Bool {
+  match door_verdict(evidence: AuthAbsent, presented: good_permit(), at: 1100, history: held_history) {
+    FrontDoorRefused { cause: DoorCallerUnauthenticated { evidence: _ } } => true
+    _ => false
+  }
+}
+
+// ── Revocation is the ledger, and integrity is the MAC ───────────────────────────────────────
+
+test fn a_permit_for_a_released_seat_is_refused() -> Bool {
+  match door_verdict(evidence: service_caller, presented: good_permit(), at: 1200, history: released_history) {
+    FrontDoorRefused { cause: DoorSeatReleased { reason: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_validly_signed_permit_for_a_seat_never_admitted_is_refused() -> Bool {
+  match door_verdict(evidence: service_caller, presented: good_permit(), at: 1100, history: empty_history) {
+    FrontDoorRefused { cause: DoorSeatNeverAdmitted } => true
+    _ => false
+  }
+}
+
+test fn a_permit_whose_claims_were_rewritten_after_signing_is_refused_by_the_mac() -> Bool {
+  match good_permit() {
+    Absent => false
+    Present { value: p } => {
+      let c = p.claims
+      let widened = ServingSeatPermit {
+        claims: ServingSeatPermitClaims {
+          protocol: c.protocol, launch: c.launch, group: c.group, partition: c.partition, class: c.class,
+          reference: c.reference, grant: c.grant, generation: c.generation, caller: c.caller, work: c.work,
+          granted_at: c.granted_at, expires_at: c.expires_at + 86400, key_id: c.key_id,
+        },
+        tag_hex: p.tag_hex,
+      }
+      match door_verdict(evidence: service_caller, presented: Present { value: widened }, at: 1100, history: held_history) {
+        FrontDoorRefused { cause: DoorPermitMacRefused { verification: _ } } => true
+        _ => false
+      }
+    }
+  }
+}
+
+// ── The count is per cause ───────────────────────────────────────────────────────────────────
+
+test fn the_tally_keeps_each_refusal_cause_separately_and_counts_forwards_apart() -> Bool {
+  let verdicts = [
+    door_verdict(evidence: service_caller, presented: none, at: 1100, history: held_history),
+    door_verdict(evidence: service_caller, presented: none, at: 1100, history: held_history),
+    door_verdict(evidence: service_caller, presented: good_permit(), at: 1200, history: released_history),
+    door_verdict(evidence: service_caller, presented: good_permit(), at: 1100, history: held_history),
+  ]
+  let tally = fold(verdicts, init: front_door_tally_empty, f: (t, v) => front_door_tally(tally: t, verdict: v))
+  front_door_refused_count(tally: tally, cause: "permit-absent" as NonEmptyStr) == 2
+    && front_door_refused_count(tally: tally, cause: "seat-released" as NonEmptyStr) == 1
+    && tally.forwarded == 1
+}

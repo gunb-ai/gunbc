@@ -31,7 +31,7 @@ import gunbc.roadmap.roadmap_review_role { review_verdict_shape_text }
 import gunbc.harness.harness_wire { harness_context_budget_for }
 import gunbc.harness.harness_reasoning_wire { HarnessServingUnit }
 import gunbc.serving.turn_admission {
-  ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant,
+  ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant, serving_co_tenancy_class_wire,
 }
 import gunbc.harness.harness_seat { harness_turn_request,
   HarnessSeatBinding, HarnessSeatBound, HarnessSeatPending, HarnessSeatRefused, harness_bind_seat,
@@ -40,7 +40,13 @@ import gunbc.harness.harness_seat { harness_turn_request,
   HarnessReleaseCapability, harness_release_capability_wire,
   ServingModelRequirement, AnyAdmittedModel,
 }
-import product.capacity.lease { LeasePolicy, QuiescenceRequired, GrantIdentity }
+import product.capacity.lease { LeasePolicy, LeaseGrant, QuiescenceRequired, GrantIdentity }
+import gunbc.serving.serving_front_door {
+  ServingSeatPermit, SeatPermitMinted, SeatPermitNotMinted, serving_seat_permit_claims, mint_serving_seat_permit,
+}
+import gunbc.auth.request_authentication { fabric_service_principal }
+import gunbc.principal_projection { principal_ref_label }
+import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch }
 import extdeps.tools.hostname
 import extdeps.filesystem.filesystem_io
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -477,27 +483,47 @@ fn harness_place_for(request: String, actor: String, attempt: String, receipt: S
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
-    HarnessSeatBound { url, grant, partition, ceiling: bound_ceiling, group_wire, launch, store: _, model: bound_model, unit: _, class: _ } => {
+    HarnessSeatBound { url, grant, partition, ceiling: bound_ceiling, group_wire, launch, store: _, model: bound_model, unit: _, class: bound_class } => {
       let capability = harness_release_capability(partition: partition, ceiling: bound_ceiling, grant: grant)
-      let line = join([
-        "url=", url,
-        " group=", group_wire,
-        " model=", bound_model as String,
-        " partition=", capability.partition as String,
-        " endpoint_process=", launch.process_start_field as String,
-        " reference=", capability.reference as String,
-        " grant=", capability.grant as String,
-        " generation=", to_string(capability.generation),
-        " ceiling=", to_string(capability.ceiling),
-        " expires_at=", to_string(grant.expires_at), "\n",
-      ], "")
-      let w = Filesystem.Write(path: receipt, content: line)
-      if w.success {
-        ExitSuccess
-      } else {
-        harness_place_receipt_failed(binding: binding, cause: w.error)
+      let claims = serving_seat_permit_claims(launch: launch, group_wire: group_wire, partition: partition, class: bound_class, grant: grant, caller: fabric_service_principal(), work: attempt as NonEmptyStr)
+      match mint_serving_seat_permit(claims: claims) {
+        SeatPermitNotMinted { detail: why } => harness_place_receipt_failed(binding: binding, cause: join(["the seat was granted but no front-door permit could be minted for it: ", why], ""))
+        SeatPermitMinted { permit: permit } => harness_place_receipt(binding: binding, url: url, group_wire: group_wire, bound_model: bound_model, launch: launch, capability: capability, grant: grant, permit: permit, receipt: receipt)
       }
     }
+  }
+}
+
+// THE RECEIPT CARRIES THE PERMIT BESIDE THE CAPABILITY. The capability is what releases the seat;
+// the permit is what the serving group's front door (gunbc.serving.serving_front_door) admits a
+// request on. Its fields are the claims the tag was computed over, printed once, so a caller
+// presents exactly what was signed and never re-derives a claim of its own.
+fn harness_place_receipt(binding: HarnessSeatBinding, url: String, group_wire: String, bound_model: NonEmptyStr, launch: VllmEndpointProcessLaunch, capability: HarnessReleaseCapability, grant: LeaseGrant, permit: ServingSeatPermit, receipt: String) -> ProcessExit {
+  let p = permit.claims
+  let line = join([
+    "url=", url,
+    " group=", group_wire,
+    " model=", bound_model as String,
+    " partition=", capability.partition as String,
+    " endpoint_process=", launch.process_start_field as String,
+    " reference=", capability.reference as String,
+    " grant=", capability.grant as String,
+    " generation=", to_string(capability.generation),
+    " ceiling=", to_string(capability.ceiling),
+    " expires_at=", to_string(grant.expires_at),
+    " permit_launch=", p.launch as String,
+    " permit_class=", serving_co_tenancy_class_wire(c: p.class) as String,
+    " permit_caller=", principal_ref_label(p: p.caller),
+    " permit_work=", p.work as String,
+    " permit_granted_at=", to_string(p.granted_at),
+    " permit_key=", p.key_id as String,
+    " permit_tag=", permit.tag_hex as String, "\n",
+  ], "")
+  let w = Filesystem.Write(path: receipt, content: line)
+  if w.success {
+    ExitSuccess
+  } else {
+    harness_place_receipt_failed(binding: binding, cause: w.error)
   }
 }
 
