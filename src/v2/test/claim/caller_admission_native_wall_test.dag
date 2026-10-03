@@ -14,9 +14,9 @@ module v2.test.claim.caller_admission_native_wall
 //     entry (^infer_reason_admit_callers_entry_not_decl_ref), never shrinking the roster silently.
 // The fixtures are strings, so a refusal here is a verdict ABOUT the fixture, not a refusal of
 // this claim module's own prepare: the floor stays green with the wall live. Each fixture's
-// resolved outcome is computed ONCE as a nullary value, enrolled WARM in
-// v2.workflow.floor_pure_producer_share, and the claims read it -- a claim that drove its own
-// parse inline was over the new-witness eval-step budget, as the trailing-comma claim records.
+// resolved outcome is computed ONCE as a nullary value of this module, and the claims read it --
+// a claim that drove its own parse inline was over the new-witness eval-step budget, as the
+// trailing-comma claim records.
 
 import v2.compiler.infer { ObligatedInferredTree, infer }
 import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree }
@@ -121,44 +121,3 @@ test fn the_native_wall_admits_a_call_from_the_listed_caller_holds() -> Bool {
 test fn the_native_wall_refuses_an_entry_that_is_not_a_decl_ref_call_holds() -> Bool {
   aca_rejected_with(r: aca_bare_entry_inferred(), reason: ^infer_reason_admit_callers_entry_not_decl_ref)
 }
-
-// SCRATCH STAGE PROBES (deleted once the wall verdicts are green): they separate a parse refusal
-// from a normalize refusal from a resolve refusal, so a fixture failure names its stage.
-fn aca_fixture_parses() -> Bool {
-  match dag_prepared_grammar() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: prepared, diagnostics: residue } =>
-      match tokenize(text: aca_listed_caller_text(), file: ^aca_fixture, rules: dag_lex()) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: token_stream, diagnostics: _ } =>
-          match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
-            Accepted { value: _, diagnostics: _ } => true
-            Rejected { diagnostics: _ } => false
-          }
-      }
-  }
-}
-
-test fn aca_probe_fixture_parses_holds() -> Bool { aca_fixture_parses() }
-
-test fn aca_probe_fixture_normalizes_holds() -> Bool {
-  match aca_normalized(text: aca_listed_caller_text()) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn aca_probe_red_fixture_normalizes_holds() -> Bool {
-  match aca_normalized(text: aca_outside_caller_text()) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn aca_probe_listed_infers_holds() -> Bool {
-  match aca_listed_inferred() {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
