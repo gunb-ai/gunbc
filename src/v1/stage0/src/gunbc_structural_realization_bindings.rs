@@ -2,6 +2,7 @@
 // Source module: gunbc.structural_realization_bindings
 
 use crate::std_coercion::ConversionPhase::{InverseUnfoldPhase, UnfoldPhase};
+pub use crate::std_coercion::{code_point_sequence_endpoint, host_text_endpoint};
 pub use crate::std_coercion::{ConversionPhase, ConversionPlan};
 pub use crate::std_decl_ref::decl_ref;
 pub use crate::std_decl_ref::DeclarationRef;
@@ -83,20 +84,16 @@ pub fn conversion_plan_rows() -> Rc<Vec<Rc<ConversionPlan>>> {
                 Rc::new(vec![Rc::new(ConversionPlan {
         identity: "unicode_scalar_unfold".to_string(),
         route: crate::std_decl_ref::decl_ref("std.coercion".to_string(), "unicode_scalar_unfold".to_string()),
-        source: crate::std_decl_ref::decl_ref("std.types".to_string(), "String".to_string()),
-        source_element: std::option::Option::None,
-        target: crate::std_decl_ref::decl_ref("std.algebra".to_string(), "FreeMonoid".to_string()),
-        target_element: Some(crate::std_decl_ref::decl_ref("std.types".to_string(), "Char".to_string())),
+        source: crate::std_coercion::host_text_endpoint(),
+        target: crate::std_coercion::code_point_sequence_endpoint(),
         phases: Rc::new(vec![Rc::new(ConversionPhase::UnfoldPhase {
         producer: Rc::new(LiteralUnfolding::UnicodeScalarSequenceUnfold),
     })]),
     }), Rc::new(ConversionPlan {
         identity: "unicode_scalar_fold".to_string(),
         route: crate::std_decl_ref::decl_ref("std.coercion".to_string(), "unicode_scalar_fold".to_string()),
-        source: crate::std_decl_ref::decl_ref("std.algebra".to_string(), "FreeMonoid".to_string()),
-        source_element: Some(crate::std_decl_ref::decl_ref("std.types".to_string(), "Char".to_string())),
-        target: crate::std_decl_ref::decl_ref("std.types".to_string(), "String".to_string()),
-        target_element: std::option::Option::None,
+        source: crate::std_coercion::code_point_sequence_endpoint(),
+        target: crate::std_coercion::host_text_endpoint(),
         phases: Rc::new(vec![Rc::new(ConversionPhase::InverseUnfoldPhase {
         producer: Rc::new(LiteralUnfolding::UnicodeScalarSequenceUnfold),
     })]),
