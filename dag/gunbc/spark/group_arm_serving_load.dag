@@ -265,9 +265,12 @@ fn ledger_completed(l: OperationLedger) -> Nat? {
   }
 }
 
+// A CLOSED LEDGER IS MINTED ONLY WITH completed == offered AND failed == 0
+// (gunbc.spark.serving_load_probe ledger_from_bench_stdout), so its lost count is its failed count; an
+// incomplete ledger counts as one lost-or-unaccounted request, never as none.
 fn ledger_lost(l: OperationLedger) -> Nat {
   match l {
-    LedgerClosed { offered: o, completed: c, failed: f } => if o > c { o - c + f } else { f }
+    LedgerClosed { offered: _, completed: _, failed: f } => f
     LedgerIncomplete { because: _ } => 1
   }
 }
