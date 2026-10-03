@@ -38165,6 +38165,19 @@ pub fn shell_stderr_binding_line() -> String {
 }
 
 pub fn emit_shell_return(result_fields: Rc<Vec<Rc<ShellResultField>>>) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                shell_stderr_prelude(result_fields.clone()),
+                "Ok(".to_string(),
+            ),
+            shell_projection_value(result_fields.clone()),
+        ),
+        ")".to_string(),
+    )
+}
+
+pub fn shell_projection_value(result_fields: Rc<Vec<Rc<ShellResultField>>>) -> String {
     {
         let n = (result_fields.clone().len() as i64);
         if (n.clone() == 0) {
@@ -38172,10 +38185,7 @@ pub fn emit_shell_return(result_fields: Rc<Vec<Rc<ShellResultField>>>) -> String
         } else {
             if (n.clone() == 1) {
                 match result_fields.clone().first().cloned() {
-                    Some(f) => v1_rt::concat(
-                        shell_stderr_prelude(result_fields.clone()),
-                        emit_shell_channel_expr(f.channel.clone(), f.optional.clone()),
-                    ),
+                    Some(f) => emit_shell_channel_expr(f.channel.clone(), f.optional.clone()),
                     std::option::Option::None => {
                         emit_shell_channel_expr(ShellResultChannel::ShellChanStdout, false)
                     }
@@ -38193,14 +38203,8 @@ pub fn emit_shell_return(result_fields: Rc<Vec<Rc<ShellResultField>>>) -> String
                         __result
                     });
                     v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                shell_stderr_prelude(result_fields.clone()),
-                                "Ok((".to_string(),
-                            ),
-                            field_exprs.clone().join(&", ".to_string()),
-                        ),
-                        "))".to_string(),
+                        v1_rt::concat("(".to_string(), field_exprs.clone().join(&", ".to_string())),
+                        ")".to_string(),
                     )
                 }
             }

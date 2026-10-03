@@ -16453,27 +16453,37 @@ fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, source
 data shell_stderr_binding_line: String = "let stderr = String::from_utf8_lossy(&output.stderr).to_string();"
 
 // Answers the declared fields in declared order, from the projection the binding
-// resolved. A single-field projection answers one expression rather than a
-// one-tuple, and an empty projection is the whole-stdout convention the binding
-// left alone.
+// resolved, as the method's SUCCESS value.
+//
+// THE RETURN CONVENTION IS NOT A FUNCTION OF ARITY (gunbc.recurring_failure_mode
+// shell_projection_return_convention_selected_by_arity). Every shell operation's
+// method is signed `Result<.., Box<dyn Error>>` whatever its field count, so the
+// success value is wrapped in `Ok(..)` here, once, for every arity -- including the
+// exit-arm path, which reaches this same function. Arity decides only the SHAPE of
+// the value inside (one expression, a tuple, or the whole-stdout convention for an
+// empty projection), which is the same shape the signature projects.
 //
 // IT NO LONGER READS THE DECLARATION. The inferred return node is gone from the
 // signature, which is the evidence the cut happened: there is no path here on
 // which a channel could be re-decided, and no default arm to answer a key the
 // binding did not model.
 fn emit_shell_return(result_fields: List<ShellResultField>) -> String {
+  concat(shell_stderr_prelude(result_fields: result_fields),
+    "Ok(", shell_projection_value(result_fields: result_fields), ")")
+}
+
+fn shell_projection_value(result_fields: List<ShellResultField>) -> String {
   let n = result_fields |> count
   if n == 0 {
     emit_shell_channel_expr(channel: ShellChanStdout, is_optional: false)
   } else if n == 1 {
     match result_fields |> first {
-      Present { value: f } => concat(shell_stderr_prelude(result_fields: result_fields),
-        emit_shell_channel_expr(channel: f.channel, is_optional: f.optional))
+      Present { value: f } => emit_shell_channel_expr(channel: f.channel, is_optional: f.optional)
       Absent => emit_shell_channel_expr(channel: ShellChanStdout, is_optional: false)
     }
   } else {
     let field_exprs = result_fields |> map(f => emit_shell_channel_expr(channel: f.channel, is_optional: f.optional))
-    concat(shell_stderr_prelude(result_fields: result_fields), "Ok((", field_exprs |> join(separator: ", "), "))")
+    concat("(", field_exprs |> join(separator: ", "), ")")
   }
 }
 
