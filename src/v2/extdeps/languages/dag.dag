@@ -883,9 +883,9 @@ fn dag_grammar_generic_params_expr() -> GrammarExpr {
 // of `name: T <tail>` before `name: T`, both led by the same binding name. The tail is a refinement
 // (optionally followed by a default) or a default; the two start with `where` and `=`, so that inner
 // choice is disjoint. A plain parameter captures `name: (T, <empty>)`, which
-// v2.compiler.body_lowering_fold body_lower_typed_param_after_colon_optional reads. Neither the
-// refinement nor (before XL-2 PR2c-ii) the default lowered: the fn refuses at the clause
-// (body_lowering_reason_parameter_refinement_unmodeled), and a default lowers onto the parameter's binder.
+// v2.compiler.body_lowering_fold body_lower_typed_param_optional reads. A refinement does not lower:
+// the fn refuses at the clause (body_lowering_reason_parameter_refinement_unmodeled). A default lowers
+// onto the parameter's binder (XL-2 PR2c-ii).
 fn dag_grammar_typed_param_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_binding_name_terminal(),

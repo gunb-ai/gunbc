@@ -4033,7 +4033,7 @@ fn body_lower_first_signature_refusal_optional(captured: Node) -> Optional<Outco
 // (gunbc.recurring_failure_mode parameter_refinement_has_no_carrier). The clause is searched only
 // inside this declaration's own param_list.
 // A parameter's DEFAULT is not refused here any more: it lowers onto the parameter's binder
-// (body_lower_typed_param_after_colon_optional, body_lower_binder_edge_read; XL-2 PR2c-ii).
+// (body_lower_typed_param_optional, body_lower_binder_edge_read; XL-2 PR2c-ii).
 fn body_lower_param_list_refusal_optional(captured: Node) -> Optional<Outcome<Node>> {
   match body_lower_find_captured(root: captured, emitted: ^dag_surface_param_list) {
     ParseSubtreeAbsent => optional_absent()
