@@ -85,6 +85,7 @@ import gunbc.scm.repository_envelope {
   RepositoryProtocolRetiredFormat,
   RepositoryProtocolUnrecognizedFormat,
   RepositoryProtocolUnrecognizedIdentityRule,
+  RepositoryProtocolIndexHasNoObjectRoster,
   RepositoryProtocolNotAProtocolRefusal,
   repository_generation_of_content,
 }
@@ -232,6 +233,12 @@ fn repository_load_refusal_lines(cause: RepositoryLoadRefusal) -> List<String> {
             concat("the document declares unrecognized object identity rule ", f),
             concat("  at ", path),
             "  this build reads the format but not that identity rule, so its contents were not validated",
+          ]
+        RepositoryProtocolIndexHasNoObjectRoster { found: f } =>
+          [
+            concat("the document declares repository format ", f),
+            concat("  at ", path),
+            "  its index carries no object roster, so it cannot be read by identity; convert it once (gunbc.scm.repository_convert scm_convert_repository_cli)",
           ]
         RepositoryProtocolNotAProtocolRefusal => [concat("not a repository document: ", path)]
       }

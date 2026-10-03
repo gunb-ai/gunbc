@@ -91,7 +91,8 @@ import gunbc.scm.repository_load {
 }
 import gunbc.scm.repository_envelope {
   commit_at_reference,
-  RepositoryIndexHasNoObjectRoster,
+  repository_document_protocol, RepositoryProtocolIndexHasNoObjectRoster, RepositoryProtocolRetiredFormat,
+  RepositoryProtocolUnrecognizedFormat, RepositoryProtocolUnrecognizedIdentityRule, RepositoryProtocolNotAProtocolRefusal,
   RepositoryEnvelope,
   RepositoryDecodeRefusal,
   repository_format_of,
@@ -531,10 +532,13 @@ fn repository_convert_refusal_detail_of_load(path: String, cause: RepositoryLoad
     RepositoryFileUnreadable { path: p, error } => join(["the envelope could not be read: ", p, " (", error, ")"], "")
     RepositoryDocumentUnparseable { path: p, gap: _ } => concat("the envelope document is not valid JSON: ", p)
     RepositoryDocumentRefused { path: p, cause: c } =>
-      match c {
-        RepositoryIndexHasNoObjectRoster { found } =>
+      match repository_document_protocol(cause: c) {
+        RepositoryProtocolIndexHasNoObjectRoster { found } =>
           join(["the envelope is ", found, ", which carries no object roster; convert it first (scm_convert_repository_cli): ", p], "")
-        _ => concat("the envelope document is refused by the repository schema: ", p)
+        RepositoryProtocolRetiredFormat { found } => join(["the envelope declares retired format ", found, ": ", p], "")
+        RepositoryProtocolUnrecognizedFormat { found } => join(["the envelope declares unrecognized format ", found, ": ", p], "")
+        RepositoryProtocolUnrecognizedIdentityRule { found } => join(["the envelope declares unrecognized identity rule ", found, ": ", p], "")
+        RepositoryProtocolNotAProtocolRefusal => concat("the envelope document is refused by the repository schema: ", p)
       }
   }
 }

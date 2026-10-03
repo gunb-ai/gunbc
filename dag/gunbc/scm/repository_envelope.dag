@@ -3425,6 +3425,7 @@ type RepositoryDocumentProtocol
   = RepositoryProtocolRetiredFormat { found: String }
   | RepositoryProtocolUnrecognizedFormat { found: String }
   | RepositoryProtocolUnrecognizedIdentityRule { found: String }
+  | RepositoryProtocolIndexHasNoObjectRoster { found: String }
   | RepositoryProtocolNotAProtocolRefusal
 
 fn repository_document_protocol(cause: RepositoryDecodeRefusal) -> RepositoryDocumentProtocol {
@@ -3433,6 +3434,7 @@ fn repository_document_protocol(cause: RepositoryDecodeRefusal) -> RepositoryDoc
     RepositoryFormatUnrecognized { found: f } => RepositoryProtocolUnrecognizedFormat { found: f }
     RepositoryIdentityRuleUnrecognized { found: f } =>
       RepositoryProtocolUnrecognizedIdentityRule { found: f }
+    RepositoryIndexHasNoObjectRoster { found: f } => RepositoryProtocolIndexHasNoObjectRoster { found: f }
     _ => RepositoryProtocolNotAProtocolRefusal
   }
 }

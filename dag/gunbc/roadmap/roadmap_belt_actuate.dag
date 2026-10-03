@@ -422,7 +422,9 @@ import gunbc.scm.object_store {
   find_object, store_rostered_lookup, scm_object_identity, authored_source_object,
   CorpusManifestRecord, authored_source_target_locator, object_id_eq,
 }
-import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit, empty_repository, commit_at_reference, merge_base, MergeBaseDerived, MergeBaseNotDerived, RepositoryIndexHasNoObjectRoster, repository_history }
+import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit, empty_repository, commit_at_reference, merge_base, MergeBaseDerived, MergeBaseNotDerived, RepositoryIndexHasNoObjectRoster, repository_history,
+  repository_document_protocol, RepositoryProtocolIndexHasNoObjectRoster, RepositoryProtocolRetiredFormat,
+  RepositoryProtocolUnrecognizedFormat, RepositoryProtocolUnrecognizedIdentityRule, RepositoryProtocolNotAProtocolRefusal }
 import std.list { distinct_by_key }
 import gunbc.scm.checkout { recover_corpus, CorpusRecovered, CorpusRecoveryRefused, RecoveredSourceFile }
 import gunbc.scm.ancestry { RepositoryCommitRef, RootCommit, DescendsFrom, repository_commit_ref_eq }
@@ -5710,13 +5712,16 @@ fn belt_scm_load_refusal_detail(cause: RepositoryLoadRefusal) -> String {
     RepositoryDocumentUnparseable { path, gap: _ } =>
       join(["the envelope file is not JSON: ", path], "")
     RepositoryDocumentRefused { path, cause } =>
-      match cause {
-        RepositoryIndexHasNoObjectRoster { found } =>
+      match repository_document_protocol(cause: cause) {
+        RepositoryProtocolIndexHasNoObjectRoster { found } =>
           join([
             "the envelope at ", path, " is ", found,
             ", whose index carries no object roster, so the belt cannot read only what it needs; migrate it once, outside a tick (gunbc.scm.repository_convert scm_convert_repository_cli)",
           ], "")
-        _ => join(["the envelope document is refused by the repository schema: ", path], "")
+        RepositoryProtocolRetiredFormat { found: _ } => join(["the envelope document declares a retired format: ", path], "")
+        RepositoryProtocolUnrecognizedFormat { found: _ } => join(["the envelope document declares an unrecognized format: ", path], "")
+        RepositoryProtocolUnrecognizedIdentityRule { found: _ } => join(["the envelope document declares an unrecognized identity rule: ", path], "")
+        RepositoryProtocolNotAProtocolRefusal => join(["the envelope document is refused by the repository schema: ", path], "")
       }
   }
 }
