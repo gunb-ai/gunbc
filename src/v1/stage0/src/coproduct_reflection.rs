@@ -188,7 +188,7 @@ fn edge_named(ctx: &InterpContext, name: &str, target: Value) -> Value {
                 ctx.sym("label"),
                 Value::Variant {
                     type_name: ctx.sym("EdgeLabel"),
-                    variant_name: ctx.sym("Named"),
+                    variant_name: ctx.sym("Authored"),
                     fields: Rc::new(vec![(ctx.sym("name"), str_value(name.to_string()))]),
                 },
             ),
@@ -2508,6 +2508,9 @@ mod parse_only_uppercase_variant_regression_tests {
             Rc::new(ExprData::ExprVar {
                 binding_kind: Some(Rc::new(VarBindingKind::VariantValueBinding {
                     parent_enum: "Parent".to_string(),
+                    parent_identity: Rc::new(
+                        crate::std_target_representation::VariantParentIdentity::VariantParentBeforeInference,
+                    ),
                 })),
             }),
             empty_node_list(),

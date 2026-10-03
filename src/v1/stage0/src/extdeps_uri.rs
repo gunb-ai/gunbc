@@ -1025,22 +1025,6 @@ pub fn uri_percent_encode_code_points(code_points: Rc<Vec<i64>>) -> Rc<UriPercen
     }
 }
 
-pub fn uri_percent_decode_component(value: String) -> String {
-    v1_rt::replace(
-        v1_rt::replace(
-            v1_rt::replace(
-                v1_rt::replace(value.clone(), "%25".to_string(), "%".to_string()),
-                "%2F".to_string(),
-                "/".to_string(),
-            ),
-            "%3D".to_string(),
-            "=".to_string(),
-        ),
-        "%2B".to_string(),
-        "+".to_string(),
-    )
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Http;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

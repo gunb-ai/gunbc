@@ -1,0 +1,181 @@
+module gunbc.spark.fabric_blob_peer
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.algebra { trim }
+import v2.std.optional { Present, Absent }
+import product.placement_supply { HostIdentity }
+import extdeps.tools.rsync {
+  RsyncReadOnlyModule, rsyncd_conf_text, rsync_daemon_foreground_argv, rsync_daemon_url,
+  rsync_pull_file_argv, rsync_daemon_default_port,
+}
+import gunbc.artifact_acquisition { AcquisitionSubject, AcquisitionSource, SourceArgv, ContentDigestSha256 }
+import gunbc.spark.fabric_reach { ReachFabricRail, spark_reach_endpoint }
+import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, RemoteRan, RemoteUnreachable, spark_remote_run }
+import gunbc.spark.spark_file_blob { SparkFileBlobPolicy }
+
+// ── A CONTENT-ADDRESSED BLOB MOVES SPARK TO SPARK OVER THE FABRIC RAIL ─────────────────────────
+//
+// WHY THE RAIL AND NOT THE EXECUTOR. Every Spark reaches the management LAN -- and through it the
+// executor and the internet -- over WIRELESS, and is cabled into the 192.168.110.0/24 fabric rail at
+// 50 Gb/s per leg (gunbc.spark.model_snapshot_acquisition records the measurement). The image
+// distribution this replaces pulled a ~30 GB tar from the source Spark to the executor and pushed it
+// back out to the target, both legs on that radio: on 2026-10-01 a band-steering roam on srv5 at
+// 13:15:46 broke the upload with `client_loop: send disconnect: Broken pipe` (fleet-converge run
+// 36867302511), and every re-run started from byte zero. Over the rail the bytes never touch the
+// radio, and the executor's control legs carry only commands and digests.
+//
+// THE SHAPE IS ONE BLOB ROOT PER SPARK, NAMED BY DIGEST. A blob lives at `<root>/<sha256 hex>`; a
+// holder serves the root read-only; a target pulls `<hex>` from any holder into its own staging path
+// and gunbc.spark.spark_file_blob digests and publishes it. Nothing here knows what the bytes are --
+// an image tar, a checkpoint shard, an Engram file -- which is the point: the subject's own module
+// decides what to do with a published blob (docker load, a rename into a model directory), and the
+// move is the same move for all of them.
+//
+// THE HOLDER SERVES; THE TARGET PULLS; NO KEY CROSSES BETWEEN SPARKS. The target's transfer unit runs
+// as root under pid 1 and holds no credential for another Spark, so the pull is an anonymous read
+// from an rsync daemon bound to the holder's RAIL address only -- unreachable from the management LAN
+// and the internet by construction of the bind, and read-only by its configuration. Who may pull is
+// therefore "whoever is cabled into the rail", which is the fleet. DECLARED FRONTIER: a per-transfer
+// grant (workload identity federation, the operator's stated direction) replaces the anonymous read
+// when the fabric carries a host not owned by this fleet; until then the rail's physical membership is
+// the authorization, and this note is where that is said.
+data fabric_blob_root: NonEmptyStr = "/var/lib/gunbc/blobs" as NonEmptyStr
+data fabric_blob_staging_directory: NonEmptyStr = "/var/lib/gunbc/blobs/.staging" as NonEmptyStr
+
+// THE DAEMON'S CONFIGURATION LIVES BESIDE THE ROOT, NOT IN IT, so the module never exports its own
+// configuration and a blob can never be named `rsyncd.conf`.
+data fabric_blob_rsyncd_conf_path: NonEmptyStr = "/var/lib/gunbc/blobs-rsyncd.conf" as NonEmptyStr
+data fabric_blob_rsync_module_name: NonEmptyStr = "blobs" as NonEmptyStr
+data fabric_blob_serve_unit: NonEmptyStr = "gunbc-fabric-blob-serve" as NonEmptyStr
+
+// ROOT READS THE BLOBS BECAUSE ROOT WROTE THEM: `docker save` runs through the privileged leg, so its
+// tar is root-owned, and the daemon reads it as the identity that can.
+data fabric_blob_rsync_module: RsyncReadOnlyModule = RsyncReadOnlyModule {
+  name: fabric_blob_rsync_module_name,
+  path: fabric_blob_root,
+  uid: "root" as NonEmptyStr,
+  gid: "root" as NonEmptyStr,
+}
+
+// A STALLED PULL EXITS RATHER THAN HANGING: rsync's I/O timeout turns a link that stopped moving into
+// status 30, which gunbc.spark.spark_file_blob reads as unreachable, so the fold moves on to the next
+// holder and a re-run resumes from the kept partial.
+data fabric_blob_pull_io_timeout_seconds: Nat = 60
+
+fn fabric_blob_path(hex: NonEmptyStr) -> NonEmptyStr {
+  join([fabric_blob_root as String, "/", hex as String], "") as NonEmptyStr
+}
+
+fn fabric_blob_staging_path(hex: NonEmptyStr) -> NonEmptyStr {
+  join([fabric_blob_staging_directory as String, "/", hex as String, ".partial"], "") as NonEmptyStr
+}
+
+// ── SERVING: ONE DAEMON PER HOLDER, ITS LIFETIME A TRANSIENT UNIT ──────────────────────────────
+//
+// The daemon runs in the foreground under a transient systemd unit, so it survives the ssh leg that
+// started it and is stopped by name. Starting it when it is already active is a Noop, so two
+// distributions from one holder share one daemon rather than racing for the port.
+type FabricBlobHolder {
+  holder: HostIdentity
+  rail_address: NonEmptyStr
+}
+
+type FabricBlobServe
+  = FabricBlobServing { serving: FabricBlobHolder }
+  | FabricBlobServeRefused { holder: HostIdentity, step: NonEmptyStr, cause: String }
+
+fn fabric_blob_serve_refused(ctx: SparkMaterializeContext, step: String, cause: String) -> FabricBlobServe {
+  FabricBlobServeRefused { holder: ctx.host, step: step as NonEmptyStr, cause: cause }
+}
+
+fn fabric_blob_serve(ctx: SparkMaterializeContext) -> FabricBlobServe {
+  match spark_reach_endpoint(host: ctx.host, path: ReachFabricRail) {
+    Absent => fabric_blob_serve_refused(ctx: ctx, step: "serve-rail-address", cause: join(["the holder ", ctx.host as String, " has no fabric rail address, so it cannot serve over the rail"], ""))
+    Present { value: rail } =>
+      match spark_remote_run(ctx: ctx, argv: ["systemctl", "is-active", fabric_blob_serve_unit as String]) {
+        RemoteUnreachable { cause: c } => fabric_blob_serve_refused(ctx: ctx, step: "serve-state", cause: c)
+        RemoteRan { exit_code: _, stdout: state, stderr: _ } =>
+          if trim(s: state) == "active" {
+            FabricBlobServing { serving: FabricBlobHolder { holder: ctx.host, rail_address: rail as NonEmptyStr } }
+          } else {
+            fabric_blob_serve_start(ctx: ctx, rail: rail as NonEmptyStr)
+          }
+      }
+  }
+}
+
+// THE CONFIGURATION IS WRITTEN BY `sh -c` WITH ITS TEXT AS A POSITIONAL ARGUMENT, never spliced into
+// the script, so its newlines and `=` reach the file exactly as rsyncd_conf_text rendered them.
+fn fabric_blob_serve_start(ctx: SparkMaterializeContext, rail: NonEmptyStr) -> FabricBlobServe {
+  match spark_remote_run(ctx: ctx, argv: ["mkdir", "-p", fabric_blob_root as String, fabric_blob_staging_directory as String]) {
+    RemoteUnreachable { cause: c } => fabric_blob_serve_refused(ctx: ctx, step: "serve-root", cause: c)
+    RemoteRan { exit_code: e, stdout: _, stderr: err } =>
+      if e != 0 { fabric_blob_serve_refused(ctx: ctx, step: "serve-root", cause: join(["mkdir exited ", to_string(e), ": ", err], "")) } else {
+        match spark_remote_run(ctx: ctx, argv: ["sh", "-c", "printf '%s' \"$1\" > \"$2\"", "sh", rsyncd_conf_text(module: fabric_blob_rsync_module), fabric_blob_rsyncd_conf_path as String]) {
+          RemoteUnreachable { cause: c } => fabric_blob_serve_refused(ctx: ctx, step: "serve-config", cause: c)
+          RemoteRan { exit_code: e2, stdout: _, stderr: err2 } =>
+            if e2 != 0 { fabric_blob_serve_refused(ctx: ctx, step: "serve-config", cause: join(["writing the daemon configuration exited ", to_string(e2), ": ", err2], "")) } else {
+              let cleared = spark_remote_run(ctx: ctx, argv: ["systemctl", "reset-failed", fabric_blob_serve_unit as String])
+              match spark_remote_run(ctx: ctx, argv: concat(
+                ["systemd-run", join(["--unit=", fabric_blob_serve_unit as String], ""), "--description=gunbc fabric blob serve (read-only rsync daemon on the rail)", "--"],
+                rsync_daemon_foreground_argv(address: rail, port: rsync_daemon_default_port, config_path: fabric_blob_rsyncd_conf_path),
+              )) {
+                RemoteUnreachable { cause: c } => fabric_blob_serve_refused(ctx: ctx, step: "serve-start", cause: c)
+                RemoteRan { exit_code: e3, stdout: _, stderr: err3 } =>
+                  if e3 != 0 { fabric_blob_serve_refused(ctx: ctx, step: "serve-start", cause: join(["systemd-run exited ", to_string(e3), ": ", err3], "")) } else {
+                    FabricBlobServing { serving: FabricBlobHolder { holder: ctx.host, rail_address: rail } }
+                  }
+              }
+            }
+        }
+      }
+  }
+}
+
+// STOPPING IS BEST-EFFORT AND SAYS SO IN ITS TYPE: a daemon that is already gone is the ordinary case.
+fn fabric_blob_serve_stop(ctx: SparkMaterializeContext) -> Bool {
+  match spark_remote_run(ctx: ctx, argv: ["systemctl", "stop", fabric_blob_serve_unit as String]) {
+    RemoteUnreachable { cause: _ } => false
+    RemoteRan { exit_code: e, stdout: _, stderr: _ } => e == 0
+  }
+}
+
+// ── PULLING: A HOLDER IS A SOURCE ──────────────────────────────────────────────────────────────
+
+fn fabric_blob_peer_source_identity(holder: HostIdentity) -> NonEmptyStr {
+  join(["fabric-peer:", holder as String], "") as NonEmptyStr
+}
+
+fn fabric_blob_peer_source(serving: FabricBlobHolder, hex: NonEmptyStr) -> AcquisitionSource {
+  AcquisitionSource {
+    identity: fabric_blob_peer_source_identity(holder: serving.holder),
+    locator: SourceArgv { argv: rsync_pull_file_argv(
+      source_url: rsync_daemon_url(host: serving.rail_address, port: rsync_daemon_default_port, module: fabric_blob_rsync_module_name, path_in_module: hex),
+      destination: fabric_blob_staging_path(hex: hex),
+      io_timeout_seconds: fabric_blob_pull_io_timeout_seconds,
+    ) },
+  }
+}
+
+// THE BLOB AS AN ACQUISITION SUBJECT, ITS SOURCES IN THE ORDER GIVEN. The caller lists the holders it
+// started serving; the fold tries them in order and the receipt names which one answered.
+fn fabric_blob_subject(identity: NonEmptyStr, hex: NonEmptyStr, holders: List<FabricBlobHolder>) -> AcquisitionSubject {
+  AcquisitionSubject {
+    identity: identity,
+    key: ContentDigestSha256 { hex: hex },
+    install_path: fabric_blob_path(hex: hex),
+    staging_path: Present { value: fabric_blob_staging_path(hex: hex) },
+    parent_directory: fabric_blob_root,
+    sources: map(holders, h => fabric_blob_peer_source(serving: h, hex: hex)),
+  }
+}
+
+// THE POLICY gunbc.spark.spark_file_blob SUPERVISES A RAIL PULL UNDER. 45 polls at the transfer
+// module's 20 s interval is fifteen minutes; a ~30 GB tar over a 50 Gb/s leg is bounded by disk rather
+// than the rail, a few minutes. An unmeasured bound, so its exhaustion is the typed still-running
+// carry-on and a re-run reattaches.
+data fabric_blob_pull_policy: SparkFileBlobPolicy = SparkFileBlobPolicy {
+  staging_directory: fabric_blob_staging_directory,
+  supervision_polls: 45,
+}

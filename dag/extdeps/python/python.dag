@@ -15,6 +15,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 service python.Interpreter {
   operation RunFile {
+    requires opaque
     input { workdir: FilePath, script_path: FilePath, args: List<String> = [] }
     output {
       success: Bool from "exit_success"

@@ -147,6 +147,7 @@ fn project_root_for_node_in(node_id: String, index: RoadmapMembershipIndex) -> S
   let walked = project_root_walk_in(index: index, acc: ProjectRootWalk { current: node_id, visited: [node_id], refused: false, done: false }, fuel: index.rows)
   if walked.refused { none } else { match node_project_membership_in(node_id: walked.current, index: index) {
     MembershipStandalone => Present { value: walked.current }
-    _ => none
+    MembershipMember { arc: _ } => none
+    MembershipAmbiguous { arcs: _ } => none
   } }
 }

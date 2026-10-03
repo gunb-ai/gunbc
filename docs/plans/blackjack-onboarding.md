@@ -48,10 +48,10 @@ Ordered Shoe                Shoe { cards: List<Card> }
 Pure round engine           deal / apply_player_action /       examples.blackjack.round
       |                     play_dealer_turn / settle
       v
-SimulatedRound            one record per round
+BlackjackSimulation         every round, or the first refusal
       |
       v
-Aggregation                 summarize(observations)             examples.blackjack.simulation
+Aggregation                 summarize(rounds)                   examples.blackjack.simulation
       |
       v
 SimulationSummary           counts that must reconcile
@@ -261,7 +261,7 @@ module examples.blackjack.simulation
 
 import examples.blackjack.cards { Card, standard_deck }
 import examples.blackjack.hand { Hand }
-import examples.blackjack.round { BlackjackRules, RoundOutcome, RoundState, PlayerAction, deal, apply_player_action, play_dealer_turn }
+import examples.blackjack.round { BlackjackRules, RoundOutcome, RoundRefusal, RoundState, RoundStep, Shoe, PlayerAction, deal, apply_player_action, play_dealer_turn }
 import examples.blackjack.shuffle { ShuffleSeed, shuffle, next_seed }
 
 // Two fixtures, not blackjack advice: hit below the threshold, otherwise stand.
@@ -278,9 +278,16 @@ type SimulatedRound {
   outcome: RoundOutcome,
 }
 
+// One round driven to its end, or the engine refusal that stopped it.
+type RoundPlay = RoundPlayed { round: SimulatedRound } | RoundPlayRefused { cause: RoundRefusal }
+
+// Every requested round, or the first refusal -- with what replays it.
+type BlackjackSimulation
+  = SimulationCompleted { rounds: List<SimulatedRound> }
+  | SimulationRefused   { round_index: Int, seed: ShuffleSeed, cause: RoundRefusal }
+
 type SimulationSummary {
-  rounds_requested: Int,
-  rounds_completed: Int,
+  rounds: Int,
   player_wins: Int,
   dealer_wins: Int,
   pushes: Int,
@@ -290,19 +297,39 @@ type SimulationSummary {
 
 fn choose(strategy: Strategy, player: Hand) -> PlayerAction { … }
 
-// One full round from a seed: shuffle, deal, drive the player by strategy, dealer plays.
-fn play_round(index: Int, seed: ShuffleSeed, rules: BlackjackRules, strategy: Strategy) -> SimulatedRound { … }
+// One full round from an ordered shoe: deal, drive the player by strategy, dealer plays.
+// Every RoundStep is matched; a RoundRefused becomes RoundPlayRefused with its cause.
+fn play_round_from_shoe(index: Int, seed: ShuffleSeed, shoe: Shoe, rules: BlackjackRules, strategy: Strategy) -> RoundPlay { … }
 
-// rounds, each with next_seed(previous) — so round k of plan P is replayable alone.
-fn simulate(plan: SimulationPlan) -> List<SimulatedRound> { … }
+// shuffle(standard_deck, seed), then play_round_from_shoe.
+fn play_round(index: Int, seed: ShuffleSeed, rules: BlackjackRules, strategy: Strategy) -> RoundPlay { … }
 
-fn summarize(plan: SimulationPlan, observations: List<SimulatedRound>) -> SimulationSummary { … }
+// The shoe one round is dealt from, with the seed that built it.
+type SeededShoe { seed: ShuffleSeed, shoe: Shoe }
 
-// player_wins + dealer_wins + pushes == rounds_completed — a first-class test.
+// plan.rounds seeds, each next_seed(previous), each shuffled from standard_deck — so
+// round k of plan P is replayable alone.
+fn seeded_shoes(plan: SimulationPlan) -> List<SeededShoe> { … }
+
+// Plays the supplied shoes in order, round_index counting from 0. Stops at the first
+// RoundPlayRefused and returns SimulationRefused with that round's index and seed.
+fn simulate_shoes(shoes: List<SeededShoe>, rules: BlackjackRules, strategy: Strategy) -> BlackjackSimulation { … }
+
+// simulate_shoes(seeded_shoes(plan), plan.rules, plan.strategy).
+fn simulate(plan: SimulationPlan) -> BlackjackSimulation { … }
+
+// Only a completed run has a summary.
+fn summarize(rounds: List<SimulatedRound>) -> SimulationSummary { … }
+
+// player_wins + dealer_wins + pushes == rounds — a first-class test.
 fn summary_reconciles(s: SimulationSummary) -> Bool { … }
 ```
 
 `win_rate` is deliberately absent from the summary: a ratio is derived from two counts, so storing it beside them is a second copy of one fact (DESIGN §2). Compute it where it is displayed.
+
+**A refusal inside a simulation is a defect, not a statistic.** `play_round` drives the engine itself from a freshly shuffled 52-card deck, so none of the four `RoundRefusal` causes is a nominal event there: an out-of-turn action or an action after `RoundComplete` means the driver called the engine in the wrong order, and `ShoeExhausted` means a round consumed more cards than one round can. So `simulate` does not count refused rounds and carry on — that would turn a bug into a row of the report (DESIGN §5's absorbing fallback). It stops at the first refusal and returns `SimulationRefused` with the round index, the seed and the cause: the line stops, the stop is typed and located, and the seed replays it. Do not reach for a fabricated `SimulatedRound` (totals of 0, an outcome of `Pushed`) or a `_ =>` arm; `RoundRefused` carries no completed state, so there is nothing honest to build one from. Because a run either completes every requested round or refuses, the summary needs no requested-versus-completed pair: `rounds` is one count, and the real-route test below asserts it.
+
+`simulate` is split at its shoes so the refusal route can *execute*: from a plan, every shoe is a full shuffled deck and nothing can make a round refuse, so a test that only calls `simulate(plan)` never runs the `SimulationRefused` arm. `simulate_shoes` takes the shoes as supplied values instead. Hand it three seeded shoes whose second is too short to finish a round, and assert the whole result: `SimulationRefused { round_index: 1, seed: <the second seed>, cause: ShoeExhausted }`. That one assertion goes red if the driver fabricates a round, carries on past the refusal, or attaches the wrong index or seed. Pair it with the real-route claim that `simulate(plan)` returns a `SimulationCompleted` of exactly `plan.rounds` rounds. And if the game later grows a nominal event — several rounds dealt from one shoe, where running low is ordinary — model it as a lawful transition (a reshuffle), not as a refusal; refusals are reserved for what must not happen, which is what makes stopping on them correct.
 
 ## 5. Tests, evidence, and what "mocking" means here
 
@@ -353,11 +380,11 @@ Every test you write must be one you can make go **red** by breaking the code it
 
 Only after deterministic rounds run from hand-ordered shoes do you connect entropy — and even then, the connection is one function call in one test. `dag/test/claim/random_bytes_csprng_witness_test.dag` is the in-tree exemplar: it calls `Urandom.ReadBytes(count: 16).octets_b64`, base64-decodes it with `std.encoding` `base64_decode` to `List<UInt8>?`, and asserts the count. Your integration test does the same, matches the `Present` arm (the `Absent` arm is a refusal of the test, not a skip), hands that `List<UInt8>` to `seed_from_octets` unchanged — it takes the decoder's type, and folds over those octets — then `shuffle`, and asserts that the result is a 52-card shoe containing each card exactly once. That last assertion is a property of `shuffle`, not of the entropy; it is here because it is the one place the whole route executes.
 
-The seed is the replay handle. Every `SimulatedRound` carries the seed its shoe was built from, so a surprising row in a 10,000-round simulation is reproduced by one call to `play_round` with that seed — no reruns, no logging, no luck.
+The seed is the replay handle. Every `SimulatedRound` carries the seed its shoe was built from, and a `SimulationRefused` carries the same seed beside its cause, so a surprising row — or a refusal — in a 10,000-round simulation is reproduced by one call to `play_round` with that seed — no reruns, no logging, no luck.
 
 ## 7. Analysis
 
-`simulate` is a recursion over the round index threading the seed forward; `summarize` is a fold over observations; `summary_reconciles` is a test. The comparison you are after is two plans differing only in `strategy`, run from the same starting seed, so the two strategies see the *same* shoes — a paired comparison, which is the honest one. `HitBelow { threshold: 17 }` against `HitBelow { threshold: 19 }` is enough to see a difference; neither is a claim about optimal play.
+`simulate` is a recursion over the round index threading the seed forward; `summarize` is a fold over a completed run's rounds; `summary_reconciles` is a test. The comparison you are after is two plans differing only in `strategy`, run from the same starting seed, so the two strategies see the *same* shoes — a paired comparison, which is the honest one. `HitBelow { threshold: 17 }` against `HitBelow { threshold: 19 }` is enough to see a difference; neither is a claim about optimal play.
 
 What the summary may and may not say (DESIGN §4d): the counts are deduced; any sentence of the form *strategy A is better* is an inference from a sample and belongs beside its sample size and seed, never in a bare field of the summary type.
 
@@ -404,7 +431,8 @@ Five, each ending in a small PR so review can focus on one conceptual layer. Eac
 - shuffle output is reproducible from a recorded seed
 - no unit test depends on live entropy; exactly one test exercises the real entropy route
 - two strategies compare through the same engine over the same seeds
-- `player_wins + dealer_wins + pushes == rounds_completed` is a test, and it is green
+- `player_wins + dealer_wins + pushes == rounds` is a test, and it is green
+- an engine refusal inside a round reaches the caller of `simulate` as `SimulationRefused` with its index, seed and cause — never a fabricated round — and a test drives `simulate_shoes` with a short second shoe to `SimulationRefused { round_index: 1, seed: <that shoe's seed>, cause: ShoeExhausted }`
 - every test names its case and can be made red by a mutation of the code it covers
 - the example's closure emits Rust and the crate passes `cargo check` unedited
 - the README explains the project through the lenses, not the rules

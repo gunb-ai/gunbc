@@ -356,15 +356,66 @@ fn first_test_process(rows: List<HarnessGroundedPremise>) -> String? {
 }
 
 fn premise_selects_by_pattern(p: HarnessPremise) -> Bool {
-  match p { IterationSelectsByPattern { grain: _ } => true  _ => false }
+  match p {
+    IterationSelectsByPattern { grain: _ } => true
+    ActingAs { role: _ } => false
+    ToolIs { tool: _ } => false
+    ToolRunsIn { locus: _ } => false
+    ToolReturns { channel: _ } => false
+    ToolCanWriteBy { form: _ } => false
+    CapabilityHeld { capability: _ } => false
+    CapabilityWithheld { capability: _ } => false
+    CompletionRequires { term: _ } => false
+    RoundsRemaining { rounds: _ } => false
+    EarlierRoundsDropped { rounds: _ } => false
+    WorktreeAt { path: _ } => false
+    TestProcessIs { command: _, receipt_path: _ } => false
+    CompileProcessIs { command: _, receipt_path: _ } => false
+    RunRebuildsOnTreeChange => false
+    AcceptanceIsTheContractValidation => false
+  }
 }
 
 fn premise_rebuilds_on_change(p: HarnessPremise) -> Bool {
-  match p { RunRebuildsOnTreeChange => true  _ => false }
+  match p {
+    RunRebuildsOnTreeChange => true
+    ActingAs { role: _ } => false
+    ToolIs { tool: _ } => false
+    ToolRunsIn { locus: _ } => false
+    ToolReturns { channel: _ } => false
+    ToolCanWriteBy { form: _ } => false
+    CapabilityHeld { capability: _ } => false
+    CapabilityWithheld { capability: _ } => false
+    CompletionRequires { term: _ } => false
+    RoundsRemaining { rounds: _ } => false
+    EarlierRoundsDropped { rounds: _ } => false
+    WorktreeAt { path: _ } => false
+    TestProcessIs { command: _, receipt_path: _ } => false
+    CompileProcessIs { command: _, receipt_path: _ } => false
+    IterationSelectsByPattern { grain: _ } => false
+    AcceptanceIsTheContractValidation => false
+  }
 }
 
 fn premise_acceptance_is_contract(p: HarnessPremise) -> Bool {
-  match p { AcceptanceIsTheContractValidation => true  _ => false }
+  match p {
+    AcceptanceIsTheContractValidation => true
+    ActingAs { role: _ } => false
+    ToolIs { tool: _ } => false
+    ToolRunsIn { locus: _ } => false
+    ToolReturns { channel: _ } => false
+    ToolCanWriteBy { form: _ } => false
+    CapabilityHeld { capability: _ } => false
+    CapabilityWithheld { capability: _ } => false
+    CompletionRequires { term: _ } => false
+    RoundsRemaining { rounds: _ } => false
+    EarlierRoundsDropped { rounds: _ } => false
+    WorktreeAt { path: _ } => false
+    TestProcessIs { command: _, receipt_path: _ } => false
+    CompileProcessIs { command: _, receipt_path: _ } => false
+    IterationSelectsByPattern { grain: _ } => false
+    RunRebuildsOnTreeChange => false
+  }
 }
 
 fn premise_rounds_dropped(p: HarnessPremise) -> Int? {

@@ -285,77 +285,77 @@ data target_invocation_seed_growth_justification: SeedGrowthJustification = Seed
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.cli_run",
+      module_path: "v1_compiler.cli_run.compile_clean",
       decl_name: "CensusGateDisposition",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.cli_run",
+      module_path: "v1_compiler.cli_run.compile_clean",
       decl_name: "CensusSeverity",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.cli_run",
+      module_path: "v1_compiler.cli_run.compile_clean",
       decl_name: "RawDiagnosticClassObservation",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.cli_run",
+      module_path: "v1_compiler.cli_run.compile_clean",
       decl_name: "CompileCleanDiagnosticCensusIdentity",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.cli_run",
+      module_path: "v1_compiler.cli_run.compile_clean",
       decl_name: "CompileCleanDiagnosticCensus",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.cli_run",
+      module_path: "v1_compiler.cli_run.compile_clean",
       decl_name: "CompileCleanDiagnosticCensusRefusal",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.cli_run",
+      module_path: "v1_compiler.cli_run.compile_clean",
       decl_name: "compile_clean_diagnostic_class_specimen",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.cli_run",
+      module_path: "v1_compiler.cli_run.compile_clean",
       decl_name: "compile_clean_diagnostic_census",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.cli_run",
+      module_path: "v1_compiler.cli_run.compile_clean",
       decl_name: "compile_clean_diagnostic_policy_snapshot",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.cli_run",
+      module_path: "v1_compiler.cli_run.compile_clean",
       decl_name: "census_instance_disposition",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.cli_run",
+      module_path: "v1_compiler.cli_run.compile_clean",
       decl_name: "compiler_diagnostic_constructor_census",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.cli_run",
+      module_path: "v1_compiler.cli_run.compile_clean",
       decl_name: "census_gate_tag",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.cli_run",
+      module_path: "v1_compiler.cli_run.compile_clean",
       decl_name: "census_severity_tag",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.cli_run",
+      module_path: "v1_compiler.cli_run.compile_clean",
       decl_name: "census_identity_digest",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_compiler.cli_run",
+      module_path: "v1_compiler.cli_run.compile_clean",
       decl_name: "diagnostic_census_refusal_rendered",
       field: WholeDeclaration
     },
@@ -417,11 +417,6 @@ data target_invocation_seed_growth_justification: SeedGrowthJustification = Seed
     DeclarationRef {
       module_path: "v1_compiler.cli_run.floor_memory_supervisor",
       decl_name: "QualificationRefusal",
-      field: WholeDeclaration
-    },
-    DeclarationRef {
-      module_path: "v1_compiler.cli_run.floor_memory_supervisor",
-      decl_name: "render",
       field: WholeDeclaration
     },
     DeclarationRef {

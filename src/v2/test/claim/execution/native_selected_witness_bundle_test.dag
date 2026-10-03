@@ -670,7 +670,9 @@ test fn native_selected_witness_bundle_primary_native_verdicts_holds() -> Bool {
     && native.complement == SelectedWitnessPassed
 }
 
-test fn native_selected_witness_bundle_cutover_evidence_holds() -> Bool {
+// Shared evidence logic, deliberately an ordinary fn: the native transition receipt cites
+// this and must resolve it without a test-to-test reference.
+fn selected_logic_cutover_evidence_holds() -> Bool {
   let plan = selected_logic_primary_plan()
   family_has_discriminating_red(
     family: "logic",
@@ -678,6 +680,10 @@ test fn native_selected_witness_bundle_cutover_evidence_holds() -> Bool {
     current_compiler_identity: plan.compiler_identity,
     evidence: selected_logic_sample_cutover_evidence()
   )
+}
+
+test fn native_selected_witness_bundle_cutover_evidence_holds() -> Bool {
+  selected_logic_cutover_evidence_holds()
 }
 
 fn selected_logic_execution_holds(
