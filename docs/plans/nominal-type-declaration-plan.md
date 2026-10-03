@@ -15,6 +15,34 @@ Every count is **provisional** — line greps at main `dd0614551b5`, not the cen
 (DESIGN §6). M0, the resolved census (`gunbc.instruments.type_declaration_use_census`, being built by
 tidy-koi-264), is the only admissible size.
 
+> **PARKED (operator ruling, 2026-10-03).** M0 landed as an instrument
+> (`//gunbc/instruments:type-declaration-use-census`, gunbc#13093) with **no M2 sizing**. Its receipt,
+> instrument-dispatch run [37119024146](https://github.com/gunb-ai/gunbc/actions/runs/37119024146), is
+> no observation (exit 2): native resolve reaches only part of the corpus and decides no casts, so the
+> migration cannot be sized. The program resumes when a re-run of the instrument shows enough native
+> resolve and infer coverage. S1 and P1–P3 are moot until then. Re-run the instrument for any figure;
+> none is carried here.
+>
+> **Open items from M0's census** (posted on gunbc#13024 by tidy-koi-264; to be settled when this
+> resumes):
+>
+> 1. **Bodyless declarations that are not `nominal_opaque`** (`type MachineWidth<bits>` and similar)
+>    have no row in the declaration table, and the census reports them as `BodylessUnclassified`. The
+>    plan must say whether they are phantom/index types, abstractions with no view, or a further class.
+>    Under rev 5's model they are the bodyless form, but whether every one of them needs modeled
+>    operations (§3) is not decided.
+> 2. **Existing one-field records.** The census classes them as `UnconstrainedNominal`. Under rev 5 a
+>    one-field record *is* a nominal (records are nominal), so that reading agrees with §2. Whether they
+>    should still be reported as a separate row, so that authored brands and pre-existing records stay
+>    distinguishable in the migration, is open.
+> 3. **Opaque's second disjunct** ("a nominal whose view no consumer outside its module reads") is not
+>    computed. Only `nominal_opaque` decides `Opaque`. Computing it needs view-read evidence, a
+>    representation read outside the declaring module. Rev 5's §3 relies on exactly that evidence
+>    (`EffectivePosixPrincipalName` → record), so the generated cutover needs it.
+> 4. **`OperationWorkaround` for encoding** cannot be classed while encoding's capability home (S2) is
+>    unnamed. Until then, encode-shaped strips go to the exception list with the callee named in their
+>    evidence.
+
 ## 1. What stays as ruled
 
 - `type X = Y` is a transparent alias: X and Y are the same type.
