@@ -1,6 +1,7 @@
 module v2.extdeps.languages.verilog
 
 import v2.std.algebra { list_reverse }
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.nat { Nat }
 import std.integer { Signedness }
@@ -14,7 +15,7 @@ import v2.std.node {
   Symbol,
   TypeNode,
 }
-import v2.std.collection { List, Map, empty_map, map_insert }
+import v2.std.collection { Map, empty_map, map_insert }
 import v2.std.compilers.target_model {
   EmitSpellingWrap,
   EmitLineBreaks,

@@ -1,8 +1,7 @@
 module v2.workflow.floor_cost_debt_admission
 
 import v2.std.algebra { list_reverse }
-import v2.std.collection { List }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 
 // TYPED ROSTER ADMISSION FOR THE ENROLMENT MARGIN: AN IDENTITY AND A REASON, NEVER A READING.
 //
