@@ -88,7 +88,8 @@ module gunbc.managed_host
 type ManagedHost {
   host: HostIdentity                       // gunbc.fleet_intent_network, the sole naming authority
   subject: MachineIntakeSubject            // explicit host <-> intake-subject binding
-  access: BoundBmcAccessContextStanding    // endpoint, identity (baseboard, BMC family), capability row
+  access: BmcAccessObservationStanding     // endpoint and observed identity (baseboard, BMC family)
+  capability_row: BmcFirmwareReleaseCapabilityRow  // the pair oob_boot_handoff_admission consumes today
   secure: BmcSecureStanding                // managed credential: account, role, SecretRef, epoch
   unit_hold: ResetUnitHold                 // moved here from host_reset_subject_roster
 }
@@ -97,9 +98,17 @@ fn managed_hosts() -> List<ManagedHost>
 
 Rules for the record:
 
-- **Baseboard and BMC family are read through `access`, never stored beside it.** A procedure that needs MegaRAC matches the bound identity and refuses otherwise.
+- **Baseboard and BMC family are read through `access` (its observed identity), never stored beside it.** A procedure that needs MegaRAC matches the bound identity and refuses otherwise.
 - **The silicon field arrives in cut 1** as a standing authored there, not as a placeholder in cut 0.
-- **Cut 0 has exactly one row, `mtcollins1`.** Its `subject` and `secure` come from `gunbc.machine_intake_mtcollins1_bmc_secure_observation` (`mtcollins1_intake_subject`, `mtcollins1_bmc_secure_standing`). Its `access` is produced by executing the existing binding fold (`gunbc.machine_intake_access`) over `mtcollins1_access_observation` and the profile catalog, never hand-built. If that fold does not bind mtcollins1 today, cut 0 stops and reports: that is a finding, not something to route around.
+- **Cut 0 has exactly one row, `mtcollins1`.** Its `subject` and `secure` come from `gunbc.machine_intake_mtcollins1_bmc_secure_observation` (`mtcollins1_intake_subject`, `mtcollins1_bmc_secure_standing`). Its `access` and `capability_row` are the unit's existing `mtcollins1_access_standing` and `mtcollins1_capability_row`.
+- **Why `access` is the observation standing plus the capability row, not `BoundBmcAccessContextStanding`** (measured by cut 0, 2026-10-03):
+  - `gunbc.machine_intake_access` `bind_bmc_access_context` has no production caller.
+  - There are no production `AccessObservationReceipt` values.
+  - No `BmcAccessProfileCatalogRow` exists outside type declarations.
+  - Binding mtcollins1 would require authoring a catalog row whose provenance cannot be honestly decided today. `ProfileFromExternalAuthority` has no source, and `ProfilePromotedFromObservation` binds only beside a `ProfilePromotionVerified` that no producer makes.
+
+  So the row carries the pair that the consumed admission (`oob_boot_handoff_admission`) actually reads today. This is a **declared frontier, not a second authority**. Its trigger: the first production producer of a `BoundBmcAccessContextStanding` for a managed host, which needs a catalog row with a decided provenance. In that change, `access` and `capability_row` collapse into the bound context and these two fields are deleted.
+
 - **`mtjade1` gets no row yet.** It has no `MachineIntakeSubject` (its unit key is refused), no endpoint, no family and no hold decision. Fabricating any of them to populate a row is the §5 defect the review named.
 - **mtjade1's absence is the honest standing.** Every procedure refuses a host that is not in `managed_hosts()`.
 - **mtjade1 joins on a trigger, not by edit.** It becomes a row the day first contact authors its subject and access context standing (`gunbc.machine_intake_jade_first_contact_frontier`) and a hold decision is made. That is the trigger, and it is not a cut of this program.
