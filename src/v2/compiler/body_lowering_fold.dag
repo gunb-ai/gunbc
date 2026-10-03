@@ -137,7 +137,7 @@ import v2.std.node {
   ArrowResourceRequirementsEdge,
   MapLiteralEntryEdge,
   MapLiteralEntriesEdge,
-  ConstructTagEdge,
+  MatchArmScopeExitEdge,
   core_edge,
   labeled_core_is,
   StructuralLabel,
@@ -200,7 +200,6 @@ import v2.std.node_query {
   positional_payload_field_name,
   pattern_wildcard_name,
   wildcard_pattern_identity,
-  is_wildcard_pattern_identity,
   repeated_name_edges,
   variant_declaration_node
 }
@@ -7894,10 +7893,11 @@ fn body_lower_guard_branch(guard: BodyLowerGuard, rest: Node) -> Outcome<Node> {
 
 // A LET WHOSE VALUE IS A MATCH WITH RETURNING ARMS, HEADING A TAIL SPINE, LOWERS TO THAT MATCH WITH
 // THE REST OF THE SPINE UNDER ITS ONE BINDING ARM. `let x = match s { P { value: v } => v \n Absent =>
-// return e }` followed by `rest` is Match(s, P { value: x } => rest, Absent => e): an arm
+// return e }` followed by `rest` is Match(s, P { value: p } => Bind(x, p, rest), Absent => e): an arm
 // whose tail is a return exits with its value, which in a tail spine IS the function's result -- the
 // same fact the guard lowers through Branch (body_lower_guard_branch) -- and the binding arm binds x
-// and continues, its own binders kept out of the rest (body_lower_let_match_binding_arm_continued).
+// and continues; the Bind carries MatchArmScopeExitEdge, so resolve keeps the arm's binders out of
+// the rest (body_lower_let_match_binding_arm_continued).
 // `rest` is lowered ONCE and appears once, under the one binding arm, and the
 // scrutinee is evaluated once; no new behavior kind and no carrier type. The language models the
 // form: v1 infer leaves a diverging arm out of the match's join
@@ -8091,16 +8091,13 @@ fn body_lower_is_match_node(node: Node) -> Bool {
   }
 }
 
-// THE BINDING ARM CONTINUES INTO THE REST WITHOUT ITS PATTERN'S NAMES REACHING IT. In the source the
-// arm's binders are scoped to the arm's value and the rest of the spine never sees them; under the
-// arm they would, so a rest that reuses a binder's name (extdeps.uri_path binds `p` in two
-// successive let-matches) would be refused as hiding it, and a rest naming an unbound `v` would
-// silently bind the arm's `v`. Two forms keep the scope the source wrote:
-//   - a pattern that binds nothing: the arm is Bind(x, value, rest), annotated as the let was;
-//   - a pattern that binds exactly one name y whose value IS y (`Present { value: p } => p`): the
-//     binder is renamed to the let's own binding x, and the arm is `rest` -- x is bound by the
-//     pattern, and no other name is. An annotated let refuses here rather than lose its annotation.
-// Any other binding arm refuses let_match_binding_arm_binders_reach_rest, located at the let.
+// THE BINDING ARM CONTINUES INTO THE REST WITHOUT ITS PATTERN'S BINDERS REACHING IT. In the source
+// the arm's binders are scoped to the arm's value, and the rest of the spine never sees them. The
+// arm is lowered to Bind(x, value, rest) carrying v2.std.node MatchArmScopeExitEdge, and the pattern
+// is left exactly as authored: whether a bare name in it is a binder or a nullary constructor is
+// resolve's judgment, so lowering neither classifies nor renames it. Resolve
+// (resolve_match_arm_admitted) resolves the value in the arm's scope and the binder and rest in the
+// scope enclosing the match, judging both binder admissions against those authored scopes.
 fn body_lower_let_match_binding_arm_continued(wire: Node, at: Node, key_binding: Node, annotation: Optional<Node>, rest: Node) -> Outcome<Node> {
   match list_at_optional(xs: wire.children, index: 0) {
     Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_match_arm_navigation_refused, n: at))
@@ -8108,68 +8105,22 @@ fn body_lower_let_match_binding_arm_continued(wire: Node, at: Node, key_binding:
       match list_at_optional(xs: wire.children, index: 1) {
         Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_match_arm_navigation_refused, n: at))
         Present { value: body } =>
-          match body_lower_pattern_binders(pattern: pat.target) {
-            Empty =>
-              outcome_accepted(value: body_lower_match_arm_wire(
-                pat_node: pat.target,
-                body: body_lower_let_bind(key_binding: key_binding, value: body.target, body_binding: rest, annotation: annotation)
-              ))
-            Cons { head: y, tail: Empty } =>
-              match annotation {
-                Absent =>
-                  match node_atom_identity_optional(node: body.target) {
-                    Present { value: id } =>
-                      if id == y {
-                        outcome_accepted(value: body_lower_match_arm_wire(
-                          pat_node: body_lower_pattern_binder_renamed(pattern: pat.target, from: y, to: key_binding),
-                          body: rest
-                        ))
-                      } else {
-                        outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_let_match_binding_arm_binders_reach_rest, n: at))
-                      }
-                    Absent =>
-                      outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_let_match_binding_arm_binders_reach_rest, n: at))
-                  }
-                Present { value: _ } =>
-                  outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_let_match_binding_arm_binders_reach_rest, n: at))
-              }
-            Cons { head: _, tail: _ } =>
-              outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_let_match_binding_arm_binders_reach_rest, n: at))
-          }
+          outcome_accepted(value: body_lower_match_arm_wire(
+            pat_node: pat.target,
+            body: body_lower_arm_scope_exit_bind(
+              bind: body_lower_let_bind(key_binding: key_binding, value: body.target, body_binding: rest, annotation: annotation)
+            )
+          ))
       }
   }
 }
 
-// The names a lowered pattern may bind: every atom that is not a constructor tag (a tag edge's
-// subtree is skipped) and not the wildcard. A bare atom pattern is answered as a binder -- whether it
-// names a constructor is resolve's to decide, so it is counted rather than guessed away.
-fn body_lower_pattern_binders(pattern: Node) -> List<Symbol> {
-  match node_atom_identity_optional(node: pattern) {
-    Present { value: id } => if is_wildcard_pattern_identity(sym: id) { Empty } else { [id] }
-    Absent =>
-      fold(pattern.children, init: Empty, f: fn(acc, e) {
-        if labeled_core_is(x: e, label_of: edge_label_of, wanted: ConstructTagEdge) {
-          acc
-        } else {
-          list_append(left: acc, right: body_lower_pattern_binders(pattern: e.target))
-        }
-      })
-  }
-}
-
-// The pattern with its binder `from` replaced by `to`, outside constructor tags.
-fn body_lower_pattern_binder_renamed(pattern: Node, from: Symbol, to: Node) -> Node {
-  match node_atom_identity_optional(node: pattern) {
-    Present { value: id } => if id == from { to } else { pattern }
-    Absent =>
-      node_rebuild(n: pattern, children: fold(pattern.children, init: Empty, f: fn(acc, e) {
-        if labeled_core_is(x: e, label_of: edge_label_of, wanted: ConstructTagEdge) {
-          list_snoc_item(xs: acc, item: e)
-        } else {
-          list_snoc_item(xs: acc, item: Edge { label: e.label, target: body_lower_pattern_binder_renamed(pattern: e.target, from: from, to: to) })
-        }
-      }))
-  }
+// The Bind with its MatchArmScopeExitEdge marker beside its positionals.
+fn body_lower_arm_scope_exit_bind(bind: Node) -> Node {
+  node_rebuild(
+    n: bind,
+    children: list_snoc_item(xs: bind.children, item: core_edge(marker: MatchArmScopeExitEdge, target: node_synthetic(kind: TypeNode { connective: Conj }, children: [])))
+  )
 }
 
 fn body_lower_stmt_spine(spine: Node) -> Outcome<Node> {
