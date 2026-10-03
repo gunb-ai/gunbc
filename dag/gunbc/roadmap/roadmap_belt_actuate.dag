@@ -5234,190 +5234,202 @@ fn belt_workflow_attempt_evidence_for_ref(
       goal_audit: [],
     }
   } else {
-    let current_key = trim(key_read.content)
-    let node_id = attempt.node_id as gunbc.roadmap_model.RoadmapNodeId
-    let admission = Filesystem.Read(
-      path: dispatch_current_attempt_admission_path_for_instance(
+    belt_workflow_attempt_evidence_for_key(instance: instance, panes: panes, attempt: attempt, current_key: trim(key_read.content))
+  }
+}
+
+// THE EVIDENCE OF ONE NAMED ATTEMPT. belt_workflow_attempt_evidence_for_ref resolves the node's
+// CURRENT attempt through its state pointer and then reads it here; a reader of attempt HISTORY
+// (gunbc.roadmap_dogfood_route) names the attempt by its own key and reads it here directly, so
+// both read one evidence builder.
+fn belt_workflow_attempt_evidence_for_key(
+  instance: HostDashboardInstance,
+  panes: BeltAttemptPanes,
+  attempt: DispatchAttemptRef,
+  current_key: String,
+) -> WorkflowAttemptEvidence {
+  let node_id = attempt.node_id as gunbc.roadmap_model.RoadmapNodeId
+  let admission = Filesystem.Read(
+    path: dispatch_current_attempt_admission_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+    ),
+  )
+  let events = belt_provider_event_projection_observe_for_instance(
+    instance: instance,
+    node_id: node_id,
+  )
+  let spawn_failure = Filesystem.Read(
+    path: dispatch_current_attempt_spawn_failure_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+    ),
+  )
+  let branch = dispatch_branch_name(
+    node_id: node_id,
+    attempt_key: current_key,
+  )
+  let worktree = dispatch_worktree_path_for_instance(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: current_key,
+  )
+  let head = belt_worktree_head_observe(
+    instance: instance,
+    worktree: worktree,
+  )
+  let publication_subject = match belt_lookup_node(node_id: attempt.node_id) {
+    AuthorityProjectionRefused { detail } =>
+      PublicationSubjectUnobserved {
+        reason: concat("roadmap authority projection refused: ", detail),
+      }
+    NodeMissing =>
+      PublicationSubjectUnobserved {
+        reason: "the roadmap authority declares no node with this id, so there is no publication destination",
+      }
+    NodeFound { node } =>
+      belt_publication_subject_for_node(
+        node: node,
+        attempt_key: current_key,
+        branch: branch,
+        base_branch: dispatch_base_branch(instance: instance),
+        head: head,
+      )
+  }
+  let verification_selection = match head {
+    WorktreeHeadUnobserved { reason } =>
+      SelectionUnaddressable { cause: reason }
+    WorktreeHeadObserved { revision: revision } =>
+      belt_verification_selection_observe(
         instance: instance,
         node_id: node_id,
-      ),
-    )
-    let events = belt_provider_event_projection_observe_for_instance(
-      instance: instance,
-      node_id: node_id,
-    )
-    let spawn_failure = Filesystem.Read(
-      path: dispatch_current_attempt_spawn_failure_path_for_instance(
+        attempt_key: current_key,
+        head_sha: revision as String,
+      )
+  }
+  let verification_subject = match belt_lookup_node(node_id: attempt.node_id) {
+    AuthorityProjectionRefused { detail: detail } =>
+      VerificationSubjectUnobserved {
+        reason: concat("roadmap authority projection refused: ", detail),
+      }
+    NodeMissing =>
+      VerificationSubjectUnobserved {
+        reason: "the roadmap authority declares no node with this id, so there is no verification subject",
+      }
+    NodeFound { node } =>
+      match head {
+        WorktreeHeadUnobserved { reason } =>
+          VerificationSubjectUnobserved { reason: reason }
+        WorktreeHeadObserved { revision: revision } =>
+          if trim(branch) == "" {
+            VerificationSubjectUnobserved {
+              reason: "the attempt has no branch name, so there is no verification subject to construct",
+            }
+          } else {
+            belt_verification_subject_from_selection(
+              node: node,
+              attempt_key: current_key,
+              branch: branch,
+              head: revision as CommitSha,
+              selection: verification_selection,
+            )
+          }
+      }
+  }
+  let publication_receipt = belt_publication_receipt_source(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: current_key,
+    subject: publication_subject,
+  )
+  let review_evidence = match head {
+    WorktreeHeadUnobserved { reason } => review_report_absent(reason: join(["the attempt head is unobserved: ", reason], ""))
+    WorktreeHeadObserved { revision } =>
+      belt_review_report(instance: instance, node_id: node_id, attempt_key: current_key, head_sha: revision as String)
+  }
+  let audit_evidence = match head {
+    WorktreeHeadUnobserved { reason: _ } => []
+    WorktreeHeadObserved { revision } =>
+      belt_audit_evidence(instance: instance, node_id: node_id, attempt_key: current_key, head_sha: revision as String)
+  }
+  let submission_capture = match head {
+    WorktreeHeadUnobserved { reason } =>
+      CaptureUnreadable {
+        reason: join(["the attempt head is unobserved, so no submission capture lookup names it: ", reason], ""),
+      }
+    WorktreeHeadObserved { revision } =>
+      belt_submission_capture_for_head(
         instance: instance,
-        node_id: node_id,
-      ),
-    )
-    let branch = dispatch_branch_name(
-      node_id: node_id,
-      attempt_key: current_key,
-    )
-    let worktree = dispatch_worktree_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: current_key,
-    )
-    let head = belt_worktree_head_observe(
-      instance: instance,
-      worktree: worktree,
-    )
-    let publication_subject = match belt_lookup_node(node_id: attempt.node_id) {
-      AuthorityProjectionRefused { detail } =>
-        PublicationSubjectUnobserved {
-          reason: concat("roadmap authority projection refused: ", detail),
-        }
-      NodeMissing =>
-        PublicationSubjectUnobserved {
-          reason: "the roadmap authority declares no node with this id, so there is no publication destination",
-        }
-      NodeFound { node } =>
-        belt_publication_subject_for_node(
-          node: node,
-          attempt_key: current_key,
-          branch: branch,
-          base_branch: dispatch_base_branch(instance: instance),
-          head: head,
-        )
-    }
-    let verification_selection = match head {
-      WorktreeHeadUnobserved { reason } =>
-        SelectionUnaddressable { cause: reason }
-      WorktreeHeadObserved { revision: revision } =>
-        belt_verification_selection_observe(
+        worktree: worktree,
+        dir: belt_attempt_submission_dir_for_instance(
           instance: instance,
           node_id: node_id,
           attempt_key: current_key,
-          head_sha: revision as String,
-        )
-    }
-    let verification_subject = match belt_lookup_node(node_id: attempt.node_id) {
-      AuthorityProjectionRefused { detail: detail } =>
-        VerificationSubjectUnobserved {
-          reason: concat("roadmap authority projection refused: ", detail),
-        }
-      NodeMissing =>
-        VerificationSubjectUnobserved {
-          reason: "the roadmap authority declares no node with this id, so there is no verification subject",
-        }
-      NodeFound { node } =>
-        match head {
-          WorktreeHeadUnobserved { reason } =>
-            VerificationSubjectUnobserved { reason: reason }
-          WorktreeHeadObserved { revision: revision } =>
-            if trim(branch) == "" {
-              VerificationSubjectUnobserved {
-                reason: "the attempt has no branch name, so there is no verification subject to construct",
-              }
-            } else {
-              belt_verification_subject_from_selection(
-                node: node,
-                attempt_key: current_key,
-                branch: branch,
-                head: revision as CommitSha,
-                selection: verification_selection,
-              )
-            }
-        }
-    }
-    let publication_receipt = belt_publication_receipt_source(
+        ),
+        head_sha: revision as String,
+      )
+  }
+  let integration_receipt = match head {
+    WorktreeHeadUnobserved { reason } =>
+      IntegrationReceiptUnreadable {
+        reason: join(["the attempt head is unobserved, so no integration receipt lookup names it: ", reason], ""),
+      }
+    WorktreeHeadObserved { revision } =>
+      belt_integration_receipt_observe(
+        instance: instance,
+        worktree: worktree,
+        dir: belt_attempt_integration_dir_for_instance(
+          instance: instance,
+          node_id: node_id,
+          attempt_key: current_key,
+        ),
+        head_sha: revision as String,
+      )
+  }
+  WorkflowAttemptEvidence {
+    node_id: attempt.node_id,
+    attempt_key: current_key,
+    branch: dispatch_branch_name(
+      node_id: node_id,
+      attempt_key: current_key,
+    ),
+    modeled_state_present: true,
+    admission_receipt_readable: admission.success,
+    admission_receipt: admission.content,
+    spawn_failure_present: spawn_failure.success,
+    spawn_failure: spawn_failure.content,
+    provider_events_readable: provider_event_projection_readable(
+      observation: events,
+    ),
+    provider_events: provider_event_projection_events(
+      observation: events,
+    ),
+    provider_events_error: provider_event_projection_error(
+      observation: events,
+    ),
+    process: attempt_process_for_node(
+      panes: panes,
+      node_id: attempt.node_id,
+      attempt_key: current_key,
+    ),
+    validation_summary: belt_validation_summary_for_node(
+      instance: instance,
+      node_id: attempt.node_id,
+    ),
+    verification_subject: verification_subject,
+    verification_selection: verification_selection,
+    verification_source: belt_verification_receipt_source(
       instance: instance,
       node_id: node_id,
       attempt_key: current_key,
-      subject: publication_subject,
-    )
-    let review_evidence = match head {
-      WorktreeHeadUnobserved { reason } => review_report_absent(reason: join(["the attempt head is unobserved: ", reason], ""))
-      WorktreeHeadObserved { revision } =>
-        belt_review_report(instance: instance, node_id: node_id, attempt_key: current_key, head_sha: revision as String)
-    }
-    let audit_evidence = match head {
-      WorktreeHeadUnobserved { reason: _ } => []
-      WorktreeHeadObserved { revision } =>
-        belt_audit_evidence(instance: instance, node_id: node_id, attempt_key: current_key, head_sha: revision as String)
-    }
-    let submission_capture = match head {
-      WorktreeHeadUnobserved { reason } =>
-        CaptureUnreadable {
-          reason: join(["the attempt head is unobserved, so no submission capture lookup names it: ", reason], ""),
-        }
-      WorktreeHeadObserved { revision } =>
-        belt_submission_capture_for_head(
-          instance: instance,
-          worktree: worktree,
-          dir: belt_attempt_submission_dir_for_instance(
-            instance: instance,
-            node_id: node_id,
-            attempt_key: current_key,
-          ),
-          head_sha: revision as String,
-        )
-    }
-    let integration_receipt = match head {
-      WorktreeHeadUnobserved { reason } =>
-        IntegrationReceiptUnreadable {
-          reason: join(["the attempt head is unobserved, so no integration receipt lookup names it: ", reason], ""),
-        }
-      WorktreeHeadObserved { revision } =>
-        belt_integration_receipt_observe(
-          instance: instance,
-          worktree: worktree,
-          dir: belt_attempt_integration_dir_for_instance(
-            instance: instance,
-            node_id: node_id,
-            attempt_key: current_key,
-          ),
-          head_sha: revision as String,
-        )
-    }
-    WorkflowAttemptEvidence {
-      node_id: attempt.node_id,
-      attempt_key: current_key,
-      branch: dispatch_branch_name(
-        node_id: node_id,
-        attempt_key: current_key,
-      ),
-      modeled_state_present: true,
-      admission_receipt_readable: admission.success,
-      admission_receipt: admission.content,
-      spawn_failure_present: spawn_failure.success,
-      spawn_failure: spawn_failure.content,
-      provider_events_readable: provider_event_projection_readable(
-        observation: events,
-      ),
-      provider_events: provider_event_projection_events(
-        observation: events,
-      ),
-      provider_events_error: provider_event_projection_error(
-        observation: events,
-      ),
-      process: attempt_process_for_node(
-        panes: panes,
-        node_id: attempt.node_id,
-        attempt_key: current_key,
-      ),
-      validation_summary: belt_validation_summary_for_node(
-        instance: instance,
-        node_id: attempt.node_id,
-      ),
-      verification_subject: verification_subject,
-      verification_selection: verification_selection,
-      verification_source: belt_verification_receipt_source(
-        instance: instance,
-        node_id: node_id,
-        attempt_key: current_key,
-        selection: verification_selection,
-      ),
-      publication_subject: publication_subject,
-      publication_source: publication_receipt,
-      submission_capture: submission_capture,
-      integration: integration_receipt,
-      review: review_evidence,
-      goal_audit: audit_evidence,
-    }
+      selection: verification_selection,
+    ),
+    publication_subject: publication_subject,
+    publication_source: publication_receipt,
+    submission_capture: submission_capture,
+    integration: integration_receipt,
+    review: review_evidence,
+    goal_audit: audit_evidence,
   }
 }
 
@@ -5437,15 +5449,18 @@ type BeltWorkflowAttemptEvidences
   = WorkflowAttemptEvidencesObserved { evidences: List<WorkflowAttemptEvidence> }
   | WorkflowAttemptEvidencesRefused { reason: String }
 
-// The current attempt of every node, as typed evidence -- the same population and the same reads
-// as belt_workflow_attempts_observe_scoped over all nodes, before the progress reduction.
-fn belt_workflow_attempt_evidences_observe_for_instance(instance: HostDashboardInstance) -> BeltWorkflowAttemptEvidences {
+// EVERY ATTEMPT IN THE INSTANCE'S DURABLE HISTORY, as typed evidence: each dispatch ref read by its
+// OWN attempt key, not collapsed to the node's current attempt. The refs are the attempts' durable
+// record (attempt branches and attempt state are retained), so a completed attempt stays readable
+// after a newer attempt of its node becomes current. Refs whose key does not parse name no attempt
+// and are not read.
+fn belt_workflow_attempt_history_evidences_observe_for_instance(instance: HostDashboardInstance) -> BeltWorkflowAttemptEvidences {
   match belt_attempts_observe_for_instance(instance: instance) {
     AttemptsRefused { reason } => WorkflowAttemptEvidencesRefused { reason: reason }
     AttemptsObserved { attempts } => {
       let panes = belt_attempt_panes_observe_for_instance(instance: instance)
       WorkflowAttemptEvidencesObserved {
-        evidences: map(dispatch_attempt_ref_first_per_node(attempts: attempts), attempt => belt_workflow_attempt_evidence_for_ref(instance: instance, panes: panes, attempt: attempt)),
+        evidences: map(filter(attempts, a => a.attempt_key != ""), attempt => belt_workflow_attempt_evidence_for_key(instance: instance, panes: panes, attempt: attempt, current_key: attempt.attempt_key)),
       }
     }
   }

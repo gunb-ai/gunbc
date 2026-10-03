@@ -9,18 +9,22 @@ import gunbc.durable_cas_file_store {
   DefaultAccessCreateOnly, admit_cas_attempt_for_derived_payload, file_compare_and_set, observe_cas_slot_state,
   DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
 }
-import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string, json_int }
+import extdeps.languages.json.emit { JsonValue, serialize_json, json_object, json_kv, json_string, json_int }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable,
-  json_field_string, FieldRead, FieldAbsent, FieldMalformed,
+  json_field_string, json_field_int, FieldRead, FieldAbsent, FieldMalformed,
 }
+import extdeps.time.rfc3339 { Rfc3339Timestamp, rfc3339_is_canonically_spelled }
+import gunbc.clock_read { clock_now_probed_at }
+import std.content_hash { content_hash_of_value, lower_hex_40 }
+import std.materialization_provider { wire_content_hash_to_hex }
 import gunbc.roadmap_workflow_stage {
   WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete, WorkflowSegmentFailed,
   WorkflowSegmentRefused, WorkflowSegmentStopped,
 }
 import gunbc.roadmap_workflow_progress { WorkflowAttemptEvidence }
 import gunbc.roadmap.roadmap_submission { SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureUnreadable }
-import gunbc.roadmap.roadmap_review_function { ReviewReport }
+import gunbc.roadmap.roadmap_review_function { ReviewReport, review_report_json }
 import gunbc.roadmap_publish {
   PublicationSubjectObservation, PublicationSubjectObserved, PublicationSubjectUnobserved,
   publication_evidence_for, EvidenceForSubject, EvidenceAbsent, EvidenceUnreadable, EvidenceForAnotherSubject,
@@ -30,7 +34,7 @@ import gunbc.roadmap_publish {
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance, srv2_deploy_dashboard_instance }
 import gunbc.roadmap_belt_actuate {
   BeltWorkflowAttemptEvidences, WorkflowAttemptEvidencesObserved, WorkflowAttemptEvidencesRefused,
-  belt_workflow_attempt_evidences_observe_for_instance, belt_tick_observed_at,
+  belt_workflow_attempt_history_evidences_observe_for_instance,
 }
 
 // THE DOGFOOD ROUTE, AS ONE ACCEPTANCE CASE (operator ruling 2026-10-03). A request enters the
@@ -292,17 +296,18 @@ fn dogfood_route_receipt_for_evidence(e: WorkflowAttemptEvidence) -> DogfoodRout
   dogfood_route_receipt(node_id: e.node_id, attempt_key: e.attempt_key, r: dogfood_route_readings(e: e))
 }
 
-// ── THE START RECEIPT: FIRST ONLY, DURABLE ──────────────────────────────────────────────────────
+// ── THE START RECEIPT: ONE MINT, VALIDATED JOINS, FIRST RECORDED ONLY ────────────────────────────
 //
-// The receipt that starts the dogfood clock is written ONCE, create-only, through the durable
-// compare-and-set store (gunbc.durable_cas_file_store file_compare_and_set, ExpectSlotAbsent): the
-// first complete attempt to be recorded stays the start forever, and a later or newer attempt --
-// complete or not -- cannot move it. It is produced by the belt tick right after its own passes:
-// the candidate-published stage is written BY that tick's publish pass, so the completing attempt is
-// necessarily the node's current attempt when the tick observes it, and nothing can supersede it
-// between completing and being recorded. Two attempts completing in one tick are taken in the
-// observation's own order -- git for-each-ref's refname order over refs/heads/dispatch/ -- so the
-// choice is deterministic.
+// WHAT "FIRST" MEANS, stated so it is not mistaken for more: the start receipt is the FIRST COMPLETE
+// ATTEMPT OBSERVED BY A SUCCESSFUL RECORDER. The recorder runs in every belt tick until a receipt
+// exists, and each run scans the instance's whole durable attempt history (every dispatch ref, read
+// by its own attempt key -- gunbc.roadmap_belt_actuate
+// belt_workflow_attempt_history_evidences_observe_for_instance), so a completed attempt is found
+// whether or not it is still its node's current attempt, and a tick that dies before recording
+// leaves it for the next tick to find. Among several complete attempts in one scan, the first in
+// refname order is taken: deterministic, not temporal. The established time is the recorder's own
+// typed clock reading; a refused clock refuses the record, it is never written as the time. Once a
+// valid receipt is in the slot the scan stops and the slot is never rewritten (create-only CAS).
 data dogfood_start_receipt_key: NonEmptyStr = "dogfood-start-receipt" as NonEmptyStr
 
 data dogfood_start_receipt_schema: String = "dogfood-start-receipt/v1"
@@ -311,37 +316,146 @@ fn dogfood_start_store_root(instance: HostDashboardInstance) -> NonEmptyStr {
   join([instance.instance_root as String, "/dogfood-start"], "") as NonEmptyStr
 }
 
-fn dogfood_start_receipt_wire(c: DogfoodRouteReceipt, established_at: String) -> String? {
-  match c {
+// THE START RECEIPT, every field the acceptance read requires. Minted only by
+// dogfood_start_candidate (from one WorkflowAttemptEvidence) or by the total decoder below, both of
+// which check every join; the wire encoder re-checks them, so correctness does not rest on
+// sole_constructor (enforced by the seed, not yet by the native route -- gunbc.rung_drop
+// g0_type_decl_modifier_parse_without_sealing_property), which is defence in depth here.
+type DogfoodStartReceipt sole_constructor {
+  node_id: String
+  attempt_key: String
+  head_sha: String
+  submission_digest: String
+  review_subject: String
+  review_plan_revision: String
+  review_digest: String
+  pr_number: Int
+  pr_url: String
+  established_at: Rfc3339Timestamp
+}
+
+// The joins every start receipt must satisfy, whoever built it. Absent is valid; Present names the
+// first disagreement.
+fn dogfood_start_receipt_defect(r: DogfoodStartReceipt) -> String? {
+  if r.node_id == "" { Present { value: "node_id is empty" } }
+  else if r.attempt_key == "" { Present { value: "attempt_key is empty" } }
+  else if !lower_hex_40(value: r.head_sha) { Present { value: "head_sha is not a 40-hex commit identity" } }
+  else if r.submission_digest == "" { Present { value: "submission_digest is empty" } }
+  else if r.review_subject != join([r.node_id, "@", r.head_sha], "") { Present { value: "review_subject does not name node_id@head_sha" } }
+  else if r.review_plan_revision == "" { Present { value: "review_plan_revision is empty" } }
+  else if r.review_digest == "" { Present { value: "review_digest is empty" } }
+  else if r.pr_number <= 0 { Present { value: "pr_number is not a positive pull request number" } }
+  else if r.pr_url == "" { Present { value: "pr_url is empty" } }
+  else if !rfc3339_is_canonically_spelled(value: r.established_at) { Present { value: "established_at is not a canonical RFC 3339 UTC instant" } }
+  else { none }
+}
+
+// THE ONE MINT FROM EVIDENCE. It reads every stage from the single WorkflowAttemptEvidence it is
+// given and checks that the three established pieces speak of that one attempt and head. While any
+// stage is owed or refused there is no candidate.
+fn dogfood_start_candidate(e: WorkflowAttemptEvidence, established_at: Rfc3339Timestamp) -> DogfoodStartReceipt? {
+  match dogfood_route_receipt_for_evidence(e: e) {
     DogfoodRouteIncomplete { node_id: _, attempt_key: _, owed: _, refused: _ } => none
-    DogfoodRouteComplete { node_id, attempt_key, submission, review, publication } =>
+    DogfoodRouteComplete { node_id: _, attempt_key: _, submission, review, publication } =>
+      if submission.attempt_key != e.attempt_key || publication.head_sha != submission.head_sha {
+        none
+      } else {
+        let r = DogfoodStartReceipt {
+          node_id: e.node_id,
+          attempt_key: e.attempt_key,
+          head_sha: submission.head_sha,
+          submission_digest: submission.digest,
+          review_subject: review.subject,
+          review_plan_revision: review.plan_revision,
+          review_digest: wire_content_hash_to_hex(hash: content_hash_of_value(value: serialize_json(v: review_report_json(report: e.review)) as NonEmptyStr)),
+          pr_number: publication.pr_number,
+          pr_url: publication.url,
+          established_at: established_at,
+        }
+        match dogfood_start_receipt_defect(r: r) {
+          Absent => Present { value: r }
+          Present { value: _ } => none
+        }
+      }
+  }
+}
+
+// The first candidate in observation order.
+fn dogfood_first_candidate(evidences: List<WorkflowAttemptEvidence>, established_at: Rfc3339Timestamp) -> DogfoodStartReceipt? {
+  fold(evidences, init: none, f: (acc, e) => match acc {
+    Present { value: _ } => acc
+    Absent => dogfood_start_candidate(e: e, established_at: established_at)
+  })
+}
+
+fn dogfood_start_receipt_wire(r: DogfoodStartReceipt) -> String? {
+  match dogfood_start_receipt_defect(r: r) {
+    Present { value: _ } => none
+    Absent =>
       Present { value: serialize_json(v: json_object([
         json_kv(key: "schema", value: json_string(s: dogfood_start_receipt_schema)),
-        json_kv(key: "node_id", value: json_string(s: node_id)),
-        json_kv(key: "attempt_key", value: json_string(s: attempt_key)),
-        json_kv(key: "head_sha", value: json_string(s: submission.head_sha)),
-        json_kv(key: "submission_digest", value: json_string(s: submission.digest)),
-        json_kv(key: "review_subject", value: json_string(s: review.subject)),
-        json_kv(key: "review_plan_revision", value: json_string(s: review.plan_revision)),
-        json_kv(key: "pr_number", value: json_int(n: publication.pr_number)),
-        json_kv(key: "pr_url", value: json_string(s: publication.url)),
-        json_kv(key: "established_at", value: json_string(s: established_at)),
+        json_kv(key: "node_id", value: json_string(s: r.node_id)),
+        json_kv(key: "attempt_key", value: json_string(s: r.attempt_key)),
+        json_kv(key: "head_sha", value: json_string(s: r.head_sha)),
+        json_kv(key: "submission_digest", value: json_string(s: r.submission_digest)),
+        json_kv(key: "review_subject", value: json_string(s: r.review_subject)),
+        json_kv(key: "review_plan_revision", value: json_string(s: r.review_plan_revision)),
+        json_kv(key: "review_digest", value: json_string(s: r.review_digest)),
+        json_kv(key: "pr_number", value: json_int(n: r.pr_number)),
+        json_kv(key: "pr_url", value: json_string(s: r.pr_url)),
+        json_kv(key: "established_at", value: json_string(s: r.established_at as String)),
       ])) }
   }
 }
 
-// The first complete receipt in observation order.
-fn dogfood_first_complete(receipts: List<DogfoodRouteReceipt>) -> DogfoodRouteReceipt? {
-  fold(receipts, init: none, f: (acc, r) => match acc {
-    Present { value: _ } => acc
-    Absent =>
-      match r {
-        DogfoodRouteIncomplete { node_id: _, attempt_key: _, owed: _, refused: _ } => none
-        DogfoodRouteComplete { node_id: _, attempt_key: _, submission: _, review: _, publication: _ } => Present { value: r }
-      }
-  })
+// ── THE TOTAL DECODER ──
+type DogfoodStartReceiptDecode
+  = StartReceiptDecoded { receipt: DogfoodStartReceipt }
+  | StartReceiptInvalid { reason: String }
+
+// A missing or mistyped field decodes as empty (or zero), which the join validation refuses, so
+// the defect check is the whole of the decoder's judgment and there is no second list of rules.
+fn dogfood_decode_field(v: JsonValue, key: String) -> String {
+  match json_field_string(obj: v, key: key) {
+    FieldRead { value: s } => s
+    FieldAbsent => ""
+    FieldMalformed { cause: _ } => ""
+  }
 }
 
+fn dogfood_start_receipt_decode(payload: String) -> DogfoodStartReceiptDecode {
+  match parse_json_document(s: payload) {
+    JsonDocumentUnreadable { gap: _ } => StartReceiptInvalid { reason: "the start receipt is not a JSON document" }
+    JsonDocumentParsed { value: v } =>
+      if dogfood_decode_field(v: v, key: "schema") != dogfood_start_receipt_schema {
+        StartReceiptInvalid { reason: "the schema is missing or not dogfood-start-receipt/v1" }
+      } else {
+        let when = dogfood_decode_field(v: v, key: "established_at")
+        if when == "" {
+          StartReceiptInvalid { reason: "established_at is missing" }
+        } else {
+          let r = DogfoodStartReceipt {
+            node_id: dogfood_decode_field(v: v, key: "node_id"),
+            attempt_key: dogfood_decode_field(v: v, key: "attempt_key"),
+            head_sha: dogfood_decode_field(v: v, key: "head_sha"),
+            submission_digest: dogfood_decode_field(v: v, key: "submission_digest"),
+            review_subject: dogfood_decode_field(v: v, key: "review_subject"),
+            review_plan_revision: dogfood_decode_field(v: v, key: "review_plan_revision"),
+            review_digest: dogfood_decode_field(v: v, key: "review_digest"),
+            pr_number: match json_field_int(obj: v, key: "pr_number") { FieldRead { value: n } => n  FieldAbsent => 0  FieldMalformed { cause: _ } => 0 },
+            pr_url: dogfood_decode_field(v: v, key: "pr_url"),
+            established_at: when as Rfc3339Timestamp,
+          }
+          match dogfood_start_receipt_defect(r: r) {
+            Absent => StartReceiptDecoded { receipt: r }
+            Present { value: why } => StartReceiptInvalid { reason: why }
+          }
+        }
+      }
+  }
+}
+
+// ── THE RECORDER ──
 type DogfoodStartRecord
   = DogfoodStartRecorded { receipt: String }
   | DogfoodStartAlreadyRecorded
@@ -349,60 +463,66 @@ type DogfoodStartRecord
   | DogfoodStartRefused { reason: String }
 
 fn dogfood_start_record_for_instance(instance: HostDashboardInstance) -> DogfoodStartRecord {
-  match belt_workflow_attempt_evidences_observe_for_instance(instance: instance) {
-    WorkflowAttemptEvidencesRefused { reason } => DogfoodStartRefused { reason: reason }
-    WorkflowAttemptEvidencesObserved { evidences } =>
-      match dogfood_first_complete(receipts: map(evidences, e => dogfood_route_receipt_for_evidence(e: e))) {
-        Absent => DogfoodStartNoCompleteAttempt
-        Present { value: first } => {
-          let at = belt_tick_observed_at()
-          match dogfood_start_receipt_wire(c: first, established_at: at) {
-            Absent => DogfoodStartNoCompleteAttempt
-            Present { value: wire } =>
-              match admit_cas_attempt_for_derived_payload(key: dogfood_start_receipt_key, expected: ExpectSlotAbsent, proposed: wire as NonEmptyStr) {
-                DerivedPayloadKeyNotSlotAddressable { key: _ } => DogfoodStartRefused { reason: "the start receipt key is not slot-addressable" }
-                DerivedPayloadAdmitted { verified } =>
-                  match file_compare_and_set(root: dogfood_start_store_root(instance: instance), publication: DefaultAccessCreateOnly, verified: verified) {
-                    CasCommitted { committed: _ } => DogfoodStartRecorded { receipt: wire }
-                    CasPreconditionFailed { expected: _, observed: _ } => DogfoodStartAlreadyRecorded
-                    CasStoreRefused { cause: _ } => DogfoodStartRefused { reason: "the start receipt store refused the create-only write" }
-                  }
+  let root = dogfood_start_store_root(instance: instance)
+  match observe_cas_slot_state(root: root, key: dogfood_start_receipt_key) {
+    CasObservedUnreadable { cause: _ } => DogfoodStartRefused { reason: "the start receipt slot cannot be read, so whether a start is recorded is unknown" }
+    CasObservedReadable { readable } =>
+      match readable {
+        CasReadablePresent { version } =>
+          match dogfood_start_receipt_decode(payload: version.value as String) {
+            StartReceiptDecoded { receipt: _ } => DogfoodStartAlreadyRecorded
+            StartReceiptInvalid { reason } => DogfoodStartRefused { reason: join(["the recorded start receipt is invalid and cannot be rewritten: ", reason], "") }
+          }
+        CasReadableAbsent =>
+          match clock_now_probed_at() {
+            Absent => DogfoodStartRefused { reason: "the clock could not be read, so no start time can be established" }
+            Present { value: now } =>
+              if !rfc3339_is_canonically_spelled(value: (now as String) as Rfc3339Timestamp) {
+                DogfoodStartRefused { reason: join(["the clock reading is not a canonical RFC 3339 UTC instant: ", now as String], "") }
+              } else {
+                match belt_workflow_attempt_history_evidences_observe_for_instance(instance: instance) {
+                  WorkflowAttemptEvidencesRefused { reason } => DogfoodStartRefused { reason: reason }
+                  WorkflowAttemptEvidencesObserved { evidences } =>
+                    match dogfood_first_candidate(evidences: evidences, established_at: (now as String) as Rfc3339Timestamp) {
+                      Absent => DogfoodStartNoCompleteAttempt
+                      Present { value: first } =>
+                        match dogfood_start_receipt_wire(r: first) {
+                          Absent => DogfoodStartRefused { reason: "the start candidate failed its own join validation" }
+                          Present { value: wire } =>
+                            match admit_cas_attempt_for_derived_payload(key: dogfood_start_receipt_key, expected: ExpectSlotAbsent, proposed: wire as NonEmptyStr) {
+                              DerivedPayloadKeyNotSlotAddressable { key: _ } => DogfoodStartRefused { reason: "the start receipt key is not slot-addressable" }
+                              DerivedPayloadAdmitted { verified } =>
+                                match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: verified) {
+                                  CasCommitted { committed: _ } => DogfoodStartRecorded { receipt: wire }
+                                  CasPreconditionFailed { expected: _, observed: _ } => DogfoodStartAlreadyRecorded
+                                  CasStoreRefused { cause: _ } => DogfoodStartRefused { reason: "the start receipt store refused the create-only write" }
+                                }
+                            }
+                        }
+                    }
+                }
               }
           }
-        }
       }
   }
 }
 
-// ── THE ACCEPTANCE CASE ─────────────────────────────────────────────────────────────────────────
+// ── THE ACCEPTANCE CASE ──
 //
-// The roadmap row's execution contract READS the start receipt; it does not recompute a current
-// state. It holds exactly when the slot holds a receipt of this schema naming an attempt. It is a
-// plain function rather than a floor witness: its subject is a deployment's durable store, which a
-// CI runner does not have. An unreadable slot is not a pass.
-fn dogfood_start_receipt_names_an_attempt(payload: String) -> Bool {
-  match parse_json_document(s: payload) {
-    JsonDocumentUnreadable { gap: _ } => false
-    JsonDocumentParsed { value: v } =>
-      (match json_field_string(obj: v, key: "schema") {
-        FieldRead { value: s } => s == dogfood_start_receipt_schema
-        FieldAbsent => false
-        FieldMalformed { cause: _ } => false
-      }) && (match json_field_string(obj: v, key: "attempt_key") {
-        FieldRead { value: k } => k != ""
-        FieldAbsent => false
-        FieldMalformed { cause: _ } => false
-      })
-  }
-}
-
+// The roadmap row's execution contract reads the start-receipt slot and holds exactly when it holds
+// a receipt the total decoder accepts. A plain function rather than a floor witness: its subject is
+// a deployment's durable store, which a CI runner does not have. An unreadable slot is not a pass.
 fn dogfood_route_acceptance_holds_on(instance: HostDashboardInstance) -> Bool {
   match observe_cas_slot_state(root: dogfood_start_store_root(instance: instance), key: dogfood_start_receipt_key) {
     CasObservedUnreadable { cause: _ } => false
     CasObservedReadable { readable } =>
       match readable {
         CasReadableAbsent => false
-        CasReadablePresent { version } => dogfood_start_receipt_names_an_attempt(payload: version.value as String)
+        CasReadablePresent { version } =>
+          match dogfood_start_receipt_decode(payload: version.value as String) {
+            StartReceiptDecoded { receipt: _ } => true
+            StartReceiptInvalid { reason: _ } => false
+          }
       }
   }
 }

@@ -23,7 +23,7 @@ import gunbc.roadmap_dogfood_route {
   ProducerPending, DogfoodStageReadings,
   DogfoodRouteReceipt, DogfoodRouteComplete, DogfoodRouteIncomplete,
   dogfood_route_receipt, dogfood_submission_reading, dogfood_review_reading, dogfood_publication_reading,
-  dogfood_first_complete, dogfood_start_receipt_wire, dogfood_start_receipt_names_an_attempt,
+  dogfood_start_receipt_wire, dogfood_start_receipt_decode, StartReceiptDecoded, StartReceiptInvalid,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -35,7 +35,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // for two stages has no expression to write (each stage's reading is its own type), so that RED is
 // not authorable and is held by the types rather than by a claim. The create-only persistence of the
 // start receipt is the CAS store's own property, witnessed against a real filesystem by
-// test.claim.durable_cas_file_store_wet_witness_test.
+// test.claim.durable_cas_file_store_wet_witness_test; a refused clock refuses the record before
+// that write (gunbc.roadmap_dogfood_route dogfood_start_record_for_instance).
 data head: String = "b04485cffb000000000000000000000000000000"
 
 data other_head: String = "c0ffee0000000000000000000000000000000000"
@@ -185,68 +186,68 @@ test fn a_refused_publication_is_named_as_refused() -> Bool {
 
 // ── THE START RECEIPT ──
 //
-// A complete receipt can only be assembled from evidence the readers produced; these claims take
-// that evidence from the readers above.
-fn complete_for(node_id: String, attempt_key: String) -> DogfoodRouteReceipt? {
-  match dogfood_submission_reading(attempt_key: attempt_key, capture: capture_at(h: head)) {
-    SubmissionGap { gap: _ } => none
-    SubmissionEstablished { evidence: s } =>
-      match dogfood_review_reading(node_id: node_id, head_sha: head, report: review_at(complete: true)) {
-        ReviewGap { gap: _ } => none
-        ReviewEstablished { evidence: v } =>
-          match dogfood_publication_reading(head_sha: head, subject: PublicationSubjectObserved { subject: subject_at(h: head) }, evidence_source: ReceiptSourcePresent { text: bound_receipt_text(h: head) }) {
-            PublicationGap { gap: _ } => none
-            PublicationEstablished { evidence: p } => Present { value: DogfoodRouteComplete { node_id: node_id, attempt_key: attempt_key, submission: s, review: v, publication: p } }
+// A start receipt is minted only from one attempt's evidence (dogfood_start_candidate) or by the
+// total decoder; both run the same join validation, and the acceptance function reads the slot
+// through the decoder. These claims drive the decoder with planted payloads -- the same read the
+// acceptance function performs -- and round-trip a decoded receipt through the encoder. The clock
+// refusal is the recorder's first check before any write (dogfood_start_record_for_instance).
+fn payload(node: String, attempt: String, h: String, subject: String, pr: String, when: String) -> String {
+  join([
+    "{\"schema\": \"dogfood-start-receipt/v1\", \"node_id\": \"", node, "\", \"attempt_key\": \"", attempt,
+    "\", \"head_sha\": \"", h, "\", \"submission_digest\": \"d1\", \"review_subject\": \"", subject,
+    "\", \"review_plan_revision\": \"plan-r1\", \"review_digest\": \"rd1\", \"pr_number\": ", pr,
+    ", \"pr_url\": \"https://github.com/gunb-ai/gunbc/pull/4242\", \"established_at\": \"", when, "\"}",
+  ], "")
+}
+
+fn good() -> String {
+  payload(node: "n1", attempt: "k1", h: head, subject: join(["n1@", head], ""), pr: "4242", when: "2026-10-03T07:00:00Z")
+}
+
+fn decodes(text: String) -> Bool {
+  match dogfood_start_receipt_decode(payload: text) {
+    StartReceiptDecoded { receipt: _ } => true
+    StartReceiptInvalid { reason: _ } => false
+  }
+}
+
+test fn a_complete_start_receipt_decodes() -> Bool {
+  decodes(text: good())
+}
+
+// Positive control for the fragment the side chat named: schema plus attempt key alone is NOT a start.
+test fn a_same_schema_fragment_is_not_a_start() -> Bool {
+  !decodes(text: "{\"schema\": \"dogfood-start-receipt/v1\", \"attempt_key\": \"fabricated\"}")
+    && !decodes(text: "{\"schema\": \"something-else/v1\", \"attempt_key\": \"k1\"}")
+    && !decodes(text: "not json")
+}
+
+test fn cross_field_disagreement_is_not_a_start() -> Bool {
+  !decodes(text: payload(node: "n1", attempt: "k1", h: head, subject: join(["n2@", head], ""), pr: "4242", when: "2026-10-03T07:00:00Z"))
+    && !decodes(text: payload(node: "n1", attempt: "k1", h: head, subject: join(["n1@", other_head], ""), pr: "4242", when: "2026-10-03T07:00:00Z"))
+    && !decodes(text: payload(node: "n1", attempt: "k1", h: "not-a-sha", subject: "n1@not-a-sha", pr: "4242", when: "2026-10-03T07:00:00Z"))
+    && !decodes(text: payload(node: "n1", attempt: "k1", h: head, subject: join(["n1@", head], ""), pr: "0", when: "2026-10-03T07:00:00Z"))
+    && !decodes(text: payload(node: "", attempt: "k1", h: head, subject: join(["@", head], ""), pr: "4242", when: "2026-10-03T07:00:00Z"))
+}
+
+// A refused clock reading is never a start time, nor is any non-canonical instant.
+test fn an_invalid_or_refused_time_is_not_a_start() -> Bool {
+  !decodes(text: payload(node: "n1", attempt: "k1", h: head, subject: join(["n1@", head], ""), pr: "4242", when: "clock observation refused"))
+    && !decodes(text: payload(node: "n1", attempt: "k1", h: head, subject: join(["n1@", head], ""), pr: "4242", when: ""))
+    && !decodes(text: payload(node: "n1", attempt: "k1", h: head, subject: join(["n1@", head], ""), pr: "4242", when: "2026-10-03 07:00:00"))
+}
+
+test fn a_decoded_receipt_round_trips_through_the_encoder() -> Bool {
+  match dogfood_start_receipt_decode(payload: good()) {
+    StartReceiptInvalid { reason: _ } => false
+    StartReceiptDecoded { receipt } =>
+      match dogfood_start_receipt_wire(r: receipt) {
+        Absent => false
+        Present { value: wire } =>
+          match dogfood_start_receipt_decode(payload: wire) {
+            StartReceiptDecoded { receipt: again } => again.attempt_key == "k1" && again.pr_number == 4242 && again.head_sha == head
+            StartReceiptInvalid { reason: _ } => false
           }
       }
   }
-}
-
-fn incomplete(node_id: String) -> DogfoodRouteReceipt {
-  DogfoodRouteIncomplete { node_id: node_id, attempt_key: "k0", owed: [], refused: [] }
-}
-
-// Two complete attempts: the first in observation order is retained, deterministically; an
-// incomplete attempt ahead of them is skipped, not chosen.
-test fn the_first_complete_attempt_in_order_is_selected() -> Bool {
-  match complete_for(node_id: "n1", attempt_key: "k1") {
-    Absent => false
-    Present { value: first } =>
-      match complete_for(node_id: "n2", attempt_key: "k2") {
-        Absent => false
-        Present { value: second } =>
-          match dogfood_first_complete(receipts: [incomplete(node_id: "n0"), first, second]) {
-            Absent => false
-            Present { value: chosen } =>
-              match chosen {
-                DogfoodRouteComplete { node_id, attempt_key, submission: _, review: _, publication: _ } => node_id == "n1" && attempt_key == "k1"
-                DogfoodRouteIncomplete { node_id: _, attempt_key: _, owed: _, refused: _ } => false
-              }
-          }
-      }
-  }
-}
-
-test fn no_complete_attempt_selects_nothing() -> Bool {
-  match dogfood_first_complete(receipts: [incomplete(node_id: "n0"), incomplete(node_id: "n1")]) {
-    Absent => true
-    Present { value: _ } => false
-  }
-}
-
-// The written receipt is what the acceptance function reads back: it names the attempt and carries
-// the stage evidence; an incomplete receipt writes nothing; a payload of another shape is not read
-// as a start.
-test fn the_start_receipt_round_trips_through_the_acceptance_read() -> Bool {
-  (match complete_for(node_id: "n1", attempt_key: "k1") {
-    Absent => false
-    Present { value: c } =>
-      match dogfood_start_receipt_wire(c: c, established_at: "2026-10-03T07:00:00Z") {
-        Absent => false
-        Present { value: wire } => dogfood_start_receipt_names_an_attempt(payload: wire) && wire.contains("4242")
-      }
-  })
-    && (match dogfood_start_receipt_wire(c: incomplete(node_id: "n0"), established_at: "t") { Absent => true  Present { value: _ } => false })
-    && !dogfood_start_receipt_names_an_attempt(payload: "{\"schema\": \"something-else/v1\", \"attempt_key\": \"k1\"}")
-    && !dogfood_start_receipt_names_an_attempt(payload: "not json")
 }
