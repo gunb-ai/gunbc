@@ -47322,8 +47322,21 @@ mod warm_route_bytes_probe {
         let entry =
             std::env::var("GUNBC_M3_ENTRY").unwrap_or_else(|_| "dag/std/decision.dag".to_string());
         let label = std::env::var("GUNBC_M3_LABEL").unwrap_or_else(|_| "m3".to_string());
+        let in_use = || {
+            // SAFETY: mallinfo2 reads allocator bookkeeping and changes nothing.
+            let h = unsafe { libc::mallinfo2() };
+            h.uordblks + h.hblkhd
+        };
+        let h0 = in_use();
         let index = super::process_shared_index(&roots);
+        let h1 = in_use();
+        eprintln!("[m4] label={label} point=process_start in_use={h0}");
+        eprintln!("[m4] label={label} point=after_shared_index in_use={h1}");
         let sources = super::load_sources_for_entry_with_pool(&index, &entry).expect("entry loads");
+        eprintln!(
+            "[m4] label={label} point=after_load_sources in_use={}",
+            in_use()
+        );
         let n = sources.len();
         let (graph, _si, _diags) = super::resolved_graph_from_sources_with_index(
             &index,
@@ -47340,7 +47353,16 @@ mod warm_route_bytes_probe {
             graph.modules.len(),
             heap.uordblks + heap.hblkhd
         );
+        eprintln!("[m4] label={label} point=after_resolve in_use={}", in_use());
         super::arm_floor_byte_attribution();
         super::typed_graph_byte_attribution(&label, graph);
+        drop(_si);
+        drop(_diags);
+        let h3 = in_use();
+        eprintln!("[m4] label={label} point=after_graph_drop in_use={h3}");
+        eprintln!(
+            "[m4] label={label} residual_after_graph_minus_after_index={}",
+            h3 as i64 - h1 as i64
+        );
     }
 }
