@@ -470,7 +470,7 @@ pub fn compile_dag_multi_module_fixture(
         };
     }
     let source_digest = multi_module_fixture_source_digest(&sources, entry);
-    let compiler_digest = crate::resolved_graph_cache::transform_content_digest();
+    let compiler_digest = crate::closure_identity::transform_content_digest();
     let files: Vec<Rc<v1_compiler_compile::SourceFile>> = sources
         .iter()
         .map(|s| {
@@ -1616,7 +1616,7 @@ pub fn compile_dag_reference_occurrence_binding_census(
     contents: &[String],
     entry: &str,
 ) -> ReferenceOccurrenceBindingCensus {
-    let compiler_digest = crate::resolved_graph_cache::transform_content_digest();
+    let compiler_digest = crate::closure_identity::transform_content_digest();
     if paths.len() != contents.len() || paths.is_empty() {
         return ReferenceOccurrenceBindingCensus::Refused {
             cause: "reference binding census: manifest is empty or ragged".to_string(),
