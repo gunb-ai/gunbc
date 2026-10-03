@@ -91,9 +91,9 @@ ENTRY = Conj { <realization-transport> -> TRANSPORT, <status-arms> -> ARMS?, <mo
 | transport kind | `std.fidelity` `TransportClass` (`ShellLocal`, `RestNetwork`, `FileBoundary`, `LocalDirect`) | reused; `local` has no declared binding and refuses as unmodeled |
 | response status code | `std.types` `HttpStatus` (100–599) | reused |
 | response status class (`5xx`) | `extdeps.ietf.http_semantics` `HttpStatusClass`, RFC 9110 §15 | added beside `HttpMethod`; the IETF fact, not the transport's |
-| exit status | an integer (`extdeps.process.posix_exit` rows); `extdeps.transports.shell` `ShellExitPattern` = `ShellExitCode { code }` \| `ShellExitNonzero` | an exit status is never passed through an HTTP type |
-| shell `from` key | `extdeps.transports.shell` `ShellOutputChannel` | completed: it had no consumer and lacked `exit_code` (135 rows); transcribed from the seed's `ShellResultChannel` / `shell_result_channel_of_key` |
-| file `from` key | `extdeps.transports.file` `FileOutputChannel` | added; transcribed from the seed's `FileResultChannel` / `file_result_channel_of_key` |
+| exit status | an integer (`extdeps.process.posix_exit` rows); `extdeps.transports.shell_declared` `ShellExitPattern` = `ShellExitCode { code }` \| `ShellExitNonzero` | an exit status is never passed through an HTTP type |
+| shell `from` key | `extdeps.transports.shell_declared` `ShellOutputChannel` | completed: it had no consumer and lacked `exit_code` (135 rows); transcribed from the seed's `ShellResultChannel` / `shell_result_channel_of_key` |
+| file `from` key | `extdeps.transports.file_declared` `FileOutputChannel` | added; transcribed from the seed's `FileResultChannel` / `file_result_channel_of_key` |
 | rest `from` key | open (RFC 8259 member names) | no closed vocabulary |
 | declared binding fields | `ShellBindingField`, `RestBindingField`, `FileBindingField` in each kind's module | added; closed by the corpus, and an unknown field refuses |
 | HTTP method | `extdeps.ietf.http_semantics` `HttpMethod` | reused |

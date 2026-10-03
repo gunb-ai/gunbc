@@ -68,7 +68,7 @@ import v2.std.algebra { any, filter, length }
 // downstream can be skipped by building the wrong shape (review blockers one and three):
 //
 //   1. THE INTENT/PROFILE JOIN. The executable profile the engine will run is DERIVED from the
-//      capacity intent (gunbc.spark.serving_capacity_intent profile_for_intent), and the mint
+//      capacity intent (gunbc.spark.serving_capacity_intent profile_for_envelope), and the mint
 //      refuses any subject whose profile is not that derivation. A proof about four 64K seats
 //      cannot stand beside a sixteen-sequence 262K executable: the engine config the proof prices
 //      and the engine config the launch renders are one value by construction. The launch wall
@@ -406,9 +406,14 @@ type ArmMemorySubjectMint
 // record a smaller authored intent, and then this same check is the wall that keeps the launch
 // honest. Policy fields (utilization, KV dtype, port, alias, prefix caching) travel with the
 // requested profile and are not part of the join.
+// THE JOIN IS ON THE GUARANTEED FLOOR, NOT THE CEILING (gunbc.spark.serving_capacity_intent
+// SchedulerEnvelope): the intent is the cold population, and the profile's max_num_seqs may exceed it
+// only by best-effort seats the engine's own KV gate admits. At the floor envelope the two counts are
+// equal and this is the check it always was.
 fn profile_joins_intent(intent: ServingCapacityIntent, p: ServingLaunchProfile) -> Bool {
   token_count_value(t: p.max_model_len) == token_count_value(t: intent_max_single_sequence_tokens(i: intent))
-    && p.max_num_seqs == intent_max_active_sequences(i: intent)
+    && p.guaranteed_cold_seqs == intent_max_active_sequences(i: intent)
+    && p.max_num_seqs >= p.guaranteed_cold_seqs
     && token_count_value(t: p.max_num_batched_tokens) == token_count_value(t: intent.max_batched_tokens)
 }
 
@@ -525,10 +530,10 @@ fn arm_memory_fit_subject(
     ArmMemorySubjectRefused {
       cause: join([
         "the executable profile does not derive from the capacity intent: the engine would run max_model_len ", to_string(token_count_value(t: requested_profile.max_model_len)),
-        " with ", to_string(requested_profile.max_num_seqs), " sequences and a ", to_string(token_count_value(t: requested_profile.max_num_batched_tokens)),
+        " with ", to_string(requested_profile.guaranteed_cold_seqs), " guaranteed cold of ", to_string(requested_profile.max_num_seqs), " sequences and a ", to_string(token_count_value(t: requested_profile.max_num_batched_tokens)),
         "-token batch ceiling, which is not the intent's largest seat ", to_string(token_count_value(t: intent_max_single_sequence_tokens(i: intent))),
         " across ", to_string(intent_max_active_sequences(i: intent)), " seats with a ", to_string(token_count_value(t: intent.max_batched_tokens)),
-        "-token batch ceiling. The proof and the engine config must be one value: derive the profile FROM the intent (gunbc.spark.serving_capacity_intent profile_for_intent), never price one workload beside another",
+        "-token batch ceiling. The proof and the engine config must be one value: derive the profile FROM the intent (gunbc.spark.serving_capacity_intent profile_for_envelope), never price one workload beside another",
       ], "") as NonEmptyStr,
     }
   } else {
@@ -1729,6 +1734,7 @@ fn memory_proof_subject_workload_wire(s: MemoryProofSubject) -> String {
     to_string(intent_max_active_sequences(i: s.intent)), "x",
     to_string(token_count_value(t: intent_max_single_sequence_tokens(i: s.intent))),
     "-batch", to_string(token_count_value(t: s.intent.max_batched_tokens)),
+    if s.profile.max_num_seqs == intent_max_active_sequences(i: s.intent) { "" } else { join(["-ceiling", to_string(s.profile.max_num_seqs)], "") },
   ], "")
 }
 
@@ -1767,9 +1773,12 @@ fn memory_proof_subject_config_equal(a: MemoryProofSubject, b: MemoryProofSubjec
 
 // WORKLOAD EQUALITY is seats, per-seat length and batch ceiling together: a larger seat population
 // or a longer window is a different workload for every growth-sensitive term, and a different
-// batch ceiling is a different activation peak.
+// batch ceiling is a different activation peak. AND THE SEQUENCE CEILING: the engine sizes static
+// per-request state and its captured graphs from max_num_seqs, so a receipt read at 8/8 says nothing
+// about the same eight cold seats under a ceiling of 14 -- each ceiling owes its own evidence.
 fn memory_proof_subject_workload_equal(a: MemoryProofSubject, b: MemoryProofSubject) -> Bool {
   intent_max_active_sequences(i: a.intent) == intent_max_active_sequences(i: b.intent)
+    && a.profile.max_num_seqs == b.profile.max_num_seqs
     && token_count_value(t: intent_max_single_sequence_tokens(i: a.intent)) == token_count_value(t: intent_max_single_sequence_tokens(i: b.intent))
     && token_count_value(t: a.intent.max_batched_tokens) == token_count_value(t: b.intent.max_batched_tokens)
 }
@@ -1946,6 +1955,7 @@ fn memory_scaling_law_discharges_on(law: MemoryScalingLaw, measured_on: MemoryPr
     MemoryScalingPerSequenceFixed =>
       memory_proof_subject_config_equal(a: measured_on, b: target)
         && intent_max_active_sequences(i: measured_on.intent) == intent_max_active_sequences(i: target.intent)
+        && measured_on.profile.max_num_seqs == target.profile.max_num_seqs
     MemoryScalingPerToken => memory_proof_subject_equal(a: measured_on, b: target)
     MemoryScalingPerPooledToken { index_kpool: _ } => memory_proof_subject_equal(a: measured_on, b: target)
     MemoryScalingPhaseTransient => memory_proof_subject_equal(a: measured_on, b: target)
