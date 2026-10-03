@@ -486,6 +486,12 @@ fn present_trigger_declarations() -> List<DeclarationRef> {
 // every runner group in the organization. That the dispatch_jit_mint row classifies the same token
 // mint as resource-scoped is filed as gunbc.recurring_failure_mode
 // one_credential_mint_classified_at_two_reaches and not changed here.
+// THE D0 RELEASE UNDER THE GROUP A STANDING GRANT (review 74624) is its own row, site
+// gunbc.spark.pair_serving_d0_door d0_standing_grant_for: the same door as pair_serving_d0_ci_wet, a
+// different effect and a different authorization route. A release-to-fleet whose group and every host the
+// committed standing grant covers is admitted by that grant, never filed to the broker. The selection
+// decides the pattern from the effect's parameters with the ruling as the witness discharge, conditional on
+// its interlock (D0's durable claim, rostered in privileged_effect_interlocks); the census does not assert it.
 data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.live_deploy.emit", decl_name: "approval_broker_helper_grant_steps"),
@@ -844,11 +850,6 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     realized: RealizedUnauthorized,
     divergence_reason: Present { value: fabric_store_write_unverified },
   },
-  // THE D0 RELEASE UNDER THE GROUP A STANDING GRANT (review 74624). The same door, a different effect
-  // and a different authorization route: a release-to-fleet whose group and every host the committed
-  // standing grant covers is admitted by that grant, never filed to the broker. The selection decides the
-  // pattern from the effect's parameters with the ruling as the witness discharge, conditional on its
-  // interlock (D0's durable claim, rostered below); the census does not assert it.
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.spark.pair_serving_d0_door", decl_name: "d0_standing_grant_for"),
     effect: PrivilegedEffect {
