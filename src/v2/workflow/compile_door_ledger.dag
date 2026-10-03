@@ -38,7 +38,7 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
-import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected, diagnostics_fatal_reason }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme }
@@ -144,6 +144,12 @@ fn closure_ingest(closure_paths: FreeMonoid<String>) -> SourceRootIngest {
   )
 }
 
+// A refused door row records the chain's FATAL cause, its last element. An advisory that rode along
+// heads the chain and is not why the door refused (advisories step 2).
+fn door_refused_row(path: String, d: NonEmptyDiagnostics) -> DoorLedgerRow {
+  DoorLedgerRow { module_path: path, outcome: DoorRefused { reason: diagnostics_fatal_reason(d: d) } }
+}
+
 fn door_ledger_row(subject_path: String, facts: ModuleGraphFacts) -> DoorLedgerRow {
   let subject_text = filesystem_read(path: subject_path).content
   match reference_deps_ingest_source_text(
@@ -151,7 +157,7 @@ fn door_ledger_row(subject_path: String, facts: ModuleGraphFacts) -> DoorLedgerR
     file: symbol_intern_lexeme(lexeme: subject_path)
   ) {
     Rejected { diagnostics: d } =>
-      DoorLedgerRow { module_path: subject_path, outcome: DoorRefused { reason: diagnostics_fatal_reason(d: d) } }
+      door_refused_row(path: subject_path, d: d)
     Accepted { value: parse_root, diagnostics: _ } =>
       match derive_module_admission(root: parse_root) {
         AdmissionRefused { reason: r } =>
@@ -171,10 +177,7 @@ fn door_ledger_row(subject_path: String, facts: ModuleGraphFacts) -> DoorLedgerR
             Accepted { value: _, diagnostics: _ } =>
               DoorLedgerRow { module_path: subject_path, outcome: DoorCompiled }
             Rejected { diagnostics: d } =>
-              DoorLedgerRow {
-                module_path: subject_path,
-                outcome: DoorRefused { reason: diagnostics_fatal_reason(d: d) }
-              }
+              door_refused_row(path: subject_path, d: d)
           }
       }
   }

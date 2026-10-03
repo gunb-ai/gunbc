@@ -1,7 +1,8 @@
 module v2.test.claim.advisories.fatal_first_readers
 
-import v2.workflow.compile_door_ledger { DoorLedgerRow, DoorRefused, all_refused_causes_attributed }
+import v2.workflow.compile_door_ledger { DoorLedgerRow, DoorRefused, all_refused_causes_attributed, door_refused_row, ledger_cause_count, ledger_refused_count }
 import v2.workflow.realization_attempt { first_located_cause }
+import v2.lens.enforcement.grammar_coverage { ParseRejected, grammar_coverage_stage_rejected }
 import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -49,4 +50,32 @@ test fn door_ledger_attributes_a_fatal_grain_only_cause_holds() -> Bool {
     && !all_refused_causes_attributed(rows: [
       DoorLedgerRow { module_path: "b.dag", outcome: DoorRefused { reason: ^fatal_first_readers_unowned_cause } }
     ])
+}
+
+// THE GRAMMAR-COVERAGE CLASSIFIER reports a refused stage by its fatal cause. Two chains share one
+// advisory head and differ in their fatal; the classifier must report each one's own fatal, which a
+// head reader cannot (it answers ^shared_advisory_head for both). The real path is the long-lane
+// claim v2.test.claim.long.grammar_coverage_fatal_route.
+test fn grammar_coverage_stage_rejected_reports_each_chains_fatal_holds() -> Bool {
+  (grammar_coverage_stage_rejected(stage: "parse", d: residue_headed_chain(fatal: ^parse_g0_tokens_remain))
+    == ParseRejected { stage: "parse", reason: ^parse_g0_tokens_remain })
+    && (grammar_coverage_stage_rejected(stage: "parse", d: residue_headed_chain(fatal: ^tokenize_lex_e1_unrecognized_char))
+      == ParseRejected { stage: "parse", reason: ^tokenize_lex_e1_unrecognized_char })
+}
+
+// THE DOOR LEDGER'S HISTOGRAM IS OF FATAL CAUSES. The three refusal chains the long claim
+// v2.test.long.compile_door_ledger's real subjects produce (determinism, error_primitives, bit) are
+// SUPPLIED here, each headed by one shared advisory: the histogram must count their fatals, and every
+// fatal must be owned. A head-grain reader counts the advisory three times and nothing else.
+test fn door_ledger_histogram_counts_each_refusals_fatal_holds() -> Bool {
+  let rows = [
+    door_refused_row(path: "dag/std/determinism.dag", d: residue_headed_chain(fatal: ^resolve_reason_unbound_symbol)),
+    door_refused_row(path: "dag/std/error_primitives.dag", d: residue_headed_chain(fatal: ^member_not_a_binder)),
+    door_refused_row(path: "dag/std/bit.dag", d: residue_headed_chain(fatal: ^member_not_a_binder))
+  ]
+  ledger_refused_count(rows: rows) == 3
+    && all_refused_causes_attributed(rows: rows)
+    && ledger_cause_count(rows: rows, reason: ^member_not_a_binder) == 2
+    && ledger_cause_count(rows: rows, reason: ^resolve_reason_unbound_symbol) == 1
+    && ledger_cause_count(rows: rows, reason: ^shared_advisory_head) == 0
 }

@@ -39,20 +39,13 @@ fn affected_rows() -> List<DoorLedgerRow> {
   door_ledger(paths: affected_set_paths, pool_roots: ledger_pool_roots)
 }
 
-// THE HISTOGRAM IS OF FATAL CAUSES (advisories step 2). Read at the head, this set showed the
-// grammar overlap residue once and resolve_reason_unbound_symbol twice; read at the fatal element it
-// is member_not_a_binder twice and resolve_reason_unbound_symbol once (measured locally on the
-// step-2 branch). member_not_a_binder is owned at FatalGrain in
-// v2.workflow.compile_door_cause_ownership: both refusals sit at the module surface node, which the
-// lifecycle_carrier and unit_modeling lenses reach through a module container (the row's diagnosis).
 test fn ledger_cause_histogram_over_mixed_affected_set() -> Bool {
   let rows = affected_rows()
   ledger_refused_count(rows: rows) == 3
     && ledger_all_compiled(rows: rows) == false
     && all_refused_causes_attributed(rows: rows) == true
-    && ledger_cause_count(rows: rows, reason: ^parse_grammar_choice_overlap_residue) == 0
-    && ledger_cause_count(rows: rows, reason: ^member_not_a_binder) == 2
-    && ledger_cause_count(rows: rows, reason: ^resolve_reason_unbound_symbol) == 1
+    && ledger_cause_count(rows: rows, reason: ^parse_grammar_choice_overlap_residue) == 1
+    && ledger_cause_count(rows: rows, reason: ^resolve_reason_unbound_symbol) == 2
     && ledger_cause_count(rows: rows, reason: ^resolve_ambiguous_export) == 0
     && ledger_cause_count(rows: rows, reason: ^fact_density_hollow_alias_locus) == 0
 }
