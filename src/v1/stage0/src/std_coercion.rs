@@ -331,7 +331,7 @@ pub struct ConversionPlan {
     pub route: Rc<DeclarationRef>,
     pub source: Rc<ConversionEndpoint>,
     pub target: Rc<ConversionEndpoint>,
-    pub phases: Rc<Vec<Rc<ConversionPhase>>>,
+    pub phase: Rc<ConversionPhase>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -349,9 +349,6 @@ pub enum ConversionPlanJudgment {
     },
     ConversionPlanEndpointMismatch {
         plan: Rc<ConversionPlan>,
-    },
-    ConversionPlanHasNoPhase {
-        route: Rc<DeclarationRef>,
     },
     ConversionPlanEndpointNotText {
         source: TextRepresentation,
@@ -438,22 +435,16 @@ pub fn judge_conversion_plan(
                         })
                     }
                     Some(plan) => {
-                        if ((plan.phases.clone().len() as i64) == 0) {
-                            Rc::new(ConversionPlanJudgment::ConversionPlanHasNoPhase {
-                                route: route.clone(),
+                        if (conversion_endpoint_eq(plan.source.clone(), source.clone())
+                            && conversion_endpoint_eq(plan.target.clone(), target.clone()))
+                        {
+                            Rc::new(ConversionPlanJudgment::ConversionPlanAdmitted {
+                                plan: plan.clone(),
                             })
                         } else {
-                            if (conversion_endpoint_eq(plan.source.clone(), source.clone())
-                                && conversion_endpoint_eq(plan.target.clone(), target.clone()))
-                            {
-                                Rc::new(ConversionPlanJudgment::ConversionPlanAdmitted {
-                                    plan: plan.clone(),
-                                })
-                            } else {
-                                Rc::new(ConversionPlanJudgment::ConversionPlanEndpointMismatch {
-                                    plan: plan.clone(),
-                                })
-                            }
+                            Rc::new(ConversionPlanJudgment::ConversionPlanEndpointMismatch {
+                                plan: plan.clone(),
+                            })
                         }
                     }
                 }
