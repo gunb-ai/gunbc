@@ -4,7 +4,8 @@ import v2.std.algebra { algebra_empty_conj }
 import v2.std.arrow_signature { anonymous_signature_arrow }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, binder_edge, binder_node_parts, named_child_lookup }
 import v2.std.logic { bool_node }
-import v2.std.node { Arrow, Atom, Cardinality, ComputationNode, Conj, Disj, Edge, Authored, Instantiation, Node, Positional, StructuralLabel, Symbol, TypeNode, content_hash }
+import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, Positional, StructuralLabel, Symbol, TypeNode }
+import v2.std.collection { List }
 import v2.std.optional { Absent, Present }
 
 // THE ALGEBRA'S STRUCTURE SIGNATURES AS NODES: each algebraic structure std.algebra declares (magma
@@ -265,51 +266,69 @@ fn algebra_inhabitance_node(algebra: Node, inhabitant: Node) -> Node {
 }
 }
 
-// WHICH OPERATION FIELDS A STRUCTURE DECLARES, read off the signature this module builds: a structure is a
-// Conj of binder edges, and a binder whose type is itself a structure -- ordered_ring's ^ordered_ring_field_ring,
-// boolean_algebra's ^boolean_algebra_field_bounded_lattice -- composes that structure's fields into its own. An
-// OPERATION's type (an Arrow from algebra_binary_fn_node / algebra_unary_fn_node) and the inhabitant are not
-// structures and are never entered, so a name occurring inside an operation's signature or inside the carrier
-// is not a declared field. This is the one reading of "the structure declares field F"; a consumer asks it
-// rather than searching the node.
-fn algebra_inhabitance_declares_field(inhabitance: Node, field: Symbol) -> Bool {
-  match named_child_lookup(root: inhabitance, name: ^algebra_edge) {
-    NamedChildFound { target: algebra } =>
-      match named_child_lookup(root: inhabitance, name: ^inhabitant_edge) {
-        NamedChildFound { target: inhabitant } => algebra_structure_declares_field(structure: algebra, inhabitant: inhabitant, field: field)
-        NamedChildMissing => false
-        NamedChildAmbiguous => false
+// THE BINDERS THROUGH WHICH ONE STRUCTURE COMPOSES ANOTHER, declared once beside the constructors that build
+// them: each names a binder whose type is another structure's *_type_node (ordered_ring's ^ordered_ring_field_ring
+// is a ring; ring's ^ring_field_add is an abelian group). Every other binder is an OPERATION (an Arrow) or a
+// fixpoint, and is never a structure to enter. Composition is therefore read from this declaration, never
+// guessed from a node's shape -- a carrier that is itself a record is not mistaken for a sub-structure.
+// v2.test.claim.dag_algebra_inhabitance holds this list equal to the constructors' structure-typed binders.
+data algebra_structure_composing_fields: List<Symbol> = [
+  ^abelian_group_field_group,
+  ^boolean_algebra_field_bounded_lattice,
+  ^bounded_lattice_field_lattice,
+  ^commutative_monoid_field_monoid,
+  ^commutative_ring_field_ring,
+  ^commutative_semiring_field_semiring,
+  ^field_field_commutative_ring,
+  ^group_field_monoid,
+  ^monoid_field_semigroup,
+  ^ordered_ring_field_ring,
+  ^ring_field_add,
+  ^ring_field_mul,
+  ^semigroup_field_magma,
+  ^semiring_field_add,
+  ^semiring_field_mul
+]
+
+// WHETHER AN INHABITANCE'S STRUCTURE DECLARES AN OPERATION FIELD -- typed, so a malformed inhabitance node is
+// never mistaken for a structure that lacks the field (DESIGN section 5: no fabricated plausible answer). A
+// field is declared when the structure binds it, or when a sub-structure it composes (through a binder in
+// algebra_structure_composing_fields) declares it. An operation's signature and the carrier are never entered.
+type AlgebraFieldDeclaration
+  = FieldDeclared
+  | FieldNotDeclared
+  | InhabitanceMalformed { cause: Symbol }
+
+fn algebra_inhabitance_field_declaration(inhabitance: Node, field: Symbol) -> AlgebraFieldDeclaration {
+  match named_child_lookup(root: inhabitance, name: ^inhabitant_edge) {
+    NamedChildMissing => InhabitanceMalformed { cause: ^algebra_inhabitance_inhabitant_edge_missing }
+    NamedChildAmbiguous => InhabitanceMalformed { cause: ^algebra_inhabitance_inhabitant_edge_ambiguous }
+    NamedChildFound { target: _ } =>
+      match named_child_lookup(root: inhabitance, name: ^algebra_edge) {
+        NamedChildMissing => InhabitanceMalformed { cause: ^algebra_inhabitance_algebra_edge_missing }
+        NamedChildAmbiguous => InhabitanceMalformed { cause: ^algebra_inhabitance_algebra_edge_ambiguous }
+        NamedChildFound { target: algebra } =>
+          if algebra_structure_declares_field(structure: algebra, field: field) { FieldDeclared } else { FieldNotDeclared }
       }
-    NamedChildMissing => false
-    NamedChildAmbiguous => false
   }
 }
 
-fn algebra_structure_declares_field(structure: Node, inhabitant: Node, field: Symbol) -> Bool {
-  match structure.kind {
-    TypeNode { connective: Conj } =>
-      if content_hash(n: structure).digest == content_hash(n: inhabitant).digest {
-        false
-      } else {
-        fold(structure.children, init: false, f: fn(acc, e) {
-          acc || match e.label {
-            Authored { name: name } =>
-              name == field || match binder_node_parts(n: e.target) {
-                Present { value: parts } => algebra_structure_declares_field(structure: parts.type_node, inhabitant: inhabitant, field: field)
-                Absent => false
-              }
-            StructuralLabel { label: _ } => false
-            Positional => false
-          }
+fn algebra_structure_declares_field(structure: Node, field: Symbol) -> Bool {
+  fold(structure.children, init: false, f: fn(acc, e) {
+    acc || match e.label {
+      Authored { name: name } =>
+        name == field || (algebra_field_composes_a_structure(name: name) && match binder_node_parts(n: e.target) {
+          Present { value: parts } => algebra_structure_declares_field(structure: parts.type_node, field: field)
+          Absent => false
         })
-      }
-    TypeNode { connective: Atom { identity: _ } } => false
-    TypeNode { connective: Disj } => false
-    TypeNode { connective: Arrow } => false
-    TypeNode { connective: Cardinality } => false
-    TypeNode { connective: Instantiation } => false
-    ComputationNode { behavior: _ } => false
-  }
+      StructuralLabel { label: _ } => false
+      Positional => false
+    }
+  })
+}
+
+fn algebra_field_composes_a_structure(name: Symbol) -> Bool {
+  fold(algebra_structure_composing_fields, init: false, f: fn(acc, f) { acc || f == name })
 }
 
 fn magma_node(inhabitant: Node) -> Node {
