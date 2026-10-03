@@ -410,16 +410,14 @@ type MtCollins1SecondaryJoinReading {
 // Socket 1's SMpro stage is the PAIR CUR_BOOTSTAGE / BOOTSTAGE, decoded by the Ampere ABI's own
 // pair rule (extdeps.ampere.smpro_register smpro_boot_progress_of), which refuses a pair whose
 // reported stage is ahead of the current one; a refused pair licenses no "last stage" reading.
-type MtCollins1SocketTopology = SingleSocket | TwoSocket
-
 // SecondaryJoinTimeout is a LIVENESS finding, not a fault record: socket 1 never completed the
-// transition and socket 0 went on as one socket. No error register need fire for it, so the
+// transition and socket 0 went on as one socket (the arm itself says so: a two-socket
+// continuation would be SecondaryJoined). No error register need fire for it, so the
 // absence of one is part of this arm's evidence, not a contradiction of it.
 type MtCollins1SecondaryJoinOutcome
   = SecondaryJoined { inter_socket_links_reported: Bool }
   | SecondaryJoinTimeout {
       secondary_last_stage: SmproBootProgress
-      primary_continued_as: MtCollins1SocketTopology
       inter_socket_links_reported: Bool
       secondary_host_checkpoints: List<NonEmptyStr>
     }
@@ -437,7 +435,6 @@ fn secondary_join_outcome(reading: MtCollins1SecondaryJoinReading) -> MtCollins1
         Absent => SecondaryJoinUnclassified { reason: "socket 1's SMpro BOOTSTAGE was not read beside CUR_BOOTSTAGE in this boot" }
         Present { value: r } => SecondaryJoinTimeout {
           secondary_last_stage: smpro_boot_progress_of(cur_bootstage_word: c, bootstage_word: r),
-          primary_continued_as: SingleSocket,
           inter_socket_links_reported: links,
           secondary_host_checkpoints: reading.secondary_checkpoints,
         }

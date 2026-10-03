@@ -40,7 +40,7 @@ import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
   MtCollins1DiagnosisHypothesis, MtCollins1HypothesisStanding, HypothesisOpen, HypothesisRefutedByStickSwap,
   HypothesisWeakenedByMatchingCpu0Characteristics,
   MtCollins1CpuFingerprintComparison, MtCollins1SecondaryJoinReading, MtCollins1SecondaryJoinOutcome, SecondaryJoined, SecondaryJoinTimeout,
-  SecondaryJoinUnclassified, MtCollins1SocketTopology, SingleSocket, TwoSocket, secondary_join_outcome, mtcollins1_secondary_join_readings,
+  SecondaryJoinUnclassified, secondary_join_outcome, mtcollins1_secondary_join_readings,
   MtCollins1StickSwapReport, MtCollins1StickPlacement, MtCollins1FirmwareSocketSummary, mtcollins1_firmware_socket_summary,
   MtCollins1SocketCpu, MtCollins1CpuRelease, EngineeringSample, ProductionPart, mtcollins1_socket_cpus,
   MtCollins1PairingBootHistory, MachineBootReportedSinceSwap, PairingBootNotYetReported, mtcollins1_pairing_boot_history,
@@ -794,18 +794,14 @@ fn secondary_stage_text(st: SmproBootProgress) -> String {
   }
 }
 
-fn topology_text(t: MtCollins1SocketTopology) -> String {
-  match t { SingleSocket => "SingleSocket"  TwoSocket => "TwoSocket" }
-}
-
 fn bool_text(b: Bool) -> String { if b { "true" } else { "false" } }
 
 fn join_outcome_text(outcome: MtCollins1SecondaryJoinOutcome) -> String {
   match outcome {
     SecondaryJoined { inter_socket_links_reported: l } => concat("SecondaryJoined { inter_socket_links_reported: ", bool_text(b: l), " }")
     SecondaryJoinUnclassified { reason: why } => concat("SecondaryJoinUnclassified: ", why)
-    SecondaryJoinTimeout { secondary_last_stage: st, primary_continued_as: t, inter_socket_links_reported: l, secondary_host_checkpoints: cps } =>
-      concat(concat(concat("SecondaryJoinTimeout { secondary_last_stage: ", secondary_stage_text(st: st)), concat(", primary_continued_as: ", topology_text(t: t))),
+    SecondaryJoinTimeout { secondary_last_stage: st, inter_socket_links_reported: l, secondary_host_checkpoints: cps } =>
+      concat(concat(concat("SecondaryJoinTimeout { secondary_last_stage: ", secondary_stage_text(st: st)), ", socket 0 continued alone"),
         concat(concat(", inter_socket_links_reported: ", bool_text(b: l)), concat(", secondary_host_checkpoints: ", if list_length(items: cps) == 0 { "none }" } else { concat(join(cps, ", "), " }") })))
   }
 }
