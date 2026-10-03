@@ -130,7 +130,7 @@ fn refused_row(
 }
 
 fn file_refusal_row(path: Symbol, head: Symbol, fatal: Symbol) -> NativeTestFileRefusal {
-  NativeTestFileRefusal { path: path, module: optional_absent(), head_reason: head, fatal_reason: fatal }
+  NativeTestFileRefusal { path: path, module: optional_absent(), head_reason: head, fatal_reason: fatal, chain: [] }
 }
 
 // The emitted build as the lane records it on a clean run: cargo's argv, the denial set by the
