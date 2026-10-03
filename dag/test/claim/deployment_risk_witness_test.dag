@@ -27,6 +27,7 @@ import gunbc.deployment_risk {
   srv1_lab_codex_feedback_deployment,
   srv2_deploy_deployment,
 }
+import gunbc.recurring_failure_mode.a_test_deployment_acts_on_the_prod_deployments_state { a_test_deployment_acts_on_the_prod_deployments_state }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   dashboard_instance_risk_class,
@@ -140,4 +141,10 @@ test fn exactly_one_dashboard_instance_derives_prod_risk_and_it_is_the_daily_wor
 // exactly once, so no realization exists whose deployment carries no harm bet.
 test fn every_dashboard_deployment_exposes_exactly_one_risk_interface() -> Bool {
   all(dashboard_instances(), i => count(filter(deployment_risk_interfaces, r => r.deployment == i.deployment)) == 1)
+}
+
+// THE FAILURE-MODE ROW RESOLVES AND NAMES THIS WITNESS AS ITS EVIDENCE, so a rename here cannot
+// leave the row citing a declaration that no longer exists.
+test fn the_wrong_instance_failure_mode_row_cites_this_red() -> Bool {
+  any(a_test_deployment_acts_on_the_prod_deployments_state.evidence, r => r.decl_name == "a_test_deployment_refuses_rather_than_resolving_the_prod_bindings")
 }
