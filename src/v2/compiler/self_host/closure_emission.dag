@@ -348,7 +348,7 @@ fn closure_resolve_member(
           policy: default_name_resolution_policy()
         )),
         admission: Admission { subject: ResolutionSubject { name: member_module }, imports: Empty }
-      ).walk, symbol_index: symbol_index)
+      ).walk, symbol_index: symbol_index, closure_declarations: empty_symbol_index())
     }
   )
 }

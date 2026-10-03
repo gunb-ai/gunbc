@@ -1,7 +1,7 @@
 module gunbc.roadmap.roadmap_belt_commit
 
 import std.types { String, NonEmptyStr, List }
-import gunbc.roadmap_provider_events { ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderRunning, ProviderCompleted, ProviderFailed, ProviderBudgetSpent, ProviderEventsRefused }
+import gunbc.roadmap_provider_events { ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderAwaitingSeat, ProviderRunning, ProviderCompleted, ProviderFailed, ProviderBudgetSpent, ProviderEventsRefused }
 import gunbc.roadmap.roadmap_submission {
   SubmissionObservation,
   SubmissionCapture,
@@ -63,6 +63,7 @@ fn belt_commit_decision(provider: ProviderExecutionState, node_id: String, attem
   match provider {
     ProviderNotStarted => CommitNotNeeded { reason: "provider not completed" }
     ProviderStarting { activity: _ } => CommitNotNeeded { reason: "provider not completed" }
+    ProviderAwaitingSeat { detail: _ } => CommitNotNeeded { reason: "provider not completed" }
     ProviderRunning { activity: _ } => CommitNotNeeded { reason: "provider not completed" }
     ProviderCompleted { activity: _ } =>
       belt_commit_decision_for_terminal(node_id: node_id, attempt_key: attempt_key, entries_nul: entries_nul, submission: submission, captures: captures)
