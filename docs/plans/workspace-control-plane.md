@@ -31,11 +31,11 @@ The control plane holds five kinds of fact. Every one already has a home in the 
 | State | Meaning | Home authority | Conformance |
 | --- | --- | --- | --- |
 | **Intent** | The desired instance: class, CPU and memory requested independently, volume quota, endpoint name, placement constraints. | Requirements: `product.fabric.work` `ExecutionRequirements`. The desired record is a `std.fabric_storage` object under a per-instance head. | Conforms. Intent is an immutable object; "the current intent" is a head. No second desired-state table. |
-| **Writer epoch** | Which realization may write the volume head and serve the endpoint. A monotone integer per volume. | `std.temporal_effect` `LeaseEpoch` (`lease_key`, `resource_fingerprint`, `owner_fingerprint`, `generation`). It is advanced by compare-and-set: `std.durable_compare_and_set` `CasExpectation` / `cas_decide`. | Conforms. `generation` is the epoch number, and `owner_fingerprint` names the realization. **Frontier:** the epoch record is a `std.fabric_storage` head (`instance/<id>/epoch`) whose object carries the `LeaseEpoch`. Consumer: the reconciler (§2) and the volume commit path (§3). |
-| **Committed revision head** | The last committed checkpoint of the volume: snapshot plus journal chunks. | `std.fabric_storage` `FabricHeadReading` / `FabricHeadAdvance` over content-addressed objects; R2 realization is fabric-storage step 4B (ETag-conditioned put, stacked on gunbc#13080 `gunbc.cloudflare.r2_staged_transfer`). | Conforms. **Divergence, stated:** the head is *namespaced by epoch* (`volume/<id>/e<N>/head`), the fabric-architecture §2 rule "each epoch writes into its own namespace". That is a head-naming policy over the same interface, not a second interface. |
+| **Writer epoch** | Which realization may advance the workspace head and serve the endpoint. A monotone integer per workspace. | `std.temporal_effect` `LeaseEpoch` (`generation` = epoch, `owner_fingerprint` = realization). **The epoch is not a separate record:** it is carried by the `WorkspaceFence` entries on the workspace head, in `std.checkpointed_workspace` (still-dove-673, branch `workspace-revision-model`). | Conforms. There is no second epoch store. Consumer: `std.checkpointed_workspace` `workspace_commit_classify` (§3). |
+| **Committed revision head** | The last committed checkpoint of the workspace, as a chain of `WorkspaceRevision` and `WorkspaceFence` entries. | `std.fabric_storage` `FabricHeadReading` / `FabricHeadAdvance`, as **one head per workspace**, `workspace.<id>.committed`. Its R2 realization is fabric-storage step 4B (ETag-conditioned put), stacked on gunbc#13080 `gunbc.cloudflare.r2_staged_transfer`. | Conforms. No per-epoch head namespace: a per-epoch namespace would make a stale commit unreadable but still *acknowledged* (§3). |
 | **Host lease** | Which host holds a realization, until when, and as observed. | `std.temporal_effect` `HeldLease` (`HeldLeaseObservedState`: `LeaseAbsent` / `LeaseRunningExpected` / `LeaseRunningStale` / `LeasePortForeign` / `LeaseInaccessible`). The cell hold is `gunbc.fabric_control_plane` `CellReservation` / `reserve_selected_cell` / `end_cell_hold` over `std.durable_exclusive_hold`. | Conforms. The reconciler's observation *is* `HeldLeaseObservedState`, so detection reuses its verdict fold (`held_lease_observed_verdict`, `plan_for_held_lease_observation`). |
 | **Endpoint binding** | Which realization the workspace's stable name routes to, and at which epoch. | No consumed home yet: the private rows `fabric-network-contract` and `instance-endpoint-continuity` own it. | **Modeling obligation (§6), not a conformance row.** This design only requires that the binding carry the epoch it was bound at (§3). Consumer: the overlay's route programming, named in `instance-endpoint-continuity`. |
-| **Credentials per epoch** | Scoped storage write credential and overlay identity for one realization. | `std.effect_grant` `Grant` / `Envelope` (verb `Write`, namespace position = the epoch's prefix); minting pattern per `gunbc.auth.authorization_pattern_selection`. | Conforms. A grant is rooted at `volume/<id>/e<N>/`, so `envelope_bounded_by` already makes an epoch-N grant unable to cover the epoch-N+1 prefix. |
+| **Credentials per epoch** | Scoped storage write credential and overlay identity for one realization. | `std.effect_grant` `Grant` / `Envelope` (verb `Write`, namespace position = the epoch's chunk prefix). The minting pattern follows `gunbc.auth.authorization_pattern_selection`. | Conforms. **This is a cost and blast-radius control, not the fence.** Chunk writes go under `workspace/<id>/e<N>/`, so a revoked epoch-N grant stops a stale writer from spending money. Correctness never depends on revocation. |
 | **Placement choice** | Where a realization goes and why. | `product.fabric.selection` `select_supply` → `std.decision` `SelectionReceipt`. | Conforms (§4). |
 
 No parallel store: intent, epochs, heads and leases are all **objects and heads in one `std.fabric_storage` realization**. The control-plane service that §5 chooses is that realization's *linearization point for heads*. It is not a second database beside it.
@@ -62,27 +62,27 @@ The reconciler is one pure fold, `reconcile(desired, observed) -> List<Action>`.
 
 **Requirement:** after the epoch authority records epoch N+1 for a volume, no action by a holder of epoch N reaches durable state or a client. **Confidence:** high for commit; medium for traffic, until the endpoint binding has a home.
 
-A stale writer is held off by four lines. The first is the fence; the rest are defense in depth.
+**The fence is the same compare-and-set as the commit.** There is no separate epoch record read before the head advance. With "read record == N, then advance `e<N>/head`", a writer fenced *between* the two steps commits after the bump. If restore had already read that head, the stale commit returns success to the guest, an acknowledged barrier, and is then silently lost. A per-epoch namespace makes such a commit unreadable, not unacknowledged, and that breaks the contract's strongest promise.
 
-1. **The epoch authority is the fence.** Every commit is a head advance at `volume/<id>/e<N>/head`. A commit is *valid* only if the epoch record still reads `generation = N`. The reconciler bumps the record to N+1 **before** it starts restoring anywhere. Restore reads the last head committed under epoch N, then publishes epoch N+1's first head under `e<N+1>/`. Readers resolve the volume as "the head under the current epoch record", so nothing an epoch-N writer publishes afterward under `e<N>/` is ever read.
-2. **Credentials are per epoch.** Epoch N's write grant (`std.effect_grant`, rooted at `e<N>/`) is revoked at the bump. Revocation is best-effort and asynchronous at a provider, so it is never the fence. It only stops a stale writer from spending money and confusing operators.
-3. **Every manifest commit and every attach carries the epoch.** The contract (private `volume-durability-contract`) sells one arm: the asynchronous checkpointed workspace. Guest `fsync` is acknowledged locally, and durability is the manifest commit.
-   - **Commit:** the manifest commit is the head CAS under `e<N>/`, so the commit itself carries the epoch. Under option (i), the commit check is free when the epoch record and the head share one conditional put. Otherwise it is one conditional read of the record before the head CAS.
-   - **Attach:** attaching a volume reads the epoch record and refuses unless it names this realization.
-   - **Stale writer:** it fails its next commit. Its uncommitted writes are never read.
-   - **Coverage invariant:** `oldest_uncommitted_write_age` stays under the published window. A commit refused for a fence or for unreachable storage is not retried silently: once the oldest uncommitted write would exceed the window, the instance enters the contract's **declared storage outage** and refuses writes. An idle workspace is never refused.
-4. **Traffic follows the binding.** The endpoint binding names `(instance, epoch)`. The overlay routes only to the realization whose identity carries the bound epoch, and the per-epoch overlay credential is revoked like the storage grant. A returning rack (demo stage 5) finds its binding gone and its grants dead. Its local reconciler reads epoch ≠ N and quarantines the instance, then destroys it.
+The model, `std.checkpointed_workspace` (still-dove-673):
 
-**Could R2 conditional puts alone be the epoch authority?** For a single provider, yes in principle. The epoch record is an R2 object; a bump is a put conditioned on the ETag last read (`If-Match`); creation is `If-None-Match: *`. That is exactly the CAS `std.durable_compare_and_set` needs, and fabric-storage step 4B already models it for heads.
+1. **One head per workspace:** `workspace.<id>.committed`.
+2. **A fence is a head entry.** An epoch transition is the reconciler advancing that head to a `WorkspaceFence { epoch: N+1, parent: <last revision> }`. It does so through the same `FabricHeadAdvance` every writer uses, **before** any restore starts.
+3. **Every commit expects the entry it built on.** A writer at epoch N advances with `ExpectHeadAt { object: <entry it built on> }`. If a fence landed in between, the advance is `FabricHeadMoved`. `workspace_commit_classify` classifies that as `WorkspaceCommitStaleEpoch` (observed entry epoch > writer epoch), and the guest never sees success. The fence and the commit linearize on one compare-and-set, so the gap no longer exists.
+4. **Attach** reads the head and refuses unless the newest fence names this realization's epoch.
+5. **Restore** walks the chain from the head past any fences to the last `WorkspaceRevision`, then advances from there under the new epoch.
+6. **Coverage invariant.** The contract (private `volume-durability-contract`) sells one arm, the asynchronous checkpointed workspace: guest `fsync` is acknowledged locally, and durability is the manifest commit. `oldest_uncommitted_write_age` stays under the published window. A commit refused for unreachable storage is not retried silently: once the oldest uncommitted write would exceed the window, the instance enters the **declared storage outage** and refuses writes. An idle workspace is never refused. A commit refused as `WorkspaceCommitStaleEpoch` makes the realization quarantine itself.
 
-It does not suffice for the architecture, for the reason fabric-architecture §2 already gives: **once B2 or a second R2 bucket can hold the live head, a conditional put at one provider cannot fence a writer at another.** The epoch record must live in *one* place that every provider's commit path consults.
+Two defense-in-depth lines stand beside the fence; neither is the fence:
 
-There are two consistent choices:
+- **Per-epoch credentials** (state table): revocation is best-effort at a provider and bounds cost and blast radius only.
+- **Traffic follows the binding.** The endpoint binding names `(instance, epoch)`, and the overlay routes only to the realization carrying the bound epoch. Its per-epoch overlay credential is revoked at the fence. A returning rack (demo stage 5) finds its binding gone, its grants dead, and its next commit `WorkspaceCommitStaleEpoch`; it quarantines, and the instance is destroyed.
 
-- **(i) The epoch record is an R2 object, and R2 is that one place.** Every commit, including commits whose chunks land in B2, consults it. This is consistent. Its cost is that R2 is a hard dependency of every commit on every provider, and its availability bounds every volume's. R2 conditional-write semantics also have to be verified against the cited doc, as a strong read-after-write on the conditional path.
-- **(ii) A serverless strongly-consistent store holds the epoch record**, with R2 holding objects and per-epoch heads.
+**Can R2 conditional puts alone be the epoch authority? Yes.** The epoch authority *is* the workspace head, so R2 `If-Match` on that one object is the only linearization needed: commits and fences both use it, and creation is `If-None-Match: *`. Multi-provider placement does not break this, provided **B2, or any second backend, holds chunks only**, which are immutable and replicate freely. **The head stays in one place.** The fabric-architecture §2 hazard, a partitioned writer advancing a second provider's own head, arises only if a second provider holds a live head, so that is refused by design rather than fenced.
 
-Option (i) is the minimal design, and §5 recommends starting there. Option (ii) is the upgrade if the queue and reconciler need transactional state that R2 cannot express in one conditional put.
+The residual requirement is to verify R2's conditional put as a strong read-after-write CAS against the cited doc (https://developers.cloudflare.com/r2/api/s3/extensions/ and the conditional-operations reference). Confidence is medium until verified.
+
+A Durable Object is not needed for fencing. It stays as the fallback **only** if that verification fails, or if one transition must change the head and the endpoint binding atomically.
 
 ## 4. Cost-based placement and move-back
 
@@ -118,7 +118,7 @@ The load is tiny: one record per instance, transitions on failure or move, and a
   - This load sits inside the included tier.
 - **Weakness:**
   - A DO's storage lives in one location. A Cloudflare-wide or DO-wide outage takes the control plane down; see §6 for what survives.
-  - Single vendor for objects and control. That couples their failures, but either one down already stops commits under option (i).
+  - Single vendor for objects and control. That couples their failures, but either one down already stops commits, because the head lives in R2.
 
 ### (b) AWS Lambda + DynamoDB conditional writes + SQS
 
@@ -140,8 +140,8 @@ The load is tiny: one record per instance, transitions on failure or move, and a
 
 **Confidence:** medium.
 
-- **Phase 1 (minimal):** the epoch record and heads as R2 objects under step-4B conditional puts (option (i) of §3). One Cloudflare Worker is the reconciler, Cloudflare Queues carries "look at X", and a Cron Trigger runs the sweep. No DO and no new store.
-- **Phase 2, only if needed:** a Durable Object per instance as the epoch authority (option (ii)). It is needed if R2's conditional-put semantics fail verification as a strong CAS, or if transitions need multi-key atomicity (epoch + binding in one step).
+- **Phase 1 (minimal):** one head per workspace as an R2 object under step-4B conditional puts, carrying commits and fences alike (§3). One Cloudflare Worker is the reconciler, Cloudflare Queues carries "look at X", and a Cron Trigger runs the sweep. No DO and no new store.
+- **Phase 2, only if needed:** a Durable Object per workspace holding the head. It is needed if R2's conditional-put semantics fail verification as a strong CAS, or if transitions need multi-key atomicity (epoch + binding in one step).
 
 Prefer (a) over (b): it puts the control plane on the same vendor whose object store is already the commit dependency. Its correlated failure adds no new outage mode beyond "R2 down", which already stops commits.
 
@@ -152,7 +152,7 @@ Prefer (a) over (b): it puts the control plane on the same vendor whose object s
 | Still works | Stops |
 | --- | --- |
 | Running instances keep running and serving at their bound endpoint (bindings are programmed into the overlay, not looked up per packet). | Detection and recovery: a host that dies during the outage is not re-placed until the control plane returns. Stated in the guarantee set as a compound outage, never hidden. |
-| Manifest commits continue **iff** the epoch record is still readable (option (i): R2 up). The commit check reads the record, not the reconciler. | Option (ii) with the DO down: manifest commits cannot confirm the epoch, so they refuse. `oldest_uncommitted_write_age` then grows, and at the window the instance enters the declared storage outage. Commits never proceed unchecked. |
+| Manifest commits continue **iff** R2 is up: the commit *is* the head compare-and-set and needs no reconciler. | With R2 unreachable, manifest commits refuse. `oldest_uncommitted_write_age` then grows, and at the window the instance enters the declared storage outage. Commits never proceed unchecked. |
 | — | A host lost during that outage loses its pending writes. That is receipted as the contract's typed **compound failure** (sole volatile copy lost while coverage could not be kept), never as an ordinary recovery. |
 | Restore by hand is possible from the last committed head, because heads and objects are plain storage. | Move-back and overflow placement. Cost drift accumulates; correctness does not. |
 | Nothing can split brain: no actor except the reconciler bumps epochs, and it is down. | New instance creation. |
@@ -163,8 +163,8 @@ The rule is the fabric-storage rule applied one layer up: **an unreachable linea
 
 Every model named here is consumed by a named row; none lands before its consumer:
 
-- **Epoch record over `std.fabric_storage` heads** → `instance-reconciliation`, `volume-durability-contract`.
-- **Per-epoch head namespace** → `checkpointed-workspace` (demo stage 1 commit/restore).
+- **Fence-as-head-entry and stale-commit classification:** `std.checkpointed_workspace` `workspace_commit_classify` (still-dove-673). Rows: `checkpointed-workspace`, `instance-reconciliation`, `volume-durability-contract` (demo stages 1 and 5).
+- **Per-epoch chunk credential prefix:** the storage grant minting under `instance-reconciliation`.
 - **Reconciler fold over `HeldLeaseObservedState`** → `instance-host-evacuation` (demo stage 2).
 - **Epoch-carrying endpoint binding** → `instance-endpoint-continuity` (demo stages 2, 5).
 - **Overflow candidates in `select_supply`** → `alternate-target-adapter` (demo stage 4).
@@ -172,12 +172,8 @@ Every model named here is consumed by a named row; none lands before its consume
 ## 8. Open decisions (operator)
 
 1. **Realization:** (a) Cloudflare Workers + Queues (+ DO later), recommended; or (b) AWS Lambda + DynamoDB + SQS.
-2. **Epoch authority:**
-   - option (i), an R2 object under conditional put (minimal; R2 bounds every commit's availability); or
-   - option (ii), a Durable Object per instance from the start.
-
-   The answer is gated on verifying R2's conditional put as a strong CAS.
-3. **Where the epoch is checked:** on every manifest commit and on attach, never on guest `fsync`, which is acknowledged locally. Open sub-question: can the epoch record and the head advance be **one** conditional put, making the commit-side check free? Or is the commit check a separate conditional read of the record, which costs one read per commit and is still per commit, never cached?
+2. **Epoch authority.** The recommendation is the workspace head itself, on R2 `If-Match`. This is minimal, but R2's availability bounds every commit. The alternative is a Durable Object holding the head. Gated on verifying R2's conditional put as a strong CAS.
+3. **Where the epoch is checked:** settled by the model, not open. Fences and commits are the one head CAS; attach reads the head. Nothing is checked on guest `fsync`. (Kept as a numbered item so the list keeps its numbering.)
 4. **Sweep period and lease term.** Together they bound detection time, and the demo receipts it. Drafted as same order as the published 60 s window, pending stage 0.
 5. **Move-back hold horizon:** how long a cheaper owned slot must be expected to persist before a planned move is worth its downtime.
-6. **Second storage provider (B2) timing.** Under option (i), adding B2 for chunks is safe; promoting B2 to hold the *live head* requires the epoch record to stay single-homed, as §3 states.
+6. **Second storage provider (B2) timing.** B2 can join as a chunk replica at any time. It never holds a live head, so promotion means moving the one head, which is a planned operator action and not a failover.
