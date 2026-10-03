@@ -1154,3 +1154,16 @@ adjustable motherboard carrier for unpowered assembly/fit, forming the first cha
 Remaining mounting positions can stay adjustable rather than requiring more pair gauges. Actual
 standoff thread/height and underside clearance still determine the board-support interface;
 PSU/cooler envelopes, structural material and load/joint checks remain for the powered cassette.
+
+### Hosted concept workbench
+
+The operator accepted the requirements and requested a hosted site for iterating on the chassis,
+including independent 3D rotation of each piece. Published privately:
+[Altra Chassis Workbench](https://altra-chassis-workbench.briansrls448156.chatgpt.site).
+It contains an explicitly provisional four-panel carrier, segmented rails, handle and retaining
+tabs, with a 2×2 fixed-frame study. Individual isolation/orbit, explosion, withdrawal and design
+controls are available. There are no print controls or manufacturing exports.
+The missing hardware dimensions remain unknown; the geometry is a visual proposal, not an
+admitted fabrication result. Source project details are recorded in `sites/README.md`.
+Desktop/mobile rendering and the principal interactions were exercised successfully.
+All temporary copies of the operator's GCP token were removed after printing work ended.
