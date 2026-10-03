@@ -27,15 +27,15 @@ import gunbc.spark.host_commitment { admit_host_held_by_subject, admit_host_held
 import gunbc.spark.runtime_architecture_registry_reading { ArchitectureRegistryReading }
 import gunbc.spark.serving_arm {
   gb10_unified_pool_gib, ServingRuntime, GunbcDeepseekV41EngramProduced, DeepseekV41FlashDba1be0a, FourSparkTp4,
-  ArmBoundedExperiment, ServingLaunchProfile, deepseek_v41_launch_policy,
+  ArmIntent, ArmBoundedExperiment, ServingLaunchProfile, deepseek_v41_launch_policy,
   runtime_artifact_identity, PinnedByDigest, SourceRevisionEstablished,
 }
 import gunbc.spark.serving_arm_launch {
-  ArmContainerIdentity, ArmNodeLaunch, ArmLaunchPlanned, ArmLaunchRefused, plan_arm_launch_for,
+  ArmContainerIdentity, ArmNodeLaunch, ArmLaunchPlanned, ArmLaunchRefused, plan_arm_launch_under_memory_fit
 }
 import gunbc.spark.native_serving_realization {
   ArmUnitIdentity, GlmNativeUnitRender, GlmNativeUnitRendered, GlmNativeUnitRenderRefused,
-  arm_host_unit_file, glm_native_rendezvous_endpoint,
+  arm_host_unit_file_for, glm_native_rendezvous_endpoint,
 }
 import gunbc.spark.native_serving_apply {
   SparkNativeArmSteps, NativeArmSteps, NativeArmStepsRefused, SparkNativeHostStep, spark_native_arm_steps_of,
@@ -340,6 +340,18 @@ fn v41_manifest_defects(m: V41EngramStoreManifest) -> List<String> {
   }
 }
 
+// THE INTENT IS ONE ROW, READ BY THE PLAN AND BY THE UNIT RENDER. V4.1 runs on Group A only as a bounded
+// experiment; the plan is admitted under this intent and the units render under it -- one attempt, no
+// restart, RuntimeMaxSec at the bound the wall derives from this launch -- so the engine that runs is
+// the experiment the wall admitted, never a persistent service planned as one.
+data v41_group_a_intent: ArmIntent = ArmBoundedExperiment
+
+// THE LAUNCH PASSES THE SAME MEMORY WALL AS EVERY ARM (deforking cut 4): plan_arm_launch_under_memory_fit,
+// not plan_arm_launch_for. The fit verdict is Unestablished for V4.1 today (its per-rank terms are open),
+// so the bounded experiment is admitted only behind a typed experiment plan with a stop contract and a
+// runtime bound derived from THIS launch's environment -- upstream's 600-second ready default, since the
+// deployment sets none -- and its own sequence ceiling. Normal serving stays refused until the fit proves.
+//
 // THE PROFILE IS DERIVED THE WAY EVERY MODEL'S IS (deforking cut 3): the measurement shape's window,
 // sequence population and batch become a cold intent; the envelope sits AT THE FLOOR, so the engine's
 // ceiling equals the measured seat population exactly as before; the model's own choices are
@@ -384,12 +396,12 @@ fn v41_group_a_launch_plan(inputs: V41GroupALaunchInputs) -> V41GroupALaunchPlan
                 match v41_group_a_profile(shape: v41_measurement_launch_shape()) {
                  Absent => V41GroupALaunchRefused { causes: ["the V4.1 measurement shape's cold intent refused (zero seats or zero batched tokens), so no launch profile derives"] }
                  Present { value: launch_profile } =>
-                match plan_arm_launch_for(
+                match plan_arm_launch_under_memory_fit(
                   checkpoint: DeepseekV41FlashDba1be0a,
                   runtime: runtime,
                   topology: FourSparkTp4,
                   group: FabricGroupA,
-                  intent: ArmBoundedExperiment,
+                  intent: v41_group_a_intent,
                   profile: launch_profile,
                   deployment_env: v41_group_a_deployment_env(),
                   container: v41_group_a_arm_container,
@@ -414,7 +426,7 @@ fn v41_group_a_launch_plan(inputs: V41GroupALaunchInputs) -> V41GroupALaunchPlan
 fn v41_group_a_unit_renders(p: V41GroupALaunchPlan) -> List<GlmNativeUnitRender> {
   match p {
     V41GroupALaunchPlanned { lines: ls, profile: prof, specification_runtime_key: _, manifest_text: _, master_endpoint: _ } =>
-      map(ls, l => arm_host_unit_file(launch: l, units: v41_group_a_units, served_alias: prof.served_alias))
+      map(ls, l => arm_host_unit_file_for(intent: v41_group_a_intent, launch: l, units: v41_group_a_units, served_alias: prof.served_alias))
     V41GroupALaunchUnestablished { obligations: _ } => [] as List<GlmNativeUnitRender>
     V41GroupALaunchRefused { causes: _ } => [] as List<GlmNativeUnitRender>
   }
