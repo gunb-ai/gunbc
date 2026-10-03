@@ -219,7 +219,7 @@ None of these retires (DESIGN §4b(4)).
 
 ## 8. Revision 3 (option A) against this model
 
-Population figures are provisional. They are not a size, and M0 sizes both.
+Populations are M0's rows, named by class; none is transcribed here (DESIGN §6).
 
 | | option A (rev 3) | rev 5 |
 |---|---|---|
