@@ -9645,11 +9645,10 @@ fn body_lower_type_decl_eq_rhs_optional(captured: Node) -> Optional<Node> {
 fn body_lower_eq_type_decl(shell: Node, captured: Node, type_name: Symbol, type_params: DeclTypeParams) -> Outcome<Node> {
   match body_lower_type_decl_eq_rhs_optional(captured: captured) {
     Present { value: rhs_term } =>
-      match body_term_of(node: rhs_term) {
-        Rejected { diagnostics: d } => Rejected { diagnostics: d }
-        Accepted { value: Lowered { node: rhs, shape: _ }, diagnostics: _ } =>
-          body_lower_eq_type_decl_rhs(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
-        Accepted { value: _, diagnostics: _ } =>
+      match body_term_wrapper_optional(n: rhs_term) {
+        Present { value: w } =>
+          body_lower_eq_type_decl_rhs(shell: shell, type_name: type_name, rhs: w.node, type_params: type_params)
+        Absent =>
           body_lower_eq_type_decl_rhs(shell: shell, type_name: type_name, rhs: rhs_term, type_params: type_params)
       }
     Absent =>
@@ -9665,11 +9664,13 @@ fn body_lower_eq_type_decl(shell: Node, captured: Node, type_name: Symbol, type_
   }
 }
 
-// THE TYPE DECLARATION'S RIGHT-HAND SIDE, read as a term first (MQ-5). The rhs reaches this reader
-// either as raw parse or as a producer's sealed output; a sealed wrapper is a non-production Conj, so
-// reading its kind directly took the record-member arm and treated the wrapper's one marker edge as a
-// field. body_lower_eq_type_decl unwraps a Lowered term to its node and passes raw parse through, so this
-// reader sees exactly the node it saw before the cut; anything that is not a term refuses there.
+// THE TYPE DECLARATION'S RIGHT-HAND SIDE (MQ-5). The rhs is a TYPE EXPRESSION -- raw parse, or a type
+// the type lowering built (a coproduct's Disj, a record's Conj), which is not a body term and is never
+// sealed -- but a body producer's sealed wrapper can still sit around it. A wrapper is a non-production
+// Conj, so reading its kind directly took the record-member arm and read the wrapper's one marker edge
+// as a field; body_lower_eq_type_decl unwraps a wrapper and passes everything else through unchanged.
+// It does NOT ask body_term_of: a type expression is outside the term vocabulary, and asking refused
+// every coproduct declaration (`type RcT = RcA | RcB | RcC`, a Disj; srv1 probe on #12942).
 fn body_lower_eq_type_decl_rhs(shell: Node, type_name: Symbol, rhs: Node, type_params: DeclTypeParams) -> Outcome<Node> {
   match rhs.kind {
     TypeNode { connective: Disj } =>
