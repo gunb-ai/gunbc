@@ -194,6 +194,18 @@ fn smpro_cur_bootstage_of(word: Int) -> SmproStageReading {
   smpro_stage_of(code: word % 256)
 }
 
+// THE PAIR, READ TOGETHER. boot_progress_show reads CUR_BOOTSTAGE and BOOTSTAGE as one record and
+// returns -EINVAL when the reported stage is ahead of the current one; such a pair is refused here
+// rather than decoded, so no consumer re-derives the byte layout or the rule.
+type SmproBootProgress
+  = SmproBootProgressRead { current: SmproStageReading, reported: SmproBootStage }
+  | SmproBootProgressRefused { cur_bootstage_word: Int, bootstage_word: Int }
+
+fn smpro_boot_progress_of(cur_bootstage_word: Int, bootstage_word: Int) -> SmproBootProgress {
+  if (bootstage_word / 256) % 256 > cur_bootstage_word % 256 { SmproBootProgressRefused { cur_bootstage_word: cur_bootstage_word, bootstage_word: bootstage_word } }
+  else { SmproBootProgressRead { current: smpro_cur_bootstage_of(word: cur_bootstage_word), reported: smpro_bootstage_of(word: bootstage_word) } }
+}
+
 fn smpro_stage_text(r: SmproStageReading) -> String {
   match r {
     SmproStageUndefined { code: c } => concat("stage code ", to_string(c), " (no row in the ABI table)")
