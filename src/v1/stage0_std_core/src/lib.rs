@@ -54,9 +54,6 @@ pub mod std_error_primitives;
 #[path = "../../stage0/src/std_emit_model.rs"]
 pub mod std_emit_model;
 #[rustfmt::skip]
-#[path = "../../stage0/src/std_magnitude.rs"]
-pub mod std_magnitude;
-#[rustfmt::skip]
 #[path = "../../stage0/src/std_measure.rs"]
 pub mod std_measure;
 #[rustfmt::skip]

@@ -4402,11 +4402,6 @@ pub(crate) fn run_discovery_corpus_with_options_inner(
         }
         other => other,
     };
-    // P4 advisory-first: predict the memory-packed width per witness from its derived
-    // space bound, logged beside the governor — no scheduling change. Gated (opt-in).
-    if std::env::var("GUNBC_REALIZE_ADVISORY").is_ok() {
-        emit_realize_advisory_for_rows(source_roots, &rows);
-    }
     let deferred_rows = if options.explicit_roster_only || scan_dirs.is_empty() {
         Vec::new()
     } else {

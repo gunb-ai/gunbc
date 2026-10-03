@@ -42,7 +42,6 @@ import gunbc.guarantee_stall.builtin_parameter_name_forked_across_hand_authored_
 import gunbc.guarantee_stall.algebra_operation_associativity_undeclarable_stall { algebra_operation_associativity_undeclarable_stall }
 import gunbc.guarantee_stall.deployed_repository_empty_root_bootstrap_stall { deployed_repository_empty_root_bootstrap_stall }
 import gunbc.guarantee_stall.prose_declared_rung_drop_stall { prose_declared_rung_drop_stall }
-import gunbc.guarantee_stall.two_nat_authorities_stall { two_nat_authorities_stall }
 import gunbc.guarantee_stall.external_model_scope_live_cover_stall { external_model_scope_live_cover_stall }
 import gunbc.guarantee_stall.observation_heartbeat_lockstep_stall { observation_heartbeat_lockstep_stall }
 import gunbc.guarantee_stall.operation_argv_binding_wall_stall { operation_argv_binding_wall_stall }
@@ -200,7 +199,6 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   algebra_operation_associativity_undeclarable_stall,
   deployed_repository_empty_root_bootstrap_stall,
   prose_declared_rung_drop_stall,
-  two_nat_authorities_stall,
   external_model_scope_live_cover_stall,
   observation_heartbeat_lockstep_stall,
   operation_argv_binding_wall_stall,
@@ -270,7 +268,6 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
 // after the one-file-per-row split the declaration is named by IMPORT, which refuses at resolve if
 // the row module is renamed or deleted rather than silently matching nothing.
 data restored_stalls: List<GuaranteeStall> = [
-  two_nat_authorities_stall,
   external_model_scope_live_cover_stall,
   observation_heartbeat_lockstep_stall,
   operation_argv_binding_wall_stall,
