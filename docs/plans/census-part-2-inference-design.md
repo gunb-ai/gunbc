@@ -1,8 +1,10 @@
 # Census part 2 — inference (and emit) census below resolve
 
-**Status: design only.** The build waits until census part 1 lane A (deep-badger-684) merges. This
-doc does not mint a row format. It extends A's row format by **one stage field**. Where A's PR is
-still moving, the dependency is marked **[A]**, and §8 lists what has to be reconciled once it lands.
+**Status: design only.** The build waits until census part 1 lane A lands: #13026,
+deep-badger-684, reconciled here against its final head `9b7d2adc5c`. This doc does not mint a row
+format. A's member already carries a stage, so part 2 **adds two arms to A's stage coproduct** and
+adds no new field. Items marked **[lane C]** are a declared frontier, because lane C has not been
+dispatched (§8).
 
 Governing sections: DESIGN §3 (one row format, not two), §3c (every declaration added here names its
 consumer), §4b (rung honesty at a declared subject grain), §5 (a refusal is a row, never a widened
@@ -25,8 +27,14 @@ pass), §6 (name the instrument; never transcribe its output).
 - **Locus.** swift-lynx-592's path renders a chain's located fatal through
   `lens_verdict_diagnostics_located_chain_text_in_spans`. Part 2 uses that renderer and adds no
   second one.
-- **Lane A [A].** Lane A's row groups by `fatal_reason`, carries `head` as a field and the locus
-  from that path, and is produced by one instrument row run via `gunbc test //gunbc/instruments:…`.
+- **Lane A (#13026).** The carrier is `v2.compiler.compile` `NativeCensusCauseMember
+  { stage: NativeCensusCauseStage, path, module, head_reason, … }`, grouped into
+  `NativeCensusCauseGroup { fatal_reason, members }` by `native_census_cause_groups_add`. The
+  partition check is `native_census_cause_partition_holds`. The stage coproduct is
+  `NativeCensusCauseFrontEnd | NativeCensusCauseResolve`. The instrument row is
+  `//gunbc/instruments:v2-native-census` (`V2NativeCensusProducer`), and it runs the driver verb
+  `census-resolve`. **Line:col is not part of A.** It waits on swift-lynx-592's path, which is held
+  on #12506, so it is a dependency of this doc (§8) and not an A field.
 
 ## 2. Subject population
 
@@ -115,47 +123,53 @@ M's row is a **cascade** of T's root row.
   emit row is `Root`. A cascade reported at emit is then a **red signal** that the edge exists. It
   is never silently attributed.
 
-## 5. Receipt shape — one row format, extended by one field
+## 5. Receipt shape — A's carrier, two more stage arms
 
 ```
-row (lane A's shape [A]) + stage
-  module:        String                 -- as NativeCensusResidualRow
-  path:          Symbol
-  stage:         CensusStage            -- Resolve | Infer | Emit   (the ONE new field)
-  chain:         NonEmptyDiagnostics    -- fatal derived, head = advisory field, locus via
-                                           swift-lynx-592's renderer
-  attribution:   Root | CascadeOf{root} -- lane C's carrier [lane C]
+NativeCensusCauseStage
+  = NativeCensusCauseFrontEnd        -- A
+  | NativeCensusCauseResolve         -- A
+  | NativeCensusCauseInfer           -- part 2
+  | NativeCensusCauseEmit            -- part 2
+NativeCensusCauseMember              -- A's member, unchanged apart from the stage arms
+NativeCensusCauseGroup { fatal_reason, members }   -- A's grouping key, unchanged
+attribution: Root | CascadeOf{root}  -- [lane C] declared frontier
 ```
 
-- **Grouping** is by `(stage, fatal_reason)`, which is A's grouping keyed one level deeper. Heads
-  are carried and never tallied (the #13005 rule).
+- **Grouping stays on `fatal_reason` alone,** as A has it. Stage is a member field and never a key.
+  This is the same rule A applies to head: a fatal shared across stages is one cause group with
+  members at several stages, and a reader filters on the field. Heads are carried and never tallied.
+- **The partition check is A's.** `native_census_cause_partition_holds` covers infer and emit
+  members without change. A member that lands in no group, or in two, breaks the partition at every
+  stage.
 - **Per-module disposition** is one coproduct per module, so the join over `native_census_modules`
-  is total: `UpstreamRefused { stage: File | Resolve }` | `InferRefused` | `EmitRefused` |
+  is total: `UpstreamRefused { stage: FrontEnd | Resolve }` | `InferRefused` | `EmitRefused` |
   `Emitted`. Rows hang off the refused arms.
 - **Completeness** is a coproduct, as in part 1 (`Xl2CensusCompleteness` pattern). An incomplete
-  infer observation, a missing locus, or an unjoinable cascade root each refuses completeness. None
-  of them is a zero.
-- **Resolve is not re-reported.** If lane A's carrier already holds resolve rows, part 2's carrier
-  *is* that carrier with `stage` added. Part 1's resolve rows become `stage: Resolve`. That is the
-  "one row format" requirement taken literally. The alternative would be a parallel
-  `InferCensusRow` beside it, which is the §3 fork.
+  infer observation or an unjoinable cascade root each refuses completeness. Neither is a zero.
+- **No parallel carrier.** An `InferCensusRow` beside A's member would be the §3 fork. Adding
+  arms makes every exhaustive match over `NativeCensusCauseStage` fail to compile until it handles
+  them, which is the enrollment we want.
 
-## 6. Instrument label
+## 6. Instrument label — extend `v2-native-census`, no second label
 
-There is one row in `gunbc.instrument_targets` and one arm in the `TargetProducer` dispatch (DESIGN,
-"Building & checks": a new measurement is a row, never a flag). The proposed label is
-`//gunbc/instruments:below-resolve-census`. **If lane A's label is a whole-pipeline census, part 2
-is not a new label.** It widens A's subject to stages past resolve under A's label, and the two
-renderings stay one instrument. That is decided once A's label is visible **[A]**. The default here
-is to extend A's row rather than add a second label.
+Part 2 is **the same label**: `//gunbc/instruments:v2-native-census`. The label measures one fact,
+the native census's cause groups over the self-host roots. Part 2 extends the stages the census
+reaches; it does not measure a different fact. A second label would give one measurement two
+routes, which DESIGN's "Building & checks" forbids (the `--self-host` precedent A also cites).
 
-- **Exit codes** follow the label convention. 0: every subject emitted and completeness held.
-  1: the census was observed, with refusals or incomplete completeness. 2: no observation, for
-  example because the ingest refused.
+- **Realization.** `V2NativeCensusProducer` switches from running `census-resolve` to running
+  `census-infer` (§2a). That verb reaches infer and emit through the shared demand subject and
+  prints A's `cause_group` lines, whose members now include infer and emit members. `census-resolve`
+  stays as a verb for part 1's grain. It is a realization, not a peer route, so this is not a
+  second label.
+- **Exit codes are A's, unchanged.** 0: the partition held. 1: the partition broke. 2: the run did
+  not complete. Refusals are the census's data and do not change the exit code. Completeness below
+  complete is reported on the status line, as A reports `cause_groups` and `partition_holds`.
 - **Emit target.** The target is the instrument's own fact (the row names it), never a CLI option,
   so that one label cannot quietly measure a different target.
 - **Cost.** This is a whole-tree run: CI or `ctrl-build --remote`, never in a session. The infer
-  pass reuses part 1's single `ResolutionContext` per ingest (#11401). Inferring per module must not
+  pass reuses the single `ResolutionContext` per ingest (#11401). Inferring per module must not
   rebuild that context.
 
 ## 7. Discriminating controls
@@ -182,15 +196,18 @@ compiler (DESIGN §4b: a compiler's probes are invalid programs).
    and asserts that at least one `Infer`-stage row was produced **by the infer call** and not by a
    supplied fixture. Removing the infer call from the route must red it.
 
-## 8. Open dependencies (reconcile before building)
+## 8. Open dependencies
 
-- **[A]** A's exact carrier name and fields, its label, and whether it stores the fatal or derives
-  it. Part 2 conforms to whatever A merges. If A stores `fatal_reason`, part 2 does the same and
-  cites A, because a disagreement there is A's decision, not this doc's.
-- **[lane C]** Whether the cascade carrier is stage-parametric. If it is not, generalize it in lane
-  C's module rather than adding a sibling here.
-- **Locus field on `NativeTestFileRefusal`.** #13005 defers it to a change to `00_compile`
-  `native_test_file_refusal`. Part 2 needs locus only on chains, which already carry it, so this
-  does not gate part 2.
+- **Line:col on members.** swift-lynx-592 owns this path (#13005 follow-up), and it is held on
+  #12506. A's member shape takes the field once that lands. Part 2's infer and emit members inherit
+  it with no second locus path. Until then, a member's position is whatever its chain's diagnostics
+  carry, rendered by nothing new.
+- **[lane C], declared frontier.** The cascade carrier (`Root | CascadeOf`) and its collapse rule
+  belong to lane C, which has not been dispatched. Its trigger is lane C landing a carrier that takes
+  the stage as a parameter. If C's rule is resolve-only, it is generalized in C's module, not copied
+  here. Until then, part 2 members carry no attribution, and the census reports `attribution
+  unobserved` as a completeness refusal, never as `Root`.
+- **The shared infer subject** (§2a), with tidy-koi-264's M0. Whichever lane builds first owns the
+  subject and the `census-infer` verb arm.
 - **`NativeTestStagePrepare` split.** This is a lane-vocabulary question (§3) that this doc raises
   and does not decide.
