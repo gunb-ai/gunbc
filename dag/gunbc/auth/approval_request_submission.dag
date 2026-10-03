@@ -88,7 +88,7 @@ type PublisherTokenRead
 
 fn read_publisher_token() -> PublisherTokenRead admit_callers: [
   decl_ref(module_path: "gunbc.auth.approval_broker_serve", decl_name: "approval_submit_admitted_response"),
-  decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "issue_device_enrolment_code"),
+  decl_ref(module_path: "gunbc.auth.approval_device_enrolment_code", decl_name: "issue_device_enrolment_code"),
 ] {
   let read = Filesystem.Read(path: approval_publisher_token_path as String)
   match filesystem_exact_read(path: approval_publisher_token_path as String, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind) {
@@ -342,7 +342,7 @@ type NotificationPublish
 
 fn publish_notification(message: NtfyMessage, publisher: PublisherTokenRead) -> NotificationPublish admit_callers: [
   decl_ref(module_path: "gunbc.auth.approval_request_submission", decl_name: "notify_filed"),
-  decl_ref(module_path: "gunbc.auth.approval_device_routes", decl_name: "deliver_enrolment_code"),
+  decl_ref(module_path: "gunbc.auth.approval_device_enrolment_code", decl_name: "deliver_enrolment_code"),
 ] {
   match publisher {
     PublisherTokenUnavailable { path: _, detail: d } => NotificationPublisherTokenUnavailable { detail: d }
