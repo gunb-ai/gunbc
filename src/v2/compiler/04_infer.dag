@@ -6582,13 +6582,14 @@ fn infer_admit_entry_field_symbol(entry: Node, field: Symbol) -> Optional<Symbol
       Present { value: _ } => acc
       Absent =>
         match e.label {
-          Named { name: label } =>
+          Authored { name: label } =>
             if symbol_eq(a: label, b: field) {
               infer_admit_atom_identity(node: e.target)
             } else {
               optional_absent()
             }
           Positional => optional_absent()
+          StructuralLabel { label: _ } => optional_absent()
         }
     }
   })
@@ -6687,11 +6688,22 @@ fn infer_caller_admission_application_diags(
   caller: Optional<InferAdmitCallerCoords>,
   module_symbol: Symbol
 ) -> Diagnostics {
-  match infer_application_callee_arrow(node: application) {
+  match infer_application_callee_use(node: application) {
     Absent => None
-    Present { value: arrow } =>
-      match core_edge_target_lookup(children: arrow.children, marker: AdmitCallersEdge) {
-        Ambiguous => None
+    Present { value: operator } =>
+      match infer_operator_arrow(operator: operator) {
+        Absent => None
+        Present { value: arrow } =>
+          match core_edge_target_lookup(children: arrow.children, marker: AdmitCallersEdge) {
+        // FAIL CLOSED: more than one AdmitCallersEdge is not "no restriction"; refuse.
+        Ambiguous =>
+          infer_admission_diags_of([
+            Diagnostic {
+              reason: ^infer_reason_admit_callers_edge_ambiguous,
+              at: node_locus(node: application),
+              correction: Unavailable { reason: UserInputBoundary }
+            }
+          ])
         Absent => None
         Found { target: clause } =>
           match infer_admit_clause_entries_optional(clause: clause) {
@@ -6720,6 +6732,7 @@ fn infer_caller_admission_application_diags(
                   )
               }
           }
+      }
       }
   }
 }
@@ -6784,7 +6797,7 @@ fn infer_admission_child_context(self: Node, ctx: InferAdmissionCtx, edge: Edge)
       match first(xs: edge.target.children) {
         Present { value: e } =>
           match e.label {
-            Named { name: member_name } =>
+            Authored { name: member_name } =>
               if length(xs: edge.target.children) == 1 {
                 match e.target.kind {
                   TypeNode { connective: Arrow } =>
@@ -6800,6 +6813,7 @@ fn infer_admission_child_context(self: Node, ctx: InferAdmissionCtx, edge: Edge)
                 ctx
               }
             Positional => ctx
+            StructuralLabel { label: _ } => ctx
           }
         Absent => ctx
       }
@@ -6811,7 +6825,16 @@ fn infer_admission_child_context(self: Node, ctx: InferAdmissionCtx, edge: Edge)
 // declaration it sits in.
 fn infer_caller_admission_diags(tree: ResolvedTree) -> Diagnostics {
   match qualified_name_from_module_node(root: tree.root) {
-    Rejected { diagnostics: _ } => None
+    // FAIL CLOSED: an unreadable module name cannot key the judge, so the tree refuses rather
+    // than passing unjudged (DESIGN.md §5: a failure arm must refuse, never widen).
+    Rejected { diagnostics: _ } =>
+      infer_admission_diags_of([
+        Diagnostic {
+          reason: ^infer_reason_caller_admission_module_unreadable,
+          at: node_locus(node: tree.root),
+          correction: Unavailable { reason: UserInputBoundary }
+        }
+      ])
     Accepted { value: module_qn, diagnostics: _ } =>
       fold_node_topdown(
         n: tree.root,
