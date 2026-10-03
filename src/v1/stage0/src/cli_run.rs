@@ -22038,7 +22038,7 @@ pub fn handle_serve(
                         body,
                         tailscale_identity,
                         release_revision.clone(),
-                        Some(cookie_header),
+                        cookie_header,
                         if listener_attests_peer { Some(peer_user.clone()) } else { None },
                     );
                     // THE DEADLINE IS ARMED HERE, AROUND THIS CALL, AND THE SCOPE IS THE POINT.
@@ -22191,9 +22191,11 @@ const SERVE_TAILSCALE_IDENTITY_HEADER: &str = "tailscale-user-login";
 
 /// THE SECOND NAMED HEADER, on the same discipline as the tailnet identity above: the session
 /// cookie. The login flow's Set-Cookie answers a session mint, and this is the only way the
-/// browser can present it back — the `.dag` side's request-security context builds from this
-/// exact string (absent = AuthAbsent, never anonymous), and every other header stays out of the
-/// handlers exactly as before.
+/// browser can present it back. A request WITHOUT the header passes no `cookie_header` argument
+/// at all (the read yields `None`, never an empty string), and the `.dag` side's
+/// request-security context reads no session cookie as AuthAbsent, never as anonymous success
+/// (control: test.claim.auth.request_cookie_evidence_witness_test). Every other header stays out
+/// of the handlers exactly as before.
 const SERVE_COOKIE_HEADER: &str = "cookie";
 
 // ONE CONNECTION SHAPE FOR BOTH LISTENERS. The request parse and the response write are the same
@@ -22368,7 +22370,7 @@ fn serve_peer_user(s: &std::os::unix::net::UnixStream) -> std::io::Result<String
 
 fn serve_read_request(
     stream: &mut dyn ServeConnection,
-) -> Result<Option<(String, String, String, String, String)>, String> {
+) -> Result<Option<(String, String, String, String, Option<String>)>, String> {
     use std::io::{BufRead, Read};
     const MAX_HEAD: usize = 16 << 10;
     const MAX_BODY: usize = 1 << 20;
@@ -22482,7 +22484,7 @@ fn serve_read_request(
         target,
         body,
         tailscale_identity.unwrap_or_default(),
-        cookie_header.unwrap_or_default(),
+        cookie_header,
     )))
 }
 
