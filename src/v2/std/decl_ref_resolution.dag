@@ -1,5 +1,6 @@
 module v2.std.decl_ref_resolution
 
+import std.types { List }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
 import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_at_live }
 import v2.std.decl_index { DeclFact, ItemKind, decl_facts_at, logical_qualified_name_from_module }
