@@ -75,12 +75,12 @@ use crate::v1_std_core::{
     build_newline_index, byte_to_line_col, diagnostic_to_message, diagnostic_to_span,
     empty_intern_table, empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at,
     field_access_base, field_access_field_at, field_init_node_name_at, field_init_node_value,
-    has_child_named, inferred_to_node, intern, is_discovery_corpus_blocking_diagnostic,
-    is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
-    make_error_node, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-    module_items, no_span, param_node_name_at, param_node_type_expr, Cardinality,
-    CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable,
-    LeafOwner, MatchPattern, NewlineIndex, Node,
+    has_child_named, inferred_to_node, intern, is_error_diagnostic,
+    is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, make_error_node,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
+    param_node_name_at, param_node_type_expr, Cardinality, CompilerDiagnostic, Connective,
+    ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable, LeafOwner, MatchPattern,
+    NewlineIndex, Node,
 };
 use serde::Serialize;
 
@@ -244,12 +244,6 @@ use crate::std_interface_summary::{module_key, typed_module_key};
 use crate::std_keyed_roster::{keyed_roster_build, KeyedRosterBuild};
 use crate::std_keyed_row::KeyedRow;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ResolveTypecheckGate {
-    Strict,
-    DiscoveryCorpusAdvisory,
-}
-
 #[cfg(test)]
 mod generated_cli_dispatch_allocator_integration_tests {
     use std::rc::Rc;
@@ -308,13 +302,6 @@ mod generated_cli_dispatch_allocator_integration_tests {
             1,
             "shifted executor must be used at the retained-host call site: {emitted}"
         );
-    }
-}
-
-fn is_resolve_typecheck_blocking(d: Rc<CompilerDiagnostic>, gate: ResolveTypecheckGate) -> bool {
-    match gate {
-        ResolveTypecheckGate::Strict => is_interpreter_blocking_diagnostic(d),
-        ResolveTypecheckGate::DiscoveryCorpusAdvisory => is_discovery_corpus_blocking_diagnostic(d),
     }
 }
 
@@ -737,7 +724,6 @@ fn project_roadmap_acceptance_event_history_from_authority_text_inner(
     let (graph, source_indices, compile_clean_diags) = match resolved_graph_from_sources_with_index(
         &index,
         sources,
-        ResolveTypecheckGate::Strict,
         &entry_file,
         ResolvedGraphMemoShare::Ephemeral,
     ) {
@@ -6904,7 +6890,6 @@ import pur.common { shared_double }\n\nfn beta_use(x: Int) -> Int {\n  shared_do
         let first = super::resolved_graph_from_sources_with_index(
             &index,
             corpus.sources.clone(),
-            super::ResolveTypecheckGate::Strict,
             "ephemeral-warm",
             super::ResolvedGraphMemoShare::Ephemeral,
         )
@@ -6917,7 +6902,6 @@ import pur.common { shared_double }\n\nfn beta_use(x: Int) -> Int {\n  shared_do
         let second = super::resolved_graph_from_sources_with_index(
             &index,
             corpus.sources.clone(),
-            super::ResolveTypecheckGate::Strict,
             "memoize-serve",
             super::ResolvedGraphMemoShare::Memoize,
         )
@@ -6950,7 +6934,6 @@ import pur.common { shared_double }\n\nfn beta_use(x: Int) -> Int {\n  shared_do
         let resolved = super::resolved_graph_from_sources_with_index(
             &index,
             corpus.sources.clone(),
-            super::ResolveTypecheckGate::Strict,
             "memoize-after-erasing",
             super::ResolvedGraphMemoShare::Memoize,
         )
@@ -7221,8 +7204,8 @@ fn runtime_data_dependency_touched_via_carrier_closure(
 #[cfg(test)]
 mod live_read_carrier_home_roster_drift_gate_tests {
     use super::{
-        build_multi_entry_index, make_eval_context, resolve_entry_with_index_for_discovery_corpus,
-        workspace_root, LIVE_READ_CARRIER_HOME_MODULES_V0,
+        build_multi_entry_index, make_eval_context, resolve_entry_with_index, workspace_root,
+        LIVE_READ_CARRIER_HOME_MODULES_V0,
     };
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     use std::collections::HashSet;
@@ -7247,9 +7230,8 @@ mod live_read_carrier_home_roster_drift_gate_tests {
     fn dag_carrier_home_modules() -> HashSet<String> {
         std::env::set_current_dir(workspace_root()).expect("chdir workspace");
         let index = build_multi_entry_index(&["dag".to_string(), "src/v2".to_string()]);
-        let (graph, indices) =
-            resolve_entry_with_index_for_discovery_corpus(&index, LIVE_READ_ENTRY)
-                .unwrap_or_else(|e| panic!("resolve {LIVE_READ_ENTRY}: {e}"));
+        let (graph, indices) = resolve_entry_with_index(&index, LIVE_READ_ENTRY)
+            .unwrap_or_else(|e| panic!("resolve {LIVE_READ_ENTRY}: {e}"));
         let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
         let val = v1_interpreter::with_active_context(&ctx, || {
             v1_interpreter::eval_data_item_value(&ctx, "live_read_carrier_homes_v0")
@@ -7405,7 +7387,7 @@ fn resolve_discovery_entry_for_corpus_row(
     let closure_subject = subject_digest_for_closure(&sources);
     let resolve_started = std::time::Instant::now();
     set_phase(FloorPhase::Resolve, entry_path);
-    let (graph, source_indices) = resolve_entry_with_index_for_discovery_corpus(index, entry_path)
+    let (graph, source_indices) = resolve_entry_with_index(index, entry_path)
         .map_err(|msg| format!("resolve failed for {entry_path}: {msg}"))?;
     let resolve_nanos = resolve_started.elapsed().as_nanos();
     // Same thread, immediately after the resolve that filled it: this entry's split.
@@ -7440,7 +7422,7 @@ fn resolve_discovery_entry_for_corpus_row(
 /// `resolve_entry_with_parse_cache` starts from — so equality with the post-resolve union
 /// (`collect_typed_module_names` over what resolve loaded) holds by construction WITHOUT
 /// resolving: no parse, no typecheck, nothing installed into `resolved_graph_memo`. The #6938
-/// form ran the full `resolve_entry_with_index_for_discovery_corpus` per entry, so every floor
+/// form ran the full `resolve_entry_with_index` per entry, so every floor
 /// run resolved the ENTIRE roster on the width-1 pump thread and retained every resolved graph
 /// in the uncapped memo (~17 GB scoped runs became ~38 GB whole-corpus retention — the
 /// 2026-07-21 exit-137 floor kills). On a completed width-1 run this equals
@@ -12863,7 +12845,7 @@ pub fn build_live_read_selection_manifest(
 ) -> Result<LiveReadSelectionManifest, String> {
     let source_roots = &index.source_roots;
     let (graph, indices) =
-        resolve_entry_with_index_for_discovery_corpus(index, LIVE_READ_CLASSIFICATION_ENTRY)
+        resolve_entry_with_index(index, LIVE_READ_CLASSIFICATION_ENTRY)
             .map_err(|e| {
                 format!(
                     "LIVE-READ MANIFEST REFUSAL cause=LensEntryUnresolved entry={LIVE_READ_CLASSIFICATION_ENTRY} \
@@ -13024,10 +13006,9 @@ fn variant_parts(
 mod live_read_selection_manifest_producer_tests {
     use super::{
         build_live_read_selection_manifest, build_multi_entry_index,
-        decode_live_read_selection_row, make_eval_context,
-        resolve_entry_with_index_for_discovery_corpus, workspace_root, LiveReadCarrier,
-        LiveReadClassification, LiveReadPathPattern, LiveReadSelectionRequest,
-        LiveReadSelectionRow, LIVE_READ_CLASSIFICATION_ENTRY,
+        decode_live_read_selection_row, make_eval_context, resolve_entry_with_index,
+        workspace_root, LiveReadCarrier, LiveReadClassification, LiveReadPathPattern,
+        LiveReadSelectionRequest, LiveReadSelectionRow, LIVE_READ_CLASSIFICATION_ENTRY,
     };
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     use std::rc::Rc;
@@ -13191,9 +13172,8 @@ mod live_read_selection_manifest_producer_tests {
     fn ctx_for_decoding() -> v1_interpreter::InterpContext {
         enter_workspace();
         let index = build_multi_entry_index(&source_roots());
-        let (graph, indices) =
-            resolve_entry_with_index_for_discovery_corpus(&index, LIVE_READ_CLASSIFICATION_ENTRY)
-                .unwrap_or_else(|e| panic!("resolve lens: {e}"));
+        let (graph, indices) = resolve_entry_with_index(&index, LIVE_READ_CLASSIFICATION_ENTRY)
+            .unwrap_or_else(|e| panic!("resolve lens: {e}"));
         make_eval_context(&graph, indices, ExecutionMode::Wet)
     }
 
@@ -19406,8 +19386,7 @@ pub fn precompute_whole_tree_published_mock_keys(
     }
     let t2e = std::time::Instant::now();
     let source_count = all_sources.len();
-    let (graph, source_indices) =
-        resolved_graph_from_sources(all_sources, ResolveTypecheckGate::Strict)?;
+    let (graph, source_indices) = resolved_graph_from_sources(all_sources)?;
     eprintln!(
         "[floor-phase] phase=closure-strict-resolve state=completed wall_ms={} sources={}",
         t2e.elapsed().as_millis(),
@@ -21664,7 +21643,6 @@ pub fn handle_serve(
     let (graph, source_indices, compile_clean_diags) = match resolved_graph_from_sources_with_index(
         &index,
         sources,
-        ResolveTypecheckGate::Strict,
         &entry_file,
         ResolvedGraphMemoShare::Memoize,
     ) {
@@ -23721,8 +23699,7 @@ pub fn discover_owned_data_decls(
         let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
             group.sources.into_iter().map(|(_, v)| v).collect();
         sources.sort_by(|a, b| a.path.cmp(&b.path));
-        let (graph, source_indices) =
-            resolved_graph_from_sources(sources, ResolveTypecheckGate::DiscoveryCorpusAdvisory)?;
+        let (graph, source_indices) = resolved_graph_from_sources(sources)?;
         let si: HashMap<String, Rc<NewlineIndex>> = source_indices
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
@@ -27601,8 +27578,8 @@ pub(crate) fn apply_effect_reach_derived_reads_live_tree(
 #[cfg(test)]
 mod effect_reach_host_sink_markers_drift_gate_tests {
     use super::{
-        build_multi_entry_index, make_eval_context, resolve_entry_with_index_for_discovery_corpus,
-        workspace_root, EFFECT_REACH_HOST_SINK_MARKERS,
+        build_multi_entry_index, make_eval_context, resolve_entry_with_index, workspace_root,
+        EFFECT_REACH_HOST_SINK_MARKERS,
     };
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     use std::collections::HashSet;
@@ -27612,9 +27589,8 @@ mod effect_reach_host_sink_markers_drift_gate_tests {
     fn dag_host_sink_callee_symbols() -> HashSet<String> {
         std::env::set_current_dir(workspace_root()).expect("chdir workspace");
         let index = build_multi_entry_index(&["dag".to_string(), "src/v2".to_string()]);
-        let (graph, indices) =
-            resolve_entry_with_index_for_discovery_corpus(&index, EFFECT_REACH_STD_ENTRY)
-                .unwrap_or_else(|e| panic!("resolve {EFFECT_REACH_STD_ENTRY}: {e}"));
+        let (graph, indices) = resolve_entry_with_index(&index, EFFECT_REACH_STD_ENTRY)
+            .unwrap_or_else(|e| panic!("resolve {EFFECT_REACH_STD_ENTRY}: {e}"));
         let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
         let val = v1_interpreter::with_active_context(&ctx, || {
             v1_interpreter::eval_data_item_value(&ctx, "effect_reach_host_sink_callee_symbols_v0")
@@ -29403,9 +29379,8 @@ mod module_grain_affected_equivalence_tests {
         import_resolution_facts_call_count_for_test, make_eval_context,
         module_declaration_facts_call_count_for_test, module_graph_facts_build_count_for_test,
         peak_rss_vhwm_bytes, reset_import_resolution_facts_call_counts_for_test,
-        reset_module_graph_facts_build_count_for_test, resolve_entry_with_index,
-        resolve_entry_with_index_for_discovery_corpus, workspace_root, ModuleGraphFactsLive,
-        MultiEntryIndex,
+        reset_module_graph_facts_build_count_for_test, resolve_entry_with_index, workspace_root,
+        ModuleGraphFactsLive, MultiEntryIndex,
     };
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     use std::collections::HashSet;
@@ -29586,9 +29561,8 @@ mod module_grain_affected_equivalence_tests {
             declared.len()
         );
         let t_mg = Instant::now();
-        let (mg_graph, mg_indices) =
-            resolve_entry_with_index_for_discovery_corpus(&index, MODULE_GRAPH_ENTRY)
-                .expect("module_graph.dag resolves as an interpreter entry");
+        let (mg_graph, mg_indices) = resolve_entry_with_index(&index, MODULE_GRAPH_ENTRY)
+            .expect("module_graph.dag resolves as an interpreter entry");
         let dag_ctx = make_eval_context(&mg_graph, mg_indices, ExecutionMode::Wet);
         eprintln!(
             "[module-grain] module_graph.dag resolved in {:?}",
@@ -29794,7 +29768,7 @@ mod module_grain_affected_equivalence_tests {
         let rel_roots = pool_roots_rel();
         let index = build_multi_entry_index(&roots);
         let (mg_graph, mg_indices) =
-            resolve_entry_with_index_for_discovery_corpus(&index, &abs(&ws, MODULE_GRAPH_ENTRY))
+            resolve_entry_with_index(&index, &abs(&ws, MODULE_GRAPH_ENTRY))
                 .expect("module_graph.dag resolves as an interpreter entry");
         let dag_ctx = make_eval_context(&mg_graph, mg_indices, ExecutionMode::Wet);
 
@@ -34590,8 +34564,8 @@ mod reference_edge_producer_tests {
     fn reference_edge_dag_host_producer_divergence_control() {
         use super::{
             build_multi_entry_index, import_resolution_facts, make_eval_context,
-            reference_edges_as_import_facts, reference_resolution_facts,
-            resolve_entry_with_index_for_discovery_corpus, workspace_root,
+            reference_edges_as_import_facts, reference_resolution_facts, resolve_entry_with_index,
+            workspace_root,
         };
         use crate::v1_interpreter::{self, ExecutionMode};
 
@@ -34643,9 +34617,8 @@ mod reference_edge_producer_tests {
             pool[0].clone(),
         ];
         let index = build_multi_entry_index(&index_roots);
-        let (graph, indices) =
-            resolve_entry_with_index_for_discovery_corpus(&index, &module_graph_entry)
-                .expect("module_graph.dag resolves");
+        let (graph, indices) = resolve_entry_with_index(&index, &module_graph_entry)
+            .expect("module_graph.dag resolves");
         let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
         let args = [
             (Some("pool_roots".to_string()), str_list_value(&pool)),
@@ -42688,7 +42661,7 @@ pub fn prepare_repository_from_corpus(
         modules_resolved,
         modules_excluded,
     } = subject;
-    let resolved = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict);
+    let resolved = resolved_graph_from_sources(sources);
     let (graph, source_indices) = resolved.map_err(|e| format!("{subject_statement}\n{e}"))?;
     let graph = prepared_graph_without_typecheck_caches(&graph);
     Ok((
