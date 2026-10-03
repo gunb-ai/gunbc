@@ -10257,6 +10257,49 @@ mod closure_edge_demand_tests {
     /// refusal advised importing the declarations, which would rebind the calls to a different
     /// contract. Positive control: a NON-builtin function declared only there and called bare is
     /// still reported, so the exemption is the compiler's precedence and not a widened list.
+    /// THE CLASSIFICATION DESCRIBES CALLS ONLY (calm-boar-904 objection on gunbc#13116). A
+    /// same-spelled builtin used in a NON-call position (a value, a pattern, a type) is a read of
+    /// the declaration, so its provider is still owed. Two shapes: a file that uses the name ONLY
+    /// as a value, and a file that BOTH calls it and uses it as a value. Discriminating RED:
+    /// before occurrence roles reached the gate, both were suppressed by spelling.
+    #[test]
+    fn a_non_call_use_of_a_builtin_spelling_still_reports_the_provider() {
+        let helper = "module far.helper\n\
+                      fn map_get(store: Int, at: Int) -> Int { store }\n";
+        let near = "module near.types\ntype Unused = { id: Int }\n";
+        let value_only = "module near.consumer\nimport near.types { Unused }\n\
+                          fn pick() -> Int { let f = map_get\n f(store: 1, at: 2) }\n";
+        let fx = Fixture::new(&[
+            ("consumer.dag", value_only),
+            ("helper.dag", helper),
+            ("near.dag", near),
+        ]);
+        let index = fx.index();
+        let found =
+            unimported_bare_providers(&index.source_files["near.consumer"], &index).unwrap();
+        assert!(
+            found
+                .iter()
+                .any(|v| v.name == "map_get" && v.provider_module == "far.helper"),
+            "a value-only use of a builtin spelling must still owe its provider: {found:?}"
+        );
+        let mixed = "module near.consumer\nimport near.types { Unused }\n\
+                     fn lookup_it(m: Map<String, Int>) -> Int? { map_get(m, \"k\") }\n\
+                     fn pick() -> Int { let f = map_get\n f(store: 1, at: 2) }\n";
+        let fx = Fixture::new(&[
+            ("consumer.dag", mixed),
+            ("helper.dag", helper),
+            ("near.dag", near),
+        ]);
+        let index = fx.index();
+        let found =
+            unimported_bare_providers(&index.source_files["near.consumer"], &index).unwrap();
+        assert!(
+            found.iter().any(|v| v.name == "map_get" && v.provider_module == "far.helper"),
+            "a file that both calls a builtin spelling and uses it as a value still owes the value use's provider: {found:?}"
+        );
+    }
+
     #[test]
     fn a_builtin_call_is_not_an_unimported_read_of_a_same_spelled_declaration() {
         let helper = "module far.helper\n\
