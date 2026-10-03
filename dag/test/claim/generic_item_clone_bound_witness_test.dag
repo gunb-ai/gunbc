@@ -475,9 +475,12 @@ test fn set_coproduct_hand_written_impls_stay_at_the_bare_header() -> Bool {
 //
 // THE CONVERSE ARMS: C on the two-hop fn reaches no Set and must NOT gain Ord, and a fn over a
 // declared generic with no Set anywhere keeps exactly the bound it had. A spurious Ord is not free
-// -- it refuses every caller instantiating with an unordered type. The native half is
+// -- it refuses every caller instantiating with an unordered type. hdr_boxed is the arm that was
+// RED on this rule's first form: its return type passes HdrCtx<C, P> as an ARGUMENT of another
+// declared type, and reading that argument through its resolved declaration zipped the slots
+// against HdrCtx's fields and bound C. The native half is
 // gunbc.instruments.native_emission_controls (set_fn_* cases).
-data hdr_set_fn_fixture: String = "module probe_hdr_set_fn\n\nimport std.types { Bool, Set }\n\ntype HdrAud<P>\n  = HdrEveryone\n  | HdrListed { members: Set<P> }\n\ntype HdrCtx<C, P> {\n  audience: HdrAud<P>\n  context: C\n}\n\ntype HdrBox<T> {\n  value: T\n}\n\nfn hdr_join<P>(left: HdrAud<P>, right: HdrAud<P>) -> HdrAud<P> {\n  match left {\n    HdrEveryone => HdrEveryone\n    HdrListed { members: left_members } => match right {\n      HdrEveryone => HdrEveryone\n      HdrListed { members: right_members } => HdrListed { members: set_union(left_members, right_members) }\n    }\n  }\n}\n\nfn hdr_ctx_join<C, P>(left: HdrCtx<C, P>, right: HdrCtx<C, P>) -> HdrAud<P> {\n  hdr_join(left: left.audience, right: right.audience)\n}\n\nfn hdr_unbox<T>(b: HdrBox<T>) -> T {\n  b.value\n}\n"
+data hdr_set_fn_fixture: String = "module probe_hdr_set_fn\n\nimport std.types { Bool, Set }\n\ntype HdrAud<P>\n  = HdrEveryone\n  | HdrListed { members: Set<P> }\n\ntype HdrCtx<C, P> {\n  audience: HdrAud<P>\n  context: C\n}\n\ntype HdrBox<T> {\n  value: T\n}\n\nfn hdr_join<P>(left: HdrAud<P>, right: HdrAud<P>) -> HdrAud<P> {\n  match left {\n    HdrEveryone => HdrEveryone\n    HdrListed { members: left_members } => match right {\n      HdrEveryone => HdrEveryone\n      HdrListed { members: right_members } => HdrListed { members: set_union(left_members, right_members) }\n    }\n  }\n}\n\nfn hdr_ctx_join<C, P>(left: HdrCtx<C, P>, right: HdrCtx<C, P>) -> HdrAud<P> {\n  hdr_join(left: left.audience, right: right.audience)\n}\n\nfn hdr_unbox<T>(b: HdrBox<T>) -> T {\n  b.value\n}\n\nfn hdr_boxed<C, P>(ctx: HdrCtx<C, P>) -> HdrBox<HdrCtx<C, P>> {\n  HdrBox { value: ctx }\n}\n"
 
 fn w_fn_generic_reaching_a_set_element_carries_ord() -> Bool {
   compile_dag_rust_emit_check(
@@ -499,7 +502,8 @@ fn w_fn_generic_reaching_no_set_gains_no_ord() -> Bool {
     hdr_set_fn_fixture,
     "src/probe_hdr_set_fn.rs",
     [
-      "pub fn hdr_unbox<T: Clone>("
+      "pub fn hdr_unbox<T: Clone>(",
+      "pub fn hdr_boxed<C: Clone, P: Clone + Ord>("
     ],
     [
       "C: Clone + Ord",

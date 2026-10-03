@@ -1030,11 +1030,24 @@ fn v1_item_ord_propagated_param_names(
 // declaration path, which makes a recursive type saturate instead of diverging -- the same
 // termination the Clone fixpoint gets from its round bound.
 //
-// ARGUMENTS ARE READ THROUGH v1_wf_child_type_node, NOT child_type_node. In a typed fn signature an
-// argument node carries its inference, and resolving a type VARIABLE's inference yields a node with
-// no authored name, so the parameter is no longer recognisable as itself. The well-formedness walk
-// met the same thing and keeps the authored node when resolution loses the name; this walk asks
-// the same question of the same nodes and takes the same accessor.
+// A TYPE ARGUMENT IS READ AS AUTHORED, AND BOTH RESOLVING ACCESSORS WERE MEASURED WRONG HERE.
+// In a typed fn signature an argument node carries its inference. child_type_node resolves it, and
+// resolving a type VARIABLE yields a node with no authored name, so the parameter was no longer
+// recognisable as itself and no bound was found at all. v1_wf_child_type_node keeps the authored
+// node only when resolution loses the name -- which fixed the variable and broke the application:
+// resolving `PublicationContext<C, P>` yields the DECLARATION's product node, whose children are
+// its FIELDS, so zipping declaration slots against them paired slot P with the field `context: C`
+// and std.authorization_profile publication_access_request emitted a spurious `C: Ord`. The slot
+// zip needs the argument list as written, so the authored node is taken whenever it names anything
+// and resolution is the fallback for a wrapper node that carries its type only as inference.
+fn v1_set_element_arg_type_node(ch: Node, source_indices: Map<String, NewlineIndex>) -> Node {
+  if authored_name_at(source_indices: source_indices, node: ch) != "" {
+    ch
+  } else {
+    v1_wf_child_type_node(ch: ch, source_indices: source_indices)
+  }
+}
+
 fn v1_set_element_decl_slot_arg_param_names(
   decl_params: List<Node>,
   type_args: List<Node>,
@@ -1050,7 +1063,7 @@ fn v1_set_element_decl_slot_arg_param_names(
         Present { value: type_arg } =>
           let slot_name = generic_param_name_at(n: decl_param, source_indices: source_indices)
           let here = if affected_slot_names |> any(n => n == slot_name) {
-            scope_param_names |> filter(p => v1_type_expr_contains_param_name(param_name: p, type_expr: v1_wf_child_type_node(ch: type_arg, source_indices: source_indices), source_indices: source_indices))
+            scope_param_names |> filter(p => v1_type_expr_contains_param_name(param_name: p, type_expr: v1_set_element_arg_type_node(ch: type_arg, source_indices: source_indices), source_indices: source_indices))
           } else {
             []
           }
@@ -1075,7 +1088,7 @@ fn v1_type_expr_set_element_param_names(
   let head = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: type_expr))
   let own = if head == "Set" {
     scope_param_names |> filter(p =>
-      type_expr.children |> any(c => v1_type_expr_contains_param_name(param_name: p, type_expr: v1_wf_child_type_node(ch: c, source_indices: source_indices), source_indices: source_indices))
+      type_expr.children |> any(c => v1_type_expr_contains_param_name(param_name: p, type_expr: v1_set_element_arg_type_node(ch: c, source_indices: source_indices), source_indices: source_indices))
     )
   } else if visited |> any(v => v == head) {
     []
@@ -1107,7 +1120,7 @@ fn v1_type_expr_set_element_param_names(
     own,
     type_expr.children |> flat_map(c =>
       v1_type_expr_set_element_param_names(
-        type_expr: v1_wf_child_type_node(ch: c, source_indices: source_indices),
+        type_expr: v1_set_element_arg_type_node(ch: c, source_indices: source_indices),
         scope_param_names: scope_param_names,
         type_decl_items: type_decl_items,
         visited: visited,
