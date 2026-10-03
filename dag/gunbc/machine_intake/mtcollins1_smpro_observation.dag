@@ -17,7 +17,6 @@ import extdeps.ampere.smpro_register {
   smpro_value_size_bytes, smpro_manufacturer_id_expected, smpro_word, smpro_bootstage_of, smpro_cur_bootstage_of,
   smpro_stage_text, smpro_status_text,
 }
-import extdeps.ampere.scp_diagnostic { Failed }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
 
@@ -361,35 +360,3 @@ fn mtcollins1_smpro_dossier_text(outcomes: List<SmproProbeOutcome>) -> String {
   ], "\n")
 }
 
-// FINDINGS: every socket's line, when the sockets DIFFER on either reading (an unavailable reading
-// beside an established one is a difference), or a reported status is FAILED. Nothing when no
-// reading was established anywhere (the dossier says why), or when every socket agrees.
-fn reported_failed(s: SmproSocketStage) -> Bool {
-  match s.reported {
-    ReportedStageEstablished { bootstage: b } => match b.status { SmproStatusDefined { status: Failed } => true SmproStatusDefined { status: NotStarted } => false SmproStatusDefined { status: Started } => false SmproStatusDefined { status: Completed } => false SmproStatusUndefined { code: _ } => false }
-    ReportedStageUnavailable { reason: _ } => false
-  }
-}
-
-fn established_any(s: SmproSocketStage) -> Bool {
-  (match s.current { CurrentStageEstablished { stage: _ } => true CurrentStageUnavailable { reason: _ } => false }) || (match s.reported { ReportedStageEstablished { bootstage: _ } => true ReportedStageUnavailable { reason: _ } => false })
-}
-
-// The comparison key is the readings alone: an unavailable reading keys as UNAVAILABLE whatever its
-// reason, whose text names its own socket and would make every pair differ.
-fn socket_key(s: SmproSocketStage) -> String {
-  concat(
-    match s.current { CurrentStageEstablished { stage: st } => smpro_stage_text(r: st) CurrentStageUnavailable { reason: _ } => "UNAVAILABLE" },
-    "|",
-    match s.reported { ReportedStageEstablished { bootstage: _ } => reported_text(r: s.reported) ReportedStageUnavailable { reason: _ } => "UNAVAILABLE" },
-  )
-}
-
-fn mtcollins1_smpro_findings(outcomes: List<SmproProbeOutcome>) -> List<String> {
-  let stages = map(mtcollins1_smpro_targets, t => mtcollins1_smpro_socket_stage(outcomes: outcomes, socket: t.socket))
-  let first = match stages.first() { Absent => "" Present { value: s } => socket_key(s: s) }
-  let differ = any(stages, s => socket_key(s: s) != first)
-  if !any(stages, s => established_any(s: s)) { [] }
-  else if differ || any(stages, s => reported_failed(s: s)) { map(stages, s => mtcollins1_smpro_stage_text(s: s)) }
-  else { [] }
-}

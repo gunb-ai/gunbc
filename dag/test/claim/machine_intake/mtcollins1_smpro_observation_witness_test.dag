@@ -15,10 +15,15 @@ import extdeps.ampere.scp_diagnostic { DdrTraining, DdrInitialization, Operating
 import gunbc.machine_intake_mtcollins1_smpro_observation {
   mtcollins1_smpro_socket_stage, CurrentStageEstablished, ReportedStageUnavailable,
   SmproProbeRaw, SmproProbeOutcome, SmproWordRead, SmproControllerRefused, SmproTransportFailed, SmproResponseMalformed, SmproNotSent,
-  smpro_probe_outcome, smpro_control_refusal, smpro_request_text, mtcollins1_smpro_findings, mtcollins1_smpro_dossier_text,
-  mtcollins1_smpro_probe_count, mtcollins1_smpro_sequenced, mtcollins1_smpro_plan, SmproTarget,
+  smpro_probe_outcome, smpro_control_refusal, smpro_request_text, mtcollins1_smpro_dossier_text,
+  mtcollins1_smpro_probe_count, mtcollins1_smpro_sequenced, mtcollins1_smpro_plan, mtcollins1_smpro_targets, SmproTarget,
 }
 import extdeps.ampere.smpro_register { SmproRegister }
+import gunbc.machine_intake_power_on_sequence {
+  BootEvidence, BootUnderstanding, SmproPassEvidence, CarrierRead, HandoffPoweredOn, ConsoleNotRead, SelEventsNotRead,
+  InterSocketLink, StageAnomalous, StageUnobserved, StageReading, SmproReportedFailure,
+  SocketBehindSocketZero, SocketStageUnreadBesideSocketZero, boot_understanding, same_stage,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -119,20 +124,37 @@ fn socket_reads_at(socket: Int, current: String, bootstage: String) -> List<Smpr
   ]
 }
 
-test fn socket_one_failing_ddr_training_beside_a_booted_socket_zero_is_named() -> Bool {
-  let f = mtcollins1_smpro_findings(outcomes: concat(socket_reads(socket: 0, bootstage: "09 02"), socket_reads(socket: 1, bootstage: "04 03")))
-  count(f) == 2 && any(f, x => starts_with(s: x, prefix: "SMpro socket 1:") && contains(x, "BOOTSTAGE DDR training report status, failed"))
-    && any(f, x => starts_with(s: x, prefix: "SMpro socket 0:") && contains(x, "BOOTSTAGE OS booting, completed without error"))
+// WHAT A PASS MEANS FOR THE MACHINE is the power-on fold's (gunbc.machine_intake_power_on_sequence):
+// these claims supply one pass to it and read the second socket's standing and the decoded errors.
+fn understanding_of(outcomes: List<SmproProbeOutcome>) -> BootUnderstanding {
+  boot_understanding(e: BootEvidence {
+    expected_sockets: [0, 1], bmc: CarrierRead, bmc_anomalies: [], handoff: HandoffPoweredOn,
+    smpro: [SmproPassEvidence { label: "pass", sockets: map(mtcollins1_smpro_targets, t => mtcollins1_smpro_socket_stage(outcomes: outcomes, socket: t.socket)) }],
+    console: ConsoleNotRead { reason: "no console in this claim" }, sel: SelEventsNotRead { reason: "no SEL in this claim" }, census_ended: false,
+  })
 }
 
-test fn two_sockets_at_the_same_stage_add_no_finding() -> Bool {
-  count(mtcollins1_smpro_findings(outcomes: concat(socket_reads(socket: 0, bootstage: "09 02"), socket_reads(socket: 1, bootstage: "09 02")))) == 0
+fn second_socket(u: BootUnderstanding) -> StageReading {
+  match filter(u.stages, s => same_stage(a: s.stage, b: InterSocketLink)).first() { Absent => StageUnobserved Present { value: s } => s.reading }
+}
+
+test fn socket_one_failing_ddr_training_beside_a_booted_socket_zero_is_named() -> Bool {
+  let u = understanding_of(outcomes: concat(socket_reads(socket: 0, bootstage: "09 02"), socket_reads(socket: 1, bootstage: "04 03")))
+  any(u.errors, x => match x { SmproReportedFailure { socket: k, bootstage: b } => k == 1 && (match b.stage { SmproStageDefined { stage: DdrTraining } => true _ => false }) _ => false })
+    && (match second_socket(u: u) { StageAnomalous { anomalies: xs, reached_by: _ } => any(xs, a => match a { SocketBehindSocketZero { socket: k, current: _ } => k == 1 _ => false }) _ => false })
+}
+
+test fn two_sockets_at_the_same_stage_add_nothing() -> Bool {
+  let u = understanding_of(outcomes: concat(socket_reads(socket: 0, bootstage: "09 02"), socket_reads(socket: 1, bootstage: "09 02")))
+  count(u.errors) == 0 && (match second_socket(u: u) { StageUnobserved => true _ => false })
 }
 
 test fn socket_one_unreadable_beside_a_read_socket_zero_is_named() -> Bool {
   let s1 = [smpro_probe_outcome(raw: raw(socket: 1, register: smpro_manufacturer_id_reg.name, exit_code: 1, stdout: "", stderr: nak_stderr))]
-  let f = mtcollins1_smpro_findings(outcomes: concat(socket_reads(socket: 0, bootstage: "09 02"), s1))
-  any(f, x => contains(x, "SMpro socket 1: CUR_BOOTSTAGE UNAVAILABLE"))
+  match second_socket(u: understanding_of(outcomes: concat(socket_reads(socket: 0, bootstage: "09 02"), s1))) {
+    StageAnomalous { anomalies: xs, reached_by: _ } => any(xs, a => match a { SocketStageUnreadBesideSocketZero { socket: k, reason: _ } => k == 1 _ => false })
+    _ => false
+  }
 }
 
 // THE DOSSIER EXISTS WHEN NOTHING WAS ANSWERED.
@@ -140,7 +162,8 @@ test fn a_pass_where_nothing_was_sent_still_renders_every_socket() -> Bool {
   let os = [SmproNotSent { socket: 0, register: smpro_bootstage_reg.name, reason: "socket 0 control: MANUFACTURER_ID TRANSPORT FAILED" }, SmproNotSent { socket: 1, register: smpro_bootstage_reg.name, reason: "socket 0 control did not establish the transport" }]
   let t = mtcollins1_smpro_dossier_text(outcomes: os)
   contains(t, "SMpro socket 0: CUR_BOOTSTAGE UNAVAILABLE") && contains(t, "SMpro socket 1: CUR_BOOTSTAGE UNAVAILABLE") && contains(t, "(no request sent)")
-    && count(mtcollins1_smpro_findings(outcomes: os)) == 0
+    && count(understanding_of(outcomes: os).errors) == 0
+    && (match second_socket(u: understanding_of(outcomes: os)) { StageUnobserved => true _ => false })
 }
 
 // ── THE ORDER IS ENFORCED BY THE FOLD (the production fold, with a supplied read) ───────────────
@@ -194,9 +217,11 @@ test fn a_failed_socket_zero_control_sends_nothing_further() -> Bool {
 
 // Same reported BOOTSTAGE on both sockets, different CURRENT stage: that is a difference.
 test fn a_differing_current_stage_with_the_same_bootstage_is_named() -> Bool {
-  let f = mtcollins1_smpro_findings(outcomes: concat(socket_reads_at(socket: 0, current: "00 09", bootstage: "03 01"), socket_reads_at(socket: 1, current: "00 03", bootstage: "03 01")))
-  count(f) == 2 && any(f, x => starts_with(s: x, prefix: "SMpro socket 1: CUR_BOOTSTAGE DDR initialization"))
-    && any(f, x => starts_with(s: x, prefix: "SMpro socket 0: CUR_BOOTSTAGE OS booting"))
+  let u = understanding_of(outcomes: concat(socket_reads_at(socket: 0, current: "00 09", bootstage: "03 01"), socket_reads_at(socket: 1, current: "00 03", bootstage: "03 01")))
+  match second_socket(u: u) {
+    StageAnomalous { anomalies: xs, reached_by: _ } => any(xs, a => match a { SocketBehindSocketZero { socket: k, current: c } => k == 1 && (match c { SmproStageDefined { stage: DdrInitialization } => true _ => false }) _ => false })
+    _ => false
+  }
 }
 
 // A CUR_BOOTSTAGE that read survives a BOOTSTAGE that did not.
