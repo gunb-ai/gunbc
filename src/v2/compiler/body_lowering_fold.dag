@@ -18,6 +18,11 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 
 import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
 import v2.compiler.fold_lowering {
+  CallbackAllByAnd,
+  CallbackCallOperands,
+  CallbackMapsToCons,
+  CallbackRealization,
+  FoldCallCallbackLowered,
   FoldCallLowered,
   FunctionValueBinder,
   FunctionValueKind,
@@ -73,7 +78,8 @@ import v2.extdeps.languages.dag {
   dag_surface_edge_label,
   dag_surface_edge_is,
 }
-import v2.std.anonymous_binder { DeclaredParameterList, anonymous_binder_mint_parameter_list, fresh_return_type_variable, fresh_type_variable }
+import v2.std.anonymous_binder { DeclaredParameterList, anonymous_binder_mint_parameter_list, fresh_fold_accumulator, fresh_return_type_variable, fresh_type_variable }
+import v2.std.node { content_hash }
 import v2.std.algebra { fold_list, list_map, length, zip_eq }
 import v2.std.collection {
   empty_map,
@@ -1983,6 +1989,8 @@ fn body_lower_piped_fold_optional(acc: Node, operator: Node, right: Node) -> Opt
         match fold_call_lowering_piped(fold_call: call, receiver: acc) {
           FoldCallLowered { operands: operands } =>
             optional_present(value: body_lower_fold_encoding_from(operands: operands, collection: outcome_accepted(value: acc)))
+          FoldCallCallbackLowered { operands: operands } =>
+            optional_present(value: body_lower_callback_encoding_from(operands: operands, collection: outcome_accepted(value: acc)))
           FoldCallStepShapeInvalid { diagnostic: d } => optional_present(value: outcome_rejected(d: d))
           FoldCallOperandAbsent { diagnostic: d } => optional_present(value: outcome_rejected(d: d))
           FoldCallStepFormUnresolved { diagnostic: _ } => optional_absent()
@@ -2217,6 +2225,12 @@ fn body_lower_try_fold_loop(node: Node) -> Outcome<Optional<Node>> {
         match fold_call_lowering(fold_call: node) {
           FoldCallLowered { operands: operands } =>
             match body_lower_fold_encoding(operands: operands) {
+              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              Accepted { value: encoding, diagnostics: d } =>
+                outcome_with_diagnostics(value: optional_present(value: encoding), diagnostics: d)
+            }
+          FoldCallCallbackLowered { operands: operands } =>
+            match body_lower_callback_encoding(operands: operands) {
               Rejected { diagnostics: r } => Rejected { diagnostics: r }
               Accepted { value: encoding, diagnostics: d } =>
                 outcome_with_diagnostics(value: optional_present(value: encoding), diagnostics: d)
@@ -3474,6 +3488,130 @@ fn body_lower_fold_encoding_from(operands: FoldCallOperands, collection: Outcome
   })
 }
 
+// A COLLECTION CALLBACK OPERATION LOWERS TO THE SAME FOLD ENCODING, its step synthesized around the
+// callback (v2.compiler.fold_lowering CallbackRealization names each operation's step and init). The
+// callback is read by the one function-value reader, its body lowered by the one body reader, and its
+// AUTHORED binder becomes the synthesized step's member formal (actual 1), so v2.compiler.infer types it
+// from the domain element by role and nothing applies a lambda value. The accumulator formal (actual 0) is
+// minted by v2.std.anonymous_binder fresh_fold_accumulator. The Arrow is built by the one function-value
+// Arrow producer, so the step is an ordinary callable with fresh type variables like any other.
+//
+// The constructors the step and init name (Cons, Empty) are referenced by their declaring path,
+// std.algebra, never by a bare spelling the calling module might bind differently or not at all.
+//
+// OCCURRENCES. The init stands for no authored text, so it is synthetic. The step's nodes are members of
+// the callback's IMAGE (v2.std.node node_lowered_from): the step Arrow closes that image, so each member
+// becomes pending and normalize allocates it its own projected occurrence, which is the key a lexical
+// reference to the accumulator or the member is recorded by (v2.compiler.resolve
+// resolve_lexical_reference). The callback's own body keeps its authored occurrences.
+//
+// AN AUTHORED CALLBACK RETURN TYPE IS NOT READ HERE and refuses as shape_unread: the synthesized step's
+// return is the carrier, not the callback's, so carrying the annotation would put it on the wrong
+// position, and dropping it would discard an authored fact.
+fn body_lower_callback_encoding(operands: CallbackCallOperands) -> Outcome<Node> {
+  body_lower_callback_encoding_from(operands: operands, collection: body_lower_value_read(value: operands.collection))
+}
+
+fn body_lower_algebra_constructor_reference(name: Symbol, source: Node) -> Node {
+  body_lower_qualified_name_spine_node(
+    segments: [
+      node_lowered_from(kind: TypeNode { connective: Atom { identity: ^std } }, children: [], source: source),
+      node_lowered_from(kind: TypeNode { connective: Atom { identity: ^algebra } }, children: [], source: source),
+      node_lowered_from(kind: TypeNode { connective: Atom { identity: name } }, children: [], source: source)
+    ],
+    source: source
+  )
+}
+
+fn body_lower_callback_cons(head: Node, tail: Node, source: Node) -> Node {
+  close_lowered_image(root: construct_node(
+    reference: body_lower_algebra_constructor_reference(name: ^Cons, source: source),
+    field_edges: [Edge { label: Authored { name: ^head }, target: head }, Edge { label: Authored { name: ^tail }, target: tail }],
+    source: source
+  ))
+}
+
+fn body_lower_callback_operator(token: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: token } }, children: [])
+}
+
+fn body_lower_callback_init(realization: CallbackRealization, source: Node) -> Node {
+  match realization {
+    CallbackMapsToCons => body_lower_algebra_constructor_reference(name: ^Empty, source: source)
+    CallbackAllByAnd => body_lower_param_ref_atom(source: source, identity: ^dag_token_kw_true)
+  }
+}
+
+fn body_lower_callback_step_body(realization: CallbackRealization, accumulator: Symbol, body: Node, source: Node) -> Node {
+  let acc_ref = body_lower_param_ref_atom(source: source, identity: accumulator)
+  match realization {
+    CallbackMapsToCons => body_lower_callback_cons(head: body, tail: acc_ref, source: source)
+    CallbackAllByAnd => lower_binary_infix(left: acc_ref, operator: body_lower_callback_operator(token: ^dag_token_and_and), right: body)
+  }
+}
+
+fn body_lower_callback_encoding_from(operands: CallbackCallOperands, collection: Outcome<Node>) -> Outcome<Node> {
+  let callback_node = operands.callback
+  let synthetic = node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+  let unread: Outcome<Node> = outcome_rejected(
+    d: body_lower_diagnostic(reason: ^body_lowering_reason_function_value_shape_unread, n: callback_node)
+  )
+  bind_outcome(o: collection, f: fn(collection) {
+    match body_lower_function_value_captured_optional(node: callback_node) {
+      Absent => unread
+      Present { value: capture } =>
+        match function_value_parts_optional(captured: capture.captured, kind: capture.kind) {
+          Absent => unread
+          Present { value: parts } =>
+            match parts.binders {
+              Cons { head: member, tail: Empty } =>
+                match body_lower_function_value_codomain_optional(ret: parts.return_clause) {
+                  Present { value: CodomainElided } =>
+                    match body_lower_function_value_body(body: parts.body) {
+                      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                      Accepted { value: Absent, diagnostics: _ } =>
+                        outcome_rejected(
+                          d: body_lower_diagnostic(
+                            reason: ^body_lowering_reason_function_value_body_unread,
+                            n: body_lower_function_value_body_node(body: parts.body)
+                          )
+                        )
+                      Accepted { value: Present { value: body }, diagnostics: d } =>
+                        let accumulator = fresh_fold_accumulator(callback_digest: content_hash(n: callback_node).digest as String)
+                        let accumulator_binder = FunctionValueBinder {
+                          name: accumulator,
+                          at: node_synthetic(kind: TypeNode { connective: Atom { identity: accumulator } }, children: [])
+                        }
+                        match body_lower_function_value_arrow(
+                          shell: callback_node,
+                          binders: [accumulator_binder, member],
+                          codomain: CodomainElided,
+                          body: body_lower_callback_step_body(realization: operands.realization, accumulator: accumulator, body: body, source: callback_node)
+                        ) {
+                          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                          Accepted { value: step, diagnostics: ad } =>
+                            outcome_with_diagnostics(
+                              value: fold_recurrence_encoding(operands: FoldCallOperands {
+                                head: operands.head,
+                                collection: collection,
+                                init: body_lower_callback_init(realization: operands.realization, source: synthetic),
+                                step: step,
+                                carrier: accumulator
+                              }),
+                              diagnostics: diagnostics_merge(outer: d, inner: ad)
+                            )
+                        }
+                    }
+                  Present { value: CodomainAuthored { type_node: _ } } => unread
+                  Absent => unread
+                }
+              _ => unread
+            }
+        }
+    }
+  })
+}
+
 // A fold-family call, read off the node's own captured sequence (fold_lowering fold_call_head_symbol
 // reads its head atom directly -- no search), lowered to the fold encoding while its step is raw.
 fn body_lower_fold_family_call_first(node: Node) -> Optional<Outcome<Node>> {
@@ -3487,6 +3625,7 @@ fn body_lower_fold_family_call_first(node: Node) -> Optional<Outcome<Node>> {
             Present { value: _ } =>
             match fold_call_lowering(fold_call: captured) {
               FoldCallLowered { operands: operands } => optional_present(value: body_lower_fold_encoding(operands: operands))
+              FoldCallCallbackLowered { operands: operands } => optional_present(value: body_lower_callback_encoding(operands: operands))
               FoldCallStepShapeInvalid { diagnostic: d } => optional_present(value: outcome_rejected(d: d))
               FoldCallOperandAbsent { diagnostic: d } => optional_present(value: outcome_rejected(d: d))
               FoldCallStepFormUnresolved { diagnostic: _ } => optional_absent()
