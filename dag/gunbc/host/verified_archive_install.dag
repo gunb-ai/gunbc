@@ -3,7 +3,6 @@ module gunbc.verified_archive_install
 import std.types { NonEmptyStr, List, FilePath, Bool, Int, list_length }
 import std.algebra { list_append }
 import v2.std.optional { Present, Absent }
-import std.string_type { String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.curl { curl_download_command }
