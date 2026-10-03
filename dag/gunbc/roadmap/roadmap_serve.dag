@@ -74,7 +74,11 @@ import extdeps.auth.oidc {
   OidcLoginScope, OidcScopeOpenId, OidcScopeEmail, OidcScopeProfile, oidc_login_scope_label,
 }
 import extdeps.auth.jwt { JwtBareString, JwtUriString, NumericDateWholeSeconds }
-import extdeps.uri { uri_percent_encode_component, uri_percent_decode_component, UriPercentComponentEncoded, UriPercentComponentRefused, Uri, uri_wire }
+import extdeps.uri {
+  uri_percent_encode_component, UriPercentComponentEncoded, UriPercentComponentRefused, Uri, uri_wire,
+  uri_percent_decode_component, UriPercentDecodeComponent, UriPercentComponentDecoded, UriPercentDecodeRefused,
+  uri_percent_decode_refusal_reason,
+}
 import extdeps.entropy { Urandom }
 import extdeps.clock { Clock }
 import extdeps.http.client
@@ -2394,7 +2398,15 @@ fn auth_callback_exchange(instance: HostDashboardInstance, transaction: OidcLogi
 }
 
 fn auth_callback_exchange_configured(instance: HostDashboardInstance, transaction: OidcLoginTransaction, path: String, config: OidcDeploymentConfig) -> ServeHttpResponse {
-  let code = uri_percent_decode_component(value: uri_query_param(path: path, key: "code"))
+  match uri_percent_decode_component(value: uri_query_param(path: path, key: "code")) {
+    UriPercentDecodeRefused { cause: c } =>
+      serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["login refused: the callback code is not a valid percent-encoded value: ", uri_percent_decode_refusal_reason(cause: c), "\n"], ""))
+    UriPercentComponentDecoded { value: code } =>
+      auth_callback_exchange_code(instance: instance, transaction: transaction, config: config, code: code)
+  }
+}
+
+fn auth_callback_exchange_code(instance: HostDashboardInstance, transaction: OidcLoginTransaction, config: OidcDeploymentConfig, code: String) -> ServeHttpResponse {
   if code == "" {
     serve_text_response(status: 400, content_type: text_plain_utf8, body: "login refused: the callback carries no code\n")
   } else {
