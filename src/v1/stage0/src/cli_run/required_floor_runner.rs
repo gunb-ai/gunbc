@@ -6922,6 +6922,8 @@ pub(crate) fn derive_and_install_cross_claim_share(
     let mut admitted_qualified = Vec::new();
     let mut billed_debt_claims: std::collections::BTreeSet<String> =
         std::collections::BTreeSet::new();
+    let mut net_only_sites: std::collections::HashSet<(String, i64, i64)> =
+        std::collections::HashSet::new();
     for row in &admitted {
         let Value::Record { fields: r, .. } = row else {
             return Err(malformed("an admitted row is not a DerivedShareRow record"));
@@ -6942,6 +6944,7 @@ pub(crate) fn derive_and_install_cross_claim_share(
             .field(r, "sites")
             .and_then(|v| v1_interpreter::list_value_items(ctx, v))
             .ok_or_else(|| malformed("an admitted row has no `sites` list"))?;
+        let mut row_keys: Vec<(String, i64, i64)> = Vec::new();
         for site in &row_sites {
             let Value::Str(text) = site else {
                 return Err(malformed("a site is not a String"));
@@ -6955,9 +6958,10 @@ pub(crate) fn derive_and_install_cross_claim_share(
                     "site `{text}` is not <file>:<start>-<end>"
                 )));
             };
-            sites.insert(key);
+            row_keys.push(key);
         }
         // WHY the row is admitted, printed so a single-claim fill debt is never read as sharing.
+        let mut row_is_debt = false;
         let basis = match ctx.field(r, "basis") {
             Some(Value::Variant {
                 variant_name,
@@ -6968,6 +6972,7 @@ pub(crate) fn derive_and_install_cross_claim_share(
                 if variant == "SingleClaimFillDebt" {
                     let claim = text_of(b, "claim")?;
                     billed_debt_claims.insert(claim.clone());
+                    row_is_debt = true;
                     format!("SingleClaimFillDebt:{claim}")
                 } else {
                     variant
@@ -6975,6 +6980,14 @@ pub(crate) fn derive_and_install_cross_claim_share(
             }
             _ => return Err(malformed("an admitted row has no `basis` variant")),
         };
+        // A debt row's sites are NET-ONLY: the fill is netted from its one claim and no value is
+        // retained, since no other claim will ever ask for it.
+        for key in row_keys {
+            if row_is_debt {
+                net_only_sites.insert(key.clone());
+            }
+            sites.insert(key);
+        }
         eprintln!(
             "[cross-claim-share-admitted] producer={producer} basis={basis} claims={claims_n} \
              sites={} argument_preimage={preimage}",
@@ -7086,7 +7099,7 @@ pub(crate) fn derive_and_install_cross_claim_share(
             stale_debt.join(",")
         ));
     }
-    v1_interpreter::install_cross_claim_derived_share(nodes, sites);
+    v1_interpreter::install_cross_claim_derived_share_with_net_only(nodes, sites, net_only_sites);
     PURE_PRODUCER_SHARE_ROSTER.with(|r| {
         if let Some(roster) = r.borrow_mut().as_mut() {
             roster.admitted_qualified.extend(admitted_qualified);

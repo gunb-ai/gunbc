@@ -2169,6 +2169,13 @@ thread_local! {
     /// judged closed -- stays outside the tier.
     static CROSS_CLAIM_SITE_GATED: RefCell<std::collections::HashSet<usize>> =
         RefCell::new(std::collections::HashSet::new());
+    /// The admitted sites whose fill is NETTED BUT NOT RETAINED: single-claim fill debt. Exactly
+    /// one declared claim demands the identity, so no later claim will ever ask for the value;
+    /// retaining it would spend the tier's byte budget on values nobody reads (floor probe
+    /// 37142207751: 638 stores declined at the byte budget, each leaving its fill on the claim).
+    /// The fill is measured and netted from the claim exactly as a retained one is.
+    static CROSS_CLAIM_NET_ONLY_SITES: RefCell<std::collections::HashSet<(String, i64, i64)>> =
+        RefCell::new(std::collections::HashSet::new());
     /// The admitted call sites of site-gated producers, as `(file, start, end)` byte spans.
     static CROSS_CLAIM_ADMITTED_SITES: RefCell<std::collections::HashSet<(String, i64, i64)>> =
         RefCell::new(std::collections::HashSet::new());
@@ -2184,6 +2191,7 @@ pub fn clear_cross_claim_pure_memos() {
     CROSS_CLAIM_PURE_ROSTER.with(|r| r.borrow_mut().clear());
     CROSS_CLAIM_SITE_GATED.with(|g| g.borrow_mut().clear());
     CROSS_CLAIM_ADMITTED_SITES.with(|a| a.borrow_mut().clear());
+    CROSS_CLAIM_NET_ONLY_SITES.with(|n| n.borrow_mut().clear());
     CROSS_CLAIM_COST_FLOOR_STEPS.with(|c| c.set(0));
     CROSS_CLAIM_STORE_DECLINES.with(|d| d.borrow_mut().clear());
     CROSS_CLAIM_IN_FLIGHT_WALL_CAP_NANOS.with(|c| c.set(0));
@@ -2221,6 +2229,17 @@ pub fn install_cross_claim_derived_share<I: IntoIterator<Item = Rc<Node>>>(
     nodes: I,
     sites: std::collections::HashSet<(String, i64, i64)>,
 ) {
+    install_cross_claim_derived_share_with_net_only(nodes, sites, std::collections::HashSet::new())
+}
+
+/// As `install_cross_claim_derived_share`, with the subset of `sites` that are net-only (see
+/// `CROSS_CLAIM_NET_ONLY_SITES`). A net-only site must also be in `sites`.
+pub fn install_cross_claim_derived_share_with_net_only<I: IntoIterator<Item = Rc<Node>>>(
+    nodes: I,
+    sites: std::collections::HashSet<(String, i64, i64)>,
+    net_only_sites: std::collections::HashSet<(String, i64, i64)>,
+) {
+    CROSS_CLAIM_NET_ONLY_SITES.with(|n| *n.borrow_mut() = net_only_sites);
     let nodes: Vec<Rc<Node>> = nodes.into_iter().collect();
     // REPLACES the previous derivation rather than adding to it: a producer dropped from the
     // derived set must leave the roster too, or it would remain admitted with no site gate --
@@ -2268,6 +2287,50 @@ fn cross_claim_site_admitted(fn_node: &Rc<Node>, call_node: &Node) -> bool {
                 call_node.span.end,
             ))
         })
+}
+
+/// Whether this call site is a net-only (single-claim fill debt) site.
+fn cross_claim_site_is_net_only(call_node: &Node) -> bool {
+    CROSS_CLAIM_NET_ONLY_SITES.with(|n| {
+        let n = n.borrow();
+        !n.is_empty()
+            && n.contains(&(
+                call_node.span.file.to_string(),
+                call_node.span.start,
+                call_node.span.end,
+            ))
+    })
+}
+
+/// Publish one completed admitted fill: retain it in the tier, or -- at a net-only site -- net its
+/// cost from the paying claim without retaining the value. The cost floor applies to both: a fill
+/// below it is neither retained nor netted. Every declined outcome is counted by producer.
+fn publish_cross_claim_fill(
+    ctx: &InterpContext,
+    fn_node: &Rc<Node>,
+    func_name: &str,
+    args: &[(Option<String>, Value)],
+    value: &Value,
+    fill_guard: Option<&CrossClaimFillGuard>,
+    net_only: bool,
+) {
+    if net_only {
+        if let Some(guard) = fill_guard {
+            let floor = CROSS_CLAIM_COST_FLOOR_STEPS.with(|c| c.get());
+            if evaluator_steps().wrapping_sub(guard.steps_started) < floor {
+                CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow_mut().below_cost_floor += 1);
+                note_cross_claim_store_outcome(
+                    func_name,
+                    &CrossClaimStoreOutcome::RefusedBelowCostFloor,
+                );
+            } else {
+                guard.mark_stored();
+            }
+        }
+        return;
+    }
+    let outcome = store_cross_claim_pure_memo(ctx, fn_node, func_name, args, value, fill_guard);
+    note_cross_claim_store_outcome(func_name, &outcome);
 }
 
 /// Install the shared-fill observer for the cross-claim tier. `None` uninstalls.
@@ -3751,6 +3814,64 @@ mod cross_claim_memo_tests {
         assert!(
             cross_claim_site_admitted(&carried, &node_at(50, 60)),
             "an already-admitted producer keeps a site the derivation did not list"
+        );
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // A NET-ONLY FILL IS NETTED AND NOT RETAINED. The pair varies only whether the site is
+    // net-only: the same fill at a net-only site marks the guard (so the claim is netted) and
+    // leaves the tier empty; at a retained site it lands in the tier.
+    #[test]
+    fn a_net_only_fill_is_netted_without_retaining_its_value() {
+        use super::{
+            cross_claim_pure_memo_counts, install_cross_claim_derived_share,
+            publish_cross_claim_fill, CrossClaimFillGuard,
+        };
+        super::clear_cross_claim_pure_memos();
+        let ctx = fresh_ctx();
+        let derived = make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            no_span(),
+        );
+        install_cross_claim_derived_share([derived.clone()], std::collections::HashSet::new());
+        let guard = CrossClaimFillGuard::enter("tm_debt");
+        publish_cross_claim_fill(
+            &ctx,
+            &derived,
+            "tm_debt",
+            &[],
+            &Value::Int(1),
+            Some(&guard),
+            true,
+        );
+        assert!(
+            guard.stored.get(),
+            "a net-only fill is netted from its claim"
+        );
+        drop(guard);
+        assert_eq!(
+            cross_claim_pure_memo_counts().0,
+            0,
+            "and its value is not retained"
+        );
+        let guard = CrossClaimFillGuard::enter("tm_debt");
+        publish_cross_claim_fill(
+            &ctx,
+            &derived,
+            "tm_debt",
+            &[],
+            &Value::Int(1),
+            Some(&guard),
+            false,
+        );
+        drop(guard);
+        assert_eq!(
+            cross_claim_pure_memo_counts().0,
+            1,
+            "control: a retained site stores"
         );
         super::clear_cross_claim_pure_memos();
     }
@@ -10176,7 +10297,8 @@ fn eval_pure_named_call(
     // A derived producer is admitted at its admitted call sites only; from any other site the
     // call neither serves nor stores, exactly as if the producer were not admitted at all.
     let share_site = cross_claim_site_admitted(fn_node, call_node);
-    if share_site {
+    let net_only = share_site && cross_claim_site_is_net_only(call_node);
+    if share_site && !net_only {
         if let Some(v) = try_cross_claim_pure_memo(ctx, fn_node, func_name, args) {
             return Ok(v);
         }
@@ -10199,15 +10321,15 @@ fn eval_pure_named_call(
                 // The ordinary call path publishes opportunistically: every outcome,
                 // servable or refused, is already counted inside the store, and this
                 // call recomputes on a refusal exactly as if never enrolled.
-                let outcome = store_cross_claim_pure_memo(
+                publish_cross_claim_fill(
                     ctx,
                     fn_node,
                     func_name,
                     args,
                     v,
                     fill_guard.as_ref(),
+                    net_only,
                 );
-                note_cross_claim_store_outcome(func_name, &outcome);
             }
         }
         return result;
@@ -10223,18 +10345,28 @@ fn eval_pure_named_call(
             // census, which ranks by duration. Recording after the call is what makes the two
             // buckets comparable; the earlier count-only form could name a producer it could
             // never rank.
-            // AN ADMITTED FILL THAT THIS BRANCH NEVER OFFERS TO THE TIER. The recompute ledger
-            // cannot key these arguments, and the function returns below without a cross-claim
-            // store, so the fill stays on the paying claim. Counted under its own cause.
-            if fill_guard.is_some() {
-                CROSS_CLAIM_STORE_DECLINES.with(|d| {
-                    *d.borrow_mut()
-                        .entry((func_name.to_string(), "RecomputeKeyUnavailable"))
-                        .or_insert(0) += 1;
-                });
-            }
             let partial = eval_recompute_partial_key(ctx, fn_node, args);
+            let effects_before = ctx.effect_dispatch_count.get();
             let result = call_function(ctx, fn_node, args, env);
+            // THE RECOMPUTE LEDGER'S KEY IS NOT THE TIER'S. This branch is taken when the ledger
+            // cannot key the arguments; the tier keys them itself (or refuses, counted), and a
+            // net-only fill needs no key at all. Returning here without publishing left an
+            // admitted fill on the paying claim with nothing said (floor probe 37142207751).
+            if share_site {
+                if let Ok(v) = &result {
+                    if ctx.effect_dispatch_count.get() == effects_before {
+                        publish_cross_claim_fill(
+                            ctx,
+                            fn_node,
+                            func_name,
+                            args,
+                            v,
+                            fill_guard.as_ref(),
+                            net_only,
+                        );
+                    }
+                }
+            }
             eval_recompute_record_unkeyed(
                 ctx,
                 fn_node,
@@ -10264,9 +10396,15 @@ fn eval_pure_named_call(
     let result = call_function(ctx, fn_node, args, env);
     if let Ok(v) = &result {
         if share_site && ctx.effect_dispatch_count.get() == effects_before {
-            let outcome =
-                store_cross_claim_pure_memo(ctx, fn_node, func_name, args, v, fill_guard.as_ref());
-            note_cross_claim_store_outcome(func_name, &outcome);
+            publish_cross_claim_fill(
+                ctx,
+                fn_node,
+                func_name,
+                args,
+                v,
+                fill_guard.as_ref(),
+                net_only,
+            );
         }
     }
     if memo_on && ctx.effect_dispatch_count.get() == effects_before {
