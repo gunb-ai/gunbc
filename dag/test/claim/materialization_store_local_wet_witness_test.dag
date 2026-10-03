@@ -33,16 +33,17 @@ import extdeps.realization.materialization_store_local {
   local_store_lookup_batch, store_path, materialization_store_marker_name,
   LocalStoreCommit, LocalStoreSweep, LocalStoreSwept, LocalStoreSweepUnavailable, LocalStoreSweepNotRun,
   LocalStoreIndexRead, LocalStoreIndexAt, LocalStoreIndexUnavailable, local_store_read_index, local_store_index_key,
-  LocalStoreRecency, LocalStoreRecencyRecorded, LocalStoreRecencyNothingToRecord, LocalStoreRecencyLost,
+  LocalStoreRecency, LocalStoreRecencyRecorded, LocalStoreRecencyNothingToRecord, LocalStoreRecencyLost, LocalStoreRecencyRaced,
+  LocalStoreDeleteAttempt,
   local_store_record_recency, local_store_is_object_name, local_store_object_bytes, local_store_family_budget,
   local_store_host_ceiling_bytes, local_store_typed_module_budget_policy,
   local_store_reserve_prepared, local_store_publish_reserved, LocalStoreReservation, LocalStoreReserved,
-  LocalStoreReservationRefused,
+  LocalStoreReservationRefused, LocalStoreReservationIndexRefused, LocalStoreReservationProviderRefused,
 }
 import std.cache_identity { native_module_verdict_bundle_artifact_kind }
 import std.measure { measure_count }
 import std.render_repeat_string_bootstrap { repeat_string }
-import extdeps.filesystem.filesystem_io { filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused, filesystem_listing_entry_names }
+import extdeps.filesystem.filesystem_io { FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemDeleteKindUnrecognized, filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused, filesystem_listing_entry_names }
 
 // WET CONTROLS FOR THE LOCAL PERSISTENT REALIZATION: every control of the provider-spine brief,
 // executed against a REAL filesystem through extdeps.realization.materialization_store_local. Each
@@ -124,6 +125,17 @@ fn object_name(req: ArtifactRequest) -> String {
   match evaluation_store_admitted_address(admission: evaluation_store_address(req: req)) {
     Absent => ""
     Present { value: addr } => store_object_name(address: addr)
+  }
+}
+
+// The receipt carries the host's typed answer, not a flag: a directory where a file should be is a
+// delete the host REFUSED, distinct from an absent target or an unrecognized kind.
+fn delete_was_refused_by_the_host(t: LocalStoreDeleteAttempt) -> Bool {
+  match t.outcome {
+    FilesystemDeleteRefused { path: _, kind: _, error: _ } => true
+    FilesystemDeleted { path: _ } => false
+    FilesystemDeleteTargetAbsent { path: _ } => false
+    FilesystemDeleteKindUnrecognized { path: _, observed: _, error: _ } => false
   }
 }
 
@@ -478,7 +490,7 @@ test fn an_open_sweeps_an_object_no_index_names_by_real_execution() -> Bool {
       let swept = match local_store_open(root: root) {
         LocalStoreOpened { root: _, store: _, durability: _, sweep: sw } => match sw {
           LocalStoreSwept { removed: r, delete_refused: f } => r |> any(n => n == orphan) && count(f) == 0
-          LocalStoreSweepUnavailable { cause: _ } => false
+          LocalStoreSweepUnavailable { refusal: _ } => false
           LocalStoreSweepNotRun => false
         }
         LocalStoreUnavailable { root_path: _, cause: _ } => false
@@ -527,12 +539,14 @@ test fn recency_is_recorded_once_and_never_fails_by_real_execution() -> Bool {
       let recorded = match local_store_record_recency(root: root, family: native_module_verdict_bundle_artifact_kind, served: [name]) {
         LocalStoreRecencyRecorded { family: _, bumped: b } => b == 1
         LocalStoreRecencyNothingToRecord { family: _ } => false
-        LocalStoreRecencyLost { family: _, cause: _ } => false
+        LocalStoreRecencyLost { family: _, refusal: _ } => false
+        LocalStoreRecencyRaced { family: _ } => false
       }
       let nothing = match local_store_record_recency(root: root, family: native_module_verdict_bundle_artifact_kind, served: ["absent.materialization.v1"]) {
         LocalStoreRecencyNothingToRecord { family: _ } => true
         LocalStoreRecencyRecorded { family: _, bumped: _ } => false
-        LocalStoreRecencyLost { family: _, cause: _ } => false
+        LocalStoreRecencyLost { family: _, refusal: _ } => false
+        LocalStoreRecencyRaced { family: _ } => false
       }
       commit_tag(c: c.commit) == "committed" && recorded && nothing
     }
@@ -579,6 +593,8 @@ test fn a_writer_evicted_between_reservation_and_publish_refuses_and_leaves_noth
       let x_reserved = match reserved_x {
         LocalStoreReserved { evicted: _, retired: _, reclamation: _ } => true
         LocalStoreReservationRefused { refusal: _ } => false
+        LocalStoreReservationIndexRefused { refusal: _ } => false
+        LocalStoreReservationProviderRefused { construction: _ } => false
       }
       let cy = local_store_commit(root: root, store: store, req: bundle_req(module: "y"), payloads: half_budget_verdicts(module: "y"))
       let cx = local_store_publish_reserved(root: root, store: store, req: rx, prepared: px, reservation: reserved_x)
@@ -620,7 +636,7 @@ test fn a_persistently_refused_eviction_delete_stays_charged_and_stops_writes_by
       let cz = local_store_commit(root: root, store: store, req: bundle_req(module: "z"), payloads: half_budget_verdicts(module: "z"))
       commit_tag(c: cx.commit) == "committed" && unlinked && blocked
         && commit_tag(c: cy.commit) == "cleanup_outstanding"
-        && cy.eviction_delete_refused |> any(n => n == object_name(req: rx))
+        && cy.eviction_delete_refused |> any(t => t.name == object_name(req: rx) && delete_was_refused_by_the_host(t: t))
         && store_lookup_is_miss(l: local_store_lookup(root: root, store: store, req: bundle_req(module: "y")))
         && y_within
         && commit_tag(c: cz_refused.commit) == "cleanup_outstanding"
@@ -655,7 +671,7 @@ test fn only_canonical_object_names_are_indexed_or_swept_by_real_execution() -> 
       let swept_alone = match local_store_open(root: root) {
         LocalStoreOpened { root: _, store: _, durability: _, sweep: sw } => match sw {
           LocalStoreSwept { removed: r, delete_refused: _ } => !(r |> any(n => n == foreign))
-          LocalStoreSweepUnavailable { cause: _ } => false
+          LocalStoreSweepUnavailable { refusal: _ } => false
           LocalStoreSweepNotRun => false
         }
         LocalStoreUnavailable { root_path: _, cause: _ } => false
@@ -663,7 +679,7 @@ test fn only_canonical_object_names_are_indexed_or_swept_by_real_execution() -> 
       let slot = store_path(root_path: root_path, name: concat(local_store_index_key(family: native_module_verdict_bundle_artifact_kind) as String, ".1"))
       let traversal_row = Filesystem.Write(path: slot, content: concat("gunbc-store-occupancy v2\nnext 2\n../outside", ".materialization.v2 10 1")).success
       let refused = match local_store_read_index(root_path: root_path, family: native_module_verdict_bundle_artifact_kind) {
-        LocalStoreIndexUnavailable { cause: _ } => true
+        LocalStoreIndexUnavailable { refusal: _ } => true
         LocalStoreIndexAt { index: _, expected: _ } => false
       }
       commit_tag(c: first.commit) == "committed" && planted && swept_alone
