@@ -6,7 +6,8 @@ import std.literal_elaboration { UnicodeScalarSequenceUnfold }
 import std.coercion {
   ConversionPlan, ConversionPlanJudgment, ConversionPlanAdmitted, ConversionPlanAbsent,
   ConversionPlanAmbiguous, ConversionPlanEndpointMismatch, ConversionPlanHasNoPhase,
-  UnfoldPhase, judge_conversion_plan,
+  UnfoldPhase, judge_conversion_plan, judge_text_conversion_plan, ConversionPlanEndpointNotText,
+  HostText, CodePointSequence, NotText, TextRepresentationUnidentified,
 }
 import gunbc.structural_realization_bindings { conversion_plan_rows }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -106,6 +107,37 @@ test fn r_plan_with_no_phase_refuses() -> Bool {
   }
   match judge_host_to_structural(rows: [hollow], identity: "hollow") {
     ConversionPlanHasNoPhase { identity: _ } => true
+    _ => false
+  }
+}
+
+// THE CHECKER-FACING FORM: the site presents the two text representations it read by identity.
+test fn a_text_unfold_admits_host_reading_to_code_point_reading() -> Bool {
+  admitted_identity(j: judge_text_conversion_plan(rows: conversion_plan_rows, identity: "unicode_scalar_unfold", source: HostText, target: CodePointSequence)) == "unicode_scalar_unfold"
+}
+
+test fn a_text_fold_admits_code_point_reading_to_host_reading() -> Bool {
+  admitted_identity(j: judge_text_conversion_plan(rows: conversion_plan_rows, identity: "unicode_scalar_fold", source: CodePointSequence, target: HostText)) == "unicode_scalar_fold"
+}
+
+test fn r_text_plan_wrong_direction_refuses() -> Bool {
+  match judge_text_conversion_plan(rows: conversion_plan_rows, identity: "unicode_scalar_unfold", source: CodePointSequence, target: HostText) {
+    ConversionPlanEndpointMismatch { plan: _ } => true
+    _ => false
+  }
+}
+
+// A plan is never selected for a side the checker could not identify, nor for one that is not text.
+test fn r_text_plan_from_unidentified_side_refuses() -> Bool {
+  match judge_text_conversion_plan(rows: conversion_plan_rows, identity: "unicode_scalar_unfold", source: TextRepresentationUnidentified, target: CodePointSequence) {
+    ConversionPlanEndpointNotText { source: _, target: _ } => true
+    _ => false
+  }
+}
+
+test fn r_text_plan_into_non_text_refuses() -> Bool {
+  match judge_text_conversion_plan(rows: conversion_plan_rows, identity: "unicode_scalar_unfold", source: HostText, target: NotText) {
+    ConversionPlanEndpointNotText { source: _, target: _ } => true
     _ => false
   }
 }

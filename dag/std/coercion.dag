@@ -376,6 +376,7 @@ type ConversionPlanJudgment
   | ConversionPlanAmbiguous { identity: String, row_count: Int }
   | ConversionPlanEndpointMismatch { plan: ConversionPlan }
   | ConversionPlanHasNoPhase { identity: String }
+  | ConversionPlanEndpointNotText { source: TextRepresentation, target: TextRepresentation }
 
 fn conversion_plan_element_eq(a: DeclarationRef?, b: DeclarationRef?) -> Bool {
   match a {
@@ -431,5 +432,44 @@ fn judge_conversion_plan(
           ConversionPlanEndpointMismatch { plan: plan }
         }
     }
+  }
+}
+
+// THE CROSSING SITE'S HALF, AS THE CHECKER WILL ASK IT. The checker already classifies each side of a
+// boundary by declaration identity (v1.compiler.infer text_representation_by_identity, the same
+// reading text_crossing_by_identity refuses bare crossings with); a site that names a plan presents
+// those two readings here and is judged against the plan rows. Each text representation has exactly
+// one declaration key -- host text is std.types String, a code-point sequence is std.algebra
+// FreeMonoid over std.types Char, the post-peel key literal_homomorphism_rows uses -- so the key is
+// derived from the reading rather than re-read from a spelling. A side that is not text, or whose
+// declaration could not be identified, has no key and refuses: a plan is never selected for a
+// crossing the checker could not identify.
+type TextPlanEndpoint
+  = TextPlanEndpointKeyed { declaration: DeclarationRef, element: DeclarationRef? }
+  | TextPlanEndpointUnkeyed
+
+fn text_plan_endpoint(rep: TextRepresentation) -> TextPlanEndpoint {
+  match rep {
+    HostText => TextPlanEndpointKeyed { declaration: decl_ref(module_path: "std.types", decl_name: "String"), element: Absent }
+    CodePointSequence => TextPlanEndpointKeyed { declaration: decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid"), element: Present { value: decl_ref(module_path: "std.types", decl_name: "Char") } }
+    NotText => TextPlanEndpointUnkeyed
+    TextRepresentationUnidentified => TextPlanEndpointUnkeyed
+  }
+}
+
+fn judge_text_conversion_plan(
+  rows: List<ConversionPlan>,
+  identity: String,
+  source: TextRepresentation,
+  target: TextRepresentation
+) -> ConversionPlanJudgment {
+  match text_plan_endpoint(rep: source) {
+    TextPlanEndpointUnkeyed => ConversionPlanEndpointNotText { source: source, target: target }
+    TextPlanEndpointKeyed { declaration: sd, element: se } =>
+      match text_plan_endpoint(rep: target) {
+        TextPlanEndpointUnkeyed => ConversionPlanEndpointNotText { source: source, target: target }
+        TextPlanEndpointKeyed { declaration: td, element: te } =>
+          judge_conversion_plan(rows: rows, identity: identity, source: sd, source_element: se, target: td, target_element: te)
+      }
   }
 }
