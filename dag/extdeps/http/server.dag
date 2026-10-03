@@ -4,7 +4,8 @@ import extdeps.tailscale.identity { TailnetIdentity }
 import extdeps.tailscale.serve { TailscaleServeRouteKey }
 import std.content_hash { ContentHash }
 import extdeps.uri_path { PathTemplate, PathParamBinding }
-import std.types { HttpStatus, Port, List }
+import std.types { HttpStatus, Port, List, NonEmptyStr, Bool, String }
+import std.nat { Nat }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.uri_path {
@@ -295,17 +296,122 @@ type ServeHttpRequest<Authentication> {
   security: RequestSecurityContext<Authentication>
 }
 
+// THE HANDLER'S RESPONSE, the modeled authority a route returns: status, content type, body —
+// and the response HEADERS a route sets, as the typed carrier above. Headers live here rather
+// than on the wire projection because a redirect IS a Location header plus a status and a
+// session is a Set-Cookie header: they are the handler's answer, not the socket's. Handlers
+// that set none construct the empty list (serve_text_response); the wire projection renders
+// them to lines.
 type ServeHttpResponse {
   status: HttpStatus
   content_type: MediaType
   body: String
+  headers: List<ServeResponseHeader>
 }
 
 // The WIRE projection of ServeHttpResponse — the shape the host accept-loop seam reads back from the one .dag entry it calls (gunbc serve). Status is the bare Int and content type the wire label String so the seam never touches a modeled enum; the modeled ServeHttpResponse stays the authority and this record is its one-way projection (serve_wire_response), never authored directly by handlers.
+//
+// RESPONSE HEADERS RIDE THE WIRE AS TYPED (name, value) PAIRS, in WRITE ORDER: the name is a
+// closed set -- exactly the headers a handler can set (ServeResponseHeader below) -- so a framing
+// header the seed owns (Content-Length, Content-Type, Connection, Transfer-Encoding) has no
+// constructor here, and the seed renders "Name: value" itself. The value is the handler's datum;
+// that it carries no CR, LF or NUL is the realization boundary's refusal (a value is external
+// data -- a return path, a session id -- not a name the model can close over).
 type ServeWireResponse {
   status: Int
   content_type_label: String
   body: String
+  headers: List<ServeWireHeader>
+}
+
+// THE ONE HEADER VOCABULARY THE SURFACES NEED, as a closed coproduct a handler matches rather
+// than a string it concatenates: the login redirect and the session cookie are the two
+// production arms, and a header outside this set is a new arm with its own construction rule,
+// never an unadmitted line.
+type ServeResponseHeader
+  = ServeResponseHeaderLocation { location: NonEmptyStr }
+  | ServeResponseHeaderSetCookie { cookie: SetCookie }
+  | ServeResponseHeaderNoStore
+
+// RFC 6265 section 4.1 Set-Cookie, as its named parts rather than a pre-spelled line: the
+// cookie-pair and the attributes a deployment sets (Path, Secure, HttpOnly, Max-Age, and
+// SameSite from RFC 6265bis section 4.1.2.7). A handler constructs the value; the one rendering
+// below spells the header, so an attribute cannot be misspelled or dropped by a caller.
+type CookieSameSite
+  = CookieSameSiteLax
+  | CookieSameSiteStrict
+  | CookieSameSiteNone
+
+type SetCookie {
+  name: NonEmptyStr
+  value: String
+  path: NonEmptyStr
+  secure: Bool
+  http_only: Bool
+  same_site: CookieSameSite?
+  max_age_seconds: Nat
+}
+
+fn cookie_same_site_wire(s: CookieSameSite) -> String {
+  match s {
+    CookieSameSiteLax => "Lax"
+    CookieSameSiteStrict => "Strict"
+    CookieSameSiteNone => "None"
+  }
+}
+
+// The Set-Cookie field VALUE (RFC 6265 section 4.1.1 set-cookie-string); the field name is the
+// wire header's.
+fn set_cookie_value(cookie: SetCookie) -> String {
+  join(
+    [
+      cookie.name as String,
+      "=",
+      cookie.value,
+      if cookie.secure { "; Secure" } else { "" },
+      if cookie.http_only { "; HttpOnly" } else { "" },
+      match cookie.same_site {
+        Present { value: s } => concat("; SameSite=", cookie_same_site_wire(s: s))
+        Absent => ""
+      },
+      "; Path=",
+      cookie.path as String,
+      "; Max-Age=",
+      to_string(value: cookie.max_age_seconds),
+    ],
+    "",
+  )
+}
+
+type ServeWireHeaderName
+  = WireHeaderLocation
+  | WireHeaderSetCookie
+  | WireHeaderCacheControl
+
+type ServeWireHeader {
+  name: ServeWireHeaderName
+  value: String
+}
+
+// RFC 9110 field names, the seed's one spelling of each wire name.
+fn serve_wire_header_name_label(name: ServeWireHeaderName) -> String {
+  match name {
+    WireHeaderLocation => "Location"
+    WireHeaderSetCookie => "Set-Cookie"
+    WireHeaderCacheControl => "Cache-Control"
+  }
+}
+
+fn serve_response_header_wire(header: ServeResponseHeader) -> ServeWireHeader {
+  match header {
+    ServeResponseHeaderLocation { location: l } => ServeWireHeader { name: WireHeaderLocation, value: l as String }
+    ServeResponseHeaderSetCookie { cookie: c } => ServeWireHeader { name: WireHeaderSetCookie, value: set_cookie_value(cookie: c) }
+    ServeResponseHeaderNoStore => ServeWireHeader { name: WireHeaderCacheControl, value: "no-store" }
+  }
+}
+
+fn serve_response_headers_wire(headers: List<ServeResponseHeader>) -> List<ServeWireHeader> {
+  map(headers, h => serve_response_header_wire(header: h))
 }
 
 fn serve_wire_response(r: ServeHttpResponse) -> ServeWireResponse {
@@ -313,6 +419,19 @@ fn serve_wire_response(r: ServeHttpResponse) -> ServeWireResponse {
     status: r.status,
     content_type_label: media_type_wire_label(m: r.content_type),
     body: r.body,
+    headers: serve_response_headers_wire(headers: r.headers),
+  }
+}
+
+// THE PROJECTION WITH HEADERS: the same record with the header lines attached in the caller's
+// order; the no-header projection above is this fold at the empty list, so the two spellings
+// cannot drift.
+fn serve_wire_response_with_headers(r: ServeHttpResponse, headers: List<ServeResponseHeader>) -> ServeWireResponse {
+  ServeWireResponse {
+    status: r.status,
+    content_type_label: media_type_wire_label(m: r.content_type),
+    body: r.body,
+    headers: serve_response_headers_wire(headers: headers),
   }
 }
 
