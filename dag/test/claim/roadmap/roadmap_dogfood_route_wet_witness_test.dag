@@ -1,0 +1,104 @@
+module test.claim.roadmap.roadmap_dogfood_route_wet_witness
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import std.durable_compare_and_set { cas_generation_first }
+import std.process { ExitSuccess, ExitFailure }
+import gunbc.durable_cas_file_store { cas_file_slot_path }
+import gunbc.host_layout { srv1_host_layout }
+import gunbc.roadmap_dashboard_instance {
+  HostDashboardInstance, isolated_dashboard_instance, dashboard_instance_dispatch_attempt_state_root,
+  DashboardActuating, DashboardLocalProvision,
+}
+import gunbc.roadmap_dogfood_route {
+  dogfood_start_record_for_instance, dogfood_start_commit_at, dogfood_start_store_root, dogfood_start_receipt_key,
+  dogfood_route_acceptance_holds_on,
+  DogfoodStartRecord, DogfoodStartRecorded, DogfoodStartAlreadyRecorded, DogfoodStartNoCompleteAttempt, DogfoodStartRefused,
+}
+import gunbc.roadmap_belt_tick_cli { belt_tick_tail_exit }
+
+// WET CONTROLS FOR THE DOGFOOD START RECEIPT'S STORE (side-chat ruling on #13077 at e7e9ca9b). Each
+// claim builds a FRESH instance layout under a temporary directory and runs the production recorder
+// against it. The store root is the instance's attempt-state root -- the path the deployment's
+// AttemptStateRoot member converges (gunbc.live_deploy.spec deployment_owned_steps derives it from
+// the same dashboard_instance_dispatch_attempt_state_root) -- so a claim either leaves it missing,
+// as an unconverged host would, or creates it as the deploy does. On the required floor's
+// local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule), with the
+// exclusion row in gunbc.ci.ci_layer_roots naming the temp-directory write.
+
+fn fresh_instance(tag: String) -> HostDashboardInstance {
+  let dir = shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_dogfood_", tag, ".XXXXXX"], "")).path
+  isolated_dashboard_instance(
+    instance_id: "dogfood-wet" as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: dir as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18099,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+fn converge_root(instance: HostDashboardInstance) -> HostDashboardInstance {
+  let _made = shell.Mkdir.Parents(path: dashboard_instance_dispatch_attempt_state_root(instance: instance))
+  instance
+}
+
+data head: String = "b04485cffb000000000000000000000000000000"
+
+fn wire(pr: String) -> String {
+  join([
+    "{\"schema\": \"dogfood-start-receipt/v1\", \"node_id\": \"n1\", \"attempt_key\": \"k1\", \"head_sha\": \"", head,
+    "\", \"submission_digest\": \"d1\", \"review_subject\": \"n1@", head,
+    "\", \"review_plan_revision\": \"plan-r1\", \"review_digest\": \"rd1\", \"pr_number\": ", pr,
+    ", \"pr_url\": \"https://github.com/gunb-ai/gunbc/pull/4242\", \"established_at\": \"2026-10-03T07:00:00Z\"}",
+  ], "")
+}
+
+fn is_refused(r: DogfoodStartRecord) -> Bool {
+  match r { DogfoodStartRefused { reason: _ } => true  DogfoodStartRecorded { receipt: _ } => false  DogfoodStartAlreadyRecorded => false  DogfoodStartNoCompleteAttempt => false }
+}
+
+// DISCRIMINATING RED: an instance whose attempt-state root was never converged refuses -- the store
+// does not create its root, and the recorder does not either -- and the refusal fails the tick only
+// after the served observation's exit.
+test fn an_unconverged_store_root_refuses_the_start_record() -> Bool {
+  let r = dogfood_start_record_for_instance(instance: fresh_instance(tag: "unconverged"))
+  is_refused(r: r)
+    && (match belt_tick_tail_exit(served: ExitSuccess, start: r) { ExitSuccess => false  ExitFailure { code: _, reason: _ } => true })
+}
+
+// THE FRESH-ROOT CONTROL: once the deployment's root exists, the empty slot reads absent, no attempt
+// is complete, nothing is written, and the tick's tail stays successful.
+test fn a_converged_fresh_root_reads_absent_and_the_tick_tail_succeeds() -> Bool {
+  let instance = converge_root(instance: fresh_instance(tag: "fresh"))
+  let r = dogfood_start_record_for_instance(instance: instance)
+  (match r { DogfoodStartNoCompleteAttempt => true  DogfoodStartRecorded { receipt: _ } => false  DogfoodStartAlreadyRecorded => false  DogfoodStartRefused { reason: _ } => false })
+    && (match belt_tick_tail_exit(served: ExitSuccess, start: r) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false })
+    && !dogfood_route_acceptance_holds_on(instance: instance)
+}
+
+// THE FIRST CREATE COMMITS AND A COMPETING CREATE DECODES THE WINNER: the loser reports
+// AlreadyRecorded only because the observed winner is a valid receipt, the recorder then reads the
+// slot as recorded, and the acceptance read holds.
+test fn the_first_create_commits_and_a_competing_create_decodes_the_winner() -> Bool {
+  let instance = converge_root(instance: fresh_instance(tag: "race"))
+  let root = dogfood_start_store_root(instance: instance)
+  (match dogfood_start_commit_at(root: root, wire: wire(pr: "4242")) { DogfoodStartRecorded { receipt } => receipt == wire(pr: "4242")  DogfoodStartAlreadyRecorded => false  DogfoodStartNoCompleteAttempt => false  DogfoodStartRefused { reason: _ } => false })
+    && (match dogfood_start_commit_at(root: root, wire: wire(pr: "4343")) { DogfoodStartAlreadyRecorded => true  DogfoodStartRecorded { receipt: _ } => false  DogfoodStartNoCompleteAttempt => false  DogfoodStartRefused { reason: _ } => false })
+    && (match dogfood_start_record_for_instance(instance: instance) { DogfoodStartAlreadyRecorded => true  DogfoodStartRecorded { receipt: _ } => false  DogfoodStartNoCompleteAttempt => false  DogfoodStartRefused { reason: _ } => false })
+    && dogfood_route_acceptance_holds_on(instance: instance)
+}
+
+// AN INVALID WINNER IS NOT A START: a generation planted with bytes the decoder refuses makes the
+// losing writer, the recorder and the acceptance read all refuse rather than report a recorded start.
+test fn an_invalid_winner_refuses_rather_than_reading_as_recorded() -> Bool {
+  let instance = converge_root(instance: fresh_instance(tag: "invalid"))
+  let root = dogfood_start_store_root(instance: instance)
+  let _planted = Filesystem.Write(path: cas_file_slot_path(root: root, key: dogfood_start_receipt_key, generation: cas_generation_first()), content: "{\"schema\": \"dogfood-start-receipt/v1\", \"attempt_key\": \"fabricated\"}")
+  is_refused(r: dogfood_start_commit_at(root: root, wire: wire(pr: "4242")))
+    && is_refused(r: dogfood_start_record_for_instance(instance: instance))
+    && !dogfood_route_acceptance_holds_on(instance: instance)
+}

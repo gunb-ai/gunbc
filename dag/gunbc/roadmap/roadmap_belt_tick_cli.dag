@@ -1,7 +1,7 @@
 module gunbc.roadmap_belt_tick_cli
 
 import std.types { String }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.shell
 import extdeps.languages.json.emit { serialize_json, JsonValue, json_object, json_kv, json_string }
 import gunbc.host_layout { belt_spawn_workdir_env_var }
@@ -31,7 +31,7 @@ import gunbc.roadmap_belt_actuate {
 }
 import gunbc.roadmap_served_observation { served_observation_observe_and_write_for_instance }
 import gunbc.roadmap_dogfood_route {
-  dogfood_start_record_for_instance,
+  dogfood_start_record_for_instance, DogfoodStartRecord,
   DogfoodStartRecorded, DogfoodStartAlreadyRecorded, DogfoodStartNoCompleteAttempt, DogfoodStartRefused,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -103,20 +103,32 @@ fn belt_run_once_cli_in(spawn_workdir: String) -> ProcessExit {
             "\n",
             r,
           ], ""))
-        BeltPassRecorded =>
-          match dogfood_start_record_for_instance(instance: instance) {
-            DogfoodStartRefused { reason: r } =>
-              exit_failure(reason: join(["dogfood start receipt could not be recorded: ", r], ""))
-            DogfoodStartRecorded { receipt: _ } => belt_served_observation_exit(instance: instance, observed_at: observed_at)
-            DogfoodStartAlreadyRecorded => belt_served_observation_exit(instance: instance, observed_at: observed_at)
-            DogfoodStartNoCompleteAttempt => belt_served_observation_exit(instance: instance, observed_at: observed_at)
-          }
+        BeltPassRecorded => {
+          let start = dogfood_start_record_for_instance(instance: instance)
+          belt_tick_tail_exit(served: belt_served_observation_exit(instance: instance, observed_at: observed_at), start: start)
+        }
         BeltPassDeferred { reason: r } =>
           exit_failure(reason: join(["belt tick receipt write returned deferred: ", r], ""))
         BeltPassRefused { reason: r } =>
           exit_failure(reason: join(["belt tick receipt write returned refused: ", r], ""))
       }
     }
+  }
+}
+
+// THE TICK'S TAIL, pure so both orders are witnessed. A start receipt that could not be recorded
+// fails the tick loudly, but never instead of the served observation: the page is written either
+// way, and a failed observation write is reported first because it is the older obligation.
+fn belt_tick_tail_exit(served: ProcessExit, start: DogfoodStartRecord) -> ProcessExit {
+  match served {
+    ExitFailure { code: _, reason: _ } => served
+    ExitSuccess =>
+      match start {
+        DogfoodStartRefused { reason: r } => exit_failure(reason: join(["dogfood start receipt could not be recorded: ", r], ""))
+        DogfoodStartRecorded { receipt: _ } => ExitSuccess
+        DogfoodStartAlreadyRecorded => ExitSuccess
+        DogfoodStartNoCompleteAttempt => ExitSuccess
+      }
   }
 }
 

@@ -515,6 +515,7 @@ import gunbc.roadmap_session_placement {
   session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused,
   session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon,
   session_process_bounds, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed,
+  session_placement_observe_for_attempt, SessionPlacementUnreadable,
   session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire,
 }
 import gunbc.roadmap_workflow_progress {
@@ -5495,6 +5496,7 @@ fn belt_workflow_attempt_evidence_for_ref(
       },
       review: review_report_absent(reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established"),
       goal_audit: [],
+      session_placement: SessionPlacementUnreadable { unit: "", detail: "this attempt has no modeled state pointer, so no attempt key names its session placement" },
     }
   } else {
     belt_workflow_attempt_evidence_for_key(instance: instance, panes: panes, attempt: attempt, current_key: trim(key_read.content))
@@ -5524,7 +5526,7 @@ fn belt_attempt_record_paths(instance: HostDashboardInstance, node_id: gunbc.roa
 // (gunbc.roadmap_dogfood_route) names the attempt by its own key and reads it here directly, so
 // both read one evidence builder. EVERY attempt-varying read below is addressed by the supplied key
 // (admission, provider events, spawn failure, worktree, submission, verification, publication,
-// review, integration) -- never through a dispatch_current_attempt_* projection, which would mix the
+// review, integration, session placement) -- never through a dispatch_current_attempt_* projection, which would mix the
 // node's current attempt into a historical one. The validation summary is the node's execution
 // contract, a node fact, not an attempt fact.
 fn belt_workflow_attempt_evidence_for_key(
@@ -5704,6 +5706,7 @@ fn belt_workflow_attempt_evidence_for_key(
     integration: integration_receipt,
     review: review_evidence,
     goal_audit: audit_evidence,
+    session_placement: session_placement_observe_for_attempt(instance: instance, node_id: attempt.node_id, attempt_key: current_key),
   }
 }
 
