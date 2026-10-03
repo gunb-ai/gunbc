@@ -45,9 +45,9 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar { grammar_empty_node }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
-import v2.std.node { Arrow, ArrowResourceRequirementsEdge, Atom, Authored, Cardinality, ComputationNode, Conj, CoreEdgeLabel, Disj, Edge, Instantiation, Node, Positional, StructuralLabel, Symbol, TypeNode, edge_is_core, label_sort_key, node_rebuild }
+import v2.std.node { Arrow, ArrowResourceRequirementsEdge, Atom, Authored, Bind, Branch, Cardinality, ComputationNode, Conj, CoreEdgeLabel, Disj, Edge, Instantiation, Loop, Match, Node, Positional, StructuralLabel, Symbol, Transform, TypeNode, Value, edge_is_core, label_sort_key, node_rebuild }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, lexical_reference_label_optional, qualified_name_snoc, qualified_name_to_dotted_string }
+import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_snoc, qualified_name_to_dotted_string }
 import v2.std.symbol_index { SymbolIndex, symbol_index_declares_resource_at, symbol_index_lookup }
 import v2.std.text { String }
 
@@ -228,8 +228,14 @@ fn demand_fact_node(w: DemandFactWalk, position: QualifiedName, node: Node, reso
 // -- a Transform also carries blocks, casts and lowered operators, so reading every Transform's first
 // child as a callee flagged a block ending in a parameter as a call. Of the callees eval admits, an
 // Atom is a kernel operator and an Arrow an inline lambda whose body this walk reads anyway; a lexical
-// reference (v2.std.qualified_name lexical_reference_label_optional) names a local or parameter whose
-// value is only known at run time, and that is the function-value call.
+// reference (v2.std.qualified_name lexical_reference_label_optional) names a LOCAL binding whose value
+// is only known at run time, and that is a function-value call.
+//
+// A NAMED FUNCTION PARAMETER IS THE OTHER ONE, AND EVAL'S PREDICATE DOES NOT SEE IT. Resolve mints a
+// parameter as parameter_reference_node (<fn path>.<label>), not as a lexical reference, so
+// eval_transform_has_callee_reference answers false for a Transform headed by one. Its value is the
+// caller's argument, never a static declaration, so at this census boundary a Transform whose first
+// positional child is a parameter reference is a function-value call too (review of gunbc#12992).
 fn demand_fact_note_call(w: DemandFactWalk, node: Node, resolved: ResolvedTree) -> DemandFactWalk {
   if demand_fact_is_value_call(node: node) {
     DemandFactWalk { functions: w.functions, operations: w.operations, audited: w.audited, current: w.current, value_call: true }
@@ -240,16 +246,51 @@ fn demand_fact_note_call(w: DemandFactWalk, node: Node, resolved: ResolvedTree) 
 
 fn demand_fact_is_value_call(node: Node) -> Bool {
   if eval_transform_has_callee_reference(node: node) {
-    match first(node.children) {
-      Present { value: e } =>
-        match lexical_reference_label_optional(node: e.target) {
-          Present { value: _ } => true
-          Absent => false
-        }
-      Absent => false
-    }
+    demand_fact_head_is_lexical(node: node)
   } else {
-    false
+    demand_fact_is_transform(node: node) && demand_fact_head_is_parameter(node: node)
+  }
+}
+
+fn demand_fact_is_transform(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: b } =>
+      match b {
+        Transform => true
+        Value => false
+        Branch => false
+        Loop => false
+        Bind => false
+        Match => false
+      }
+  }
+}
+
+fn demand_fact_head_is_lexical(node: Node) -> Bool {
+  match first(node.children) {
+    Present { value: e } =>
+      match lexical_reference_label_optional(node: e.target) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn demand_fact_head_is_parameter(node: Node) -> Bool {
+  match first(node.children) {
+    Present { value: e } =>
+      match e.label {
+        Positional =>
+          match parameter_reference_path_optional(node: e.target) {
+            Present { value: _ } => true
+            Absent => false
+          }
+        Authored { name: _ } => false
+        StructuralLabel { label: _ } => false
+      }
+    Absent => false
   }
 }
 

@@ -64,7 +64,7 @@ data ddc_app_source: String = "module t.app\n\nimport std.resources { Network }\
 
 // A CALL THROUGH A FUNCTION VALUE, beside a direct Network call that would otherwise make the fn Equal.
 // Its own module, so a refusal here cannot hide the other fns.
-data ddc_valued_source: String = "module t.valued\n\nimport std.resources { Network }\nimport v2.std.logic { Bool }\n\nfn via_value(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Get()\n  let g = t.app.restates\n  g(p: p)\n}\n"
+data ddc_valued_source: String = "module t.valued\n\nimport std.resources { Network }\nimport v2.std.logic { Bool }\n\nfn via_value(p: Bool) -> Bool uses net: Network {\n  let r = t.http.H.Get()\n  let g = t.app.restates\n  g(p: p)\n}\n\nfn via_param(p: Bool, g: fn(Bool) -> Bool) -> Bool uses net: Network {\n  let r = t.http.H.Get()\n  g(p: p)\n}\n"
 
 // A USES FILE THE FRONT END REFUSES BEFORE AUTHORSHIP: a string that never terminates is refused at
 // tokenize, so its uses fn is read by nobody and the census population is incomplete.
@@ -125,7 +125,7 @@ test fn every_uses_fn_gets_exactly_one_census_row_holds() -> Bool {
   match ddc_report() {
     Rejected { diagnostics: _ } => false
     Accepted { value: r, diagnostics: _ } =>
-      (r.uses_functions == 8) && (length(xs: r.rows) == 8) && demand_census_conserved(r: r)
+      (r.uses_functions == 9) && (length(xs: r.rows) == 9) && demand_census_conserved(r: r)
   }
 }
 
@@ -271,3 +271,21 @@ test fn a_uses_file_refused_before_authorship_is_an_incomplete_population_RED() 
     Accepted { value: r, diagnostics: _ } => (r.unreadable_files == 1) && (demand_census_exit(r: r) == 2)
   }
 }
+
+// A CALL THROUGH A NAMED FUNCTION PARAMETER: via_param's direct Network call would make it Equal, and the
+// call through its parameter `g` -- minted as a parameter reference, not a lexical one -- makes it
+// undecided by that cause instead (review of gunbc#12992).
+test fn a_call_through_a_function_parameter_is_undecided_on_the_real_route_RED() -> Bool {
+  match ddc_verdict(function: "t.valued.via_param") {
+    Absent => false
+    Present { value: v } =>
+      match v {
+        CensusUndecided { cause: FunctionValueCalled { function: f } } => qualified_name_to_dotted_string(qn: f) == "t.valued.via_param"
+        CensusUndecided { cause: _ } => false
+        CensusEqual => false
+        CensusMismatch { authored: _, derived: _ } => false
+        CensusUnobserved { reason: _ } => false
+      }
+  }
+}
+
