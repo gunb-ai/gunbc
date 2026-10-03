@@ -1,5 +1,5 @@
 module v2.extdeps.languages.dag
-import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
 import v2.std.model_core { bool_model_core }
 import v2.std.language_model { LanguageModel }
 
@@ -2112,9 +2112,10 @@ fn dag_grammar_type_alias_rhs_lead_expr() -> GrammarExpr {
 //
 // PARSE ADMISSION IS NOT THE SEALING PROPERTY. Declared drop:
 // gunbc.rung_drop.g0_type_decl_modifier_parse_without_sealing_property. v1 mints
-// only sole_constructor via parsed_sole_constructor_properties; G0 only consumes
-// the tokens so the native door can continue. nominal_opaque is dropped in v1 and
-// mints nothing.
+// only sole_constructor via parsed_sole_constructor_properties. On the native route the
+// slot is read back off the parse by v2.compiler.body_lowering_fold
+// body_lower_type_decl_declared_modifiers and carried on NormalizedTree
+// type_declaration_modifiers; carrying it enforces nothing.
 fn dag_grammar_type_decl_modifiers_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_optional(
@@ -2372,15 +2373,14 @@ fn dag_grammar_test_fn_decl_expr() -> GrammarExpr {
 // followed by the literal terminal `xx` and tried before the bare int -- the reading v1 02_parse
 // parse_status_pattern makes. Without it every response block with a status class refused its whole
 // module as parse_g0_tokens_remain at the `xx`.
+// The three forms are three productions (XL-2 PR3b-i) so lowering reads which was written from the
+// emitting production: a CLASS (`5xx`, the int literal then `xx`), an exact CODE, or a NAME (`nonzero`).
 fn dag_grammar_status_pattern_expr() -> GrammarExpr {
   dag_grammar_choice(
-    left: dag_grammar_sequence(
-      left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
-      right: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "xx"))
-    ),
+    left: dag_grammar_nonterminal(production: ^dag_production_status_pattern_class),
     right: dag_grammar_choice(
-      left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
-      right: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident)
+      left: dag_grammar_nonterminal(production: ^dag_production_status_pattern_code),
+      right: dag_grammar_nonterminal(production: ^dag_production_status_pattern_name)
     )
   )
 }
@@ -2481,14 +2481,18 @@ fn dag_grammar_op_requires_expr() -> GrammarExpr {
 // as dag_grammar_op_modifier_expr does for readonly/idempotent/hermetic: the production holds no
 // name terminal, v2.compiler.occurrence_role needs no row for it, and an unknown kind is a located
 // parse refusal instead of an accepted identifier. The four are v1 00_core TransportKind's arms.
+// EACH TRANSPORT KIND IS ITS OWN PRODUCTION (XL-2 PR3b-i), for the reason each operation modifier is
+// (#12964): a literal terminal publishes only its token class, so a choice of four literals parsed which
+// kind was written and recorded none of it. Lowering reads the kind from the emitting production
+// (v2.compiler.body_lowering_fold body_lower_transport_kind_label_optional).
 fn dag_grammar_transport_kind_expr() -> GrammarExpr {
   dag_grammar_choice(
-    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "rest")),
+    left: dag_grammar_nonterminal(production: ^dag_production_transport_kind_rest),
     right: dag_grammar_choice(
-      left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "shell")),
+      left: dag_grammar_nonterminal(production: ^dag_production_transport_kind_shell),
       right: dag_grammar_choice(
-        left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "file")),
-        right: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "local"))
+        left: dag_grammar_nonterminal(production: ^dag_production_transport_kind_file),
+        right: dag_grammar_nonterminal(production: ^dag_production_transport_kind_local)
       )
     )
   )
@@ -2599,20 +2603,22 @@ fn dag_grammar_operation_expr() -> GrammarExpr {
 }
 
 // v1 parse_config_fields admits exactly five config field names and refuses any other by name;
-// the closed set is a choice of literal terminals here, so an unknown field still refuses at parse.
+// the closed set is a choice of one production per name here, so an unknown field still refuses at parse.
+// Each config field name is its own production (XL-2 PR3b-i), for the reason each transport kind is: a
+// literal terminal publishes only its class, so lowering could not read which field was written.
 fn dag_grammar_service_config_field_name_expr() -> GrammarExpr {
   dag_grammar_choice(
-    left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "endpoint")),
+    left: dag_grammar_nonterminal(production: ^dag_production_service_config_field_name_endpoint),
     right: dag_grammar_choice(
-      left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "auth")),
-      right: dag_grammar_choice(
-        left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "auth_input")),
-        right: dag_grammar_choice(
-          left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "auth_source")),
-          right: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "rate_limit"))
-        )
-      )
-    )
+    left: dag_grammar_nonterminal(production: ^dag_production_service_config_field_name_auth),
+    right: dag_grammar_choice(
+    left: dag_grammar_nonterminal(production: ^dag_production_service_config_field_name_auth_input),
+    right: dag_grammar_choice(
+    left: dag_grammar_nonterminal(production: ^dag_production_service_config_field_name_auth_source),
+    right: dag_grammar_nonterminal(production: ^dag_production_service_config_field_name_rate_limit)
+  )
+  )
+  )
   )
 }
 
@@ -3111,6 +3117,31 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_service_config_expr(),
     emitted: ^dag_surface_service_config
   )
+  let service_config_field_name_endpoint = dag_grammar_production(
+    name: ^dag_production_service_config_field_name_endpoint,
+    expression: dag_grammar_keyword_expr(lexeme: "endpoint"),
+    emitted: ^dag_surface_service_config_field_name_endpoint
+  )
+  let service_config_field_name_auth = dag_grammar_production(
+    name: ^dag_production_service_config_field_name_auth,
+    expression: dag_grammar_keyword_expr(lexeme: "auth"),
+    emitted: ^dag_surface_service_config_field_name_auth
+  )
+  let service_config_field_name_auth_input = dag_grammar_production(
+    name: ^dag_production_service_config_field_name_auth_input,
+    expression: dag_grammar_keyword_expr(lexeme: "auth_input"),
+    emitted: ^dag_surface_service_config_field_name_auth_input
+  )
+  let service_config_field_name_auth_source = dag_grammar_production(
+    name: ^dag_production_service_config_field_name_auth_source,
+    expression: dag_grammar_keyword_expr(lexeme: "auth_source"),
+    emitted: ^dag_surface_service_config_field_name_auth_source
+  )
+  let service_config_field_name_rate_limit = dag_grammar_production(
+    name: ^dag_production_service_config_field_name_rate_limit,
+    expression: dag_grammar_keyword_expr(lexeme: "rate_limit"),
+    emitted: ^dag_surface_service_config_field_name_rate_limit
+  )
   let service_config_field = dag_grammar_production(
     name: ^dag_production_service_config_field,
     expression: dag_grammar_service_config_field_expr(),
@@ -3185,6 +3216,44 @@ fn dag_grammar_root() -> GrammarRoot {
     name: ^dag_production_status_pattern,
     expression: dag_grammar_status_pattern_expr(),
     emitted: ^dag_surface_status_pattern
+  )
+  let status_pattern_class = dag_grammar_production(
+    name: ^dag_production_status_pattern_class,
+    expression: dag_grammar_sequence(
+      left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
+      right: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "xx"))
+    ),
+    emitted: ^dag_surface_status_pattern_class
+  )
+  let status_pattern_code = dag_grammar_production(
+    name: ^dag_production_status_pattern_code,
+    expression: dag_grammar_terminal(token_class: ^dag_token_int_literal),
+    emitted: ^dag_surface_status_pattern_code
+  )
+  let status_pattern_name = dag_grammar_production(
+    name: ^dag_production_status_pattern_name,
+    expression: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+    emitted: ^dag_surface_status_pattern_name
+  )
+  let transport_kind_rest = dag_grammar_production(
+    name: ^dag_production_transport_kind_rest,
+    expression: dag_grammar_keyword_expr(lexeme: "rest"),
+    emitted: ^dag_surface_transport_kind_rest
+  )
+  let transport_kind_shell = dag_grammar_production(
+    name: ^dag_production_transport_kind_shell,
+    expression: dag_grammar_keyword_expr(lexeme: "shell"),
+    emitted: ^dag_surface_transport_kind_shell
+  )
+  let transport_kind_file = dag_grammar_production(
+    name: ^dag_production_transport_kind_file,
+    expression: dag_grammar_keyword_expr(lexeme: "file"),
+    emitted: ^dag_surface_transport_kind_file
+  )
+  let transport_kind_local = dag_grammar_production(
+    name: ^dag_production_transport_kind_local,
+    expression: dag_grammar_keyword_expr(lexeme: "local"),
+    emitted: ^dag_surface_transport_kind_local
   )
   let status_type_entry = dag_grammar_production(
     name: ^dag_production_status_type_entry,
@@ -3420,6 +3489,11 @@ fn dag_grammar_root() -> GrammarRoot {
       resource_release,
       service_config,
       service_config_field,
+      service_config_field_name_endpoint,
+      service_config_field_name_auth,
+      service_config_field_name_auth_input,
+      service_config_field_name_auth_source,
+      service_config_field_name_rate_limit,
       operation,
       operation_body_entry,
       transport,
@@ -3436,6 +3510,13 @@ fn dag_grammar_root() -> GrammarRoot {
       response_block,
       mock_response_block,
       status_pattern,
+      status_pattern_class,
+      status_pattern_code,
+      status_pattern_name,
+      transport_kind_rest,
+      transport_kind_shell,
+      transport_kind_file,
+      transport_kind_local,
       status_type_entry,
       status_expr_entry,
       qualified_name,
@@ -5063,6 +5144,20 @@ fn dag_arrow_domain_conj_node() -> Node {
   }
 }
 
+// AN OPERAND THAT NAMES A PARAMETER IS A LEXICAL REFERENCE, and resolve records its binding by the
+// reference's own occurrence (v2.compiler.resolve resolve_lexical_reference), refusing a synthetic
+// one as resolve_reason_lexical_reference_unkeyed. So the fixture's two operands carry MINTED
+// occurrences, as normalize's output would, at distinct ids by position (left 1, right 2): the
+// swapped variant swaps the names, not the ids. Content hash does not read occurrence ids, so every
+// hash-keyed reader of these fixtures is unchanged.
+fn dag_fixture_operand_reference_node(binding: Symbol, occurrence: Int) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: binding } },
+    children: [],
+    occurrence_id: OccurrenceMinted { id: OccurrenceId { value: occurrence } }
+  }
+}
+
 fn dag_binary_body_node(operator: Node, left_binding: Symbol, right_binding: Symbol) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
@@ -5070,11 +5165,11 @@ fn dag_binary_body_node(operator: Node, left_binding: Symbol, right_binding: Sym
       Edge { label: Positional, target: operator },
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: left_binding)
+        target: dag_fixture_operand_reference_node(binding: left_binding, occurrence: 1)
       },
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: right_binding)
+        target: dag_fixture_operand_reference_node(binding: right_binding, occurrence: 2)
       }
     ],
     occurrence_id: OccurrenceSynthetic

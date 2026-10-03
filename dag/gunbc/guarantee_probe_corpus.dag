@@ -9,7 +9,6 @@ import std.content_hash {
   content_hash_combine_structural,
   structural_content_hash,
 }
-import std.string_type { string_is_lexicographically_before }
 import std.nat { Nat }
 import gunbc.guarantee_measurement {
   GuaranteeClassId, GuaranteePathId, GuaranteeProbeId, GuaranteeTargetName,
@@ -901,7 +900,7 @@ fn probe_ids_are_lexicographically_ordered(ids: List<GuaranteeProbeId>) -> Bool 
       match acc.prev {
         Absent => ProbeLexWalk { prev: Present { value: current }, ok: true }
         Present { value: prev } =>
-          if string_is_lexicographically_before(left: prev, right: current) {
+          if prev < current {
             ProbeLexWalk { prev: Present { value: current }, ok: true }
           } else {
             ProbeLexWalk { prev: Present { value: current }, ok: false }

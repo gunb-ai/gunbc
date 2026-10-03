@@ -1,35 +1,15 @@
 module std.string_type
 
-import std.algebra { FreeMonoid, Ordering, Less, Equal, Greater, ordering_is_less }
+import std.algebra { FreeMonoid }
 import std.types { Char }
 
+// A DECLARED FRONTIER, NOT A CONSUMED TYPE (DESIGN section 3c). This declaration grounds
+// String = FreeMonoid<Char> -- strings over an alphabet are the free monoid -- per operator Ruling 3
+// (2026-07-15, cited at std.coercion beside grounded_primitive_coproduct_identities). It has no
+// importer: the 71 modules that imported it treated the value as host text and now bind the kernel
+// String, and its two lexicographic functions were deleted because host String ordering (`<`) is
+// already that order (gunbc.rung_drop text_boundary_identity_wall). The open seed kernel-names
+// de-fork ruling (String/Bool/Float/List) retires this declaration or promotes it; until then it
+// stays, and the structural roster (v1.compiler.coercion structural_declaration_modules_for) keeps
+// it a code-point sequence.
 type String = FreeMonoid<Char>
-
-fn string_lex_compare(left: String, right: String) -> Ordering {
-  let left_len = string_length(s: left)
-  let right_len = string_length(s: right)
-  if left_len == 0 && right_len == 0 {
-    Equal
-  } else if left_len == 0 {
-    Less
-  } else if right_len == 0 {
-    Greater
-  } else {
-    let left_cp = code_point(c: char_at(s: left, pos: 0))
-    let right_cp = code_point(c: char_at(s: right, pos: 0))
-    if left_cp < right_cp {
-      Less
-    } else if left_cp > right_cp {
-      Greater
-    } else {
-      string_lex_compare(
-        left: substring(s: left, start: 1, end: left_len),
-        right: substring(s: right, start: 1, end: right_len),
-      )
-    }
-  }
-}
-
-fn string_is_lexicographically_before(left: String, right: String) -> Bool {
-  ordering_is_less(o: string_lex_compare(left: left, right: right))
-}
