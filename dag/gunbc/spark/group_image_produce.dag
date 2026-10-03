@@ -169,6 +169,9 @@ fn distribution_sources_for(h: ProducedImageHeld, target: HostIdentity) -> Distr
     })
 }
 
+// THE RECEIPT NAMES THE SOURCE USED AND WHY EACH EARLIER CANDIDATE WAS SKIPPED (operator ruling, 2026-10-03:
+// no silent degradation): the readback causes of hosts that did not hold the digest, and the claim causes of
+// matching hosts held by another effect, each on its own line; with none admissible the run refuses with all.
 // A SOURCE MUST ALSO BE CLAIMABLE. Its save into the blob root is a host effect, so the source is used only
 // when its host-effect claim lands; a source still held by another live effect (a stale claim that has not
 // been read quiescent, for instance) is passed over for the next matching host, and its cause is kept.
@@ -176,16 +179,16 @@ type DistributionAttempt
   = DistributionNotYet { causes: List<String> }
   | DistributionRan { exit: ProcessExit }
 
-fn distribute_from_claimed_source(h: ProducedImageHeld, source: HostIdentity, target_host: HostIdentity, receipt_path: String) -> ProcessExit {
+fn distribute_from_claimed_source(h: ProducedImageHeld, source: HostIdentity, target_host: HostIdentity, receipt_path: String, skipped: List<String>) -> ProcessExit {
   if host_identity_eq(a: target_host, b: source) {
-    produced_image_distribute_to(source: source, target_host: target_host, h: h, receipt_path: receipt_path)
+    produced_image_distribute_to(source: source, target_host: target_host, h: h, receipt_path: receipt_path, skipped: skipped)
   } else {
-    with_image_distribution_claim(host: target_host, h: h, run: fn() { produced_image_distribute_to(source: source, target_host: target_host, h: h, receipt_path: receipt_path) })
+    with_image_distribution_claim(host: target_host, h: h, run: fn() { produced_image_distribute_to(source: source, target_host: target_host, h: h, receipt_path: receipt_path, skipped: skipped) })
   }
 }
 
-fn distribute_from_first_claimable(h: ProducedImageHeld, target_host: HostIdentity, sources: List<HostIdentity>, receipt_path: String) -> DistributionAttempt {
-  fold(sources, init: DistributionNotYet { causes: [] as List<String> }, f: (acc, source) =>
+fn distribute_from_first_claimable(h: ProducedImageHeld, target_host: HostIdentity, sources: List<HostIdentity>, receipt_path: String, unread: List<String>) -> DistributionAttempt {
+  fold(sources, init: DistributionNotYet { causes: unread }, f: (acc, source) =>
     match acc {
       DistributionRan { exit: _ } => acc
       DistributionNotYet { causes: before } =>
@@ -195,13 +198,13 @@ fn distribute_from_first_claimable(h: ProducedImageHeld, target_host: HostIdenti
             match claim_host_effect_live(host: source, term: image_distribution_host_effect_term, purpose: image_distribution_host_purpose, residue: image_distribution_residue(h: h)) {
               HostEffectClaimNotLanded { cause: why } => DistributionNotYet { causes: concat(before, [join([source as String, ": ", why as String], "")]) }
               HostEffectClaimLanded { handle: handle } =>
-                DistributionRan { exit: release_host_effect_live(handle: Present { value: handle }, exit: distribute_from_claimed_source(h: h, source: source, target_host: target_host, receipt_path: receipt_path)) }
+                DistributionRan { exit: release_host_effect_live(handle: Present { value: handle }, exit: distribute_from_claimed_source(h: h, source: source, target_host: target_host, receipt_path: receipt_path, skipped: before)) }
             }
         }
     })
 }
 
-fn produced_image_distribute_to(source: HostIdentity, target_host: HostIdentity, h: ProducedImageHeld, receipt_path: String) -> ProcessExit {
+fn produced_image_distribute_to(source: HostIdentity, target_host: HostIdentity, h: ProducedImageHeld, receipt_path: String, skipped: List<String>) -> ProcessExit {
   let now = clock_now_probed_at()
   match with_spark_build_host(
     host: source,
@@ -216,6 +219,7 @@ fn produced_image_distribute_to(source: HostIdentity, target_host: HostIdentity,
     SparkBuildHostRan { work: work, endpoint: endpoint, executor: executor, trust_receipt: trust_receipt } => {
       let body = join([
         join([h.title as String, " distribute probed_at=", probed_at_word(reading: now) as String, " source=", source as String, " produced_on=", h.held_on as String, " endpoint=", endpoint as String, " target=", target_host as String, " executor=", executor, "\n"], ""),
+        join(map(skipped, x => join(["  source candidate skipped: ", x, "\n"], "")), ""),
         trust_receipt,
         join(["image tag=", h.subject.tag as String, " config_digest=", render_oci_content_digest_wire(d: h.subject.config), " receipt_run=", h.receipt_run as String, "\n"], ""),
         work.receipt,
@@ -248,7 +252,7 @@ fn produced_image_distribute_wet(h: ProducedImageHeld, receipt_path: String) -> 
               if length(srcs) == 0 {
                 exit_failure(reason: join(["no group host reads back ", render_oci_content_digest_wire(d: h.subject.config), " under ", h.subject.tag as String, ", so nothing is a source:\n  ", join(rc, "\n  ")], ""))
               } else {
-                match distribute_from_first_claimable(h: h, target_host: target_host, sources: srcs, receipt_path: receipt_path) {
+                match distribute_from_first_claimable(h: h, target_host: target_host, sources: srcs, receipt_path: receipt_path, unread: rc) {
                   DistributionRan { exit: e } => e
                   DistributionNotYet { causes: cc } => exit_failure(reason: join(["every host that reads back the digest is held by another effect, so none could be claimed as the source:\n  ", join(cc, "\n  ")], ""))
                 }

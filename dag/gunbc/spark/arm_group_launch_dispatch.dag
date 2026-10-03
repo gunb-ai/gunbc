@@ -1,5 +1,6 @@
 module gunbc.spark.arm_group_launch_dispatch
 
+import product.placement_supply { HostIdentity }
 import std.types { String, List, NonEmptyStr }
 import v2.std.optional { Present, Absent }
 import std.process { ProcessExit, exit_failure }
@@ -163,6 +164,11 @@ fn arm_checkpoint_options() -> List<String> {
   [arm_checkpoint_glm53_fp8, arm_checkpoint_glm53_nvfp4]
 }
 
+// THE SEED HOST OF EACH GLM CHECKPOINT ON GROUP A, AS A MODELED FACT (operator ruling, 2026-10-03: the Hub
+// seed is chosen explicitly, never inferred from "no admissible peer"). srv7 holds the produced image and fetched
+// the FP8 snapshot first; it seeds both checkpoints, and srv5, srv6 and srv8 replicate from it over the rail.
+data glm53_checkpoint_seed_host: HostIdentity = "srv7" as HostIdentity
+
 data arm_checkpoint_receipt_path: String = "target/arm-checkpoint-materialize-receipt.txt"
 
 fn arm_checkpoint_materialize_ci() -> ProcessExit {
@@ -178,9 +184,9 @@ fn arm_checkpoint_materialize_ci() -> ProcessExit {
           Absent => exit_failure(reason: "that image has no recorded production, so no tag and configuration digest exist to run the Hub CLI in; produce it first (mode spark_runtime_image_produce) or name a recorded one")
           Present { value: held } =>
             if word == arm_checkpoint_glm53_fp8 {
-              checkpoint_materialize_wet(m: CheckpointMaterialization { title: "glm53 checkpoint materialize" as NonEmptyStr, group: FabricGroupA, checkpoint: Glm53NativeFp8, image: held.subject }, receipt_path: arm_checkpoint_receipt_path)
+              checkpoint_materialize_wet(m: CheckpointMaterialization { title: "glm53 checkpoint materialize" as NonEmptyStr, group: FabricGroupA, checkpoint: Glm53NativeFp8, image: held.subject, seed: glm53_checkpoint_seed_host }, receipt_path: arm_checkpoint_receipt_path)
             } else if word == arm_checkpoint_glm53_nvfp4 {
-              checkpoint_materialize_wet(m: CheckpointMaterialization { title: "glm53 checkpoint materialize" as NonEmptyStr, group: FabricGroupA, checkpoint: Glm53FlashNvidiaNvfp4, image: held.subject }, receipt_path: arm_checkpoint_receipt_path)
+              checkpoint_materialize_wet(m: CheckpointMaterialization { title: "glm53 checkpoint materialize" as NonEmptyStr, group: FabricGroupA, checkpoint: Glm53FlashNvidiaNvfp4, image: held.subject, seed: glm53_checkpoint_seed_host }, receipt_path: arm_checkpoint_receipt_path)
             } else {
               exit_failure(reason: join([arm_checkpoint_env as String, "=`", word, "` is not a checkpoint of this arm; the checkpoints are ", join(arm_checkpoint_options(), ", ")], ""))
             }

@@ -17,7 +17,7 @@ import gunbc.spark.serving_subject { PairServingUnitOn }
 import gunbc.spark.host_commitment { admit_host_held_by_subject }
 import gunbc.spark.serving_arm { ServingCheckpoint, serving_checkpoint_row, serving_checkpoint_wire }
 import gunbc.spark.model_snapshot_acquisition { ModelSnapshotDesired, ModelSnapshotPinned, ModelSnapshotUnpinned, SnapshotPlacement, SnapshotSeed, LocalDirectoryPlacement, HubCachePlacement, model_snapshot_completion_check_argv, model_snapshot_subject_for, spark_hub_cache_root }
-import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, SnapshotAcquisitionExecutor, containerized_hub_cli_for, ContainerizedHubCliBuilt, ContainerizedHubCliRefused, spark_materialize_member, SparkMaterialized, SparkMaterializeUnpinned, SparkMaterializeRefused, spark_remote_run, RemoteRan, RemoteUnreachable, spark_snapshot_verify_observation, spark_transfer_cancel, SparkTransferCancel, TransferCancelled, TransferCancelledNothingRunning, TransferCancelRefused }
+import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, SnapshotAcquisitionExecutor, containerized_hub_cli_for, ContainerizedHubCliBuilt, ContainerizedHubCliRefused, spark_materialize_member, SparkMaterialized, SparkMaterializeUnpinned, SparkMaterializeRefused, spark_remote_run, RemoteRan, RemoteUnreachable, spark_snapshot_verify_observation, spark_transfer_cancel, spark_transfer_unit_for, read_instrument, InstrumentVerified, InstrumentRejectedTheSubject, InstrumentDidNotRun, InstrumentContradictedItself, executor_wrap, SparkTransferCancel, TransferCancelled, TransferCancelledNothingRunning, TransferCancelRefused }
 import gunbc.spark.vllm_runtime_image_build { SparkBuildHostWork, with_spark_build_host, SparkBuildHostRefused, SparkBuildHostRan, VllmImageDistributionSubject }
 import extdeps.container.oci.digest { render_oci_content_digest_wire }
 import extdeps.docker.cli { docker_image_inspect_names_no_such_image, docker_image_inspect_id_from_stdout, DockerImageInspectId, DockerImageInspectIdUnreadable }
@@ -52,6 +52,7 @@ type CheckpointMaterialization {
   group: FabricGroup
   checkpoint: ServingCheckpoint
   image: VllmImageDistributionSubject
+  seed: HostIdentity
 }
 
 type HeldImageExecutor
@@ -164,15 +165,23 @@ fn acquisition_converged(o: AcquisitionOutcome) -> Bool {
 // A Hub transfer still running on the target for this snapshot is superseded by the replica and stopped
 // through its own cancel path (gunbc.spark.model_snapshot_materialize spark_transfer_cancel). The target's
 // result is admitted by the same verify the Hub path ends with.
+// THE VERIFY, READ AS THE INSTRUMENT ANSWERED, with its own words kept for the receipt. Three readings and no
+// fourth: it passed; it RAN and rejected the snapshot (absent or incomplete here, "not held yet"); or nothing
+// was learned (the leg did not run, the instrument never executed, it contradicted itself). Only the last is
+// a refusal of the run; the middle one is the ordinary state of a host that has yet to acquire.
 fn checkpoint_verify_with(ctx: SparkMaterializeContext, image: VllmImageDistributionSubject, host_path: NonEmptyStr, snapshot: ModelSnapshotDesired) -> CheckpointVerifyReading {
   match held_image_hub_cli_executor(ctx: ctx, image: image, placement: snapshot_placement_of(snapshot: snapshot)) {
     HeldImageExecutorRefused { cause: c } => CheckpointVerifyUnread { cause: c }
     HeldImageExecutorRead { executor: e, receipt: _ } =>
-      match spark_snapshot_verify_observation(ctx: with_executor_ctx(ctx: ctx, executor: e), verify: model_snapshot_completion_check_argv(snapshot: snapshot)) {
-        AcquisitionVerified => CheckpointVerified
-        AcquisitionAbsent => CheckpointVerifyFailed { cause: "the snapshot is absent" }
-        AcquisitionDigestMismatch => CheckpointVerifyFailed { cause: "hf cache verify did not pass" }
-        AcquisitionProbeFailed { reason: r } => CheckpointVerifyUnread { cause: r as String }
+      match spark_remote_run(ctx: with_executor_ctx(ctx: ctx, executor: e), argv: executor_wrap(executor: e, argv: model_snapshot_completion_check_argv(snapshot: snapshot))) {
+        RemoteUnreachable { cause: c } => CheckpointVerifyUnread { cause: join(["the verify leg did not run: ", c], "") }
+        RemoteRan { exit_code: code, stdout: out, stderr: err } =>
+          match read_instrument(exit_code: code, stdout: out) {
+            InstrumentVerified => CheckpointVerified
+            InstrumentRejectedTheSubject => CheckpointVerifyFailed { cause: join(["hf cache verify exited ", to_string(code), ": ", trim(s: err), " ", trim(s: out)], "") }
+            InstrumentDidNotRun => CheckpointVerifyUnread { cause: join(["the verify instrument never executed (exit ", to_string(code), "): ", trim(s: err)], "") }
+            InstrumentContradictedItself { detail: d } => CheckpointVerifyUnread { cause: join(["the verify contradicted itself: ", d, " (exit ", to_string(code), "): ", trim(s: err)], "") }
+          }
       }
   }
 }
@@ -196,31 +205,14 @@ fn checkpoint_peer_cause(m: CheckpointMaterialization, candidate: HostIdentity, 
     use: fn(t, c, sctx) {
       match checkpoint_verify_with(ctx: sctx, image: m.image, host_path: host_path, snapshot: snapshot) {
         CheckpointVerified => SparkBuildHostWork { receipt: "verified", converged: true }
-        CheckpointVerifyFailed { cause: x } => SparkBuildHostWork { receipt: x, converged: false }
-        CheckpointVerifyUnread { cause: x } => SparkBuildHostWork { receipt: x, converged: false }
+        CheckpointVerifyFailed { cause: x } => SparkBuildHostWork { receipt: join(["its verify rejected the snapshot: ", x], ""), converged: false }
+        CheckpointVerifyUnread { cause: x } => SparkBuildHostWork { receipt: join(["its verify could not be read: ", x], ""), converged: false }
       }
     },
   ) {
-    SparkBuildHostRefused { cause: x } => Present { value: join([candidate as String, ": ", x], "") }
+    SparkBuildHostRefused { cause: x } => Present { value: join([candidate as String, " could not be reached: ", x], "") }
     SparkBuildHostRan { work: w, endpoint: _, executor: _, trust_receipt: _ } => if w.converged { none } else { Present { value: join([candidate as String, ": ", w.receipt], "") } }
   }
-}
-
-type PeerSelection {
-  peer: HostIdentity?
-  causes: List<String>
-}
-
-fn checkpoint_admissible_peer(m: CheckpointMaterialization, target: HostIdentity, host_path: NonEmptyStr, snapshot: ModelSnapshotDesired) -> PeerSelection {
-  fold(filter(fabric_group_hosts(g: m.group), h => !host_identity_eq(a: h, b: target)), init: PeerSelection { peer: none, causes: [] as List<String> }, f: (acc, h) =>
-    match acc.peer {
-      Present { value: _ } => acc
-      Absent =>
-        match checkpoint_peer_cause(m: m, candidate: h, host_path: host_path, snapshot: snapshot) {
-          Absent => PeerSelection { peer: Present { value: h }, causes: acc.causes }
-          Present { value: why } => PeerSelection { peer: none, causes: concat(acc.causes, [why]) }
-        }
-    })
 }
 
 fn cancel_line(c: SparkTransferCancel) -> String {
@@ -265,6 +257,13 @@ fn checkpoint_replicate_after_cancel(m: CheckpointMaterialization, peer: HostIde
   }
 }
 
+// ── THE ROLE IS EXPLICIT AND NOTHING FALLS BACK (operator ruling, 2026-10-03: "eliminate all fallbacks") ───────
+//
+// A checkpoint's seed host is a modeled fact (m.seed). The seed host fetches from the Hub; every other host is a
+// rail replica of the seed and of nothing else. A replica whose seed does not verify REFUSES with the seed's
+// exact cause -- it never fetches from the Hub instead. An own-verify that learned nothing refuses with what it
+// captured. Only an own-verify that RAN and rejected (the snapshot is not held yet) proceeds, to the action the
+// host's explicit role names.
 fn checkpoint_materialize_work(m: CheckpointMaterialization, ctx: SparkMaterializeContext) -> SparkBuildHostWork {
   match checkpoint_snapshot(c: m.checkpoint) {
     Absent => SparkBuildHostWork { receipt: "REFUSED: the checkpoint has no row, so no snapshot subject exists to acquire\n", converged: false }
@@ -274,25 +273,25 @@ fn checkpoint_materialize_work(m: CheckpointMaterialization, ctx: SparkMateriali
         Present { value: host_path } =>
           match checkpoint_verify_with(ctx: ctx, image: m.image, host_path: host_path, snapshot: snapshot) {
             CheckpointVerified => SparkBuildHostWork { receipt: "ALREADY PRESENT and verified on this host; nothing moved\n", converged: true }
-            CheckpointVerifyUnread { cause: c } => checkpoint_acquire(m: m, ctx: ctx, host_path: host_path, snapshot: snapshot, note: join(["this host's own verify was not a pass (", c, "), so the snapshot is acquired; the acquisition re-observes it with its own typed verdicts\n"], ""))
-            CheckpointVerifyFailed { cause: c } => checkpoint_acquire(m: m, ctx: ctx, host_path: host_path, snapshot: snapshot, note: "")
+            CheckpointVerifyUnread { cause: c } => SparkBuildHostWork { receipt: join(["REFUSED: this host's own verify learned nothing: ", c, "\n"], ""), converged: false }
+            CheckpointVerifyFailed { cause: c } => {
+              let note = join(["this host does not hold the snapshot yet (", c, ")\n"], "")
+              if host_identity_eq(a: ctx.host, b: m.seed) {
+                let w = checkpoint_seed_from_hub(m: m, ctx: ctx, host_path: host_path, snapshot: snapshot)
+                SparkBuildHostWork { receipt: join([note, "role: SEED (", m.seed as String, " is this checkpoint's seed host), so it fetches from the Hub\n", w.receipt], ""), converged: w.converged }
+              } else {
+                match checkpoint_peer_cause(m: m, candidate: m.seed, host_path: host_path, snapshot: snapshot) {
+                  Present { value: why } => SparkBuildHostWork { receipt: join([note, "role: REPLICA of seed ", m.seed as String, "\nREFUSED: the seed is not an admissible source, and a replica never fetches from the Hub instead: ", why, "\n"], ""), converged: false }
+                  Absent => {
+                    let w = checkpoint_replicate_from(m: m, peer: m.seed, tctx: ctx, host_path: host_path, snapshot: snapshot)
+                    SparkBuildHostWork { receipt: join([note, "role: REPLICA of seed ", m.seed as String, " (its own verify passed)\n", w.receipt], ""), converged: w.converged }
+                  }
+                }
+              }
+            }
           }
       }
   }
-}
-
-// NOT VERIFIED HERE: a verified peer replicates over the rail, else this host seeds from the Hub. An
-// unreadable own-verify (a partial snapshot mid-transfer reads that way) is not a pass and not evidence of
-// absence, so it goes the same way: the acquisition that follows observes the snapshot again under its own
-// typed verdicts, and the receipt says why it ran.
-fn checkpoint_acquire(m: CheckpointMaterialization, ctx: SparkMaterializeContext, host_path: NonEmptyStr, snapshot: ModelSnapshotDesired, note: String) -> SparkBuildHostWork {
-  let sel = checkpoint_admissible_peer(m: m, target: ctx.host, host_path: host_path, snapshot: snapshot)
-  let peer_lines = join(map(sel.causes, x => join(["  peer not admitted: ", x, "\n"], "")), "")
-  let w = match sel.peer {
-    Present { value: peer } => checkpoint_replicate_from(m: m, peer: peer, tctx: ctx, host_path: host_path, snapshot: snapshot)
-    Absent => checkpoint_seed_from_hub(m: m, ctx: ctx, host_path: host_path, snapshot: snapshot)
-  }
-  SparkBuildHostWork { receipt: join([note, peer_lines, w.receipt], ""), converged: w.converged }
 }
 
 // THE BYTES ARE ON THE HOST, NOT WHERE THE CLI HAPPENED TO PUT THEM (valiant-crab-775, 2026-10-03). A verify
@@ -329,21 +328,37 @@ fn checkpoint_landed_on_host(ctx: SparkMaterializeContext, m: CheckpointMaterial
   }
 }
 
+// EVERY RESTART OF THE TRANSFER UNIT IS COUNTED AND REPORTED (operator ruling, 2026-10-03): Restart=on-failure
+// survives a radio drop, and its cost is that a failure is retried rather than surfaced, so the receipt states
+// systemd's own restart count for the unit; an unread count is said to be unread, never zero.
+fn transfer_restarts_line(ctx: SparkMaterializeContext, snapshot: ModelSnapshotDesired) -> String {
+  match model_snapshot_subject_for(role: SnapshotSeed, snapshot: snapshot, cache_root: spark_hub_cache_root) {
+    Absent => "transfer unit restarts: UNREAD (no subject)\n"
+    Present { value: subject } =>
+      match spark_remote_run(ctx: ctx, argv: ["systemctl", "show", spark_transfer_unit_for(subject: subject) as String, "--property=NRestarts", "--value"]) {
+        RemoteUnreachable { cause: c } => join(["transfer unit restarts: UNREAD (", c, ")\n"], "")
+        RemoteRan { exit_code: code, stdout: out, stderr: err } =>
+          if code != 0 { join(["transfer unit restarts: UNREAD (exit ", to_string(code), ": ", trim(s: err), ")\n"], "") }
+          else { join(["transfer unit restarts: ", trim(s: out), " (each a failure retried by Restart=on-failure)\n"], "") }
+      }
+  }
+}
+
 // THE SEED: no group host verifies this snapshot yet, so this host fetches it from the Hub.
 fn checkpoint_seed_from_hub(m: CheckpointMaterialization, ctx: SparkMaterializeContext, host_path: NonEmptyStr, snapshot: ModelSnapshotDesired) -> SparkBuildHostWork {
   match held_image_hub_cli_executor(ctx: ctx, image: m.image, placement: snapshot_placement_of(snapshot: snapshot)) {
     HeldImageExecutorRefused { cause: c } => SparkBuildHostWork { receipt: join(["REFUSED: ", c, "\n"], ""), converged: false }
     HeldImageExecutorRead { executor: executor, receipt: r } =>
       match spark_materialize_member(ctx: with_executor_ctx(ctx: ctx, executor: executor), role: SnapshotSeed, snapshot: snapshot) {
-        SparkMaterializeRefused { host: _, cause: c } => SparkBuildHostWork { receipt: join([r, "no group peer verifies this snapshot, so this host seeds from the Hub\nREFUSED: ", c as String, "\n"], ""), converged: false }
+        SparkMaterializeRefused { host: _, cause: c } => SparkBuildHostWork { receipt: join([r, "REFUSED: ", c as String, "\n"], ""), converged: false }
         SparkMaterializeUnpinned { host: _ } => SparkBuildHostWork { receipt: join([r, "REFUSED: the snapshot carries no pinned revision\n"], ""), converged: false }
         SparkMaterialized { host: _, outcome: o } =>
           if !acquisition_converged(o: o) {
-            SparkBuildHostWork { receipt: join([r, "no group peer verifies this snapshot, so this host seeds from the Hub\n", acquisition_outcome_line(o: o)], ""), converged: false }
+            SparkBuildHostWork { receipt: join([r, transfer_restarts_line(ctx: ctx, snapshot: snapshot), acquisition_outcome_line(o: o)], ""), converged: false }
           } else {
             match checkpoint_landed_on_host(ctx: ctx, m: m, snapshot: snapshot) {
               Present { value: why } => SparkBuildHostWork { receipt: join([r, acquisition_outcome_line(o: o), "REFUSED: ", why, "\n"], ""), converged: false }
-              Absent => SparkBuildHostWork { receipt: join([r, "no group peer verifies this snapshot, so this host seeds from the Hub\n", acquisition_outcome_line(o: o)], ""), converged: true }
+              Absent => SparkBuildHostWork { receipt: join([r, transfer_restarts_line(ctx: ctx, snapshot: snapshot), acquisition_outcome_line(o: o)], ""), converged: true }
             }
           }
       }
