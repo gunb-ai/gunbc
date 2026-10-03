@@ -69,7 +69,9 @@ fn unimported_bare_provider_standing_label(standing: UnimportedBareProviderStand
 }
 
 // A row as the host reads it: plain fields, every one derived here, so the host decodes values and
-// spells nothing.
+// spells nothing. Judgments branch on `standing` itself. The two Bools are projections that a reader
+// outside a `match` needs: `active` because the edit judgment reads it from a BASE roster, which may
+// predate a cause added here; `rechecked` because the host chooses which files to re-derive.
 type UnimportedBareProviderRowView {
   file: String
   name: String
@@ -77,11 +79,7 @@ type UnimportedBareProviderRowView {
   label: String
   standing: UnimportedBareProviderStanding
   active: Bool
-  imports_fixed: Bool
-  file_deleted: Bool
-  not_a_reference: Bool
-  binds_without_declaration: Bool
-  resolves_in_closure: Bool
+  rechecked: Bool
 }
 
 fn unimported_bare_provider_row_view(row: UnimportedBareProviderDisposition) -> UnimportedBareProviderRowView {
@@ -95,25 +93,14 @@ fn unimported_bare_provider_row_view(row: UnimportedBareProviderDisposition) -> 
       ActiveDebt => true
       Retired { cause: _ } => false
     },
-    imports_fixed: match row.standing {
+    rechecked: match row.standing {
+      ActiveDebt => false
       Retired { cause: ImportsFixed } => true
-      _ => false
-    },
-    file_deleted: match row.standing {
-      Retired { cause: FileDeleted } => true
-      _ => false
-    },
-    not_a_reference: match row.standing {
       Retired { cause: NotAReference } => true
-      _ => false
-    },
-    binds_without_declaration: match row.standing {
       Retired { cause: BindsWithoutDeclaration } => true
-      _ => false
-    },
-    resolves_in_closure: match row.standing {
       Retired { cause: ResolvesInClosure } => true
-      _ => false
+      Retired { cause: FileDeleted } => false
+      Retired { cause: RelocatedOutOfSourceRoots { to: _ } } => false
     },
   }
 }

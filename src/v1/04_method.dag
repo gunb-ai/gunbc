@@ -471,11 +471,36 @@ fn is_kernel_method_name(name: String) -> Bool {
   )
 }
 
+// What a bare call name can bind WITHOUT a declaration, one arm per binding kind, in the order call
+// inference tries them after a declared signature. The kernel-method arm is reached only by a name
+// that is none of the others, so `KernelMethodOnly` is the set admitted by spelling before the
+// receiver's type is known (`gunbc.rung_drop`
+// `unimported_bare_provider_gate_admits_kernel_method_names_untyped`).
+type NonDeclarationBinding =
+    EmptyCollectionConstructor
+  | BuiltinFunction
+  | KernelMethodOnly
+  | DeclarationOnly
+
+fn bare_call_non_declaration_binding(name: String) -> NonDeclarationBinding {
+  if is_empty_map_constructor(name: name) || is_empty_set_constructor(name: name) {
+    EmptyCollectionConstructor
+  } else {
+    if builtin_signature(name: name) != none {
+      BuiltinFunction
+    } else {
+      if is_kernel_method_name(name: name) { KernelMethodOnly } else { DeclarationOnly }
+    }
+  }
+}
+
 fn bare_call_has_non_declaration_binding(name: String) -> Bool {
-  is_empty_map_constructor(name: name)
-    || is_empty_set_constructor(name: name)
-    || builtin_signature(name: name) != none
-    || is_kernel_method_name(name: name)
+  match bare_call_non_declaration_binding(name: name) {
+    DeclarationOnly => false
+    EmptyCollectionConstructor => true
+    BuiltinFunction => true
+    KernelMethodOnly => true
+  }
 }
 
 fn builtin_signature(name: String) -> BuiltinSignature? {
