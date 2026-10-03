@@ -1744,6 +1744,13 @@ fn refinement_declared_carrier(index: SymbolIndex, source_type: Node) -> Optiona
 // unequal and were reported as an arm-type mismatch, while two structurally identical arms
 // compared equal and were reported as unified — both verdicts about node identity, not types.
 
+// A LET BINDER CARRIES NO DECLARED TYPE; ITS TYPE IS ITS VALUE'S. The binding names the binder
+// occurrence (binder_site), and the Bind node that owns it holds the value expression whose facts
+// the fold already derived — so an operand that reads the binder derives the value's type instead
+// of the GroundingNotDerived frontier (gunbc.recurring_failure_mode
+// native_infer_accepts_only_bool_and_int_match_scrutinees: the enrolled variant claims' scrutinees
+// are let-bound). A pattern binder or any other declared-less binding that is not a Bind still
+// falls through to the facts.
 fn infer_branch_operand_resolved_type_in_tree(
   node: Node,
   facts: InferredFacts,
@@ -1759,13 +1766,6 @@ fn infer_branch_operand_resolved_type_in_tree(
           match binding.declared {
             Present { value: declared } => Holds { value: declared }
             Absent =>
-              // A LET BINDER CARRIES NO DECLARED TYPE; ITS TYPE IS ITS VALUE'S. The binding names
-              // the binder occurrence (binder_site), and the Bind node that owns it holds the
-              // value expression whose facts the fold already derived — so an operand that reads
-              // the binder derives the value's type instead of the GroundingNotDerived frontier
-              // (gunbc.recurring_failure_mode native_infer_accepts_only_bool_and_int_match_scrutinees:
-              // the enrolled variant claims' scrutinees are let-bound). A pattern binder or any
-              // other declared-less binding that is not a Bind still falls through to the facts.
               match infer_let_binder_value_type_optional(
                 entries: entries,
                 resolved: resolved,

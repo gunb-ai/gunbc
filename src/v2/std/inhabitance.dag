@@ -81,16 +81,16 @@ fn type_variable_instance_lookup(
   })
 }
 
+// A match's arms against its scrutinee's coproduct: `declared` is the scrutinee's declared
+// coproduct and `produced` is the arms' covered carrier, so the one relation decides coverage --
+// exhaustive exactly when the arms structurally equal the whole coproduct
+// (gunbc.recurring_failure_mode native_infer_accepts_only_bool_and_int_match_scrutinees).
 type DeclaredTypePosition
   = PositionDirectCallArgument
   | PositionDeclaredReturn
   | PositionRecordField { record: Node }
   | PositionLetAnnotation { bound: Node }
   | PositionBinderDefault { default: Node }
-  // A match's arms against its scrutinee's coproduct: `declared` is the scrutinee's declared
-  // coproduct and `produced` is the arms' covered carrier, so the one relation decides coverage --
-  // exhaustive exactly when the arms structurally equal the whole coproduct
-  // (gunbc.recurring_failure_mode native_infer_accepts_only_bool_and_int_match_scrutinees).
   | PositionMatchCoverage { match_node: Node, scrutinee: Node }
 
 // type_variables are the declaring Arrow's type parameters (v2.std.type_binder type_param_names):
