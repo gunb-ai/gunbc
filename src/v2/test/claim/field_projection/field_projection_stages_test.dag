@@ -49,6 +49,7 @@ import v2.test.lens_common.infer_fixture {
   claim_minted,
   claim_minted_atom,
   claim_resolved_call_tree,
+  claim_record_declaration,
   claim_resolved_projection_tree
 }
 import v2.std.diagnostic { outcome_accepted }
@@ -62,8 +63,12 @@ import v2.test.lens_common.resolve_fixture {
   claim_lowered_minted,
   claim_lowered_path,
   claim_lowered_record,
+  claim_closure_declarations,
+  claim_lowered_symbol_index,
+  claim_resolve_context,
   claim_resolve_lowered
 }
+import v2.compiler.resolve { BoundAtRoot, resolve_dotted_path_reading }
 import v2.std.node_query { construct_node }
 
 // WHERE A FIELD PROJECTION STOPS TODAY, measured stage by stage rather than asserted. The normalized
@@ -752,42 +757,42 @@ test fn fps_a_root_bound_data_value_is_not_yet_projectable_holds() -> Bool {
 // first version of this row used `p.Box` inside module `p` and passed, which is why it is written out here
 // -- a same-module two-segment path exercises a different lookup than a cross-module one, so that row was
 // green about a property it never tested. The fixture now carries the subject's actual shape.
-fn fps_two_module_assemble(provider: String, consumer: String) -> Outcome<ResolvedTree> {
-  assemble_program_from_ingest(
-    ingest: Cons {
-      head: DagSourceReadWitness {
-        source: Medium { carried: provider, fidelity: Lossless },
-        artifact: fps_provider_artifact,
-        compilation_unit: ^field_projection_provider_cu,
-        source_root: V2Tree
-      },
-      tail: Cons {
-        head: DagSourceReadWitness {
-          source: Medium { carried: consumer, fidelity: Lossless },
-          artifact: fps_artifact,
-          compilation_unit: ^field_projection_stages_cu,
-          source_root: V2Tree
-        },
-        tail: Empty
+
+
+// AT THE DISCRIMINATOR ITSELF. Resolving the provider and the consumer whole costs 124k eval steps even on
+// supplied lowered modules (measured), so the row goes to the one function its comment names:
+// v2.compiler.resolve resolve_dotted_path_reading, which decides from the head's ScopeBinding whether a
+// dotted path is a declaration name or a field projection. Its namespace is the index the production fill
+// builds from the supplied provider module (v2.test.lens_common.resolve_fixture claim_lowered_symbol_index),
+// and the path is the lowered four-segment `a.b.c.Box`. The head `a` is bound at the root, as a module
+// segment is; the row asserts the reading is a DECLARATION REFERENCE to a.b.c.Box. Its pair is
+// fps_a_frame_binder_is_still_projected_through, which still runs the real path and reds if every dotted
+// path were read as a declaration.
+fn fps_lowered_provider_box() -> ClaimLoweredModule {
+  ClaimLoweredModule {
+    module: [^a, ^b, ^c],
+    members: [Edge { label: Authored { name: ^Box }, target: claim_lowered_record(fields: [ClaimLoweredParam { name: ^tree, type_node: claim_lowered_atom(identity: ^Int, n: 11) }], site: 10) }],
+    records: [^Box],
+    imports: []
+  }
+}
+
+fn fps_qualified_path_reads_as_the_declaration() -> Bool {
+  match claim_lowered_symbol_index(modules: [fps_lowered_provider_box()]) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: index, diagnostics: _ } =>
+      match resolve_dotted_path_reading(
+        ctx: claim_resolve_context(module: [^p], index: index),
+        n: claim_lowered_path(segments: [^a, ^b, ^c, ^Box], n: 50),
+        path: [^a, ^b, ^c, ^Box],
+        head_binding: BoundAtRoot { canonical: ^a },
+        pending: None
+      ) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: read, diagnostics: _ } => declaration_reference_path_optional(node: read) == optional_present(value: [^a, ^b, ^c, ^Box])
       }
-    },
-    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
-    lm: dag_language_model()
-  )
+  }
 }
-
-data fps_provider_artifact: Artifact = Artifact {
-  kind: SourceFile, id: ^fps_provider_artifact, file_path: "src/v2/pilot/fps_provider.dag"
-}
-
-fn fps_qualified_declaration_path_source() -> Outcome<ResolvedTree> {
-  fps_two_module_assemble(
-    provider: "module a.b.c\n\ntype Box {\n  tree: Int\n}\n",
-    consumer: "module p\n\nimport a.b.c { Box }\n\nfn f(b: a.b.c.Box) -> Int {\n  b.tree\n}\n"
-  )
-}
-
-fn fps_qualified_declaration_path_reading() -> FpsReading { fps_reading_of(o: fps_qualified_declaration_path_source()) }
 
 // (1) A QUALIFIED DECLARATION PATH RESOLVES. A four-segment cross-module path names a declaration the
 // corpus carries, so the head segment being bound at root must NOT make the path a projection of a field off
@@ -795,7 +800,7 @@ fn fps_qualified_declaration_path_reading() -> FpsReading { fps_reading_of(o: fp
 // refusal in miniature, and that attribution was falsified -- the eight's actual cause entry anchors a real
 // two-edge projection off a fold-step binder, which resolution never sees. This row stands on the rule.
 test fn fps_a_qualified_declaration_path_resolves_holds() -> Bool {
-  fps_qualified_declaration_path_reading().resolves
+  fps_qualified_path_reads_as_the_declaration()
 }
 
 // (2) AND A FRAME BINDER IS STILL PROJECTED THROUGH. `b.tree` off a parameter is the form the declaration
@@ -825,18 +830,73 @@ test fn fps_a_frame_binder_is_still_projected_through_holds() -> Bool {
 // binder of the pinned subject is deliberately NOT used here: a supplied two-module ingest cannot resolve
 // `List` or `fold` without ingesting their providers, and a plain parameter reaches the same join with
 // nothing else moving.
-fn fps_cross_module_projection_source() -> Outcome<ResolvedTree> {
-  fps_two_module_assemble(
-    provider: "module a.b.c\n\ntype Leg {\n  target: Int\n}\n",
-    consumer: "module p\n\nimport a.b.c { Leg }\n\nfn read(l: Leg) -> Int {\n  l.target\n}\n"
+
+
+// SPLIT AT RESOLVE -> INFER, JOINED BY ONE NAMED RECORD (DESIGN section 3; operator ruling on this lane).
+// Resolving two modules whole costs 124k eval steps even on supplied lowered input, so the cross-module
+// rows go to the step their subject is: v2.compiler.name_resolve closure_declarations_demand, which walks
+// each root and indexes the declarations of every one that resolves (v2.test.lens_common.resolve_fixture
+// claim_closure_declarations). Each RESOLVE row asserts the closure index real resolve builds EQUALS a named
+// record where infer reads it (provenance aside, v2.compiler.infer infer_type_equal_ignoring_provenance);
+// each INFER row hands infer EXACTLY that named record. A supplied record that drifted from what resolve
+// indexes reds the resolve row, so the join is entailed rather than designed.
+//
+// THE PROVIDER IS `q`, ONE SEGMENT, SO THE ONE VARIABLE AGAINST THE SAME-MODULE ROW IS WHICH MODULE DECLARES
+// THE RECORD: q.Leg against p.Leg, equal in length. The four-segment shape is the qualified-path row's subject
+// and stays there.
+fn fps_imported_leg() -> ClaimRecord {
+  ClaimRecord { path: [^q, ^Leg], fields: [fps_field(name: ^target, type_node: fps_int(n: 41))], site: 40 }
+}
+
+fn fps_local_leg() -> ClaimRecord {
+  ClaimRecord { path: [^p, ^Leg], fields: [fps_field(name: ^target, type_node: fps_int(n: 41))], site: 40 }
+}
+
+fn fps_lowered_leg_record() -> Node {
+  claim_lowered_record(fields: [ClaimLoweredParam { name: ^target, type_node: claim_lowered_atom(identity: ^Int, n: 11) }], site: 10)
+}
+
+fn fps_lowered_module(module: QualifiedName, members: List<Edge>, records: List<Symbol>) -> ClaimLoweredModule {
+  ClaimLoweredModule { module: module, members: members, records: records, imports: [] }
+}
+
+fn fps_closure_holds(modules: List<ClaimLoweredModule>, record: ClaimRecord) -> Bool {
+  match claim_closure_declarations(modules: modules) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: index, diagnostics: _ } =>
+      match symbol_index_lookup(index: index, qualified_path: record.path) {
+        Absent => false
+        Present { value: indexed } => infer_type_equal_ignoring_provenance(a: indexed, b: claim_record_declaration(r: record))
+      }
+  }
+}
+
+fn fps_closure_lacks(modules: List<ClaimLoweredModule>, path: QualifiedName) -> Bool {
+  match claim_closure_declarations(modules: modules) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: index, diagnostics: _ } =>
+      match symbol_index_lookup(index: index, qualified_path: path) {
+        Absent => true
+        Present { value: _ } => false
+      }
+  }
+}
+
+// THE RESOLVE HALF OF THE CROSS-MODULE ROW: the provider's record enters the closure index exactly as named.
+test fn fps_an_imported_record_enters_the_closure_index_holds() -> Bool {
+  fps_closure_holds(
+    modules: [fps_lowered_module(module: [^q], members: [Edge { label: Authored { name: ^Leg }, target: fps_lowered_leg_record() }], records: [^Leg])],
+    record: fps_imported_leg()
   )
 }
 
-
-fn fps_cross_module_projection_reading() -> FpsReading { fps_reading_of(o: fps_cross_module_projection_source()) }
+// THE INFER HALF: a projection off a parameter typed by the imported record, with exactly that record indexed.
+fn fps_cross_module_projection_reading() -> FpsReading {
+  fps_supplied_reading(records: [fps_imported_leg()], receiver: declaration_reference_node(qn: [^q, ^Leg], occurrence_id: claim_minted(n: 43)), codomain: fps_int(n: 2), field: ^target)
+}
 fn fps_same_module_projection_reading() -> FpsReading {
   fps_supplied_reading(
-    records: [ClaimRecord { path: [^p, ^Leg], fields: [fps_field(name: ^target, type_node: fps_int(n: 41))], site: 40 }],
+    records: [fps_local_leg()],
     receiver: declaration_reference_node(qn: [^p, ^Leg], occurrence_id: claim_minted(n: 43)),
     codomain: fps_int(n: 2),
     field: ^target
@@ -879,14 +939,30 @@ test fn fps_a_cross_module_record_projection_infers_holds() -> Bool {
 //
 // IT ASSERTS BOTH DIRECTIONS. The unavailable reason must be present AND declares_no_fields must be absent,
 // because the whole defect being repaired was a correct program being told its receiver declares no fields.
-fn fps_unresolvable_provider_source() -> Outcome<ResolvedTree> {
-  fps_two_module_assemble(
-    provider: "module a.b.c\n\ntype Leg {\n  target: Int\n}\n\nfn broken() -> Int {\n  no_such_name_anywhere\n}\n",
-    consumer: "module p\n\nimport a.b.c { Leg }\n\nfn read(l: Leg) -> Int {\n  l.target\n}\n"
+
+// THE RESOLVE HALF: a provider carrying an unresolvable body beside the record is DROPPED from the closure
+// index, so its record is not there to retrieve. Its control is the cross-module resolve row above: the same
+// provider without the broken body does index the record.
+fn fps_lowered_broken_provider() -> ClaimLoweredModule {
+  fps_lowered_module(
+    module: [^q],
+    members: [
+      Edge { label: Authored { name: ^Leg }, target: fps_lowered_leg_record() },
+      Edge { label: Authored { name: ^broken }, target: claim_lowered_function(site: 30, params: [], codomain: claim_lowered_atom(identity: ^Int, n: 31), body: claim_lowered_atom(identity: ^no_such_name_anywhere, n: 32)) }
+    ],
+    records: [^Leg]
   )
 }
 
-fn fps_unresolvable_provider_reading() -> FpsReading { fps_reading_of(o: fps_unresolvable_provider_source()) }
+test fn fps_an_unresolvable_provider_drops_from_the_closure_index_holds() -> Bool {
+  fps_closure_lacks(modules: [fps_lowered_broken_provider()], path: [^q, ^Leg])
+}
+
+// THE INFER HALF: the same projection with the record ABSENT from the index -- exactly what the resolve half
+// shows the closure leaves.
+fn fps_unresolvable_provider_reading() -> FpsReading {
+  fps_supplied_reading(records: [], receiver: declaration_reference_node(qn: [^q, ^Leg], occurrence_id: claim_minted(n: 43)), codomain: fps_int(n: 2), field: ^target)
+}
 
 // Both reason fields are set only on an infer REFUSAL of a resolved program, so an accepted or
 // resolve-refused program answers false here exactly as the inline route did.
@@ -912,17 +988,16 @@ test fn fps_a_scalar_receiver_still_declares_no_fields_holds() -> Bool {
 // the passing control, assembled through the TWO-module ingest with an unrelated provider beside it. If this
 // refuses, the subject is not cross-module retrieval at all -- it is that a multi-root ingest yields an index
 // that answers for nothing, which is a different and simpler defect with a different repair.
-fn fps_same_module_projection_in_two_root_ingest() -> Outcome<ResolvedTree> {
-  fps_two_module_assemble(
-    provider: "module a.b.c\n\ntype Unused {\n  n: Int\n}\n",
-    consumer: "module p\n\ntype Leg {\n  target: Int\n}\n\nfn read(l: Leg) -> Int {\n  l.target\n}\n"
-  )
-}
 
-fn fps_same_module_projection_in_two_root_reading() -> FpsReading {
-  fps_reading_of(o: fps_same_module_projection_in_two_root_ingest())
-}
-
+// THE RESOLVE HALF OF THE MULTI-ROOT DISCRIMINATOR: with an unrelated provider beside it, the consumer's own
+// record is still indexed by the closure exactly as fps_local_leg names it -- the record
+// fps_a_same_module_record_projection_infers hands infer, so the two rows are joined by that one value.
 test fn fps_a_multi_root_ingest_does_not_itself_break_retrieval_holds() -> Bool {
-  fps_same_module_projection_in_two_root_reading().infers
+  fps_closure_holds(
+    modules: [
+      fps_lowered_module(module: [^a, ^b, ^c], members: [Edge { label: Authored { name: ^Unused }, target: claim_lowered_record(fields: [ClaimLoweredParam { name: ^n, type_node: claim_lowered_atom(identity: ^Int, n: 51) }], site: 50) }], records: [^Unused]),
+      fps_lowered_module(module: [^p], members: [Edge { label: Authored { name: ^Leg }, target: fps_lowered_leg_record() }], records: [^Leg])
+    ],
+    record: fps_local_leg()
+  )
 }

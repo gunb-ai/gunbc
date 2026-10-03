@@ -1,8 +1,12 @@
 module v2.test.lens_common.resolve_fixture
 
 import v2.compiler.resolve { ResolvedTree }
-import v2.compiler.name_resolve { Admission, ResolutionSubject, resolve_with_admission_grounded }
-import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree }
+import v2.compiler.name_resolve { Admission, ResolutionSubject, closure_declarations_demand, resolution_context, resolve_with_admission_grounded }
+import v2.compiler.resolve { Namespace, NotDeclaring, ResolveContext, ScopeRoot, empty_namespace }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
+import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, normalized_tree_roots_to_binding_sources }
 import v2.compiler.body_lowering_fold { DeclaredRecord, DeclaredTypeKind, body_lower_callable_arrow }
 import v2.compiler.namespace_graft { namespace_graft_build_body_conj, namespace_graft_fold_spine, namespace_graft_wrap_module_shell }
 import v2.std.arrow_signature { declared_signature }
@@ -162,6 +166,55 @@ fn claim_resolve_lowered(modules: List<ClaimLoweredModule>, subject: QualifiedNa
       admission: Admission { subject: ResolutionSubject { name: subject }, imports: Empty },
       index: claim_lowered_index(modules: modules),
       active_roots: [V2Tree]
+    )
+  })
+}
+
+
+// THE PROVIDERS' DECLARATIONS AS THE PRODUCTION FILL INDEXES THEM: v2.compiler.symbol_index_fill
+// symbol_index_fill_module_roots over the supplied lowered modules, the fill resolve itself starts from
+// (v2.compiler.name_resolve resolution_context). A narrower resolve row reads its namespace from here, so
+// the index it is handed is the one the producer emits for those modules, not a hand-written map.
+fn claim_lowered_symbol_index(modules: List<ClaimLoweredModule>) -> Outcome<SymbolIndex> {
+  bind_outcome(o: claim_lowered_trees(modules: modules), f: fn(roots) {
+    outcome_accepted(value: symbol_index_fill_module_roots(index: empty_symbol_index(), roots: normalized_tree_roots_to_binding_sources(roots: roots)))
+  })
+}
+
+// A RESOLVE CONTEXT FOR ONE NARROW RESOLVE FUNCTION: module `module`, its namespace's index the one above, a
+// root scope over that namespace, the dag language model and the default policy.
+fn claim_resolve_context(module: QualifiedName, index: SymbolIndex) -> ResolveContext {
+  let empty = empty_namespace()
+  let namespace = Namespace {
+    bindings: empty.bindings,
+    canonical_symbols: empty.canonical_symbols,
+    symbol_index: index,
+    module_qn: module,
+    test_code: empty.test_code,
+    declared_in: module,
+    imported_origins: empty.imported_origins
+  }
+  ResolveContext {
+    scope: ScopeRoot { module: namespace },
+    type_scope: ScopeRoot { module: namespace },
+    namespace: namespace,
+    policy: default_name_resolution_policy(),
+    position: Empty,
+    lm: dag_language_model(),
+    under_module_root: false,
+    declaring: NotDeclaring
+  }
+}
+
+// THE CLOSURE INDEX REAL RESOLVE BUILDS over the supplied modules: v2.compiler.name_resolve
+// closure_declarations_demand over a context from the production constructor resolution_context. It walks
+// every root and indexes the declarations of each that resolves, dropping one that refuses -- the step whose
+// output decides whether an imported declaration is retrievable at all.
+fn claim_closure_declarations(modules: List<ClaimLoweredModule>) -> Outcome<SymbolIndex> {
+  bind_outcome(o: claim_lowered_trees(modules: modules), f: fn(roots) {
+    bind_outcome(
+      o: resolution_context(lm: dag_language_model(), roots: roots, index: claim_lowered_index(modules: modules), active_roots: [V2Tree], policy: default_name_resolution_policy()),
+      f: fn(shared) { outcome_accepted(value: closure_declarations_demand(shared: shared).declarations) }
     )
   })
 }
