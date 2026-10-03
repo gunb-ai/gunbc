@@ -112,16 +112,21 @@ type NativeServeWire {
   body: String
 }
 
+// The head binder is re-bound with its type because match-arm binders are not yet typed from the
+// scrutinee (gunbc.rung_drop.match_arm_binder_typing_lost_to_lexical_carrier); untyped, the builtin
+// split over it refuses as not in scope.
 fn native_serve_wire_parse(response: String) -> NativeServeWire? {
   match split(s: response, delimiter: "\r\n\r\n") {
     Cons { head: head, tail: rest } =>
+      let head_text: String = head
+      let head_lines = split(s: head_text, delimiter: "\r\n")
       let status_text = if starts_with(s: head, prefix: "HTTP/1.1 ") && string_length(s: head) >= 12 {
         substring(s: head, start: 9, end: 12)
       } else {
         ""
       }
       match parse_int(s: status_text) {
-        Present { value: status } => NativeServeWire { status: status, head_lines: split(s: head, delimiter: "\r\n"), body: join(rest, "\r\n\r\n") }
+        Present { value: status } => NativeServeWire { status: status, head_lines: head_lines, body: join(rest, "\r\n\r\n") }
         Absent => none
       }
     Empty => none
