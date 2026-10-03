@@ -5,6 +5,7 @@ use self::RealizationGround::*;
 use self::RealizationRefusalCause::*;
 use self::ReferenceIdentityUnavailableCause::*;
 use self::SubtractionRefinement::*;
+use self::TextRepresentation::*;
 use self::TypeDeclarationProvenance::*;
 use self::TypeRealizationDecision::*;
 use self::TypeReferenceIdentity::*;
@@ -32,6 +33,17 @@ pub enum TypeDeclarationProvenance {
     CorpusDeclared { decl_file: String },
     KernelMinted { minted_name: String },
     DeclarationIdentityAbsent,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum TextRepresentation {
+    HostText,
+    CodePointSequence,
+    NotText,
+    TextRepresentationUnidentified,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -275,6 +287,14 @@ pub fn is_dag_cast_domain_type(name: String) -> bool {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct HostText;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CodePointSequence;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NotText;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TextRepresentationUnidentified;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NoResolutionBoundAtReference;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

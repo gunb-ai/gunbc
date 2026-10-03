@@ -1,5 +1,5 @@
 module v2.extdeps.languages.dag
-import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
 import v2.std.model_core { bool_model_core }
 import v2.std.language_model { LanguageModel }
 
@@ -1431,21 +1431,33 @@ fn dag_grammar_multiplicative_expr_helper() -> GrammarExpr {
 // prefix (negation), and this grammar carries no statement terminator, so `x` then a line `-1` could
 // be `x - 1` or two statements; neither reading is safe to pick silently. The seed refuses it
 // (v1.compiler.parse is_ambiguous_prefix_infix_newline_boundary, whose dual-role set is exactly
-// `-`), and so does this row: the refusal alternative is tried FIRST at every additive
-// continuation, it matches only a `-` preceded by a line break (v2.std.grammar AfterLineBreak, read
-// from the stream's layout), and where it matches the parse refuses at the `-` with
-// NewlineBeforeDualRoleOperator. A same-line `-` falls through to subtraction. Every expression
-// reaches this continuation, so the rule holds for every statement form -- including a block-headed
-// statement, which is an operand since block forms are primaries of binary_expr (#12817).
+// `-`), and so does this row: where a `-` preceded by a line break (v2.std.grammar AfterLineBreak,
+// read from the stream's layout) stands at an additive continuation, the parse refuses at the `-`
+// with NewlineBeforeDualRoleOperator. A same-line `-` is subtraction. Every expression reaches this
+// continuation, so the rule holds for every statement form -- including a block-headed statement,
+// which is an operand since block forms are primaries of binary_expr (#12817).
+// THE REFUSAL IS A GUARD, NOT AN ALTERNATIVE. Offered as a choice alternative beside subtraction,
+// both arms began with `-` and only their order kept them apart -- the overlap the zero-ambiguity
+// ruling (2026-10-02) forbids, inlined once per expansion of this helper. As the not-predicate of a
+// refusing match it sits in SEQUENCE before the operator: it consumes nothing, it raises the
+// refusal where the line-break `-` stands (a refusal survives the predicate, v2.compiler.parse
+// parse_expr_not_predicate), and elsewhere it admits, so the continuation is one route and no
+// choice remains here to overlap.
+fn dag_grammar_additive_newline_minus_guard() -> GrammarExpr {
+  grammar_expr_not_predicate(
+    element: grammar_expr_refuse_on_match(
+      element: grammar_expr_after_line_break(element: dag_grammar_terminal(token_class: ^dag_token_minus)),
+      reason: NewlineBeforeDualRoleOperator
+    )
+  )
+}
+
 fn dag_grammar_additive_expr_helper() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_multiplicative_expr_helper(),
     right: dag_grammar_repeat(
-      element: dag_grammar_choice(
-        left: grammar_expr_refuse_on_match(
-          element: grammar_expr_after_line_break(element: dag_grammar_terminal(token_class: ^dag_token_minus)),
-          reason: NewlineBeforeDualRoleOperator
-        ),
+      element: dag_grammar_sequence(
+        left: dag_grammar_additive_newline_minus_guard(),
         right: dag_grammar_sequence(
           left: dag_grammar_additive_op_choice(),
           right: dag_grammar_multiplicative_expr_helper()
@@ -2118,9 +2130,10 @@ fn dag_grammar_type_alias_rhs_lead_expr() -> GrammarExpr {
 //
 // PARSE ADMISSION IS NOT THE SEALING PROPERTY. Declared drop:
 // gunbc.rung_drop.g0_type_decl_modifier_parse_without_sealing_property. v1 mints
-// only sole_constructor via parsed_sole_constructor_properties; G0 only consumes
-// the tokens so the native door can continue. nominal_opaque is dropped in v1 and
-// mints nothing.
+// only sole_constructor via parsed_sole_constructor_properties. On the native route the
+// slot is read back off the parse by v2.compiler.body_lowering_fold
+// body_lower_type_decl_declared_modifiers and carried on NormalizedTree
+// type_declaration_modifiers; carrying it enforces nothing.
 fn dag_grammar_type_decl_modifiers_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_optional(
@@ -5069,6 +5082,20 @@ fn dag_arrow_domain_conj_node() -> Node {
   }
 }
 
+// AN OPERAND THAT NAMES A PARAMETER IS A LEXICAL REFERENCE, and resolve records its binding by the
+// reference's own occurrence (v2.compiler.resolve resolve_lexical_reference), refusing a synthetic
+// one as resolve_reason_lexical_reference_unkeyed. So the fixture's two operands carry MINTED
+// occurrences, as normalize's output would, at distinct ids by position (left 1, right 2): the
+// swapped variant swaps the names, not the ids. Content hash does not read occurrence ids, so every
+// hash-keyed reader of these fixtures is unchanged.
+fn dag_fixture_operand_reference_node(binding: Symbol, occurrence: Int) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: binding } },
+    children: [],
+    occurrence_id: OccurrenceMinted { id: OccurrenceId { value: occurrence } }
+  }
+}
+
 fn dag_binary_body_node(operator: Node, left_binding: Symbol, right_binding: Symbol) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
@@ -5076,11 +5103,11 @@ fn dag_binary_body_node(operator: Node, left_binding: Symbol, right_binding: Sym
       Edge { label: Positional, target: operator },
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: left_binding)
+        target: dag_fixture_operand_reference_node(binding: left_binding, occurrence: 1)
       },
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: right_binding)
+        target: dag_fixture_operand_reference_node(binding: right_binding, occurrence: 2)
       }
     ],
     occurrence_id: OccurrenceSynthetic
