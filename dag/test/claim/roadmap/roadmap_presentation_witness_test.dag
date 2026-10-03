@@ -1,5 +1,6 @@
 module test.claim.roadmap_presentation_witness
 
+import gunbc.roadmap.roadmap_project { membership_index }
 import gunbc.roadmap.roadmap_readiness { ReadinessGap, GapDependencies, GapCentering }
 import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx_derivable_wi, fx_ticket_row, fx_ticket_wi, fx_superseded, fx_signed, fx_sign }
 
@@ -998,7 +999,7 @@ fn fx_ws_rendered_ids(ws: DailyWorkspaceView) -> List<String> {
 fn fx_project_tree(rows: List<WorkRowView>, edges: List<RoadmapEdge>, node_id: String) -> ProjectTreeView {
   project_tree_view(
     row: fx_row_of(rows: rows, node_id: node_id),
-    rows: rows, edges: edges, members: [], depth: 1, fuel: count(rows), memberships: fixture_nesting_relation(edges: edges))
+    rows: rows, edges: edges, members: [], depth: 1, fuel: count(rows), memberships: membership_index(memberships: fixture_nesting_relation(edges: edges)))
 }
 
 // THE DIRECTION WALL: the project's display children are the rows in the PARENT position of its
@@ -1007,11 +1008,11 @@ fn fx_project_tree(rows: List<WorkRowView>, edges: List<RoadmapEdge>, node_id: S
 test fn witness_project_tasks_are_prerequisites() -> Bool {
   let rows = fx_hier_rows(activity_for_open: NoActiveWork, standing_for_open: none)
   let edges = fx_hier_edges()
-  map(project_task_rows(rows: rows, edges: edges, members: [], node_id: "hier-project", memberships: fixture_nesting_relation(edges: edges)), r => r.node_id)
+  map(project_task_rows(rows: rows, edges: edges, members: [], node_id: "hier-project", memberships: membership_index(memberships: fixture_nesting_relation(edges: edges))), r => r.node_id)
     == ["hier-task-done", "hier-task-superseded", "hier-task-review", "hier-task-open"]
-    && count(project_task_rows(rows: rows, edges: edges, members: [], node_id: "hier-task-open", memberships: fixture_nesting_relation(edges: edges))) == 0
-    && row_is_project(rows: rows, edges: edges, members: [], row: fx_row_of(rows: rows, node_id: "hier-project"), memberships: fixture_nesting_relation(edges: edges))
-    && !row_is_project(rows: rows, edges: edges, members: [], row: fx_row_of(rows: rows, node_id: "hier-task-open"), memberships: fixture_nesting_relation(edges: edges))
+    && count(project_task_rows(rows: rows, edges: edges, members: [], node_id: "hier-task-open", memberships: membership_index(memberships: fixture_nesting_relation(edges: edges)))) == 0
+    && row_is_project(rows: rows, edges: edges, members: [], row: fx_row_of(rows: rows, node_id: "hier-project"), memberships: membership_index(memberships: fixture_nesting_relation(edges: edges)))
+    && !row_is_project(rows: rows, edges: edges, members: [], row: fx_row_of(rows: rows, node_id: "hier-task-open"), memberships: membership_index(memberships: fixture_nesting_relation(edges: edges)))
 }
 
 // PROGRESS COUNTS CLOSURE, NEVER IMPLEMENTATION EVIDENCE: closed = accepted or superseded
@@ -1119,10 +1120,10 @@ test fn witness_shared_prerequisite_uses_only_authored_nesting() -> Bool {
   let edges = [gunbc.roadmap_authority.edge(child: "hier-p2", parent: "hier-shared"), gunbc.roadmap_authority.edge(child: "hier-p1", parent: "hier-shared")]
   let nesting = [gunbc.roadmap_nesting.RoadmapMembership { member: "hier-shared", project: "hier-p1", contribution: "fixture contribution" }]
   let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
-  row_display_parent_id(rows: rows, edges: edges, members: [], node_id: "hier-shared", memberships: nesting) == Present { value: "hier-p1" }
-    && row_display_parent_id(rows: rows, edges: edges, members: [], node_id: "hier-shared", memberships: []) == none
-    && count(project_task_rows(rows: rows, edges: edges, members: [], node_id: "hier-p2", memberships: nesting)) == 0
-    && map(project_task_rows(rows: rows, edges: edges, members: [], node_id: "hier-p1", memberships: nesting), r => r.node_id) == ["hier-shared"]
+  row_display_parent_id(rows: rows, edges: edges, members: [], node_id: "hier-shared", memberships: membership_index(memberships: nesting)) == Present { value: "hier-p1" }
+    && row_display_parent_id(rows: rows, edges: edges, members: [], node_id: "hier-shared", memberships: membership_index(memberships: [])) == none
+    && count(project_task_rows(rows: rows, edges: edges, members: [], node_id: "hier-p2", memberships: membership_index(memberships: nesting))) == 0
+    && map(project_task_rows(rows: rows, edges: edges, members: [], node_id: "hier-p1", memberships: membership_index(memberships: nesting)), r => r.node_id) == ["hier-shared"]
     && count(fx_ws_rendered_ids(ws: daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [], memberships: nesting)) |> filter(id => id == "hier-shared")) == 1
 }
 
@@ -1335,7 +1336,7 @@ test fn witness_family_member_never_nests() -> Bool {
   let ids = fx_ws_rendered_ids(ws: ws)
   count(ids) == 2
     && all(rows, r => count(ids |> filter(i => i == r.node_id)) == 1)
-    && !row_is_project(rows: rows, edges: edges, members: members, row: fx_row_of(rows: rows, node_id: "hier-fam-project"), memberships: fixture_nesting_relation(edges: edges))
+    && !row_is_project(rows: rows, edges: edges, members: members, row: fx_row_of(rows: rows, node_id: "hier-fam-project"), memberships: membership_index(memberships: fixture_nesting_relation(edges: edges)))
     && (match ws.not_ready.first() {
       Present { value: e } => match e {
         BandRow { row } => row.node_id == "hier-fam-project"
@@ -1582,8 +1583,8 @@ test fn witness_non_primary_child_is_a_link_not_a_member() -> Bool {
   ]
   let nesting = [gunbc.roadmap_nesting.RoadmapMembership { member: "hier-sp-m", project: "hier-sp-p2", contribution: "fixture contribution" }, gunbc.roadmap_nesting.RoadmapMembership { member: "hier-sp-t", project: "hier-sp-m", contribution: "fixture contribution" }]
   let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
-  let p1 = project_tree_view(row: fx_row_of(rows: rows, node_id: "hier-sp-p1"), rows: rows, edges: edges, members: [], depth: 1, fuel: count(rows), memberships: nesting)
-  let p2 = project_tree_view(row: fx_row_of(rows: rows, node_id: "hier-sp-p2"), rows: rows, edges: edges, members: [], depth: 1, fuel: count(rows), memberships: nesting)
+  let p1 = project_tree_view(row: fx_row_of(rows: rows, node_id: "hier-sp-p1"), rows: rows, edges: edges, members: [], depth: 1, fuel: count(rows), memberships: membership_index(memberships: nesting))
+  let p2 = project_tree_view(row: fx_row_of(rows: rows, node_id: "hier-sp-p2"), rows: rows, edges: edges, members: [], depth: 1, fuel: count(rows), memberships: membership_index(memberships: nesting))
   map(p1.linked, r => r.node_id) == ["hier-sp-m"]
     && count(p2.linked) == 0
     && p1.total_count == 0

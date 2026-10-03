@@ -40,6 +40,7 @@ import extdeps.languages.json.emit {
   JsonString,
   JsonNumber,
   JsonNull,
+  JsonBool,
   json_kv,
   json_array,
   json_object,
@@ -90,6 +91,7 @@ import gunbc.scm.json_member {
   MemberLookupFailed,
   MemberString,
   MemberArray,
+  MemberObject,
   MemberFailed,
   read_member,
   read_member_value,
@@ -2265,13 +2267,21 @@ fn read_pending_parent_reference(value: JsonValue) -> PendingParentRead {
     MemberValue { value: found } =>
       match found {
         JsonNull => PendingParentRead { reference: none }
-        _ => match repository_commit_ref_from_json(value: found) {
-          Present { value: reference } => PendingParentRead { reference: Present { value: reference } }
-          Absent => PendingParentRefused {
-            cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "ancestry" } }
-          }
-        }
+        JsonBool { value: _ } => pending_parent_of_declared_reference(found: found)
+        JsonNumber { lexeme: _ } => pending_parent_of_declared_reference(found: found)
+        JsonString { value: _ } => pending_parent_of_declared_reference(found: found)
+        JsonArray { elements: _ } => pending_parent_of_declared_reference(found: found)
+        JsonObject { members: _ } => pending_parent_of_declared_reference(found: found)
       }
+  }
+}
+
+fn pending_parent_of_declared_reference(found: JsonValue) -> PendingParentRead {
+  match repository_commit_ref_from_json(value: found) {
+    Present { value: reference } => PendingParentRead { reference: Present { value: reference } }
+    Absent => PendingParentRefused {
+      cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "ancestry" } }
+    }
   }
 }
 
@@ -2297,15 +2307,23 @@ fn read_pending_integration(
         MemberValue { value: found } =>
           match found {
             JsonNull => PendingIntegrationRead { integration: NoSquashIntegration }
-            _ => match repository_commit_ref_from_json(value: found) {
-              Present { value: reference } =>
-                PendingIntegrationRead { integration: SquashIntegrated { source: reference } }
-              Absent => PendingIntegrationRefused {
-                cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "integration" } }
-              }
-            }
+            JsonBool { value: _ } => pending_integration_of_declared_reference(found: found)
+            JsonNumber { lexeme: _ } => pending_integration_of_declared_reference(found: found)
+            JsonString { value: _ } => pending_integration_of_declared_reference(found: found)
+            JsonArray { elements: _ } => pending_integration_of_declared_reference(found: found)
+            JsonObject { members: _ } => pending_integration_of_declared_reference(found: found)
           }
       }
+  }
+}
+
+fn pending_integration_of_declared_reference(found: JsonValue) -> PendingIntegrationRead {
+  match repository_commit_ref_from_json(value: found) {
+    Present { value: reference } =>
+      PendingIntegrationRead { integration: SquashIntegrated { source: reference } }
+    Absent => PendingIntegrationRefused {
+      cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "integration" } }
+    }
   }
 }
 
@@ -2381,11 +2399,15 @@ fn decode_commit_members_after_reference(
                           }
                       }
                   }
-                _ =>
+                MemberArray { elements: _ } =>
+                  CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "message" } } } }
+                MemberObject { value: _ } =>
                   CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "message" } } } }
               }
           }
-        _ =>
+        MemberString { value: _ } =>
+          CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "root" } } } }
+        MemberArray { elements: _ } =>
           CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "root" } } } }
       }
 }
@@ -2472,7 +2494,8 @@ fn decode_repository(v: JsonValue) -> RepositoryDecodeOutcome {
         RepositoryFormatV5 => decode_repository_v5(v: v)
         RepositoryFormatV4 => decode_repository_v4(v: v)
       }
-    _ => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "format" } } }
+    MemberArray { elements: _ } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "format" } } }
+    MemberObject { value: _ } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "format" } } }
   }
 }
 
@@ -2565,7 +2588,15 @@ fn shard_digest_step(acc: ShardDigestRead, value: JsonValue) -> ShardDigestRead 
       match value {
         JsonString { value: digest } =>
           ShardDigestsRead { digests: concat(digests, [digest]) }
-        _ =>
+        JsonNull =>
+          ShardDigestsRefused { reason: "object_shards carries a non-string member" }
+        JsonBool { value: _ } =>
+          ShardDigestsRefused { reason: "object_shards carries a non-string member" }
+        JsonNumber { lexeme: _ } =>
+          ShardDigestsRefused { reason: "object_shards carries a non-string member" }
+        JsonArray { elements: _ } =>
+          ShardDigestsRefused { reason: "object_shards carries a non-string member" }
+        JsonObject { members: _ } =>
           ShardDigestsRefused { reason: "object_shards carries a non-string member" }
       }
   }
@@ -2603,14 +2634,19 @@ fn decode_repository_v7_index(v: JsonValue) -> RepositoryShardedIndexDecode {
                       index: RepositoryShardedIndex { document: v, shard_digests: digests },
                     }
                 }
-              _ =>
+              MemberString { value: _ } =>
+                ShardedIndexRefused {
+                  cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "object_shards" } },
+                }
+              MemberObject { value: _ } =>
                 ShardedIndexRefused {
                   cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "object_shards" } },
                 }
             }
         }
       }
-    _ => ShardedIndexRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "identity_rule" } } }
+    MemberArray { elements: _ } => ShardedIndexRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "identity_rule" } } }
+    MemberObject { value: _ } => ShardedIndexRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "identity_rule" } } }
   }
 }
 
@@ -2656,7 +2692,8 @@ fn decode_repository_versioned(
           Absent => decode_repository_body(v: v, policy: policy, commit_policy: commit_policy)
         }
       }
-    _ => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "identity_rule" } } }
+    MemberArray { elements: _ } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "identity_rule" } } }
+    MemberObject { value: _ } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "identity_rule" } } }
   }
 }
 
@@ -2740,7 +2777,8 @@ fn decode_repository_body_with_allocator(
               )
           }
       }
-    _ => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "objects" } } }
+    MemberString { value: _ } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "objects" } } }
+    MemberObject { value: _ } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "objects" } } }
   }
 }
 
@@ -2773,18 +2811,26 @@ fn decode_repository_checkout(
     MemberValue { value: found } =>
       match found {
         JsonNull => CheckoutSelectionDecoded { selected: none }
-        _ => match repository_commit_ref_from_json(value: found) {
-          Absent => CheckoutSelectionRefused {
-            cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "checked_out" } }
-          }
-          Present { value: reference } =>
-            match commit_at_reference(commits: commits, reference: reference) {
-              Absent =>
-                CheckoutSelectionRefused { cause: RepositoryCheckoutReferenceUnresolved { reference: reference } }
-              Present { value: _ } =>
-                CheckoutSelectionDecoded { selected: Present { value: reference } }
-            }
-        }
+        JsonBool { value: _ } => checkout_selection_of_declared_reference(found: found, commits: commits)
+        JsonNumber { lexeme: _ } => checkout_selection_of_declared_reference(found: found, commits: commits)
+        JsonString { value: _ } => checkout_selection_of_declared_reference(found: found, commits: commits)
+        JsonArray { elements: _ } => checkout_selection_of_declared_reference(found: found, commits: commits)
+        JsonObject { members: _ } => checkout_selection_of_declared_reference(found: found, commits: commits)
+      }
+  }
+}
+
+fn checkout_selection_of_declared_reference(found: JsonValue, commits: List<RepositoryCommit>) -> CheckoutSelectionDecode {
+  match repository_commit_ref_from_json(value: found) {
+    Absent => CheckoutSelectionRefused {
+      cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "checked_out" } }
+    }
+    Present { value: reference } =>
+      match commit_at_reference(commits: commits, reference: reference) {
+        Absent =>
+          CheckoutSelectionRefused { cause: RepositoryCheckoutReferenceUnresolved { reference: reference } }
+        Present { value: _ } =>
+          CheckoutSelectionDecoded { selected: Present { value: reference } }
       }
   }
 }
@@ -2812,7 +2858,11 @@ fn decode_repository_stage(
         MemberValue { value: found } =>
           match found {
             JsonNull => StagedDecoded { staged: none }
-            _ => decode_declared_stage(store: store, positions: positions, found: found)
+            JsonBool { value: _ } => decode_declared_stage(store: store, positions: positions, found: found)
+            JsonNumber { lexeme: _ } => decode_declared_stage(store: store, positions: positions, found: found)
+            JsonString { value: _ } => decode_declared_stage(store: store, positions: positions, found: found)
+            JsonArray { elements: _ } => decode_declared_stage(store: store, positions: positions, found: found)
+            JsonObject { members: _ } => decode_declared_stage(store: store, positions: positions, found: found)
           }
       }
   }
@@ -2950,7 +3000,8 @@ fn decode_repository_body_with_store(
                           }
                       }
                   }
-                _ => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "commits" } } }
+                MemberString { value: _ } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "commits" } } }
+                MemberObject { value: _ } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "commits" } } }
               }
               }
               }

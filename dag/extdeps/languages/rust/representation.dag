@@ -2,7 +2,7 @@ module extdeps.languages.rust.representation
 
 import std.types { List, String, Bool, NonEmptyStr }
 import std.coercion { TypeCheckpoint }
-import std.target_representation { RepresentationSpelling, SourceTypeTargetBinding }
+import std.target_representation { RepresentationSpelling, SourceTypeTargetBinding, RepresentationValue }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -113,3 +113,11 @@ fn rust_exact_type_checkpoint(binding: SourceTypeTargetBinding<RustRepresentatio
     Absent => none
   }
 }
+
+// THE VALUES A REPRESENTATION HAS, spelled, where a source coproduct's arms realize onto them. Target
+// facts only, naming no source declaration: the Rust Reference (types, "Boolean type") gives `bool`
+// exactly two values, `true` and `false`. Which source arm means which value is the corpus's fact
+// (gunbc.rust_source_type_bindings rust_source_variant_value_rows).
+data rust_bool_true_value: RepresentationValue<RustRepresentation> = RepresentationValue { representation: RustBool, value_spelling: "true" as NonEmptyStr }
+data rust_bool_false_value: RepresentationValue<RustRepresentation> = RepresentationValue { representation: RustBool, value_spelling: "false" as NonEmptyStr }
+data rust_representation_values: List<RepresentationValue<RustRepresentation>> = [rust_bool_true_value, rust_bool_false_value]

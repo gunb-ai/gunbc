@@ -70,6 +70,10 @@ type RealizationMeasureEffect
       subject: ContentHash
       work_shape: String
     }
+  | ObserveThreadCpuAtSubject {
+      subject: ContentHash
+      work_shape: String
+    }
 
 // THE OBSERVATION, TYPED SO ABSENCE CANNOT READ AS A QUANTITY. A residency reading either holds a
 // byte count or names why it could not be taken; there is no arm carrying a number the realization
@@ -127,6 +131,16 @@ type NativeResidencySample {
 // reading is neither calendar time nor identity material. The native-selected-witness bundle
 // receipt uses this seam to compare the same selected population through interpreter and native
 // execution.
+
+// ObserveThreadCpuAtSubject realization seam: observed_thread_cpu_nanos(boundary) reads the calling
+// thread's CPU time (extdeps.posix.clock_gettime ClockThreadCputimeId). ELAPSED AND CPU ARE
+// DIFFERENT QUESTIONS, the same way peak and current residency are: elapsed answers `how long did
+// the subject take on this host`, CPU answers `how much work did the subject itself perform`. Only
+// the second is a property of the subject -- an elapsed span also contains every interval the host
+// descheduled the thread -- so a VERDICT over a partition of a thread's own work (the native
+// driver's std.compiler_entry native_driver_cost_account) is judged on CPU, and elapsed stays an
+// observation beside it. A host without the clock REFUSES; substituting the monotonic reading would
+// hand the verdict back to host load.
 
 // HAND-RUST GATE explicit deferral. The observed_monotonic_nanos Instant bridge in
 // v1_interpreter.rs is a bounded seed-retained realization of this modeled ObserveElapsedAtSubject

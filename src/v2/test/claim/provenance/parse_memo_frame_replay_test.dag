@@ -111,6 +111,7 @@ fn parse_memo_frame_replay_loci(run: ParseMemoFrameReplayRun) -> Optional<List<O
               }
             OccurrenceSynthetic => acc
             OccurrenceProjected { id: _, caused_by: _ } => acc
+            OccurrencePending { caused_by: _ } => acc
           }
       }
     }

@@ -1,6 +1,6 @@
 module extdeps.oasis.mqtt
 
-import std.types { NonEmptyStr, Bool, Port }
+import std.types { NonEmptyStr, Bool, Port, brand }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }

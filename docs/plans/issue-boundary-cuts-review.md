@@ -57,27 +57,14 @@ retain their evidence. Broad protected-storage cutover remains in the held alloc
 
 ## Reproducing the narrow controls
 
-Use the existing pinned binary (`sha256 c0d15e5f08605ec7b361153bcfbf3a8f4b9acda48ab85a98607d05a306fd1771`).
-`tools/tests/dag_validation_closure.py` creates byte-identical import closures and a source-hash
-manifest under `target/`. It does not edit the imported modules.
-
-```
-python3 tools/tests/issue_command_wet.py
-python3 tools/tests/dag_validation_closure.py test.manual.issue_assignment_client --output target/issue-sort-validation
-systemd-run --user --scope -p MemoryMax=6G -p MemorySwapMax=0 --quiet ./target/release/gunbc run --source-root target/issue-sort-validation --entry target/issue-sort-validation/test.manual.issue_assignment_client.dag --function write_issue_sort_script --arg path=/tmp/issue-sort-script.js
-CHROMIUM_EXECUTABLE=/home/briansrls/.cache/ms-playwright/chromium-1217/chrome-linux/chrome /tmp/pwenv/bin/python tools/tests/issue_sort_browser_control.py
-```
-
-The sort browser control can also load `/tmp/issue-sort-style.css`; validation used the stylesheet
-read from the existing served page. This branch changes no stylesheet bytes, so no CSS parity pin
-was changed. It uses fixture progress observations; it does not claim those example rows are
-currently completed in production.
-
-The assignment browser control uses the same emitter entry's `write_assignment_client_script`
-function and `/tmp/issue-assignment-script.js`, then
-`tools/tests/issue_assignment_browser_control.py`. The native form control is
-`tools/tests/issue_form_browser_control.py`, after creating the
-`test.claim.http.form_urlencoded_witness_test` closure at `target/form-codec-validation`.
+Each control is a `.dag` entry, run with `gunbc run --source-root dag --source-root src/v2
+--entry <entry> --claim-run`. The Git CAS/race/replay control is
+`test.manual.issue_command_wet`. The emitted clients come from `test.manual.issue_assignment_client`
+(`write_issue_sort_script`, `write_assignment_client_script`). The form codec is
+`test.claim.http.form_urlencoded_witness_test`. The Python browser drivers and closure copier that
+were used locally had no `.dag` authority and no consumer, so they were removed rather than landed
+as unmodeled harnesses (DESIGN §6). The browser-side controls have no committed instrument until
+they are modeled.
 
 ## Final local results
 
@@ -88,8 +75,8 @@ function and `/tmp/issue-assignment-script.js`, then
 - Actual Git CAS/race/replay commands: PASS. Native Chromium form → DAG decoder: PASS.
 - Emitted assignment retry client: PASS. Emitted project-focus/sort client with served CSS: PASS.
 
-[Retained logs and hashes](receipts/issue-boundary-cuts-2026-09-28/focused-results.json)
-record the boundaries above. The late detail-parameter forwarding and whitespace cleanup are
+These results are re-derived by the entries named above; the transcribed logs are not committed
+(DESIGN §6: name the instrument, never transcribe its output). The late detail-parameter forwarding and whitespace cleanup are
 small follow-ups to the executed page snapshot; they do not change the default served inputs.
 
 The ordinary push was rejected by `.githooks/pre-push`: inherited Rust formatting drift at

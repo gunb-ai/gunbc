@@ -1,7 +1,7 @@
 module v2.compiler.self_host.closure_emission
 
 import std.algebra { Cons, Empty, FreeMonoid }
-import std.occurrence_identity { OccurrenceIdAllocator, occurrence_id_allocator_initial }
+import std.occurrence_identity { OccurrenceIdAllocator, occurrence_id_allocator_initial, scoped_occurrence_allocator }
 import extdeps.languages.json.emit {
   JsonKeyValue,
   JsonValue,
@@ -18,7 +18,7 @@ import v2.compiler.name_resolve {
   validate_module_roots
 }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
-import v2.compiler.normalize { normalize, normalize_census }
+import v2.compiler.normalize { normalize_census, normalize_scoped }
 import v2.compiler.normalized_tree {
   CensusTree,
   NormalizedTree,
@@ -69,7 +69,7 @@ import v2.std.diagnostic {
 import v2.std.language_model { LanguageModel }
 import v2.std.lens_verdict { lens_verdict_diagnostic_locus_text_in_spans }
 import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol, symbol_lexeme }
+import v2.std.node { Node, Symbol, content_hash, symbol_lexeme }
 import v2.std.program_segment { partition_boundary_fail_closed, program_segment_whole_program }
 import v2.std.provenance { SpanIndex, span_index_empty, span_index_merge }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
@@ -120,9 +120,16 @@ type ClosureIngestFile {
   source_root: SourceRootRef
 }
 
+// `alloc` is the ingest's allocator mark after the last file it parsed. Every member is normalized
+// from it (closure_member_for_fold), so no projected occurrence a member's lowering allocates can
+// reuse an authored id of ANY file in the ingest -- the ingest merges its span indexes, and a reused
+// id would resolve to another file's location. Members are normalized independently, so their
+// projected ids may repeat across members; each member states their cause in its own tree's scope,
+// and a projected id carries no span to collide on.
 type ClosureIngest {
   files: FreeMonoid<ClosureIngestFile>
   index: SourceRootIndex
+  alloc: OccurrenceIdAllocator
 }
 
 // ONE FILE THE CENSUS COULD NOT READ, carried whole: its path and its located chain. The census
@@ -224,7 +231,8 @@ fn closure_ingest_step(
                     census: census,
                     source_root: read.source_root
                   }),
-                  index: source_root_index_insert(index: acc.index, module: module_qn, root: read.source_root)
+                  index: source_root_index_insert(index: acc.index, module: module_qn, root: read.source_root),
+                  alloc: artifact.alloc
                 })
               }
             }
@@ -255,7 +263,7 @@ fn closure_ingest(ingest: SourceRootIngest, lm: LanguageModel) -> ClosureCensus 
         state: fold_list(
           xs: ingest,
           empty: ClosureIngestState {
-            ingest: ClosureIngest { files: Empty, index: source_root_index_empty() },
+            ingest: ClosureIngest { files: Empty, index: source_root_index_empty(), alloc: occurrence_id_allocator_initial() },
             refusals: Empty,
             alloc: occurrence_id_allocator_initial(),
             spans: span_index_empty()
@@ -345,6 +353,18 @@ fn closure_resolve_member(
   )
 }
 
+// A MEMBER NORMALIZED FROM THE INGEST'S FINAL ALLOCATOR (see ClosureIngest `alloc`), its projected
+// occurrences scoped by the member tree's own structural digest.
+fn closure_member_normalized(file: ClosureIngestFile, ingested: ClosureIngest) -> Outcome<NormalizedTree> {
+  match normalize_scoped(
+    parse_tree: file.parse_tree,
+    allocator: scoped_occurrence_allocator(alloc: ingested.alloc, scope: content_hash(n: file.parse_tree))
+  ) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: scoped, diagnostics: d } => Accepted { value: scoped.tree, diagnostics: d }
+  }
+}
+
 fn closure_member_for_fold(
   lm: LanguageModel,
   ingested: ClosureIngest,
@@ -360,7 +380,7 @@ fn closure_member_for_fold(
     ),
     f: fn(file) {
       bind_outcome(
-        o: normalize(parse_tree: file.parse_tree),
+        o: closure_member_normalized(file: file, ingested: ingested),
         f: fn(tree) {
           bind_outcome(
             o: closure_resolve_member(

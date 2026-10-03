@@ -8,7 +8,8 @@ import v2.std.algebra { Cons, Empty, filter, length }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
 import v2.workflow.floor_terminal_ledger {
   ClaimAttemptTerminal, ClaimExpectation, ExpectedToHold,
-  ClaimTerminalRow, ClaimDisposition, claim_disposition, Passed
+  ClaimTerminalRow, ClaimDisposition, claim_disposition, Passed,
+  Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict, PassedOverBudget, BudgetTerminalWithoutSafetyCause, HostToolUnresolvedBeforeVerdict, RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, PanickedBeforeVerdict, NotAttemptedAfterAbort, ObservationUnreadableBeforeVerdict,
 }
 import v2.workflow.wet_evidence {
   WetEvidenceRequirement, LocalRepoCoResidentRequirement,
@@ -2568,7 +2569,18 @@ fn local_repo_wet_identity_passed_on_candidate(
               row: ClaimTerminalRow { identity: t.identity, expectation: ExpectedToHold {}, terminal: a }
             ) {
               Passed => true
-              _ => false
+              Failed => false
+              KnownRedHeld => false
+              KnownRedNowPassing => false
+              BudgetRefusedBeforeVerdict => false
+              PassedOverBudget => false
+              BudgetTerminalWithoutSafetyCause => false
+              HostToolUnresolvedBeforeVerdict => false
+              RouteGapBeforeVerdict => false
+              RuntimeErroredBeforeVerdict => false
+              PanickedBeforeVerdict => false
+              NotAttemptedAfterAbort => false
+              ObservationUnreadableBeforeVerdict => false
             }
         }
     }

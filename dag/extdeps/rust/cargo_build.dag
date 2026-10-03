@@ -7,6 +7,7 @@ import std.string_type { String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
+import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -57,6 +58,7 @@ data cargo_check_manifest_messages_note: String = "Cargo's structured check surf
 
 service cargo.Build {
   operation Build {
+    requires opaque
     input { extra_args: List<String> = [], env: Map<String, String> = cargo_compile_env, build_jobs_args: List<String> = [] }
     output {
       success: Bool from "exit_success"
@@ -71,6 +73,7 @@ service cargo.Build {
   }
 
   operation BuildInheritEnv {
+    requires opaque
     input { workdir: FilePath, extra_args: List<String> = [] }
     output {
       success: Bool from "exit_success"
@@ -85,6 +88,7 @@ service cargo.Build {
   }
 
   operation BuildManifest {
+    requires opaque
     input { workdir: FilePath, manifest_path: FilePath, target_dir: FilePath, extra_args: List<String> = [] }
     output {
       success: Bool from "exit_success"
@@ -99,6 +103,7 @@ service cargo.Build {
   }
 
   operation BuildManifestMessages {
+    requires opaque
     input { workdir: FilePath, manifest_path: FilePath, target_dir: FilePath, extra_args: List<String> = [] }
     output {
       success: Bool from "exit_success"
@@ -113,6 +118,7 @@ service cargo.Build {
   }
 
   operation CheckManifestMessages {
+    requires opaque
     input { workdir: FilePath, manifest_path: FilePath, target_dir: FilePath, extra_args: List<String> = [] }
     output {
       success: Bool from "exit_success"
@@ -127,6 +133,7 @@ service cargo.Build {
   }
 
   operation Test {
+    requires opaque
     input { extra_args: List<String> = [] }
     output {
       success: Bool from "exit_success"
@@ -142,6 +149,7 @@ service cargo.Build {
   }
 
   operation TestWithCwdEnv {
+    requires opaque
     input { workdir: FilePath, cargo_bin: NonEmptyStr, env: List<String> = [], extra_args: List<String> = [] }
     output {
       success: Bool from "exit_success"
@@ -158,6 +166,7 @@ service cargo.Build {
   }
 
   operation Nextest {
+    requires opaque
     input { extra_args: List<String> = [], build_jobs_args: List<String> = [] }
     output {
       success: Bool from "exit_success"
@@ -173,6 +182,7 @@ service cargo.Build {
   }
 
   operation Clippy {
+    requires opaque
     input {
       extra_args: List<String> = []
       lint_args: List<String> = []
@@ -190,6 +200,7 @@ service cargo.Build {
   }
 
   operation Fmt {
+    requires opaque
     input { extra_args: List<String> = [] }
     output {
       success: Bool from "exit_success"
@@ -204,6 +215,7 @@ service cargo.Build {
   }
 
   operation Check {
+    requires opaque
     input { extra_args: List<String> = [] }
     output {
       success: Bool from "exit_success"
@@ -218,6 +230,7 @@ service cargo.Build {
   }
 
   operation Doc {
+    requires opaque
     input { extra_args: List<String> = [] }
     output {
       success: Bool from "exit_success"
@@ -233,6 +246,7 @@ service cargo.Build {
   }
 
   operation Run {
+    requires opaque
     input { package: String, bin: String, args: List<String> }
     output {
       success: Bool from "exit_success"
@@ -258,6 +272,7 @@ service cargo.Build {
 // separately versioned, and a toolchain can carry a cargo that a rustc release line does not name.
 service cargo.Identity {
   operation Version {
+    requires none
     input {}
     output {
       success: Bool from "exit_success"

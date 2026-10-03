@@ -4,7 +4,7 @@ import v2.std.algebra { algebra_empty_conj }
 import v2.std.arrow_signature { anonymous_signature_arrow }
 import v2.std.node_query { binder_edge }
 import v2.std.logic { bool_node }
-import v2.std.node { Atom, Conj, Disj, Edge, Named, Node, TypeNode }
+import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, TypeNode }
 
 // THE ALGEBRA'S STRUCTURE SIGNATURES AS NODES: each algebraic structure std.algebra declares (magma
 // through boolean algebra, equivalence, the free monoid) projected to the TypeNode its instances
@@ -17,7 +17,7 @@ fn free_monoid_tail_type_fixpoint(inhabitant: Node) -> Node {
     algebra: Node {
       kind: TypeNode { connective: Conj },
       children: [
-        Edge { label: Named { name: ^free_monoid_type_fixpoint }, target: algebra_empty_conj() },
+        Edge { label: Authored { name: ^free_monoid_type_fixpoint }, target: algebra_empty_conj() },
       ],
       occurrence_id: OccurrenceSynthetic
 },
@@ -29,9 +29,9 @@ fn free_monoid_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Disj },
     children: [
-      Edge { label: Named { name: ^free_monoid_variant_empty }, target: algebra_empty_conj() },
+      Edge { label: Authored { name: ^free_monoid_variant_empty }, target: algebra_empty_conj() },
       Edge {
-        label: Named { name: ^free_monoid_variant_cons },
+        label: Authored { name: ^free_monoid_variant_cons },
         target: Node {
           kind: TypeNode { connective: Conj },
           children: [
@@ -58,9 +58,9 @@ fn ordering_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Disj },
     children: [
-      Edge { label: Named { name: ^ordering_variant_less }, target: algebra_empty_conj() },
-      Edge { label: Named { name: ^ordering_variant_equal }, target: algebra_empty_conj() },
-      Edge { label: Named { name: ^ordering_variant_greater }, target: algebra_empty_conj() },
+      Edge { label: Authored { name: ^ordering_variant_less }, target: algebra_empty_conj() },
+      Edge { label: Authored { name: ^ordering_variant_equal }, target: algebra_empty_conj() },
+      Edge { label: Authored { name: ^ordering_variant_greater }, target: algebra_empty_conj() },
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -257,8 +257,8 @@ fn algebra_inhabitance_node(algebra: Node, inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^algebra_edge }, target: algebra },
-      Edge { label: Named { name: ^inhabitant_edge }, target: inhabitant },
+      Edge { label: Authored { name: ^algebra_edge }, target: algebra },
+      Edge { label: Authored { name: ^inhabitant_edge }, target: inhabitant },
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -380,8 +380,8 @@ fn bool_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Disj },
     children: [
-      Edge { label: Named { name: ^bool_variant_true }, target: algebra_empty_conj() },
-      Edge { label: Named { name: ^bool_variant_false }, target: algebra_empty_conj() },
+      Edge { label: Authored { name: ^bool_variant_true }, target: algebra_empty_conj() },
+      Edge { label: Authored { name: ^bool_variant_false }, target: algebra_empty_conj() },
     ],
     occurrence_id: OccurrenceSynthetic
 }

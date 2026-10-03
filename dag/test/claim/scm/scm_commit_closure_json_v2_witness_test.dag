@@ -40,7 +40,7 @@ import v2.std.node {
   Node,
   Edge,
   EdgeLabel,
-  Named,
+  Authored,
   Positional,
   NodeKind,
   TypeNode,
@@ -193,7 +193,7 @@ fn closure_doc_atom(identity: Symbol) -> Node {
 }
 
 fn closure_doc_named(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn closure_doc_program() -> Node {
@@ -784,7 +784,7 @@ fn scm_image_insert_children(kind: NodeKind, children: List<StoredEdge>, fallbac
 // carry; the assembly rule under test consumes the locator either way, so the claim is unchanged
 // while the fixture stops asserting a kind it did not establish.
 fn scm_image_named_stored(name: Symbol, target: ObjectId) -> StoredEdge {
-  StoredEdge { label: Named { name: name }, target: SemanticNodeTarget { locator: target } }
+  StoredEdge { label: Authored { name: name }, target: SemanticNodeTarget { locator: target } }
 }
 
 fn scm_image_positional_stored(target: ObjectId) -> StoredEdge {

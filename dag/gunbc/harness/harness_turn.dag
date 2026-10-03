@@ -734,8 +734,8 @@ fn harness_assistant_message_json(unit: HarnessServingUnit, shape: HarnessWireSh
 // guide's reasoning_content -- the field the encoder re-renders when tools are defined -- and its
 // tool calls with their arguments serialized back to the JSON string they arrived as.
 fn harness_chat_assistant_message_json(unit: HarnessServingUnit, blocks: List<HarnessWireBlock>) -> JsonValue {
-  let speech = join(flat_map(blocks, b => match b { WireTextBlock { text } => [text]  _ => [] }), "")
-  let reasoning = join(flat_map(blocks, b => match b { WireThinkingBlock { thinking } => [thinking]  _ => [] }), "")
+  let speech = join(flat_map(blocks, b => match b { WireTextBlock { text } => [text]  WireThinkingBlock { thinking: _ } => []  WireToolUseBlock { id: _, name: _, input: _ } => [] }), "")
+  let reasoning = join(flat_map(blocks, b => match b { WireThinkingBlock { thinking } => [thinking]  WireTextBlock { text: _ } => []  WireToolUseBlock { id: _, name: _, input: _ } => [] }), "")
   let calls = flat_map(blocks, b => match b {
     WireToolUseBlock { id, name, input } => [json_object([
       json_kv(key: "id", value: json_string(s: id)),
@@ -745,7 +745,8 @@ fn harness_chat_assistant_message_json(unit: HarnessServingUnit, blocks: List<Ha
         json_kv(key: "arguments", value: json_string(s: serialize_json(v: input))),
       ])),
     ])]
-    _ => []
+    WireTextBlock { text: _ } => []
+    WireThinkingBlock { thinking: _ } => []
   })
   json_object(concat(concat(
     [json_kv(key: "role", value: json_string(s: "assistant")),
@@ -892,7 +893,8 @@ fn harness_blocks_text(blocks: List<HarnessWireBlock>) -> String {
 fn harness_tool_use_blocks(blocks: List<HarnessWireBlock>) -> List<HarnessWireBlock> {
   filter(blocks, b => match b {
     WireToolUseBlock { id: _, name: _, input: _ } => true
-    _ => false
+    WireTextBlock { text: _ } => false
+    WireThinkingBlock { thinking: _ } => false
   })
 }
 

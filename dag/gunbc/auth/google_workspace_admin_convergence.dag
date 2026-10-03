@@ -6,7 +6,7 @@ import gunbc.principal_projection { PrincipalRef, principal_ref_eq }
 import extdeps.google.workspace {
   WorkspaceAdminSubject, WorkspaceAdminValue, WorkspaceAdminControl, WorkspaceAdminReadSurface,
   AuthPlatformClient, AuthPlatformAudience, WorkspaceClientAccess, WorkspaceDirectorySharing, WorkspacePhotoEditing,
-  RegisteredWebClient, InternalAudience, ClientAccess, AppSpecificGoogleData, DirectorySharing, RequesterBasicProfileOnly, OrganizationDirectoryData, PhotoEditing,
+  RegisteredWebClient, InternalAudience, ExternalAudience, ClientAccess, AppSpecificGoogleData, AppTrusted, AppLimited, AppBlocked, DirectorySharing, RequesterBasicProfileOnly, OrganizationDirectoryData, PhotoEditing,
   workspace_admin_control, workspace_admin_value_control, workspace_admin_read_surface, ConsoleReadbackRequired, PolicyApiReadSupported,
 }
 import v2.std.algebra { any }
@@ -104,9 +104,9 @@ fn workspace_admin_assess(goal: WorkspaceAdminObligation, receipt: WorkspaceAdmi
         EffectiveAtDeclaredScope => {
           let admitted = match receipt.source {
             AdminConsoleReadback { administrator, evidence } => evidence as String != "" && any(admitted_admins, p => principal_ref_eq(a: p, b: administrator))
-              && match workspace_admin_read_surface(control: workspace_admin_control(subject: goal.subject)) { ConsoleReadbackRequired { documentation: _ } => true _ => false }
+              && match workspace_admin_read_surface(control: workspace_admin_control(subject: goal.subject)) { ConsoleReadbackRequired { documentation: _ } => true PolicyApiReadSupported { setting_type: _, documentation: _ } => false }
             WorkspacePolicyApiReadback { policy_resource, setting_type: observed_setting, evidence } => starts_with(s: policy_resource as String, prefix: "policies/") && evidence as String != ""
-              && match workspace_admin_read_surface(control: workspace_admin_control(subject: goal.subject)) { PolicyApiReadSupported { setting_type, documentation: _ } => setting_type == observed_setting _ => false }
+              && match workspace_admin_read_surface(control: workspace_admin_control(subject: goal.subject)) { PolicyApiReadSupported { setting_type, documentation: _ } => setting_type == observed_setting ConsoleReadbackRequired { documentation: _ } => false }
           }
           if !admitted { GoalAssessmentRefused { cause: "readback source is not admitted for this setting" } }
           else { assess_by_deviations(evidence: WorkspaceAdminEvidence { desired_revision: goal.desired_revision, receipt: receipt },
@@ -120,12 +120,29 @@ fn workspace_admin_values_equal(a: WorkspaceAdminValue, b: WorkspaceAdminValue) 
   match a {
     RegisteredWebClient { redirect_uris: left } => match b {
       RegisteredWebClient { redirect_uris: right } => all(left, x => any(right, y => x == y)) && all(right, x => any(left, y => x == y))
-      _ => false
+      InternalAudience => false
+      ExternalAudience => false
+      ClientAccess { access: _ } => false
+      DirectorySharing { policy: _ } => false
+      PhotoEditing { allowed: _ } => false
     }
     ClientAccess { access: AppSpecificGoogleData { scopes: left } } => match b {
       ClientAccess { access: AppSpecificGoogleData { scopes: right } } => all(left, x => any(right, y => x == y)) && all(right, x => any(left, y => x == y))
-      _ => false
+      ClientAccess { access: AppTrusted } => false
+      ClientAccess { access: AppLimited } => false
+      ClientAccess { access: AppBlocked } => false
+      RegisteredWebClient { redirect_uris: _ } => false
+      InternalAudience => false
+      ExternalAudience => false
+      DirectorySharing { policy: _ } => false
+      PhotoEditing { allowed: _ } => false
     }
-    _ => a == b
+    ClientAccess { access: AppTrusted } => a == b
+    ClientAccess { access: AppLimited } => a == b
+    ClientAccess { access: AppBlocked } => a == b
+    InternalAudience => a == b
+    ExternalAudience => a == b
+    DirectorySharing { policy: _ } => a == b
+    PhotoEditing { allowed: _ } => a == b
   }
 }
