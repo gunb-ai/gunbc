@@ -34,9 +34,15 @@ import std.materialization_provider {
   ManifestDecoded, ManifestKindUndeclared, ManifestPartUndeclared, ManifestPartRepeated, LegacyIncompleteArtifact,
 }
 import std.measure { byte_size }
-import gunbc.compute.work_provider_local { compute_work_identity }
+import gunbc.compute.work_provider_local {
+  compute_work_identity, compute_materialization_plan, ComputeMaterializationPlanned, ComputeMaterializationRefused,
+  ComputeMemoized, ComputeRecomputed, compute_store_read_decide, ComputeStoreServed, ComputeStoreAbsent, ComputeStoreRefused,
+  ComputeStoreNotConsulted, compute_operation_env,
+}
+import std.materialization_object { StoreLookupMiss, StoreLookupRefused, StoreLookupObjectMalformed }
+import std.content_hash { content_hash_tagged_structural }
 import gunbc.compute.work_request {
-  WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoRelease, CargoDebug,
+  ClaimDiffWindow, WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoRelease, CargoDebug,
   WorkToolchainIdentity, work_toolchain_observed, work_default_build, work_declared_outputs,
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, HostComputeCapacityFull,
@@ -68,9 +74,9 @@ test fn identical_requests_share_an_identity_and_every_difference_separates_them
   let debug = key(subject: tree(hex: tree_a), op: BuildGunbcBinaries { profile: CargoDebug, bins: ["gunbc" as NonEmptyStr] }, rustc: "rustc 1.90.0")
   let compile_x = key(subject: tree(hex: tree_a), op: CompileEntry { entry: "dag/x.dag" as FilePath }, rustc: "rustc 1.90.0")
   let compile_y = key(subject: tree(hex: tree_a), op: CompileEntry { entry: "dag/y.dag" as FilePath }, rustc: "rustc 1.90.0")
-  let claims_h = key(subject: tree(hex: tree_a), op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a,b" as NonEmptyStr, hermetic: true }, rustc: "rustc 1.90.0")
-  let claims_w = key(subject: tree(hex: tree_a), op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a,b" as NonEmptyStr, hermetic: false }, rustc: "rustc 1.90.0")
-  let claims_f = key(subject: tree(hex: tree_a), op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true }, rustc: "rustc 1.90.0")
+  let claims_h = key(subject: tree(hex: tree_a), op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a,b" as NonEmptyStr, hermetic: true, window: none }, rustc: "rustc 1.90.0")
+  let claims_w = key(subject: tree(hex: tree_a), op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a,b" as NonEmptyStr, hermetic: false, window: none }, rustc: "rustc 1.90.0")
+  let claims_f = key(subject: tree(hex: tree_a), op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true, window: none }, rustc: "rustc 1.90.0")
   base == same
     && base != other_tree && base != other_toolchain && base != debug && base != compile_x
     && compile_x != compile_y && claims_h != claims_w && claims_h != claims_f && compile_x != claims_h
@@ -89,7 +95,7 @@ fn key(subject: WorkSubject, op: WorkOperation, rustc: String) -> String {
 // provider that keeps (or regrows) a private hash beside request_key: the two would disagree here.
 test fn the_provider_identity_is_the_materialization_request_key() -> Bool {
   let subject = tree(hex: tree_a)
-  let claims = RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true }
+  let claims = RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true, window: none }
   compute_work_identity(subject: subject, op: work_default_build(), toolchain: tc(rustc: "rustc 1.90.0"))
       == key(subject: subject, op: work_default_build(), rustc: "rustc 1.90.0")
     && compute_work_identity(subject: subject, op: claims, toolchain: tc(rustc: "rustc 1.90.0"))
@@ -111,8 +117,8 @@ fn demand_is_fresh(d: DemandNature) -> Bool {
 // while its hermetic twin over the same entry and functions is IdempotentEffect.
 test fn the_compute_family_derives_kind_outputs_and_demand_nature() -> Bool {
   let subject = tree(hex: tree_a)
-  let wet = req(subject: subject, op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: false }, rustc: "rustc 1.90.0")
-  let hermetic = req(subject: subject, op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true }, rustc: "rustc 1.90.0")
+  let wet = req(subject: subject, op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: false, window: none }, rustc: "rustc 1.90.0")
+  let hermetic = req(subject: subject, op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true, window: none }, rustc: "rustc 1.90.0")
   let build = req(subject: subject, op: work_default_build(), rustc: "rustc 1.90.0")
   request_kind(req: build) == compute_work_artifact_kind
     && request_required_outputs(req: build) == [output_compute_work_outcome, output_compute_work_log, output_compute_work_outputs]
@@ -154,7 +160,7 @@ test fn declared_outputs_follow_the_operation() -> Bool {
     && all(build, d => match d.root { TargetRoot => true  CheckoutRoot => false })
     && map(debug, d => d.path) == ["debug/gunbc"]
     && count(work_declared_outputs(op: CompileEntry { entry: "dag/x.dag" as FilePath })) == 0
-    && count(work_declared_outputs(op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true })) == 0
+    && count(work_declared_outputs(op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true, window: none })) == 0
 }
 
 // The stored outcome round-trips its ending and identity; a document missing either is unreadable,
@@ -483,4 +489,53 @@ test fn a_refused_spawn_is_a_property_not_queried_and_never_a_reading() -> Bool 
     && answered.queried
     && answered.value == "inactive"
     && !nonzero.queried
+}
+
+fn plan_word(req: ArtifactRequest) -> String {
+  match compute_materialization_plan(req: req) {
+    ComputeMaterializationRefused { detail: _ } => "refused"
+    ComputeMaterializationPlanned { plan } => match plan { ComputeMemoized => "memoized"  ComputeRecomputed { verdict: _ } => "recomputed" }
+  }
+}
+
+// THE LADDER, NOT THE PROVIDER, DECIDES WHETHER THE STORE IS CONSULTED, and it decides against the
+// store's own family provider row. A build over the durable root's declared compute budget is a
+// declared recurrence the store discharges; a wet claim run is a FreshEffect the ladder exempts.
+// RED against a provider that memoizes everything (the wet run would read memoized) or that
+// bypasses the ladder (a family with no declared budget would not refuse).
+test fn the_ladder_memoizes_repeatable_compute_and_exempts_a_wet_claim_run() -> Bool {
+  let subject = tree(hex: tree_a)
+  plan_word(req: req(subject: subject, op: work_default_build(), rustc: "rustc 1.90.0")) == "memoized"
+    && plan_word(req: req(subject: subject, op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true, window: none }, rustc: "rustc 1.90.0")) == "memoized"
+    && plan_word(req: req(subject: subject, op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: false, window: none }, rustc: "rustc 1.90.0")) == "recomputed"
+}
+
+// A REFUSED LOOKUP REFUSES AND NEVER RECOMPUTES; ONLY ESTABLISHED ABSENCE IS A MISS. RED against the
+// absorbing fallback: a decision that read a malformed stored object as absent would produce again
+// over a store it cannot read.
+test fn a_refused_store_lookup_is_never_a_miss() -> Bool {
+  let k = request_key(req: req(subject: tree(hex: tree_a), op: work_default_build(), rustc: "rustc 1.90.0"))
+  (match compute_store_read_decide(lookup: StoreLookupMiss { key: k }) { ComputeStoreAbsent => true  _ => false })
+    && (match compute_store_read_decide(lookup: StoreLookupRefused { key: k, refusal: StoreLookupObjectMalformed { cause: "fixture" } }) {
+      ComputeStoreRefused { detail } => string_contains(s: detail, pattern: "fixture")
+      _ => false
+    })
+}
+
+fn windowed(w: ClaimDiffWindow) -> WorkOperation {
+  RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: false, window: Present { value: w } }
+}
+
+// THE AFFECTED-SET WINDOW IS A DECLARED INPUT. Two windows over one tree are two runs, and the unit
+// is handed the window's path under the one name its reader consumes. RED against a key that omits
+// the window (two windows would share one answer) or a unit that never receives it.
+test fn the_claim_window_keys_apart_and_binds_the_unit_environment() -> Bool {
+  let subject = tree(hex: tree_a)
+  let w1 = ClaimDiffWindow { identity: content_hash_tagged_structural(tag: "w" as NonEmptyStr, payload: content_hash_atom(value: "one" as NonEmptyStr)), path: "/v/one.json" as FilePath }
+  let w2 = ClaimDiffWindow { identity: content_hash_tagged_structural(tag: "w" as NonEmptyStr, payload: content_hash_atom(value: "two" as NonEmptyStr)), path: "/v/two.json" as FilePath }
+  let w1_moved = ClaimDiffWindow { identity: w1.identity, path: "/elsewhere/one.json" as FilePath }
+  key(subject: subject, op: windowed(w: w1), rustc: "rustc 1.90.0") != key(subject: subject, op: windowed(w: w2), rustc: "rustc 1.90.0")
+    && key(subject: subject, op: windowed(w: w1), rustc: "rustc 1.90.0") == key(subject: subject, op: windowed(w: w1_moved), rustc: "rustc 1.90.0")
+    && compute_operation_env(op: windowed(w: w1)) == ["GUNBC_DIFF_WINDOW_PATH=/v/one.json"]
+    && count(compute_operation_env(op: work_default_build())) == 0
 }

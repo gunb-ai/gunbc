@@ -669,7 +669,7 @@ fn compute_work_demand_nature(operation: WorkOperation) -> DemandNature {
   match operation {
     BuildGunbcBinaries { profile: _, bins: _ } => IdempotentEffect
     CompileEntry { entry: _ } => IdempotentEffect
-    RunClaims { entry: _, functions: _, hermetic } => if hermetic { IdempotentEffect } else { FreshEffect }
+    RunClaims { entry: _, functions: _, hermetic, window: _ } => if hermetic { IdempotentEffect } else { FreshEffect }
   }
 }
 

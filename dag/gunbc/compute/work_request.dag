@@ -2,6 +2,7 @@ module gunbc.compute.work_request
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import std.measure { Kibibyte, kibibyte_count }
+import std.content_hash { Fnv1a64Structural }
 import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
 import extdeps.languages.json.emit {
   JsonValue, json_object, json_kv, json_string, json_int, json_array, serialize_json,
@@ -42,14 +43,24 @@ fn cargo_profile_wire(p: CargoProfile) -> String {
 type WorkOperation
   = BuildGunbcBinaries { profile: CargoProfile, bins: List<NonEmptyStr> }
   | CompileEntry { entry: FilePath }
-  | RunClaims { entry: FilePath, functions: NonEmptyStr, hermetic: Bool }
+  | RunClaims { entry: FilePath, functions: NonEmptyStr, hermetic: Bool, window: ClaimDiffWindow? }
 
 fn work_operation_kind(op: WorkOperation) -> String {
   match op {
     BuildGunbcBinaries { profile: _, bins: _ } => "build"
     CompileEntry { entry: _ } => "compile"
-    RunClaims { entry: _, functions: _, hermetic: _ } => "claims"
+    RunClaims { entry: _, functions: _, hermetic: _, window: _ } => "claims"
   }
+}
+
+// THE AFFECTED-SET WINDOW A CLAIM RUN READS. A claim that reads GUNBC_DIFF_WINDOW_PATH answers
+// relative to that window -- the same tree under a different target generation is a different
+// question -- so the window is a DECLARED INPUT of the run: its identity (the window's own derived
+// window_identity, gunbc.git_diff_change_window GitExactDiffWindow) is in the canonical text, and its
+// path is only where the unit finds the file, a location that keys nothing.
+type ClaimDiffWindow {
+  identity: Fnv1a64Structural
+  path: FilePath
 }
 
 // Canonical text of an operation: the identity's payload, so any argument that changes what runs
@@ -59,8 +70,9 @@ fn work_operation_canonical(op: WorkOperation) -> String {
     BuildGunbcBinaries { profile, bins } =>
       join(["build:", cargo_profile_wire(p: profile), ":", join(map(bins, b => b as String), ",")], "")
     CompileEntry { entry } => join(["compile:", entry as String], "")
-    RunClaims { entry, functions, hermetic } =>
-      join(["claims:", entry as String, ":", functions as String, ":", if hermetic { "hermetic" } else { "wet" }], "")
+    RunClaims { entry, functions, hermetic, window } =>
+      join(["claims:", entry as String, ":", functions as String, ":", if hermetic { "hermetic" } else { "wet" },
+        match window { Present { value: w } => join([":window=", w.identity.digest as String], "")  Absent => "" }], "")
   }
 }
 
@@ -89,7 +101,7 @@ fn work_declared_outputs(op: WorkOperation) -> List<DeclaredOutput> {
     BuildGunbcBinaries { profile, bins } =>
       map(bins, b => DeclaredOutput { root: TargetRoot, path: join([cargo_profile_wire(p: profile), "/", b as String], "") })
     CompileEntry { entry: _ } => []
-    RunClaims { entry: _, functions: _, hermetic: _ } => []
+    RunClaims { entry: _, functions: _, hermetic: _, window: _ } => []
   }
 }
 
@@ -111,6 +123,7 @@ fn work_toolchain_observed(rustc_version: NonEmptyStr, cache_release: NonEmptySt
   admit_callers: [
     decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_observe_toolchain"),
     decl_ref(module_path: "test.claim.compute.work_request_witness_test", decl_name: "tc"),
+    decl_ref(module_path: "test.claim.compute.attempt_lifecycle_wet_witness", decl_name: "fixture_toolchain"),
   ]
   = WorkToolchainIdentity { rustc_version: rustc_version, cache_release: cache_release }
 
@@ -333,5 +346,14 @@ fn stored_outcome_is_success(r: StoredOutcomeRead) -> Bool {
   match r {
     StoredOutcomeFound { ending, identity: _, document: _ } => ending == "succeeded"
     StoredOutcomeUnreadable { reason: _ } => false
+  }
+}
+
+// The exact tree a stored outcome document names. A verification receipt cites it, so the verified
+// head and the compute subject are joined by the document the work itself wrote, not restated.
+fn stored_outcome_subject_tree(document: String) -> String? {
+  match parse_json_document(s: document) {
+    JsonDocumentUnreadable { gap: _ } => none
+    JsonDocumentParsed { value: doc } => stored_outcome_member(doc: doc, key: "subject_tree")
   }
 }

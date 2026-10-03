@@ -137,7 +137,7 @@ test fn with_the_shipped_rows_every_class_reserves_the_ceiling() -> Bool {
     BuildGunbcBinaries { profile: CargoRelease, bins: ["gunbc" as NonEmptyStr] },
     BuildGunbcBinaries { profile: CargoDebug, bins: ["gunbc" as NonEmptyStr] },
     CompileEntry { entry: "src/v2/compiler/compile.dag" },
-    RunClaims { entry: "dag/test/claim/x_test.dag", functions: "f" as NonEmptyStr, hermetic: true },
+    RunClaims { entry: "dag/test/claim/x_test.dag", functions: "f" as NonEmptyStr, hermetic: true, window: none },
   ]
   all(ops, op => match work_class_grant(class: work_class_of(op: op), rows: work_class_grant_rows, ceiling: ceiling()) {
     GrantAtCeiling { class: _, amount, reason } => kibibyte_count(k: amount) == 26 * gib && match reason { ClassUnmeasured => true  _ => false }

@@ -19,6 +19,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed, CatalogCasContentEncoding }
 import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.nat { Nat }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
@@ -52,7 +53,7 @@ import std.artifact_store {
   store_over_provider, store_put, StorePutOutcome, StorePutAdmitted, StorePutDidNotFit,
   store_get, StoreHit, StoreMiss, store_bytes_used,
 }
-import std.cache_identity { ArtifactKindId, typed_module_artifact_kind, native_module_verdict_bundle_artifact_kind }
+import std.cache_identity { ArtifactKindId, typed_module_artifact_kind, native_module_verdict_bundle_artifact_kind, compute_work_artifact_kind }
 import std.measure { ByteSize, byte_size, measure_count }
 import std.bytes { utf8_encode_bytes, bytes_octets }
 import std.durable_compare_and_set {
@@ -319,8 +320,26 @@ type LocalStoreFamilyBudget {
 // consumer (PR C2) measuring real per-module entries on the durable root.
 data local_store_typed_module_budget_policy: ByteSize = byte_size(count: 4294967296)
 
+// THE COMPUTE FAMILY'S BUDGET IS RETAINED RECORDS x RECORD SIZE, and both factors are named.
+// Retained records: a build's record must stay served for as long as a dependent compile or claim run
+// of the same tree is in flight, and a host runs at most gunbc.compute.host_capacity compute_pool_slots
+// (2) compute units at once, so at most two builds can be under an outstanding dependent obligation.
+// Record size: one release build of the default bins -- gunbc 38814272 + claim_batch 36982312 bytes
+// under rustc 1.93.0, measured 2026-10-03 by `cargo build --release -p v1-compiler --bin gunbc --bin
+// claim_batch` + `stat -c %s` on a BuildBuddy runner. The text parts (outcome, log, output manifest)
+// are a rounding error beside them. The binaries become byte parts of this record when the staged
+// byte-part realization lands (C1b); until then the budget over-reserves for text-only records, which
+// is the direction a ceiling may err. REVISION TRIGGER: the compute family's own commits measured
+// on the durable root (occupancy index), or a change to compute_pool_slots.
+data local_store_compute_work_record_bytes_measured: Nat = 75796584
+
+data local_store_compute_work_retained_records: Nat = 2
+
+data local_store_compute_work_budget_policy: ByteSize = byte_size(count: local_store_compute_work_record_bytes_measured * local_store_compute_work_retained_records)
+
 data local_store_durable_family_budgets: List<LocalStoreFamilyBudget> = [
   LocalStoreFamilyBudget { family: typed_module_artifact_kind, budget: local_store_typed_module_budget_policy },
+  LocalStoreFamilyBudget { family: compute_work_artifact_kind, budget: local_store_compute_work_budget_policy },
 ]
 
 // Fixture budgets for WitnessScratchRoot: small enough that a wet witness overruns them in a few
@@ -328,6 +347,7 @@ data local_store_durable_family_budgets: List<LocalStoreFamilyBudget> = [
 data local_store_witness_family_budgets: List<LocalStoreFamilyBudget> = [
   LocalStoreFamilyBudget { family: native_module_verdict_bundle_artifact_kind, budget: byte_size(count: 4096) },
   LocalStoreFamilyBudget { family: typed_module_artifact_kind, budget: byte_size(count: 4096) },
+  LocalStoreFamilyBudget { family: compute_work_artifact_kind, budget: byte_size(count: 4096) },
 ]
 
 // The budgets are a fact of the ROOT, derived from it rather than passed in by a caller.

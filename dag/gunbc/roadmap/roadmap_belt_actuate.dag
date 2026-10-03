@@ -283,7 +283,13 @@ import gunbc.roadmap_publish_observe {
   WorktreeBoundToRepository, WorktreeBoundElsewhere, WorktreeRemoteUnreadable,
   observe_worktree_repository_binding,
 }
+import gunbc.compute.work_request { RunClaims, ClaimDiffWindow, stored_outcome_subject_tree }
+import gunbc.compute.work_provider_local {
+  compute_provide, ProvideAttached, ProvideFresh, provide_result_document, provide_result_identity, provide_result_ending,
+  provide_result_host_record, host_record_was_written, host_record_wire,
+}
 import gunbc.roadmap_verification_receipt { verification_file_evidence_for, VerificationFileDecoded, VerificationFileUnreadable, VerificationFileAbsent,
+  SharedComputationCitation, ComputationAttached, ComputationComputed,
   VerificationEvidence, VerificationEvidenceForSubject,
   VerificationSubject,
   VerificationSubjectObservation,
@@ -299,6 +305,9 @@ import gunbc.roadmap_verification_receipt { verification_file_evidence_for, Veri
   verification_receipt_decode,
   VerificationReceiptDecoded,
   VerificationReceiptUndecodable,
+  ExactVerificationReceiptAbsent,
+  ExactVerificationReceiptPresent,
+  ExactVerificationReceiptUnreadable,
   verification_subject_match,
   VerificationSubjectMatches,
   VerificationSubjectDiffers,
@@ -501,6 +510,7 @@ import gunbc.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, Pr
 import extdeps.version { VersionIdentity }
 import std.content_hash {
   content_hash_tagged_structural,
+  Fnv1a64Structural,
   ContentHash,
   serialize_content_hash,
   content_hash_atom,
@@ -5060,6 +5070,57 @@ fn belt_verification_selection_observe(
   )
 }
 
+// THE SHARED-COMPUTATION READER (bold-bee-114's DogfoodRouteReceipt). For one attempt and the head
+// it is verifying, it follows the belt's own published selection to the exact verification receipt
+// and returns what that receipt says ran as shared computation. The observation is closed: Observed
+// carries every compute citation the receipt holds (one per claim validation); Absent is positive --
+// no selection published, no receipt at the selected address, or a receipt with no compute
+// execution; Refused is anything that could not be read or decoded, and never collapses to Absent.
+type SharedComputationObservation
+  = SharedComputationObserved { head_sha: String, window_identity: Fnv1a64Structural, citations: List<SharedComputationCitation> }
+  | SharedComputationAbsent { reason: String }
+  | SharedComputationRefused { cause: String }
+
+fn shared_computation_observe_for_attempt(
+  instance: HostDashboardInstance,
+  attempt: DispatchAttemptRef,
+  head_sha: String,
+) -> SharedComputationObservation {
+  let node_id = attempt.node_id as gunbc.roadmap_model.RoadmapNodeId
+  let attempt_dir = dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt.attempt_key)
+  let verification_dir = dispatch_attempt_verification_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt.attempt_key)
+  match current_verification_selection_observe(attempt_dir: attempt_dir, verification_dir: verification_dir, head_sha: head_sha) {
+    SelectionAbsent => SharedComputationAbsent { reason: "no verification selection is published for this head" }
+    SelectionUnaddressable { cause } => SharedComputationRefused { cause: cause }
+    SelectionUnreadable { cause } => SharedComputationRefused { cause: cause }
+    SelectionMalformed { cause } => SharedComputationRefused { cause: cause }
+    SelectionObserved { head, window_identity } =>
+      match exact_verification_receipt_source_read(
+        attempt_dir: attempt_dir,
+        verification_dir: verification_dir,
+        receipt_basename: exact_verification_receipt_basename(head_sha: head as String, window_identity_hex: git_diff_window_identity_hex(identity: window_identity)),
+      ) {
+        ExactVerificationReceiptAbsent => SharedComputationAbsent { reason: "the selected verification receipt has not been written" }
+        ExactVerificationReceiptUnreadable { detail } => SharedComputationRefused { cause: detail }
+        ExactVerificationReceiptPresent { text } =>
+          match verification_receipt_decode(receipt: text) {
+            VerificationReceiptUndecodable { reason } => SharedComputationRefused { cause: reason }
+            VerificationReceiptDecoded { receipt } => {
+              let citations = fold(receipt.executions, init: [], f: (acc, e) => match e.computation {
+                Present { value: c } => acc |> append(c)
+                Absent => acc
+              })
+              if count(citations) == 0 {
+                SharedComputationAbsent { reason: "the selected verification receipt records no shared computation" }
+              } else {
+                SharedComputationObserved { head_sha: head as String, window_identity: window_identity, citations: citations }
+              }
+            }
+          }
+      }
+  }
+}
+
 fn belt_verification_subject_from_selection(
   node: RoadmapNode,
   attempt_key: String,
@@ -7087,6 +7148,7 @@ fn belt_exec_with_diff_window_env(
 
 fn belt_run_validation_operations(
   instance: HostDashboardInstance,
+  subject: VerificationSubject,
   validations: List<ValidationOperation>,
   worktree: String,
   oracle_identity: ContentHash,
@@ -7108,6 +7170,20 @@ fn belt_run_validation_operations(
         ValidationFailed { command: _, exit_code: _, detail: _ } => acc
         ValidationRefused { cause: _ } => acc
         ValidationPassed { command: prior, oracle_identity: _ } =>
+          match validation {
+          GunbcClaimValidation { entry, function } =>
+            belt_run_claim_through_compute(
+              instance: instance,
+              subject: subject,
+              acc: acc,
+              prior: prior,
+              validation: validation,
+              entry: entry,
+              function: function,
+              oracle_identity: oracle_identity,
+              diff_window_path: diff_window_path,
+            )
+          _ =>
           match validation_operation_command(
             validation: validation,
             environment: instance.execution_environment,
@@ -7165,6 +7241,7 @@ fn belt_run_validation_operations(
                       exit_code: 0,
                       stdout: stdout,
                       stderr: "",
+                      computation: none,
                     }),
                     verdict: ValidationPassed {
                       command: if prior == "" {
@@ -7183,6 +7260,7 @@ fn belt_run_validation_operations(
                       exit_code: exit_code,
                       stdout: "",
                       stderr: stderr,
+                      computation: none,
                     }),
                     verdict: ValidationFailed {
                       command: wire,
@@ -7212,9 +7290,121 @@ fn belt_run_validation_operations(
               }
             }
           }
+          }
       }
     },
   )
+}
+
+// A CLAIM VALIDATION IS SHARED COMPUTATION. It runs as the compute family's RunClaims over the
+// verified head's exact tree (gunbc.compute.work_provider_local compute_provide): a capped unit, the
+// head's own build shared with every other request for that tree, and the outcome filed under the
+// materialization provider's derived key. The affected-set window the claim reads is a declared
+// input of the run (its identity keys it, its path is bound into the unit), so two windows over one
+// tree are two runs. The run is WET, as the host `--claim-run` it replaces was, so the ladder exempts
+// it from being served from the store; what is shared is the build it executes.
+//
+// The receipt cites the computation: the derived request key, the outcome's identity, the exact
+// tree the work ran on, and whether it attached or computed. A host-record loss is not a verdict
+// about the work, but it is not a clean verification either, so it refuses rather than passing.
+fn belt_run_claim_through_compute(
+  instance: HostDashboardInstance,
+  subject: VerificationSubject,
+  acc: BeltValidationRun,
+  prior: String,
+  validation: ValidationOperation,
+  entry: FilePath,
+  function: NonEmptyStr,
+  oracle_identity: ContentHash,
+  diff_window_path: String?,
+) -> BeltValidationRun {
+  let window_path = match diff_window_path { Present { value: p } => p  Absent => "" }
+  if window_path == "" {
+    BeltValidationRun {
+      executions: acc.executions,
+      verdict: ValidationRefused {
+        cause: ValidationChangeWindowRefused {
+          cause: ChangeWindowPersistenceRefused {
+            path: "",
+            cause: "verification requires an affected-set diff window path but none was prepared",
+          },
+        },
+      },
+    }
+  } else {
+    let op = RunClaims {
+      entry: entry,
+      functions: function,
+      hermetic: false,
+      window: Present { value: ClaimDiffWindow { identity: subject.change_window_identity, path: window_path as FilePath } },
+    }
+    let command = ModeledValidationCommand {
+      label: "gunbc-compute-claim" as NonEmptyStr,
+      program: "claim_batch" as FilePath,
+      args: ["--entry", entry as String, "--functions", function as String],
+    }
+    let wire = modeled_validation_command_wire(command: command)
+    let result = compute_provide(instance: instance, commit: subject.head_sha as String, op: op)
+    let document = provide_result_document(r: result)
+    let citation = match stored_outcome_subject_tree(document: document) {
+      Present { value: tree } =>
+        if tree == "" || provide_result_identity(r: result) == "" {
+          none
+        } else {
+          Present { value: SharedComputationCitation {
+            request_key: provide_result_identity(r: result) as NonEmptyStr,
+            outcome_identity: provide_result_identity(r: result),
+            subject_tree: tree as NonEmptyStr,
+            origin: match result {
+              ProvideAttached { identity: _, ending: _, document: _, host_record: _ } => ComputationAttached
+              ProvideFresh { outcome: _, document: _, host_record: _ } => ComputationComputed
+            },
+          } }
+        }
+      Absent => none
+    }
+    let ending = provide_result_ending(r: result)
+    let record = provide_result_host_record(r: result)
+    let execution = ValidationExecution {
+      validation: validation,
+      command: command,
+      exit_code: if ending == "succeeded" { 0 } else { 1 },
+      stdout: document,
+      stderr: if host_record_was_written(h: record) { "" } else { host_record_wire(h: record) },
+      computation: citation,
+    }
+    if !host_record_was_written(h: record) {
+      BeltValidationRun {
+        executions: acc.executions |> append(execution),
+        verdict: ValidationRefused {
+          cause: ValidationCommandRefused {
+            program: "gunbc-compute",
+            reason: join(["the claim run ended ", ending, " but its host record was not written: ", host_record_wire(h: record)], ""),
+          },
+        },
+      }
+    } else if ending == "succeeded" {
+      BeltValidationRun {
+        executions: acc.executions |> append(execution),
+        verdict: ValidationPassed {
+          command: if prior == "" { wire } else { join([prior, "; ", wire], "") },
+          oracle_identity: oracle_identity,
+        },
+      }
+    } else if ending == "failed" {
+      BeltValidationRun {
+        executions: acc.executions |> append(execution),
+        verdict: ValidationFailed { command: wire, exit_code: 1, detail: document },
+      }
+    } else {
+      BeltValidationRun {
+        executions: acc.executions |> append(execution),
+        verdict: ValidationRefused {
+          cause: ValidationCommandRefused { program: "gunbc-compute", reason: join(["the claim run ended ", ending, ": ", document], "") },
+        },
+      }
+    }
+  }
 }
 
 // THE CAPTURE GATE OF THE VERIFY PASS, the twin of belt_integration_capture_gate and consuming the
@@ -7714,6 +7904,7 @@ fn belt_verify_run_and_persist(
           ContractCloses { validations } =>
             belt_run_validation_operations(
               instance: instance,
+              subject: subject,
               validations: validations,
               worktree: worktree,
               oracle_identity: identity,

@@ -37,7 +37,8 @@ import std.artifact_store_scratch_grant { artifact_store_scratch_root, is_gunbc_
 // durable-root open on a runner guest finds no initialized store and REFUSES as unavailable
 // (extdeps.realization.materialization_store_local), never falls back to scratch -- there is no
 // shadow store. TRIGGER: the runner attempt launch attaches the persistent host volume at
-// materialization_store_durable_root_path.
+// materialization_store_durable_root_path. Discharged for srv1 by gunbc.live_deploy.spec
+// deployment_ensured_srv1_host_directories, the MaterializationStoreDirectory row.
 //
 // LIFECYCLE GRADE: LifecycleByConvention, honestly. A durable store is not released by frame
 // teardown -- that is its purpose -- so it cannot claim LifecycleByConstruction; its release is the
