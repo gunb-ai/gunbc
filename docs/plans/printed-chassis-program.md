@@ -1137,3 +1137,20 @@ The other remaining candidates are also sliced and validated under
 Both passed ZIP/G-code checksum, one-plate, 15-layer/3-mm, identity-transform, A1 mini/PLA/0.4-mm
 profile, and 180-mm bed-bound checks. L–M including brim spans X=1.331684–178.668316 mm; no
 scaling was applied. Both retain the same 65 °C bed-temperature warning described above.
+
+### Operator direction: stop the pair-gauge sequence
+
+The operator requested stopping further gauge printing and moving toward chassis/rack parts.
+Do not enqueue the prepared 5–2 or 4–7 gauges. A fresh snapshot already confirmed the newly
+started printer-01 3–6 job RUNNING/error 0 with its exact digest filename and 12 minutes remaining;
+clarification is pending on whether to cancel that active print or let it finish.
+The operator expects the remaining positions to be accurate; retain that as an expectation, not
+a measured fit result. 1–3 and 3–4 have reported alignment passes.
+
+Repository inspection found no printable full chassis/cassette/rack-bay geometry. Existing concrete
+geometry covers coupons, standoff gauges and a fan-mount plate; rack_mount models occupancy of
+catalog hardware, not printable rack construction. The proposed next geometry is a segmented,
+adjustable motherboard carrier for unpowered assembly/fit, forming the first chassis prototype.
+Remaining mounting positions can stay adjustable rather than requiring more pair gauges. Actual
+standoff thread/height and underside clearance still determine the board-support interface;
+PSU/cooler envelopes, structural material and load/joint checks remain for the powered cassette.
