@@ -1,6 +1,8 @@
 module gunbc.fleet.printer_report
 
-import std.types { String, NonEmptyStr, Secret }
+import std.types { String, NonEmptyStr, Secret, Int, Bool }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_object_unique_member, JsonMemberFound }
+import extdeps.languages.json.emit { JsonString, JsonNumber }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.shell
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
@@ -35,7 +37,7 @@ fn report(printer: PhysicalAssetIdentity, version: NonEmptyStr, token_source: Ac
     PrinterSerialFound { serial: serial } => match printer_endpoint_address(printer: printer) {
       PrinterAddressFound { address: address } => match printer_access_code_locus(printer: printer) {
         PrinterAccessCodeDesiredLocusFound { locus: locus } => match fetch_secret_ref_credential(secret_ref: secret_ref_pin_version(ref: locus.secret, version: version), token_source: token_source) {
-          SecretCredentialReady { credential: c, resolved_version: _ } => report_with_credential(serial: serial, address: address, credential: c)
+          SecretCredentialReady { credential: c, resolved_version: _ } => complete_report_with_credential(serial: serial, address: address, credential: c, remaining: 8)
           _ => ProcessRefused { exit_code: 1, stderr: "Cannot read the requested printer credential" }
         }
         _ => ProcessRefused { exit_code: 1, stderr: "Printer credential locus is absent or ambiguous" }
@@ -86,6 +88,37 @@ fn run(printer: String, version: String, output: String) -> ProcessExit {
 fn observe_both(version: String, directory: String) -> ProcessExit {
   match run(printer: printer_01 as String, version: version, output: concat(directory, "/printer-01.json")) {
     ExitSuccess => run(printer: printer_02 as String, version: version, output: concat(directory, "/printer-02.json"))
+    other => other
+  }
+}
+
+// Bambu sends partial telemetry deltas. Only a single fresh message containing both
+// state and error is complete enough for start admission; never infer missing fields.
+fn report_has_state_and_error(text: String) -> Bool {
+  match parse_json_document(s: text) {
+    JsonDocumentParsed { value: root } => match json_object_unique_member(v: root, key: "print") {
+      JsonMemberFound { value: p } => {
+        let state = match json_object_unique_member(v: p, key: "gcode_state") {
+          JsonMemberFound { value: JsonString { value: _ } } => true
+          _ => false
+        }
+        let error = match json_object_unique_member(v: p, key: "print_error") {
+          JsonMemberFound { value: JsonNumber { lexeme: _ } } => true
+          _ => false
+        }
+        state && error
+      }
+      _ => false
+    }
+    _ => false
+  }
+}
+
+fn complete_report_with_credential(serial: NonEmptyStr, address: NonEmptyStr, credential: Secret, remaining: Int) -> ProcessOutcome {
+  if remaining <= 0 { return ProcessRefused { exit_code: 1, stderr: "No complete state/error report within eight fresh observations" } }
+  match report_with_credential(serial: serial, address: address, credential: credential) {
+    ProcessOutputPresent { text: text } => if report_has_state_and_error(text: text) { ProcessOutputPresent { text: text } }
+      else { complete_report_with_credential(serial: serial, address: address, credential: credential, remaining: remaining - 1) }
     other => other
   }
 }

@@ -1063,3 +1063,9 @@ the single project filament to tray 0; the signed operator request includes this
 The operator subsequently reported formatting printer-02’s card locally. A fresh no-error
 report is still required before its start. Remote formatting was requested as a future capability;
 the current modeled workflow has no format operation, and support on these printers is unverified.
+
+At 22:01 UTC printer-02's AMS request was approved. Its fresh report admitted IDLE/error 0,
+but FTPS upload returned curl exit 25 / server 550 before MQTT start. Its durable batch marker
+is retained; there is no automatic replay. Printer-01's approved attempt received a partial
+temperature-only report and correctly refused before upload. The observer now allows up to
+eight fresh messages to obtain state and error together, without inventing missing fields.

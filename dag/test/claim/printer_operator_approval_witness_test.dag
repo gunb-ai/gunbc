@@ -2,6 +2,8 @@ module test.claim.printer_operator_approval_witness_test
 
 import test.claim.printer_job_start_witness_test { the_start_payload_selects_ams_slot_one }
 
+import gunbc.fleet.printer_report { report_has_state_and_error }
+
 import extdeps.shell.exec { ProcessObservation }
 import extdeps.tools.mosquitto_pub { mosquitto_pub_help_observation_admitted }
 
@@ -53,4 +55,10 @@ test fn approval_submission_follows_the_store_writer() -> Bool {
 
 test fn operator_batch_uses_confirmed_ams_slot() -> Bool {
   the_start_payload_selects_ams_slot_one()
+}
+
+test fn partial_telemetry_does_not_count_as_a_complete_observation() -> Bool {
+  !report_has_state_and_error(text: "{\"print\":{\"nozzle_temper\":25}}") &&
+  !report_has_state_and_error(text: "{\"print\":{\"gcode_state\":\"IDLE\"}}") &&
+  report_has_state_and_error(text: "{\"print\":{\"gcode_state\":\"IDLE\",\"print_error\":83902511}}")
 }
