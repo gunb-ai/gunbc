@@ -13,7 +13,9 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // source, effective on srv1 once dashboard_deploy applies it) and the per-operation authorization at
 // the store (gunbc.spark.pair_serving_d0 d0_store_operation_wall, being built in gunbc#12537 and its
 // successors). Under this row the door admits ONE lifecycle anyway: FabricGroupA, under the ONE
-// escalation id gunbc.spark.pair_serving_d0 d0_single_lifecycle_escalation_id names, while a writer
+// escalation id gunbc.spark.pair_serving_d0 d0_single_lifecycle_escalation_id names -- and, by a second
+// operator ruling (2026-10-03, relayed by valiant-crab-775), ONE MORE: the Group A release-to-fleet under
+// gunbc.spark.pair_serving_d0 d0_release_lifecycle_escalation_id, on the same terms -- while a writer
 // could still move the store facts D0 writes without the store verifying D0's authorization.
 //
 // WHAT DOES NOT FALL. Everything else in D0 stands: the operator's approval through the approvals app,
@@ -36,6 +38,7 @@ data d0_store_walls_single_lifecycle: RungDrop = RungDrop {
     reason: ReplacementStaged { replacement: "the fabric store door verifies each protected advance's credential per operation (gunbc.fabric_store_operation_admission, gunbc#12537 and the d0_store_operation_wall PR chain), and the served/local writer roster is live on srv1" },
     population: [
       "exactly one D0 lifecycle: gunbc.spark.pair_serving_d0 pair_serving_d0 for FabricGroupA under the escalation id gunbc.spark.pair_serving_d0 d0_single_lifecycle_escalation_id, including reruns of that same lifecycle (same escalation id, the frozen filing's execution revision)",
+      "exactly one more D0 lifecycle (operator-ruled 2026-10-03, relayed by valiant-crab-775, dashboard message msg_eb268a0a): the Group A release-to-fleet for FabricGroupA under the escalation id gunbc.spark.pair_serving_d0 d0_release_lifecycle_escalation_id, including its reruns, on the same terms; that id moved once (the first release lifecycle froze at a revision that could not reach the broker and is inert), within the operator's standing Group A ruling of 2026-10-03 (gunbc.auth.standing_operator_grant group_a_dev_standing_grant)",
       "no other escalation id and no other fabric group",
     ],
     restoration_trigger: "BOTH store walls live, SUFFICIENT FOR a rostered fleet writer without D0 authorization for the operation to be refused at the store on srv1: gunbc.rung_drop.fabric_storage_append_principal_unrefused retired AND effective on srv1 (the unix-socket door deployed by dashboard_deploy), AND gunbc.spark.pair_serving_d0 d0_store_operation_wall at StoreOperationWallRestored. When both hold, d0_store_write_wall_standing admits every lifecycle through the walls and this row retires; retiring it earlier re-closes the door to this lifecycle too.",
