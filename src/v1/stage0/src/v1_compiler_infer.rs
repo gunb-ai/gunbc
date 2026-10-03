@@ -399,12 +399,6 @@ pub struct VariantExportSurface {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct TypeNameExportFacts {
-    pub exporter_count: i64,
-    pub canonical_binding: Option<Rc<TypeBinding>>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InferScope {
     pub type_env: Rc<TypeEnv>,
     pub func_env: Rc<ResolvedFuncEnv>,
@@ -5148,7 +5142,7 @@ pub fn literal_introduction_type_mismatch(
         );
         match (*actual_expr.expr_data.clone()).clone() {
             ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitInt { value: _, .. }) =>
+                if matches!(value.as_ref(), LiteralValue::LitInt { .. }) =>
             {
                 let LiteralValue::LitInt { value: _, .. } = value.as_ref() else {
                     unreachable!()
@@ -6478,13 +6472,7 @@ pub fn nominal_product_head_name(n: Rc<Node>, scope: Rc<InferScope>) -> String {
                     nominal_product_head_name_if_declared_product(name.clone(), scope.clone())
                 }
                 TypeHeadExposure::ExposedTypeHead { ref view, .. }
-                    if matches!(
-                        view.as_ref(),
-                        TypeHeadView::ProductHead {
-                            type_identity: _,
-                            ..
-                        }
-                    ) =>
+                    if matches!(view.as_ref(), TypeHeadView::ProductHead { .. }) =>
                 {
                     let TypeHeadView::ProductHead {
                         type_identity: _, ..
@@ -23992,7 +23980,7 @@ pub fn kernel_coproduct_variant_locals(env: Rc<TypeEnv>) -> Rc<HashMap<String, R
                     __sorted.sort_by(|a: &Rc<TypeBinding>, b: &Rc<TypeBinding>| {
                         let __ka = (|b: Rc<TypeBinding>| b.name.clone())(a.clone());
                         let __kb = (|b: Rc<TypeBinding>| b.name.clone())(b.clone());
-                        v1_rt::canonical_key_cmp(&__ka, &__kb)
+                        __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
                     });
                     __sorted
                 }),
@@ -24131,7 +24119,7 @@ pub fn kernel_variant_owner_candidates(env: Rc<TypeEnv>, name: String) -> Rc<Vec
             __sorted.sort_by(|a: &Rc<TypeBinding>, b: &Rc<TypeBinding>| {
                 let __ka = (|b: Rc<TypeBinding>| b.name.clone())(a.clone());
                 let __kb = (|b: Rc<TypeBinding>| b.name.clone())(b.clone());
-                v1_rt::canonical_key_cmp(&__ka, &__kb)
+                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
             });
             __sorted
         })
@@ -29137,7 +29125,7 @@ pub fn grounded_successor(
 ) -> Rc<Node> {
     match (*prev.expr_data.clone()).clone() {
         ExprData::ExprLiteral { ref value, .. }
-            if matches!(value.as_ref(), LiteralValue::LitInt { value: _, .. }) =>
+            if matches!(value.as_ref(), LiteralValue::LitInt { .. }) =>
         {
             let LiteralValue::LitInt { value: j, .. } = value.as_ref() else {
                 unreachable!()
@@ -31423,377 +31411,11 @@ pub fn realize_module(
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct StrBindingsRewireAccum {
-    pub str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
-    pub ancestry_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
-}
-
 pub fn import_module_path_at(
     imp: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     crate::v1_std_core::authored_name_at(source_indices.clone(), imp.clone())
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ExportIndexModuleAccum {
-    pub index: Rc<HashMap<String, Rc<TypeNameExportFacts>>>,
-    pub seen_names: Rc<HashMap<String, bool>>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ExportedTypeRelationBuild {
-    pub by_name: Rc<HashMap<String, Rc<TypeNameExportFacts>>>,
-    pub by_module: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-}
-
-pub fn export_index_module_state(
-    acc: Rc<HashMap<String, Rc<TypeNameExportFacts>>>,
-    m: Rc<TypedModule>,
-) -> Rc<ExportIndexModuleAccum> {
-    Rc::new(v1_rt::map_values(&m.type_env.clone().bindings.clone()))
-        .iter()
-        .cloned()
-        .fold(
-            Rc::new(ExportIndexModuleAccum {
-                index: acc.clone(),
-                seen_names: v1_rt::rc_empty_map::<String, bool>(),
-            }),
-            |state: Rc<ExportIndexModuleAccum>, binding: Rc<TypeBinding>| {
-                let name = binding.name.clone();
-                if v1_rt::map_contains_key(&state.seen_names.clone(), name.clone()) {
-                    state.clone()
-                } else {
-                    {
-                        let canonical = binding.clone();
-                        let seen_names =
-                            v1_rt::rc_map_insert(state.seen_names.clone(), name.clone(), true);
-                        let index = match v1_rt::map_get(&state.index.clone(), name.clone()) {
-                            std::option::Option::None => v1_rt::rc_map_insert(
-                                state.index.clone(),
-                                name.clone(),
-                                Rc::new(TypeNameExportFacts {
-                                    exporter_count: 1,
-                                    canonical_binding: Some(canonical.clone()),
-                                }),
-                            ),
-                            Some(facts) => v1_rt::rc_map_insert(
-                                state.index.clone(),
-                                name.clone(),
-                                Rc::new(TypeNameExportFacts {
-                                    exporter_count: v1_rt::int_add(facts.exporter_count.clone(), 1),
-                                    canonical_binding: Some(canonical.clone()),
-                                }),
-                            ),
-                        };
-                        Rc::new(ExportIndexModuleAccum {
-                            index: index.clone(),
-                            seen_names: seen_names.clone(),
-                        })
-                    }
-                }
-            },
-        )
-}
-
-pub fn export_index_merge_module_both(
-    acc: Rc<ExportedTypeRelationBuild>,
-    m: Rc<TypedModule>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<ExportedTypeRelationBuild> {
-    {
-        let state = export_index_module_state(acc.by_name.clone(), m.clone());
-        Rc::new(ExportedTypeRelationBuild {
-            by_name: state.index.clone(),
-            by_module: v1_rt::rc_map_insert(
-                acc.by_module.clone(),
-                crate::v1_std_core::authored_name_at(source_indices.clone(), m.module.clone()),
-                state.seen_names.clone(),
-            ),
-        })
-    }
-}
-
-pub fn build_export_indexes(
-    modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<ExportedTypeRelationBuild> {
-    modules.iter().cloned().fold(
-        Rc::new(ExportedTypeRelationBuild {
-            by_name: v1_rt::rc_empty_map::<String, Rc<TypeNameExportFacts>>(),
-            by_module: v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
-        }),
-        |acc: Rc<ExportedTypeRelationBuild>, m: Rc<TypedModule>| {
-            export_index_merge_module_both(acc, m.clone(), source_indices.clone())
-        },
-    )
-}
-
-pub fn module_exported_type_names(m: Rc<TypedModule>) -> Rc<HashMap<String, bool>> {
-    Rc::new(v1_rt::map_values(&m.type_env.clone().bindings.clone()))
-        .iter()
-        .cloned()
-        .fold(
-            v1_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, b: Rc<TypeBinding>| {
-                v1_rt::rc_map_insert(acc, b.name.clone(), true)
-            },
-        )
-}
-
-pub fn direct_import_export_name_sets(
-    m: Rc<TypedModule>,
-    export_name_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<HashMap<String, bool>>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for imp in crate::v1_std_core::module_imports(m.module.clone())
-            .iter()
-            .cloned()
-        {
-            __result.extend(
-                (*{
-                    let path = import_module_path_at(imp.clone(), source_indices.clone());
-                    match v1_rt::map_get(&export_name_index, path.clone()) {
-                        Some(names) => Rc::new(vec![names.clone()]),
-                        std::option::Option::None => Rc::new(vec![]),
-                    }
-                })
-                .iter()
-                .cloned(),
-            );
-        }
-        __result
-    })
-}
-
-pub fn direct_import_exporter_counts(
-    import_export_names: Rc<Vec<Rc<HashMap<String, bool>>>>,
-) -> Rc<HashMap<String, i64>> {
-    import_export_names.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, i64>(),
-        |acc: Rc<HashMap<String, i64>>, names: Rc<HashMap<String, bool>>| {
-            Rc::new(v1_rt::map_keys(&names)).iter().cloned().fold(
-                acc,
-                |inner: Rc<HashMap<String, i64>>, name: String| match v1_rt::map_get(
-                    &inner,
-                    name.clone(),
-                ) {
-                    Some(seen) => v1_rt::rc_map_insert(
-                        inner.clone(),
-                        name.clone(),
-                        v1_rt::int_add(seen.clone(), 1),
-                    ),
-                    std::option::Option::None => {
-                        v1_rt::rc_map_insert(inner.clone(), name.clone(), 1)
-                    }
-                },
-            )
-        },
-    )
-}
-
-pub fn direct_import_exporter_count_of(
-    exporter_counts: Rc<HashMap<String, i64>>,
-    name: String,
-) -> i64 {
-    match v1_rt::map_get(&exporter_counts, name.clone()) {
-        Some(n) => n.clone(),
-        std::option::Option::None => 0,
-    }
-}
-
-pub fn rewire_canonical_rewrites(
-    type_name_index: Rc<HashMap<String, Rc<TypeNameExportFacts>>>,
-    exporter_counts: Rc<HashMap<String, i64>>,
-    local_names: Rc<HashMap<String, bool>>,
-    inherited_keys: Rc<Vec<String>>,
-) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    inherited_keys.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| match v1_rt::map_get(
-            &type_name_index,
-            name.clone(),
-        ) {
-            std::option::Option::None => acc.clone(),
-            Some(facts) => {
-                if ((v1_rt::map_contains_key(&local_names, name.clone())
-                    || (direct_import_exporter_count_of(exporter_counts.clone(), name.clone())
-                        > 1))
-                    || (facts.exporter_count.clone() > 1))
-                {
-                    acc.clone()
-                } else {
-                    match facts.canonical_binding.clone() {
-                        Some(canonical) => {
-                            v1_rt::rc_map_insert(acc.clone(), name.clone(), canonical.clone())
-                        }
-                        std::option::Option::None => acc.clone(),
-                    }
-                }
-            }
-        },
-    )
-}
-
-pub fn rewire_str_binding_overlay(
-    str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
-    rewrites: Rc<HashMap<String, Rc<TypeBinding>>>,
-) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    Rc::new(v1_rt::map_keys(&rewrites)).iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| match v1_rt::map_get(
-            &str_bindings,
-            name.clone(),
-        ) {
-            Some(_) => match v1_rt::map_get(&rewrites, name.clone()) {
-                Some(canonical) => {
-                    v1_rt::rc_map_insert(acc.clone(), name.clone(), canonical.clone())
-                }
-                std::option::Option::None => acc.clone(),
-            },
-            std::option::Option::None => acc.clone(),
-        },
-    )
-}
-
-pub fn ancestry_binding_is_kernel_identity(
-    bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
-    name: String,
-) -> bool {
-    match v1_rt::map_get(&bindings, name.clone()) {
-        std::option::Option::None => false,
-        Some(binding) => crate::v1_std_core::resolved_node_is_kernel_identity_for_name(
-            binding.resolved.clone(),
-            name.clone(),
-        ),
-    }
-}
-
-pub fn rewire_type_env_import_str_binding_identity(
-    modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<TypedModule>>> {
-    {
-        let export_indexes = build_export_indexes(modules.clone(), source_indices.clone());
-        let type_name_index = export_indexes.by_name.clone();
-        let export_name_index = export_indexes.by_module.clone();
-        Rc::new({
-            let mut __result = Vec::new();
-            for m in modules.iter().cloned() {
-                __result.push({
-                    let local_names = match v1_rt::map_get(
-                        &export_name_index,
-                        crate::v1_std_core::authored_name_at(
-                            source_indices.clone(),
-                            m.module.clone(),
-                        ),
-                    ) {
-                        Some(names) => names.clone(),
-                        std::option::Option::None => module_exported_type_names(m.clone()),
-                    };
-                    let import_export_names = direct_import_export_name_sets(
-                        m.clone(),
-                        export_name_index.clone(),
-                        source_indices.clone(),
-                    );
-                    let exporter_counts =
-                        direct_import_exporter_counts(import_export_names.clone());
-                    let ancestry_keys = Rc::new({
-                        let mut __result = Vec::new();
-                        for name in Rc::new(v1_rt::map_keys(
-                            &m.type_env.clone().ancestry_str_bindings.clone(),
-                        ))
-                        .iter()
-                        .cloned()
-                        {
-                            if !ancestry_binding_is_kernel_identity(
-                                m.type_env.clone().ancestry_str_bindings.clone(),
-                                name.clone(),
-                            ) {
-                                __result.push(name);
-                            }
-                        }
-                        __result
-                    });
-                    let str_keys =
-                        Rc::new(v1_rt::map_keys(&m.type_env.clone().str_bindings.clone()));
-                    let inherited_keys = v1_rt::concat(ancestry_keys.clone(), str_keys.clone());
-                    let rewrites = rewire_canonical_rewrites(
-                        type_name_index.clone(),
-                        exporter_counts.clone(),
-                        local_names.clone(),
-                        inherited_keys.clone(),
-                    );
-                    let str_binding_overlay = rewire_str_binding_overlay(
-                        m.type_env.clone().str_bindings.clone(),
-                        rewrites.clone(),
-                    );
-                    let rewired = Rc::new(StrBindingsRewireAccum {
-                        str_bindings: v1_rt::rc_map_merge(
-                            m.type_env.clone().str_bindings.clone(),
-                            str_binding_overlay.clone(),
-                        ),
-                        ancestry_str_bindings: v1_rt::rc_map_merge(
-                            m.type_env.clone().ancestry_str_bindings.clone(),
-                            rewrites.clone(),
-                        ),
-                    });
-                    let rewired_index = Rc::new(v1_rt::map_values(&str_binding_overlay))
-                        .iter()
-                        .cloned()
-                        .fold(
-                            m.type_env.clone().unit_variant_index.clone(),
-                            |acc: Rc<
-                                HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>,
-                            >,
-                             binding: Rc<TypeBinding>| {
-                                crate::v1_compiler_infer_env::unit_variant_index_shadow_insert(
-                                    acc,
-                                    crate::v1_compiler_infer_env::effective_visible_binding(
-                                        m.type_env.clone().str_bindings.clone(),
-                                        m.type_env.clone().parents.clone(),
-                                        binding.name.clone(),
-                                    ),
-                                    binding.clone(),
-                                    source_indices.clone(),
-                                )
-                            },
-                        );
-                    Rc::new(TypedModule {
-                        progress: m.progress.clone(),
-                        module: m.module.clone(),
-                        items: m.items.clone(),
-                        type_env: Rc::new(TypeEnv {
-                            module_path: m.type_env.clone().module_path.clone(),
-                            bindings: m.type_env.clone().bindings.clone(),
-                            str_bindings: rewired.str_bindings.clone(),
-                            ancestry_str_bindings: rewired.ancestry_str_bindings.clone(),
-                            parents: m.type_env.clone().parents.clone(),
-                            recursive_types: m.type_env.clone().recursive_types.clone(),
-                            recursive_type_set: m.type_env.clone().recursive_type_set.clone(),
-                            inductive_fields: m.type_env.clone().inductive_fields.clone(),
-                            source_indices: m.type_env.clone().source_indices.clone(),
-                            intern_table: m.type_env.clone().intern_table.clone(),
-                            source_visible_names: m.type_env.clone().source_visible_names.clone(),
-                            authored_import_names: m.type_env.clone().authored_import_names.clone(),
-                            symbol_index: m.type_env.clone().symbol_index.clone(),
-                            unit_variant_index: rewired_index.clone(),
-                            unit_variant_index_observed: true,
-                        }),
-                        type_env_cache: m.type_env_cache.clone(),
-                        interface: m.interface.clone(),
-                        func_env: m.func_env.clone(),
-                        item_registry: m.item_registry.clone(),
-                        occurrence_transport: m.occurrence_transport.clone(),
-                    })
-                });
-            }
-            __result
-        })
-    }
 }
 
 pub fn compiler_kernel_type_env(
@@ -32281,8 +31903,6 @@ pub fn reconcile_with_census_extra(
             census_si.clone(),
         );
         let modules = rewire_type_env_parent_links(typed.modules.clone(), source_indices.clone());
-        let modules =
-            rewire_type_env_import_str_binding_identity(modules.clone(), source_indices.clone());
         let modules = rewire_func_env_parent_links(modules.clone(), source_indices.clone());
         Rc::new(ResolvedGraph {
             modules: modules.clone(),
