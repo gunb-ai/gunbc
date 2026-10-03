@@ -13,12 +13,13 @@ import std.measure {
 import std.interval { closed_interval, IntervalReady, IntervalRefused }
 import extdeps.vllm.server { vllm_source_revision_read }
 import extdeps.vllm.runtime_defaults { vllm_requested_envelope_bytes }
-import extdeps.vllm.engine_args { PrefixCachingExplicit, KvFp8, EngramConfigOmitted, ModalityOmitted }
+import extdeps.vllm.engine_args { IndexerKvDtypeOmitted, PrefixCachingExplicit, KvFp8, EngramConfigOmitted, ModalityOmitted }
 import extdeps.vllm.kv_layout {
   ResolvedKvLayout, resolved_kv_layout, KvGroupLayout, FullAttention,
   cold_admission_bytes, AdmissionByteCostBytes, AdmissionByteCostUnestablished,
 }
 import gunbc.spark.serving_arm {
+  glm53_native_launch_policy,
   Glm53NativeFp8, Glm53Exl3_205, GunbcGlm53NopeDerivedGb10, Gitcommit90Sm121Exl3,
   SingleSparkTp1, SparkPairTp2, FourSparkTp4, EightSparkTp8,
   glm_native_initial_profile, glm_native_concurrent_profile,
@@ -28,7 +29,7 @@ import gunbc.spark.serving_arm {
 import gunbc.spark.serving_capacity_intent {
   ServingCapacityIntent, serving_capacity_intent, uniform_cold_seats,
   intent_for_launch_profile, intent_max_active_sequences, intent_max_single_sequence_tokens,
-  intent_max_total_resident_tokens, profile_for_intent,
+  intent_max_total_resident_tokens, profile_for_envelope, envelope_at_cold_floor,
   ServingCapacityIntentAdmitted, ServingCapacityIntentRefused,
 }
 import gunbc.spark.pair_serving_capacity_floor {
@@ -240,15 +241,13 @@ fn fx_shrunk_intent() -> ServingCapacityIntent {
 // the experiment plan and the subject mint use -- the join under test is between THIS derivation
 // and the subject, not between two independently authored values.
 fn fx_derived_profile() -> ServingLaunchProfile {
-  profile_for_intent(
-    intent: fx_shrunk_intent(),
+  profile_for_envelope(
+    envelope: envelope_at_cold_floor(cold: fx_shrunk_intent()),
+    policy: glm53_native_launch_policy,
     decided_gpu_memory_basis_points: basis_point(count: 8400),
-    kv_cache_dtype: KvFp8,
     serve_port: 30000,
     served_alias: "glm-5.3-flash" as NonEmptyStr,
     prefix_caching: PrefixCachingExplicit { enabled: true },
-    engram: EngramConfigOmitted,
-    modality: ModalityOmitted,
   )
 }
 
@@ -298,7 +297,6 @@ fn fx_deductions() -> ArmSupplyDeductions {
 // count, which is not a valid rank index.
 test fn w_the_production_tuple_is_unestablished_with_named_obligations() -> Bool {
   match arm_memory_fit_subject_for_launch(
-    checkpoint: Glm53NativeFp8,
     runtime: GunbcGlm53NopeDerivedGb10,
     topology: FourSparkTp4,
     profile: w_restoration_profile(),
@@ -320,13 +318,13 @@ test fn w_the_production_tuple_is_unestablished_with_named_obligations() -> Bool
 
 test fn w_fewer_ranks_refuse_by_the_aggregate_argument_without_naming_a_rank() -> Bool {
   let tp1 = verdict_for(subject_mint: arm_memory_fit_subject_for_launch(
-    checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10,
+    runtime: GunbcGlm53NopeDerivedGb10,
     topology: SingleSparkTp1, profile: glm_native_initial_profile))
   let tp2 = verdict_for(subject_mint: arm_memory_fit_subject_for_launch(
-    checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10,
+    runtime: GunbcGlm53NopeDerivedGb10,
     topology: SparkPairTp2, profile: glm_native_initial_profile))
   let tp8 = verdict_for(subject_mint: arm_memory_fit_subject_for_launch(
-    checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10,
+    runtime: GunbcGlm53NopeDerivedGb10,
     topology: EightSparkTp8, profile: glm_native_initial_profile))
   (match tp1 {
     Present { value: ArmMemoryFitRefused { rank: r, phase: p, demand_lower: d, supply_upper: _, cause: c } } =>
@@ -1356,15 +1354,13 @@ fn fx_wet_intent() -> ServingCapacityIntent {
 }
 
 fn fx_wet_profile() -> ServingLaunchProfile {
-  profile_for_intent(
-    intent: fx_wet_intent(),
+  profile_for_envelope(
+    envelope: envelope_at_cold_floor(cold: fx_wet_intent()),
+    policy: glm53_native_launch_policy,
     decided_gpu_memory_basis_points: basis_point(count: 8567),
-    kv_cache_dtype: KvFp8,
     serve_port: 30000,
     served_alias: "glm-5.3-flash" as NonEmptyStr,
     prefix_caching: PrefixCachingExplicit { enabled: true },
-    engram: EngramConfigOmitted,
-    modality: ModalityOmitted,
   )
 }
 
@@ -1963,7 +1959,7 @@ fn w_bundle_reported_capacity_and_candidate_hold() -> Bool {
 // target at the same configuration -- as evidence, discharging nothing.
 test fn w_tp4_receipt_on_tp2_refused_and_static_terms_transfer_to_262k() -> Bool {
   (match memory_proof_subject_for_launch(
-    checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10,
+    runtime: GunbcGlm53NopeDerivedGb10,
     topology: SparkPairTp2, profile: w_restoration_profile(),
     launch_generation: "group-b/pair-probe" as NonEmptyStr) {
     MemoryProofSubjectRefused { cause: _ } => false
@@ -2016,17 +2012,15 @@ fn fx_262k_subject() -> MemoryProofSubject? {
     ServingCapacityIntentRefused { cause: _ } => none
     ServingCapacityIntentAdmitted { intent: intent } =>
       match memory_proof_subject_for_launch(
-        checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10,
+        runtime: GunbcGlm53NopeDerivedGb10,
         topology: FourSparkTp4,
-        profile: profile_for_intent(
-          intent: intent,
+        profile: profile_for_envelope(
+          envelope: envelope_at_cold_floor(cold: intent),
+          policy: glm53_native_launch_policy,
           decided_gpu_memory_basis_points: basis_point(count: 8567),
-          kv_cache_dtype: KvFp8,
           serve_port: 30000,
           served_alias: "glm-5.3-flash" as NonEmptyStr,
           prefix_caching: PrefixCachingExplicit { enabled: true },
-          engram: EngramConfigOmitted,
-          modality: ModalityOmitted,
         ),
         launch_generation: "group-b/future-262k" as NonEmptyStr) {
         MemoryProofSubjectReady { subject: s } => Present { value: s }
@@ -2079,7 +2073,7 @@ test fn w_cache_proved_plus_prefill_open_is_proved_beside_unestablished() -> Boo
     seats: 6, at: token_count(count: 262144),
     supplies: fx_cache_supplies(blocks: 2000000, arena_bytes: 21474836480), rank_count: 4)
   let arm = verdict_for(subject_mint: arm_memory_fit_subject_for_launch(
-    checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10,
+    runtime: GunbcGlm53NopeDerivedGb10,
     topology: FourSparkTp4, profile: w_restoration_profile()))
   (match cache {
     CacheFitProved { limiting_rank: _, seats: s, length: _, blocks_per_seat: _, blocks_used: bu, blocks_reserved: _, hard_ceiling: _, block_equivalent_bytes: be } =>
@@ -2403,15 +2397,13 @@ fn fx_launch_wall_intent() -> ServingCapacityIntent {
 }
 
 fn fx_launch_wall_profile() -> ServingLaunchProfile {
-  profile_for_intent(
-    intent: fx_launch_wall_intent(),
+  profile_for_envelope(
+    envelope: envelope_at_cold_floor(cold: fx_launch_wall_intent()),
+    policy: glm53_native_launch_policy,
     decided_gpu_memory_basis_points: basis_point(count: 8567),
-    kv_cache_dtype: KvFp8,
     serve_port: 30000,
     served_alias: "glm-5.3-flash" as NonEmptyStr,
     prefix_caching: PrefixCachingExplicit { enabled: true },
-    engram: EngramConfigOmitted,
-    modality: ModalityOmitted,
   )
 }
 

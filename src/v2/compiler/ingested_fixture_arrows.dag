@@ -51,8 +51,8 @@ data ingested_pick_swapped_arms_module_source: String = "module m\n\nfn pick() -
 data ingested_loop_module_source: String = "module m\n\nfn one() -> Int { loop 1 }\n"
 data ingested_loop_wrong_value_module_source: String = "module m\n\nfn one() -> Int { loop 2 }\n"
 
-data ingested_bind_module_source: String = "module m\n\nfn one() -> Int { let x = 1 in x }\n"
-data ingested_bind_wrong_value_module_source: String = "module m\n\nfn one() -> Int { let x = 2 in x }\n"
+data ingested_bind_module_source: String = "module m\n\nfn one() -> Int {\n  let x = 1\n  x\n}\n"
+data ingested_bind_wrong_value_module_source: String = "module m\n\nfn one() -> Int {\n  let x = 2\n  x\n}\n"
 
 data ingested_match_module_source: String = "module m\n\nfn classical_not(a: Int) -> Int {\n  match a {\n    true => false,\n    false => true\n  }\n}\n"
 data ingested_match_swapped_arms_module_source: String = "module m\n\nfn classical_not(a: Int) -> Int {\n  match a {\n    true => true,\n    false => false\n  }\n}\n"

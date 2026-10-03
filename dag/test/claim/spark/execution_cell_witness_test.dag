@@ -489,7 +489,7 @@ test fn w_the_real_plan_targets_the_subjects_open_obligations_at_the_one_admitte
   match group_b_restoration_executable() {
     Absent => false
     Present { value: executable } =>
-      match arm_memory_fit_subject_for_launch(checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, profile: executable.profile) {
+      match arm_memory_fit_subject_for_launch(runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, profile: executable.profile) {
         ArmMemorySubjectRefused { cause: _ } => false
         ArmMemorySubjectReady { subject: subject } =>
           match arm_memory_fit_verdict(subject: subject) {

@@ -51,6 +51,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  content_hash,
   is_empty_conj_root,
   node_synthetic,
   symbol_intern_lexeme,
@@ -59,9 +60,18 @@ import v2.std.node {
   LoopDomainEdge,
   LoopRealizedDeclarationEdge,
   core_edge_label,
+  Found,
+  Instantiation,
+  arrow_body_target_lookup
 }
+import v2.std.anonymous_binder { fresh_fold_carrier }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.node_query { find_named_child, node_positional_child_targets }
+import v2.std.node_query { DeclaredField, declared_field_from_edge, find_named_child, node_positional_child_targets }
+import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, qualified_name_from_dotted_string, qualified_name_snoc, qualified_name_to_dotted_string }
+import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
+import v2.std.type_binder { type_param_names }
+import v2.std.logic { Bool }
+import v2.std.algebra { any, fold_list, length }
 
 data fold_lowering_note: String = "The un-forked forward lowering for fold — the first slice of the general body producer that replaces both the removed cost-shape fork and the hand-rolled MVP shapes. A surface fold has NO dedicated grammar production; it parses as an ordinary call (a ^dag_surface_primary_expr whose head ident, after the StampLexeme grammar fix, carries its NAME as an atom identity), so its lowering is a SEMANTIC desugaring keyed on the CALLEE identity (DESIGN §4: fold/recursion is sugar over Loop), never a lexeme scan. The input is the fold-call surface subtree — the primary_expr captured child, a sequence(head_ident, call_suffix) — read the homogeneous way cost_coverage locates fn bodies and the qualified-name parser reads sequence heads: fold_call_head_symbol reads the sequence-left head projection (the callee ^fold); fold_call_lowering reads the collection, init and step from their declared slots (named, else at the position std.algebra collection_fold_shape declares), and fold_recurrence_encoding builds the full fold encoding Bind { acc := init, Loop { step, domain, carrier, bound, realized: head } } (gunbc.plans.for_while_loop_sugar §2.3), bounded by the fold-iteration measure ^dag_surface_fold_iteration_measure (registered Strict in v2.std.cardinality.measure_descent_fact_registry, so loop_multiplicity derives its termination). Fail-closed twice: a call whose head is not ^fold refuses with ^fold_lowering_not_a_fold_call, and a fold call carrying no fn-literal iteration body refuses with ^fold_lowering_shape_invalid — never fabricates a loop. Verified end-to-end on real source (v2.test.claim.complexity.fold_lowering): fold(xs, init: 0, f: fn(acc, x) { acc }) lowers to an encoding whose Loop terminates; v2.test.claim.fold_encoding pins each operand at its authored occurrence. This unit is the same desugaring the whole-tree body producer will run on every located fold call once corpus resolution/walking is affordable; the caller supplies the located call subtree."
 
@@ -406,6 +416,45 @@ fn fv_after_fat_arrow_optional(node: Node) -> Optional<Node> {
   }
 }
 
+// A LAMBDA WHOSE BODY IS A BLOCK HAS A BLOCK BODY, NOT AN EXPRESSION BODY. The grammar says so:
+// dag_grammar_block_expr_expr IS the fn_body nonterminal, so `(acc, e) => { let c = ..; R { .. } }`
+// carries the same fn_body production a fn literal does. Reading it as FunctionLiteralExprBody handed
+// the block to every consumer as an opaque expression, and neither consumer reads statements out of
+// one: body_lower_function_value_body refused it as function_value_body_unread, and fold_step_body
+// answered the shell instead of its statement sequence. So the body kind is decided here, once, from
+// the production the expr resolved to -- expr, then block_expr, then fn_body, and no other route --
+// and every consumer takes the fn_body arm it already takes for a fn literal.
+fn fv_block_body_optional(expr: Node) -> Optional<Node> {
+  match fv_production_captured_optional(node: expr, emitted: ^dag_surface_expr) {
+    Absent => optional_absent()
+    Present { value: alternative } =>
+      match fv_production_captured_optional(node: alternative, emitted: ^dag_surface_block_expr) {
+        Absent => optional_absent()
+        Present { value: fn_body } =>
+          if fv_production_is(node: fn_body, emitted: ^dag_surface_fn_body) {
+            optional_present(value: fn_body)
+          } else {
+            optional_absent()
+          }
+      }
+  }
+}
+
+fn fv_production_is(node: Node, emitted: Symbol) -> Bool {
+  match parse_production_emitted_identity_optional(node: fv_unwrap(node: node)) {
+    Present { value: id } => id == emitted
+    Absent => false
+  }
+}
+
+fn fv_production_captured_optional(node: Node, emitted: Symbol) -> Optional<Node> {
+  if fv_production_is(node: node, emitted: emitted) {
+    parse_production_captured_child_optional(node: fv_unwrap(node: node))
+  } else {
+    optional_absent()
+  }
+}
+
 fn fv_expr_parts(binders: List<FunctionValueBinder>, after_binders: Node) -> Optional<FunctionValueParts> {
   match fv_after_fat_arrow_optional(node: after_binders) {
     Absent => optional_absent()
@@ -414,7 +463,10 @@ fn fv_expr_parts(binders: List<FunctionValueBinder>, after_binders: Node) -> Opt
         value: FunctionValueParts {
           binders: binders,
           return_clause: fv_empty_return_clause(),
-          body: FunctionLiteralExprBody { expr: expr }
+          body: match fv_block_body_optional(expr: expr) {
+            Present { value: fn_body } => FunctionLiteralBlockBody { fn_body: fn_body }
+            Absent => FunctionLiteralExprBody { expr: expr }
+          }
         }
       }
   }
@@ -739,16 +791,201 @@ type FoldCallOperands {
 // child is the step as a function value, the member template of §2.2. ONE constructor, whatever the
 // grain of its operands: the raw call (read by the accumulator-copy lens) and the lowered operands
 // (built by v2.compiler.body_lowering_fold) meet here, so there is one encoding and not two.
+// THE SLOT IS A GENERATED BINDER, NOT THE AUTHORED FORMAL. This constructor used to spell the Bind's
+// binder and the carrier edge with operands.carrier -- the step's own first binder -- so the lowered tree
+// held two visible binders with one name: the persistent slot and the step Arrow's freshly-bound formal.
+// v2.compiler.resolve's value-binder admission refused the inner one, correctly, and the native eight
+// refused at prepare with resolve_reason_binder_hides_visible_value at a synthetic "found".
+//
+// The slot now comes from v2.std.anonymous_binder fresh_fold_carrier, keyed by the STEP's content hash, so
+// it is unauthorable, deterministic, derived from structure rather than occurrence or traversal order, and
+// distinct wherever two folds' scopes can overlap. The step is still carried WHOLE, with both of its
+// binders: a fold step is an ordinary callable, and dropping its first formal to let it read the slot
+// instead would make fold lambdas a second kind of function value (DESIGN section 3).
+//
+// THE CARRIER REACHES THE STEP BY ROLE. The slot's current value is the step callable's actual 0 and the
+// domain member is actual 1; that relation is positional and semantic. No consumer may recover one from
+// the other by equal spelling, and after this mint none can: `<` is not an identifier character.
+// operands.carrier remains the AUTHORED first binder and is what a consumer wanting the accumulator formal
+// reads (fold_call_step_carrier) -- it is no longer the slot's identity.
+// WHAT A FOLD-REALIZED LOOP'S STEP RECEIVES BESIDE ITS CARRIER, decided here because this module owns
+// the roles: fold_recurrence_encoding gives the step callable actual 0 = the carrier slot, and for a
+// COLLECTION fold actual 1 = one member of the domain. The relation is a fact about the REALIZATION, so
+// it is read off the Loop's resolved ^loop_realized_declaration_edge, never assumed of every Loop: the
+// collection roster operation, fold_list and fold_list_right hand their step one domain member;
+// fold_node hands an algebra, not a member, and so binds nothing here.
+type FoldMemberRole
+  = FoldStepTakesCollectionMember
+  | FoldStepTakesNoMember
+
+fn fold_realization_declaration_path(r: FoldRealization) -> QualifiedName {
+  let d = match r {
+    FoldRealizesRosterOperation { template: _, row: row, slots: _ } => row
+    FoldRealizesDeclaration { declaration: declaration, slots: _ } => declaration
+  }
+  qualified_name_snoc(qn: qualified_name_from_dotted_string(dotted: d.module_path), segment: symbol_intern_lexeme(lexeme: d.decl_name))
+}
+
+fn fold_realization_is_at(head: Symbol, path: String) -> Bool {
+  match fold_family_realization(head: head) {
+    Present { value: r } => qualified_name_to_dotted_string(qn: fold_realization_declaration_path(r: r)) == path
+    Absent => false
+  }
+}
+
+// Absent: the realized edge names no fold family declaration, so this Loop is not a fold realization.
+fn fold_realized_member_role(realized: Node) -> Optional<FoldMemberRole> {
+  match declaration_reference_path_optional(node: realized) {
+    Absent => optional_absent()
+    Present { value: path } =>
+      let dotted = qualified_name_to_dotted_string(qn: path)
+      if fold_realization_is_at(head: collection_fold_head, path: dotted)
+        || fold_realization_is_at(head: ^fold_list, path: dotted)
+        || fold_realization_is_at(head: ^fold_list_right, path: dotted) {
+        optional_present(value: FoldStepTakesCollectionMember)
+      } else if fold_realization_is_at(head: ^fold_node, path: dotted) {
+        optional_present(value: FoldStepTakesNoMember)
+      } else {
+        optional_absent()
+      }
+  }
+}
+
+// THE COLLECTION A COLLECTION FOLD ITERATES IS A FREE MONOID, and its member is the monoid's one type
+// argument: v2.std.collection List<T> is std.algebra FreeMonoid<T>. The domain's settled type is read as
+// the Instantiation the declared type is (head, then one argument); any other shape -- a domain whose type
+// is not one of these, or is not an instantiation at all -- is Absent, and the caller must say so rather
+// than guess a member.
+fn fold_collection_member_type(domain_type: Node) -> Optional<Node> {
+  let args = node_positional_child_targets(node: domain_type)
+  if fold_node_is_instantiation(n: domain_type) && length(xs: args) == 2 {
+    match list_at_optional(xs: args, index: 0) {
+      Absent => optional_absent()
+      Present { value: head } =>
+        match declaration_reference_path_optional(node: head) {
+          Absent => optional_absent()
+          Present { value: path } =>
+            if qualified_name_to_dotted_string(qn: path) == "v2.std.collection.List"
+              || qualified_name_to_dotted_string(qn: path) == "std.algebra.FreeMonoid" {
+              list_at_optional(xs: args, index: 1)
+            } else {
+              optional_absent()
+            }
+        }
+    }
+  } else {
+    optional_absent()
+  }
+}
+
+fn fold_node_is_instantiation(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Instantiation } => true
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+// THE STEP'S MEMBER FORMAL, BY ROLE: the formal at declared position 1 of the step callable, never one
+// found by name. `fresh` says whether its declared type is one of the step's own type variables -- the
+// fresh variable function-value lowering minted for an unannotated binder -- which is then INSTANTIATED by
+// the member; an authored type is instead judged against it.
+type FoldMemberFormal {
+  formal: DeclaredField
+  fresh: Bool
+}
+
+fn fold_step_member_formal(step: Node) -> Optional<FoldMemberFormal> {
+  fold_step_formal_at(step: step, position: 1)
+}
+
+// THE STEP'S CARRIER FORMAL, BY ROLE: declared position 0, the slot fold_recurrence_encoding binds to
+// the Bind's init. Instantiated from init's settled type exactly as the member formal is from the domain's.
+fn fold_step_carrier_formal(step: Node) -> Optional<FoldMemberFormal> {
+  fold_step_formal_at(step: step, position: 0)
+}
+
+fn fold_step_formal_at(step: Node, position: Int) -> Optional<FoldMemberFormal> {
+  match arrow_declared_parameter_order(arrow: step) {
+    ArrowParameterOrderDeclared { labels: labels } =>
+      match list_at_optional(xs: labels, index: position) {
+        Absent => optional_absent()
+        Present { value: label } =>
+          match list_at_optional(xs: node_positional_child_targets(node: step), index: 0) {
+            Absent => optional_absent()
+            Present { value: domain } =>
+              fold_list(xs: domain.children, empty: optional_absent(), cons: fn(acc, e) {
+                match acc {
+                  Present { value: _ } => acc
+                  Absent =>
+                    match declared_field_from_edge(e: e) {
+                      Present { value: field } =>
+                        if field.name == label {
+                          optional_present(value: FoldMemberFormal { formal: field, fresh: fold_type_is_variable_of(t: field.type_node, step: step) })
+                        } else {
+                          acc
+                        }
+                      Absent => acc
+                    }
+                }
+              })
+          }
+      }
+    ArrowParameterOrderAbsent => optional_absent()
+    ArrowParameterOrderMalformed => optional_absent()
+  }
+}
+
+// WHAT ONE ITERATION OF A COLLECTION FOLD PRODUCES: the step callable's BODY, never the callable. The Loop
+// row reads its iterated body's type as the carrier; for a fold realization the positional child is the step
+// callable, whose own type is an Arrow over its fresh variables and is not the carrier (gunbc.recurring_failure_mode
+// infer_child_context_cannot_depend_on_a_sibling_result, link (a)). Absent when the step has no single body.
+fn fold_step_body_node(step: Node) -> Optional<Node> {
+  match arrow_body_target_lookup(children: step.children) {
+    Found { target: body } => optional_present(value: body)
+    Ambiguous => optional_absent()
+    Absent => optional_absent()
+  }
+}
+
+// The step's DECLARED return, when the author wrote one: position 1 of the Arrow, unless it is one of the
+// step's own fresh variables (an unwritten return is minted as one), in which case nothing was declared.
+fn fold_step_declared_return(step: Node) -> Optional<Node> {
+  match list_at_optional(xs: node_positional_child_targets(node: step), index: 1) {
+    Present { value: declared } =>
+      if fold_type_is_variable_of(t: declared, step: step) { optional_absent() } else { optional_present(value: declared) }
+    Absent => optional_absent()
+  }
+}
+
+// The step callable of a fold encoding's Loop: its one positional child.
+fn fold_loop_step(loop_node: Node) -> Optional<Node> {
+  let positional = node_positional_child_targets(node: loop_node)
+  if length(xs: positional) == 1 { list_at_optional(xs: positional, index: 0) } else { optional_absent() }
+}
+
+fn fold_type_is_variable_of(t: Node, step: Node) -> Bool {
+  match node_atom_identity_optional(node: t) {
+    Present { value: id } => any(xs: type_param_names(n: step), predicate: fn(v) { v == id })
+    Absent => false
+  }
+}
+
 fn fold_recurrence_encoding(operands: FoldCallOperands) -> Node {
+  let slot = fresh_fold_carrier(step_digest: content_hash(n: operands.step).digest as String)
   lower_bind(
-    key_binding: fold_carrier_binder_atom(binder: operands.carrier),
+    key_binding: fold_carrier_binder_atom(binder: slot),
     value: operands.init,
     body_binding: node_synthetic(
       kind: ComputationNode { behavior: Loop },
       children: [
         Edge { label: Positional, target: operands.step },
         Edge { label: core_edge_label(marker: LoopDomainEdge), target: operands.collection },
-        Edge { label: core_edge_label(marker: LoopCarrierEdge), target: fold_carrier_binder_atom(binder: operands.carrier) },
+        Edge { label: core_edge_label(marker: LoopCarrierEdge), target: fold_carrier_binder_atom(binder: slot) },
         Edge { label: core_edge_label(marker: LoopBoundEdge), target: fold_iteration_measure_atom() },
         Edge { label: core_edge_label(marker: LoopRealizedDeclarationEdge), target: operands.head }
       ]

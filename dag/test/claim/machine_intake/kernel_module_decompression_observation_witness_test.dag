@@ -203,7 +203,7 @@ test fn unrelated_text_is_not_a_record() -> Bool {
 test fn the_retained_console_reading_carries_the_refusal() -> Bool {
   let capture = join(failed_attempt_excerpt, "\n")
   match mtcollins1_boot_console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 10), capture: concat(capture, "\n"), read_ok: true, read_error: "", reference: ReferenceCaptureRead { text: "", ok: false, error: "not supplied" }) {
-    ConsoleRetained { path: _, size: _, lines: _, firmware: _, dram: _, sockets: _, against_reference: _, modules: m } =>
+    ConsoleRetained { path: _, size: _, lines: _, firmware: _, dram: _, sockets: _, against_reference: _, modules: m, nvparam: _ } =>
       match m { RefusalRecorded { refusals: rs, unparsed_refusal_records: _, insert_failures: _, unparsed_insert_records: _, identity: RefusalIdentityUnread } => count(rs) == 2 _ => false }
     _ => false
   }
