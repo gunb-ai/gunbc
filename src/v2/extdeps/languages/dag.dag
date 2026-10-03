@@ -1,9 +1,6 @@
 module v2.extdeps.languages.dag
-<<<<<<< HEAD
 import std.coercion { unicode_scalar_unfold }
-=======
 import std.types { List }
->>>>>>> origin/main
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
 import v2.std.model_core { AlgebraInhabitanceDecl, bool_model_core }
 import v2.std.algebra_structure_signature { boolean_algebra_node, ordered_ring_node }
