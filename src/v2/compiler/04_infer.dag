@@ -27,7 +27,7 @@ import v2.compiler.inferred_tree {
   ObligatedInferredTree,
   NodeGrounding
 }
-import v2.std.algebra_structure_signature { algebra_inhabitance_declares_field }
+import v2.std.algebra_structure_signature { FieldDeclared, FieldNotDeclared, InhabitanceMalformed, algebra_inhabitance_field_declaration }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.extdeps.languages.dag {
   dag_algebra_inhabitance_decls,
@@ -1878,7 +1878,7 @@ fn infer_canonical_operation_field(operation: CanonicalOperation) -> Optional<Sy
 
 // THE OPERAND TYPE CARRIES THE FIELD WHEN ITS LANGUAGE MODEL SAYS SO: the type's row in
 // v2.extdeps.languages.dag dag_algebra_inhabitance_decls inhabits a structure that DECLARES the field, read
-// through v2.std.algebra_structure_signature algebra_inhabitance_declares_field (the structure's binders and
+// through v2.std.algebra_structure_signature algebra_inhabitance_field_declaration (the structure's binders and
 // the sub-structures it composes -- never a name found inside an operation's signature). The result is the
 // operand type because every binary algebra primitive these structures carry is closed on the carrier: a
 // lattice join is algebra_binary_fn_node(domain: T, T, codomain: T), and ring add is the operation of the
@@ -1886,15 +1886,27 @@ fn infer_canonical_operation_field(operation: CanonicalOperation) -> Optional<Sy
 // ^dag_binding_type_int: Int add derives through Int's ordered-ring row and Bool join through Bool's
 // boolean-algebra row, by one route; a type with no row declaring the field (Bool `+`, Int `||`) is refused as
 // an operand mismatch exactly as a non-Int `+` was.
-fn infer_algebra_field_result_type(operand_type: Node, field: Symbol) -> Optional<Node> {
-  fold(dag_algebra_inhabitance_decls(), init: optional_absent(), f: fn(acc, decl) {
+// What the operand type's row answers for the field: the result type, no row carrying it, or a row whose
+// inhabitance node is malformed -- the last refused with ITS cause, never as an operand mismatch.
+type InferAlgebraFieldResult
+  = AlgebraFieldResultType { result: Node }
+  | AlgebraFieldNotCarried
+  | AlgebraFieldRowMalformed { cause: Symbol }
+
+fn infer_algebra_field_result_type(operand_type: Node, field: Symbol) -> InferAlgebraFieldResult {
+  fold(dag_algebra_inhabitance_decls(), init: AlgebraFieldNotCarried, f: fn(acc, decl) {
     match acc {
-      Present { value: _ } => acc
-      Absent =>
-        if infer_branch_type_atoms_equal(a: decl.inhabitant, b: operand_type) && algebra_inhabitance_declares_field(inhabitance: decl.algebra, field: field) {
-          optional_present(value: operand_type)
+      AlgebraFieldResultType { result: _ } => acc
+      AlgebraFieldRowMalformed { cause: _ } => acc
+      AlgebraFieldNotCarried =>
+        if infer_branch_type_atoms_equal(a: decl.inhabitant, b: operand_type) {
+          match algebra_inhabitance_field_declaration(inhabitance: decl.algebra, field: field) {
+            FieldDeclared => AlgebraFieldResultType { result: operand_type }
+            FieldNotDeclared => AlgebraFieldNotCarried
+            InhabitanceMalformed { cause: c } => AlgebraFieldRowMalformed { cause: c }
+          }
         } else {
-          optional_absent()
+          AlgebraFieldNotCarried
         }
     }
   })
@@ -2506,11 +2518,17 @@ fn infer_transform_binary_infix(
                                 Rejected { diagnostics: r } => Rejected { diagnostics: r }
                                 Accepted { value: unified_type, diagnostics: ud } =>
                                   match infer_algebra_field_result_type(operand_type: unified_type, field: field) {
-                                    Absent =>
+                                    AlgebraFieldNotCarried =>
                                       outcome_rejected(
                                         infer_transform_operand_type_mismatch_diagnostic(node: node)
                                       )
-                                    Present { value: result_type } =>
+                                    AlgebraFieldRowMalformed { cause: cause } =>
+                                      outcome_rejected(Diagnostic {
+                                        reason: cause,
+                                        at: node_locus(node: node),
+                                        correction: Unavailable { reason: CorrectionNotModeled }
+                                      })
+                                    AlgebraFieldResultType { result: result_type } =>
                                     match infer_descent_witness_for_node(n: node) {
                                       Violates { diagnostic: d } =>
                                         Rejected { diagnostics: diagnostics_singleton(d: d) }
