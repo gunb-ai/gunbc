@@ -241,6 +241,17 @@ fn r2_bucket_location_wire(location: R2BucketLocation) -> String {
   }
 }
 
+// THE OPTIONAL locationHint OF A CREATE BODY. Absent is serialized as JSON null by the rest transport;
+// the hint is an optional body field (r2_create_bucket_location_hint_reading), and a null is read here
+// as "no hint", which is a bet on the upstream's null handling, not a cited reading: a Create that
+// refuses it surfaces as a refused create and a readback that is still absent, never as a bucket.
+fn r2_bucket_location_wire_optional(location: R2BucketLocation?) -> String? {
+  match location {
+    Present { value: l } => Present { value: r2_bucket_location_wire(location: l) }
+    Absent => none
+  }
+}
+
 fn r2_bucket_locations() -> List<R2BucketLocation> {
   [R2LocationApac, R2LocationEeur, R2LocationEnam, R2LocationWeur, R2LocationWnam, R2LocationOc]
 }

@@ -50,6 +50,7 @@ import gunbc.cloudflare.r2_origin {
   FabricDurableOrigin,
   FabricBootOrigin,
   FabricCacheBlobs,
+  FabricWorkspace,
   origin_credential_secret_id,
   FleetCloudflareAccountStanding,
   CloudflareAccountAllocated,
@@ -1024,6 +1025,18 @@ fn run_cache_object_read() -> ProcessExit {
 
 fn run_cache_object_write() -> ProcessExit {
   mint_origin_token_and_store(profile: R2OriginObjectWrite, purpose: FabricCacheBlobs {})
+}
+
+// THE WORKSPACE PLACEMENT'S TWO ENTRIES, dispatched through fleet-converge modes
+// r2_workspace_object_read_mint and r2_workspace_object_write_mint so the Create spends the bootstrap
+// token only on the federated route; their stored versions are pinned in gunbc.cloudflare.r2_origin
+// fabric_workspace_standing by a reviewed row change after the run.
+fn run_workspace_object_read() -> ProcessExit {
+  mint_origin_token_and_store(profile: R2OriginObjectRead, purpose: FabricWorkspace {})
+}
+
+fn run_workspace_object_write() -> ProcessExit {
+  mint_origin_token_and_store(profile: R2OriginObjectWrite, purpose: FabricWorkspace {})
 }
 
 fn origin_credential_already_pinned(profile: R2OriginTokenProfile, origin: R2OriginStanding) -> Bool {

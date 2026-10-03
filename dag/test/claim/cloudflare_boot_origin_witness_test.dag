@@ -31,6 +31,7 @@ import gunbc.cloudflare.r2_origin {
   OriginCredentialMintEntryUnbuilt,
   DigestKeyedBootArtifacts,
   KeyAddressedCacheBlobs,
+  ContentAddressedWorkspaceHistory,
   bucket_purpose_admission,
   FabricCommitManifestsAndContentAddressedOutputs,
   fabric_boot_origin_read_secret_id,
@@ -214,6 +215,7 @@ test fn boot_origin_credentials_are_disjoint_and_name_their_mint_entries() -> Bo
              FabricCommitManifestsAndContentAddressedOutputs {} => false
              DigestKeyedBootArtifacts {} => true
              KeyAddressedCacheBlobs {} => false
+             ContentAddressedWorkspaceHistory {} => false
            }
         && match b.read_credential {
              OriginCredentialPinned { access_key_id: _, token_value: _ } => false
