@@ -181,7 +181,7 @@ fn no_observation(reason: String) -> ProcessExit {
 fn native_serve_probe_standing(announcement: String, responses: List<String>, refused_status: Int, refused_stderr: String) -> ProcessExit {
   if !starts_with(s: announcement, prefix: "native-serve listening on ") {
     no_observation(reason: concat("the service did not announce a bound address: ", announcement))
-  } else if refused_status != 2 || contains(refused_stderr, "listening on") {
+  } else if refused_status != 2 || !starts_with(s: refused_stderr, prefix: "REFUSED: ") {
     ExitFailure { code: native_serve_probe_not_held_code, reason: concat("a launch with a non-revision release was not refused before binding (status ", concat(to_string(value: refused_status), ")")) }
   } else {
     match native_serve_case_failures(cases: native_serve_probe_cases(), responses: responses, acc: []) {
