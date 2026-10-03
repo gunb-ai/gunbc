@@ -2,6 +2,7 @@
 // Source module: extdeps.ietf.http_semantics
 
 use self::HttpMethod::*;
+use self::HttpStatusClass::*;
 pub use crate::extdeps_external_authority::{
     ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
 };
@@ -42,7 +43,7 @@ pub fn extdeps_model_scope() -> Rc<ExternalModelScope> {
     }),
     }),
         first_citation: crate::extdeps_ietf_http_semantics::extdeps_external_authority_anchor(),
-        further_citations: Rc::new(vec![rfc5789_patch_authority()]),
+        further_citations: Rc::new(vec![rfc5789_patch_authority(), rfc9110_status_codes_authority()]),
     })
             };
         }
@@ -79,6 +80,42 @@ pub enum HttpMethod {
     PATCH,
 }
 
+pub fn rfc9110_status_codes_authority() -> Rc<ExternalAuthority> {
+    thread_local! {
+            static CACHED: Rc<ExternalAuthority> = {
+                Rc::new(ExternalAuthority {
+        uri: Rc::new(Uri {
+        scheme: UriScheme::Https,
+        locator: "www.rfc-editor.org/rfc/rfc9110#section-15".to_string(),
+    }),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum HttpStatusClass {
+    Informational,
+    Successful,
+    Redirection,
+    ClientError,
+    ServerError,
+}
+
+pub fn http_status_class_digit(class: HttpStatusClass) -> i64 {
+    match class.clone() {
+        HttpStatusClass::Informational => 1,
+        HttpStatusClass::Successful => 2,
+        HttpStatusClass::Redirection => 3,
+        HttpStatusClass::ClientError => 4,
+        HttpStatusClass::ServerError => 5,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GET;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -97,3 +134,13 @@ pub struct OPTIONS;
 pub struct TRACE;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PATCH;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Informational;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Successful;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Redirection;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ClientError;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ServerError;

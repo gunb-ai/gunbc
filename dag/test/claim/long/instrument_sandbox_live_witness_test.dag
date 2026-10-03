@@ -1,5 +1,5 @@
 module test.claim.long.instrument_sandbox_live_witness
-import extdeps.tailscale.identity { TailnetIdentityAbsent }
+import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent }
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool, Int, List }
@@ -17,7 +17,7 @@ import gunbc.design.instrument_physical { preference_default, instrument_displac
 import gunbc.roadmap_program_view {
   V1ProgramViewResult, ProgramViewDerived, ProgramViewRefused, V1DeletionProgramView,
 }
-import extdeps.http.server { ServeHttpRequest, ServeHttpResponse, GET, media_type_wire_label }
+import extdeps.http.server { ServeHttpRequest, ServeHttpResponse, GET, media_type_wire_label, RequestSecurityContext, AccessPathLocalDev }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -49,8 +49,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // (restructure the derivation onto keyed lookup) was MET by #7822 and did not dissolve the row, so
 // a second copy of it would now be doubly wrong.
 
-fn fixture_request(path: String) -> ServeHttpRequest {
-  ServeHttpRequest { method: GET, path: path, body: "", identity: TailnetIdentityAbsent }
+fn fixture_request(path: String) -> ServeHttpRequest<RequestAuthenticationEvidence> {
+  ServeHttpRequest {
+    method: GET,
+    path: path,
+    body: "",
+    security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent },
+  }
 }
 
 fn served() -> ServeHttpResponse {
