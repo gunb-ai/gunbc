@@ -253,6 +253,11 @@ fn launch_identity_exemplar() -> LaunchIdentity {
   }
 }
 
+// LaunchNoPlacementGrant (G5, dogfood route) is the one arm decided at ACTUATION rather than by the
+// pure gate ledger: the session's placement is a reservation in the host's agent-session pool
+// (gunbc.roadmap_session_placement), and taking it is an effect that cannot run inside the pure
+// fold. It is still a launch refusal and not a spawn failure, because it is taken before any host
+// step runs -- nothing is created -- and the belt returns it as SpawnNotAdmitted with this arm.
 type LaunchRefusal
   = LaunchNoActuatingInstance { reason: String }
   | LaunchInstanceActuationRefused { instance_id: String, reason: String }
@@ -269,6 +274,7 @@ type LaunchRefusal
   | LaunchNoCapacity { occupied: Int, max_concurrent: Int }
   | LaunchCauseNotPermitted { cause: LaunchCause, mode: SpawnMode }
   | LaunchGateNotEvaluated { gate: String }
+  | LaunchNoPlacementGrant { detail: String }
 
 type LaunchAdmission
   = LaunchAdmitted { identity: LaunchIdentity }
@@ -297,6 +303,7 @@ fn launch_refusal_label(r: LaunchRefusal) -> String {
     LaunchNoCapacity { occupied: _, max_concurrent: _ } => "no_capacity"
     LaunchCauseNotPermitted { cause: _, mode: _ } => "cause_not_permitted_by_mode"
     LaunchGateNotEvaluated { gate: _ } => "gate_not_evaluated"
+    LaunchNoPlacementGrant { detail: _ } => "no_placement_grant"
   }
 }
 
@@ -317,6 +324,7 @@ fn launch_refusal_reason(r: LaunchRefusal) -> String {
     LaunchNoCapacity { occupied, max_concurrent } => join(["belt at capacity: ", to_string(occupied), " of ", to_string(max_concurrent), " slots occupied"], "")
     LaunchCauseNotPermitted { cause, mode } => join(["cause ", launch_cause_label(c: cause), " may not start new work in spawn mode ", spawn_mode_label(m: mode)], "")
     LaunchGateNotEvaluated { gate } => join(["gate ", gate, " was not evaluated; fail-closed"], "")
+    LaunchNoPlacementGrant { detail } => join(["the agent session holds no placement grant, so it is not spawned: ", detail], "")
   }
 }
 
@@ -337,6 +345,7 @@ fn launch_refusal_exemplars() -> List<LaunchRefusal> {
     LaunchNoCapacity { occupied: 3, max_concurrent: 3 },
     LaunchCauseNotPermitted { cause: Timer, mode: ManualReady },
     LaunchGateNotEvaluated { gate: "g" },
+    LaunchNoPlacementGrant { detail: "d" },
   ]
 }
 

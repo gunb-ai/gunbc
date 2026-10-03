@@ -45,6 +45,7 @@ type TargetProducer
   | RequiredLaneResolutionCensusProducer
   | BareReferenceChannelOutcomeProducer
   | SelfHostBehavioralEquivalenceProducer
+  | DependencyDemandCensusProducer
   | NativeClaimProgramProducer { entry: String }
 
 type TargetBinding {
