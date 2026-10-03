@@ -63,6 +63,7 @@ import v2.workflow.product_receipt {
   CargoBuild,
   CargoBuildFailed,
   CargoManifestWriteFailed,
+  EmittedCargoManifestUnreadable,
   ClosureCandidateEmitted,
   EmittedHardRefusalsPresent,
   DiagnosticCauseTally,
@@ -88,8 +89,13 @@ import v2.workflow.product_receipt {
   product_receipt_green,
   product_receipt_render
 }
-import tools.self_host_curated_seed_linked_harness {
-  cssl_v1_compiled_probe_lib_cargo_toml
+import tools.emitted_crate_harness_manifest {
+  derive_harness_manifest_in_place,
+  HarnessManifestDerived,
+  EmittedManifestUnreadable,
+  HarnessManifestWriteFailed,
+  ProbeLibTarget,
+  SeedLinked
 }
 
 // THE COMPOSITION, and why it runs HERE rather than in the driver that launched it.
@@ -182,6 +188,7 @@ fn stage_cause_belongs_to_read(cause: BoundaryRefusalCause) -> Bool {
     EmitterRejected { causes: _ } => false
     EmittedHardRefusalsPresent { count: _ } => false
     AssemblyRefused => false
+    EmittedCargoManifestUnreadable => false
     CargoManifestWriteFailed => false
     CargoBuildFailed => false
   }
@@ -377,55 +384,66 @@ fn product_receipt_tail_not_exercised() -> ProductReceiptTail {
   }
 }
 
+fn product_receipt_manifest_refused(
+  b5: BoundaryObservation,
+  assembled_identity: ArtifactIdentity,
+  cause: BoundaryRefusalCause
+) -> ProductReceiptTail {
+  ProductReceiptTail {
+    b5: b5,
+    b6: stage_refused(
+      boundary: AuthorityCargoManifest,
+      cause: cause,
+      consumed: assembled_identity
+    ),
+    b7: stage_not_exercised(boundary: CargoBuild)
+  }
+}
+
 fn product_receipt_cargo_tail(
   root: String,
   candidate_dir: String,
   b5: BoundaryObservation,
   assembled_identity: ArtifactIdentity
 ) -> ProductReceiptTail {
-  let cargo_manifest_text = cssl_v1_compiled_probe_lib_cargo_toml(root: root)
-  let written = Filesystem.Write(
-    path: concat(candidate_dir, "/Cargo.toml"),
-    content: cargo_manifest_text
-  )
-  if written.success {
-    let manifest_identity = product_artifact_identity(value: cargo_manifest_text, file_count: 1)
-    let build = cargo.Build.BuildManifest(
-      workdir: candidate_dir,
-      manifest_path: concat(candidate_dir, "/Cargo.toml"),
-      target_dir: concat(candidate_dir, "/target"),
-      extra_args: ["--release"]
-    )
-    ProductReceiptTail {
-      b5: b5,
-      b6: stage_completed(
-        boundary: AuthorityCargoManifest,
-        consumed: assembled_identity,
-        produced: manifest_identity
-      ),
-      b7: if build.success {
-        stage_completed(
-          boundary: CargoBuild,
-          consumed: manifest_identity,
-          produced: product_artifact_identity(value: "cargo-completed-with-zero-errors", file_count: 1)
-        )
-      } else {
-        stage_refused(
-          boundary: CargoBuild,
-          cause: CargoBuildFailed,
-          consumed: manifest_identity
-        )
+  match derive_harness_manifest_in_place(
+    crate_dir: candidate_dir,
+    target: ProbeLibTarget,
+    linkage: SeedLinked { root: root }
+  ) {
+    EmittedManifestUnreadable { path: _ } =>
+      product_receipt_manifest_refused(b5: b5, assembled_identity: assembled_identity, cause: EmittedCargoManifestUnreadable)
+    HarnessManifestWriteFailed { path: _ } =>
+      product_receipt_manifest_refused(b5: b5, assembled_identity: assembled_identity, cause: CargoManifestWriteFailed)
+    HarnessManifestDerived { content: cargo_manifest_text } => {
+      let manifest_identity = product_artifact_identity(value: cargo_manifest_text, file_count: 1)
+      let build = cargo.Build.BuildManifest(
+        workdir: candidate_dir,
+        manifest_path: concat(candidate_dir, "/Cargo.toml"),
+        target_dir: concat(candidate_dir, "/target"),
+        extra_args: ["--release"]
+      )
+      ProductReceiptTail {
+        b5: b5,
+        b6: stage_completed(
+          boundary: AuthorityCargoManifest,
+          consumed: assembled_identity,
+          produced: manifest_identity
+        ),
+        b7: if build.success {
+          stage_completed(
+            boundary: CargoBuild,
+            consumed: manifest_identity,
+            produced: product_artifact_identity(value: "cargo-completed-with-zero-errors", file_count: 1)
+          )
+        } else {
+          stage_refused(
+            boundary: CargoBuild,
+            cause: CargoBuildFailed,
+            consumed: manifest_identity
+          )
+        }
       }
-    }
-  } else {
-    ProductReceiptTail {
-      b5: b5,
-      b6: stage_refused(
-        boundary: AuthorityCargoManifest,
-        cause: CargoManifestWriteFailed,
-        consumed: assembled_identity
-      ),
-      b7: stage_not_exercised(boundary: CargoBuild)
     }
   }
 }
