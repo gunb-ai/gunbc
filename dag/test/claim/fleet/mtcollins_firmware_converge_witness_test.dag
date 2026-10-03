@@ -20,6 +20,7 @@ import gunbc.machine_intake_bmc_secure {
   PublishedCredentialRetired, observed_bmc_credential_rotation, derive_bmc_secure,
 }
 import gunbc.machine_intake_phase { DevelopmentAndTest, intake_qualification_policy }
+import gunbc.machine_intake_boot_outcome { HostBootObservation, HostReachedUefi, PostDdrProgressLost, ResetInitiatorUnobserved }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
 import gunbc.machine_intake_mtcollins1_bmc_secure_observation {
   mtcollins1_intake_subject, mtcollins1_bmc_secure_standing, mtcollins1_managed_credential,
@@ -35,8 +36,8 @@ import gunbc.fleet.mtcollins_firmware_converge {
   MtCollinsFirmwareWorld, InstalledVersionReading, FlashStepRecord, AcPowerCycleWitness,
   HostPoweredOff, HostPoweredOn, BmcAnswering, BmcNotAnswering,
   FirmwareCredentialReprovisionDue, FirmwareBootReadbackDue,
-  BmcCredentialReestablishment, RedfishRoleNotRestored, BootLoopsAfterFirmwareSet,
-  HostBootObservation, HostReachedUefi, ColdResetLoopAtCheckpoint, CredentialNotReestablished, CredentialEpochNotAdvancedPastFlash,
+  BmcCredentialReestablishment, RedfishRoleNotRestored, BootProgressLostAfterFirmwareSet,
+   CredentialNotReestablished, CredentialEpochNotAdvancedPastFlash,
   StepDuringFactoryCredentialWindow,
   FirmwareConvergenceVerdict, FirmwareBaselineConverged, FirmwareStepDue, FirmwareAwaitingHumanStep,
   FirmwareConvergenceRefused,
@@ -453,10 +454,10 @@ test fn whole_set_reaching_uefi_converges() -> Bool {
   }
 }
 
-// RED, the 2026-10-02 observation: S5 soft-off at POST checkpoint 0x1a0a on every pass.
-test fn cold_reset_loop_after_the_set_refuses() -> Bool {
-  match refusal_of(verdict: run_booted(world: world_before(power_off: true), records: whole_set(), boot: Present { value: ColdResetLoopAtCheckpoint { checkpoint: "0x1a0a", cold_cycles_observed: 4 } })) {
-    Present { value: c } => match c { BootLoopsAfterFirmwareSet { checkpoint: _, cold_cycles_observed: n } => n == 4  _ => false }
+// RED, the 2026-10-02 observation: progress lost after DRAM at 0x1a0a, S5 then a cold start, initiator unobserved.
+test fn post_ddr_progress_lost_after_the_set_refuses() -> Bool {
+  match refusal_of(verdict: run_booted(world: world_before(power_off: true), records: whole_set(), boot: Present { value: PostDdrProgressLost { last_checkpoint: "0x1a0a", cold_starts_observed: 4, initiator: ResetInitiatorUnobserved } })) {
+    Present { value: c } => match c { BootProgressLostAfterFirmwareSet { last_checkpoint: _, cold_starts_observed: n, initiator: _ } => n == 4  _ => false }
     Absent => false
   }
 }

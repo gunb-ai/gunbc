@@ -36,6 +36,9 @@ import gunbc.machine_intake_bmc_secure {
   CredentialProbeOutcome, CredentialAccepted, CredentialRejected, CredentialProbeUnestablished,
 }
 import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_managed_credential }
+import gunbc.machine_intake_boot_outcome {
+  HostBootObservation, HostReachedUefi, PostDdrProgressLost, HostBootUnobservable, ResetInitiator,
+}
 import gunbc.fleet.mtcollins_firmware_baseline {
   FirmwareBaseline, baseline_release_for, bios_scp_is_a_pair,
 }
@@ -149,17 +152,9 @@ type MtCollinsFirmwareWorld {
   installed: List<InstalledVersionReading>
 }
 
-// WHAT THE HOST DID WHEN IT FIRST BOOTED AFTER THE SET, which is the only observation that says the
-// set worked (mtcollins1, 2026-10-02, after BMC 0.45.3 + BIOS 0ACOD014 + SCP 2.10). Reaching UEFI is
-// success. The failure seen there is a COLD RESET LOOP: every pass trains DRAM to POST checkpoint
-// 0x1a0a and resets, logging CPU0_ACPI_State S5/G2 soft-off, so the next pass retrains from cold -- and
-// nothing logs an error code. Old firmware also reset at that checkpoint but WARM (SEL `System Restart`,
-// no ACPI change) and continued to 0x1a0b on the second pass. A repeating soft-off at one checkpoint is
-// therefore a typed failure and never `still booting`: a fold that waited on it would wait forever.
-type HostBootObservation
-  = HostReachedUefi
-  | ColdResetLoopAtCheckpoint { checkpoint: NonEmptyStr, cold_cycles_observed: Int }
-  | HostBootUnobservable { reason: NonEmptyStr }
+// WHAT THE HOST DID WHEN IT FIRST BOOTED AFTER THE SET is the only observation that says the set worked,
+// and it is gunbc.machine_intake_boot_outcome's fact, not this module's: the boot run and the socket-1
+// investigation read the same classification. Reaching UEFI grounds the set; PostDdrProgressLost refuses.
 
 // The witnessed AC power cycle. It is an operator-attested record: the substrate cannot see a power
 // cord, which is why selecting HumanOnlyStep was the honest answer. ac_off_seconds is what the
@@ -207,7 +202,7 @@ type FirmwareConvergenceRefusal
   | AcPowerCycleTooShort { target: FirmwareTarget, observed_seconds: Int, minimum_seconds: Int }
   | ReadbackMismatch { target: FirmwareTarget, reason: String }
   | AcCycleNotAHumanStep { target: FirmwareTarget }
-  | BootLoopsAfterFirmwareSet { checkpoint: NonEmptyStr, cold_cycles_observed: Int }
+  | BootProgressLostAfterFirmwareSet { last_checkpoint: NonEmptyStr, cold_starts_observed: Int, initiator: ResetInitiator }
   | BootOutcomeUnobservable { reason: NonEmptyStr }
 
 type FirmwareConvergenceVerdict
@@ -483,7 +478,7 @@ fn boot_verdict(records: List<FlashStepRecord>, boot: HostBootObservation?) -> F
         Present { value: o } =>
           match o {
             HostReachedUefi => FirmwareBaselineConverged
-            ColdResetLoopAtCheckpoint { checkpoint: c, cold_cycles_observed: n } => refused(cause: BootLoopsAfterFirmwareSet { checkpoint: c, cold_cycles_observed: n })
+            PostDdrProgressLost { last_checkpoint: c, cold_starts_observed: n, initiator: i } => refused(cause: BootProgressLostAfterFirmwareSet { last_checkpoint: c, cold_starts_observed: n, initiator: i })
             HostBootUnobservable { reason: r } => refused(cause: BootOutcomeUnobservable { reason: r })
           }
       }

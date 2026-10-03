@@ -1,0 +1,25 @@
+module gunbc.machine_intake_boot_outcome
+
+import std.types { Int, NonEmptyStr }
+
+// WHAT ONE BOOT SHOWED, classified once for every reader: the firmware convergence's post-set readback
+// (gunbc.fleet.mtcollins_firmware_converge), the boot run, and the mtcollins1 socket-1 investigation. A
+// fact about a boot lives at the boot-observation layer so each of those imports it instead of
+// declaring its own spelling.
+//
+// Reaching UEFI is success. The failure seen on mtcollins1 on 2026-10-02 (after BMC 0.45.3 +
+// BIOS 0ACOD014 + SCP 2.10, session eager-gull-22) is classified PostDdrProgressLost: POST reached
+// checkpoint 0x1a0a after DRAM training, then the host went to S5 soft-off and started cold, so the
+// next pass trained again -- and nothing logged an error code or named what initiated the reset. 0x1a0a
+// is NOT a normal restart point: the 2026-09-13 two-socket boot passed 0x1a0a -> 0x1a0b in one pass,
+// and a single restart there appeared only in old-firmware one-socket boots. So a loss of progress
+// there is a typed failure, never `still booting`, and the unknown initiator stays unknown.
+type ResetInitiator
+  = ResetInitiatorUnobserved
+  | ResetInitiatorObserved { initiator: NonEmptyStr }
+
+type HostBootObservation
+  = HostReachedUefi
+  | PostDdrProgressLost { last_checkpoint: NonEmptyStr, cold_starts_observed: Int, initiator: ResetInitiator }
+  | HostBootUnobservable { reason: NonEmptyStr }
+
