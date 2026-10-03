@@ -1,7 +1,7 @@
 module gunbc.spark.group_arm_launch
 
 import gunbc.auth.standing_operator_grant { standing_grant_covers, StandingArmLaunch }
-import gunbc.spark.pair_serving_d0_door { d0_standing_grants }
+import gunbc.spark.pair_serving_d0 { d0_standing_grants }
 import std.types { String, Bool, List, NonEmptyStr }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { zip_map }
@@ -273,7 +273,7 @@ fn content_hash_text(h: ContentHash) -> String {
 // by valiant-crab-775, 2026-10-03). ReleasedToFleet means no pair-serving suspension exists to launch a
 // successor under, so the authority the launch acts under is the committed standing ruling
 // (gunbc.auth.standing_operator_grant), read from the one roster D0 already consumes
-// (gunbc.spark.pair_serving_d0_door d0_standing_grants). It covers the launch only when a grant names
+// (gunbc.spark.pair_serving_d0 d0_standing_grants). It covers the launch only when a grant names
 // this group, the ArmLaunch effect and EVERY planned host; anything less refuses. The successor must
 // still be keyed, and every other wall (arm, hosts, incumbent, occupancy, memory) still applies.
 fn group_arm_released_launch_causes(group: FabricGroup, hosts: List<HostIdentity>) -> List<String> {
