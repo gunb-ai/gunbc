@@ -7,7 +7,8 @@ import gunbc.eval.design_adherence {
   EvalCase, MechanicalCheck, ClaimHolds, PatternAbsent, PatternPresent, FromReferenceFix, FromEvalStore,
   DesignCheck, MechanicallyGraded, JudgmentOnly,
   HardGraderFailed, HiddenDiscriminator, DesignCheckFailed,
-  CaseVerdict, CasePassed, CaseFailed, CaseAwaitingJudgment, CaseNotGraded,
+  CaseVerdict, CasePassed, CaseFailed, CaseAwaitingJudgment, CaseHeldWithUngradedGates, CaseNotGraded,
+  non_fold_residue_ungraded, case_discriminates_on_executed_graders,
   case_verdict, case_unresolved_criteria, criterion_tallies,
   PairedOutcome, paired_summary, case_discriminates,
   eval_prompt, eval_prompt_render,
@@ -65,20 +66,29 @@ test fn a_failed_check_fails_the_case_and_judgment_alone_only_defers_it() -> Boo
   match first_case() {
     Absent => false
     Present { value: c } =>
-      match case_verdict(c: c, failures: [HardGraderFailed { grader: HiddenDiscriminator, criterion: "fail-closed" as NonEmptyStr, detail: "x" }]) {
+      match case_verdict(c: c, failures: [HardGraderFailed { grader: HiddenDiscriminator, criterion: "fail-closed" as NonEmptyStr, detail: "x" }], ungraded: [non_fold_residue_ungraded]) {
         CaseFailed { failures: _ } => true
         CasePassed => false
         CaseAwaitingJudgment { pending: _ } => false
+        CaseHeldWithUngradedGates { ungraded: _ } => false
         CaseNotGraded { cause: _ } => false
       }
       && match case_verdict(c: EvalCase {
           identity: c.identity, fetch: c.fetch, finding: c.finding, frozen_base: c.frozen_base,
           reference_fix: c.reference_fix, task: c.task, touched_entries: c.touched_entries, discriminator: c.discriminator,
           design_checks: [DesignCheck { criterion: "fail-closed" as NonEmptyStr, statement: "s" as NonEmptyStr, method: JudgmentOnly { rubric: "r" as NonEmptyStr } }],
-        }, failures: []) {
+        }, failures: [], ungraded: []) {
         CaseAwaitingJudgment { pending: _ } => true
         CasePassed => false
         CaseFailed { failures: _ } => false
+        CaseHeldWithUngradedGates { ungraded: _ } => false
+        CaseNotGraded { cause: _ } => false
+      }
+      && match case_verdict(c: c, failures: [], ungraded: [non_fold_residue_ungraded]) {
+        CaseHeldWithUngradedGates { ungraded: _ } => true
+        CasePassed => false
+        CaseFailed { failures: _ } => false
+        CaseAwaitingJudgment { pending: _ } => false
         CaseNotGraded { cause: _ } => false
       }
   }
@@ -100,6 +110,8 @@ test fn the_pairing_scores_only_graded_pairs_and_discriminates_one_way() -> Bool
   let tallies = criterion_tallies(verdicts: [failed, CasePassed])
   s.only_candidate_passed == 1 && s.only_incumbent_passed == 1 && s.not_paired == 1 && s.both_passed == 0
     && count(filter(pairs, p => case_discriminates(p: p))) == 1
+    && case_discriminates_on_executed_graders(p: PairedOutcome { case_identity: "d" as NonEmptyStr, incumbent: failed, candidate: CaseHeldWithUngradedGates { ungraded: [non_fold_residue_ungraded] } })
+    && !case_discriminates(p: PairedOutcome { case_identity: "d" as NonEmptyStr, incumbent: failed, candidate: CaseHeldWithUngradedGates { ungraded: [non_fold_residue_ungraded] } })
     && count(tallies) == 1
     && count(filter(tallies, t => (t.criterion as String) == "fail-closed" && t.cases_failed == 1)) == 1
 }

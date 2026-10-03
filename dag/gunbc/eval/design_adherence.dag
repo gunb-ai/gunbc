@@ -3,6 +3,7 @@ module gunbc.eval.design_adherence
 import std.types { Bool, Int, String, NonEmptyStr, FilePath, List }
 import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
 import gunbc.roadmap.roadmap_review_criteria { review_criterion_by_key }
+import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 
 // AN EVAL CASE IS A REVIEW FINDING THAT A LATER COMMIT FIXED, REPLAYED AS A TASK.
 //
@@ -149,12 +150,35 @@ type GraderFailure
   = HardGraderFailed { grader: HardGrader, criterion: NonEmptyStr, detail: String }
   | DesignCheckFailed { criterion: NonEmptyStr, statement: NonEmptyStr, detail: String }
 
+// A GATE WITH NO VENUE IS UNGRADED, NOT HELD. The non-fold-residue roster check exists only inside
+// `claim_executor --required-floor`, and that run does not complete on the remote runners this
+// grader is executed on (measured 2026-10-03: the 24 and 28 GB BuildBuddy VMs both die partway
+// through the floor). Every other gate has an entry-route form the grader executes. A case whose
+// executed graders all hold but whose change still owes an ungraded gate is reported as such and is
+// never counted as passed.
+type UngradedGate {
+  gate: NonEmptyStr
+  frontier: DissolutionCondition
+}
+
+data non_fold_residue_floor_venue_frontier: DissolutionCondition = unbound_dissolution(description: "dissolve-on: a venue on which the design-adherence grader can execute `claim_executor --required-floor` to completion for a graded commit (the CI fleet, reached without growing the seed); the non-fold-residue roster gate is then graded there and this arm is deleted" as NonEmptyStr)
+
+data non_fold_residue_ungraded: UngradedGate = UngradedGate {
+  gate: "non-fold-residue roster (required floor only)" as NonEmptyStr,
+  frontier: non_fold_residue_floor_venue_frontier,
+}
+
+fn ungraded_gate_text(g: UngradedGate) -> String {
+  join([g.gate as String, " -- ", dissolution_description(condition: g.frontier)], "")
+}
+
 // A case that could not be GRADED is not a case that FAILED: a fetch, checkout or build that did
 // not complete says nothing about the candidate, so it is its own arm and never counts against it.
 type CaseVerdict
   = CasePassed
   | CaseFailed { failures: List<GraderFailure> }
   | CaseAwaitingJudgment { pending: List<DesignCheck> }
+  | CaseHeldWithUngradedGates { ungraded: List<UngradedGate> }
   | CaseNotGraded { cause: NonEmptyStr }
 
 fn case_criteria(c: EvalCase) -> List<NonEmptyStr> {
@@ -177,9 +201,11 @@ fn judgment_only_checks(c: EvalCase) -> List<DesignCheck> {
 
 // THE VERDICT FOLD. Failures dominate (a failed mechanical check is a failure whatever judgment
 // later says); with no failure, any judgment-only check leaves the case awaiting judgment.
-fn case_verdict(c: EvalCase, failures: List<GraderFailure>) -> CaseVerdict {
+fn case_verdict(c: EvalCase, failures: List<GraderFailure>, ungraded: List<UngradedGate>) -> CaseVerdict {
   if count(failures) > 0 {
     CaseFailed { failures: failures }
+  } else if count(ungraded) > 0 {
+    CaseHeldWithUngradedGates { ungraded: ungraded }
   } else if count(judgment_only_checks(c: c)) > 0 {
     CaseAwaitingJudgment { pending: judgment_only_checks(c: c) }
   } else {
@@ -192,6 +218,7 @@ fn verdict_passed(v: CaseVerdict) -> Bool {
     CasePassed => true
     CaseFailed { failures: _ } => false
     CaseAwaitingJudgment { pending: _ } => false
+    CaseHeldWithUngradedGates { ungraded: _ } => false
     CaseNotGraded { cause: _ } => false
   }
 }
@@ -201,6 +228,7 @@ fn verdict_failed(v: CaseVerdict) -> Bool {
     CasePassed => false
     CaseFailed { failures: _ } => true
     CaseAwaitingJudgment { pending: _ } => false
+    CaseHeldWithUngradedGates { ungraded: _ } => false
     CaseNotGraded { cause: _ } => false
   }
 }
@@ -217,6 +245,7 @@ fn verdict_failed_criteria(v: CaseVerdict) -> List<NonEmptyStr> {
     CaseFailed { failures } => map(failures, f => failure_criterion(f: f))
     CasePassed => []
     CaseAwaitingJudgment { pending: _ } => []
+    CaseHeldWithUngradedGates { ungraded: _ } => []
     CaseNotGraded { cause: _ } => []
   }
 }
@@ -262,6 +291,7 @@ type PairedSummary {
 fn verdict_graded(v: CaseVerdict) -> Bool {
   match v {
     CaseNotGraded { cause: _ } => false
+    CaseHeldWithUngradedGates { ungraded: _ } => false
     CasePassed => true
     CaseFailed { failures: _ } => true
     CaseAwaitingJudgment { pending: _ } => true
@@ -285,4 +315,17 @@ fn paired_summary(pairs: List<PairedOutcome>) -> PairedSummary {
 // discriminate the defect it was built from.
 fn case_discriminates(p: PairedOutcome) -> Bool {
   verdict_failed(v: p.incumbent) && verdict_passed(v: p.candidate)
+}
+
+// THE CALIBRATION THAT IS EXECUTABLE TODAY: the frozen base fails and the fix holds every grader the
+// grader could execute, with any remainder named as ungraded. It is reported beside
+// case_discriminates, never in place of it, and it is not a pass.
+fn case_discriminates_on_executed_graders(p: PairedOutcome) -> Bool {
+  verdict_failed(v: p.incumbent) && match p.candidate {
+    CasePassed => true
+    CaseHeldWithUngradedGates { ungraded: _ } => true
+    CaseFailed { failures: _ } => false
+    CaseAwaitingJudgment { pending: _ } => false
+    CaseNotGraded { cause: _ } => false
+  }
 }

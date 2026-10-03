@@ -17,7 +17,8 @@ import gunbc.eval.design_adherence {
   DesignCheck, MechanicallyGraded, JudgmentOnly,
   HardGrader, TouchedEntriesResolve, FloorGates, HiddenDiscriminator, hard_grader_name,
   GraderFailure, HardGraderFailed, DesignCheckFailed,
-  CaseVerdict, CasePassed, CaseFailed, CaseAwaitingJudgment, CaseNotGraded,
+  CaseVerdict, CasePassed, CaseFailed, CaseAwaitingJudgment, CaseHeldWithUngradedGates, CaseNotGraded,
+  UngradedGate, non_fold_residue_ungraded, ungraded_gate_text, case_discriminates_on_executed_graders,
   case_verdict, case_unresolved_criteria, criterion_tallies, CriterionTally,
   PairedOutcome, PairedSummary, paired_summary, case_discriminates,
   eval_prompt, eval_prompt_render,
@@ -28,9 +29,11 @@ import gunbc.eval.design_adherence_cases { design_adherence_cases }
 //
 // Realized over effects this repository already models and nothing else (operator ruling
 // 2026-10-03: no seed host arm): git through extdeps.git, the seed's own binaries through
-// gunbc.WitnessBin.Run, files through extdeps.filesystem. The three hard graders are the routes the
-// project itself gates on: claim_batch for resolution and claims, `claim_executor --required-floor`
-// for the diff-scoped floor gates, `git grep -E` at the graded commit for pattern checks.
+// gunbc.WitnessBin.Run, files through extdeps.filesystem. The hard graders are the routes the
+// project itself gates on: claim_batch --entry for resolution, duplicate declarations and the
+// unimported-bare-provider rule, claim_batch for claims, `git grep -E` at the graded commit for
+// pattern checks. The non-fold-residue roster gate lives only in the required floor and is reported
+// ungraded (see the frontier in gunbc.eval.design_adherence).
 //
 // THE SEED IS BUILT FROM THE GRADED TREE, never from main: a gate's meaning is the meaning it had
 // at that commit, and an old tree read by a newer seed can refuse for reasons that postdate it.
@@ -125,7 +128,7 @@ fn prepare(ws: EvalWorkspace, c: EvalCase, at: GradeAt) -> Preparation {
       let target = join([ws.scratch, "/target"], "")
       let built = run_in(workdir: tree, program: "env", args: [
         concat("CARGO_TARGET_DIR=", target), "cargo", "build", "--release",
-        "-p", "v1-compiler", "--bin", "claim_batch", "--bin", "claim_executor",
+        "-p", "v1-compiler", "--bin", "claim_batch",
       ])
       if built.exit_code == 0 {
         Prepared { tree: tree, bins: concat(target, "/release") }
@@ -150,90 +153,61 @@ fn is_source_dag(p: FilePath) -> Bool {
   ends_with(s: p as String, suffix: ".dag") && (starts_with(s: p as String, prefix: "dag/") || starts_with(s: p as String, prefix: "src/v2/"))
 }
 
-// HARD GRADER 2: THE FLOOR GATES, read off the required floor's own phase lines.
+// HARD GRADERS 1 AND 2, ON THE ENTRY ROUTE. Every touched file is handed to claim_batch as its own
+// --entry, which is the route that refuses at the FILE: it resolves the file (a duplicate
+// declaration is a resolve refusal), and it applies the unimported-bare-provider rule to each entry
+// file ("ENTRY REFUSAL cause=UnimportedBareProvider", the entry-route half of the floor's gate). A
+// trivially true probe function is appended to each file in the scratch checkout so claim_batch has
+// a function to name; it changes nothing the gates read. The touched set is the case's own entries
+// plus every source .dag the graded commit changed; an entry the commit deleted is not an entry.
 //
-// The floor is run diff-scoped against the frozen base (GUNBC_CI_DIFF_BASE), exactly as CI scopes a
-// pull request against its base. An unchanged tree has no diff, so it has introduced nothing for a
-// diff-scoped gate to refuse: the gates hold vacuously and the floor is not run -- which is also why
-// the frozen-base side of a calibration run costs no floor. A gate whose phase line never printed
-// did not hold: the floor stopped before reaching it, and an unobserved gate is not a passed one.
-fn line_with(text: String, marker: String) -> String? {
-  fold(split(s: text, delimiter: "\n"), init: Absent, f: fn(acc, l) {
-    match string_contains(s: l, pattern: marker) { true => Present { value: l }  false => acc }
-  })
-}
+// The non-fold-residue roster has no entry-route form: it runs only inside the required floor, so a
+// change that touches source is reported with that gate ungraded (see
+// gunbc.eval.design_adherence non_fold_residue_ungraded), never as holding it. An unchanged tree has
+// introduced nothing for a diff-scoped gate to judge, so it owes none.
+data eval_entry_probe_function: String = "eval_entry_probe"
 
-fn floor_gate_failures(ws: EvalWorkspace, c: EvalCase, at: GradeAt, prep_tree: String, bins: String) -> List<GraderFailure> {
-  if count(changed_paths(ws: ws, c: c, at: at)) == 0 {
-    []
-  } else {
-    let floor = run_in(workdir: prep_tree, program: "env", args: [
-      concat("GUNBC_CI_DIFF_BASE=", hex(oid: c.frozen_base)),
-      concat(bins, "/claim_executor"), "--required-floor", "--source-root", "dag", "--source-root", "src/v2",
-    ])
-    let err = floor.stderr
-    let refusal = match line_with(text: err, marker: "REQUIRED-FLOOR REFUSAL") { Present { value } => value  Absent => "no refusal line" }
-    let nfr = match line_with(text: err, marker: "phase=non-fold-residue-diff state=completed") {
-      Absent => [HardGraderFailed { grader: FloorGates, criterion: "fail-closed" as NonEmptyStr, detail: concat("non-fold-residue gate not reached: ", refusal) }]
-      Present { value: _ } =>
-        if string_contains(s: err, pattern: "cause=NonFoldResidue") {
-          [HardGraderFailed { grader: FloorGates, criterion: "fail-closed" as NonEmptyStr, detail: refusal }]
-        } else { [] }
-    }
-    let provider = match line_with(text: err, marker: "phase=unimported-bare-provider-gate") {
-      Absent => [HardGraderFailed { grader: FloorGates, criterion: "single-authority" as NonEmptyStr, detail: concat("unimported-bare-provider gate not reached: ", refusal) }]
-      Present { value: line } =>
-        if ends_with(s: trim(line), suffix: "refusals=0") { [] } else {
-          [HardGraderFailed { grader: FloorGates, criterion: "single-authority" as NonEmptyStr, detail: concat(line, concat(" ", tail_lines(text: err, n: 4))) }]
-        }
-    }
-    let duplicate = if string_contains(s: err, pattern: "DuplicateDeclaration") {
-      [HardGraderFailed { grader: FloorGates, criterion: "single-authority" as NonEmptyStr, detail: "a duplicate declaration was refused on the floor" }]
-    } else { [] }
-    concat(concat(nfr, provider), duplicate)
-  }
-}
-
-// HARD GRADER 1: EVERY TOUCHED ENTRY RESOLVES. One probe module imports each touched module and is
-// resolved by claim_batch, so the whole touched set resolves through the same index a claim does.
-// The touched set is the case's own entries plus every source .dag the graded commit changed; an
-// entry the commit deleted is not an entry.
-fn module_name_of(source: String) -> String? {
-  match first(filter(split(s: source, delimiter: "\n"), l => starts_with(s: l, prefix: "module "))) {
-    Absent => Absent
-    Present { value: head } => Present { value: trim(substring(s: head, start: 7, end: string_length(s: head))) }
-  }
-}
-
-data eval_resolve_probe_entry: String = "dag/eval_resolve_probe.dag"
-
-fn resolve_failures(ws: EvalWorkspace, c: EvalCase, at: GradeAt, tree: String, bins: String) -> List<GraderFailure> {
+fn touched_entries_in_tree(ws: EvalWorkspace, c: EvalCase, at: GradeAt, tree: String) -> List<String> {
   let entries = distinct_paths(paths: concat(c.touched_entries, filter(changed_paths(ws: ws, c: c, at: at), p => is_source_dag(p: p))))
-  let reads = map(entries, p => Filesystem.Read(path: join([tree, "/", p as String], "")))
-  let present = filter(reads, r => r.success)
-  let names = map(present, r => module_name_of(source: r.content))
-  let unnamed = filter(names, n => match n { Absent => true  Present { value: _ } => false })
-  if count(unnamed) > 0 {
-    [HardGraderFailed { grader: TouchedEntriesResolve, criterion: "closed-grounded-substrate" as NonEmptyStr, detail: "a touched .dag file declares no module" }]
+  map(filter(entries, p => Filesystem.Read(path: join([tree, "/", p as String], "")).success), p => p as String)
+}
+
+fn append_entry_probe(tree: String, entry: String) -> Bool {
+  let path = join([tree, "/", entry], "")
+  let r = Filesystem.Read(path: path)
+  r.success && Filesystem.Write(path: path, content: join([r.content, "\n\nfn ", eval_entry_probe_function, "() -> Bool { true }\n"], "")).success
+}
+
+fn occurrences(text: String, needle: String) -> Int {
+  count(split(s: text, delimiter: needle)) - 1
+}
+
+fn entry_route_failures(ws: EvalWorkspace, c: EvalCase, at: GradeAt, tree: String, bins: String) -> List<GraderFailure> {
+  let entries = touched_entries_in_tree(ws: ws, c: c, at: at, tree: tree)
+  if count(entries) == 0 {
+    []
+  } else if count(filter(entries, e => !append_entry_probe(tree: tree, entry: e))) > 0 {
+    [HardGraderFailed { grader: TouchedEntriesResolve, criterion: "closed-grounded-substrate" as NonEmptyStr, detail: "an entry probe could not be written into the graded tree" }]
   } else {
-    let imports = map(names, n => match n { Present { value } => concat("import ", value)  Absent => "" })
-    let probe = join(concat(concat(["module eval_resolve_probe", ""], imports), ["", "fn eval_resolve_probe() -> Bool { true }", ""]), "\n")
-    let wrote = Filesystem.Write(path: join([tree, "/", eval_resolve_probe_entry], ""), content: probe)
-    if !wrote.success {
-      [HardGraderFailed { grader: TouchedEntriesResolve, criterion: "closed-grounded-substrate" as NonEmptyStr, detail: concat("resolve probe not written: ", wrote.error) }]
+    let r = run_in(workdir: tree, program: concat(bins, "/claim_batch"), args: concat(
+      ["--source-root", "dag", "--source-root", "src/v2"],
+      flat_map(entries, e => ["--entry", e, "--function", eval_entry_probe_function]),
+    ))
+    let all = concat(r.stdout, r.stderr)
+    if string_contains(s: r.stderr, pattern: "ENTRY REFUSAL cause=UnimportedBareProvider") {
+      [HardGraderFailed { grader: FloorGates, criterion: "single-authority" as NonEmptyStr, detail: tail_lines(text: r.stderr, n: 6) }]
+    } else if string_contains(s: all, pattern: "DuplicateDeclaration") {
+      [HardGraderFailed { grader: FloorGates, criterion: "single-authority" as NonEmptyStr, detail: tail_lines(text: all, n: 6) }]
+    } else if r.exit_code == 0 && occurrences(text: r.stdout, needle: concat("PASS ", eval_entry_probe_function)) == count(entries) {
+      []
     } else {
-      let r = run_in(workdir: tree, program: concat(bins, "/claim_batch"), args: [
-        "--source-root", "dag", "--source-root", "src/v2", "--entry", eval_resolve_probe_entry, "--function", "eval_resolve_probe",
-      ])
-      if r.exit_code == 0 && string_contains(s: r.stdout, pattern: "PASS eval_resolve_probe") {
-        []
-      } else if string_contains(s: concat(r.stdout, r.stderr), pattern: "DuplicateDeclaration") {
-        [HardGraderFailed { grader: FloorGates, criterion: "single-authority" as NonEmptyStr, detail: tail_lines(text: r.stderr, n: 6) }]
-      } else {
-        [HardGraderFailed { grader: TouchedEntriesResolve, criterion: "closed-grounded-substrate" as NonEmptyStr, detail: tail_lines(text: concat(r.stdout, r.stderr), n: 8) }]
-      }
+      [HardGraderFailed { grader: TouchedEntriesResolve, criterion: "closed-grounded-substrate" as NonEmptyStr, detail: tail_lines(text: all, n: 8) }]
     }
   }
+}
+
+fn ungraded_gates(ws: EvalWorkspace, c: EvalCase, at: GradeAt) -> List<UngradedGate> {
+  if count(filter(changed_paths(ws: ws, c: c, at: at), p => is_source_dag(p: p))) == 0 { [] } else { [non_fold_residue_ungraded] }
 }
 
 fn distinct_paths(paths: List<FilePath>) -> List<FilePath> {
@@ -355,7 +329,7 @@ fn grade_case(ws: EvalWorkspace, c: EvalCase, at: GradeAt) -> CaseVerdict {
   } else {
     let verdict = match prepare(ws: ws, c: c, at: at) {
       PreparationRefused { cause } => CaseNotGraded { cause: cause as NonEmptyStr }
-      CandidateSeedBroken { detail } => case_verdict(c: c, failures: [HardGraderFailed { grader: TouchedEntriesResolve, criterion: "closed-grounded-substrate" as NonEmptyStr, detail: detail }])
+      CandidateSeedBroken { detail } => case_verdict(c: c, failures: [HardGraderFailed { grader: TouchedEntriesResolve, criterion: "closed-grounded-substrate" as NonEmptyStr, detail: detail }], ungraded: [])
       Prepared { tree, bins } => graded_in_tree(ws: ws, c: c, at: at, tree: tree, bins: bins)
     }
     let removed = git.Worktree.RemoveForceInRepo(repo: ws.repo as FilePath, path: tree_path(ws: ws, c: c, at: at) as FilePath)
@@ -364,11 +338,10 @@ fn grade_case(ws: EvalWorkspace, c: EvalCase, at: GradeAt) -> CaseVerdict {
 }
 
 fn graded_in_tree(ws: EvalWorkspace, c: EvalCase, at: GradeAt, tree: String, bins: String) -> CaseVerdict {
-  let floor = floor_gate_failures(ws: ws, c: c, at: at, prep_tree: tree, bins: bins)
-  let resolved = resolve_failures(ws: ws, c: c, at: at, tree: tree, bins: bins)
+  let entry_route = entry_route_failures(ws: ws, c: c, at: at, tree: tree, bins: bins)
   let discriminated = discriminator_failures(ws: ws, c: c, at: at, tree: tree, bins: bins)
   let designed = design_check_failures(ws: ws, c: c, at: at, tree: tree, bins: bins)
-  case_verdict(c: c, failures: concat(concat(concat(floor, resolved), discriminated), designed))
+  case_verdict(c: c, failures: concat(concat(entry_route, discriminated), designed), ungraded: ungraded_gates(ws: ws, c: c, at: at))
 }
 
 // RENDERING.
@@ -384,6 +357,7 @@ fn verdict_lines(v: CaseVerdict) -> String {
     CasePassed => "PASSED"
     CaseFailed { failures } => join(concat(["FAILED"], map(failures, f => failure_line(f: f))), "\n")
     CaseAwaitingJudgment { pending } => join(concat(["AWAITING-JUDGMENT"], map(pending, d => join(["    judge [", d.criterion as String, "] ", d.statement as String], ""))), "\n")
+    CaseHeldWithUngradedGates { ungraded } => join(concat(["HELD-WITH-UNGRADED-GATES (not a pass)"], map(ungraded, g => concat("    ungraded ", ungraded_gate_text(g: g)))), "\n")
     CaseNotGraded { cause } => concat("NOT-GRADED ", cause as String)
   }
 }
@@ -434,13 +408,14 @@ fn validate_selected(ws: EvalWorkspace, selected: List<EvalCase>) -> CliWireResp
     candidate: grade_case(ws: ws, c: c, at: AtReferenceFix),
   })
   let summary = paired_summary(pairs: pairs)
-  let undiscriminating = filter(pairs, p => !case_discriminates(p: p))
+  let undiscriminating = filter(pairs, p => !case_discriminates_on_executed_graders(p: p))
   let body = join([
     join(map(pairs, p => join([
       "case ", p.case_identity as String, "\n",
       "  frozen-base:   ", verdict_lines(v: p.incumbent), "\n",
       "  reference-fix: ", verdict_lines(v: p.candidate), "\n",
-      "  discriminates: ", if case_discriminates(p: p) { "yes" } else { "NO" },
+      "  discriminates: ", if case_discriminates(p: p) { "yes" } else { "no" },
+      "  on executed graders: ", if case_discriminates_on_executed_graders(p: p) { "yes" } else { "NO" },
     ], "")), "\n"),
     "",
     join(["paired: only-fix-passed=", to_string(summary.only_candidate_passed),
@@ -457,7 +432,7 @@ fn validate_selected(ws: EvalWorkspace, selected: List<EvalCase>) -> CliWireResp
   CliWirePrintable {
     bytes: body,
     exit: if count(undiscriminating) == 0 { ExitSuccess } else {
-      exit_failure(reason: concat("cases that do not discriminate their defect: ", join(map(undiscriminating, p => p.case_identity as String), ", ")))
+      exit_failure(reason: concat("cases that do not discriminate their defect on the executed graders: ", join(map(undiscriminating, p => p.case_identity as String), ", ")))
     },
   }
 }
