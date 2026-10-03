@@ -82,6 +82,7 @@ pub fn conversion_plan_rows() -> Rc<Vec<Rc<ConversionPlan>>> {
             static CACHED: Rc<Vec<Rc<ConversionPlan>>> = {
                 Rc::new(vec![Rc::new(ConversionPlan {
         identity: "unicode_scalar_unfold".to_string(),
+        route: crate::std_decl_ref::decl_ref("std.coercion".to_string(), "unicode_scalar_unfold".to_string()),
         source: crate::std_decl_ref::decl_ref("std.types".to_string(), "String".to_string()),
         source_element: std::option::Option::None,
         target: crate::std_decl_ref::decl_ref("std.algebra".to_string(), "FreeMonoid".to_string()),
@@ -91,6 +92,7 @@ pub fn conversion_plan_rows() -> Rc<Vec<Rc<ConversionPlan>>> {
     })]),
     }), Rc::new(ConversionPlan {
         identity: "unicode_scalar_fold".to_string(),
+        route: crate::std_decl_ref::decl_ref("std.coercion".to_string(), "unicode_scalar_fold".to_string()),
         source: crate::std_decl_ref::decl_ref("std.algebra".to_string(), "FreeMonoid".to_string()),
         source_element: Some(crate::std_decl_ref::decl_ref("std.types".to_string(), "Char".to_string())),
         target: crate::std_decl_ref::decl_ref("std.types".to_string(), "String".to_string()),

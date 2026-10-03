@@ -315,6 +315,7 @@ impl ConversionPhase {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ConversionPlan {
     pub identity: NonEmptyStr,
+    pub route: Rc<DeclarationRef>,
     pub source: Rc<DeclarationRef>,
     pub source_element: Option<Rc<DeclarationRef>>,
     pub target: Rc<DeclarationRef>,
@@ -329,17 +330,17 @@ pub enum ConversionPlanJudgment {
         plan: Rc<ConversionPlan>,
     },
     ConversionPlanAbsent {
-        identity: String,
+        route: Rc<DeclarationRef>,
     },
     ConversionPlanAmbiguous {
-        identity: String,
+        route: Rc<DeclarationRef>,
         row_count: i64,
     },
     ConversionPlanEndpointMismatch {
         plan: Rc<ConversionPlan>,
     },
     ConversionPlanHasNoPhase {
-        identity: String,
+        route: Rc<DeclarationRef>,
     },
     ConversionPlanEndpointNotText {
         source: TextRepresentation,
@@ -378,7 +379,7 @@ pub fn conversion_plan_endpoints_match(
 
 pub fn judge_conversion_plan(
     rows: Rc<Vec<Rc<ConversionPlan>>>,
-    identity: String,
+    route: Rc<DeclarationRef>,
     source: Rc<DeclarationRef>,
     source_element: Option<Rc<DeclarationRef>>,
     target: Rc<DeclarationRef>,
@@ -388,7 +389,7 @@ pub fn judge_conversion_plan(
         let named = Rc::new({
             let mut __result = Vec::new();
             for r in rows.iter().cloned() {
-                if (r.identity.clone() == identity.clone()) {
+                if crate::std_decl_ref::declaration_ref_eq(r.route.clone(), route.clone()) {
                     __result.push(r);
                 }
             }
@@ -397,25 +398,25 @@ pub fn judge_conversion_plan(
         let n = (named.clone().len() as i64);
         if (n.clone() == 0) {
             Rc::new(ConversionPlanJudgment::ConversionPlanAbsent {
-                identity: identity.clone(),
+                route: route.clone(),
             })
         } else {
             if (n.clone() > 1) {
                 Rc::new(ConversionPlanJudgment::ConversionPlanAmbiguous {
-                    identity: identity.clone(),
+                    route: route.clone(),
                     row_count: n.clone(),
                 })
             } else {
                 match named.clone().first().cloned() {
                     std::option::Option::None => {
                         Rc::new(ConversionPlanJudgment::ConversionPlanAbsent {
-                            identity: identity.clone(),
+                            route: route.clone(),
                         })
                     }
                     Some(plan) => {
                         if ((plan.phases.clone().len() as i64) == 0) {
                             Rc::new(ConversionPlanJudgment::ConversionPlanHasNoPhase {
-                                identity: identity.clone(),
+                                route: route.clone(),
                             })
                         } else {
                             if conversion_plan_endpoints_match(
@@ -495,7 +496,7 @@ pub fn text_plan_endpoint(rep: TextRepresentation) -> Rc<TextPlanEndpoint> {
 
 pub fn judge_text_conversion_plan(
     rows: Rc<Vec<Rc<ConversionPlan>>>,
-    identity: String,
+    route: Rc<DeclarationRef>,
     source: TextRepresentation,
     target: TextRepresentation,
 ) -> Rc<ConversionPlanJudgment> {
@@ -523,7 +524,7 @@ pub fn judge_text_conversion_plan(
                 ..
             } => judge_conversion_plan(
                 rows.clone(),
-                identity.clone(),
+                route.clone(),
                 sd.clone(),
                 se.clone(),
                 td.clone(),
@@ -531,6 +532,14 @@ pub fn judge_text_conversion_plan(
             ),
         },
     }
+}
+
+pub fn unicode_scalar_unfold(s: String) -> Rc<Vec<i64>> {
+    Rc::new(s.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
+}
+
+pub fn unicode_scalar_fold(xs: Rc<Vec<i64>>) -> String {
+    v1_rt::chars_to_string(&xs, 0, (xs.clone().len() as i64))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
