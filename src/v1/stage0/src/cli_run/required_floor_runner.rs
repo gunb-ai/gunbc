@@ -2312,9 +2312,21 @@ impl UnimportedBareProviderRosterReading {
                     ))
                 }
             };
+            let resolves_in_closure = match ctx.field(fields, "resolves_in_closure") {
+                Some(v1_interpreter::Value::Bool(b)) => *b,
+                other => {
+                    return Err(format!(
+                        "{function}: row `resolves_in_closure` is not a Bool ({})",
+                        floor_value_shape(other)
+                    ))
+                }
+            };
             rows.push(RosterRow {
                 file,
-                rechecked: imports_fixed || not_a_reference || binds_without_declaration,
+                rechecked: imports_fixed
+                    || not_a_reference
+                    || binds_without_declaration
+                    || resolves_in_closure,
             });
         }
         Ok(Self {

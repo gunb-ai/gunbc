@@ -15,6 +15,7 @@ import v2.workflow.floor_unimported_bare_provider_debt_roster {
   RelocatedOutOfSourceRoots,
   NotAReference,
   BindsWithoutDeclaration,
+  ResolvesInClosure,
   unimported_bare_provider_roster_rows,
 }
 
@@ -136,6 +137,7 @@ fn unimported_bare_provider_row_standing(
     Retired { cause: FileDeleted } => false
     Retired { cause: NotAReference } => false
     Retired { cause: BindsWithoutDeclaration } => false
+    Retired { cause: ResolvesInClosure } => false
   }
   if r.active && !exists {
     ["ActiveDebtOnAbsentFile " + r.identity + " -- the file is gone; retire the row as FileDeleted"]
@@ -155,19 +157,27 @@ fn unimported_bare_provider_row_standing(
             if r.binds_without_declaration && !exists {
               ["RetiredBindsWithoutDeclarationButFileAbsent " + r.identity + " -- the cause is FileDeleted"]
             } else {
-              if r.active && is_checked && !is_carried {
-                ["RosterStale " + r.identity + " -- the file no longer carries this pair; retire it as ImportsFixed if the file changed, or BindsWithoutDeclaration if the name binds a builtin or kernel method"]
+              if r.resolves_in_closure && !exists {
+                ["RetiredResolvesInClosureButFileAbsent " + r.identity + " -- the cause is FileDeleted"]
               } else {
-                if r.imports_fixed && is_checked && is_carried {
-                  ["RetiredImportsFixedButCarried " + r.identity]
+                if r.active && is_checked && !is_carried {
+                  ["RosterStale " + r.identity + " -- the file no longer carries this pair; retire it as ImportsFixed if the file changed, BindsWithoutDeclaration if the name binds a builtin or kernel method, or ResolvesInClosure if it binds a declaration inside the file's own import closure"]
                 } else {
-                  if r.not_a_reference && is_checked && is_carried {
-                    ["RetiredNotAReferenceButCarried " + r.identity]
+                  if r.imports_fixed && is_checked && is_carried {
+                    ["RetiredImportsFixedButCarried " + r.identity]
                   } else {
-                    if r.binds_without_declaration && is_checked && is_carried {
-                      ["RetiredBindsWithoutDeclarationButCarried " + r.identity]
+                    if r.not_a_reference && is_checked && is_carried {
+                      ["RetiredNotAReferenceButCarried " + r.identity]
                     } else {
-                      []
+                      if r.binds_without_declaration && is_checked && is_carried {
+                        ["RetiredBindsWithoutDeclarationButCarried " + r.identity]
+                      } else {
+                        if r.resolves_in_closure && is_checked && is_carried {
+                          ["RetiredResolvesInClosureButCarried " + r.identity]
+                        } else {
+                          []
+                        }
+                      }
                     }
                   }
                 }

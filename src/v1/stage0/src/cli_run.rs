@@ -9398,10 +9398,6 @@ pub(crate) struct UnimportedBareProvider {
     pub(crate) provider: String,
 }
 
-/// The pairs `UnimportedBareProvider` names for ONE file, derived by the loader's own provider
-/// selection (`visit_bare_reference_providers`) rather than a second scanner, so the check and
-/// the pull can never disagree about which names are bare-pullable. A zero-import file is on the
-/// bare channel and owes nothing here.
 /// One file's judgment: the pairs it owes, and the pairs the compiler's non-declaration predicate
 /// suppressed, counted by WHY. `suppressed_kernel_method_only` is the declared COVERAGE FRONTIER: a
 /// kernel-method name is admitted by name because the receiver's type is unknown before typecheck,
@@ -9417,6 +9413,10 @@ pub(crate) struct UnimportedBareProviderJudgment {
     pub(crate) suppressed_kernel_method_only: usize,
 }
 
+/// The pairs `UnimportedBareProvider` names for ONE file, derived by the loader's own provider
+/// selection (`visit_bare_reference_providers`) rather than a second scanner, so the check and
+/// the pull can never disagree about which names are bare-pullable. A zero-import file is on the
+/// bare channel and owes nothing here.
 pub(crate) fn unimported_bare_providers(
     sf: &Rc<v1_compiler_compile::SourceFile>,
     index: &MultiEntryIndex,
@@ -10266,12 +10266,6 @@ mod closure_edge_demand_tests {
         Ok(providers)
     }
 
-    /// A service's `response { .. }` clause is grammar structure (`parse_op_body_entries`
-    /// dispatches on the head's text), not a reference to a pool-wide `fn response`.
-    /// Discriminating RED: before the clause-head rule, the importing service below carried
-    /// `UnimportedBareProvider { name: "response", provider: helper.dag }`. Positive control:
-    /// a genuine bare call to an unimported `fn response` in the SAME file still refuses, so
-    /// the rule is positional, not a denylist of the spelling.
     /// A BUILTIN CALL IS NOT AN UNIMPORTED READ OF A SAME-SPELLED DECLARATION (gunbc#12951). The
     /// consumer declares an import, so its bare channel is off. It calls the builtin `map_get(m, k)`
     /// positionally and `empty_map()`, while a module outside its closure declares functions with
@@ -10324,6 +10318,12 @@ mod closure_edge_demand_tests {
         );
     }
 
+    /// A service's `response { .. }` clause is grammar structure (`parse_op_body_entries`
+    /// dispatches on the head's text), not a reference to a pool-wide `fn response`.
+    /// Discriminating RED: before the clause-head rule, the importing service below carried
+    /// `UnimportedBareProvider { name: "response", provider: helper.dag }`. Positive control:
+    /// a genuine bare call to an unimported `fn response` in the SAME file still refuses, so
+    /// the rule is positional, not a denylist of the spelling.
     #[test]
     fn service_response_clause_is_not_a_bare_reference() {
         let service = |call: &str| {
