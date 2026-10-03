@@ -1,10 +1,9 @@
 module v2.test.emit.dag_bind_let_block_scoped
 
-import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.parse { PreparedModeled, PreparedVoidGrammar, parse_production_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
-  dag_bind_target_model,
   dag_lex,
   dag_value_expression_projection,
   parse_production_emitted_identity_optional
@@ -17,12 +16,13 @@ import v2.std.compilers.target_model {
   bound_tokens_source_text,
   render_target_text
 }
+import v2.std.collection { Map, empty_map, map_insert }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra { list_append }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
-import v2.std.optional { Absent, Present }
+import v2.std.optional { Absent, Optional, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -31,9 +31,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Bind is emitted block-scoped: `{ let k = (v) { b } }`. The control nests one Bind as the VALUE of
 // another -- the hardest position, inside the group -- emits it with the real emitter
 // (bind_let_value_producing_tokens over dag_value_expression_projection), renders it with the dag
-// target's own spellings, places it where a value is owed (a data initializer) and reparses it with
-// the dag grammar. It must parse, hold exactly two let_expr nodes with one inside the other, and
-// carry no `in`: the text the emitter writes is text the grammar reads, one way.
+// lex rules, and reparses it with the dag grammar as an expression -- the `expr` production, where a
+// value is owed. It must parse, hold exactly two let_expr nodes with one inside the other, and carry
+// no `in`: the text the emitter writes is text the grammar reads, one way. The body cases below do
+// the same for a bare name, an empty brace literal, a `-`-led expression and a nested Bind. Each
+// claim pays one parse of its own tokens (DESIGN section 3's witness rule).
 fn dbl_token(binding: Symbol) -> List<ConcreteSyntaxToken> {
   [BoundToken { token_class: ^dag_token_ident, binding: binding }]
 }
@@ -55,33 +57,51 @@ fn dbl_nested_text() -> Outcome<String> {
   dbl_text(tokens: dbl_bind(value: dbl_bind(value: dbl_token(binding: ^dag_binding_pick_lit_one))))
 }
 
+// Rendered with the dag lex rules and the two spellings the tokens bind -- the target model would
+// supply the same, at the cost of building the whole model inside every claim.
+fn dbl_spellings() -> Map<Symbol, String> {
+  map_insert(m: map_insert(m: empty_map(), key: ^dag_binding_bind_x, value: "x"), key: ^dag_binding_pick_lit_one, value: "a")
+}
+
 fn dbl_text(tokens: List<ConcreteSyntaxToken>) -> Outcome<String> {
-  let model = dag_bind_target_model()
   bind_outcome(
     o: bound_tokens_source_text(
       tokens: tokens,
-      lex: model.lex,
-      binding_spellings: model.binding_spellings
+      lex: dag_lex(),
+      binding_spellings: dbl_spellings()
     ),
     f: fn(t) { Accepted { value: render_target_text(t: t), diagnostics: None } }
   )
 }
 
-fn dbl_parse(text: String) -> Outcome<Node> {
+// The emitted Bind is parsed as the expression it is (the dag grammar's `expr` production, over the
+// shared prepared grammar), so a claim pays for its own tokens and no module around them.
+fn dbl_parse(text: String) -> Optional<Node> {
   match dag_prepared_grammar() {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: prepared, diagnostics: residue } =>
-      bind_outcome(
-        o: tokenize(text: text, file: ^dbl_probe, rules: dag_lex()),
-        f: fn(token_stream) {
-          match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
-            Rejected { diagnostics: r } => Rejected { diagnostics: r }
-            Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: prepared, diagnostics: _ } =>
+      match prepared {
+        PreparedVoidGrammar => Absent
+        PreparedModeled { modeled: modeled, materialization: m } =>
+          match tokenize(text: text, file: ^dbl_probe, rules: dag_lex()) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: token_stream, diagnostics: _ } =>
+              match parse_production_prepared(
+                tokens: token_stream.all,
+                validated: modeled.validated,
+                analysis: modeled.analysis,
+                production_name: ^dag_production_expr,
+                materialization: m
+              ) {
+                Rejected { diagnostics: _ } => Absent
+                Accepted { value: artifact, diagnostics: _ } => dbl_tree(node: artifact.tree)
+              }
           }
-        }
-      )
+      }
   }
 }
+
+fn dbl_tree(node: Node) -> Optional<Node> { Present { value: node } }
 
 fn dbl_is_let(node: Node) -> Bool {
   match parse_production_emitted_identity_optional(node: node) {
@@ -105,9 +125,9 @@ fn dbl_has_nested_let(root: Node) -> Bool {
 }
 
 fn dbl_reparses_to_two_nested_lets(text: String) -> Bool {
-  match dbl_parse(text: concat(concat("module p\ndata d: I = ", text), "\n")) {
-    Accepted { value: tree, diagnostics: _ } => dbl_count_lets(root: tree) == 2 && dbl_has_nested_let(root: tree)
-    Rejected { diagnostics: _ } => false
+  match dbl_parse(text: text) {
+    Present { value: tree } => dbl_count_lets(root: tree) == 2 && dbl_has_nested_let(root: tree)
+    Absent => false
   }
 }
 
@@ -118,9 +138,9 @@ fn dbl_body_round_trips(body: List<ConcreteSyntaxToken>, lets: Int) -> Bool {
   match dbl_text(tokens: dbl_bind_body(value: dbl_token(binding: ^dag_binding_pick_lit_one), body: body)) {
     Rejected { diagnostics: _ } => false
     Accepted { value: text, diagnostics: _ } =>
-      match dbl_parse(text: concat(concat("module p\ndata d: I = ", text), "\n")) {
-        Accepted { value: tree, diagnostics: _ } => dbl_count_lets(root: tree) == lets
-        Rejected { diagnostics: _ } => false
+      match dbl_parse(text: text) {
+        Present { value: tree } => dbl_count_lets(root: tree) == lets
+        Absent => false
       }
   }
 }
