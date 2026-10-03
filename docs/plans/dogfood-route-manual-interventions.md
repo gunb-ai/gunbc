@@ -1,12 +1,12 @@
 # Dogfood route: the manual interventions, dispositioned
 
-Status: plan, operator-agreed 2026-10-03. Members land under `factory-dogfood-route` (gunbc#13077) and are owned by its lane.
+Status: plan, operator-agreed 2026-10-03. Each functional row below lands under the home it names. `factory-dogfood-route` (gunbc#13077) consumes their receipts, or carries dependency edges where they gate the qualifying route. Its lane coordinates route integration; it does not own every underlying capability.
 
 ## Why this exists
 
 The first end-to-end attempt on srv2 (attempt `01feb0b65dee1377`, node `shell-dag-live-deploy-restart-tailscale`) did its work: 40 steps on a group-b seat, ending at its planned alignment checkpoint (exit 3). It never reached a PR, because every belt tick after about 06:50 UTC hit its start timeout and was killed. Getting it that far took six kinds of hand intervention. The operator's go/no-go on external customers is their own confidence from dogfooding, and a route that needs a person to keep it moving is not yet that evidence.
 
-This document records each intervention, what it exposed, what the system does about it automatically, what stays with the operator, and the test that must go red first.
+This document records each intervention, what it exposed, what must become automatic, what stays with the operator, and the test that must go red first.
 
 ## Three properties, not one
 
@@ -39,7 +39,7 @@ Noop | Apply | Refuse
 
 Every disposition effect is keyed by its incident identity, so running it twice is a no-op. A crash after the effect but before its receipt re-observes the subject and finds the effect already done.
 
-The same rule applies to every outward effect on the route: "open the PR" means "ensure attempt X has exactly one PR" (create-only, keyed by attempt identity). Pushes, comments and R2 writes follow the same rule.
+The same rule applies to every outward effect on the route: "open the PR" means "ensure logical work item X has exactly one PR". An attempt or candidate revision updates that PR; it never acquires a second PR identity. After uncertain remote success, observe before create. The attempt identity may key the publication operation and its receipt, but not the PR itself. Pushes, comments and R2 writes follow the same rule.
 
 ## The six interventions
 
@@ -47,7 +47,7 @@ The same rule applies to every outward effect on the route: "open the PR" means 
 
 **Exposed:** exited worker and supervisor units blocked redispatch until a teardown pass ran. With the timer off, they had to be cleared by hand, and the clearing left no record. #13066 records the same follow-up.
 
-**Automatic now:**
+**Automation owed:**
 - observe the terminal or lease-expired unit;
 - bind it to one incident identity;
 - preserve its status, journal, attempt, lease and process evidence;
@@ -68,7 +68,7 @@ A lease deadline (`std.temporal_effect` `HeldLease`) establishes `TerminalOrLeas
 
 **Exposed:** a host lost its network and stayed routable.
 
-**Automatic now:**
+**Automation owed:**
 - a missing or stale health receipt withdraws the host from routing;
 - link evidence is captured before reconnection obscures it: association state, addressing and routing state, relevant service and driver evidence, and timestamps.
 
@@ -102,7 +102,7 @@ A practical realization is a short-lived signed request permit minted by success
 
 **Operator ruling:** event-driven wherever possible, not timer-driven.
 
-**Automatic now:**
+**Automation owed:**
 - events invoke the smallest affected obligation directly;
 - deadline-bearing obligations schedule a one-shot wake-up;
 - a bounded anti-entropy sweep discovers missed events and **queues** them. It never performs the work itself.
@@ -117,11 +117,11 @@ A practical realization is a short-lived signed request permit minted by success
 
 **Exposed:** srv2 runs `cc5bbdcc` plus the #13066 commit, placed by hand. The model exists: `gunbc.live_deploy.desired` declares srv1-live, srv1-lab and srv2-deploy (`srv2_deploy_desired_deployment`) beside `repository_convergence`. What was missing is converging an admitted revision onto the host.
 
-**Correction to the first reading:** a branch revision is valid when it has been explicitly admitted to a development environment. "Not main" is not inherently drift.
+**Correction to the first reading:** a branch revision is valid when it has been explicitly admitted to the deployment that runs it. "Not main" is not inherently drift.
 
-**Operator context:** srv1 and srv2 are both development environments. srv1 is closer to production. The model's names (srv1 "live" / production) do not match that framing.
+**Operator context:** srv1 and srv2 are both used for development today. That use is separate from deployment risk: the srv1 daily-workspace deployment holds ProdRisk because `ProdRoleSelection` selects it, and the srv2 deployment derives TestRisk.
 
-**Automatic now:** each development environment's explicitly admitted revision is observed and converged into the running deployment, with readiness and member-identity readback.
+**Automation owed:** each deployment's explicitly admitted revision is observed and converged into the running deployment, with readiness and member-identity readback.
 
 **Stays manual:** selecting and admitting the revision for that environment.
 
@@ -149,7 +149,7 @@ Any slow stage blocks every stage behind it. The module's own note on `belt_obse
 
 **Not the fix:** stage checkpoints that make the monolithic tick resumable. That preserves the structure that should go.
 
-**Automatic now:** expensive work leaves the tick. Each durable obligation gets its own event-driven ensure and its own effect identity:
+**Automation owed:** expensive work leaves the tick. Each durable obligation gets its own event-driven ensure and its own effect identity:
 - a worker exit triggers capture and verify;
 - a verify receipt triggers review;
 - a passing review triggers publish.
