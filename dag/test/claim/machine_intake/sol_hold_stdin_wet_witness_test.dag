@@ -700,6 +700,7 @@ test fn a_publication_failure_stops_even_a_term_ignoring_child() -> Bool {
 // signal -- pid 1, the runner's init (the BuildBuddy VM died on every attempt). So the scripts run
 // only once `test -r` confirms the record is unreadable; where it is not, the claim is RED without
 // touching any process -- an environment that cannot host this claim, never a pass.
+// The class is gunbc.recurring_failure_mode wet_witness_stand_in_process_is_the_init_it_signals.
 test fn an_unreadable_record_is_unobservable_not_ended() -> Bool {
   let dir = scratch_dir()
   let record = concat(dir, "/rec.pid")
@@ -729,6 +730,7 @@ test fn an_unreadable_record_is_unobservable_not_ended() -> Bool {
 // `kill -9` land on init: a BuildBuddy VM died on every attempt and a session container restarted. So
 // the body runs only once `kill -0 1` is refused; where it is not, the claim is RED without signalling
 // anything -- an environment that cannot host this claim, never a pass.
+// The class is gunbc.recurring_failure_mode wet_witness_stand_in_process_is_the_init_it_signals.
 fn pid_one_unsignalable() -> Bool {
   shell.Exec.RunArgv(program: "bash", arguments: ["-c", "kill -0 1 2>/dev/null"]).exit_code != 0
 }
