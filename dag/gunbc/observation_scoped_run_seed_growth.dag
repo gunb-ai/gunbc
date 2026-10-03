@@ -1,0 +1,27 @@
+module gunbc.observation_scoped_run_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// The scoped-run progress bridge's seed-growth justification. It was authored on the roadmap row
+// observation-scoped-run-seed-growth-justification, whose ticket fields were projected from it; the
+// 2026-09-30 roadmap cut deleted that row, and the justification is a seed-growth fact rather than a
+// roadmap fact, so it lives beside the other *_seed_growth receipts that gunbc.seed_growth_admission
+// enrolls. Its owning dissolution lane, v1-hand-queue-drain, is a kept roadmap node.
+fn observation_scoped_run_seed_growth_justification() -> SeedGrowthJustification {
+  SeedGrowthJustification {
+    hand_authored_declarations: [
+      DeclarationRef {
+        module_path: "v1_compiler.cli_run",
+        decl_name: "capture_scoped_run_stderr",
+        field: WholeDeclaration
+      },
+    ],
+    reason: "Showing progress while a command runs has to reach the point where the old runner starts a program. It needs to know which piece of code was chosen, hold back error output until it can be shown in the right order, and report exactly one ending — and the rules for all of that live in the substrate, not in Rust.",
+    owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+    trigger: "Move this reach-through into a described operation, then hollow out the corresponding part of the command-line tool so generated code does the work; the hand-written bridge is deleted at that point.",
+    current_boundary: "dag/gunbc/observation_seed_render.dag; dag/test/claim/observation_seed_scoped_run_witness_test.dag; src/v1/stage0/src/cli_run.rs; src/v1/stage0/src/v1_interpreter.rs; src/v1/stage0/tests/scoped_run_observation.rs",
+  }
+}
+
