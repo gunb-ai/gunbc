@@ -414,7 +414,7 @@ fn cref_refusal_reason_is(o: Outcome<ResolvedTree>, wanted: Symbol, name: Symbol
 
 // THE FIXTURE'S OWN POSITIVE CONTROL, so a red below is a statement about eval and not about an
 // assembly that stopped producing a call. Without it every claim here could pass vacuously.
-test fn cref_the_fixture_yields_a_reference_callee_call_holds() -> Bool {
+test fn cref_the_fixture_yields_a_reference_callee_call_holds() -> Bool  {
   cref_source_reading().call_found
 }
 
@@ -422,20 +422,20 @@ test fn cref_the_fixture_yields_a_reference_callee_call_holds() -> Bool {
 // eval's reader finds it. This is the seam the whole repair rests on, so it is asserted directly and
 // not only through the execution claims: if this goes red, the reds below are explained by a missing
 // denotation rather than by the dispatch.
-test fn cref_the_reference_facts_carry_their_declaration_holds() -> Bool {
+test fn cref_the_reference_facts_carry_their_declaration_holds() -> Bool  {
   cref_source_reading().declaration_carried
 }
 
 // A NAMED CALL EXECUTES, AND EXECUTES TO ITS CALLEE'S VALUE. The value is asserted rather than mere
 // acceptance: any Int-returning path would satisfy "Accepted" while proving nothing about WHICH
 // declaration ran, and 7 is written only in the callee's body.
-test fn cref_a_zero_argument_named_call_executes_to_its_callee_value_holds() -> Bool {
+test fn cref_a_zero_argument_named_call_executes_to_its_callee_value_holds() -> Bool  {
   cref_executes_to(r: cref_zero_arg_reading(), n: 7)
 }
 
 // THE SAME WITH AN ARGUMENT SUPPLIED, which is a separate fact from the zero-argument case because
 // the argument edge is a separate child of the call.
-test fn cref_a_named_call_with_an_argument_executes_holds() -> Bool {
+test fn cref_a_named_call_with_an_argument_executes_holds() -> Bool  {
   cref_executes_to(r: cref_one_arg_constant_body_reading(), n: 7)
 }
 
@@ -451,7 +451,7 @@ test fn cref_a_named_call_with_an_argument_executes_holds() -> Bool {
 // infer_application_formal_args now reads it through the callee's FACTS, as its caller's formals
 // already did, and infer_declaration_reference_facts reads the declaration from
 // v2.compiler.resolve ResolvedTree resolved_declarations rather than the authored symbol_index.
-test fn cref_a_parameter_bodied_callee_executes_holds() -> Bool {
+test fn cref_a_parameter_bodied_callee_executes_holds() -> Bool  {
   cref_source_reading().executed
 }
 
@@ -463,7 +463,7 @@ test fn cref_a_parameter_bodied_callee_executes_holds() -> Bool {
 // authored spelling, which the binding-to-type table does not denote, so the application's result
 // typing fell to the frontier. Reading the RESOLVED declaration answers it, and the same repair is why
 // the Int rows above never separated from this one on their own.
-test fn cref_a_bool_returning_call_executes_holds() -> Bool {
+test fn cref_a_bool_returning_call_executes_holds() -> Bool  {
   cref_bool_reading(callee: ^truth, body: ^dag_token_kw_true).executed
 }
 
@@ -477,7 +477,7 @@ test fn cref_a_bool_returning_call_executes_holds() -> Bool {
 // whose declaration reference names nothing in the resolved-declaration index, inferred for real), the
 // call reaches eval and eval refuses, and the row asserts that ROUTE: the refusal is eval's, not infer's
 // and not an execution.
-test fn cref_an_unresolved_callee_does_not_execute_holds() -> Bool {
+test fn cref_an_unresolved_callee_does_not_execute_holds() -> Bool  {
   contains(xs: cref_unbound_callee_route(), item: ^cref_route_eval_refused, eq: fn(a, b) { a == b })
     && contains(xs: cref_unbound_callee_route(), item: ^eval_rejected_grounding_not_derived, eq: fn(a, b) { a == b })
 }
@@ -526,7 +526,7 @@ fn cref_value_int_optional(v: RuntimeValue) -> Optional<Int> {
 // by the two together, exactly as it was by the two conjuncts, because neither result is admissible
 // for the other's argument. Asserting the EXACT magnitude is what makes each row carry that on its
 // own: a callee answering any constant fails the row whose argument it does not equal.
-test fn cref_argument_dependent_execution_reaches_the_callee_holds() -> Bool {
+test fn cref_argument_dependent_execution_reaches_the_callee_holds() -> Bool  {
   cref_executes_to(r: cref_identity_reading(lexeme: "3"), n: 3)
 }
 
@@ -540,7 +540,7 @@ test fn cref_argument_dependent_execution_reaches_the_callee_holds() -> Bool {
 // IT IS NOW THE "8" CASE, READ EXACTLY, so it answers both halves of its own name from one front-end
 // run: the callee executes to 8 and therefore does not answer 3. The negation is carried by the
 // exactness rather than by a second run against the other magnitude.
-test fn cref_the_identity_callee_never_answers_the_other_argument_holds() -> Bool {
+test fn cref_the_identity_callee_never_answers_the_other_argument_holds() -> Bool  {
   cref_executes_to(r: cref_identity_reading(lexeme: "8"), n: 8)
 }
 
@@ -562,7 +562,7 @@ test fn cref_the_identity_callee_never_answers_the_other_argument_holds() -> Boo
 //
 // THE TRUE SIDE IS THE SAME CALL cref_a_bool_returning_call_executes MAKES, with identical literal
 // arguments, so the floor serves it to both rows by declared demand; this row pays its own false side.
-test fn cref_the_bool_pair_separates_holds() -> Bool {
+test fn cref_the_bool_pair_separates_holds() -> Bool  {
   cref_results_differ(a: cref_bool_reading(callee: ^truth, body: ^dag_token_kw_true), b: cref_bool_reading(callee: ^falsity, body: ^dag_token_kw_false))
 }
 
@@ -646,7 +646,7 @@ fn cref_callee_declaration(o: Outcome<ResolvedTree>) -> Optional<Node> {
 // DESIGN section 4b(4): the measurement row does not retire, it flips. v2.std.node
 // arrow_body_admits_eval_entry now admits ParameterReferenceBody, so the gate is asserted directly rather
 // than through the locus of a refusal that no longer happens. It goes red if that policy arm is reverted.
-test fn cref_the_entry_gate_admits_a_parameter_reference_body_holds() -> Bool {
+test fn cref_the_entry_gate_admits_a_parameter_reference_body_holds() -> Bool  {
   arrow_body_admits_eval_entry(form: ParameterReferenceBody)
 }
 
@@ -658,7 +658,7 @@ test fn cref_the_entry_gate_admits_a_parameter_reference_body_holds() -> Bool {
 //
 // IT ALSO PINS WHAT THE REASON NOW MEANS. After the gate opened, this symbol reports a MISSING BINDING and
 // nothing else; a reader who sees it can stop looking for a body-form refusal.
-test fn cref_a_parameter_reference_with_no_binding_refuses_holds() -> Bool {
+test fn cref_a_parameter_reference_with_no_binding_refuses_holds() -> Bool  {
   match eval_parameter_reference_value(
     node: parameter_reference_node(
       qn: Cons { head: ^p, tail: Cons { head: ^nowhere, tail: Cons { head: ^x, tail: Empty } } },
