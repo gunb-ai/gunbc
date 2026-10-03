@@ -76,7 +76,7 @@ import v2.std.demand_engine {
   demand_identity_key
 }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.provenance { SpanIndex, node_occurrence_id_optional, span_index_textual_locus_optional }
+import v2.std.provenance { SpanIndex, node_occurrence_id_optional, span_index_empty, span_index_textual_locus_optional }
 import v2.std.source_position { source_line_col_at_byte }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural }
 import std.judgment_contract {
@@ -3681,7 +3681,7 @@ fn native_demand_census_read(
   ) {
     Rejected { diagnostics: d } =>
       NativeDemandCensusFoldState {
-        context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: state.context.alloc),
+        context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: state.context.alloc, spans: span_index_empty()),
         authored: state.authored,
         file_refused: state.file_refused,
         unreadable: state.unreadable + 1
@@ -3691,14 +3691,14 @@ fn native_demand_census_read(
       match normalize_scoped(parse_tree: stripped.tree, allocator: scoped_occurrence_allocator(alloc: artifact.alloc, scope: scope)) {
         Rejected { diagnostics: d } =>
           NativeDemandCensusFoldState {
-            context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: artifact.alloc),
+            context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: artifact.alloc, spans: artifact.span_index),
             authored: state.authored,
             file_refused: native_demand_census_snoc_all(xs: state.file_refused, ys: stripped.authored),
             unreadable: state.unreadable
           }
         Accepted { value: scoped, diagnostics: _ } =>
           NativeDemandCensusFoldState {
-            context: native_test_context_absorb(state: state.context, read: read, root_outcome: outcome_accepted(value: scoped.tree), alloc: scoped.allocator.alloc),
+            context: native_test_context_absorb(state: state.context, read: read, root_outcome: outcome_accepted(value: scoped.tree), alloc: scoped.allocator.alloc, spans: artifact.span_index),
             authored: native_demand_census_snoc_all(xs: state.authored, ys: stripped.authored),
             file_refused: state.file_refused,
             unreadable: state.unreadable
