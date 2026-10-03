@@ -65,7 +65,8 @@ import gunbc.compute.host_capacity {
 }
 import std.measure { kibibyte }
 import std.content_hash { serialize_content_hash }
-import std.materialization_provider { ComputeWorkRequest, request_key }
+import std.materialization_provider { ComputeWorkRequest, request_key, compute_work_demand_nature }
+import std.materialization_ladder { FreshEffect, IdempotentEffect, PureComputation, WorldRead }
 import gunbc.compute.work_request {
   WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
   WorkToolchainIdentity, work_toolchain_observed, rustc_verbose_host_triple, work_default_build, work_declared_outputs,
@@ -1838,13 +1839,16 @@ fn compute_unspawned_summary() -> SystemdRunWaitSummary {
 // work directory and one stored outcome -- so a second identical wet run would attach to the first,
 // memoizing what std.materialization_provider classifies FreshEffect and the ladder answers Recompute.
 // Serving it needs an execution-occurrence identity beside the demand identity, which the ladder
-// cutover introduces; until then the request refuses before anything is observed or run.
+// cutover introduces; until then the request refuses before anything is observed or run. The
+// classification is the contract's own (std.materialization_provider compute_work_demand_nature, a
+// fold over the operation alone), read here rather than re-derived, so a future FreshEffect operation
+// refuses without this function changing.
 fn compute_operation_admission(op: WorkOperation) -> String? {
-  match op {
-    BuildGunbcBinaries { profile: _, bins: _ } => none
-    CompileEntry { entry: _ } => none
-    RunClaims { entry: _, functions: _, hermetic } =>
-      if hermetic { none } else { Present { value: "a wet claim run has no occurrence identity on this provider, so a repeat would attach to a prior run's outcome; run it hermetic or through the materialization cutover" } }
+  match compute_work_demand_nature(operation: op) {
+    FreshEffect => Present { value: "the request's contract classifies it FreshEffect, and this provider has no occurrence identity, so a repeat would attach to a prior run's outcome; run it hermetic or through the materialization cutover" }
+    IdempotentEffect => none
+    PureComputation => none
+    WorldRead { staleness_envelope_declared: _ } => Present { value: "the request's contract classifies it a WorldRead, which this provider's key does not cover" }
   }
 }
 
