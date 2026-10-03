@@ -2059,7 +2059,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "src/v2/test/claim/nat_semiring/rung_6.dag", name: "nat_mul_associativity_input", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "src/v2/test/claim/nat_semiring/rung_6.dag", name: "nat_mul_left_identity_input", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "src/v2/test/claim/nat_semiring/rung_6.dag", name: "rung34_emit_host_rust_target_model", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "src/v2/test/claim/parse/choice_plan_test.dag", name: "SubstrateInputsOnly", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "src/v2/test/claim/parse/choice_plan_test.dag", name: "SubstrateInputsOnly", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "src/v2/test/claim/regen_convergence_transaction_witness_test.dag", name: "any", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "src/v2/test/claim/regen_convergence_transaction_witness_test.dag", name: "filter", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "src/v2/test/claim/repair_input_origin_split_witness_test.dag", name: "any", standing: Retired { cause: NotAReference } },
