@@ -78,11 +78,11 @@ test fn the_blob_key_is_the_address_under_the_cache_prefix() -> Bool {
 
 test fn cache_blob_targets_refuse_naming_the_unminted_credential() -> Bool {
   let read = match resolve_cache_blob_target(direction: CacheBlobRead, key: "blobs/x" as NonEmptyStr) {
-    CacheBlobTargetRefused { cause: c } => string_contains(s: c as String, pattern: "cloudflare-r2-cache-blobs-read-token")
+    CacheBlobTargetRefused { cause: c } => string_contains(s: c as String, pattern: "cloudflare-r2-cache-blobs-read-token") && string_contains(s: c as String, pattern: "run_cache_object_read")
     CacheBlobTargetReady { target: _ } => false
   }
   let write = match resolve_cache_blob_target(direction: CacheBlobWrite, key: "blobs/x" as NonEmptyStr) {
-    CacheBlobTargetRefused { cause: c } => string_contains(s: c as String, pattern: "cloudflare-r2-cache-blobs-write-token")
+    CacheBlobTargetRefused { cause: c } => string_contains(s: c as String, pattern: "cloudflare-r2-cache-blobs-write-token") && string_contains(s: c as String, pattern: "run_cache_object_write")
     CacheBlobTargetReady { target: _ } => false
   }
   read && write

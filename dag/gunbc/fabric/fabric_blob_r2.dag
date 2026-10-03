@@ -63,8 +63,8 @@ fn resolve_cache_blob_target_under(direction: CacheBlobDirection, key: NonEmptyS
         R2OriginUnallocated { purpose: _ } => CacheBlobTargetRefused { cause: "NO BUCKET ALLOCATED FOR THE FABRIC CACHE" }
         R2OriginAllocated { bucket: bucket } =>
           match cache_blob_credential(direction: direction, read: bucket.read_credential, write: bucket.write_credential) {
-            OriginCredentialUnminted { mint_entry: entry } =>
-              CacheBlobTargetRefused { cause: join(["THE FABRIC CACHE CREDENTIAL IS NOT MINTED: run ", entry.module_path as String, " ", entry.decl_name as String], "") as NonEmptyStr }
+            OriginCredentialUnminted { mint_entry: entry, secret_id: secret_id } =>
+              CacheBlobTargetRefused { cause: join(["THE FABRIC CACHE CREDENTIAL IS NOT MINTED: run ", entry.module_path as String, " ", entry.decl_name as String, " and pin the version it stores under ", secret_id as String, " in gunbc.cloudflare.r2_origin"], "") as NonEmptyStr }
             OriginCredentialMintEntryUnbuilt { secret_id: secret_id } =>
               CacheBlobTargetRefused { cause: concat("THE FABRIC CACHE CREDENTIAL HAS NO MINT ENTRY: nothing mints ", secret_id as String) as NonEmptyStr }
             OriginCredentialPinned { access_key_id: access_key_id, token_value: token_value } =>

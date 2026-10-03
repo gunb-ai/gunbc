@@ -175,7 +175,7 @@ type R2EnsureSigningLocus
 fn r2_ensure_signing_locus(credential: OriginCredentialStanding) -> R2EnsureSigningLocus {
   match credential {
     OriginCredentialPinned { access_key_id: _, token_value: locus } => R2EnsureSigningPinned { locus: locus }
-    OriginCredentialUnminted { mint_entry: entry } =>
+    OriginCredentialUnminted { mint_entry: entry, secret_id: _ } =>
       R2EnsureSigningRefused {
         cause: join([
           "THE BUCKET-ADMIN TOKEN IS NOT MINTED, NOTHING CALLED: run ", entry.module_path, " ", entry.decl_name,
