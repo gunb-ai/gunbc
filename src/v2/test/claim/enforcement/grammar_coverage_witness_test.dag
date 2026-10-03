@@ -124,7 +124,6 @@ test fn grammar_coverage_dag_tree_receipt_by_execution() -> Bool {
     && (receipt.rejected_count == 0)
 }
 
-
 test fn grammar_coverage_v1_tree_receipt_by_execution() -> Bool {
   let receipt = gc_witness_v1_tree_receipt_live()
   (receipt.files_attempted == 2)

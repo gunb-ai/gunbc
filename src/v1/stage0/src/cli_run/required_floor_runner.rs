@@ -1214,16 +1214,21 @@ pub(crate) fn floor_diff_edits_from_line_ranges_reading(
             m
         });
         let test_fn_names: HashSet<String> = scan_test_decl_names(&content).into_iter().collect();
-        let mut decls: Vec<(i64, String, bool)> = Vec::new();
+        // (start line, name, is_data, last line). The last line is filled after sorting: the
+        // last non-blank line before the next declaration starts. It is what lets a
+        // pure-deletion gap between two declarations be told from one inside a declaration. It
+        // errs toward CHARGING: a leading comment of the next declaration counts as the
+        // previous one's tail, so deleting it over-selects, never under-selects.
+        let mut decls: Vec<(i64, String, bool, Option<i64>)> = Vec::new();
         for item in crate::v1_std_core::module_items(module_node.clone()).iter() {
             let line = byte_to_line_col(nl.clone(), item.span.start).line;
             let name = authored_name_at(single_si.clone(), item.clone());
             let is_data = item_kind(item.clone()) == ItemKind::DataItem;
-            decls.push((line, name, is_data));
+            decls.push((line, name, is_data, None));
         }
         for (name, line) in scan_test_decl_lines(&content) {
-            if !decls.iter().any(|(_, n, _)| n == &name) {
-                decls.push((line, name, false));
+            if !decls.iter().any(|(_, n, _, _)| n == &name) {
+                decls.push((line, name, false, None));
             }
         }
         if decls.is_empty() {
@@ -1236,7 +1241,29 @@ pub(crate) fn floor_diff_edits_from_line_ranges_reading(
             touched_entry_files.insert(file_norm.clone());
             continue;
         }
-        decls.sort_by_key(|(line, _, _)| *line);
+        decls.sort_by_key(|(line, _, _, _)| *line);
+        {
+            let lines: Vec<&str> = content.lines().collect();
+            let count = decls.len();
+            for i in 0..count {
+                let start = decls[i].0;
+                let next = if i + 1 < count {
+                    decls[i + 1].0 - 1
+                } else {
+                    lines.len() as i64
+                };
+                let mut last = start;
+                for l in start..=next {
+                    if lines
+                        .get((l - 1).max(0) as usize)
+                        .is_some_and(|t| !t.trim().is_empty())
+                    {
+                        last = l;
+                    }
+                }
+                decls[i].3 = Some(last);
+            }
+        }
         let first_decl_line = decls[0].0;
         let mut changed =
             changed_new_lines_for_file(changed_new_lines_by_file, file_path, &file_norm);
@@ -1281,7 +1308,7 @@ pub(crate) fn floor_diff_edits_from_line_ranges_reading(
         // universe is this file's parsed decl list, not the corpus, so it is the precise answer
         // to "what does this path declare", never an absorbing "rerun everything" (DESIGN §5).
         if added_paths.contains(&file_norm) {
-            for (line, _, _) in &decls {
+            for (line, _, _, _) in &decls {
                 changed.insert(*line);
             }
         }
@@ -1290,8 +1317,48 @@ pub(crate) fn floor_diff_edits_from_line_ranges_reading(
         if changed.contains(&1) && !added_paths.contains(&file_norm) {
             return Err(format!("diff before first declaration in {file_path}"));
         }
-        let has_pre_decl = changed.iter().any(|&l| l < first_decl_line);
-        let has_post_decl = changed.iter().any(|&l| l >= first_decl_line);
+        // PURE-DELETION GAPS ARE CHARGED BY WHERE THE GAP LIES, NOT BY THE LINE AFTER IT. Under
+        // `-U0` a deletion-only hunk names no surviving line; both parsers anchor it at L+1, the
+        // line after the gap, which charged the NEXT declaration whenever whole declarations were
+        // deleted between two others -- force-running an unchanged neighbour under the
+        // changed-witness policy (`gunbc.recurring_failure_mode`
+        // `a_pure_deletion_force_runs_its_unchanged_neighbour`, measured on gunbc#13103). A gap
+        // at or before the first declaration stays a pre-declaration (file-grain) edit; a gap
+        // strictly inside a declaration's span charges that declaration; a gap between
+        // declarations charges none, because what it removed no longer exists to select.
+        // The module-line refusal above already read the gap at line 1.
+        let gaps: HashSet<i64> = if added_paths.contains(&file_norm) {
+            HashSet::new()
+        } else {
+            ranges
+                .iter()
+                .filter(|r| r.deletion_gap)
+                .map(|r| r.start)
+                .collect()
+        };
+        let mut gap_pre_decl = false;
+        let mut gap_charged: HashSet<usize> = HashSet::new();
+        for &g in &gaps {
+            changed.remove(&g);
+            if g <= first_decl_line {
+                gap_pre_decl = true;
+                continue;
+            }
+            for (i, (start, _, _, last)) in decls.iter().enumerate() {
+                let bound = last.unwrap_or_else(|| {
+                    decls
+                        .get(i + 1)
+                        .map(|(l, _, _, _)| l - 1)
+                        .unwrap_or(i64::MAX)
+                });
+                if *start <= g - 1 && g <= bound {
+                    gap_charged.insert(i);
+                }
+            }
+        }
+        let has_pre_decl = gap_pre_decl || changed.iter().any(|&l| l < first_decl_line);
+        let has_post_decl =
+            !gap_charged.is_empty() || changed.iter().any(|&l| l >= first_decl_line);
         if has_pre_decl {
             touched_entry_files.insert(file_norm.clone());
             if !has_post_decl {
@@ -1299,9 +1366,12 @@ pub(crate) fn floor_diff_edits_from_line_ranges_reading(
             }
         }
         for i in 0..decls.len() {
-            let (line, name, is_data) = &decls[i];
-            let decl_end = decls.get(i + 1).map(|(l, _, _)| l - 1).unwrap_or(i64::MAX);
-            if !changed.iter().any(|&l| l >= *line && l <= decl_end) {
+            let (line, name, is_data, _) = &decls[i];
+            let decl_end = decls
+                .get(i + 1)
+                .map(|(l, _, _, _)| l - 1)
+                .unwrap_or(i64::MAX);
+            if !gap_charged.contains(&i) && !changed.iter().any(|&l| l >= *line && l <= decl_end) {
                 continue;
             }
             if test_fn_names.contains(name) {
