@@ -182,10 +182,10 @@ fn read_named_arg_label(captured: Node) -> NameRead {
 }
 
 // A field pattern is `name: pattern` (the label) or the shorthand `name`, where the one token is
-// both the label and a new binder. Both are outside the XL-2 population; the shorthand is recorded
-// as the declaration it also is.
-// A field pattern is `(name, optional(: pattern))` (v2.extdeps.languages.dag
-// dag_grammar_field_pattern_expr, left-factored), so the name is always the pair's left.
+// both the label and a new binder; both are recorded as the declaration the name is. The grammar
+// left-factors the two (v2.extdeps.languages.dag dag_grammar_field_pattern_expr), so the capture is
+// always `(name, optional(: pattern))` and the name is the pair's left; a capture that is no pair
+// is not a field pattern this reader knows, and refuses.
 fn read_field_pattern_name(captured: Node) -> NameRead {
   match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: captured)) {
     Absent => NameReadRefused
