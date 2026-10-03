@@ -11,6 +11,7 @@ import extdeps.vllm.engine_args {
   VllmKvCacheDtypeRequest, KvAuto, KvFp8, KvFp16, KvBf16, KvFp8DsMla, vllm_kv_cache_dtype_wire,
   VllmEngramConfigRequest, EngramConfigOmitted, EngramConfigExplicit,
   VllmModalityRequest, ModalityOmitted, LanguageModelOnly, vllm_hf_override,
+  VllmSchedulerAdmissionRequest, vllm_scheduler_admission_omitted, vllm_scheduler_admission_argv, vllm_scheduler_admission_key,
 }
 import extdeps.zhipu.glm_5_3_flash {
   glm_5_3_flash_native_manifest, glm_5_3_flash_vllm_integration_commit, glm_5_3_flash_mla_pe_dim,
@@ -945,6 +946,7 @@ type ServingLaunchProfile sole_constructor {
   max_model_len: TokenCount
   max_num_batched_tokens: TokenCount
   max_num_seqs: Nat
+  guaranteed_cold_seqs: Nat
   decided_gpu_memory_basis_points: BasisPoint
   kv_cache_dtype: VllmKvCacheDtypeRequest
   serve_port: Port
@@ -952,11 +954,12 @@ type ServingLaunchProfile sole_constructor {
   prefix_caching: VllmPrefixCachingRequest
   engram: VllmEngramConfigRequest
   modality: VllmModalityRequest
+  scheduler_admission: VllmSchedulerAdmissionRequest
 }
 
 // THE MINT, EXPORTED SO A PROFILE CAN BE DERIVED, NOT ONLY AUTHORED. The seal's job is keeping a
 // record literal that omits or reorders a dimension from compiling; a named derivation --
-// gunbc.spark.serving_capacity_intent profile_for_intent builds the executable profile FROM the
+// gunbc.spark.serving_capacity_intent profile_for_envelope builds the executable profile FROM the
 // service obligation -- is a legitimate constructor, and without this mint the only profiles in
 // existence would be the authored rows, which would make "the engine config the proof prices" and
 // "the engine config the launch renders" two independently typed values that happen to agree.
@@ -967,6 +970,7 @@ fn serving_launch_profile(
   max_model_len: TokenCount,
   max_num_batched_tokens: TokenCount,
   max_num_seqs: Nat,
+  guaranteed_cold_seqs: Nat,
   decided_gpu_memory_basis_points: BasisPoint,
   kv_cache_dtype: VllmKvCacheDtypeRequest,
   serve_port: Port,
@@ -974,11 +978,13 @@ fn serving_launch_profile(
   prefix_caching: VllmPrefixCachingRequest,
   engram: VllmEngramConfigRequest,
   modality: VllmModalityRequest,
+  scheduler_admission: VllmSchedulerAdmissionRequest,
 ) -> ServingLaunchProfile {
   ServingLaunchProfile {
     max_model_len: max_model_len,
     max_num_batched_tokens: max_num_batched_tokens,
     max_num_seqs: max_num_seqs,
+    guaranteed_cold_seqs: guaranteed_cold_seqs,
     decided_gpu_memory_basis_points: decided_gpu_memory_basis_points,
     kv_cache_dtype: kv_cache_dtype,
     serve_port: serve_port,
@@ -986,6 +992,7 @@ fn serving_launch_profile(
     prefix_caching: prefix_caching,
     engram: engram,
     modality: modality,
+    scheduler_admission: scheduler_admission,
   }
 }
 
@@ -1033,6 +1040,8 @@ fn serving_launch_profile_key(p: ServingLaunchProfile) -> String {
       LanguageModelOnly { hf_overrides: os } =>
         join([" modality=language-only", join(map(os, o => join([",", o.key as String, ":", o.json_value as String], "")), "")], "")
     },
+    if p.guaranteed_cold_seqs == p.max_num_seqs { "" } else { join([" cold=", to_string(p.guaranteed_cold_seqs)], "") },
+    if vllm_scheduler_admission_argv(r: p.scheduler_admission) == [] { "" } else { join([" sched=", vllm_scheduler_admission_key(r: p.scheduler_admission)], "") },
   ], "")
 }
 
@@ -1141,6 +1150,7 @@ data glm_native_initial_profile: ServingLaunchProfile = ServingLaunchProfile {
   max_model_len: token_count(count: 262144),
   max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: 1,
+  guaranteed_cold_seqs: 1,
   decided_gpu_memory_basis_points: basis_point(count: 8400),
   kv_cache_dtype: KvAuto,
   serve_port: 30000,
@@ -1148,6 +1158,7 @@ data glm_native_initial_profile: ServingLaunchProfile = ServingLaunchProfile {
   prefix_caching: PrefixCachingExplicit { enabled: true },
   engram: EngramConfigOmitted,
   modality: ModalityOmitted,
+  scheduler_admission: vllm_scheduler_admission_omitted,
 }
 
 // ── THE CONCURRENT PROFILE IS A DIFFERENT SUBJECT, AND THAT IS THE POINT ──────────────────────
@@ -1198,6 +1209,7 @@ data glm_native_concurrent_profile: ServingLaunchProfile = ServingLaunchProfile 
   max_model_len: token_count(count: 262144),
   max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: 16,
+  guaranteed_cold_seqs: 16,
   decided_gpu_memory_basis_points: basis_point(count: 8567),
   kv_cache_dtype: KvFp8,
   serve_port: glm_native_initial_profile.serve_port,
@@ -1205,6 +1217,7 @@ data glm_native_concurrent_profile: ServingLaunchProfile = ServingLaunchProfile 
   prefix_caching: PrefixCachingExplicit { enabled: true },
   engram: EngramConfigOmitted,
   modality: ModalityOmitted,
+  scheduler_admission: vllm_scheduler_admission_omitted,
 }
 
 // ── THE V4.1 MEASUREMENT PROFILE: WHAT V4.1 DECIDES, OVER WHAT THE MEASUREMENT DECIDES ─────────
@@ -1244,6 +1257,7 @@ fn deepseek_v41_measurement_profile(
     max_model_len: max_model_len,
     max_num_batched_tokens: max_num_batched_tokens,
     max_num_seqs: max_num_seqs,
+    guaranteed_cold_seqs: max_num_seqs,
     decided_gpu_memory_basis_points: gpu_memory_basis_points,
     kv_cache_dtype: KvFp8DsMla,
     serve_port: serve_port,
@@ -1251,6 +1265,7 @@ fn deepseek_v41_measurement_profile(
     prefix_caching: prefix_caching,
     engram: EngramConfigExplicit { cpu_offload: true, dp_shared_memory: false },
     modality: LanguageModelOnly { hf_overrides: [vllm_hf_override(key: "vision_n_layers" as NonEmptyStr, json_value: "0" as NonEmptyStr)] },
+    scheduler_admission: vllm_scheduler_admission_omitted,
   }
 }
 
@@ -1277,6 +1292,7 @@ data glm_exl3_canary_profile: ServingLaunchProfile = ServingLaunchProfile {
   max_model_len: token_count(count: 262144),
   max_num_batched_tokens: token_count(count: 7168),
   max_num_seqs: 1,
+  guaranteed_cold_seqs: 1,
   decided_gpu_memory_basis_points: defaults_gpu_utilization(r: Vllm487ecf187),
   kv_cache_dtype: KvFp8,
   serve_port: 30001,
@@ -1284,6 +1300,7 @@ data glm_exl3_canary_profile: ServingLaunchProfile = ServingLaunchProfile {
   prefix_caching: PrefixCachingOmitted,
   engram: EngramConfigOmitted,
   modality: ModalityOmitted,
+  scheduler_admission: vllm_scheduler_admission_omitted,
 }
 
 
