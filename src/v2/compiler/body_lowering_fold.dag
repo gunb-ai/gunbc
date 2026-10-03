@@ -7050,50 +7050,91 @@ fn body_lower_if_expr_capture_optional(spine: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_if_fn_body_capture_optional(spine: Node) -> Optional<Node> {
-  match body_lower_find_captured(root: spine, emitted: ^dag_surface_fn_body) {
-    ParseSubtreeFound { captured: body } => Present { value: body }
-    ParseSubtreeAbsent =>
-      if is_empty_conj_root(n: spine) {
-        Absent
-      } else {
-        match body_lower_match_spine_left(spine: spine) {
-          Present { value: left } =>
-            match body_lower_match_spine_right(spine: spine) {
-              Present { value: right } =>
-                match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
-                  Present { value: id } =>
-                    match id == ^dag_token_kw_else {
-                      true => body_lower_if_fn_body_capture_optional(spine: right)
-                      false =>
-                        match body_lower_if_fn_body_capture_optional(spine: left) {
-                          Present { value: found } => Present { value: found }
-                          Absent => body_lower_if_fn_body_capture_optional(spine: right)
-                        }
-                    }
-                  Absent =>
-                    match body_lower_if_fn_body_capture_optional(spine: left) {
-                      Present { value: found } => Present { value: found }
-                      Absent => body_lower_if_fn_body_capture_optional(spine: right)
-                    }
-                }
-              Absent => Absent
-            }
-          Absent => Absent
-        }
+// THE if_expr ROW IS READ BY POSITION, NEVER SEARCHED. v2.extdeps.languages.dag declares exactly
+// two rows: dag_grammar_if_block_expr seq(`if`, seq(cond, seq(fn_body, seq(`else`, if_expr | fn_body))))
+// and dag_grammar_if_then_expr seq(`if`, seq(cond, seq(`then`, seq(expr, seq(`else`, expr))))). Each
+// arm is the element at its own slot. The readers this replaces SEARCHED the capture -- the else
+// reader recursed into the LEFT subtree before the right whenever the token there was not `else`, so
+// for `if b { if c { X } else { Y } } else { Z }` it entered the then-arm and answered the NESTED if's
+// else `{ Y }` as the OUTER if's else: Z was dropped, Y lowered twice, and the module was ACCEPTED
+// (gunbc.recurring_failure_mode else_arm_lowered_as_an_if_nested_inside_it, capture side). A capture
+// that is neither row is Absent, and every caller refuses it as navigation, never guesses.
+type IfRowArms {
+  then_arm: Node,
+  else_part: Node,
+}
+
+fn body_lower_if_row_arms_optional(captured: Node) -> Optional<IfRowArms> {
+  let spine = body_lower_unwrap_surface_shell(node: captured)
+  match body_lower_if_row_slot_after_token(seq: spine, token: ^dag_token_kw_if) {
+    Absent => optional_absent()
+    Present { value: after_if } =>
+      match body_lower_match_spine_right(spine: after_if) {
+        Absent => optional_absent()
+        Present { value: after_cond } =>
+          match body_lower_if_row_slot_after_token(seq: after_cond, token: ^dag_token_kw_then) {
+            Present { value: after_then } =>
+              match body_lower_match_spine_left(spine: after_then) {
+                Absent => optional_absent()
+                Present { value: then_expr } =>
+                  match body_lower_match_spine_right(spine: after_then) {
+                    Absent => optional_absent()
+                    Present { value: else_seq } =>
+                      body_lower_if_row_with_else(then_arm: body_lower_if_row_captured(node: then_expr), else_seq: else_seq)
+                  }
+              }
+            Absent =>
+              match body_lower_match_spine_left(spine: after_cond) {
+                Absent => optional_absent()
+                Present { value: then_body } =>
+                  match body_lower_match_spine_right(spine: after_cond) {
+                    Absent => optional_absent()
+                    Present { value: else_seq } =>
+                      body_lower_if_row_with_else(then_arm: body_lower_if_row_captured(node: then_body), else_seq: else_seq)
+                  }
+              }
+          }
       }
   }
 }
 
-fn body_lower_if_then_fn_body_optional(captured: Node) -> Optional<Node> {
-  let spine = body_lower_unwrap_surface_shell(node: captured)
-  match body_lower_if_fn_body_capture_optional(spine: spine) {
-    Present { value: first } =>
-      match body_lower_find_captured(root: captured, emitted: ^dag_surface_fn_body) {
-        ParseSubtreeFound { captured: only } => Present { value: only }
-        ParseSubtreeAbsent => Present { value: first }
+// seq(`else`, else_part): the else part, read as the arm readers have always answered it.
+fn body_lower_if_row_with_else(then_arm: Node, else_seq: Node) -> Optional<IfRowArms> {
+  match body_lower_if_row_slot_after_token(seq: else_seq, token: ^dag_token_kw_else) {
+    Absent => optional_absent()
+    Present { value: else_part } =>
+      optional_present(value: IfRowArms { then_arm: then_arm, else_part: body_lower_if_row_else_arm(else_part: else_part) })
+  }
+}
+
+// seq(<token>, rest) -> rest, when the left element is exactly that keyword token.
+fn body_lower_if_row_slot_after_token(seq: Node, token: Symbol) -> Optional<Node> {
+  match body_lower_match_spine_left(spine: seq) {
+    Absent => optional_absent()
+    Present { value: left } =>
+      match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
+        Present { value: id } =>
+          if id == token { body_lower_match_spine_right(spine: seq) } else { optional_absent() }
+        Absent => optional_absent()
       }
-    Absent => Absent
+  }
+}
+
+// An arm slot holds one production (fn_body or expr); the arm readers answer its captured child.
+fn body_lower_if_row_captured(node: Node) -> Node {
+  let shell = body_lower_deep_unwrap_optional(node: node)
+  match parse_production_captured_child_optional(node: shell) {
+    Present { value: captured } => captured
+    Absent => shell
+  }
+}
+
+// An `else if` arm is answered as its if_expr SHELL, so body_lower_if_arm_lowered sees an if and
+// lowers it whole; any other else part is its production's captured child.
+fn body_lower_if_row_else_arm(else_part: Node) -> Node {
+  match body_lower_else_part_if_expr_optional(else_part: else_part) {
+    Present { value: nested } => nested
+    Absent => body_lower_if_row_captured(node: else_part)
   }
 }
 
@@ -7128,57 +7169,10 @@ fn body_lower_first_production_shell_optional(root: Node) -> Optional<Node> {
   }
 }
 
-// AN `else if` ARM IS ANSWERED AS ITS if_expr SHELL, so body_lower_if_arm_lowered can see it is an
-// if and lower it whole. Answering the shell's captured content instead hid the if_expr identity, and
-// the arm's statement-sequence search found the nested then-arm: `if a { b } else if c { d } else { u }`
-// lowered to Branch(a, b, d), and both the nested condition and its else reached no reference site.
 fn body_lower_if_else_capture_optional(captured: Node) -> Optional<Node> {
-  let spine = body_lower_unwrap_surface_shell(node: captured)
-  match is_empty_conj_root(n: spine) {
-    true => Absent
-    false =>
-      match body_lower_match_spine_left(spine: spine) {
-      Present { value: left } =>
-        match body_lower_match_spine_right(spine: spine) {
-          Present { value: right } =>
-            match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
-              Present { value: id } =>
-                match id == ^dag_token_kw_else {
-                  true =>
-                    match body_lower_else_part_if_expr_optional(else_part: right) {
-                      Present { value: nested } => Present { value: nested }
-                      Absent =>
-                        match body_lower_if_fn_body_capture_optional(spine: right) {
-                          Present { value: body } => Present { value: body }
-                          Absent =>
-                            match body_lower_if_expr_capture_optional(spine: right) {
-                              Present { value: expr } => Present { value: expr }
-                              Absent => Absent
-                            }
-                        }
-                    }
-                  false =>
-                    match body_lower_if_else_capture_optional(captured: left) {
-                      Present { value: found } => Present { value: found }
-                      Absent => body_lower_if_else_capture_optional(captured: right)
-                    }
-                }
-              Absent =>
-                match body_lower_if_else_capture_optional(captured: left) {
-                  Present { value: found } => Present { value: found }
-                  Absent => body_lower_if_else_capture_optional(captured: right)
-                }
-            }
-          Absent => Absent
-        }
-      Absent =>
-        fold(spine.children, init: Absent, f: fn(acc, e) {
-          match acc {
-            Present { value: _ } => acc
-            Absent => body_lower_if_else_capture_optional(captured: e.target)
-          }
-        })
-      }
+  match body_lower_if_row_arms_optional(captured: captured) {
+    Present { value: arms } => optional_present(value: arms.else_part)
+    Absent => optional_absent()
   }
 }
 
@@ -7219,38 +7213,9 @@ fn body_lower_if_condition_optional(captured: Node) -> Optional<Node> {
 }
 
 fn body_lower_if_then_arm_optional(captured: Node) -> Optional<Node> {
-  let spine = body_lower_unwrap_surface_shell(node: captured)
-  match body_lower_find_captured(root: spine, emitted: ^dag_surface_fn_body) {
-    ParseSubtreeFound { captured: body } => Present { value: body }
-    ParseSubtreeAbsent =>
-      match body_lower_if_then_fn_body_optional(captured: captured) {
-        Present { value: body } => Present { value: body }
-        Absent =>
-          match body_lower_match_spine_left(spine: spine) {
-            Present { value: left } =>
-              match body_lower_match_spine_right(spine: spine) {
-                Present { value: right } =>
-                  match node_atom_identity_optional(node: body_lower_deep_unwrap_optional(node: left)) {
-                    Present { value: id } =>
-                      match id == ^dag_token_kw_then {
-                        true => body_lower_if_expr_capture_optional(spine: right)
-                        false =>
-                          match body_lower_if_then_arm_optional(captured: left) {
-                            Present { value: found } => Present { value: found }
-                            Absent => body_lower_if_then_arm_optional(captured: right)
-                          }
-                      }
-                    Absent =>
-                      match body_lower_if_then_arm_optional(captured: left) {
-                        Present { value: found } => Present { value: found }
-                        Absent => body_lower_if_then_arm_optional(captured: right)
-                      }
-                  }
-                Absent => Absent
-              }
-            Absent => Absent
-          }
-      }
+  match body_lower_if_row_arms_optional(captured: captured) {
+    Present { value: arms } => optional_present(value: arms.then_arm)
+    Absent => optional_absent()
   }
 }
 
