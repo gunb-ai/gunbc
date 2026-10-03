@@ -1,5 +1,6 @@
 module v2.std.inhabitance
 
+import std.types { List }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
