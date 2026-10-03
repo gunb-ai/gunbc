@@ -306,7 +306,7 @@ Slice B fills the `AttemptConfigurationReceipt` fields that slice A records as `
 - The inspection is a `HumanIntervention` step (a physical change has no API surface, so it is `HumanSurfaceOnly`).
 - Its witness is a typed record: `AttemptInspectionReceipt { host, requested, applied, cpus, dimms, completed_at, witnessed_by }`.
 
-**Delivery (Q5, to decide).** A workflow-authored request is not evidence that the change was made, so the receipt has to reach the run as data the operator produced:
+**Delivery (Q5, decided: committed file named by one dispatch input).** A workflow-authored request is not evidence that the change was made, so the receipt has to reach the run as data the operator produced:
 - **Proposed:** the operator commits the receipt as a JSON file under `artifacts/receipts/` (reviewed, versioned, attributable through the commit). The fleet-converge dispatch gains one input, `attempt_receipt`, naming that file. The boot run reads the file from its checkout and parses it with a fail-closed typed reader, and the file's digest goes into the receipt's provenance.
 - **Alternative:** the JSON goes in the dispatch input itself. That is less reviewable, and the text box is the only provenance.
 - An absent or refused receipt leaves every field `NotRecorded` or refused with its cause. The boot never proceeds on a guessed configuration.
@@ -318,5 +318,5 @@ Slice B fills the `AttemptConfigurationReceipt` fields that slice A records as `
 ## 11. Questions
 
 Q1 and Q2 were decided by the side chat on `75f0bd113c` and are encoded in §1, §3 and §5. Q3 (delete `secondary_checkpoints`) and Q4 (add the receipt inputs, as slice B) were decided during slice A (§10a). Open:
-- **Q5.** How the inspection receipt is delivered (§12). Proposed: a committed receipt file named by one fleet-converge dispatch input; the alternative is JSON in the dispatch input itself.
-- **Q6.** Does Q4's ruling cover adding that dispatch input to the fleet-converge workflow surface, or does it need its own operator sign-off?
+- **Q5 (decided):** the receipt is committed JSON under `artifacts/receipts/`. It is read from the checkout by a fail-closed typed reader, and its digest is recorded. One dispatch input names the file. Inline JSON in a dispatch input is refused because it is not reviewable.
+- **Q6 (decided):** covered by Q4. An input on the existing mode is neither a new mode nor a new job.
