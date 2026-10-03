@@ -49,6 +49,7 @@ import gunbc.machine_intake_ampere_dram_console_observation {
   AmpereDramConsoleObservation, ampere_dram_console_observation, ampere_dram_findings, ampere_dram_console_text,
 }
 import gunbc.machine_intake_kernel_module_decompression_observation { KernelModuleDecompressionObservation, kernel_module_decompression_observation, kernel_module_decompression_text, kernel_module_decompression_findings }
+import gunbc.machine_intake_ampere_nvparam_console_observation { NvParamConsoleObservation, ampere_nvparam_console_observation, ampere_nvparam_console_text }
 import gunbc.machine_intake_ampere_socket_console_observation {
   AmpereSocketConsoleObservation, AmpereSummaryObserved, AmpereSummaryNotPrinted, AmpereSocketReferenceComparison,
   ampere_socket_console_observation, ampere_socket_console_text, ampere_socket_reference_comparison, ampere_socket_reference_comparison_text,
@@ -357,7 +358,7 @@ type InventoryReading {
 // those bytes would under-count multi-byte console output. The size is taken before the content is
 // read, so a capture over the bound is reported without being loaded.
 type ConsoleReading
-  = ConsoleRetained { path: NonEmptyStr, size: ByteSize, lines: Int, firmware: FirmwareConsoleReport, dram: AmpereDramConsoleObservation, sockets: AmpereSocketConsoleObservation, against_reference: AmpereSocketReferenceComparison, modules: KernelModuleDecompressionObservation }
+  = ConsoleRetained { path: NonEmptyStr, size: ByteSize, lines: Int, firmware: FirmwareConsoleReport, dram: AmpereDramConsoleObservation, sockets: AmpereSocketConsoleObservation, against_reference: AmpereSocketReferenceComparison, modules: KernelModuleDecompressionObservation, nvparam: NvParamConsoleObservation }
   | ConsoleExceedsBound { path: NonEmptyStr, size: ByteSize, bound: ByteSize }
   | ConsoleNotRetained { path: NonEmptyStr }
   | ConsoleUnread { path: NonEmptyStr, detail: String }
@@ -1091,7 +1092,7 @@ fn socket_summary_findings(o: AmpereSocketConsoleObservation) -> List<String> {
 
 fn console_findings(c: ConsoleReading) -> List<String> {
   match c {
-    ConsoleRetained { path: _, size: _, lines: _, firmware: _, dram: d, sockets: o, against_reference: _, modules: m } => concat(ampere_dram_findings(observation: d, expected_sockets: mtcollins1_census_sockets()), concat(socket_summary_findings(o: o), kernel_module_decompression_findings(o: m)))
+    ConsoleRetained { path: _, size: _, lines: _, firmware: _, dram: d, sockets: o, against_reference: _, modules: m, nvparam: _ } => concat(ampere_dram_findings(observation: d, expected_sockets: mtcollins1_census_sockets()), concat(socket_summary_findings(o: o), kernel_module_decompression_findings(o: m)))
     ConsoleExceedsBound { path: _, size: _, bound: _ } => []
     ConsoleNotRetained { path: _ } => []
     ConsoleUnread { path: _, detail: _ } => []
@@ -1448,8 +1449,8 @@ fn firmware_report_text(report: FirmwareConsoleReport) -> String {
 
 fn console_text(c: ConsoleReading) -> String {
   match c {
-    ConsoleRetained { path: p, size: b, lines: n, firmware: f, dram: d, sockets: o, against_reference: cmp, modules: m } =>
-      concat("capture ", p as String, " retained in this artifact: ", to_string(byte_size_count(b: b)), " bytes (stat), ", to_string(n), " line(s), within the ", to_string(byte_size_count(b: mtcollins1_boot_console_bound)), "-byte bound; ", firmware_report_text(report: f), "\n", ampere_dram_console_text(observation: d, expected_sockets: mtcollins1_census_sockets()), "\n", ampere_socket_console_text(o: o), ampere_socket_reference_comparison_text(c: cmp), "\n", kernel_module_decompression_text(o: m))
+    ConsoleRetained { path: p, size: b, lines: n, firmware: f, dram: d, sockets: o, against_reference: cmp, modules: m, nvparam: nv } =>
+      concat("capture ", p as String, " retained in this artifact: ", to_string(byte_size_count(b: b)), " bytes (stat), ", to_string(n), " line(s), within the ", to_string(byte_size_count(b: mtcollins1_boot_console_bound)), "-byte bound; ", firmware_report_text(report: f), "\n", ampere_dram_console_text(observation: d, expected_sockets: mtcollins1_census_sockets()), "\n", ampere_socket_console_text(o: o), ampere_socket_reference_comparison_text(c: cmp), "\n", kernel_module_decompression_text(o: m), "\n", ampere_nvparam_console_text(o: nv))
     ConsoleExceedsBound { path: p, size: b, bound: bound } =>
       concat("capture ", p as String, " is ", to_string(byte_size_count(b: b)), " bytes (stat), OVER the ", to_string(byte_size_count(b: bound)), "-byte bound; the collector does not truncate, so the artifact carries it whole")
     ConsoleNotRetained { path: p } =>
@@ -2148,6 +2149,7 @@ fn mtcollins1_boot_console_reading(path: String, size: ByteSize, capture: String
       sockets: sockets,
       against_reference: ampere_socket_reference_comparison(reference_path: mtcollins1_census_sol_artifact_path, reference_text: reference.text, read_ok: reference.ok, read_error: reference.error, subject: sockets),
       modules: kernel_module_decompression_observation(lines: lines),
+      nvparam: ampere_nvparam_console_observation(lines: lines),
     }
   }
 }

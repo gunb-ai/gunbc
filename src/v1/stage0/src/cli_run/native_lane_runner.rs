@@ -303,6 +303,29 @@ fn emitted_closure_identity(crate_dir: &Path) -> Result<String, String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
+/// A FAILED BUILD KEEPS ITS ROOT. Dropping it deleted the emitted sources the first error names,
+/// so the one artefact a reader needs to open `file:line` was gone before the refusal printed
+/// (a one-line E0308 in the self-host closure cost three rounds that way). The root is consumed
+/// here and retained, and its path is printed beside the first error's typed locus.
+fn emitted_build_failed_refusal(
+    probe_root: super::emitted_closure_compile_host::PrivateProbeRoot,
+    crate_dir: &Path,
+    verdict: &super::emitted_closure_compile_host::CargoVerdict,
+    invocation: &str,
+) -> String {
+    let first_error = super::emitted_closure_compile_host::rustc_error_locus_render(
+        super::emitted_closure_compile_host::cargo_verdict_first_error(verdict),
+    );
+    let retained = probe_root.retain();
+    format!(
+        "V2-NATIVE REFUSAL cause=EmittedCompilerBuildFailed first_error={first_error} \
+         retained_probe_root={} crate_dir={} — {} ({invocation})",
+        retained.display(),
+        crate_dir.display(),
+        super::emitted_closure_compile_host::cargo_verdict_summary(verdict),
+    )
+}
+
 /// PREPARATION IS THE EMIT-COMPILE PHASE'S OWN MACHINERY, REUSED. The same emission entry
 /// point, the same crate writer, the same cargo invocation the required emit-compile probes use
 /// — a second emit-or-build path beside them would be free to disagree about what "the emitted
@@ -391,11 +414,14 @@ fn prepare_emitted_compiler_for_entry(
         super::emitted_closure_compile_host::MUTATION_PROBE_SYMBOL,
     );
     if !super::emitted_closure_compile_host::cargo_verdict_compiled(&verdict) {
-        return Err(format!(
-            "V2-NATIVE REFUSAL cause=EmittedCompilerBuildFailed — {} (argv={:?} RUSTFLAGS={:?} rustc={rustc})",
-            super::emitted_closure_compile_host::cargo_verdict_summary(&verdict),
-            invocation.argv,
-            invocation.rustflags,
+        return Err(emitted_build_failed_refusal(
+            probe_root,
+            &crate_dir,
+            &verdict,
+            &format!(
+                "argv={:?} RUSTFLAGS={:?} rustc={rustc}",
+                invocation.argv, invocation.rustflags
+            ),
         ));
     }
     // `cargo_verdict_compiled` admitted only the `Completed { status: 0 }` arm, so the fields
@@ -660,7 +686,101 @@ fn materialize_malformed_specimen(workspace: &Path) -> Result<String, String> {
 /// census run's only consumed output.
 struct NativeFileRefusalObserved {
     path: String,
+    /// The FIRST diagnostic of the file's chain -- often an advisory that rode along (the
+    /// grammar-construction residue `parse_grammar_choice_overlap_residue` heads every file,
+    /// clean ones included). Carried so the summary can show it AS the head, beside the cause,
+    /// rather than leaving a reader to mistake it for one.
+    head_reason: String,
     fatal_reason: String,
+}
+
+/// THE REFUSED FILES, NAMED, WITH THE CHAIN STRUCTURED. The summary used to carry
+/// `file_refusals=N` and nothing else, so each identity lived only in driver-rows.jsonl, and a
+/// reader who grepped reasons there saw the chain HEAD (identical on every file) far more often
+/// than the cause -- 209 heads to 1 cause in one run, read three times as the cause. Here the
+/// fatal cause leads each line and the head is printed only as `head=` when it differs, after a
+/// grouped tally of FATAL causes, which is the population a causal account is about.
+fn native_file_refusal_summary(refusals: &[NativeFileRefusalObserved]) -> String {
+    // First-seen order, one map probe per refusal (DESIGN §6 bare minimum cost: no linear
+    // scan per row, whatever the cause count is today).
+    let mut slot: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    let mut by_cause: Vec<(&str, usize)> = Vec::new();
+    for refusal in refusals {
+        let cause = refusal.fatal_reason.as_str();
+        match slot.get(cause) {
+            Some(&i) => by_cause[i].1 += 1,
+            None => {
+                slot.insert(cause, by_cause.len());
+                by_cause.push((cause, 1));
+            }
+        }
+    }
+    let mut out = format!(
+        "v2-native-route: refused files={} distinct_fatal_causes={}",
+        refusals.len(),
+        by_cause.len()
+    );
+    for (cause, n) in &by_cause {
+        out.push_str(&format!("\n  fatal_cause {n}x {cause}"));
+    }
+    for refusal in refusals {
+        out.push_str(&format!(
+            "\n  refused {} fatal={}",
+            refusal.path, refusal.fatal_reason
+        ));
+        if refusal.head_reason != refusal.fatal_reason {
+            out.push_str(&format!(" head(advisory)={}", refusal.head_reason));
+        }
+    }
+    out
+}
+
+/// One ACCEPTED file whose front end attached advisories (`v2.compiler.native_test_vocabulary`
+/// `NativeTestFileAdvisories`). The reasons are the identities, in chain order; the count is their
+/// length. Before this row the context fold matched an accepted file's advisories away, so they
+/// were visible only as the head of some later refusal and could not be counted at all.
+struct NativeFileAdvisoriesObserved {
+    path: String,
+    reasons: Vec<String>,
+}
+
+/// THE ACCEPTED FILES' ADVISORIES, COUNTED BY IDENTITY. A tally by reason over every advised
+/// accepted file, then one line per file naming its reasons. A grammar-level advisory copied onto
+/// every module shows here as one reason whose count equals the number of advised files -- which
+/// is the measurement the advisory program's later steps are judged against.
+fn native_file_advisories_summary(advised: &[NativeFileAdvisoriesObserved]) -> String {
+    let mut slot: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    let mut by_reason: Vec<(&str, usize)> = Vec::new();
+    let mut total = 0usize;
+    for file in advised {
+        for reason in &file.reasons {
+            total += 1;
+            match slot.get(reason.as_str()) {
+                Some(&i) => by_reason[i].1 += 1,
+                None => {
+                    slot.insert(reason.as_str(), by_reason.len());
+                    by_reason.push((reason.as_str(), 1));
+                }
+            }
+        }
+    }
+    let mut out = format!(
+        "v2-native-route: accepted files with advisories={} advisories={} distinct_advisory_reasons={}",
+        advised.len(),
+        total,
+        by_reason.len()
+    );
+    for (reason, n) in &by_reason {
+        out.push_str(&format!("\n  advisory {n}x {reason}"));
+    }
+    for file in advised {
+        out.push_str(&format!(
+            "\n  advised {} reasons={}",
+            file.path,
+            file.reasons.join(",")
+        ));
+    }
+    out
 }
 
 /// The spawned run's terminal marker, decoded. THE MARKER IS THE VERDICT SURFACE: the binary
@@ -671,6 +791,8 @@ struct NativeTerminalMarker {
     rows: u64,
     universe: u64,
     file_refusals: u64,
+    /// How many accepted files the run reported advisories for; checked against the rows decoded.
+    advised_files: u64,
     admitted: bool,
     summary: String,
     /// `gunbc.native_frontier_ratchet` `native_frontier_verdict_word`, read verbatim. Empty on a
@@ -759,6 +881,7 @@ fn native_member_termination(
 
 struct NativeRunOutput {
     file_refusals: Vec<NativeFileRefusalObserved>,
+    advised_files: Vec<NativeFileAdvisoriesObserved>,
     members: Vec<NativeMemberVerdict>,
     terminal: NativeTerminalMarker,
 }
@@ -769,6 +892,7 @@ struct NativeRunOutput {
 /// harness re-forming a receipt the authority has already judged.
 fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
     let mut file_refusals = Vec::new();
+    let mut advised_files: Vec<NativeFileAdvisoriesObserved> = Vec::new();
     let mut members: Vec<NativeMemberVerdict> = Vec::new();
     let mut terminal: Option<NativeTerminalMarker> = None;
     for line in stdout.lines() {
@@ -818,12 +942,14 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
             };
             let mode = need_str("mode")?;
             let file_refusals = need_u64("file_refusals")?;
+            let advised_files = need_u64("advised_files")?;
             terminal = Some(match mode.as_str() {
                 "census" => NativeTerminalMarker {
                     mode,
                     rows: 0,
                     universe: 0,
                     file_refusals,
+                    advised_files,
                     admitted: false,
                     summary: String::new(),
                     frontier: String::new(),
@@ -839,6 +965,7 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
                     summary: need_str("summary")?,
                     mode,
                     file_refusals,
+                    advised_files,
                 },
                 other => {
                     return Err(format!(
@@ -853,13 +980,55 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
                 .get("path")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| format!("file refusal carries no path: {line}"))?;
+            let head_reason = refusal
+                .get("head_reason")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| format!("file refusal carries no head_reason: {line}"))?;
             let fatal_reason = refusal
                 .get("fatal_reason")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| format!("file refusal carries no fatal_reason: {line}"))?;
             file_refusals.push(NativeFileRefusalObserved {
                 path: path.to_string(),
+                head_reason: head_reason.to_string(),
                 fatal_reason: fatal_reason.to_string(),
+            });
+            continue;
+        }
+        // A CAUSE GROUP IS RECOGNIZED AND NOT CONSUMED HERE. `census` now prints the same file
+        // refusals grouped by fatal reason (v2.compiler.compile native_census_cause_group_rows);
+        // the malformed control reads the per-file row above and owes nothing to the grouping,
+        // whose consumer is the census instrument (`//gunbc/instruments:v2-native-census`).
+        if value.get("cause_group").is_some() {
+            continue;
+        }
+        if let Some(advised) = value.get("accepted_file_advisories") {
+            let path = advised
+                .get("path")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| format!("accepted-file advisories carry no path: {line}"))?;
+            // The row is head plus tail, non-empty by its producer's type
+            // (`NativeTestFileAdvisories`), so the decoder reads a head it can require rather than
+            // a list it would have to refuse when empty.
+            let as_reason = |r: &serde_json::Value| {
+                r.as_str()
+                    .map(|s| s.to_string())
+                    .ok_or_else(|| format!("an advisory reason is not a string: {line}"))
+            };
+            let mut reasons =
+                vec![as_reason(advised.get("head").ok_or_else(|| {
+                    format!("accepted-file advisories carry no head: {line}")
+                })?)?];
+            for r in advised
+                .get("tail")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| format!("accepted-file advisories carry no tail: {line}"))?
+            {
+                reasons.push(as_reason(r)?);
+            }
+            advised_files.push(NativeFileAdvisoriesObserved {
+                path: path.to_string(),
+                reasons,
             });
             continue;
         }
@@ -906,8 +1075,17 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
     }
     let terminal =
         terminal.ok_or_else(|| "the native run printed no terminal marker".to_string())?;
+    if terminal.advised_files != advised_files.len() as u64 {
+        return Err(format!(
+            "the terminal marker reports advised_files={} but {} accepted-file advisory rows were \
+             printed",
+            terminal.advised_files,
+            advised_files.len()
+        ));
+    }
     Ok(NativeRunOutput {
         file_refusals,
+        advised_files,
         members,
         terminal,
     })
@@ -2342,6 +2520,72 @@ pub fn run_v2_native_frontier(
     })
 }
 
+/// THE NATIVE CENSUS, AS THE EMITTED BINARY REPORTED IT. The grouping is
+/// decided inside the binary (`v2.compiler.compile` `native_census_cause_groups_add`); the host
+/// carries the terminal marker's counts and decides nothing about them.
+pub struct NativeCensusRun {
+    pub cause_groups: u64,
+    pub file_refusals: u64,
+    pub residual_rows: u64,
+    pub modules: u64,
+}
+
+/// `gunbc test //gunbc/instruments:v2-native-census`: the emitted compiler's `census-resolve` verb
+/// over the given roots. The child's stdout -- one `file_refusal`, `census_residual` and
+/// `cause_group` line per row, then the terminal -- is relayed whole, because those rows ARE the
+/// census; only the terminal is decoded, and every field it must carry is required, none defaulted.
+pub fn run_v2_native_census(source_roots: &[String]) -> Result<NativeCensusRun, String> {
+    let preparation = prepare_emitted_compiler(source_roots)?;
+    let mut args = vec!["census-resolve".to_string()];
+    args.extend(source_roots.iter().cloned());
+    let output = Command::new(&preparation.binary_path)
+        .args(&args)
+        .output()
+        .map_err(|e| {
+            format!(
+                "V2-NATIVE-CENSUS REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
+                preparation.binary_path.display()
+            )
+        })?;
+    let stdout = String::from_utf8(output.stdout).map_err(|cause| {
+        format!("V2-NATIVE-CENSUS REFUSAL cause=NativeRunStdoutNotUtf8 — {cause}")
+    })?;
+    eprint!("{}", String::from_utf8_lossy(&output.stderr));
+    print!("{stdout}");
+    let terminal = stdout
+        .lines()
+        .rev()
+        .find_map(|line| {
+            serde_json::from_str::<serde_json::Value>(line)
+                .ok()
+                .filter(|v| v.get("_terminal").is_some())
+        })
+        .ok_or_else(|| {
+            format!(
+                "V2-NATIVE-CENSUS REFUSAL cause=NoTerminalMarker — the census run (exit {:?}) printed no terminal marker",
+                output.status.code()
+            )
+        })?;
+    if terminal.get("_terminal").and_then(|t| t.as_str()) != Some("complete")
+        || terminal.get("mode").and_then(|m| m.as_str()) != Some("census-resolve")
+    {
+        return Err(format!(
+            "V2-NATIVE-CENSUS REFUSAL cause=TerminalNotComplete — {terminal}"
+        ));
+    }
+    let need_u64 = |key: &str| -> Result<u64, String> {
+        terminal.get(key).and_then(|v| v.as_u64()).ok_or_else(|| {
+            format!("V2-NATIVE-CENSUS REFUSAL cause=TerminalFieldMissing — no {key}: {terminal}")
+        })
+    };
+    Ok(NativeCensusRun {
+        cause_groups: need_u64("cause_groups")?,
+        file_refusals: need_u64("file_refusals")?,
+        residual_rows: need_u64("residual_rows")?,
+        modules: need_u64("modules")?,
+    })
+}
+
 /// What the adjudicating run decided, carried out of the body as a value.
 struct NativeRunAdmission {
     admitted: bool,
@@ -2477,6 +2721,10 @@ fn run_required_v2_native_inner(
         "v2-native-route: universe={} population={} file_refusals={}",
         run.terminal.universe, run.terminal.rows, run.terminal.file_refusals
     );
+    if !run.file_refusals.is_empty() {
+        eprintln!("{}", native_file_refusal_summary(&run.file_refusals));
+    }
+    eprintln!("{}", native_file_advisories_summary(&run.advised_files));
 
     // REALIZATION TELEMETRY, ON ITS OWN LINE AND ON NO RECEIPT FIELD: this host process's peak
     // RSS and current RSS (process-scoped -- the emitted binary and the rustc children cargo
@@ -2517,6 +2765,112 @@ fn run_required_v2_native_inner(
 mod tests {
     use super::*;
 
+    /// A HEAD SHARED BY EVERY FILE IS NOT THE CAUSE. The old summary was `file_refusals=2` and
+    /// named neither file; this control reds on any rendering that drops a path, leads with the
+    /// head, or tallies heads instead of fatal causes.
+    #[test]
+    fn the_refusal_summary_names_each_file_and_leads_with_the_fatal_cause() {
+        let row = |path: &str, head: &str, fatal: &str| NativeFileRefusalObserved {
+            path: path.to_string(),
+            head_reason: head.to_string(),
+            fatal_reason: fatal.to_string(),
+        };
+        let summary = native_file_refusal_summary(&[
+            row(
+                "a.dag",
+                "parse_grammar_choice_overlap_residue",
+                "parse_g0_tokens_remain",
+            ),
+            row(
+                "b.dag",
+                "parse_grammar_choice_overlap_residue",
+                "body_lowering_reason_x",
+            ),
+            row("c.dag", "parse_g0_tokens_remain", "parse_g0_tokens_remain"),
+        ]);
+        assert!(
+            summary.contains("refused files=3 distinct_fatal_causes=2"),
+            "{summary}"
+        );
+        assert!(
+            summary.contains("fatal_cause 2x parse_g0_tokens_remain"),
+            "{summary}"
+        );
+        assert!(
+            summary.contains("fatal_cause 1x body_lowering_reason_x"),
+            "{summary}"
+        );
+        assert!(!summary.contains("fatal_cause 2x parse_grammar_choice_overlap_residue"));
+        // EVERY SUPPLIED FILE, EXACTLY ONCE, AS ITS WHOLE LINE. Asserting a and c alone let a
+        // rendering that dropped b pass (review on #13005); the expected line is derived per row,
+        // so the head appears only where it differs from the cause.
+        let expected = [
+            "  refused a.dag fatal=parse_g0_tokens_remain head(advisory)=parse_grammar_choice_overlap_residue",
+            "  refused b.dag fatal=body_lowering_reason_x head(advisory)=parse_grammar_choice_overlap_residue",
+            "  refused c.dag fatal=parse_g0_tokens_remain",
+        ];
+        assert_eq!(
+            each_line_exactly_once(&summary, &expected),
+            Ok(()),
+            "{summary}"
+        );
+        // THE MUTATIONS THE CHECK MUST RED ON: b's line dropped, and a's line duplicated.
+        let dropped_b: String = summary
+            .lines()
+            .filter(|l| !l.contains("refused b.dag"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_eq!(
+            each_line_exactly_once(&dropped_b, &expected),
+            Err(format!("{} appears 0 times", expected[1]))
+        );
+        let doubled_a = format!("{summary}\n{}", expected[0]);
+        assert_eq!(
+            each_line_exactly_once(&doubled_a, &expected),
+            Err(format!("{} appears 2 times", expected[0]))
+        );
+    }
+
+    fn each_line_exactly_once(summary: &str, expected: &[&str]) -> Result<(), String> {
+        for line in expected {
+            let n = summary.lines().filter(|l| l == line).count();
+            if n != 1 {
+                return Err(format!("{line} appears {n} times"));
+            }
+        }
+        Ok(())
+    }
+
+    /// A FAILED BUILD'S ROOT OUTLIVES THE REFUSAL. Before this, the root dropped on the `Err`
+    /// return and the emitted sources the error names were deleted; the control reds there
+    /// (`exists()` false) and names the first error's span, which the old message did not carry.
+    #[test]
+    fn a_failed_emitted_build_retains_its_root_and_names_the_first_error() {
+        use super::super::emitted_closure_compile_host as host;
+        let base = std::env::temp_dir().join(format!("nlr-retain-{}", std::process::id()));
+        std::fs::create_dir_all(&base).unwrap();
+        let root = host::create_private_probe_root(&base).unwrap();
+        let path = root.path().to_path_buf();
+        let stderr = "error[E0308]: mismatched types\n --> src/m.rs:7:3\n";
+        let verdict = host::CargoVerdict::Completed {
+            status: 101,
+            stderr_tail: stderr.to_string(),
+            probe_line: None,
+            probe_diagnostic: None,
+            warning_count: 0,
+            warning_headers: Vec::new(),
+            first_error: host::first_rustc_error(stderr).map(Box::new),
+        };
+        let message = emitted_build_failed_refusal(root, &path.join("crate"), &verdict, "argv=[]");
+        assert!(
+            path.is_dir(),
+            "the root was deleted with the refusal: {message}"
+        );
+        assert!(message.contains(&format!("retained_probe_root={}", path.display())));
+        assert!(message.contains("first_error=error[E0308]: mismatched types @ src/m.rs:7:3"));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     /// THE MEMBER FOLD, HANDED REAL PRODUCER BYTES.
     ///
     /// This row is VERBATIM from an executed native run -- `session/sharp-bear-756` at
@@ -2532,7 +2886,7 @@ mod tests {
         let stdout = format!(
             "{REAL_REFUSED_ROW}\n{}\n",
             "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":1,\"universe\":1,\
-             \"file_refusals\":0,\"admitted\":false,\"summary\":\"s\",\"frontier\":\"held\"}"
+             \"file_refusals\":0,\"advised_files\":0,\"admitted\":false,\"summary\":\"s\",\"frontier\":\"held\"}"
         );
         let out = parse_native_run_output(&stdout).expect("the real row must decode");
         assert_eq!(out.members, vec![NativeMemberVerdict::Refused]);
@@ -2663,7 +3017,7 @@ mod tests {
     /// fire, which is the state this PR has already had to repair twice.
     #[test]
     fn a_nonzero_exit_claiming_admitted_is_refused() {
-        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"admitted\":true,\"summary\":\"s\",\"frontier\":\"held\"}";
+        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"advised_files\":0,\"admitted\":true,\"summary\":\"s\",\"frontier\":\"held\"}";
         let result = run_native_binary(
             Path::new("/bin/sh"),
             &["-c".to_string(), format!("echo '{marker}'; exit 1")],
@@ -2683,7 +3037,7 @@ mod tests {
     /// discriminates on the disagreement rather than on the fixture.
     #[test]
     fn a_zero_exit_claiming_admitted_is_accepted() {
-        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"admitted\":true,\"summary\":\"s\",\"frontier\":\"held\"}";
+        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"advised_files\":0,\"admitted\":true,\"summary\":\"s\",\"frontier\":\"held\"}";
         let parsed = run_native_binary(
             Path::new("/bin/sh"),
             &["-c".to_string(), format!("echo '{marker}'; exit 0")],
@@ -2697,7 +3051,7 @@ mod tests {
     /// carrying a REFUSED receipt is equally a disagreement between two observations of one run.
     #[test]
     fn a_zero_exit_claiming_refused_is_refused() {
-        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"admitted\":false,\"summary\":\"s\",\"frontier\":\"held\"}";
+        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"advised_files\":0,\"admitted\":false,\"summary\":\"s\",\"frontier\":\"held\"}";
         let result = run_native_binary(
             Path::new("/bin/sh"),
             &["-c".to_string(), format!("echo '{marker}'; exit 0")],
@@ -2743,7 +3097,7 @@ mod tests {
         let stdout = concat!(
             "{\"file_refusal\":{\"path\":\"a.dag\",\"head_reason\":\"h\",\"fatal_reason\":\"f\"}}\n",
             "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":3,\"universe\":3,",
-            "\"file_refusals\":1,\"admitted\":false,\"summary\":\"REFUSED: population_omissions_present\",\"frontier\":\"held\"}\n"
+            "\"file_refusals\":1,\"advised_files\":0,\"admitted\":false,\"summary\":\"REFUSED: population_omissions_present\",\"frontier\":\"held\"}\n"
         );
         let parsed = parse_native_run_output(stdout).expect("the marker parses");
         assert!(!parsed.terminal.admitted);
@@ -2753,6 +3107,48 @@ mod tests {
         );
         assert_eq!(parsed.file_refusals.len(), 1);
         assert_eq!(parsed.file_refusals[0].fatal_reason, "f");
+    }
+
+    /// ACCEPTED FILES' ADVISORIES ARE DECODED BY IDENTITY AND COUNTED. Two accepted files, one
+    /// carrying two advisories: both rows decode with their reasons in chain order, and the summary
+    /// tallies the shared reason twice and the other once.
+    #[test]
+    fn accepted_file_advisories_decode_and_tally_by_reason() {
+        let stdout = concat!(
+            "{\"accepted_file_advisories\":{\"path\":\"a.dag\",\"head\":\"r\",\"tail\":[\"s\"]}}\n",
+            "{\"accepted_file_advisories\":{\"path\":\"b.dag\",\"head\":\"r\",\"tail\":[]}}\n",
+            "{\"_terminal\":\"complete\",\"mode\":\"census\",\"file_refusals\":0,\"advised_files\":2}\n"
+        );
+        let parsed = parse_native_run_output(stdout).expect("advisory rows decode");
+        assert_eq!(parsed.advised_files.len(), 2);
+        assert_eq!(parsed.advised_files[0].reasons, vec!["r", "s"]);
+        let summary = native_file_advisories_summary(&parsed.advised_files);
+        assert!(
+            summary.contains(
+                "accepted files with advisories=2 advisories=3 distinct_advisory_reasons=2"
+            ),
+            "got: {summary}"
+        );
+        assert!(summary.contains("advisory 2x r"), "got: {summary}");
+        assert!(
+            summary.contains("advised a.dag reasons=r,s"),
+            "got: {summary}"
+        );
+    }
+
+    /// THE MARKER'S COUNT AND THE ROWS MUST AGREE. A run that reports more advised files than it
+    /// printed rows dropped some, and the decode refuses rather than reporting the short list.
+    #[test]
+    fn advised_files_count_disagreeing_with_rows_refuses() {
+        let stdout = concat!(
+            "{\"accepted_file_advisories\":{\"path\":\"a.dag\",\"head\":\"r\",\"tail\":[]}}\n",
+            "{\"_terminal\":\"complete\",\"mode\":\"census\",\"file_refusals\":0,\"advised_files\":2}\n"
+        );
+        let cause = match parse_native_run_output(stdout) {
+            Err(cause) => cause,
+            Ok(_) => panic!("a short advisory list must refuse"),
+        };
+        assert!(cause.contains("advised_files=2"), "got: {cause}");
     }
 
     /// NO MARKER IS A REFUSAL, NEVER A GREEN. A run that crashed mid-population prints rows and
@@ -2771,7 +3167,7 @@ mod tests {
     /// absorbing arm.
     #[test]
     fn an_adjudicate_marker_without_frontier_refuses() {
-        let stdout = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"admitted\":true,\"summary\":\"s\"}\n";
+        let stdout = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"advised_files\":0,\"admitted\":true,\"summary\":\"s\"}\n";
         let cause = match parse_native_run_output(stdout) {
             Err(cause) => cause,
             Ok(_) => panic!("a marker without frontier must refuse"),

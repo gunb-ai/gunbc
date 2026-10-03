@@ -489,6 +489,14 @@ fn variant_arm_is_declared_in_coproduct(
     false
 }
 
+fn kernel_raw_payload_constructor(name: &str, parent: Option<&String>) -> bool {
+    match name.rsplit('.').next().unwrap_or(name) {
+        "Present" | "Absent" | "Some" | "None" => parent_enum_is(parent, "Optional"),
+        "Holds" | "Violates" => parent_enum_is(parent, "Witness"),
+        _ => false,
+    }
+}
+
 fn parent_enum_is(parent: Option<&String>, expected_last: &str) -> bool {
     parent.is_some_and(|p| qualified_last_segment(p.clone()) == expected_last)
 }
@@ -1328,6 +1336,13 @@ pub enum InterpError {
         marginal_cpu_nanos: u128,
         limit_ms: u64,
     },
+    /// A fixture compile instrument (`compile_dag_rust_emit_check`) refused to answer: the
+    /// typed cause says which arm fired (`cli_run::FixtureRenderRefusal`). Refusing is the
+    /// fail-closed alternative to rendering every module or reading an absent file as `false`.
+    FixtureRenderRefused {
+        instrument: &'static str,
+        refusal: crate::cli_run::FixtureRenderRefusal,
+    },
     /// The fast-lane per-witness eval budget, enforced on THREAD CPU by the cooperative
     /// stride-poll in `eval_expr`. The measured field is named for its clock: this and the
     /// wall-clock budget below are different quantities of one occurrence, and a shared
@@ -1478,6 +1493,10 @@ impl fmt::Display for InterpError {
                  fill_cpu_ns={} marginal_cpu_ns={} limit_ms={}",
                 entry, producer, fill_cpu_nanos, marginal_cpu_nanos, limit_ms
             ),
+            InterpError::FixtureRenderRefused {
+                instrument,
+                refusal,
+            } => write!(f, "{instrument}: {refusal}"),
             InterpError::EvalBudgetExceeded {
                 cpu_ms: elapsed_ms,
                 budget_ms,
@@ -6955,14 +6974,26 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
     match (*node.expr_data).clone() {
         ExprData::ExprLiteral { value } => eval_literal(&value),
 
-        // An elaborated literal (std.literal_elaboration) evaluates as the kernel value: this
-        // interpreter realizes the structural destinations natively by its own grounding
-        // (Zero/Succ as Int per #5428, v2.std.logic Bool as bool), so the image of the literal
-        // under that grounding IS the literal, and evaluating the constructor tree instead would
-        // route a natively-realized Bool through variant patterns that have no runtime form here.
-        // The structural image is consumed by emission, which is where the destination is
-        // structural; the emitted-bytes witnesses exercise that path.
-        ExprData::ExprElaboratedLiteral { value, .. } => eval_literal(&value),
+        // An elaborated literal (std.literal_elaboration) carries its image under the declared
+        // homomorphism as its one child. A Peano unfolding's destination is STRUCTURAL on every
+        // route -- a carrier that realizes as the kernel integer has a KernelGrounding row instead
+        // and never reaches this arm, because v1.compiler.infer ground_kernel_views folds it to a
+        // plain literal -- so its value here is the constructor image, the same tree emission
+        // renders. The other two unfoldings keep the kernel value: this interpreter realizes
+        // v2.std.logic Bool as bool and text as the host string, so their image under that
+        // grounding IS the literal.
+        ExprData::ExprElaboratedLiteral { value, elaboration } => {
+            match (
+                &*elaboration.homomorphism.producer,
+                node.children.iter().next(),
+            ) {
+                (
+                    crate::std_literal_elaboration::LiteralUnfolding::PeanoUnfold { .. },
+                    Some(image),
+                ) => eval_expr(image, env, ctx),
+                _ => eval_literal(&value),
+            }
+        }
 
         ExprData::ExprVar { binding_kind } => eval_var(node, binding_kind.as_deref(), env, ctx),
 
@@ -7931,6 +7962,38 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
         None => None,
     };
     let absent_arm_index = crate::v1_compiler_infer::match_unguarded_absent_arm_index(arms.clone());
+    // A host integer has no constructors here. A carrier realized as the kernel integer
+    // (std.literal_elaboration KernelGrounding) has every constructor pattern folded to integer
+    // form by v1.compiler.infer ground_kernel_views before this tree is evaluated, so a
+    // constructor arm over an integer subject means that fold did not run on it. No arm could
+    // match and a later wildcard would take the value silently, so this refuses, located.
+    if let Value::Int(_) = &scrutinee_val {
+        if let Some(name) = arms
+            .iter()
+            .find_map(|arm| match &*arm_pattern(arm.clone()) {
+                // The optional and witness carriers ARE matched against a raw integer payload
+                // (their value-or-Null representation), so their constructors are not this case.
+                // The exemption is keyed on the pattern's PARENT carrier, the same key match_pattern's
+                // raw-unwrap arms use to accept such a payload, so it admits exactly the patterns those
+                // arms answer; a user coproduct with a variant spelled Some or Holds still refuses
+                // (review 73985). A DeclarationRef on the pattern is the next rung; see the seed-growth
+                // row gunbc.kernel_grounding_interpreter_seed_growth.
+                MatchPattern::VariantPattern {
+                    name, parent_enum, ..
+                } if !kernel_raw_payload_constructor(name, parent_enum.as_ref()) => {
+                    Some(name.to_string())
+                }
+                _ => None,
+            })
+        {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "match at {}:{}: the constructor pattern `{}` is matched against a host integer; a kernel-grounded carrier's patterns are folded to integers before evaluation (v1.compiler.infer ground_kernel_views), and this one was not",
+                    node.span.file, node.span.start, name
+                ),
+            });
+        }
+    }
 
     for (arm_index, arm) in arms.iter().enumerate() {
         let pattern = arm_pattern(arm.clone());
@@ -9121,8 +9184,8 @@ fn match_pattern(
                 // short-name normalization at value construction). Every name-vs-literal
                 // reconciliation below — native Int/Str/List coproducts, Optional/Witness raw
                 // (value-or-Null) unwraps — compares that short segment, as the `Value::Variant`
-                // arm's fallback does; otherwise a qualified `Zero`/`Succ` (Nat grounded to native
-                // Int), `Empty`/`Cons`, or `Present`/`Absent` pattern misses and the match falls
+                // arm's fallback does; otherwise a qualified `Empty`/`Cons` or
+                // `Present`/`Absent` pattern misses and the match falls
                 // through non-exhaustive.
                 let name_last = name.rsplit('.').next().unwrap_or(name);
                 // Kernel-optional / witness raw representation (value-or-Null): the `_ if
@@ -9366,39 +9429,6 @@ fn match_pattern(
                     // deliberately unhandled (no corpus site exercises it, #5-scoped deferral) — an
                     // unmatched pattern name falls through to `_ => None` below, refusing rather
                     // than fabricating a (pos, neg) pair.
-                    Value::Int(n) if name_last == "Zero" || name_last == "Succ" => {
-                        match name_last {
-                            "Zero" => {
-                                if *n == 0 {
-                                    Some(HashMap::new())
-                                } else {
-                                    None
-                                }
-                            }
-                            "Succ" => {
-                                if *n <= 0 {
-                                    None
-                                } else {
-                                    let mut bindings = HashMap::new();
-                                    for fb in field_bindings.iter() {
-                                        let field_name = field_binding_name_at(
-                                            fb.clone(),
-                                            ctx.source_indices.clone(),
-                                        );
-                                        let fb_pat = field_binding_pattern(fb.clone());
-                                        let field_val = match field_name.as_str() {
-                                            "prev" => Value::Int(n - 1),
-                                            _ => return None,
-                                        };
-                                        let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
-                                        bindings.extend(sub_bindings);
-                                    }
-                                    Some(bindings)
-                                }
-                            }
-                            _ => None,
-                        }
-                    }
                     Value::Null
                         if name_last == "Violates"
                             && parent_enum_is(parent_enum.as_ref(), "Witness") =>
@@ -11852,13 +11882,6 @@ fn eval_record_lit(
     fields.sort_unstable_by_key(|(k, _)| k.0);
 
     if let Some(pe) = parent_enum {
-        if type_name == "Succ" {
-            if let Some(Value::Int(p)) = fields_get(&fields, ctx.sym("prev")) {
-                if *p >= 0 {
-                    return Ok(Value::Int(p + 1));
-                }
-            }
-        }
         Ok(Value::Variant {
             type_name: ctx.sym(pe),
             variant_name: ctx.sym(type_name.rsplit('.').next().unwrap_or(&type_name)),
@@ -20588,7 +20611,7 @@ fn eval_emit_host_run_transport_builtin(
 /// observation/apply helpers when the self-emitted transport consumes the modeled
 /// ResolvedBuildContext and the dispatcher-change, environment-change, and cold/warm
 /// agreement witnesses remain green without them.
-/// Durable re-root (realization-side config, GUNBC_RESOLVED_GRAPH_CACHE_DIR precedent): the
+/// Durable re-root (realization-side config): the
 /// root is WHERE the cache lives, never WHAT identifies an artifact — the content-hash path
 /// component stays the key. Opt-in; only the declared /tmp/gunbc_ scratch prefix
 /// (std.emit_on_demand root authority) is rebased, so an arbitrary caller path never silently
@@ -22021,6 +22044,27 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(Value::Int(s.string_length())))
             },
 
+            // THE NATIVE STRING-SPAN SCAN THE JSON GRAMMAR'S PRODUCTIONS USE (RFC 8259 string
+            // body scan, escapes honored) -- v1_rt::scan_string_end is indexed in CHARS like
+            // every other string carrier here, so the position it returns is the position the
+            // interpreted parser's own indexing speaks.
+            arm "free_call.scan_string_end" { "scan_string_end" } => {
+                let s = expect_value_str($positional.first().copied(), "scan_string_end")?;
+                let start = expect_int($positional.get(1).copied(), "scan_string_end start")?;
+                Ok(Some(Value::Int(v1_rt::scan_string_end(&s, start))))
+            },
+
+            // THE VALIDATED JSON UNESCAPE, NATIVE (RFC 8259 section 7; \u decodes through
+            // from_code_point's own semantics, lone surrogates included). None is the escape-set
+            // refusal: the grammar maps it to its parse failure before any value is built.
+            arm "free_call.json_unescape_checked" { "json_unescape_checked" } => {
+                let s = expect_str($positional.first().copied(), "json_unescape_checked")?;
+                match v1_rt::json_unescape_checked(&s) {
+                    Some(out) => Ok(Some(str_value(out))),
+                    None => Ok(Some(Value::Null)),
+                }
+            },
+
             arm "free_call.substring" { "substring" } => {
                 // `v1_rt::substring` clamps negative start/end to 0, and `RcStr::substring`
                 // clamps identically, so routing through the carrier preserves this arm exactly.
@@ -23075,11 +23119,14 @@ macro_rules! v1_builtin_arms {
                 let file_path = expect_str($positional.get(1).copied(), $name)?;
                 let includes = expect_str_list($positional.get(2).copied(), $name)?;
                 let excludes = expect_str_list($positional.get(3).copied(), $name)?;
-                Ok(Some(Value::Bool(
-                    crate::cli_run::compile_dag_rust_emit_check(
-                        &source, &file_path, &includes, &excludes,
-                    ),
-                )))
+                crate::cli_run::compile_dag_rust_emit_check(
+                    &source, &file_path, &includes, &excludes,
+                )
+                .map(|verdict| Some(Value::Bool(verdict)))
+                .map_err(|refusal| InterpError::FixtureRenderRefused {
+                    instrument: "compile_dag_rust_emit_check",
+                    refusal,
+                })
             },
 
             arm "free_call.compile_dag_diagnostic_census" { "compile_dag_diagnostic_census" } => {

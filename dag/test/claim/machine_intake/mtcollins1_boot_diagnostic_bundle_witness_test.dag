@@ -462,7 +462,7 @@ test fn a_capture_outside_the_uploaded_glob_is_reported_not_retained() -> Bool {
 test fn a_retained_capture_reports_its_firmware_statement() -> Bool {
   let capture = "ERROR: Non-identical DIMM mixture NOT supported!\n"
   match mtcollins1_boot_console_reading(path: "/w/artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 51), capture: capture, read_ok: true, read_error: "", reference: no_reference) {
-    ConsoleRetained { path: _, size: b, lines: _, firmware: f, dram: _, sockets: _, against_reference: _, modules: _ } => (byte_size_count(b: b) as Int) == 51 && match f { TrainingRefusedByFirmware { statement: _, locus: _ } => true _ => false }
+    ConsoleRetained { path: _, size: b, lines: _, firmware: f, dram: _, sockets: _, against_reference: _, modules: _, nvparam: _ } => (byte_size_count(b: b) as Int) == 51 && match f { TrainingRefusedByFirmware { statement: _, locus: _ } => true _ => false }
     _ => false
   }
 }
@@ -559,7 +559,7 @@ test fn a_supplied_reference_renders_its_differences() -> Bool {
   let reference = "UEFI RC version: 1.08\r\n    Number of active sockets    : 2\r\n    Inter Socket Connection 0   : Width: x16 / Speed 25 GT/s\r\n    Socket[0]: Core voltage     : 1065\r\n    Socket[1]: Core voltage     : 1035\r\n"
   let capture = "UEFI RC version: 1.08\r\n    Number of active sockets    : 1\r\n    Socket[0]: Core voltage     : 1065\r\n"
   match mtcollins1_boot_console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 100), capture: capture, read_ok: true, read_error: "", reference: reference_of(text: reference)) {
-    ConsoleRetained { path: _, size: _, lines: _, firmware: _, dram: _, sockets: _, against_reference: _, modules: _ } => {
+    ConsoleRetained { path: _, size: _, lines: _, firmware: _, dram: _, sockets: _, against_reference: _, modules: _, nvparam: _ } => {
       let b = bundle_socket1_absent()
       let text = mtcollins1_boot_bundle_text(bundle: MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors, smpro: b.smpro, inventory: b.inventory,
         console: mtcollins1_boot_console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 100), capture: capture, read_ok: true, read_error: "", reference: reference_of(text: reference)), run: no_run(), screen: no_screen() })

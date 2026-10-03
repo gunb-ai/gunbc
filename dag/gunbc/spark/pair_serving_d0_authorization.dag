@@ -7,10 +7,10 @@ import std.content_hash { ContentHash }
 import std.scoped_authorization { AuthorizationRequest, ScopedAuthorization, ClaimedBy }
 import gunbc.auth.approval_gate { ApprovalGateRefusal, ApprovalRecorded, ApprovalNotRecorded, approval_recorded_from_poll }
 import gunbc.auth.approval_request_client { ApprovalPollStanding }
-import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire, fabric_group_hosts }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, fabric_group_wire, fabric_group_hosts }
 import gunbc.spark.released_baseline { ReleasedBaselineSpec, QuiescentReservedBaseline }
 import gunbc.spark.v41_runtime_candidate { v41_candidate, V41CandidateStanding, V41DerivationEvidence, v41_derivation_obligations, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused }
-import gunbc.spark.pair_serving_d0 { D0Subject, d0_request, d0_intent_hash, d0_intent_text, parse_d0_intent_text, parse_d0_frozen_filing, D0ClaimReading, D0ClaimAt, D0ClaimAbsent, D0ClaimUnreadable }
+import gunbc.spark.pair_serving_d0 { d0_release_lifecycle_escalation_id, D0Subject, D0SuspendForSuccessor, D0ReleaseToFleet, d0_request, d0_intent_hash, d0_intent_text, parse_d0_intent_text, parse_d0_frozen_filing, D0ClaimReading, D0ClaimAt, D0ClaimAbsent, D0ClaimUnreadable }
 
 // ── THE ESCALATION → AUTHORIZATION PRODUCER FOR D0 (Cut D, the gate Cut 0 opens) ─────────────
 //
@@ -46,7 +46,7 @@ fn d0_subject_of_candidate(group: FabricGroup, standing: V41CandidateStanding, d
   match standing {
     V41CandidateKeyed { runtime_artifact: _, model_source: _, engram_realization: _, execution_profile: _, candidate: c, authorization_obligation: _ } =>
       if length(v41_derivation_obligations(d: derivation)) != 0 { D0SubjectUnestablished { obligations: v41_derivation_obligations(d: derivation) } } else {
-      D0SubjectFor { subject: D0Subject { group: group, hosts: fabric_group_hosts(g: group), successor: c, cleanup: QuiescentReservedBaseline, term: d0_consent_term } }
+      D0SubjectFor { subject: D0Subject { group: group, hosts: fabric_group_hosts(g: group), operation: D0SuspendForSuccessor { successor: c, cleanup: QuiescentReservedBaseline, term: d0_consent_term } } }
       }
     V41CandidateUnestablished { obligations: o } => D0SubjectUnestablished { obligations: o }
     V41CandidateRefused { defects: d } => D0SubjectRefused { defects: d }
@@ -58,6 +58,45 @@ fn d0_live_subject(group: FabricGroup) -> D0SubjectStanding {
   d0_subject_of_candidate(group: group, standing: v.standing, derivation: v.derivation)
 }
 
+// ── THE RELEASES AN OPERATOR HAS APPROVED, AS ROWS (gunbc.spark.pair_serving_d0 D0ReleaseToFleet) ─────
+//
+// A RELEASE IS REQUESTED BY ITS ESCALATION, NEVER BY A WORD TYPED AT DISPATCH: the door builds a
+// release subject only for an escalation this list names, with the cause and the approval reference
+// written here and therefore in the intent the operator approves and the filing that freezes it. Every
+// other escalation is a suspension for the keyed successor, as before. A row here is what is asked,
+// never the answer. The answer comes from one of two places: the operator deciding the filed request in
+// the approvals app, or, for a release whose group and every host a committed standing grant covers,
+// that grant (gunbc.spark.pair_serving_d0_door d0_standing_grant_for, classified by the census row
+// gunbc.auth.privileged_effect_census for that site). A covered request is never filed.
+type D0ReleaseRequestRow {
+  escalation_id: NonEmptyStr
+  group: FabricGroup
+  cause: NonEmptyStr
+  approval: NonEmptyStr
+}
+
+data d0_release_requests: List<D0ReleaseRequestRow> = [
+  D0ReleaseRequestRow {
+    escalation_id: d0_release_lifecycle_escalation_id,
+    group: FabricGroupA,
+    cause: "Group A's pair-serving commitment fences srv5-srv8 for every host effect, and the GLM-5.3-Flash Group A staircase (deforking cut 8) needs its image build, distribution and checkpoint materialization there; Group A was read vacant (no running container and no GPU process on any host) by fleet-converge run 37087495838" as NonEmptyStr,
+    approval: "operator approval 2026-10-03 to remove Group A's placement commitment for the staircase's host effects, relayed by valiant-crab-775 (dashboard messages msg_8ea29451 and msg_e26c0173)" as NonEmptyStr,
+  },
+]
+
+fn d0_release_row_for(group: FabricGroup, escalation_id: NonEmptyStr) -> D0ReleaseRequestRow? {
+  first(filter(d0_release_requests, r => (r.escalation_id as String) == (escalation_id as String) && (fabric_group_wire(g: r.group) as String) == (fabric_group_wire(g: group) as String)))
+}
+
+// THE SUBJECT A FIRST RUN ASKS FOR: the approved release this escalation names, or the suspension for
+// the keyed successor.
+fn d0_live_subject_for(group: FabricGroup, escalation_id: NonEmptyStr) -> D0SubjectStanding {
+  match d0_release_row_for(group: group, escalation_id: escalation_id) {
+    Present { value: r } => D0SubjectFor { subject: D0Subject { group: group, hosts: fabric_group_hosts(g: group), operation: D0ReleaseToFleet { cause: r.cause, approval: r.approval } } }
+    Absent => d0_live_subject(group: group)
+  }
+}
+
 // THE REQUEST, with the intent over the exact operation (sha256 through the realization; an
 // unavailable digest is no request, never a structural substitute).
 type D0RequestStanding
@@ -66,7 +105,7 @@ type D0RequestStanding
   | D0RequestRefused { defects: List<NonEmptyStr> }
 
 fn d0_authorization_request(group: FabricGroup, escalation_id: NonEmptyStr, transaction: NonEmptyStr) -> D0RequestStanding {
-  match d0_live_subject(group: group) {
+  match d0_live_subject_for(group: group, escalation_id: escalation_id) {
     D0SubjectUnestablished { obligations: o } => D0RequestUnestablished { obligations: o }
     D0SubjectRefused { defects: d } => D0RequestRefused { defects: d }
     D0SubjectFor { subject: s } =>

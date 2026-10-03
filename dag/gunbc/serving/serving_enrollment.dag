@@ -6,6 +6,7 @@ import v2.std.optional { Present, Absent }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { host_lan_address }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire }
+import gunbc.spark.group_b_serving_capacity { group_b_route_offer, group_b_restoration_serve_port }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
 import gunbc.spark.pair_serving_realization { spark_pair_serve_port }
 import gunbc.spark.fabric_serving_assignment {
@@ -127,26 +128,37 @@ data serving_pair_route_turn_ceiling: ServingRouteTurnCeiling = CeilingByDeclare
 }
 
 // GROUP B'S CEILING IS A DECLARED ALLOCATION FOR THE SAME REASON GROUP A'S IS, AND IT IS NOT THE
-// PROFILE'S SEQUENCE LIMIT. The arm converged on group B launches with --max-num-seqs 16
-// (gunbc.spark.serving_arm glm_native_concurrent_profile), which is what the engine will SCHEDULE. How
+// PROFILE'S SEQUENCE LIMIT. The engine's --max-num-seqs is the scheduler envelope's ceiling
+// (gunbc.spark.group_b_serving_capacity group_b_scheduler_envelope), which is what it will SCHEDULE. How
 // many turns this repository may OFFER the route is a separate, commercial-and-admission question, and
 // reading one as the other would make every sequence the engine can hold a sequence we have decided to
 // sell. It used to delegate to the retired exl3 canary's operator bound of 1, a first-boot limit on a
 // different engine that no longer answers.
-data serving_group_b_route_turn_ceiling: ServingRouteTurnCeiling = CeilingByDeclaredPolicy {
-  count: 4,
-  decider: "bright-eagle-728 (roadmap direction)" as NonEmptyStr,
-  decided_on: "2026-09-18" as NonEmptyStr,
-  basis: "nothing derives it and the route reports no scheduler population, as for group A. The converged native arm schedules up to 16 sequences, which bounds this from above and does not set it. Four matches group A's allocation and its reasoning: admission takes the MINIMUM of this and the route's own present-tense signal, so a wrong value costs throughput and never correctness, and superseding it is one row" as NonEmptyStr,
+// AN INVALID OFFER IS AN UNRESOLVED ROUTE, NOT A ONE-SEAT ROUTE (review on #12975). It used to fall back to
+// a count of 1 when the offer refused, which made a broken relation look like valid capacity.
+fn serving_group_b_route_turn_ceiling() -> ServingRouteCeilingStanding {
+  match group_b_route_offer() {
+    RouteOfferRefused { cause: c } => RouteCeilingUnresolved { cause: c }
+    RouteOfferAdmitted { seats: n } => RouteCeilingStands { ceiling: CeilingByDeclaredPolicy {
+      count: n,
+      decider: "operator" as NonEmptyStr,
+      decided_on: "2026-10-02" as NonEmptyStr,
+      basis: "operator ruling 2026-10-02 ('split out a hard scheduler ceiling and independent route-offer ceiling'): the offer is gunbc.spark.group_b_serving_capacity group_b_route_offer_ceiling, a decided control-plane allocation, no longer derived from the cold seat count; group_b_route_offer bounds it by the scheduler envelope's ceiling so the engine never holds a queue of offered turns. Supersedes the 2026-09-28 derivation from the capacity intent. An offer that refuses leaves the route unresolved with its cause; admission still takes the MINIMUM of this and the route's live signal." as NonEmptyStr,
+    } }
+  }
 }
+
+type ServingRouteCeilingStanding
+  = RouteCeilingStands { ceiling: ServingRouteTurnCeiling }
+  | RouteCeilingUnresolved { cause: NonEmptyStr }
 
 // EACH ROUTE'S CEILING COMES FROM ITS OWN ROW, which is why this is a match and not a table. The
 // dispatch that selects between two route authorities is realization and belongs at this periphery
 // (DESIGN section 3), never inside either of them.
-fn serving_route_ceiling(group: FabricGroup) -> ServingRouteTurnCeiling {
+fn serving_route_ceiling(group: FabricGroup) -> ServingRouteCeilingStanding {
   match group {
-    FabricGroupA => serving_pair_route_turn_ceiling
-    FabricGroupB => serving_group_b_route_turn_ceiling
+    FabricGroupA => RouteCeilingStands { ceiling: serving_pair_route_turn_ceiling }
+    FabricGroupB => serving_group_b_route_turn_ceiling()
   }
 }
 
@@ -161,12 +173,12 @@ fn serving_route_head(group: FabricGroup) -> FabricServingHead {
 }
 
 // BOTH ROUTES HAND BACK A Port READ FROM THE SIDE THAT LAUNCHES THEM: group A from the observed pair
-// launch, group B from the profile of the arm converged on it, which is the value its launch argv
+// launch, group B from the capacity module's port row, which the executable profile it launches
 // renders as --port.
 fn serving_route_port(group: FabricGroup) -> Port {
   match group {
     FabricGroupA => spark_pair_serve_port
-    FabricGroupB => glm_group_b_serving_assignment.profile.serve_port
+    FabricGroupB => group_b_restoration_serve_port
   }
 }
 
@@ -189,9 +201,17 @@ fn serving_route(group: FabricGroup) -> ServingRoute {
             obligation: join([fabric_group_wire(g: group) as String, ": the route's head has no LAN endpoint row in gunbc.fleet_intent_network, so there is no address to ask"], "") as NonEmptyStr,
           }
         Present { value: address } =>
-          ServingRouteResolved {
-            endpoint: ServingRouteEndpoint { group: group, address: address, port: serving_route_port(group: group) },
-            ceiling: serving_route_ceiling(group: group),
+          match serving_route_ceiling(group: group) {
+            RouteCeilingUnresolved { cause: c } =>
+              ServingRouteUnresolved {
+                group: group,
+                obligation: join([fabric_group_wire(g: group) as String, ": the route's turn ceiling is unresolved: ", c as String], "") as NonEmptyStr,
+              }
+            RouteCeilingStands { ceiling: ceiling } =>
+              ServingRouteResolved {
+                endpoint: ServingRouteEndpoint { group: group, address: address, port: serving_route_port(group: group) },
+                ceiling: ceiling,
+              }
           }
       }
   }

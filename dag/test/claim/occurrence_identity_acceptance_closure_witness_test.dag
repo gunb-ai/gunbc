@@ -69,7 +69,7 @@ test fn occurrence_identity_consumer_red_debt_is_counted_holds() -> Bool {
   ) &&
   occurrence_identity_consumer_red_debt_has(
     id: "inferred-target-anchor-identity",
-    owner: "namespace-canonical-binding",
+    owner: "declaration-identity-switchover",
     required_receipt: "An inferred target projection remains anchored to the exact authored occurrence instead of a rebuilt shell Node, spelling, or SourceSpan.",
   ) &&
   occurrence_identity_consumer_red_debt_has(

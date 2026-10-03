@@ -1,0 +1,113 @@
+module test.claim.spark.arm_memory_fit_envelope_witness_test
+
+import std.types { Bool, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { token_count, basis_point }
+import v2.std.optional { Present, Absent }
+import extdeps.vllm.engine_args {
+  PrefixCachingExplicit, KvFp8, EngramConfigOmitted, ModalityOmitted,
+  VllmSchedulerAdmissionRequest, FullInputAdmissionExplicit, KvWatermarkExplicit, vllm_scheduler_admission_omitted, IndexerKvDtypeOmitted,
+}
+import gunbc.spark.serving_arm {
+  ServingLaunchProfile, serving_launch_profile, Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4,
+}
+import gunbc.spark.serving_capacity_intent { intent_max_active_sequences }
+import gunbc.spark.arm_memory_fit {
+  arm_memory_fit_subject_for_launch, ArmMemorySubjectReady, ArmMemorySubjectRefused,
+  memory_proof_subject_for_launch, MemoryProofSubject, MemoryProofSubjectReady, MemoryProofSubjectRefused,
+  memory_proof_subject_config_equal, memory_proof_subject_workload_equal,
+  memory_scaling_law_discharges_on, MemoryScalingStaticResidency, MemoryScalingPerSequenceFixed,
+}
+
+// THE SUBJECT IS THE LAUNCH WALL UNDER THE ENVELOPE SPLIT: it prices the GUARANTEED cold floor, a
+// ceiling above it is admissible only with the engine's KV gate stated, and evidence measured under
+// one ceiling never discharges a ceiling-sensitive term under another. The profiles are built here
+// through the mint, at six cold seats of 262,144 tokens, so these witnesses do not move with group B's
+// directive rows.
+fn w_profile(ceiling: Nat, cold: Nat, admission: VllmSchedulerAdmissionRequest) -> ServingLaunchProfile {
+  serving_launch_profile(
+    max_model_len: token_count(count: 262144),
+    max_num_batched_tokens: token_count(count: 2048),
+    max_num_seqs: ceiling,
+    guaranteed_cold_seqs: cold,
+    decided_gpu_memory_basis_points: basis_point(count: 8567),
+    kv_cache_dtype: KvFp8,
+    serve_port: 30000,
+    served_alias: "glm-5.3-flash" as NonEmptyStr,
+    prefix_caching: PrefixCachingExplicit { enabled: true },
+    engram: EngramConfigOmitted,
+    modality: ModalityOmitted,
+    scheduler_admission: admission,
+    indexer_kv_dtype: IndexerKvDtypeOmitted,
+  )
+}
+
+fn w_gate() -> VllmSchedulerAdmissionRequest {
+  VllmSchedulerAdmissionRequest {
+    full_input_admission: FullInputAdmissionExplicit { enabled: true },
+    kv_watermark: KvWatermarkExplicit { fraction: basis_point(count: 0) },
+  }
+}
+
+fn w_subject_seats(p: ServingLaunchProfile) -> Nat? {
+  match arm_memory_fit_subject_for_launch(checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, profile: p) {
+    ArmMemorySubjectReady { subject: s } => Present { value: intent_max_active_sequences(i: s.intent) }
+    ArmMemorySubjectRefused { cause: _ } => none
+  }
+}
+
+fn w_proof_subject(p: ServingLaunchProfile) -> MemoryProofSubject? {
+  match memory_proof_subject_for_launch(checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, profile: p, launch_generation: "witness" as NonEmptyStr) {
+    MemoryProofSubjectReady { subject: s } => Present { value: s }
+    MemoryProofSubjectRefused { cause: _ } => none
+  }
+}
+
+// THE POSITIVE CONTROL: a ceiling of ten over six cold seats, gate stated, prices SIX cold seats.
+test fn w_the_launch_wall_prices_the_cold_floor_not_the_ceiling() -> Bool {
+  match w_subject_seats(p: w_profile(ceiling: 10, cold: 6, admission: w_gate())) {
+    Present { value: n } => n == 6
+    Absent => false
+  }
+}
+
+// AT THE FLOOR NOTHING CHANGES: six of six with no flag prices six, as before the split.
+test fn w_the_floor_launch_is_priced_as_before() -> Bool {
+  match w_subject_seats(p: w_profile(ceiling: 6, cold: 6, admission: vllm_scheduler_admission_omitted)) {
+    Present { value: n } => n == 6
+    Absent => false
+  }
+}
+
+// THE DISCRIMINATING RED: the same ceiling with the gate inherited is refused at the wall.
+test fn w_a_ceiling_above_the_floor_without_the_gate_is_refused_at_the_wall() -> Bool {
+  match w_subject_seats(p: w_profile(ceiling: 10, cold: 6, admission: vllm_scheduler_admission_omitted)) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn w_a_floor_above_the_ceiling_is_refused_at_the_wall() -> Bool {
+  match w_subject_seats(p: w_profile(ceiling: 6, cold: 8, admission: w_gate())) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// EACH CEILING OWES ITS OWN EVIDENCE: the same six cold seats under ceilings of six and ten share
+// configuration, and static residency carries across, but a per-sequence term does not.
+test fn w_a_receipt_at_one_ceiling_does_not_discharge_a_ceiling_sensitive_term_at_another() -> Bool {
+  match w_proof_subject(p: w_profile(ceiling: 6, cold: 6, admission: vllm_scheduler_admission_omitted)) {
+    Absent => false
+    Present { value: at_floor } =>
+      match w_proof_subject(p: w_profile(ceiling: 10, cold: 6, admission: w_gate())) {
+        Absent => false
+        Present { value: above } =>
+          memory_proof_subject_config_equal(a: at_floor, b: above)
+            && !memory_proof_subject_workload_equal(a: at_floor, b: above)
+            && memory_scaling_law_discharges_on(law: MemoryScalingStaticResidency, measured_on: at_floor, target: above)
+            && !memory_scaling_law_discharges_on(law: MemoryScalingPerSequenceFixed, measured_on: at_floor, target: above)
+            && memory_scaling_law_discharges_on(law: MemoryScalingPerSequenceFixed, measured_on: above, target: above)
+      }
+  }
+}
