@@ -252,23 +252,23 @@ fn ddl_holds_surface_tokens(resolved: Outcome<ResolvedTree>) -> Bool {
   }
 }
 
-test fn data_decl_lowers_to_a_nullary_named_member_holds() -> Bool {
+test fn data_decl_lowers_to_a_nullary_named_member_holds() -> Bool  {
   ddl_has_value_member(resolved: ddl_data_resolved())
 }
 
-test fn data_decl_leaves_no_surface_tokens_holds() -> Bool {
+test fn data_decl_leaves_no_surface_tokens_holds() -> Bool  {
   !ddl_holds_surface_tokens(resolved: ddl_data_resolved())
 }
 
-test fn data_decl_grounds_fully_holds() -> Bool {
+test fn data_decl_grounds_fully_holds() -> Bool  {
   ddl_fully_grounded(resolved: ddl_data_resolved())
 }
 
-test fn fn_eq_body_is_the_literal_not_its_digits_holds() -> Bool {
+test fn fn_eq_body_is_the_literal_not_its_digits_holds() -> Bool  {
   ddl_has_value_member(resolved: ddl_fn_eq_resolved())
 }
 
-test fn fn_brace_literal_body_grounds_fully_holds() -> Bool {
+test fn fn_brace_literal_body_grounds_fully_holds() -> Bool  {
   ddl_fully_grounded(resolved: ddl_fn_brace_resolved())
 }
 
@@ -302,7 +302,7 @@ fn ddl_unauthorized_atom() -> Node {
 // The payload rule covers only a literal the canonical-literal query ACCEPTS. A literal atom whose
 // magnitude field holds something that is not a decimal magnitude is malformed, and its child stays
 // on the frontier.
-test fn malformed_literal_payload_stays_on_the_frontier_holds() -> Bool {
+test fn malformed_literal_payload_stays_on_the_frontier_holds() -> Bool  {
   let bogus = ddl_unauthorized_atom()
   let literal = Node {
     kind: TypeNode { connective: Atom { identity: ^dag_token_int_literal } },
@@ -344,7 +344,7 @@ fn ddl_edge_target(e: Edge) -> Node {
   e.target
 }
 
-test fn accepted_literal_payload_is_typed_by_the_integer_authority_holds() -> Bool {
+test fn accepted_literal_payload_is_typed_by_the_integer_authority_holds() -> Bool  {
   match dag_int_literal_node_from_lexeme(lexeme: "42", occurrence_id: OccurrenceSynthetic) {
     Rejected { diagnostics: _ } => false
     Accepted { value: literal, diagnostics: _ } =>
@@ -371,7 +371,7 @@ fn ddl_arrow_with(domain: Node, codomain: Node) -> Node {
   anonymous_signature_arrow(domain_types: [domain], codomain: codomain, source: domain)
 }
 
-test fn childless_conj_in_codomain_stays_on_the_frontier_holds() -> Bool {
+test fn childless_conj_in_codomain_stays_on_the_frontier_holds() -> Bool  {
   let codomain = ddl_childless_conj()
   let tree = ddl_arrow_with(domain: ddl_unauthorized_atom(), codomain: codomain)
   ddl_hand_grounding(tree: tree, n: codomain) == 1
@@ -408,7 +408,7 @@ fn ddl_domain_typed_as_empty_product(member: Node, arrow: Node) -> Bool {
   }
 }
 
-test fn nullary_arrow_domain_is_typed_as_the_empty_product_holds() -> Bool {
+test fn nullary_arrow_domain_is_typed_as_the_empty_product_holds() -> Bool  {
   match ddl_fn_brace_resolved() {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>

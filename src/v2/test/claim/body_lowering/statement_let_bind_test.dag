@@ -61,21 +61,21 @@ data let_in_form_source: String = "module m.t\nfn f() -> Int {\n  let x = 1 in x
 
 data typed_statement_let_source: String = "module m.t\nfn f() -> Int {\n  let x: Int = 1\n  x\n}\n"
 
-test fn statement_let_then_reference_lowers_holds() -> Bool {
+test fn statement_let_then_reference_lowers_holds() -> Bool  {
   match conserved_normalize(subject: let_then_reference_subject(), explained: Cons { head: let_binder_lost_at(start: 33, end: 34), tail: Empty }) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn statement_let_chain_lowers_holds() -> Bool {
+test fn statement_let_chain_lowers_holds() -> Bool  {
   match conserved_normalize(subject: let_chain_subject(), explained: Cons { head: let_binder_lost_at(start: 33, end: 34), tail: Cons { head: let_binder_lost_at(start: 45, end: 46), tail: Empty } }) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn unbound_statement_prefix_refuses_holds() -> Bool {
+test fn unbound_statement_prefix_refuses_holds() -> Bool  {
   match conserved_normalize(subject: unbound_prefix_subject(), explained: no_explained_drops()) {
     Rejected { diagnostics: ds } =>
       symbol_lexeme(sym: ds.head.reason) == "body_lowering_reason_statement_precedes_without_binding"
@@ -83,7 +83,7 @@ test fn unbound_statement_prefix_refuses_holds() -> Bool {
   }
 }
 
-test fn single_statement_body_unchanged_holds() -> Bool {
+test fn single_statement_body_unchanged_holds() -> Bool  {
   match conserved_normalize(subject: single_statement_subject(), explained: no_explained_drops()) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -94,7 +94,7 @@ test fn single_statement_body_unchanged_holds() -> Bool {
 // (statement `let` only; v2.extdeps.languages.dag dag_grammar_let_in_refusal_expr), so this source
 // is refused as parse_let_in_expression_dropped located at the `in` (bytes 39..41), never as tokens
 // left over and never lowered.
-test fn let_in_form_refuses_at_the_in_holds() -> Bool {
+test fn let_in_form_refuses_at_the_in_holds() -> Bool  {
   match let_in_form_subject().parsed {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: ds } =>
@@ -167,7 +167,7 @@ type LetPositionalScan {
   found: Optional<Node>
 }
 
-test fn statement_let_binds_the_literal_value_holds() -> Bool {
+test fn statement_let_binds_the_literal_value_holds() -> Bool  {
   let_bind_values_with_magnitude() == [true]
 }
 
@@ -178,7 +178,7 @@ test fn statement_let_binds_the_literal_value_holds() -> Bool {
 // gunbc.rung_drop typed_statement_let_refuses_until_the_bind_annotation_carrier, under which this row
 // asserted the let refused at its annotation. A lowering that dropped the edge again fails both
 // halves: conservation refuses the dropped `Int`, and no Bind carries an annotation.
-test fn typed_statement_let_lowers_with_its_annotation_carried_holds() -> Bool {
+test fn typed_statement_let_lowers_with_its_annotation_carried_holds() -> Bool  {
   match conserved_normalize(subject: typed_let_subject(), explained: Cons { head: let_binder_lost_at(start: 33, end: 34), tail: Empty }) {
     Rejected { diagnostics: _ } => false
     Accepted { value: t, diagnostics: _ } =>

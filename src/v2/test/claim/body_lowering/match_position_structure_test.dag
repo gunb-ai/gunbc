@@ -164,14 +164,14 @@ fn mps_any_node(shape: MpsShape) -> Bool {
   })
 }
 
-test fn a_data_initializer_match_lowers_its_scrutinee_from_the_match_position_holds() -> Bool {
+test fn a_data_initializer_match_lowers_its_scrutinee_from_the_match_position_holds() -> Bool  {
   mps_any_node(shape: MpsMatchOnCall { callee: ^mps_pick_d, arg: ^mps_arg_d })
 }
 
-test fn the_same_match_as_a_fn_body_lowers_its_scrutinee_from_the_match_position_holds() -> Bool {
+test fn the_same_match_as_a_fn_body_lowers_its_scrutinee_from_the_match_position_holds() -> Bool  {
   mps_any_node(shape: MpsMatchOnCall { callee: ^mps_pick_f, arg: ^mps_arg_f })
 }
 
-test fn a_match_arm_statement_body_lowers_to_the_let_binding_its_continuation_holds() -> Bool {
+test fn a_match_arm_statement_body_lowers_to_the_let_binding_its_continuation_holds() -> Bool  {
   mps_any_node(shape: MpsArmBinding { key: ^mps_local, value: ^mps_bound, callee: ^mps_id, arg: ^mps_after })
 }
