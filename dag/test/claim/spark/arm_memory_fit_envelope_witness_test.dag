@@ -6,7 +6,7 @@ import std.measure { token_count, basis_point }
 import v2.std.optional { Present, Absent }
 import extdeps.vllm.engine_args {
   PrefixCachingExplicit, KvFp8, EngramConfigOmitted, ModalityOmitted,
-  VllmSchedulerAdmissionRequest, FullInputAdmissionExplicit, KvWatermarkExplicit, vllm_scheduler_admission_omitted,
+  VllmSchedulerAdmissionRequest, FullInputAdmissionExplicit, KvWatermarkExplicit, vllm_scheduler_admission_omitted, IndexerKvDtypeOmitted,
 }
 import gunbc.spark.serving_arm {
   ServingLaunchProfile, serving_launch_profile, Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4,
@@ -38,6 +38,7 @@ fn w_profile(ceiling: Nat, cold: Nat, admission: VllmSchedulerAdmissionRequest) 
     engram: EngramConfigOmitted,
     modality: ModalityOmitted,
     scheduler_admission: admission,
+    indexer_kv_dtype: IndexerKvDtypeOmitted,
   )
 }
 
