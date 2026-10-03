@@ -11,6 +11,8 @@ import extdeps.filesystem.filesystem_io {
   filesystem_exact_read, filesystem_create_new, filesystem_failure_kind_name,
   filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused,
   FilesystemDirectorySubjectRefused, filesystem_listing_entry_names,
+  FilesystemDelete, FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused,
+  FilesystemDeleteKindUnrecognized, filesystem_delete,
 }
 import std.decimal { decimal_digits_only }
 import std.checked_arithmetic { int_inclusive_max }
@@ -19,7 +21,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed, CatalogCasContentEncoding }
 import std.types { String, Bool, Int, List, NonEmptyStr }
-import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
+import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash, parse_content_hash }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
   ReleasedNever,
@@ -90,8 +92,9 @@ import std.materialization_object {
   StoreLookupStoreFamilyRefused,
   StoreCommit, StoreCommitRefused, StoreCommitPublishRefused,
   StoreCommitRefusal, StoreCommitBudgetUndeclared, StoreCommitDidNotFit, StoreCommitOccupancyUnavailable,
+  StoreCommitCleanupOutstanding, StoreCommitEvictedDuringPublish,
   StoreCommitPreparation, StoreCommitPrepared, StoreCommitNotPrepared,
-  store_object_name, store_lookup_from_address, store_commit_prepare, store_commit_settle,
+  store_object_name, store_object_format_version, store_lookup_from_address, store_commit_prepare, store_commit_settle,
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -371,13 +374,20 @@ fn local_store_object_bytes(object: String) -> ByteSize {
 // ---------------------------------------------------------------------------------------------
 // THE OCCUPANCY INDEX: one CAS slot per family in the store root, retained as a generation WINDOW
 // (gunbc.durable_cas_file_store KeepGenerationWindow, k = 2) because its history is not evidence --
-// its only fact is the head. Its canonical, versioned encoding is one header, the next ordinal, and
-// one row per object sorted by name; a slot that does not decode REFUSES as corrupt, never reads as
-// empty (docs/plans/demand-engine-program.md section 2.8, EvaluationIndexCorrupt). The recovery is the
+// its only fact is the head. Its canonical, versioned encoding is one header, the next ordinal, one
+// row per live object sorted by name, then one `doomed` row per evicted object whose delete the host
+// has not yet confirmed. A slot that does not decode REFUSES as corrupt, never reads as empty
+// (docs/plans/demand-engine-program.md section 2.8, EvaluationIndexCorrupt). The recovery is the
 // operator's: delete the family's occupancy slot files; the next open's sweep then removes every
 // object the empty index no longer names, so a quarantine never leaves unaccounted bytes behind.
+//
+// DOOMED BYTES ARE CHARGED. An evicted row leaves the live set in the same CAS that admits the new
+// row, and enters `doomed` with its size; it leaves `doomed` only in a later CAS made after the host
+// CONFIRMED the object is gone (deleted, or absent). Live plus doomed bytes never exceed the family
+// budget, so a host that refuses deletes fills the budget with doomed bytes and the store's writes
+// refuse -- disk never grows past the ceiling by way of a delete that did not happen.
 
-data local_store_index_magic: String = "gunbc-store-occupancy v1"
+data local_store_index_magic: String = "gunbc-store-occupancy v2"
 
 data local_store_index_window_k: Int = 2
 
@@ -391,24 +401,57 @@ type LocalStoreIndexRow {
   ordinal: Int
 }
 
+type LocalStoreDoomedRow {
+  name: String
+  bytes: ByteSize
+}
+
 type LocalStoreIndex {
   next_ordinal: Int
   rows: List<LocalStoreIndexRow>
+  doomed: List<LocalStoreDoomedRow>
 }
 
 type LocalStoreIndexDecode
   = LocalStoreIndexDecoded { index: LocalStoreIndex }
   | LocalStoreIndexCorrupt { detail: String }
 
-data local_store_empty_index: LocalStoreIndex = LocalStoreIndex { next_ordinal: 1, rows: [] }
+data local_store_empty_index: LocalStoreIndex = LocalStoreIndex { next_ordinal: 1, rows: [], doomed: [] }
+
+// THE ONE DELETION AUTHORITY. A name is this store's object exactly when it is what
+// store_object_name produces: a serialized content hash that parses (std.content_hash
+// parse_content_hash, the inverse at the same home) and re-serializes to itself, followed by the
+// object format suffix. No other name -- a path with a separator, a traversal, a foreign file that
+// merely contains the suffix -- is ever indexed, swept or deleted.
+fn local_store_object_suffix() -> String {
+  concat(".materialization.", store_object_format_version)
+}
+
+fn local_store_is_object_name(name: String) -> Bool {
+  let suffix = local_store_object_suffix()
+  let n = string_length(s: name)
+  let k = string_length(s: suffix)
+  if n <= k || !ends_with(s: name, suffix: suffix) { false } else {
+    let prefix = substring(s: name, start: 0, end: n - k)
+    match parse_content_hash(wire: prefix) {
+      Absent => false
+      Present { value: h } => serialize_content_hash(hash: h) as String == prefix
+    }
+  }
+}
 
 fn local_store_index_row_line(r: LocalStoreIndexRow) -> String {
   join([r.name, measure_count(m: r.bytes) as String, r.ordinal as String], " ")
 }
 
+fn local_store_doomed_row_line(r: LocalStoreDoomedRow) -> String {
+  join(["doomed", r.name, measure_count(m: r.bytes) as String], " ")
+}
+
 fn local_store_index_encode(index: LocalStoreIndex) -> String {
-  let rows = index.rows |> sort_by(r => r.name)
-  join(concat([local_store_index_magic, concat("next ", index.next_ordinal as String)], rows |> map(r => local_store_index_row_line(r: r))), "\n")
+  let rows = index.rows |> sort_by(r => r.name) |> map(r => local_store_index_row_line(r: r))
+  let doomed = index.doomed |> sort_by(r => r.name) |> map(r => local_store_doomed_row_line(r: r))
+  join(concat(concat([local_store_index_magic, concat("next ", index.next_ordinal as String)], rows), doomed), "\n")
 }
 
 fn local_store_digits_int(s: String) -> Int? {
@@ -420,20 +463,40 @@ fn local_store_digits_int(s: String) -> Int? {
   }
 }
 
-fn local_store_index_row_decode(line: String) -> LocalStoreIndexRow? {
+type LocalStoreIndexLine
+  = LocalStoreLiveLine { row: LocalStoreIndexRow }
+  | LocalStoreDoomedLine { row: LocalStoreDoomedRow }
+  | LocalStoreUndecodableLine
+
+fn local_store_index_line_decode(line: String) -> LocalStoreIndexLine {
   let parts: List<String> = line.split(delimiter: " ")
-  if count(parts) != 3 { none } else {
-    let name = match first(parts) { Present { value: v } => v Absent => "" }
-    let bytes_text = match first(skip(parts, 1)) { Present { value: v } => v Absent => "" }
-    let ordinal_text = match first(skip(parts, 2)) { Present { value: v } => v Absent => "" }
-    match local_store_digits_int(s: bytes_text) {
-      Absent => none
-      Present { value: b } => match local_store_digits_int(s: ordinal_text) {
-        Absent => none
-        Present { value: o } => if name == "" { none } else { Present { value: LocalStoreIndexRow { name: name, bytes: byte_size(count: b), ordinal: o } } }
+  if count(parts) != 3 { LocalStoreUndecodableLine } else {
+    let p0 = match first(parts) { Present { value: v } => v Absent => "" }
+    let p1 = match first(skip(parts, 1)) { Present { value: v } => v Absent => "" }
+    let p2 = match first(skip(parts, 2)) { Present { value: v } => v Absent => "" }
+    if p0 == "doomed" {
+      match local_store_digits_int(s: p2) {
+        Absent => LocalStoreUndecodableLine
+        Present { value: b } =>
+          if local_store_is_object_name(name: p1) { LocalStoreDoomedLine { row: LocalStoreDoomedRow { name: p1, bytes: byte_size(count: b) } } } else { LocalStoreUndecodableLine }
+      }
+    } else {
+      match local_store_digits_int(s: p1) {
+        Absent => LocalStoreUndecodableLine
+        Present { value: b } => match local_store_digits_int(s: p2) {
+          Absent => LocalStoreUndecodableLine
+          Present { value: o } =>
+            if local_store_is_object_name(name: p0) { LocalStoreLiveLine { row: LocalStoreIndexRow { name: p0, bytes: byte_size(count: b), ordinal: o } } } else { LocalStoreUndecodableLine }
+        }
       }
     }
   }
+}
+
+type LocalStoreIndexLines {
+  ok: Bool
+  rows: List<LocalStoreIndexRow>
+  doomed: List<LocalStoreDoomedRow>
 }
 
 fn local_store_index_decode(content: String) -> LocalStoreIndexDecode {
@@ -448,21 +511,23 @@ fn local_store_index_decode(content: String) -> LocalStoreIndexDecode {
     match local_store_digits_int(s: substring(s: next_line, start: 5, end: string_length(s: next_line))) {
       Absent => LocalStoreIndexCorrupt { detail: "the occupancy index's next ordinal is not a number" }
       Present { value: next } => {
-        let row_lines = skip(lines, 2)
-        let decoded = row_lines |> map(l => local_store_index_row_decode(line: l))
-        if decoded |> any(d => match d { Absent => true Present { value: _ } => false }) {
-          LocalStoreIndexCorrupt { detail: "an occupancy index row does not decode as name, bytes, ordinal" }
+        let decoded = fold(skip(lines, 2), init: LocalStoreIndexLines { ok: true, rows: [], doomed: [] }, f: (acc, l) => match local_store_index_line_decode(line: l) {
+          LocalStoreLiveLine { row: r } => LocalStoreIndexLines { ok: acc.ok, rows: acc.rows |> list_push(r), doomed: acc.doomed }
+          LocalStoreDoomedLine { row: d } => LocalStoreIndexLines { ok: acc.ok, rows: acc.rows, doomed: acc.doomed |> list_push(d) }
+          LocalStoreUndecodableLine => LocalStoreIndexLines { ok: false, rows: acc.rows, doomed: acc.doomed }
+        })
+        if !decoded.ok {
+          LocalStoreIndexCorrupt { detail: "an occupancy index row does not decode as a canonical object name with its bytes" }
         } else {
-          LocalStoreIndexDecoded {
-            index: LocalStoreIndex {
-              next_ordinal: next,
-              rows: decoded |> fold(init: [], f: (acc, d) => match d { Absent => acc Present { value: r } => acc |> list_push(r) })
-            }
-          }
+          LocalStoreIndexDecoded { index: LocalStoreIndex { next_ordinal: next, rows: decoded.rows, doomed: decoded.doomed } }
         }
       }
     }
   }
+}
+
+fn local_store_doomed_bytes(index: LocalStoreIndex) -> Int {
+  fold(index.doomed, init: 0, f: (acc, d) => acc + measure_count(m: d.bytes))
 }
 
 fn local_store_row_key(name: String) -> ContentHash {
@@ -485,10 +550,11 @@ fn local_store_name_by_key(names: List<String>) -> Map<String, String> {
   fold(names, init: empty_map(), f: (m, n) => map_insert(m, serialize_content_hash(hash: local_store_row_key(name: n)) as String, n))
 }
 
-fn local_store_index_of(store: ArtifactStore, names: List<String>) -> LocalStoreIndex {
+fn local_store_index_of(store: ArtifactStore, names: List<String>, doomed: List<LocalStoreDoomedRow>) -> LocalStoreIndex {
   let by_key = local_store_name_by_key(names: names)
   LocalStoreIndex {
     next_ordinal: store.next_ordinal,
+    doomed: doomed,
     rows: store.rows |> fold(init: [], f: (acc, row) => match map_get(by_key, serialize_content_hash(hash: row.key) as String) {
       Absent => acc
       Present { value: n } => acc |> list_push(LocalStoreIndexRow { name: n, bytes: row.artifact_bytes, ordinal: row.last_use_ordinal })
@@ -555,17 +621,47 @@ fn local_store_write_index(root_path: String, family: ArtifactKindId, expected: 
 }
 
 // ---------------------------------------------------------------------------------------------
-// RESERVATION: the index row is committed BEFORE the object is published, so every published object
-// is named by its family's index at the instant it appears -- which is what makes the open-time sweep
-// safe against an in-flight writer. A loser of the index CAS re-reads and retries, never overwrites;
-// past the bound it refuses. An object already indexed is not re-reserved (put-if-absent is
-// idempotent), and a reserved row whose publish later fails occupies budget until evicted: bounded,
-// and named in the commit receipt as a refusal, never served.
+// CONFIRMED DELETION. A name leaves `doomed` only when the host CONFIRMS the bytes are gone: the
+// delete succeeded, or the target was already absent. A refused or unrecognized delete leaves the
+// name doomed and its bytes charged. Every path below is store_path(root, name) for a name the
+// recognizer admitted, so a delete never reaches outside the root.
+
+fn local_store_delete_confirmed(root_path: String, name: String) -> Bool {
+  let path = store_path(root_path: root_path, name: name)
+  let d = Filesystem.Delete(path: path)
+  match filesystem_delete(path: path, success: d.success, error: d.error, error_kind: d.error_kind) {
+    FilesystemDeleted { path: _ } => true
+    FilesystemDeleteTargetAbsent { path: _ } => true
+    FilesystemDeleteRefused { path: _, kind: _, error: _ } => false
+    FilesystemDeleteKindUnrecognized { path: _, observed: _, error: _ } => false
+  }
+}
+
+// One delete, observed once, so a receipt splits its results instead of searching for them.
+type LocalStoreDeleteAttempt {
+  name: String
+  confirmed: Bool
+}
+
+fn local_store_delete_attempts(root_path: String, names: List<String>) -> List<LocalStoreDeleteAttempt> {
+  names |> map(n => LocalStoreDeleteAttempt { name: n, confirmed: local_store_delete_confirmed(root_path: root_path, name: n) })
+}
+
+// ---------------------------------------------------------------------------------------------
+// RESERVATION: the index row is committed BEFORE the object is published. One CAS does three things:
+// it retires the doomed names whose delete the host has now confirmed, it admits the new row against
+// the budget LESS the doomed bytes still charged, and it moves the rows that admission evicted into
+// `doomed`. An artifact larger than the whole budget refuses as did-not-fit and evicts nothing; one
+// that fits the budget but not what the undeleted bytes leave of it refuses as cleanup outstanding.
+// A loser of the index CAS re-reads and retries, never overwrites; past the bound it refuses. An
+// object already live is not re-reserved (put-if-absent is idempotent). Reserving is necessary but
+// not sufficient for an object to stay accounted: the commit re-reads the index after publishing
+// (local_store_commit), because another writer may evict this row while this one is publishing.
 
 data local_store_reservation_attempt_bound: Int = 8
 
 type LocalStoreReservation
-  = LocalStoreReserved { evicted: List<String>, reclamation: CasWindowReclamation }
+  = LocalStoreReserved { evicted: List<LocalStoreDoomedRow>, retired: List<String>, reclamation: CasWindowReclamation }
   | LocalStoreReservationRefused { refusal: StoreCommitRefusal }
 
 fn local_store_reserve(root: MaterializationStoreRoot, family: ArtifactKindId, name: String, bytes: ByteSize, attempt: Int) -> LocalStoreReservation {
@@ -582,42 +678,97 @@ fn local_store_reserve(root: MaterializationStoreRoot, family: ArtifactKindId, n
           StoreReady { store: ready } =>
             match local_store_read_index(root_path: root_path, family: family) {
               LocalStoreIndexUnavailable { cause: c } => LocalStoreReservationRefused { refusal: StoreCommitOccupancyUnavailable { cause: c } }
-              LocalStoreIndexAt { index: index, expected: expected } =>
-                if index.rows |> any(r => r.name == name) {
-                  LocalStoreReserved { evicted: [], reclamation: CasReclamationNotCommitted }
+              LocalStoreIndexAt { index: index, expected: expected } => {
+                let cleanup = local_store_delete_attempts(root_path: root_path, names: index.doomed |> map(d => d.name))
+                let gone = local_store_name_set(names: cleanup |> filter(t => t.confirmed) |> map(t => t.name))
+                let still_doomed = index.doomed |> filter(d => !set_contains(gone, d.name))
+                let undeleted = fold(still_doomed, init: 0, f: (acc, d) => acc + measure_count(m: d.bytes))
+                let budget_total = measure_count(m: ready.budget)
+                let artifact = measure_count(m: bytes)
+                let live_names = local_store_name_set(names: index.rows |> map(r => r.name))
+                if artifact > budget_total {
+                  LocalStoreReservationRefused { refusal: StoreCommitDidNotFit { artifact_bytes: bytes, budget: ready.budget } }
+                } else if set_contains(live_names, name) {
+                  LocalStoreReserved { evicted: [], retired: [], reclamation: CasReclamationNotCommitted }
+                } else if artifact > budget_total - undeleted {
+                  LocalStoreReservationRefused { refusal: StoreCommitCleanupOutstanding { artifact_bytes: bytes, budget: ready.budget, undeleted: byte_size(count: undeleted) } }
                 } else {
-                  match store_put(store: local_store_artifact_store(budget: ready.budget, index: index), key: local_store_row_key(name: name), artifact_bytes: bytes) {
-                    StorePutDidNotFit { artifact_bytes: a, budget: bu } =>
-                      LocalStoreReservationRefused { refusal: StoreCommitDidNotFit { artifact_bytes: a, budget: bu } }
+                  let cleaned = LocalStoreIndex { next_ordinal: index.next_ordinal, rows: index.rows, doomed: still_doomed }
+                  match store_put(store: local_store_artifact_store(budget: byte_size(count: budget_total - undeleted), index: cleaned), key: local_store_row_key(name: name), artifact_bytes: bytes) {
+                    StorePutDidNotFit { artifact_bytes: a, budget: _ } =>
+                      LocalStoreReservationRefused { refusal: StoreCommitCleanupOutstanding { artifact_bytes: a, budget: ready.budget, undeleted: byte_size(count: undeleted) } }
                     StorePutAdmitted { store: packed, evicted: _ } => {
                       let names = concat(index.rows |> map(r => r.name), [name])
-                      let next_index = local_store_index_of(store: packed, names: names)
-                      let kept = local_store_name_set(names: next_index.rows |> map(k => k.name))
-                      let evicted = index.rows |> filter(r => !set_contains(kept, r.name)) |> map(r => r.name)
+                      let survivors = local_store_index_of(store: packed, names: names, doomed: []).rows
+                      let kept = local_store_name_set(names: survivors |> map(k => k.name))
+                      let evicted_rows = index.rows |> filter(r => !set_contains(kept, r.name))
+                      let next_index = LocalStoreIndex {
+                        next_ordinal: packed.next_ordinal,
+                        rows: survivors,
+                        doomed: concat(still_doomed, evicted_rows |> map(r => LocalStoreDoomedRow { name: r.name, bytes: r.bytes }))
+                      }
                       match local_store_write_index(root_path: root_path, family: family, expected: expected, index: next_index) {
-                        LocalStoreIndexWritten { reclamation: rc } => LocalStoreReserved { evicted: evicted, reclamation: rc }
+                        LocalStoreIndexWritten { reclamation: rc } =>
+                          LocalStoreReserved { evicted: evicted_rows |> map(r => LocalStoreDoomedRow { name: r.name, bytes: r.bytes }), retired: cleanup |> filter(t => t.confirmed) |> map(t => t.name), reclamation: rc }
                         LocalStoreIndexLostRace => local_store_reserve(root: root, family: family, name: name, bytes: bytes, attempt: attempt + 1)
                         LocalStoreIndexWriteRefused { cause: c } => LocalStoreReservationRefused { refusal: StoreCommitOccupancyUnavailable { cause: c } }
                       }
                     }
                   }
                 }
+              }
             }
         }
     }
   }
 }
 
-// Evicted objects are deleted after the index stops naming them; a delete the host refuses leaves an
-// object no index names, which the next open's sweep removes, and is reported in the commit receipt.
-// One delete, observed once, so a receipt splits its results instead of searching for them.
-type LocalStoreDeleteAttempt {
-  name: String
-  success: Bool
+// AFTER PUBLISHING, a writer re-reads its family's index. If its row is still live the object is
+// accounted. If another writer evicted it meanwhile -- the evictor's delete ran before this publish,
+// so it found nothing -- the published bytes are unaccounted, and this writer removes them; if the
+// host refuses that delete, the name is added to `doomed` so its bytes are charged until a later
+// reservation confirms them gone.
+type LocalStorePostPublish
+  = LocalStoreStillLive
+  | LocalStoreEvictedAndRemoved
+  | LocalStoreEvictedAndDoomed
+  | LocalStorePostPublishUnavailable { cause: String }
+
+fn local_store_doom(root_path: String, family: ArtifactKindId, name: String, bytes: ByteSize, attempt: Int) -> LocalStorePostPublish {
+  if attempt > local_store_reservation_attempt_bound {
+    LocalStorePostPublishUnavailable { cause: "the occupancy index kept moving under concurrent writers past the attempt bound" }
+  } else {
+    match local_store_read_index(root_path: root_path, family: family) {
+      LocalStoreIndexUnavailable { cause: c } => LocalStorePostPublishUnavailable { cause: c }
+      LocalStoreIndexAt { index: index, expected: expected } =>
+        if index.rows |> any(r => r.name == name) {
+          LocalStoreStillLive
+        } else if index.doomed |> any(d => d.name == name) {
+          LocalStoreEvictedAndDoomed
+        } else {
+          let next_index = LocalStoreIndex { next_ordinal: index.next_ordinal, rows: index.rows, doomed: index.doomed |> list_push(LocalStoreDoomedRow { name: name, bytes: bytes }) }
+          match local_store_write_index(root_path: root_path, family: family, expected: expected, index: next_index) {
+            LocalStoreIndexWritten { reclamation: _ } => LocalStoreEvictedAndDoomed
+            LocalStoreIndexLostRace => local_store_doom(root_path: root_path, family: family, name: name, bytes: bytes, attempt: attempt + 1)
+            LocalStoreIndexWriteRefused { cause: c } => LocalStorePostPublishUnavailable { cause: c }
+          }
+        }
+    }
+  }
 }
 
-fn local_store_delete_names(root_path: String, names: List<String>) -> List<String> {
-  names |> filter(n => !Filesystem.Delete(path: store_path(root_path: root_path, name: n)).success)
+fn local_store_post_publish(root_path: String, family: ArtifactKindId, name: String, bytes: ByteSize) -> LocalStorePostPublish {
+  match local_store_read_index(root_path: root_path, family: family) {
+    LocalStoreIndexUnavailable { cause: c } => LocalStorePostPublishUnavailable { cause: c }
+    LocalStoreIndexAt { index: index, expected: _ } =>
+      if index.rows |> any(r => r.name == name) {
+        LocalStoreStillLive
+      } else if local_store_delete_confirmed(root_path: root_path, name: name) {
+        LocalStoreEvictedAndRemoved
+      } else {
+        local_store_doom(root_path: root_path, family: family, name: name, bytes: bytes, attempt: 1)
+      }
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -635,17 +786,13 @@ type LocalStoreSweep
   | LocalStoreSweepUnavailable { cause: String }
   | LocalStoreSweepNotRun
 
-fn local_store_is_object_name(name: String) -> Bool {
-  contains(s: name, sub: ".materialization.")
-}
-
 fn local_store_indexed_names(root: MaterializationStoreRoot) -> List<String>? {
   let root_path = materialization_store_root_path(root: root)
   fold(local_store_family_budgets(root: root), init: Present { value: [] }, f: (acc, b) => match acc {
     Absent => none
     Present { value: names } => match local_store_read_index(root_path: root_path, family: b.family) {
       LocalStoreIndexUnavailable { cause: _ } => none
-      LocalStoreIndexAt { index: i, expected: _ } => Present { value: concat(names, i.rows |> map(r => r.name)) }
+      LocalStoreIndexAt { index: i, expected: _ } => Present { value: concat(concat(names, i.rows |> map(r => r.name)), i.doomed |> map(d => d.name)) }
     }
   })
 }
@@ -663,8 +810,8 @@ fn local_store_sweep(root: MaterializationStoreRoot) -> LocalStoreSweep {
           let indexed_set = local_store_name_set(names: indexed)
           let orphans = filesystem_listing_entry_names(listing: listed)
             |> filter(n => local_store_is_object_name(name: n) && !set_contains(indexed_set, n))
-          let attempts = orphans |> map(n => LocalStoreDeleteAttempt { name: n, success: Filesystem.Delete(path: store_path(root_path: root_path, name: n)).success })
-          LocalStoreSwept { removed: attempts |> filter(t => t.success) |> map(t => t.name), delete_refused: attempts |> filter(t => !t.success) |> map(t => t.name) }
+          let attempts = local_store_delete_attempts(root_path: root_path, names: orphans)
+          LocalStoreSwept { removed: attempts |> filter(t => t.confirmed) |> map(t => t.name), delete_refused: attempts |> filter(t => !t.confirmed) |> map(t => t.name) }
         }
       }
   }
@@ -694,7 +841,7 @@ fn local_store_record_recency(root: MaterializationStoreRoot, family: ArtifactKi
           StoreHit { store: s2, row: _ } => s2
           StoreMiss { store: s2 } => s2
         })
-        match local_store_write_index(root_path: root_path, family: family, expected: expected, index: local_store_index_of(store: bumped, names: names)) {
+        match local_store_write_index(root_path: root_path, family: family, expected: expected, index: local_store_index_of(store: bumped, names: names, doomed: index.doomed)) {
           LocalStoreIndexWritten { reclamation: _ } => LocalStoreRecencyRecorded { family: family, bumped: count(hits) }
           LocalStoreIndexLostRace => LocalStoreRecencyLost { family: family, cause: "another writer moved the index first" }
           LocalStoreIndexWriteRefused { cause: c } => LocalStoreRecencyLost { family: family, cause: c }
@@ -736,17 +883,89 @@ fn local_store_lookup(root: MaterializationStoreRoot, store: OpenedMaterializati
 }
 
 // THE COMMIT RECEIPT carries what the bound did beside the store-level commit: the names this commit
-// evicted, the evicted names whose delete the host refused (swept on the next open), and the index
-// slot's own generation reclamation. None of these changes the commit's verdict.
+// evicted, the evicted names whose delete the host did not confirm (they stay doomed and CHARGED until
+// a later reservation confirms them gone), the doomed names this commit's reservation retired, and the
+// index slot's own generation reclamation.
 type LocalStoreCommit {
   commit: StoreCommit
   evicted: List<String>
   eviction_delete_refused: List<String>
+  retired: List<String>
   index_reclamation: CasWindowReclamation
 }
 
 fn local_store_commit_refused(commit: StoreCommit) -> LocalStoreCommit {
-  LocalStoreCommit { commit: commit, evicted: [], eviction_delete_refused: [], index_reclamation: CasReclamationNotCommitted }
+  LocalStoreCommit { commit: commit, evicted: [], eviction_delete_refused: [], retired: [], index_reclamation: CasReclamationNotCommitted }
+}
+
+// THE SECOND HALF OF A COMMIT, after its reservation: delete what the reservation evicted, and ONLY
+// IF THE HOST CONFIRMED EVERY ONE OF THOSE DELETES publish -- otherwise refuse as cleanup outstanding,
+// leaving the evicted names doomed and charged, so on-disk bytes never exceed the budget because a
+// delete did not happen. Then re-read the index before settling. It is its own function so a control can interleave a second
+// writer between a reservation and its publish, which is exactly the window the re-read closes.
+fn local_store_publish_reserved(
+  root: MaterializationStoreRoot,
+  store: OpenedMaterializationStore,
+  req: ArtifactRequest,
+  prepared: StoreCommitPreparation,
+  reservation: LocalStoreReservation
+) -> LocalStoreCommit {
+  let root_path = materialization_store_root_path(root: root)
+  match prepared {
+    StoreCommitNotPrepared { commit: c } => local_store_commit_refused(commit: c)
+    StoreCommitPrepared { key: k, object_name: name, object: object, offered_digest: offered, offered_result: offered_result } =>
+      match reservation {
+        LocalStoreReservationRefused { refusal: r } => local_store_commit_refused(commit: StoreCommitRefused { key: k, refusal: r })
+        LocalStoreReserved { evicted: evicted, retired: retired, reclamation: rc } => {
+          let deletes = local_store_delete_attempts(root_path: root_path, names: evicted |> map(e => e.name))
+          let unconfirmed = deletes |> filter(t => !t.confirmed) |> map(t => t.name)
+          let unconfirmed_set = local_store_name_set(names: unconfirmed)
+          if count(unconfirmed) > 0 {
+            let undeleted = fold(evicted |> filter(e => set_contains(unconfirmed_set, e.name)), init: 0, f: (acc, e) => acc + measure_count(m: e.bytes))
+            let budget = match local_store_family_budget(root: root, family: request_kind(req: req)) { Present { value: b } => b.budget Absent => byte_size(count: 0) }
+            LocalStoreCommit {
+              commit: StoreCommitRefused { key: k, refusal: StoreCommitCleanupOutstanding { artifact_bytes: local_store_object_bytes(object: object), budget: budget, undeleted: byte_size(count: undeleted) } },
+              evicted: evicted |> map(e => e.name),
+              eviction_delete_refused: unconfirmed,
+              retired: retired,
+              index_reclamation: rc
+            }
+          } else {
+            let publish = store_publish_observation(create: local_store_create_new(path: store_path(root_path: root_path, name: name), content: object))
+            let post = local_store_post_publish(root_path: root_path, family: request_kind(req: req), name: name, bytes: local_store_object_bytes(object: object))
+            let settled = store_commit_settle(
+              store: store,
+              prepared_key: k,
+              offered_digest: offered,
+              offered_result: offered_result,
+              publish: publish,
+              read_back: local_store_lookup(root: root, store: store, req: req)
+            )
+            let verdict = match post {
+              LocalStoreStillLive => settled
+              LocalStoreEvictedAndRemoved => StoreCommitRefused { key: k, refusal: StoreCommitEvictedDuringPublish { name: name, removed: true } }
+              LocalStoreEvictedAndDoomed => StoreCommitRefused { key: k, refusal: StoreCommitEvictedDuringPublish { name: name, removed: false } }
+              LocalStorePostPublishUnavailable { cause: c } =>
+                StoreCommitRefused { key: k, refusal: StoreCommitOccupancyUnavailable { cause: concat("after publishing, the occupancy index could not be re-read: ", c) } }
+            }
+            LocalStoreCommit { commit: verdict, evicted: evicted |> map(e => e.name), eviction_delete_refused: [], retired: retired, index_reclamation: rc }
+          }
+        }
+      }
+  }
+}
+
+fn local_store_reserve_prepared(root: MaterializationStoreRoot, req: ArtifactRequest, prepared: StoreCommitPreparation) -> LocalStoreReservation {
+  let root_path = materialization_store_root_path(root: root)
+  match prepared {
+    StoreCommitNotPrepared { commit: _ } => LocalStoreReserved { evicted: [], retired: [], reclamation: CasReclamationNotCommitted }
+    StoreCommitPrepared { key: _, object_name: name, object: object, offered_digest: _, offered_result: _ } =>
+      match materialization_store_admissible(root: root, verb: Write) {
+        Deny { refusal: _ } =>
+          LocalStoreReservationRefused { refusal: StoreCommitPublishRefused { fault: StoreFault { class: StoreFaultUnauthorized, detail: concat("write grant refused for ", root_path) } } }
+        Permit => local_store_reserve(root: root, family: request_kind(req: req), name: name, bytes: local_store_object_bytes(object: object), attempt: 1)
+      }
+  }
 }
 
 fn local_store_commit(
@@ -755,39 +974,8 @@ fn local_store_commit(
   req: ArtifactRequest,
   payloads: List<ArtifactPayload>
 ) -> LocalStoreCommit {
-  let root_path = materialization_store_root_path(root: root)
-  match store_commit_prepare(req: req, payloads: payloads) {
-    StoreCommitNotPrepared { commit: c } => local_store_commit_refused(commit: c)
-    StoreCommitPrepared { key: k, object_name: name, object: object, offered_digest: offered, offered_result: offered_result } =>
-      match materialization_store_admissible(root: root, verb: Write) {
-        Deny { refusal: _ } =>
-          local_store_commit_refused(commit: StoreCommitRefused {
-            key: k,
-            refusal: StoreCommitPublishRefused { fault: StoreFault { class: StoreFaultUnauthorized, detail: concat("write grant refused for ", root_path) } }
-          })
-        Permit =>
-          match local_store_reserve(root: root, family: request_kind(req: req), name: name, bytes: local_store_object_bytes(object: object), attempt: 1) {
-            LocalStoreReservationRefused { refusal: r } => local_store_commit_refused(commit: StoreCommitRefused { key: k, refusal: r })
-            LocalStoreReserved { evicted: evicted, reclamation: rc } => {
-              let refused = local_store_delete_names(root_path: root_path, names: evicted)
-              let publish = store_publish_observation(create: local_store_create_new(path: store_path(root_path: root_path, name: name), content: object))
-              LocalStoreCommit {
-                commit: store_commit_settle(
-                  store: store,
-                  prepared_key: k,
-                  offered_digest: offered,
-                  offered_result: offered_result,
-                  publish: publish,
-                  read_back: local_store_lookup(root: root, store: store, req: req)
-                ),
-                evicted: evicted,
-                eviction_delete_refused: refused,
-                index_reclamation: rc
-              }
-            }
-          }
-      }
-  }
+  let prepared = store_commit_prepare(req: req, payloads: payloads)
+  local_store_publish_reserved(root: root, store: store, req: req, prepared: prepared, reservation: local_store_reserve_prepared(root: root, req: req, prepared: prepared))
 }
 
 // BATCH: one open, then one exact read per request. The open is the only store-level observation;
