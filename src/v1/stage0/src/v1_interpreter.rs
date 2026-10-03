@@ -22033,6 +22033,27 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(Value::Int(s.string_length())))
             },
 
+            // THE NATIVE STRING-SPAN SCAN THE JSON GRAMMAR'S PRODUCTIONS USE (RFC 8259 string
+            // body scan, escapes honored) -- v1_rt::scan_string_end is indexed in CHARS like
+            // every other string carrier here, so the position it returns is the position the
+            // interpreted parser's own indexing speaks.
+            arm "free_call.scan_string_end" { "scan_string_end" } => {
+                let s = expect_value_str($positional.first().copied(), "scan_string_end")?;
+                let start = expect_int($positional.get(1).copied(), "scan_string_end start")?;
+                Ok(Some(Value::Int(v1_rt::scan_string_end(&s, start))))
+            },
+
+            // THE VALIDATED JSON UNESCAPE, NATIVE (RFC 8259 section 7; \u decodes through
+            // from_code_point's own semantics, lone surrogates included). None is the escape-set
+            // refusal: the grammar maps it to its parse failure before any value is built.
+            arm "free_call.json_unescape_checked" { "json_unescape_checked" } => {
+                let s = expect_str($positional.first().copied(), "json_unescape_checked")?;
+                match v1_rt::json_unescape_checked(&s) {
+                    Some(out) => Ok(Some(str_value(out))),
+                    None => Ok(Some(Value::Null)),
+                }
+            },
+
             arm "free_call.substring" { "substring" } => {
                 // `v1_rt::substring` clamps negative start/end to 0, and `RcStr::substring`
                 // clamps identically, so routing through the carrier preserves this arm exactly.
