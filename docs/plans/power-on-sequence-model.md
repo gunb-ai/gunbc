@@ -243,7 +243,7 @@ The differences found when Mt. Jade lands become the onboarding checklist.
 
 ## 10. Implementation slices
 
-1. **A: the power-on account, replacing every string finding and `HostBootObservation`, after #13041 lands.** It includes:
+1. **A (#13117): the power-on account, replacing every string finding and `HostBootObservation`, after #13041 lands.** Former slice B (#13058's error records) is folded in, and §10a records the decisions. It includes:
    - the public readers: opaque `CP:` (`gunbc.machine_intake_ampere_checkpoint_console_observation`), and the EFI stub and kernel lines (`extdeps.linux.efi_stub`, `extdeps.linux.boot_console`, read by `gunbc.machine_intake_linux_boot_console_observation`);
    - the `AttemptConfigurationReceipt` (frozen before power-on, including the human completion/inspection receipt for manual changes), and coverage;
    - the account;
@@ -252,10 +252,41 @@ The differences found when Mt. Jade lands become the onboarding checklist.
    - every census row in §6, plus the REDs of §5.
 
    Fixtures are committed excerpts from the `mtcollins1-captures-2026-10-03` evidence branch, including step 3 as the new-firmware positive control, and the run 37062170720 / 37069907299 artifacts. A pre-review draft of the readers and a fold exists on `session/calm-lynx-884-slice-a-wip`. It predates these rulings (it uses a scalar ending, stage attribution from the DRAM banner, and its own SMpro pair rule) and will be reworked, not landed as-is.
-2. **B: SMpro/PMpro error records** into `Socket{k}` and degradations, gated on #13058.
+2. **B: the attempt-configuration receipt's live inputs**: the applied stimulus, current population and pre-power-on firmware readback (decided Q4). The error records originally planned as B landed in A.
 3. **C: NVPARAM** as UEFI-subject context, gated on #13059.
 4. **D: `ManagedHost`**, gated on #13055. If #13055 lands before A, it is folded into A.
 5. **P: the gunbc-private refinement slice** (§8).
+
+## 10a. Decisions taken while implementing slice A (#13117)
+
+These were settled while building slice A and through its side-chat reviews. Each one is enforced by a witness in #13117 and recorded here so this plan stays the authority.
+
+- **Cycles open only on typed boundary evidence.** Each SEL boot record gets a `SelBootBoundaryStanding` from an ordered fold with no look-ahead:
+  - the first record corroborates the confirmed power-on when it is a power-up;
+  - the first record is `BoundaryAmbiguous` when it is a restart after a confirmed power-on. It opens no cycle and becomes an open question, because this MegaRAC can log the power-on's own first boot as "System Restart" (step 1);
+  - every later record, including a second power-up, is a distinct boundary.
+
+  Console banners only bind spans to cycles, and only when the counts agree; otherwise the binding is `ConsoleSpansUnbound`. The BMC clock is never joined to ours.
+- **Stated failures are counted per occurrence.**
+  - Panics and initrd failures are read per printed line.
+  - Firmware statements, GRUB reports and module refusals are read by their owning readers over each console span's own lines.
+  - Each error carries its cycle. Only a failure in the last cycle can choose the ending, and the furthest one there wins. Earlier and unbound errors stay as history.
+- **A loop is distinguished from progress after a restart.** `RestartedRepeatedly` applies only when the last cycle got no further than an earlier one. Otherwise the ending is `StoppedWithoutRestart { restarts_before }`.
+- **Topology, population and absence are judged only against the receipt.**
+  - The expected topology is `ExpectedSockets`, or `ExpectedTopologyNotRecorded` (production today).
+  - Processors are checked once per expected socket: missing, duplicated, or unreadable socket ID.
+  - Memory is checked per socket, over the union of expected-populated and observed sockets, against `SlotRow { label, socket, populated }`.
+  - Sensor absence counts only for an expected socket.
+  - Health states reported by the BMC stay unconditional.
+- **SMpro.**
+  - Passes are reported per pass, not placed into cycles.
+  - #13058's records are placed by their gate (pending → stated error plus degradation; ungated → anomaly plus open question).
+  - Pending warnings are kept.
+  - The error-record registers have their own coverage carrier, separate from the boot-stage pair.
+- **Each milestone carries provenance.** It has its capture digest and a `DeclarationRef` to its reader. A one-variant nullary sum does not resolve in the substrate, so a declaration citation is used instead.
+- **Convergence refuses UEFI followed by a loop.** It reads the whole-account readback. A UEFI milestone followed by a `RestartedRepeatedly` ending refuses as `BootReachedUefiThenRestartedRepeatedly`.
+- **#13025's `secondary_checkpoints` is deleted (Q3).** The per-socket CP classification belongs to the private refinement slice.
+- **The receipt's live inputs are slice B (Q4).** Slice B adds the boot-workflow input for the applied stimulus (with a human inspection receipt through the operator-attested route), the current population, and the pre-power-on firmware readback. Until it lands, those fields are `NotRecorded` and every question needing them is open.
 
 ## 11. Questions
 
