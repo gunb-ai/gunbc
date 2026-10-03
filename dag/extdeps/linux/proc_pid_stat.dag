@@ -2,7 +2,6 @@ module extdeps.linux.proc_pid_stat
 
 import std.types { Int, List, NonEmptyStr, EpochSecs }
 import std.measure { Hertz, hertz_count }
-import std.string_type { String }
 import std.algebra { trim }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
