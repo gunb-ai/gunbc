@@ -20,6 +20,7 @@ import gunbc.roadmap_workflow_command {
   attempt_key_short_form,
 }
 import gunbc.roadmap_workflow_progress {
+  AttemptWorktreeUnobserved,
   WorkflowAttemptEvidence,
   workflow_attempt_progress,
 }
@@ -93,6 +94,7 @@ test fn legacy_attempt_projects_as_supersedable_not_fault() -> Bool {
     attempt_key: "",
     branch: "dispatch/legacy-node",
     modeled_state_present: false,
+    worktree: AttemptWorktreeUnobserved { path: "", cause: "no modeled state pointer" },
     admission_receipt_readable: false,
     admission_receipt: "",
     spawn_failure_present: false,
