@@ -1,0 +1,164 @@
+module gunbc.fabric_allocation_store_observe
+
+import gunbc.fabric_allocation_store_directory_read { allocation_store_directory_read }
+
+import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.fleet_bootstrap_principal { executor_bootstrap_principal }
+import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import extdeps.filesystem.filesystem_io { filesystem_listing_observation, filesystem_entry_presence,
+  FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused }
+import extdeps.posix.path_ownership { PathOwnerObserved, PathOwnerUnobserved, PathModeObserved, PathModeUnobserved }
+import gunbc.fabric_allocation_store_substrate { AllocationStoreSubstrateObservation, AllocationStoreSubstrateObserved,
+  AllocationStoreSubstrateObservationRefused, AllocationStoreNamespaceAbsent, AllocationStoreNamespacePresent,
+  AllocationStoreDirectoryPrestate, AllocationStoreSubstrateSpec, fabric_allocation_store_substrate_spec,
+  allocation_store_presence_parent, allocation_store_presence_coordinates_match_path,
+  allocation_store_directory_present, allocation_store_directory_absent, allocation_store_desired_stat_mode }
+
+import std.types { String, NonEmptyStr }
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+
+// Directory enumeration and metadata require the same administrator edge as root-only state.
+// This edge reads names and metadata only; it never reads state payloads or changes permissions.
+// The shared fleet spine has already bound this host to its requested plan/apply subject.
+fn observe_allocation_store_substrate_on_host(host: NonEmptyStr) -> AllocationStoreSubstrateObservation {
+  match prepare_fleet_ssh_agent_context(attempt_raw: "allocation-store-observation") {
+    FleetSshContextRefused { cause } => AllocationStoreSubstrateObservationRefused { path: fabric_allocation_store_substrate_spec().path, cause: cause }
+    FleetSshContextReady { context, receipt: _ } => observe_allocation_store_substrate_over_admin(
+      target: SshTarget { endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr, principal: executor_bootstrap_principal.login }, context: context)
+  }
+}
+
+fn observe_allocation_store_substrate_over_admin(target: SshTarget, context: FleetSshExecutionContext) -> AllocationStoreSubstrateObservation {
+  let spec = fabric_allocation_store_substrate_spec()
+  if !allocation_store_presence_coordinates_match_path(spec: spec) {
+    AllocationStoreSubstrateObservationRefused {
+      path: spec.path,
+      cause: "the modeled presence coordinates do not reconstruct the allocation-store path",
+    }
+  } else {
+    let ancestor = allocation_store_directory_read(target: target, context: context, path: spec.presence_ancestor as String)
+    match filesystem_entry_presence(
+      listing: filesystem_listing_observation(
+        directory: spec.presence_ancestor as String,
+        success: ancestor.success,
+        entries: ancestor.entries,
+        error: ancestor.error,
+      ),
+      name: spec.presence_parent_entry as String,
+    ) {
+      FilesystemEntryPresenceIndeterminate { cause: why } =>
+        AllocationStoreSubstrateObservationRefused { path: spec.namespace_path, cause: why }
+      FilesystemEntrySubjectRefused { directory: d, name: n, cause: why } =>
+        AllocationStoreSubstrateObservationRefused {
+          path: spec.namespace_path,
+          cause: join([
+            "the spec asked about ", n, " under ", d,
+            ", which is not a directory subject, so the supplied outcomes establish no listing of it -- ", why,
+          ], ""),
+        }
+      FilesystemEntryAbsent(established) => AllocationStoreSubstrateObserved {
+        prestate: AllocationStoreNamespaceAbsent {
+          namespace: allocation_store_directory_absent(path: spec.namespace_path, evidence: established),
+          store_path: spec.path,
+        },
+      }
+      FilesystemEntryListed { directory: _, name: _ } => observe_allocation_store_namespace_wet(spec: spec, target: target, context: context)
+    }
+  }
+}
+
+fn observe_allocation_store_namespace_wet(spec: AllocationStoreSubstrateSpec, target: SshTarget, context: FleetSshExecutionContext) -> AllocationStoreSubstrateObservation {
+  let parent = allocation_store_presence_parent(spec: spec)
+  let contents = allocation_store_directory_read(target: target, context: context, path: parent as String)
+  if !contents.success {
+    AllocationStoreSubstrateObservationRefused {
+      path: parent,
+      cause: join(["the ancestor names the allocation namespace but it cannot be listed — ", contents.error], ""),
+    }
+  } else {
+    match contents.owner {
+      PathOwnerUnobserved { reason: why } => AllocationStoreSubstrateObservationRefused { path: parent, cause: why }
+      PathOwnerObserved { owner: owner } => match PathModeObserved { mode: contents.mode as NonEmptyStr } {
+        PathModeUnobserved { reason: why } => AllocationStoreSubstrateObservationRefused { path: parent, cause: why }
+        PathModeObserved { mode: mode } => observe_allocation_store_under_namespace_wet(
+          spec: spec, target: target, context: context,
+          namespace: allocation_store_directory_present(
+            path: parent,
+            owner: owner,
+            mode: mode,
+            desired_mode: allocation_store_desired_stat_mode(mode: spec.namespace_mode),
+          ),
+          entries: contents.entries,
+          listing_error: contents.error,
+        )
+      }
+    }
+  }
+}
+
+fn observe_allocation_store_under_namespace_wet(
+  target: SshTarget, context: FleetSshExecutionContext,
+  spec: AllocationStoreSubstrateSpec,
+  namespace: AllocationStoreDirectoryPrestate,
+  entries: String,
+  listing_error: String,
+) -> AllocationStoreSubstrateObservation {
+  match filesystem_entry_presence(
+    listing: filesystem_listing_observation(
+      directory: spec.namespace_path as String,
+      success: true,
+      entries: entries,
+      error: listing_error,
+    ),
+    name: spec.presence_target_entry as String,
+  ) {
+    FilesystemEntryPresenceIndeterminate { cause: why } =>
+      AllocationStoreSubstrateObservationRefused { path: spec.path, cause: why }
+    FilesystemEntrySubjectRefused { directory: d, name: n, cause: why } =>
+      AllocationStoreSubstrateObservationRefused {
+        path: spec.path,
+        cause: join([
+          "the spec asked about ", n, " under ", d,
+          ", which is not a directory subject, so the supplied outcomes establish no listing of it -- ", why,
+        ], ""),
+      }
+    FilesystemEntryAbsent(established) => AllocationStoreSubstrateObserved {
+      prestate: AllocationStoreNamespacePresent {
+        namespace: namespace,
+        store: allocation_store_directory_absent(path: spec.path, evidence: established),
+      },
+    }
+    FilesystemEntryListed { directory: _, name: _ } => {
+      let contents = allocation_store_directory_read(target: target, context: context, path: spec.path as String)
+      if !contents.success {
+        AllocationStoreSubstrateObservationRefused {
+          path: spec.path,
+          cause: join(["the parent names the allocation store but the target directory cannot be listed — ", contents.error], ""),
+        }
+      } else {
+        match contents.owner {
+          PathOwnerUnobserved { reason: why } =>
+            AllocationStoreSubstrateObservationRefused { path: spec.path, cause: why }
+          PathOwnerObserved { owner: owner } =>
+            match PathModeObserved { mode: contents.mode as NonEmptyStr } {
+              PathModeUnobserved { reason: why } =>
+                AllocationStoreSubstrateObservationRefused { path: spec.path, cause: why }
+              PathModeObserved { mode: mode } => AllocationStoreSubstrateObserved {
+                prestate: AllocationStoreNamespacePresent {
+                  namespace: namespace,
+                  store: allocation_store_directory_present(
+                    path: spec.path,
+                    owner: owner,
+                    mode: mode,
+                    desired_mode: allocation_store_desired_stat_mode(mode: spec.mode),
+                  ),
+                },
+              }
+            }
+        }
+      }
+    }
+  }
+}
+
+

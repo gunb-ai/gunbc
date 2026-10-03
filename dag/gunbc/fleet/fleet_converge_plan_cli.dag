@@ -1,5 +1,7 @@
 module gunbc.fleet_converge_plan_cli
 
+import gunbc.fabric_allocation_store_observe { observe_allocation_store_substrate_on_host }
+
 import extdeps.tools.chmod { chmod_path_resolved_program }
 import std.types { String, List, Bool, NonEmptyStr, Int }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
@@ -119,7 +121,6 @@ import gunbc.fleet_converge_plan_manifest {
 }
 import gunbc.fleet_converge_plan {
   TimerRetirementMember,
-  fleet_converge_allocation_store_plan_artifact,
   fleet_converge_plan_body_path,
   fleet_converge_plan_baseline_hex_path,
   fleet_converge_plan_apply_shell_path,
@@ -158,7 +159,7 @@ import gunbc.fleet_converge_plan {
   fleet_converge_scope_of_wire,
   fleet_converge_scope_matches,
   LaunchEnvironment,
-  fleet_converge_plan_artifact_of_request,
+  fleet_converge_bound_plan_artifact,
   ScopeDecoded,
   ScopeUndecodable,
   timer_retirement_observed_legacy_srv1,
@@ -195,7 +196,7 @@ import gunbc.actions_run_binding {
   fleet_converge_expected_host_env_name,
 }
 import gunbc.fleet_converge_receipt {
-  FleetConvergePlanReceipt, FleetConvergeApplyReceipt,
+  FleetConvergePlanReceipt, FleetConvergeApplyReceipt, fleet_converge_plan_receipt_from_artifact,
   fleet_converge_plan_receipt_path, fleet_converge_apply_receipt_dir, fleet_converge_apply_receipt_path,
   fleet_converge_plan_run_id_env_name,
   write_fleet_converge_plan_receipt, write_fleet_converge_apply_receipt,
@@ -609,163 +610,17 @@ fn write_fleet_converge_plan_artifact_wet(artifact: FleetConvergePlanArtifact) -
   }
 }
 
-fn fleet_converge_allocation_store_plan_wet() -> ProcessExit
-{
-  match observe_host_short_wet() {
-    Absent => exit_failure(reason: "fleet_converge_allocation_store_plan: HostObservationFailed")
-    Present { value: host } =>
-      match observe_generation_store_wet(subject_host: host) {
-        GenerationAdmissionRefused { reason: why } => exit_failure(reason: why)
-        GenerationAdmitted { generation: prior_generation } =>
-          match observe_allocation_store_substrate_wet() {
-            AllocationStoreSubstrateObservationRefused { path: p, cause: why } =>
-              exit_failure(reason: join(["fleet_converge_allocation_store_plan: AllocationStoreSubstrateObservationRefused path=", p as String, " — ", why], ""))
-            AllocationStoreSubstrateObserved { prestate: observed } =>
-              match fleet_converge_allocation_store_plan_artifact(
-                host: host,
-                prior_generation: prior_generation,
-                observed_allocation_store: observed,
-              ) {
-                Absent => exit_failure(reason: "fleet_converge_allocation_store_plan: host is not modeled or baseline hash refused")
-                Present { value: artifact } => write_fleet_converge_plan_artifact_wet(artifact: artifact)
-              }
-          }
-      }
-  }
+// Use the shared host/revision admission and run-bound plan receipt required by apply.
+fn fleet_converge_allocation_store_plan_wet() -> ProcessExit {
+  fleet_converge_scoped_plan_wet(scope: FabricAllocationStoreOnly)
 }
 
 fn observe_allocation_store_substrate_wet() -> AllocationStoreSubstrateObservation {
-  let spec = fabric_allocation_store_substrate_spec()
-  if !allocation_store_presence_coordinates_match_path(spec: spec) {
-    AllocationStoreSubstrateObservationRefused {
-      path: spec.path,
-      cause: "the modeled presence coordinates do not reconstruct the allocation-store path",
-    }
-  } else {
-    let ancestor = Filesystem.List(path: spec.presence_ancestor as String)
-    match filesystem_entry_presence(
-      listing: filesystem_listing_observation(
-        directory: spec.presence_ancestor as String,
-        success: ancestor.success,
-        entries: ancestor.entries,
-        error: ancestor.error,
-      ),
-      name: spec.presence_parent_entry as String,
-    ) {
-      FilesystemEntryPresenceIndeterminate { cause: why } =>
-        AllocationStoreSubstrateObservationRefused { path: spec.namespace_path, cause: why }
-      FilesystemEntrySubjectRefused { directory: d, name: n, cause: why } =>
-        AllocationStoreSubstrateObservationRefused {
-          path: spec.namespace_path,
-          cause: join([
-            "the spec asked about ", n, " under ", d,
-            ", which is not a directory subject, so the supplied outcomes establish no listing of it -- ", why,
-          ], ""),
-        }
-      FilesystemEntryAbsent(established) => AllocationStoreSubstrateObserved {
-        prestate: AllocationStoreNamespaceAbsent {
-          namespace: allocation_store_directory_absent(path: spec.namespace_path, evidence: established),
-          store_path: spec.path,
-        },
-      }
-      FilesystemEntryListed { directory: _, name: _ } => observe_allocation_store_namespace_wet(spec: spec)
-    }
+  match observe_host_short_wet() {
+    Absent => AllocationStoreSubstrateObservationRefused { path: fabric_allocation_store_substrate_spec().path, cause: "allocation-store observer host is unreadable" }
+    Present { value: host } => observe_allocation_store_substrate_on_host(host: host)
   }
 }
-
-fn observe_allocation_store_namespace_wet(spec: AllocationStoreSubstrateSpec) -> AllocationStoreSubstrateObservation {
-  let parent = allocation_store_presence_parent(spec: spec)
-  let contents = Filesystem.List(path: parent as String)
-  if !contents.success {
-    AllocationStoreSubstrateObservationRefused {
-      path: parent,
-      cause: join(["the ancestor names the allocation namespace but it cannot be listed — ", contents.error], ""),
-    }
-  } else {
-    match srv3_observe_path_owner(path: parent as String, transport: LocalShell) {
-      PathOwnerUnobserved { reason: why } => AllocationStoreSubstrateObservationRefused { path: parent, cause: why }
-      PathOwnerObserved { owner: owner } => match srv3_observe_path_mode(path: parent as String, transport: LocalShell) {
-        PathModeUnobserved { reason: why } => AllocationStoreSubstrateObservationRefused { path: parent, cause: why }
-        PathModeObserved { mode: mode } => observe_allocation_store_under_namespace_wet(
-          spec: spec,
-          namespace: allocation_store_directory_present(
-            path: parent,
-            owner: owner,
-            mode: mode,
-            desired_mode: allocation_store_desired_stat_mode(mode: spec.namespace_mode),
-          ),
-          entries: contents.entries,
-          listing_error: contents.error,
-        )
-      }
-    }
-  }
-}
-
-fn observe_allocation_store_under_namespace_wet(
-  spec: AllocationStoreSubstrateSpec,
-  namespace: AllocationStoreDirectoryPrestate,
-  entries: String,
-  listing_error: String,
-) -> AllocationStoreSubstrateObservation {
-  match filesystem_entry_presence(
-    listing: filesystem_listing_observation(
-      directory: spec.namespace_path as String,
-      success: true,
-      entries: entries,
-      error: listing_error,
-    ),
-    name: spec.presence_target_entry as String,
-  ) {
-    FilesystemEntryPresenceIndeterminate { cause: why } =>
-      AllocationStoreSubstrateObservationRefused { path: spec.path, cause: why }
-    FilesystemEntrySubjectRefused { directory: d, name: n, cause: why } =>
-      AllocationStoreSubstrateObservationRefused {
-        path: spec.path,
-        cause: join([
-          "the spec asked about ", n, " under ", d,
-          ", which is not a directory subject, so the supplied outcomes establish no listing of it -- ", why,
-        ], ""),
-      }
-    FilesystemEntryAbsent(established) => AllocationStoreSubstrateObserved {
-      prestate: AllocationStoreNamespacePresent {
-        namespace: namespace,
-        store: allocation_store_directory_absent(path: spec.path, evidence: established),
-      },
-    }
-    FilesystemEntryListed { directory: _, name: _ } => {
-      let contents = Filesystem.List(path: spec.path as String)
-      if !contents.success {
-        AllocationStoreSubstrateObservationRefused {
-          path: spec.path,
-          cause: join(["the parent names the allocation store but the target directory cannot be listed — ", contents.error], ""),
-        }
-      } else {
-        match srv3_observe_path_owner(path: spec.path as String, transport: LocalShell) {
-          PathOwnerUnobserved { reason: why } =>
-            AllocationStoreSubstrateObservationRefused { path: spec.path, cause: why }
-          PathOwnerObserved { owner: owner } =>
-            match srv3_observe_path_mode(path: spec.path as String, transport: LocalShell) {
-              PathModeUnobserved { reason: why } =>
-                AllocationStoreSubstrateObservationRefused { path: spec.path, cause: why }
-              PathModeObserved { mode: mode } => AllocationStoreSubstrateObserved {
-                prestate: AllocationStoreNamespacePresent {
-                  namespace: namespace,
-                  store: allocation_store_directory_present(
-                    path: spec.path,
-                    owner: owner,
-                    mode: mode,
-                    desired_mode: allocation_store_desired_stat_mode(mode: spec.mode),
-                  ),
-                },
-              }
-            }
-        }
-      }
-    }
-  }
-}
-
 
 // THE PLAN BINDS ITS RUN AND ADMITS ITS HOST BEFORE OBSERVING ANYTHING ELSE (RLM-2 ruling sections
 // 2 and 8). The run binding is what the plan receipt carries; the expected host is the workflow's
@@ -856,10 +711,12 @@ fn fleet_converge_plan_scoped_bound_wet(
       exit_failure(reason: concat("fleet_converge_plan: RequestUnobserved — ", why))
     FleetConvergeRequestObserved { request: request } =>
   {
-    let artifact = fleet_converge_plan_artifact_of_request(
+    match fleet_converge_bound_plan_artifact(
       request: request,
       prior_generation: prior_generation,
-    )
+    ) {
+      Absent => exit_failure(reason: "fleet_converge_plan: scoped artifact construction refused")
+      Present { value: artifact } =>
       match fleet_converge_plan_bundle_digest_hex(
         plan_body: artifact.plan_body,
         apply_shell: artifact.apply_shell,
@@ -909,21 +766,9 @@ fn fleet_converge_plan_scoped_bound_wet(
                 && w_prior.success
                 && w_member_fp.success
                 && w_scope.success {
-                let receipt = FleetConvergePlanReceipt {
-                  run: run,
-                  observed_host: host_short,
-                  scope_wire: fleet_converge_scope_wire(scope: artifact.subject.scope),
-                  member_set_fingerprint_hex: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
-                  plan_artifact_hash: content_hash as String,
-                  observed_baseline_hex: artifact.observed_baseline_hex as String,
-                  prior_generation: prior_generation,
-                  planned_generation: planned_generation,
-                  lease_key: artifact.plan_lease.epoch.lease_key as String,
-                  lease_resource_fingerprint: serialize_content_hash(hash: artifact.plan_lease.epoch.resource_fingerprint) as String,
-                  lease_owner_fingerprint: serialize_content_hash(hash: artifact.plan_lease.epoch.owner_fingerprint) as String,
-                  lease_generation: artifact.plan_lease.epoch.generation,
-                  apply_terminal: artifact.apply_terminal,
-                }
+                let receipt = fleet_converge_plan_receipt_from_artifact(
+                  run: run, observed_host: host_short, artifact: artifact, content_hash: content_hash as String,
+                )
                 match write_fleet_converge_plan_receipt(r: receipt) {
                   ReceiptWriteRefused { path: p, error: e } =>
                     exit_failure(reason: join(["fleet_converge_plan: PlanReceiptWriteRefused at ", p, ": ", e], ""))
@@ -962,6 +807,7 @@ fn fleet_converge_plan_scoped_bound_wet(
   }
   }
   }
+}
 }
 
 // APPLY BINDS ITSELF TO THE PLAN RECEIPT IT WAS HANDED (RLM-2 ruling section 2): the plan run id

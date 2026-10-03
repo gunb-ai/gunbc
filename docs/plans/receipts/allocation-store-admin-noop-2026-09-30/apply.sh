@@ -1,0 +1,6 @@
+# 🟡 dissolve-on: fleet_converge_apply_shell — concat-built bash apply runner for timer retirement only (sudo systemctl disable/rm + daemon-reload); cap drop-in mutations are live_deploy deploy-principal authority (host_axis_caps_note) and are plan-output-only here; generation compare+apply+commit runs under flock in fleet_converge_locked_apply_script; subject-host / member-set / observed-baseline gates live in fleet_converge_apply_wet before the locked transport; DISSOLVES WHEN bash-emit or host_effect_apply realizes timer teardown and lease acquisition without medium-as-string concat
+# Cap MemberAdded/Changed/Removed arms are rendered in plan.txt for human review but are NOT emitted into apply.sh — PerSlotMemoryCap drop-in writes are live_deploy deploy-principal authority (host_axis_caps host_axis_caps_note); converge on the operator runner does not sudo-write /etc/systemd drop-ins.
+# Admission gates enforced in fleet_converge_apply_wet before bash — scope:fabric-allocation-store-only — allocation-store substrate ensure effects are emitted by fleet_converge_allocation_store_plan_artifact
+set -euo pipefail
+# generated at plan time — apply MUST NOT recompute membership_reconcile
+# apply-terminal: FullyApplied

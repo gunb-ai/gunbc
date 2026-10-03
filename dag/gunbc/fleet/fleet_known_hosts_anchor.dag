@@ -587,10 +587,12 @@ type PortableRemoteWord sole_constructor {
 // WHAT IS NOT WIDENED: every shell metacharacter stays out. `; & | < > ( ) $ \` ' " * ? [ ] { } ~ !`
 // and whitespace are all still refused, and the discriminating witness asserts that a brace-bearing
 // word is still rejected -- so this is one character, argued, not a relaxation of the wall.
+// Percent is an ordinary unquoted shell character; GNU stat format operands need it.
+// Expansion, quoting, whitespace and command separators remain outside this alphabet.
 fn portable_remote_word_char_allowed(cp: Int) -> Bool {
   (cp >= 97 && cp <= 122) || (cp >= 65 && cp <= 90) || (cp >= 48 && cp <= 57)
     || cp == 46 || cp == 95 || cp == 45 || cp == 47 || cp == 64 || cp == 58 || cp == 61
-    || cp == 44
+    || cp == 44 || cp == 37
 }
 
 fn portable_remote_word_text_ok(text: String, i: Int, len: Int) -> Bool {

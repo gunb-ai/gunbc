@@ -85,6 +85,7 @@ import gunbc.fabric_allocation_store_substrate {
   fabric_allocation_store_substrate_spec,
   fabric_allocation_store_ensure_effect,
   AllocationStoreSubstratePrestate,
+  AllocationStoreNamespacePresent,
   AllocationStoreDirectoryAbsent,
   AllocationStoreDirectoryPresentExpected,
   AllocationStoreDirectoryPresentUnexpected,
@@ -2787,6 +2788,32 @@ fn fleet_converge_plan_artifact_of_request(
   }
 }
 
+
+// The bound wet spine must retain allocation-store operations while sharing receipt publication.
+// Only a fully observed desired directory pair may use the generic no-op projection.
+fn fleet_converge_bound_plan_artifact(
+  request: FleetConvergeRequest,
+  prior_generation: Int,
+) -> FleetConvergePlanArtifact? {
+  match request {
+    FabricAllocationStoreConverge { host: host, observed_allocation_store: observed } => {
+      let spec = fabric_allocation_store_substrate_spec()
+      let converged = match observed {
+        AllocationStoreNamespacePresent {
+          namespace: AllocationStoreDirectoryPresentExpected { path: namespace, owner: _, mode: _ },
+          store: AllocationStoreDirectoryPresentExpected { path: store, owner: _, mode: _ },
+        } => namespace == spec.namespace_path && store == spec.path
+        _ => false
+      }
+      if converged {
+        Present { value: fleet_converge_plan_artifact_of_request(request: request, prior_generation: prior_generation) }
+      } else {
+        fleet_converge_allocation_store_plan_artifact(host: host, prior_generation: prior_generation, observed_allocation_store: observed)
+      }
+    }
+    _ => Present { value: fleet_converge_plan_artifact_of_request(request: request, prior_generation: prior_generation) }
+  }
+}
 
 // THE RLM-2 LAUNCH-ENVIRONMENT PLAN. Its parameter list IS the scope: there is no slot population
 // to pass, no activation readiness, no cap population and no fabric observation, so a caller cannot

@@ -1,0 +1,1280 @@
+[
+  {
+    "module": "extdeps.abi",
+    "source": "dag/extdeps/abi.dag",
+    "copy": "target/storage-observer-focused/extdeps.abi.dag",
+    "sha256": "598bcdd3af7fc0f9a68e494347571155cdd22a6fbb42fe8c2b88e59802ea751f"
+  },
+  {
+    "module": "extdeps.access.posix",
+    "source": "dag/extdeps/access/posix.dag",
+    "copy": "target/storage-observer-focused/extdeps.access.posix.dag",
+    "sha256": "b4bdc1b42701b947b3643fa2b720cdd6572d1a301a430dbb3ec95d82a7fbc482"
+  },
+  {
+    "module": "extdeps.apt",
+    "source": "dag/extdeps/package_managers/apt.dag",
+    "copy": "target/storage-observer-focused/extdeps.apt.dag",
+    "sha256": "e6cdee51ae42c792a7a55698302dd4e12ed2e8f5ece07efad733a01b3de8fc06"
+  },
+  {
+    "module": "extdeps.assurance.claim_evidence",
+    "source": "dag/extdeps/assurance/claim_evidence.dag",
+    "copy": "target/storage-observer-focused/extdeps.assurance.claim_evidence.dag",
+    "sha256": "d0700ef31aaba2b7775b672b035f7d83555146f97c4a498f912d4ff1a03b645c"
+  },
+  {
+    "module": "extdeps.brew",
+    "source": "dag/extdeps/package_managers/brew.dag",
+    "copy": "target/storage-observer-focused/extdeps.brew.dag",
+    "sha256": "e1d06f7223f16e86f8c20c77521bc01a26f459bbfb8ef4d1cc8bc6cc5dfb7502"
+  },
+  {
+    "module": "extdeps.cloud.gcp.errors",
+    "source": "dag/extdeps/cloud/gcp/errors.dag",
+    "copy": "target/storage-observer-focused/extdeps.cloud.gcp.errors.dag",
+    "sha256": "a1d72d0ad12ca45bc23f3204a451b1b5d956fa9bfe2ff061f36215503b4deb78"
+  },
+  {
+    "module": "extdeps.cloud.gcp.gcp",
+    "source": "dag/extdeps/cloud/gcp/gcp.dag",
+    "copy": "target/storage-observer-focused/extdeps.cloud.gcp.gcp.dag",
+    "sha256": "f7a779f5022bcb1795bf20ffdeef2b098528b678eba69f1421f0c0e1779b6793"
+  },
+  {
+    "module": "extdeps.cloud.gcp.iam",
+    "source": "dag/extdeps/cloud/gcp/iam.dag",
+    "copy": "target/storage-observer-focused/extdeps.cloud.gcp.iam.dag",
+    "sha256": "12733d44c4162210424148336f3c6f11696ac96432d858073333a6b5d5090846"
+  },
+  {
+    "module": "extdeps.cloud.gcp.secret_manager",
+    "source": "dag/extdeps/cloud/gcp/secret_manager.dag",
+    "copy": "target/storage-observer-focused/extdeps.cloud.gcp.secret_manager.dag",
+    "sha256": "8d0c3e3c468f0e33733827b0ad32afe3af4ed366f10ee5d30f9a5881c97a3846"
+  },
+  {
+    "module": "extdeps.cloud.gcp.secret_ref",
+    "source": "dag/extdeps/cloud/gcp/secret_ref.dag",
+    "copy": "target/storage-observer-focused/extdeps.cloud.gcp.secret_ref.dag",
+    "sha256": "843fc306be22696575eb1463875c225bcd2f8e4950ad32db248e48f1d23efb1e"
+  },
+  {
+    "module": "extdeps.currency.currency",
+    "source": "dag/extdeps/currency/currency.dag",
+    "copy": "target/storage-observer-focused/extdeps.currency.currency.dag",
+    "sha256": "3016615f96e07bea627ba31aca76c1b6bbf0a95979928f9038e7c6c1143eede8"
+  },
+  {
+    "module": "extdeps.dhcp.v4",
+    "source": "dag/extdeps/dhcp/v4.dag",
+    "copy": "target/storage-observer-focused/extdeps.dhcp.v4.dag",
+    "sha256": "7345654bdfaced990fd42629af87fa715fb3abc146cd275b10e40e49befc1fa5"
+  },
+  {
+    "module": "extdeps.dns.domain_name",
+    "source": "dag/extdeps/dns/domain_name.dag",
+    "copy": "target/storage-observer-focused/extdeps.dns.domain_name.dag",
+    "sha256": "75c7f92dbd2b358b7a22a4b730fc2d459bac5358a26c2af1415985faae18da3d"
+  },
+  {
+    "module": "extdeps.ethernet.link_mode",
+    "source": "dag/extdeps/ethernet/link_mode.dag",
+    "copy": "target/storage-observer-focused/extdeps.ethernet.link_mode.dag",
+    "sha256": "78f2cf1eb0c3aa18a7f7727202f8a844f9ca45b521b03406ba5de6e47a312883"
+  },
+  {
+    "module": "extdeps.exec.command",
+    "source": "dag/extdeps/exec/command.dag",
+    "copy": "target/storage-observer-focused/extdeps.exec.command.dag",
+    "sha256": "c8e299809f52667bdd1d7248254e4ac6b39c0349a73780e240e0a10093a4417a"
+  },
+  {
+    "module": "extdeps.exec.exec_arg_limit",
+    "source": "dag/extdeps/exec/exec_arg_limit.dag",
+    "copy": "target/storage-observer-focused/extdeps.exec.exec_arg_limit.dag",
+    "sha256": "e8298e58a6d4f70fce35245c4f3b7ff2b5d06cfe48a0a9f6804533f9454b4541"
+  },
+  {
+    "module": "extdeps.exec.program",
+    "source": "dag/extdeps/exec/program.dag",
+    "copy": "target/storage-observer-focused/extdeps.exec.program.dag",
+    "sha256": "bd73ff85787842f626037b809364022b2c9eb19780d221398e2d7880ae75f594"
+  },
+  {
+    "module": "extdeps.external_authority",
+    "source": "dag/extdeps/external_authority.dag",
+    "copy": "target/storage-observer-focused/extdeps.external_authority.dag",
+    "sha256": "88e4aeb78428f3cbd583016c8e4dea926b6a9ff0a9d81b613e22d736e5fba1b4"
+  },
+  {
+    "module": "extdeps.filesystem.filesystem_io",
+    "source": "dag/extdeps/filesystem/filesystem_io.dag",
+    "copy": "target/storage-observer-focused/extdeps.filesystem.filesystem_io.dag",
+    "sha256": "befeac5fa2d367ec2250bbb2c8f3a9747cb20ef078126e80dca4b2c526d2fb47"
+  },
+  {
+    "module": "extdeps.github.log_annotations",
+    "source": "dag/extdeps/github/log_annotations.dag",
+    "copy": "target/storage-observer-focused/extdeps.github.log_annotations.dag",
+    "sha256": "48c9c9cd6febee6d001c0627ea42297b423c0783dee38738990192543fe469f7"
+  },
+  {
+    "module": "extdeps.gpu.types",
+    "source": "dag/extdeps/gpu/types.dag",
+    "copy": "target/storage-observer-focused/extdeps.gpu.types.dag",
+    "sha256": "5dda0a842a124b8d5922d3899f9fac4686b1ca842afafbbbaefe37abdb97ebd8"
+  },
+  {
+    "module": "extdeps.hardware",
+    "source": "dag/extdeps/hardware.dag",
+    "copy": "target/storage-observer-focused/extdeps.hardware.dag",
+    "sha256": "97741b53d621ff8afaad36ae423ea22ca6d060de5a0916a51d8b9597d35cd6a2"
+  },
+  {
+    "module": "extdeps.http.server",
+    "source": "dag/extdeps/http/server.dag",
+    "copy": "target/storage-observer-focused/extdeps.http.server.dag",
+    "sha256": "af1ede823c27f36022a0aeb7d4110d0e8c76012508e8367463b262ea9381606d"
+  },
+  {
+    "module": "extdeps.ietf.http_semantics",
+    "source": "dag/extdeps/ietf/http_semantics.dag",
+    "copy": "target/storage-observer-focused/extdeps.ietf.http_semantics.dag",
+    "sha256": "606fc53707bbf45632049ea67659287eb25b95291f9138e68fbbe803553054ab"
+  },
+  {
+    "module": "extdeps.memory.types",
+    "source": "dag/extdeps/memory/types.dag",
+    "copy": "target/storage-observer-focused/extdeps.memory.types.dag",
+    "sha256": "d03770f4f2e2f22f5481ea5bbe691b82a7b07f957085ff804ba6c2a7f574fc1d"
+  },
+  {
+    "module": "extdeps.mikrotik.crs812",
+    "source": "dag/extdeps/mikrotik/crs812.dag",
+    "copy": "target/storage-observer-focused/extdeps.mikrotik.crs812.dag",
+    "sha256": "df43ff4f3b7fc571a843d2094021ec23d123f59b1ddb0458ed4caf0be682194a"
+  },
+  {
+    "module": "extdeps.netfilter.iptables_legacy",
+    "source": "dag/extdeps/netfilter/iptables_legacy.dag",
+    "copy": "target/storage-observer-focused/extdeps.netfilter.iptables_legacy.dag",
+    "sha256": "61984221e395c81ae47794f44895c1380e827a580f4cc7ee440ceec6c781bad9"
+  },
+  {
+    "module": "extdeps.netfilter.nfct",
+    "source": "dag/extdeps/netfilter/nfct.dag",
+    "copy": "target/storage-observer-focused/extdeps.netfilter.nfct.dag",
+    "sha256": "3464ac683331116dfb3a73fe772eb1e6c74d9eecc96c6ac94cdc53439bed8d56"
+  },
+  {
+    "module": "extdeps.netplan.netplan",
+    "source": "dag/extdeps/netplan/netplan.dag",
+    "copy": "target/storage-observer-focused/extdeps.netplan.netplan.dag",
+    "sha256": "e3cc16ae4eafc29193a963900cef89fb94c8620cf81f4c6eb01b00e1ecd59001"
+  },
+  {
+    "module": "extdeps.network.ipv4",
+    "source": "dag/extdeps/network/ipv4.dag",
+    "copy": "target/storage-observer-focused/extdeps.network.ipv4.dag",
+    "sha256": "a3243a396abcd171c868b451906ee3d708b5e077f64d83bb9b1338d2ee6ff697"
+  },
+  {
+    "module": "extdeps.nftables.ruleset",
+    "source": "dag/extdeps/nftables/ruleset.dag",
+    "copy": "target/storage-observer-focused/extdeps.nftables.ruleset.dag",
+    "sha256": "55acebfa65bed9929f4aeb1d837c7a571d51a9195a5f936f4518fd88c77b14d2"
+  },
+  {
+    "module": "extdeps.numeric.base16",
+    "source": "dag/extdeps/numeric/base16.dag",
+    "copy": "target/storage-observer-focused/extdeps.numeric.base16.dag",
+    "sha256": "3623dd73f3681a6e292b627cb9b456818effd393624626683b954e7d146c0e64"
+  },
+  {
+    "module": "extdeps.pin",
+    "source": "dag/extdeps/pin.dag",
+    "copy": "target/storage-observer-focused/extdeps.pin.dag",
+    "sha256": "b9c184a3731d5427619ca3253b722618fe0b1def28be2726690bebeea2f850b3"
+  },
+  {
+    "module": "extdeps.posix.identity",
+    "source": "dag/extdeps/posix/identity.dag",
+    "copy": "target/storage-observer-focused/extdeps.posix.identity.dag",
+    "sha256": "e2650015bd98d717e770849462bca0366170e593e2c17a7061a0d5d76d8058dd"
+  },
+  {
+    "module": "extdeps.posix.path_ownership",
+    "source": "dag/extdeps/posix/path_ownership.dag",
+    "copy": "target/storage-observer-focused/extdeps.posix.path_ownership.dag",
+    "sha256": "f6620d93b3022dc3625c4ad29ed7b6ca67dd0d6b8c24acc3a678d0a3d9ed862b"
+  },
+  {
+    "module": "extdeps.posix.sh_invocation",
+    "source": "dag/extdeps/posix/sh_invocation.dag",
+    "copy": "target/storage-observer-focused/extdeps.posix.sh_invocation.dag",
+    "sha256": "2f621217afd6366c3a8ae62f8e9a414f3f83cd677480facf91ac7b64af9876e5"
+  },
+  {
+    "module": "extdeps.posix.shell_command_language",
+    "source": "dag/extdeps/posix/shell_command_language.dag",
+    "copy": "target/storage-observer-focused/extdeps.posix.shell_command_language.dag",
+    "sha256": "6e7268a08bd58cb9d5a70fc074adbcdcb61f1beeb3cea1221953a50d19c18d5c"
+  },
+  {
+    "module": "extdeps.process.gnu_bash_exit",
+    "source": "dag/extdeps/process/gnu_bash_exit.dag",
+    "copy": "target/storage-observer-focused/extdeps.process.gnu_bash_exit.dag",
+    "sha256": "a15a59808e4c996318f62f68db463b836fc6203421fe1214d2969d499c025c42"
+  },
+  {
+    "module": "extdeps.process.posix_exit",
+    "source": "dag/extdeps/process/posix_exit.dag",
+    "copy": "target/storage-observer-focused/extdeps.process.posix_exit.dag",
+    "sha256": "57b76d62b3ca996426e6f669c55e3e82a849225c59824613458d4dc813c6d8f5"
+  },
+  {
+    "module": "extdeps.router.verizon_cr1000a",
+    "source": "dag/extdeps/router/verizon_cr1000a.dag",
+    "copy": "target/storage-observer-focused/extdeps.router.verizon_cr1000a.dag",
+    "sha256": "31676cd07b8d069ff6b857ddf4ca05e3349f391690b8ebab3f43aaa817f0c41a"
+  },
+  {
+    "module": "extdeps.runtime.abi.aapcs64",
+    "source": "dag/extdeps/runtime/abi/aapcs64.dag",
+    "copy": "target/storage-observer-focused/extdeps.runtime.abi.aapcs64.dag",
+    "sha256": "44fad81b1ecbbf31b378ef80416cf55992ea0944cc121f318ea1360844774dee"
+  },
+  {
+    "module": "extdeps.runtime.abi.sysv_amd64",
+    "source": "dag/extdeps/runtime/abi/sysv_amd64.dag",
+    "copy": "target/storage-observer-focused/extdeps.runtime.abi.sysv_amd64.dag",
+    "sha256": "dec8e88108d5098c1810ebe1bcff882af480c1c47bf3906ec1fb4572d2eab16a"
+  },
+  {
+    "module": "extdeps.runtime.architecture.x86_64_linux",
+    "source": "dag/extdeps/runtime/architecture/x86_64_linux.dag",
+    "copy": "target/storage-observer-focused/extdeps.runtime.architecture.x86_64_linux.dag",
+    "sha256": "c742e341ea507b7ea5b067b5bc2fd7bb3910e8ce12841b30da710f8b788bfcf2"
+  },
+  {
+    "module": "extdeps.runtime.syscalls.linux",
+    "source": "dag/extdeps/runtime/syscalls/linux.dag",
+    "copy": "target/storage-observer-focused/extdeps.runtime.syscalls.linux.dag",
+    "sha256": "53fd24ad1f02950ea687285043699f732973cde905108a5b946ed30648a50041"
+  },
+  {
+    "module": "extdeps.rustup",
+    "source": "dag/extdeps/rust/rustup.dag",
+    "copy": "target/storage-observer-focused/extdeps.rustup.dag",
+    "sha256": "d9232129751b35c5881af0831a30f87deabef91aaf47db22b7bc5fcc98cb01dd"
+  },
+  {
+    "module": "extdeps.shell",
+    "source": "dag/extdeps/shell.dag",
+    "copy": "target/storage-observer-focused/extdeps.shell.dag",
+    "sha256": "3bdcaca3dc02bcf50c6d1e9d415825ac27aaa6187b4cee5386e7decdc04b5696"
+  },
+  {
+    "module": "extdeps.shell.exec",
+    "source": "dag/extdeps/shell/exec.dag",
+    "copy": "target/storage-observer-focused/extdeps.shell.exec.dag",
+    "sha256": "8d23901294b092c1bb97d19db6d0b4992d1636e2442b25742ea9ecc071d20e2f"
+  },
+  {
+    "module": "extdeps.ssh",
+    "source": "dag/extdeps/ssh/keys.dag",
+    "copy": "target/storage-observer-focused/extdeps.ssh.dag",
+    "sha256": "9e247283dce00a934061eb655de01bad503f797b9a8110746e1f760748976e0c"
+  },
+  {
+    "module": "extdeps.ssh.client_options",
+    "source": "dag/extdeps/ssh/client_options.dag",
+    "copy": "target/storage-observer-focused/extdeps.ssh.client_options.dag",
+    "sha256": "e1f572f6abfe705f5278ee0e2b86ae380fd2d60895b4c561bb90e4e6eef12240"
+  },
+  {
+    "module": "extdeps.ssh.openssh_client_commands",
+    "source": "dag/extdeps/ssh/openssh_client_commands.dag",
+    "copy": "target/storage-observer-focused/extdeps.ssh.openssh_client_commands.dag",
+    "sha256": "483a409ca80bf8eab46b65dfffaf95f09512bf0d0ae494c7ad43d1c973160b9e"
+  },
+  {
+    "module": "extdeps.ssh.password_session",
+    "source": "dag/extdeps/ssh/password_session.dag",
+    "copy": "target/storage-observer-focused/extdeps.ssh.password_session.dag",
+    "sha256": "7f0681de6b506af2160521e1e87ee6c305af6b2fc29139f7ba81470e7a32027b"
+  },
+  {
+    "module": "extdeps.ssh.session",
+    "source": "dag/extdeps/ssh/session.dag",
+    "copy": "target/storage-observer-focused/extdeps.ssh.session.dag",
+    "sha256": "4d06e9c58f181b0c19ee0605cd450ab81cdaa87fdd8f1561766557646d5924d9"
+  },
+  {
+    "module": "extdeps.storage.types",
+    "source": "dag/extdeps/storage/types.dag",
+    "copy": "target/storage-observer-focused/extdeps.storage.types.dag",
+    "sha256": "bfb19271a1ed212c2d780afde332f9162a97e8e447d1953ed640d3b99b2f84f3"
+  },
+  {
+    "module": "extdeps.sudo.elevation",
+    "source": "dag/extdeps/sudo/elevation.dag",
+    "copy": "target/storage-observer-focused/extdeps.sudo.elevation.dag",
+    "sha256": "262f4a96a1de712c5493599edfd5d292ad65fb3e76cdb5cd25467b5df9c02e9d"
+  },
+  {
+    "module": "extdeps.sudo.nopasswd_execute_probe",
+    "source": "dag/extdeps/sudo/nopasswd_execute_probe.dag",
+    "copy": "target/storage-observer-focused/extdeps.sudo.nopasswd_execute_probe.dag",
+    "sha256": "3ff63fdcb4ea117272473b325f50586a9c21d3374b52bd0b7c4e5b89db03cae0"
+  },
+  {
+    "module": "extdeps.systems.nvidia",
+    "source": "dag/extdeps/systems/nvidia.dag",
+    "copy": "target/storage-observer-focused/extdeps.systems.nvidia.dag",
+    "sha256": "04a5d9e38edb5221d1620667226d43d789a18fe5666e40b1ecdd5bf08a53a41f"
+  },
+  {
+    "module": "extdeps.systems.nvidia_fleet_lifecycle",
+    "source": "dag/extdeps/systems/nvidia_fleet_lifecycle.dag",
+    "copy": "target/storage-observer-focused/extdeps.systems.nvidia_fleet_lifecycle.dag",
+    "sha256": "3cd7d368ef8577f0b7dab9dfc90d5f7cf7ee6348bdbd204c0726941bde0ace14"
+  },
+  {
+    "module": "extdeps.systems.types",
+    "source": "dag/extdeps/systems/types.dag",
+    "copy": "target/storage-observer-focused/extdeps.systems.types.dag",
+    "sha256": "8834227c77708edc8cd1163da90020998d04ef63bab3ce0011cf3ce8ca49dca2"
+  },
+  {
+    "module": "extdeps.tailscale.identity",
+    "source": "dag/extdeps/tailscale/identity.dag",
+    "copy": "target/storage-observer-focused/extdeps.tailscale.identity.dag",
+    "sha256": "4dd7dfdde01e2f59b772435f1859eda375a4c4bfa88ef9a4e9e3e32f71a47c76"
+  },
+  {
+    "module": "extdeps.toolchain.architecture_profile",
+    "source": "dag/extdeps/toolchain/architecture_profile.dag",
+    "copy": "target/storage-observer-focused/extdeps.toolchain.architecture_profile.dag",
+    "sha256": "f52f7b937d8a2090abc1622669544d8f80501f1189967ab9b7183fbd83f47ae8"
+  },
+  {
+    "module": "extdeps.toolchain.types",
+    "source": "dag/extdeps/toolchain/types.dag",
+    "copy": "target/storage-observer-focused/extdeps.toolchain.types.dag",
+    "sha256": "cedf999e801ef28b73105996d0b591dea8c14722d05f88745ef41a34fd54c81f"
+  },
+  {
+    "module": "extdeps.tools",
+    "source": "dag/extdeps/tools.dag",
+    "copy": "target/storage-observer-focused/extdeps.tools.dag",
+    "sha256": "00c1d49c96732aa80073467f01f9ed9a2a44a928d160fe44d01efc481055a785"
+  },
+  {
+    "module": "extdeps.tools.conntrack",
+    "source": "dag/extdeps/tools/conntrack.dag",
+    "copy": "target/storage-observer-focused/extdeps.tools.conntrack.dag",
+    "sha256": "843ecd900beeaa29c38a0e7c0667e08aa07b000d998600f8db29b0a81e58f59f"
+  },
+  {
+    "module": "extdeps.tools.env",
+    "source": "dag/extdeps/tools/env.dag",
+    "copy": "target/storage-observer-focused/extdeps.tools.env.dag",
+    "sha256": "5a6e868a9693e27881ca5433f463a8e0a12421f0dafb2a173fa94f230721765a"
+  },
+  {
+    "module": "extdeps.tools.gh",
+    "source": "dag/extdeps/tools/gh.dag",
+    "copy": "target/storage-observer-focused/extdeps.tools.gh.dag",
+    "sha256": "a0baadc00ee7de5c696220c78f90f13e7b28e4266f9a3aef33b1eb9d8e6cd3ba"
+  },
+  {
+    "module": "extdeps.tools.gnu_coreutils",
+    "source": "dag/extdeps/tools/gnu_coreutils.dag",
+    "copy": "target/storage-observer-focused/extdeps.tools.gnu_coreutils.dag",
+    "sha256": "890176acef0fff1ecd77341469652f29dc8dfd8d17b7ae487cc8c1ef831e9210"
+  },
+  {
+    "module": "extdeps.tools.hostname",
+    "source": "dag/extdeps/tools/hostname.dag",
+    "copy": "target/storage-observer-focused/extdeps.tools.hostname.dag",
+    "sha256": "4383b22f596337aee0d5880d2898d27c7446425513803fb8aa4bc2900320253c"
+  },
+  {
+    "module": "extdeps.tools.ls",
+    "source": "dag/extdeps/tools/ls.dag",
+    "copy": "target/storage-observer-focused/extdeps.tools.ls.dag",
+    "sha256": "f9a3cf975a07ec6b7056b05950702204d78227f288450a2643dd22d90ef9f038"
+  },
+  {
+    "module": "extdeps.tools.npm",
+    "source": "dag/extdeps/tools/npm.dag",
+    "copy": "target/storage-observer-focused/extdeps.tools.npm.dag",
+    "sha256": "ada366ba46c6a997cbfcbed30f23143cc6c01855ab556112b839428e8cf8faf4"
+  },
+  {
+    "module": "extdeps.tools.openssl",
+    "source": "dag/extdeps/tools/openssl.dag",
+    "copy": "target/storage-observer-focused/extdeps.tools.openssl.dag",
+    "sha256": "3c05fd3dedc1bac341a94b1151620a33093fae2f727a695e84b51ce76aa554de"
+  },
+  {
+    "module": "extdeps.tools.sshpass",
+    "source": "dag/extdeps/tools/sshpass.dag",
+    "copy": "target/storage-observer-focused/extdeps.tools.sshpass.dag",
+    "sha256": "c8b98277a88affbab50651993a1449a9ce227285b64a9cdf80a77c1df39d7c43"
+  },
+  {
+    "module": "extdeps.tools.stat",
+    "source": "dag/extdeps/tools/stat.dag",
+    "copy": "target/storage-observer-focused/extdeps.tools.stat.dag",
+    "sha256": "b2970d48a1ab5c0c94097f14b7ba33880b925603c335e6116f79776b6642c5e4"
+  },
+  {
+    "module": "extdeps.transceiver.sff_8636",
+    "source": "dag/extdeps/transceiver/sff_8636.dag",
+    "copy": "target/storage-observer-focused/extdeps.transceiver.sff_8636.dag",
+    "sha256": "07e0115f47e4ec6c92f29300b0215f5bede3d17774817f5f2adbd1a1e628afc2"
+  },
+  {
+    "module": "extdeps.transports.rest",
+    "source": "dag/extdeps/transports/rest.dag",
+    "copy": "target/storage-observer-focused/extdeps.transports.rest.dag",
+    "sha256": "7619e219e56d4769a615705e2f411ee7a176a2be1c691346cf6046062ecb31e1"
+  },
+  {
+    "module": "extdeps.transports.shell",
+    "source": "dag/extdeps/transports/shell.dag",
+    "copy": "target/storage-observer-focused/extdeps.transports.shell.dag",
+    "sha256": "93cab3f3bfbe424c74a28d13e52cab3efcba91efa0af9f5fb323b8163d29c5e6"
+  },
+  {
+    "module": "extdeps.units.dimensionless",
+    "source": "dag/extdeps/units/dimensionless.dag",
+    "copy": "target/storage-observer-focused/extdeps.units.dimensionless.dag",
+    "sha256": "4ce0c3cf4268976852663dc5faec7c4a8555ad232f8bebe1a6240ebe920f2f99"
+  },
+  {
+    "module": "extdeps.units.iec_80000_13",
+    "source": "dag/extdeps/units/iec_80000_13.dag",
+    "copy": "target/storage-observer-focused/extdeps.units.iec_80000_13.dag",
+    "sha256": "81b1def06b779d7df8985e96aed48d3843c1d229f913821f0e7b73d7c204d1e9"
+  },
+  {
+    "module": "extdeps.units.iso8601",
+    "source": "dag/extdeps/units/iso8601.dag",
+    "copy": "target/storage-observer-focused/extdeps.units.iso8601.dag",
+    "sha256": "3c65b8483141ebdf694baca379b0fab620f4a53d6df10d0adc7958dbb16a7c6f"
+  },
+  {
+    "module": "extdeps.units.iso_80000_3",
+    "source": "dag/extdeps/units/iso_80000_3.dag",
+    "copy": "target/storage-observer-focused/extdeps.units.iso_80000_3.dag",
+    "sha256": "9b2b5204077998805292431b096a121f0ad16b8e272064012a8d455928e23eef"
+  },
+  {
+    "module": "extdeps.uri",
+    "source": "dag/extdeps/uri.dag",
+    "copy": "target/storage-observer-focused/extdeps.uri.dag",
+    "sha256": "356f247ed092456ec3c06a6a642039bf565e26cc3165b92374cd87653b726a4b"
+  },
+  {
+    "module": "extdeps.uri_path",
+    "source": "dag/extdeps/uri_path.dag",
+    "copy": "target/storage-observer-focused/extdeps.uri_path.dag",
+    "sha256": "bdc372c881a09577849b46690cd019e825fb6dd34d03c3ac18f1f17f2425e2df"
+  },
+  {
+    "module": "extdeps.uuid",
+    "source": "dag/extdeps/uuid/uuid.dag",
+    "copy": "target/storage-observer-focused/extdeps.uuid.dag",
+    "sha256": "0ae99e52da571b657b5230f1094785e55025dd43dc083991aebd9306a9b51063"
+  },
+  {
+    "module": "extdeps.vendor",
+    "source": "dag/extdeps/vendor.dag",
+    "copy": "target/storage-observer-focused/extdeps.vendor.dag",
+    "sha256": "c2d9a3dd2f6ea4cb70c7d2f33023c369facc958d3f659ac10734a7160089ed2f"
+  },
+  {
+    "module": "extdeps.vendor.amd",
+    "source": "dag/extdeps/vendor/amd.dag",
+    "copy": "target/storage-observer-focused/extdeps.vendor.amd.dag",
+    "sha256": "40efd85193853acebb214dfa1dd75a3f3fc920c4838fb4c1adf53cf46f3e12df"
+  },
+  {
+    "module": "extdeps.vendor.nvidia",
+    "source": "dag/extdeps/vendor/nvidia.dag",
+    "copy": "target/storage-observer-focused/extdeps.vendor.nvidia.dag",
+    "sha256": "fde4dcd0b4409b1103c630b1d9ef8d7af00201236c7aabb2fa79ba018c5c062d"
+  },
+  {
+    "module": "extdeps.vendor.verizon",
+    "source": "dag/extdeps/vendor/verizon.dag",
+    "copy": "target/storage-observer-focused/extdeps.vendor.verizon.dag",
+    "sha256": "129ac3d44f08ef3ed818b93b1341cccf7b8691bc7d2632a01c47431e7396ae30"
+  },
+  {
+    "module": "extdeps.version",
+    "source": "dag/extdeps/version.dag",
+    "copy": "target/storage-observer-focused/extdeps.version.dag",
+    "sha256": "4760c88ff448447d176e49c0417e0541298573d566e56f78af9605e70aa8d90b"
+  },
+  {
+    "module": "gunbc.command_runner",
+    "source": "dag/gunbc/command_runner.dag",
+    "copy": "target/storage-observer-focused/gunbc.command_runner.dag",
+    "sha256": "d117008c0f8a4d7a8144bda0055b65b9da73faa277866358097f8fbcfd06d31d"
+  },
+  {
+    "module": "gunbc.fabric_allocation_store_directory_read",
+    "source": "dag/gunbc/fabric/fabric_allocation_store_directory_read.dag",
+    "copy": "target/storage-observer-focused/gunbc.fabric_allocation_store_directory_read.dag",
+    "sha256": "ea607a33d281a05c72cc91b8a7f57b3a1c721f4c678f9567bd6e3fff16051150"
+  },
+  {
+    "module": "gunbc.fabric_allocation_store_readback",
+    "source": "dag/gunbc/fabric/fabric_allocation_store_readback.dag",
+    "copy": "target/storage-observer-focused/gunbc.fabric_allocation_store_readback.dag",
+    "sha256": "9a3c5306fbe519a1b2b3b10bd278fb2a98c41600845d28396c06bc5775879fd1"
+  },
+  {
+    "module": "gunbc.fleet_asset_identity",
+    "source": "dag/gunbc/fleet/fleet_asset_identity.dag",
+    "copy": "target/storage-observer-focused/gunbc.fleet_asset_identity.dag",
+    "sha256": "a00b779cc9782c449a034a24746814cacb9678b69a5be4a44763cd26e6b01f2e"
+  },
+  {
+    "module": "gunbc.fleet_bootstrap_principal_session",
+    "source": "dag/gunbc/fleet/fleet_bootstrap_principal_session.dag",
+    "copy": "target/storage-observer-focused/gunbc.fleet_bootstrap_principal_session.dag",
+    "sha256": "d1e45798b9e424aebefae66cb073f50af0864fc4fb65d3d828e6b70d520aebe9"
+  },
+  {
+    "module": "gunbc.fleet_host_key_enrollment",
+    "source": "dag/gunbc/fleet/fleet_host_key_enrollment.dag",
+    "copy": "target/storage-observer-focused/gunbc.fleet_host_key_enrollment.dag",
+    "sha256": "8e490b88ecd23ce36c3c669889e6634ee70aacb6981fe330520a69e46fb49af1"
+  },
+  {
+    "module": "gunbc.fleet_intent_network",
+    "source": "dag/gunbc/fleet/fleet_intent_network.dag",
+    "copy": "target/storage-observer-focused/gunbc.fleet_intent_network.dag",
+    "sha256": "a7ab3839f3d262daf09df8cd63dfcc7ef8fb52e85a6a4db2f232030e7183bf86"
+  },
+  {
+    "module": "gunbc.fleet_known_hosts_anchor",
+    "source": "dag/gunbc/fleet/fleet_known_hosts_anchor.dag",
+    "copy": "target/storage-observer-focused/gunbc.fleet_known_hosts_anchor.dag",
+    "sha256": "e42efa1ed7ff89899fcc9ec76e1ffa597d64878c7ece923411676d273f512494"
+  },
+  {
+    "module": "gunbc.fleet_lifecycle_observation",
+    "source": "dag/gunbc/fleet/fleet_lifecycle_observation.dag",
+    "copy": "target/storage-observer-focused/gunbc.fleet_lifecycle_observation.dag",
+    "sha256": "8636d75006da322f7d032773dc1e44a4610fad3fee2a36ed2a660ff8d53d3c61"
+  },
+  {
+    "module": "gunbc.fleet_posix_accounts",
+    "source": "dag/gunbc/fleet/fleet_posix_accounts.dag",
+    "copy": "target/storage-observer-focused/gunbc.fleet_posix_accounts.dag",
+    "sha256": "7d2b7df06e95f9b0f24ed90e468414c0a2331d4cf4f1930c6b09f0bb56432d45"
+  },
+  {
+    "module": "gunbc.fleet_reach_endpoint",
+    "source": "dag/gunbc/fleet/fleet_reach_endpoint.dag",
+    "copy": "target/storage-observer-focused/gunbc.fleet_reach_endpoint.dag",
+    "sha256": "0d7262eadb662fc5c95163562a707de2dbf7649eaa5626b51956013ad3c7f6e0"
+  },
+  {
+    "module": "gunbc.fleet_secrets_config",
+    "source": "dag/gunbc/fleet/fleet_secrets_config.dag",
+    "copy": "target/storage-observer-focused/gunbc.fleet_secrets_config.dag",
+    "sha256": "07a0ac5ee8e0d52b0a4b77d7e8ba48807a934f8c5abbdf7f9c698c7fb2a42f4e"
+  },
+  {
+    "module": "gunbc.fleet_ssh_access",
+    "source": "dag/gunbc/fleet/fleet_ssh_access.dag",
+    "copy": "target/storage-observer-focused/gunbc.fleet_ssh_access.dag",
+    "sha256": "3744b56fb38175658ab6c73c5f0c40a711b292c1ccd72d646042b930b89b873c"
+  },
+  {
+    "module": "gunbc.host_cli_dependency",
+    "source": "dag/gunbc/host/host_cli_dependency.dag",
+    "copy": "target/storage-observer-focused/gunbc.host_cli_dependency.dag",
+    "sha256": "88aa08bfae0e46c055a85320fec2b73aa8e60b421b92a03d64407d3754a27c5e"
+  },
+  {
+    "module": "gunbc.output_policy",
+    "source": "dag/gunbc/output_policy.dag",
+    "copy": "target/storage-observer-focused/gunbc.output_policy.dag",
+    "sha256": "8c84d835ef0c764716e5b5b9793e391e498545bc6f4c489cb47878b718596920"
+  },
+  {
+    "module": "gunbc.remote_shell_command",
+    "source": "dag/gunbc/remote_shell_command.dag",
+    "copy": "target/storage-observer-focused/gunbc.remote_shell_command.dag",
+    "sha256": "fff7b91c77c02034f7454f9908dda590d69472b3139cfd9bf345800e696ad699"
+  },
+  {
+    "module": "gunbc.spark.dgx_procurement",
+    "source": "dag/gunbc/spark/dgx_procurement.dag",
+    "copy": "target/storage-observer-focused/gunbc.spark.dgx_procurement.dag",
+    "sha256": "de3b9b51598e83c94750a74a4cb0f795bdb58dfe4f5b3ea317e8dd966d848fef"
+  },
+  {
+    "module": "gunbc.spark.fabric_rail_desired",
+    "source": "dag/gunbc/spark/fabric_rail_desired.dag",
+    "copy": "target/storage-observer-focused/gunbc.spark.fabric_rail_desired.dag",
+    "sha256": "0ef95e81d096f9619e11ae89c92d0f8b6e92ee45ea79f47e298fe3681e97339b"
+  },
+  {
+    "module": "gunbc.spark.fabric_reach",
+    "source": "dag/gunbc/spark/fabric_reach.dag",
+    "copy": "target/storage-observer-focused/gunbc.spark.fabric_reach.dag",
+    "sha256": "3002b8724706d1ce0fb9ce6e02d3ef0e0b27800a5f2a4046836f628a81332612"
+  },
+  {
+    "module": "gunbc.spark.fabric_switch_observed",
+    "source": "dag/gunbc/spark/fabric_switch_observed.dag",
+    "copy": "target/storage-observer-focused/gunbc.spark.fabric_switch_observed.dag",
+    "sha256": "cd6ebf2702dbeae415a114cbe958486c31e572e282c64f9e979b984adc6b7e3d"
+  },
+  {
+    "module": "gunbc.typed_argv_exec",
+    "source": "dag/gunbc/typed_argv_exec.dag",
+    "copy": "target/storage-observer-focused/gunbc.typed_argv_exec.dag",
+    "sha256": "e0d4e091d1102bd97ac547e0e73fa544c6ad5c55d62a71a8903ba33026d5f5e9"
+  },
+  {
+    "module": "product.cable_leg_observation",
+    "source": "dag/gunbc/product/cable_leg_observation.dag",
+    "copy": "target/storage-observer-focused/product.cable_leg_observation.dag",
+    "sha256": "f506749755af1b64b8152d4ec3732031e49e3251f976d61f9321228f01ffe210"
+  },
+  {
+    "module": "product.cable_plant_assessment",
+    "source": "dag/gunbc/product/cable_plant_assessment.dag",
+    "copy": "target/storage-observer-focused/product.cable_plant_assessment.dag",
+    "sha256": "0cf52858f1d010b6391615516fa4d0a24f318dcd608c75ca462a36d7bacfaedd"
+  },
+  {
+    "module": "product.network_topology",
+    "source": "dag/gunbc/product/network_topology.dag",
+    "copy": "target/storage-observer-focused/product.network_topology.dag",
+    "sha256": "b1e643d5ae05dfe283a002c2c7a6e2fec897a1d9f1d8bd6881a1434ed5001264"
+  },
+  {
+    "module": "product.placement_supply",
+    "source": "dag/gunbc/product/placement_supply.dag",
+    "copy": "target/storage-observer-focused/product.placement_supply.dag",
+    "sha256": "48559ce2a18f6cfda6319dd331413c01387f7b9ba15077612a19d08c5d7545aa"
+  },
+  {
+    "module": "std.access",
+    "source": "dag/std/access.dag",
+    "copy": "target/storage-observer-focused/std.access.dag",
+    "sha256": "82b70a77ff0032f3b61427edb73fc3b839eed8f2d9eec9a12142c0170eae1ffa"
+  },
+  {
+    "module": "std.algebra",
+    "source": "dag/std/algebra.dag",
+    "copy": "target/storage-observer-focused/std.algebra.dag",
+    "sha256": "33a01d4e6bc16487014cd4a651f135973c4951d9fc5aedba436dce9dfd7e3adb"
+  },
+  {
+    "module": "std.authorization_profile",
+    "source": "dag/std/authorization_profile.dag",
+    "copy": "target/storage-observer-focused/std.authorization_profile.dag",
+    "sha256": "8eb7a8762462dce18733b6fd7897802bb5770346f751df58aad36b0689f36ed7"
+  },
+  {
+    "module": "std.bit",
+    "source": "dag/std/bit.dag",
+    "copy": "target/storage-observer-focused/std.bit.dag",
+    "sha256": "bd7780103bc8adde799202cd33f0a75c51554a51f1caab051975193b9af2150f"
+  },
+  {
+    "module": "std.bytes",
+    "source": "dag/std/bytes.dag",
+    "copy": "target/storage-observer-focused/std.bytes.dag",
+    "sha256": "85df447a3a423406e88bfd7885d1ecfb0924c6ebb39c12ffd43660d7a8abb312"
+  },
+  {
+    "module": "std.cache_identity",
+    "source": "dag/std/cache_identity.dag",
+    "copy": "target/storage-observer-focused/std.cache_identity.dag",
+    "sha256": "c45c49d869cb817d1164d91cc93497c6dee7939be3dcb3a906888cfefe40fe12"
+  },
+  {
+    "module": "std.cache_interface",
+    "source": "dag/std/cache_interface.dag",
+    "copy": "target/storage-observer-focused/std.cache_interface.dag",
+    "sha256": "cb7731b075f7dc2ec9703f48fb391c5f9b05cdabf968e6f92f66efb313e3f51e"
+  },
+  {
+    "module": "std.change",
+    "source": "dag/std/change.dag",
+    "copy": "target/storage-observer-focused/std.change.dag",
+    "sha256": "ec737b529b252e72062823cbedffe6fb2a59c4b7599aedb4272c2cde07de25ca"
+  },
+  {
+    "module": "std.checked_arithmetic",
+    "source": "dag/std/checked_arithmetic.dag",
+    "copy": "target/storage-observer-focused/std.checked_arithmetic.dag",
+    "sha256": "f7217d0f7f2151c185bbf35035039e52292ddd5f5df2665119673268eff7ea3d"
+  },
+  {
+    "module": "std.citation",
+    "source": "dag/std/citation.dag",
+    "copy": "target/storage-observer-focused/std.citation.dag",
+    "sha256": "2a8aa865da1504e2f289eeb004434611aec96c1153f6923bdf2d8ee748ffa7d8"
+  },
+  {
+    "module": "std.claim_evidence",
+    "source": "dag/std/claim_evidence.dag",
+    "copy": "target/storage-observer-focused/std.claim_evidence.dag",
+    "sha256": "5e13abee888b03b0eae5ece847b2a1e87a5bb7ca351b958d0147e041ae3edf46"
+  },
+  {
+    "module": "std.computation",
+    "source": "dag/std/computation.dag",
+    "copy": "target/storage-observer-focused/std.computation.dag",
+    "sha256": "9398241ad9a76f7eef90c26306d662c6622d8951ee238fe0ea26380ac2a2c095"
+  },
+  {
+    "module": "std.constructors",
+    "source": "dag/std/constructors.dag",
+    "copy": "target/storage-observer-focused/std.constructors.dag",
+    "sha256": "2402a8a41df34a71e6c03bc82fc9d58215e7de558d4160277f4b0acc0bbf576c"
+  },
+  {
+    "module": "std.content_hash",
+    "source": "dag/std/content_hash.dag",
+    "copy": "target/storage-observer-focused/std.content_hash.dag",
+    "sha256": "8ba1a2f1bdcd8a0fb1699a7a637d5d37c908f17072ca5ed6cef6d6d147375c85"
+  },
+  {
+    "module": "std.decl_ref",
+    "source": "dag/std/decl_ref.dag",
+    "copy": "target/storage-observer-focused/std.decl_ref.dag",
+    "sha256": "26082e2d3b20e94c666088be09a38af7004dd0a3585a23d001819eae838c097c"
+  },
+  {
+    "module": "std.disposition",
+    "source": "dag/std/disposition.dag",
+    "copy": "target/storage-observer-focused/std.disposition.dag",
+    "sha256": "40cd746f00554945e53e85d17c3d0e2728652ca991927f95db731cfc2eaa5902"
+  },
+  {
+    "module": "std.dissolution",
+    "source": "dag/std/dissolution.dag",
+    "copy": "target/storage-observer-focused/std.dissolution.dag",
+    "sha256": "16bac1ef13d250b8e8e5b119fb50b8b9bdd8b85ca1b4b255a91b29c6ecba3fa4"
+  },
+  {
+    "module": "std.durable_compare_and_set",
+    "source": "dag/std/durable_compare_and_set.dag",
+    "copy": "target/storage-observer-focused/std.durable_compare_and_set.dag",
+    "sha256": "2afbc04750db9b6b28a71990a70384e7ece8e395d655e392ed0aca0dcbdce33c"
+  },
+  {
+    "module": "std.effect_grant",
+    "source": "dag/std/effect_grant.dag",
+    "copy": "target/storage-observer-focused/std.effect_grant.dag",
+    "sha256": "c112ab5a6196d3a4183b2571e80699b1cecccfe48bc04f99770e95b0870e5617"
+  },
+  {
+    "module": "std.effects",
+    "source": "dag/std/effects.dag",
+    "copy": "target/storage-observer-focused/std.effects.dag",
+    "sha256": "62951c43ccd8a52e0d7b01e45b233957d167df645e54b9d8ebcd315e959a7e22"
+  },
+  {
+    "module": "std.encoding",
+    "source": "dag/std/encoding.dag",
+    "copy": "target/storage-observer-focused/std.encoding.dag",
+    "sha256": "b958d1189112f2fce616c0e640b5b8cbd09735658b88af9d207cd9919fc4ddc0"
+  },
+  {
+    "module": "std.error_primitives",
+    "source": "dag/std/error_primitives.dag",
+    "copy": "target/storage-observer-focused/std.error_primitives.dag",
+    "sha256": "9dafc12f20fa0592a0cc74159a8ec11462308e577d28bb80a74d3166a670c69d"
+  },
+  {
+    "module": "std.execution_mode",
+    "source": "dag/std/execution_mode.dag",
+    "copy": "target/storage-observer-focused/std.execution_mode.dag",
+    "sha256": "c0f66cc1914de3bbf40b49dd9a5bb533bf1f3ec96b854a2eff35b53d95f35ddb"
+  },
+  {
+    "module": "std.fermi",
+    "source": "dag/std/fermi.dag",
+    "copy": "target/storage-observer-focused/std.fermi.dag",
+    "sha256": "e3e1762717457e08f185b8ee5328893806e3812f9c14976f1b5f19da885b329f"
+  },
+  {
+    "module": "std.fidelity",
+    "source": "dag/std/fidelity.dag",
+    "copy": "target/storage-observer-focused/std.fidelity.dag",
+    "sha256": "7f15f69ef1e14b04ebc93b32ea77cf2c5b99b2cee99621389cd3555995d0ee37"
+  },
+  {
+    "module": "std.goal_assessment",
+    "source": "dag/std/goal_assessment.dag",
+    "copy": "target/storage-observer-focused/std.goal_assessment.dag",
+    "sha256": "76dcc64334098456ff026ad3979a6e606746d46180d11c5e7229067e3ce3b256"
+  },
+  {
+    "module": "std.induction",
+    "source": "dag/std/induction.dag",
+    "copy": "target/storage-observer-focused/std.induction.dag",
+    "sha256": "452e0389b6fddea7b2bd4af3c8d21469afd61cb95b31661e7b88d3d9809b3bbe"
+  },
+  {
+    "module": "std.integer",
+    "source": "dag/std/integer.dag",
+    "copy": "target/storage-observer-focused/std.integer.dag",
+    "sha256": "da2e701838e23ce32db6c1ceb1a509370a743e38bac31d1ea4166daaebae4861"
+  },
+  {
+    "module": "std.interval",
+    "source": "dag/std/interval.dag",
+    "copy": "target/storage-observer-focused/std.interval.dag",
+    "sha256": "27bf64e0b74bb1a10176d5d3bb88b6d45e80a53777027a714b3a52bb27a70c24"
+  },
+  {
+    "module": "std.keyed_roster",
+    "source": "dag/std/keyed_roster.dag",
+    "copy": "target/storage-observer-focused/std.keyed_roster.dag",
+    "sha256": "41f346765f15aed3ecf28ff990ebb111864d524ab9bf95e03131638717abe584"
+  },
+  {
+    "module": "std.keyed_row",
+    "source": "dag/std/keyed_row.dag",
+    "copy": "target/storage-observer-focused/std.keyed_row.dag",
+    "sha256": "e5bce67aea16eabf826cf18ccd4a542142c42bf6950da0b1b977edaa02fba1dc"
+  },
+  {
+    "module": "std.layout",
+    "source": "dag/std/layout.dag",
+    "copy": "target/storage-observer-focused/std.layout.dag",
+    "sha256": "e7b769e93c44d34d70d4c821588f7fcda4108c4403a2db24cc5abbd9e0080043"
+  },
+  {
+    "module": "std.logic",
+    "source": "dag/std/logic.dag",
+    "copy": "target/storage-observer-focused/std.logic.dag",
+    "sha256": "f508ba9750df53d5d3021119a1ec7870b9f10671a1882d1cf9224c7319fd0689"
+  },
+  {
+    "module": "std.machine_constraints",
+    "source": "dag/std/machine_constraints.dag",
+    "copy": "target/storage-observer-focused/std.machine_constraints.dag",
+    "sha256": "dcf59511c69d268cedf9fd403741253850bd741badd20b5ea6bd0c5b4f9db78b"
+  },
+  {
+    "module": "std.machine_shape",
+    "source": "dag/std/machine_shape.dag",
+    "copy": "target/storage-observer-focused/std.machine_shape.dag",
+    "sha256": "a3b1b78649a86dcbaea370a34aa0682befc8856c440bd72611faf1893bc2b5bc"
+  },
+  {
+    "module": "std.machine_word",
+    "source": "dag/std/machine_word.dag",
+    "copy": "target/storage-observer-focused/std.machine_word.dag",
+    "sha256": "352bad38972aaa048d2c24eafc92779370423b2afc259fc5fc986f44fd1c1bf8"
+  },
+  {
+    "module": "std.magnitude",
+    "source": "dag/std/magnitude.dag",
+    "copy": "target/storage-observer-focused/std.magnitude.dag",
+    "sha256": "76bf8826e9986a021a6baa5abd18dd9958fda4d8178ccbe8112d1551be273b9b"
+  },
+  {
+    "module": "std.materialization_ladder",
+    "source": "dag/std/materialization_ladder.dag",
+    "copy": "target/storage-observer-focused/std.materialization_ladder.dag",
+    "sha256": "03f0b84b9344c1d2b459d4e2c3c495282282b634dc6c54c87aaf48e0911c26bf"
+  },
+  {
+    "module": "std.measure",
+    "source": "dag/std/measure.dag",
+    "copy": "target/storage-observer-focused/std.measure.dag",
+    "sha256": "7c9f67965114ed1b12cf22d885a7b7d555becde93be32d866892ca09e96d998b"
+  },
+  {
+    "module": "std.nat",
+    "source": "dag/std/nat.dag",
+    "copy": "target/storage-observer-focused/std.nat.dag",
+    "sha256": "70f854bda16ffc0e5ae6e2b46c155cd8fc05f894133a8c18155924752aa613c0"
+  },
+  {
+    "module": "std.observation",
+    "source": "dag/std/observation.dag",
+    "copy": "target/storage-observer-focused/std.observation.dag",
+    "sha256": "8869633bcf4df4d97b16f2d5aef0b6ddae68a1937fe4b54f5042898b80004a70"
+  },
+  {
+    "module": "std.occurrence_identity",
+    "source": "dag/std/occurrence_identity.dag",
+    "copy": "target/storage-observer-focused/std.occurrence_identity.dag",
+    "sha256": "2c8934d5c379a18f2d8fae4372fd7be5025b6d3bf46da9d9f105c5e12ed3116e"
+  },
+  {
+    "module": "std.os.invocation",
+    "source": "dag/std/os/invocation.dag",
+    "copy": "target/storage-observer-focused/std.os.invocation.dag",
+    "sha256": "727b46a158a9ff2e39a32bbc868e4e7efd42cc8bcc918dbacf85a36b28acb58c"
+  },
+  {
+    "module": "std.pareto",
+    "source": "dag/std/pareto.dag",
+    "copy": "target/storage-observer-focused/std.pareto.dag",
+    "sha256": "df8cb6b3943d9fea248d323bb14af15bd746c4fda63363d3bb4904d3f52354a0"
+  },
+  {
+    "module": "std.primitives",
+    "source": "dag/std/primitives.dag",
+    "copy": "target/storage-observer-focused/std.primitives.dag",
+    "sha256": "b34cfff5738abdcab80b584efd8c6b09054b1bdb84ccafca2afc257b8f2b34f1"
+  },
+  {
+    "module": "std.process",
+    "source": "dag/std/process.dag",
+    "copy": "target/storage-observer-focused/std.process.dag",
+    "sha256": "718c0e29480409fddb47bc3ad7d18fc588288aab9188dc5f82efafae105259b3"
+  },
+  {
+    "module": "std.process_termination",
+    "source": "dag/std/process_termination.dag",
+    "copy": "target/storage-observer-focused/std.process_termination.dag",
+    "sha256": "ec4a657d62b7f208e2267008cef187313cee090cffca5eb7823929b9520b1f3c"
+  },
+  {
+    "module": "std.realization",
+    "source": "dag/std/realization.dag",
+    "copy": "target/storage-observer-focused/std.realization.dag",
+    "sha256": "77211ca0e368d8abdebf0a823f10a5ff307ee97404c7b4dc98a0625a9bafb3b5"
+  },
+  {
+    "module": "std.realization_measurement",
+    "source": "dag/std/realization_measurement.dag",
+    "copy": "target/storage-observer-focused/std.realization_measurement.dag",
+    "sha256": "3c0b776a5345195653be424bc0630e69c40b71695a083105bfffb91b507fcda0"
+  },
+  {
+    "module": "std.realization_schedule",
+    "source": "dag/std/realization_schedule.dag",
+    "copy": "target/storage-observer-focused/std.realization_schedule.dag",
+    "sha256": "60a2d0b8354ad341b04baf3a493302c98afaa82f11907e7018765cc8af38c82f"
+  },
+  {
+    "module": "std.realization_width",
+    "source": "dag/std/realization_width.dag",
+    "copy": "target/storage-observer-focused/std.realization_width.dag",
+    "sha256": "3a6628f1b86e3563c5ee8f3930264e29258ea09c1de51d9c0157e6c2825ae13c"
+  },
+  {
+    "module": "std.render_repeat_string_bootstrap",
+    "source": "dag/std/render_repeat_string_bootstrap.dag",
+    "copy": "target/storage-observer-focused/std.render_repeat_string_bootstrap.dag",
+    "sha256": "006044620a11c6c78ac51173d3a24c06f0492138df798ad46235938d19966e8a"
+  },
+  {
+    "module": "std.roster_frontier",
+    "source": "dag/std/roster_frontier.dag",
+    "copy": "target/storage-observer-focused/std.roster_frontier.dag",
+    "sha256": "1254294a5d4be2a8312c2ab563786dde1f6b022570fba8a78041b292774e9998"
+  },
+  {
+    "module": "std.scoped_authorization",
+    "source": "dag/std/scoped_authorization.dag",
+    "copy": "target/storage-observer-focused/std.scoped_authorization.dag",
+    "sha256": "41c22f76f84f7f95fbfd9d6597ff86dd30092145f3e46d6ac79055d92fcafac9"
+  },
+  {
+    "module": "std.serialization",
+    "source": "dag/std/serialization.dag",
+    "copy": "target/storage-observer-focused/std.serialization.dag",
+    "sha256": "c3093200fcd2d53ddb95cb5cae63f06cb00bc72191240d41de1eba1f3aa0e6c2"
+  },
+  {
+    "module": "std.source_annotation",
+    "source": "dag/std/source_annotation.dag",
+    "copy": "target/storage-observer-focused/std.source_annotation.dag",
+    "sha256": "096f7cd4233564cb72722cf9694b5d7154a7d087d57e4e30fe070bdcff5b0f62"
+  },
+  {
+    "module": "std.string_type",
+    "source": "dag/std/string_type.dag",
+    "copy": "target/storage-observer-focused/std.string_type.dag",
+    "sha256": "54300558500e6c0d8988d1dc5dbe679c3b5fce52db229b1282fe5f163ad1cd18"
+  },
+  {
+    "module": "std.symbols",
+    "source": "dag/std/symbols.dag",
+    "copy": "target/storage-observer-focused/std.symbols.dag",
+    "sha256": "b72965de39285e3f2f7034a4f73486d7408811f8acd3116ff15efded23e4dc91"
+  },
+  {
+    "module": "std.temporal_effect",
+    "source": "dag/std/temporal_effect.dag",
+    "copy": "target/storage-observer-focused/std.temporal_effect.dag",
+    "sha256": "555f44690043e0b41b558f562cb68cd4f51c5b40f18c19b8fc6f0b4c5ae4106d"
+  },
+  {
+    "module": "std.termination",
+    "source": "dag/std/termination.dag",
+    "copy": "target/storage-observer-focused/std.termination.dag",
+    "sha256": "ae22e516e67037d9a4f916ea70f98e1d625e55a8c510ea70c21e3a9900104d54"
+  },
+  {
+    "module": "std.types",
+    "source": "dag/std/types.dag",
+    "copy": "target/storage-observer-focused/std.types.dag",
+    "sha256": "2abfc53c499aa0063202944fc7321c02d194ab26006ea35cf32433d1b4187c4e"
+  },
+  {
+    "module": "std.unicode.types",
+    "source": "dag/std/unicode/types.dag",
+    "copy": "target/storage-observer-focused/std.unicode.types.dag",
+    "sha256": "d9729ed6cd4156e21ec64eb7ba0a6bc5cc52bc1b525bb370a131d25c85e2dede"
+  },
+  {
+    "module": "std.upsert_decision",
+    "source": "dag/std/upsert_decision.dag",
+    "copy": "target/storage-observer-focused/std.upsert_decision.dag",
+    "sha256": "1c1f47c52f77b0183238feddfd253a75497c2a0f73fdb173bdb4bf8866bb21ff"
+  },
+  {
+    "module": "std.witness_admission",
+    "source": "dag/std/witness_admission.dag",
+    "copy": "target/storage-observer-focused/std.witness_admission.dag",
+    "sha256": "ef3bf6354631729f2da05b633a16934f6b6c3f281b935b12cf9b20e845fac967"
+  },
+  {
+    "module": "test.claim.fabric_allocation_store_admin_observe_witness_test",
+    "source": "dag/test/claim/fabric_allocation_store_admin_observe_witness_test.dag",
+    "copy": "target/storage-observer-focused/test.claim.fabric_allocation_store_admin_observe_witness_test.dag",
+    "sha256": "f3fe4497a95f392fa033591e5cacd600701229bf2edf188a0091a1df123488b1"
+  },
+  {
+    "module": "v2.std.algebra",
+    "source": "src/v2/std/algebra.dag",
+    "copy": "target/storage-observer-focused/v2.std.algebra.dag",
+    "sha256": "5be90c2411ad93003bb3b020766ddbb587684cda3f7deb3b72d8bcd51cf02387"
+  },
+  {
+    "module": "v2.std.anonymous_binder",
+    "source": "src/v2/std/anonymous_binder.dag",
+    "copy": "target/storage-observer-focused/v2.std.anonymous_binder.dag",
+    "sha256": "3990e713a899b905f9f41093ec0520f5edb2adfebb819a3c52cf32b1c2075df9"
+  },
+  {
+    "module": "v2.std.anti_unification",
+    "source": "src/v2/std/anti_unification.dag",
+    "copy": "target/storage-observer-focused/v2.std.anti_unification.dag",
+    "sha256": "7b0fb7082df5e1d38d62500f1b9fdf86eb5353eb2fe09bcb5f9f05ecaedc4689"
+  },
+  {
+    "module": "v2.std.arrow_signature",
+    "source": "src/v2/std/arrow_signature.dag",
+    "copy": "target/storage-observer-focused/v2.std.arrow_signature.dag",
+    "sha256": "13dce4554854a945a2776e77f67616ffd11c033c47e9503e725d79a8072b6af0"
+  },
+  {
+    "module": "v2.std.cardinality",
+    "source": "src/v2/std/cardinality.dag",
+    "copy": "target/storage-observer-focused/v2.std.cardinality.dag",
+    "sha256": "77b4aff2f58aaba2e222d45d60d49c2b5fdcaf0517571abee34daf2ae3117e7e"
+  },
+  {
+    "module": "v2.std.collection",
+    "source": "src/v2/std/collection.dag",
+    "copy": "target/storage-observer-focused/v2.std.collection.dag",
+    "sha256": "f160775b65f55c663418ec482d53cafc612f95aed905fe449f35f433f865abb4"
+  },
+  {
+    "module": "v2.std.compilers.cli_surface",
+    "source": "src/v2/std/compilers/cli_surface.dag",
+    "copy": "target/storage-observer-focused/v2.std.compilers.cli_surface.dag",
+    "sha256": "bf7dfe36956eef72e1803401b7f9e839a6fb0404954ab375d8a087590f271cf3"
+  },
+  {
+    "module": "v2.std.compilers.lexing",
+    "source": "src/v2/std/compilers/lexing.dag",
+    "copy": "target/storage-observer-focused/v2.std.compilers.lexing.dag",
+    "sha256": "901598991078a8e035d017d988c1240f614b9c4e22410c47543979aff6daf04e"
+  },
+  {
+    "module": "v2.std.compilers.target_model",
+    "source": "src/v2/std/compilers/target_model.dag",
+    "copy": "target/storage-observer-focused/v2.std.compilers.target_model.dag",
+    "sha256": "a95f3a04280580f2a72ddf738943a8041dfbaca54884e7cbf79f424a082d6218"
+  },
+  {
+    "module": "v2.std.constraint_satisfaction_predicate",
+    "source": "src/v2/std/constraint_satisfaction_predicate.dag",
+    "copy": "target/storage-observer-focused/v2.std.constraint_satisfaction_predicate.dag",
+    "sha256": "360768b2ed38cdd33c5b80e1cc37d6dac54ae0ec2d2765f5f8cd9efef3627b2d"
+  },
+  {
+    "module": "v2.std.diagnostic",
+    "source": "src/v2/std/diagnostic.dag",
+    "copy": "target/storage-observer-focused/v2.std.diagnostic.dag",
+    "sha256": "42e23757590aa65c08c8ebcdf18267c32c2eddfb3ca1921b74c930d32417a8cb"
+  },
+  {
+    "module": "v2.std.exact_structural_equality_zip_fold_predicate",
+    "source": "src/v2/std/exact_structural_equality_zip_fold_predicate.dag",
+    "copy": "target/storage-observer-focused/v2.std.exact_structural_equality_zip_fold_predicate.dag",
+    "sha256": "d574b778c094b0d9fb1345c9555fe4034e10ad81dce1a5f2bade5f2917c741cf"
+  },
+  {
+    "module": "v2.std.find_witness",
+    "source": "src/v2/std/find_witness.dag",
+    "copy": "target/storage-observer-focused/v2.std.find_witness.dag",
+    "sha256": "7787623f8d31015e4036adcc034eb0a8dc68ae142eff70d048a6ad5c64e3b149"
+  },
+  {
+    "module": "v2.std.fold_assembly",
+    "source": "src/v2/std/fold_assembly.dag",
+    "copy": "target/storage-observer-focused/v2.std.fold_assembly.dag",
+    "sha256": "d38c67aa005a8ff4e8f81c89e5808b6911cc00ed8ee5a04152ca3d72ccf3cacf"
+  },
+  {
+    "module": "v2.std.host_transport",
+    "source": "src/v2/std/host_transport.dag",
+    "copy": "target/storage-observer-focused/v2.std.host_transport.dag",
+    "sha256": "0908d1bc00ad9a556854033c5e290cfe8a8d449c7e98263c832b55c39197b52a"
+  },
+  {
+    "module": "v2.std.integer",
+    "source": "src/v2/std/integer.dag",
+    "copy": "target/storage-observer-focused/v2.std.integer.dag",
+    "sha256": "5a21823025d21ea197ed1f3089d1d0e52210ee93a050523bd565f1d1fa2a5dbb"
+  },
+  {
+    "module": "v2.std.integer_value_set",
+    "source": "src/v2/std/integer_value_set.dag",
+    "copy": "target/storage-observer-focused/v2.std.integer_value_set.dag",
+    "sha256": "8eaad2efc01ba052691f5cea5baf6863b6d11e196853ab03cbecd5494e634e26"
+  },
+  {
+    "module": "v2.std.list_introduction",
+    "source": "src/v2/std/list_introduction.dag",
+    "copy": "target/storage-observer-focused/v2.std.list_introduction.dag",
+    "sha256": "82eb489e302a7d0b92d0f088a3d96e7c08b6c0ddc544e537baaf59b04b517fe4"
+  },
+  {
+    "module": "v2.std.logic",
+    "source": "src/v2/std/logic.dag",
+    "copy": "target/storage-observer-focused/v2.std.logic.dag",
+    "sha256": "367d6fb4ed51c8bf83e32faad414c5fed094c16483cb115b2868d89016df53dd"
+  },
+  {
+    "module": "v2.std.machine",
+    "source": "src/v2/std/machine.dag",
+    "copy": "target/storage-observer-focused/v2.std.machine.dag",
+    "sha256": "294512f1f4d45c55d06fee6dc1911e3bd51ec1d1c4dcb1f5e6afc657ab478fad"
+  },
+  {
+    "module": "v2.std.model_core",
+    "source": "src/v2/std/model_core.dag",
+    "copy": "target/storage-observer-focused/v2.std.model_core.dag",
+    "sha256": "d71cece1bcb3ee10faaa1f3376b32521ef5947df0807810b78600027ea5f54e1"
+  },
+  {
+    "module": "v2.std.nat",
+    "source": "src/v2/std/nat.dag",
+    "copy": "target/storage-observer-focused/v2.std.nat.dag",
+    "sha256": "143bdb9e0ba746ffb3342b93b1131175a1fd4b5919467a85d422025a3111ebd5"
+  },
+  {
+    "module": "v2.std.node",
+    "source": "src/v2/std/node.dag",
+    "copy": "target/storage-observer-focused/v2.std.node.dag",
+    "sha256": "8c3ba48f6953f285ca3ed112bb292c48b97982504388d0d6093e3d137c384e60"
+  },
+  {
+    "module": "v2.std.node_query",
+    "source": "src/v2/std/node_query.dag",
+    "copy": "target/storage-observer-focused/v2.std.node_query.dag",
+    "sha256": "cb3a9c3436e59eb25268a90d41a1f94c9ecc5e102c2d69ac1a97320014edf183"
+  },
+  {
+    "module": "v2.std.node_shape",
+    "source": "src/v2/std/node_shape.dag",
+    "copy": "target/storage-observer-focused/v2.std.node_shape.dag",
+    "sha256": "a1bfb36024f7c0cba48489c0b1ca3c285ebb4eb304a7bec38093b20370937c38"
+  },
+  {
+    "module": "v2.std.operation_argv",
+    "source": "src/v2/std/operation_argv.dag",
+    "copy": "target/storage-observer-focused/v2.std.operation_argv.dag",
+    "sha256": "3aebeb4b28f225578592bb4ccaaebeb15c7d951ee9beeb76c08fd9c69990437d"
+  },
+  {
+    "module": "v2.std.optional",
+    "source": "src/v2/std/optional.dag",
+    "copy": "target/storage-observer-focused/v2.std.optional.dag",
+    "sha256": "6a686cbc761854f5bbbd83c07e21ff87b8154fe4f466be8b4d46f2fd85d3347b"
+  },
+  {
+    "module": "v2.std.orchestration",
+    "source": "src/v2/std/orchestration.dag",
+    "copy": "target/storage-observer-focused/v2.std.orchestration.dag",
+    "sha256": "d03035c4421c3dcb9b2cd836ea8f1575fbae9dbccb0beba768df257a898d0449"
+  },
+  {
+    "module": "v2.std.passing_candidate_fold",
+    "source": "src/v2/std/passing_candidate_fold.dag",
+    "copy": "target/storage-observer-focused/v2.std.passing_candidate_fold.dag",
+    "sha256": "3a9ace8eadb4cf10584e9839dbf529cac090847e57e6a22ada30e422992d6336"
+  },
+  {
+    "module": "v2.std.project_to_core_predicate",
+    "source": "src/v2/std/project_to_core_predicate.dag",
+    "copy": "target/storage-observer-focused/v2.std.project_to_core_predicate.dag",
+    "sha256": "a444055743bfd137c4e4b69a316c2f6210aeb853667221c6f5d2ace51b8fd394"
+  },
+  {
+    "module": "v2.std.qualified_name",
+    "source": "src/v2/std/qualified_name.dag",
+    "copy": "target/storage-observer-focused/v2.std.qualified_name.dag",
+    "sha256": "30e8ff017e3fd2960b29f1b8e81986fde54caedb5b95b1d0044581ea4b4919c5"
+  },
+  {
+    "module": "v2.std.refinement_widening_predicate",
+    "source": "src/v2/std/refinement_widening_predicate.dag",
+    "copy": "target/storage-observer-focused/v2.std.refinement_widening_predicate.dag",
+    "sha256": "6a53373234541898a66f8093b231aaf6a551abdb8e425f5e160c6ebf48102c79"
+  },
+  {
+    "module": "v2.std.runtime",
+    "source": "src/v2/std/runtime.dag",
+    "copy": "target/storage-observer-focused/v2.std.runtime.dag",
+    "sha256": "3da9b7391a0a789aba535d0792b1c9aa7c292d1afdaa733bb8ea8e17c4b7559d"
+  },
+  {
+    "module": "v2.std.text",
+    "source": "src/v2/std/text.dag",
+    "copy": "target/storage-observer-focused/v2.std.text.dag",
+    "sha256": "35fcf688ef21518acc1fbc932f3043e58fc1c954a2da38d29be6fdd9945b88bd"
+  },
+  {
+    "module": "v2.std.type_binder",
+    "source": "src/v2/std/type_binder.dag",
+    "copy": "target/storage-observer-focused/v2.std.type_binder.dag",
+    "sha256": "c874e8d0e60e469c1d54599caaa9641d84c61c8c0a6e616dfdedb66c7373b745"
+  },
+  {
+    "module": "v2.std.witness",
+    "source": "src/v2/std/witness.dag",
+    "copy": "target/storage-observer-focused/v2.std.witness.dag",
+    "sha256": "d01351415ee75b59f060b1916b150e9263f0c401c0872851ee578b7c8f868377"
+  }
+]

@@ -1,0 +1,13 @@
+# fleet-converge plan
+subject_host:srv1
+subject_member_set:0ae5cc743aae10a9
+plan_generation:18
+lease_key:fleet-converge-plan:srv1
+observed_baseline:
+scope:fabric-allocation-store-only
+host:srv1
+allocation-namespace:allocation-store:present-expected:path=/var/lib/gunbc/fabric:uid=0:gid=0:mode=700
+allocation-store:allocation-store:present-expected:path=/var/lib/gunbc/fabric/allocation:uid=0:gid=0:mode=700
+# scope=scope:fabric-allocation-store-only
+# allocation-store-refusals=0
+# apply-terminal: FullyApplied

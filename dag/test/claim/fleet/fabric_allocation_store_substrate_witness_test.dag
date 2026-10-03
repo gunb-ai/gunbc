@@ -28,7 +28,7 @@ import gunbc.fabric_allocation_store_substrate {
 import gunbc.fabric_cell_effect { CellSubstrateRootOwned, CellAttemptWriterOwned }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import gunbc.fleet_converge_plan {
-  fleet_converge_allocation_store_plan_artifact,
+  fleet_converge_allocation_store_plan_artifact, fleet_converge_bound_plan_artifact, fleet_converge_plan_bundle_digest_hex,
   FabricAllocationStoreOnly,
   fleet_converge_scope_matches,
   fleet_converge_scope_wire,
@@ -42,6 +42,27 @@ import gunbc.fleet_converge_plan {
   ApplyMemberSetMismatch,
   ApplyAllocationStorePrestateMismatch,
   ApplyAwaitingCapability,
+}
+
+import gunbc.actions_run_binding { ActionsRunBinding }
+import gunbc.fleet_converge_receipt { fleet_converge_plan_receipt_from_artifact, fleet_converge_plan_receipt_json, fleet_converge_plan_receipt_decode, FleetConvergePlanReceiptDecoded, FleetConvergePlanReceiptUnreadable }
+import extdeps.languages.json.emit { serialize_json }
+
+fn bound_store_receipt_round_trips(artifact: FleetConvergePlanArtifact) -> Bool {
+  match fleet_converge_plan_bundle_digest_hex(plan_body: artifact.plan_body, apply_shell: artifact.apply_shell) {
+    Absent => false
+    Present { value: digest } => {
+      let run = ActionsRunBinding { repository: "gunb-ai/gunbc", workflow_ref: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main", run_id: "1001", run_revision: "0123456789abcdef0123456789abcdef01234567" }
+      let receipt = fleet_converge_plan_receipt_from_artifact(run: run, observed_host: operator_host_srv3 as String, artifact: artifact, content_hash: digest as String)
+      match fleet_converge_plan_receipt_decode(raw: serialize_json(v: fleet_converge_plan_receipt_json(r: receipt))) {
+        FleetConvergePlanReceiptDecoded { receipt: back } => back == receipt
+          && back.run == run && back.plan_artifact_hash == digest as String
+          && back.planned_generation == artifact.prior_generation + 1
+          && back.lease_generation == artifact.plan_lease.epoch.generation
+        FleetConvergePlanReceiptUnreadable { reason: _ } => false
+      }
+    }
+  }
 }
 
 fn allocation_store_absent_fixture() -> Optional<AllocationStoreSubstratePrestate> {
@@ -280,5 +301,44 @@ fn allocation_store_target_absent_fixture() -> Optional<AllocationStoreDirectory
     FilesystemEntryListed { directory: _, name: _ } => Absent
     FilesystemEntryPresenceIndeterminate { cause: _ } => Absent
     FilesystemEntrySubjectRefused { directory: _, name: _, cause: _ } => Absent
+  }
+}
+
+// Exercise the constructor used by the shared wet receipt path, not only the legacy helper.
+test fn bound_allocation_store_absent_plan_retains_both_privileged_ensures() -> Bool {
+  match allocation_store_absent_fixture() {
+    Absent => false
+    Present { value: absent } => match fleet_converge_bound_plan_artifact(
+      request: FabricAllocationStoreConverge { host: operator_host_srv3, observed_allocation_store: absent },
+      prior_generation: 16,
+    ) {
+      Absent => false
+      Present { value: artifact } => bound_store_receipt_round_trips(artifact: artifact) && artifact.prior_generation == 16
+        && artifact.plan_body.contains("ensure-directory:path=/var/lib/gunbc/fabric\n")
+        && artifact.plan_body.contains("ensure-directory:path=/var/lib/gunbc/fabric/allocation\n")
+        && artifact.apply_shell.contains("'-d' '-m' '0700' '-o' 'root' '-g' 'root' '/var/lib/gunbc/fabric'")
+        && artifact.apply_shell.contains("'-d' '-m' '0700' '-o' 'root' '-g' 'root' '/var/lib/gunbc/fabric/allocation'")
+    }
+  }
+}
+
+test fn bound_allocation_store_converged_plan_is_an_observed_noop() -> Bool {
+  let spec = fabric_allocation_store_substrate_spec()
+  let owner = PosixOwnerSpec { user: PosixUserId { value: 0 }, group: PosixGroupId { value: 0 } }
+  let observed = AllocationStoreNamespacePresent {
+    namespace: allocation_store_directory_present(path: spec.namespace_path, owner: owner, mode: "700" as NonEmptyStr, desired_mode: "700" as NonEmptyStr),
+    store: allocation_store_directory_present(path: spec.path, owner: owner, mode: "700" as NonEmptyStr, desired_mode: "700" as NonEmptyStr),
+  }
+  match fleet_converge_bound_plan_artifact(
+    request: FabricAllocationStoreConverge { host: operator_host_srv3, observed_allocation_store: observed },
+    prior_generation: 17,
+  ) {
+    Absent => false
+    Present { value: artifact } => bound_store_receipt_round_trips(artifact: artifact) && artifact.prior_generation == 17
+      && artifact.plan_body.contains("present-expected")
+      && artifact.plan_body.contains("plan_generation:18")
+      && artifact.apply_shell.contains("# apply-terminal: FullyApplied")
+      && !artifact.apply_shell.contains("install")
+      && !artifact.plan_body.contains("ensure-directory:")
   }
 }
