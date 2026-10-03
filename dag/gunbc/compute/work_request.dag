@@ -1,8 +1,9 @@
 module gunbc.compute.work_request
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
+import std.algebra { trim }
 import std.measure { Kibibyte, kibibyte_count }
-import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural }
+import std.content_hash { Fnv1a64Structural }
 import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
 import extdeps.languages.json.emit {
   JsonValue, json_object, json_kv, json_string, json_int, json_array, serialize_json,
@@ -38,19 +39,47 @@ fn cargo_profile_wire(p: CargoProfile) -> String {
   }
 }
 
+// THE BINARIES A COMPUTE BUILD MAY PRODUCE ARE A CLOSED SET. Each is a declared output of the build's
+// record with its own output id (std.materialization_provider compute_work_binary_output), so which
+// part is which binary is a variant, never a name recovered from a string; and a bin name that is not
+// one of these has no constructor, so it cannot reach a command line or a key.
+type GunbcBinary = GunbcDriver | ClaimBatchRunner
+
+fn gunbc_binary_name(b: GunbcBinary) -> NonEmptyStr {
+  match b {
+    GunbcDriver => "gunbc" as NonEmptyStr
+    ClaimBatchRunner => "claim_batch" as NonEmptyStr
+  }
+}
+
+// Where cargo writes one binary under the target root for one profile.
+fn work_binary_declared_path(profile: CargoProfile, b: GunbcBinary) -> String {
+  join([cargo_profile_wire(p: profile), "/", gunbc_binary_name(b: b) as String], "")
+}
+
 // The three operations a worker may ask for. Each declares its outputs; a run whose declared output
 // is absent is WorkOutputMismatch, not success (compute-artifact-return-and-materialization's red).
 type WorkOperation
-  = BuildGunbcBinaries { profile: CargoProfile, bins: List<NonEmptyStr> }
+  = BuildGunbcBinaries { profile: CargoProfile, bins: List<GunbcBinary> }
   | CompileEntry { entry: FilePath }
-  | RunClaims { entry: FilePath, functions: NonEmptyStr, hermetic: Bool }
+  | RunClaims { entry: FilePath, functions: NonEmptyStr, hermetic: Bool, window: ClaimDiffWindow? }
 
 fn work_operation_kind(op: WorkOperation) -> String {
   match op {
     BuildGunbcBinaries { profile: _, bins: _ } => "build"
     CompileEntry { entry: _ } => "compile"
-    RunClaims { entry: _, functions: _, hermetic: _ } => "claims"
+    RunClaims { entry: _, functions: _, hermetic: _, window: _ } => "claims"
   }
+}
+
+// THE AFFECTED-SET WINDOW A CLAIM RUN READS. A claim that reads GUNBC_DIFF_WINDOW_PATH answers
+// relative to that window -- the same tree under a different target generation is a different
+// question -- so the window is a DECLARED INPUT of the run: its identity (the window's own derived
+// window_identity, gunbc.git_diff_change_window GitExactDiffWindow) is in the canonical text, and its
+// path is only where the unit finds the file, a location that keys nothing.
+type ClaimDiffWindow {
+  identity: Fnv1a64Structural
+  path: FilePath
 }
 
 // Canonical text of an operation: the identity's payload, so any argument that changes what runs
@@ -58,16 +87,17 @@ fn work_operation_kind(op: WorkOperation) -> String {
 fn work_operation_canonical(op: WorkOperation) -> String {
   match op {
     BuildGunbcBinaries { profile, bins } =>
-      join(["build:", cargo_profile_wire(p: profile), ":", join(map(bins, b => b as String), ",")], "")
+      join(["build:", cargo_profile_wire(p: profile), ":", join(map(bins, b => gunbc_binary_name(b: b) as String), ",")], "")
     CompileEntry { entry } => join(["compile:", entry as String], "")
-    RunClaims { entry, functions, hermetic } =>
-      join(["claims:", entry as String, ":", functions as String, ":", if hermetic { "hermetic" } else { "wet" }], "")
+    RunClaims { entry, functions, hermetic, window } =>
+      join(["claims:", entry as String, ":", functions as String, ":", if hermetic { "hermetic" } else { "wet" },
+        match window { Present { value: w } => join([":window=", w.identity.digest as String], "")  Absent => "" }], "")
   }
 }
 
 // The binaries the default build produces: the compiler driver and the claim runner, which the
 // compile and claims operations of the SAME subject consume.
-data work_default_bins: List<NonEmptyStr> = ["gunbc" as NonEmptyStr, "claim_batch" as NonEmptyStr]
+data work_default_bins: List<GunbcBinary> = [GunbcDriver, ClaimBatchRunner]
 
 fn work_default_build() -> WorkOperation {
   BuildGunbcBinaries { profile: CargoRelease, bins: work_default_bins }
@@ -88,40 +118,78 @@ type DeclaredOutput {
 fn work_declared_outputs(op: WorkOperation) -> List<DeclaredOutput> {
   match op {
     BuildGunbcBinaries { profile, bins } =>
-      map(bins, b => DeclaredOutput { root: TargetRoot, path: join([cargo_profile_wire(p: profile), "/", b as String], "") })
+      map(bins, b => DeclaredOutput { root: TargetRoot, path: work_binary_declared_path(profile: profile, b: b) })
     CompileEntry { entry: _ } => []
-    RunClaims { entry: _, functions: _, hermetic: _ } => []
+    RunClaims { entry: _, functions: _, hermetic: _, window: _ } => []
   }
 }
 
-// The toolchain half of the identity: the OBSERVED rustc version line and the sccache release the
-// host serves, because the same tree under a different compiler is different work. A provider
-// observes these before computing an identity; it never spells them.
-type WorkToolchainIdentity {
-  rustc_version: NonEmptyStr
+// THE EXECUTION HALF OF THE IDENTITY: everything that can change what the same tree and operation
+// produce on a host, OBSERVED rather than spelled. Hidden fleet uniformity is not an identity axis
+// (ruling on gunbc#13072, item 4): two hosts with the same rustc release line can still target
+// different triples, run a different cargo, or interpret the operation through a different provider.
+//   rustc_verbose     -- `rustc -vV` whole: release, commit hash, LLVM version and host triple
+//   target_triple     -- the `host:` line of that output, the platform every built binary targets
+//   cargo_version     -- `cargo --version` of the cargo the build actually runs
+//   cache_release     -- the sccache release that wraps rustc
+//   provider_revision -- the git tree of the compute provider's own source (dag/gunbc/compute) in the
+//                        repository the provider runs from, which decides how an operation becomes a
+//                        command without changing the subject tree
+//
+// THE PROVENANCE WALL IS NOT YET STRUCTURAL ON THE NATIVE ROUTE, and this says so rather than claiming
+// a seal. sole_constructor and admit_callers are enforced by the seed; on the native route both are
+// standing rung drops (gunbc.rung_drop admit_callers_discarded_on_the_native_route and
+// g0_type_decl_modifier_parse_without_sealing_property), so there the mint below is callable by any
+// declaration. The provider's observation fold is its only production caller.
+type WorkToolchainIdentity sole_constructor {
+  rustc_verbose: NonEmptyStr
+  target_triple: NonEmptyStr
+  cargo_version: NonEmptyStr
   cache_release: NonEmptyStr
+  provider_revision: NonEmptyStr
 }
 
-fn work_identity(subject: WorkSubject, op: WorkOperation, toolchain: WorkToolchainIdentity) -> Fnv1a64Structural {
-  let tree = match subject { ExactTree { tree } => git_object_id_wire_hex(oid: tree) as String }
-  content_hash_tagged_structural(
-    tag: "gunbc-compute-work-v1" as NonEmptyStr,
-    payload: content_hash_atom(value: join([
-      tree, "|", work_operation_canonical(op: op), "|", toolchain.rustc_version as String, "|", toolchain.cache_release as String,
-    ], "") as NonEmptyStr),
-  )
+fn work_toolchain_observed(
+  rustc_verbose: NonEmptyStr,
+  target_triple: NonEmptyStr,
+  cargo_version: NonEmptyStr,
+  cache_release: NonEmptyStr,
+  provider_revision: NonEmptyStr,
+) -> WorkToolchainIdentity
+  admit_callers: [
+    decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_toolchain_decide"),
+    decl_ref(module_path: "test.claim.compute.work_request_witness_test", decl_name: "tc"),
+    decl_ref(module_path: "test.claim.compute.attempt_lifecycle_wet_witness", decl_name: "fixture_toolchain"),
+  ]
+  = WorkToolchainIdentity {
+    rustc_verbose: rustc_verbose,
+    target_triple: target_triple,
+    cargo_version: cargo_version,
+    cache_release: cache_release,
+    provider_revision: provider_revision,
+  }
+
+// The host triple a `rustc -vV` reports, read from its one `host: ` line; absent is a refusal.
+fn rustc_verbose_host_triple(verbose: String) -> String? {
+  match verbose.split(sep: "\n") |> filter(l => starts_with(s: l, prefix: "host: ")) |> first() {
+    Present { value: l } => Present { value: trim(s: l.replace(from: "host: ", to: "")) }
+    Absent => none
+  }
 }
 
-fn work_identity_hex(id: Fnv1a64Structural) -> String {
-  id.digest as String
-}
+// THERE IS NO work_identity HERE ANY MORE. It was a second key for one computation -- a private
+// tagged hash beside std.materialization_provider's request_key -- and the identity of a compute
+// request is now that provider's derived key over the ComputeWorkRequest family
+// (gunbc.compute.work_provider_local compute_work_identity). This module keeps the work VOCABULARY;
+// the materialization contract owns the key.
 
-// One returned output: the declared path, the blob identity of its bytes (git's blob object id, a
-// content hash the same authority every subject already uses), and where the store holds it.
+// One returned output: the declared path and the blob identity of its bytes (git's blob object id, a
+// content hash the same authority every subject already uses). WHERE the bytes are held is not a
+// field: it is a fact of one realization (the store's verified reading), and a location inside the
+// committed record would make the record differ by where it was stored.
 type WorkOutput {
   declared: String
   blob: String
-  store_path: String
 }
 
 // THE FIVE ENDINGS, and only five (compute-exact-work-contract's red control: a machine that killed
@@ -165,7 +233,7 @@ type WorkOutcome
 // WorkFailed { exit_code: 137 } tells the caller to fix its code when the remedy is a larger
 // reservation. The arm is reached only when no larger reservation remains -- a grant below the
 // ceiling that is exceeded retries at the ceiling first (gunbc.compute.work_provider_local
-// compute_run_granted), and that retry is counted per class.
+// compute_run_opened), and that retry is counted per class.
 type WorkInfrastructureRefusal
   = ProducerInFlight { lease_path: String }
   | HostComputeCapacityFull { wire: String }
@@ -257,7 +325,6 @@ fn work_output_json(o: WorkOutput) -> JsonValue {
   json_object(members: [
     json_kv(key: "declared", value: json_string(s: o.declared)),
     json_kv(key: "blob", value: json_string(s: o.blob)),
-    json_kv(key: "store_path", value: json_string(s: o.store_path)),
   ])
 }
 
@@ -329,5 +396,14 @@ fn stored_outcome_is_success(r: StoredOutcomeRead) -> Bool {
   match r {
     StoredOutcomeFound { ending, identity: _, document: _ } => ending == "succeeded"
     StoredOutcomeUnreadable { reason: _ } => false
+  }
+}
+
+// The exact tree a stored outcome document names. A verification receipt cites it, so the verified
+// head and the compute subject are joined by the document the work itself wrote, not restated.
+fn stored_outcome_subject_tree(document: String) -> String? {
+  match parse_json_document(s: document) {
+    JsonDocumentUnreadable { gap: _ } => none
+    JsonDocumentParsed { value: doc } => stored_outcome_member(doc: doc, key: "subject_tree")
   }
 }

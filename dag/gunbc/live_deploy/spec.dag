@@ -33,6 +33,7 @@ import gunbc.fleet_intent_network {
   operator_host_srv1,
 }
 import gunbc.codex_runtime_paths { srv1_codex_runtime_release_root }
+import std.materialization_store_grant { materialization_store_durable_root_path }
 import gunbc.host_layout {
   srv1_gunbc_repo_root,
   srv1_gunbc_approval_broker_root,
@@ -114,6 +115,7 @@ type EnsuredDependencyKind =
   | CodexRuntimeReleaseDirectory
   | FabricStorageStoreDirectory
   | ProviderStateRootDirectory
+  | MaterializationStoreDirectory
 
 // ONE CONCEPT -- AN ENSURED HOST RESOURCE -- WITH N KINDS, not a second ensured mechanism beside
 // the first. What Ensured means was already exactly right for the build service's artifact store:
@@ -1154,6 +1156,20 @@ fn deployment_ensured_srv1_host_directories() -> List<DeploymentDependencyStep> 
       kind: FabricStorageStoreDirectory,
       subject: EnsuredManagedHostDirectory { admission: a },
     }), [
+    // THE MATERIALIZATION STORE'S DURABLE ROOT. This row discharges std.materialization_store_grant's
+    // trigger, "the runner attempt launch attaches the persistent host volume", for this host: the
+    // directory the store opens at materialization_store_durable_root_path exists and belongs to the
+    // user that runs compute (the dispatch workers and the belt run as the service user). The store
+    // itself writes its marker on first open and refuses when this root is absent; the path is the
+    // grant's datum, never re-spelled here. The volume must hold
+    // extdeps.realization.materialization_store_local local_store_host_ceiling_bytes plus headroom.
+    DeploymentDependencyStep {
+      kind: MaterializationStoreDirectory,
+      subject: EnsuredHostDirectory {
+        path: materialization_store_durable_root_path as NonEmptyStr,
+        owner: gunbc_service_user,
+      },
+    },
     DeploymentDependencyStep {
       kind: CodexRuntimeReleaseDirectory,
       subject: EnsuredHostDirectory {

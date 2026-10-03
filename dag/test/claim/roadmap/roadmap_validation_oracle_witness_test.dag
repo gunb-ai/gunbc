@@ -923,6 +923,7 @@ fn receipt_for(verdict: ValidationVerdict) -> String {
           } else {
             ""
           },
+          computation: none,
         },
       ],
       verdict: verdict,

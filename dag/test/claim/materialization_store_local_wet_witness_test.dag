@@ -35,7 +35,7 @@ import extdeps.realization.materialization_store_local {
   LocalStoreIndexRead, LocalStoreIndexAt, LocalStoreIndexUnavailable, local_store_read_index, local_store_index_key,
   LocalStoreRecency, LocalStoreRecencyRecorded, LocalStoreRecencyNothingToRecord, LocalStoreRecencyLost,
   local_store_record_recency, local_store_is_object_name, local_store_object_bytes, local_store_family_budget,
-  local_store_host_ceiling_bytes, local_store_typed_module_budget_policy,
+  local_store_host_ceiling_bytes, local_store_typed_module_budget_policy, local_store_compute_work_budget_policy,
   LocalStoreStagedPart, LocalStorePartsLookup, local_store_lookup_parts, local_store_part_name,
 }
 import std.fabric_blob { fabric_blob_reading_path }
@@ -538,7 +538,8 @@ test fn recency_is_recorded_once_and_never_fails_by_real_execution() -> Bool {
 // The host-wide ceiling is the declared sum of the durable root's family budgets, and today that is
 // the typed-module policy figure alone.
 test fn the_host_ceiling_is_the_declared_sum_of_family_budgets() -> Bool {
-  measure_count(m: local_store_host_ceiling_bytes) == measure_count(m: local_store_typed_module_budget_policy)
+  measure_count(m: local_store_host_ceiling_bytes)
+    == measure_count(m: local_store_typed_module_budget_policy) + measure_count(m: local_store_compute_work_budget_policy)
 }
 
 
