@@ -792,7 +792,11 @@ fn body_term_literal_token_payload_field(id: Symbol) -> Optional<Symbol> {
   }
 }
 
-fn body_term_is_leaf(n: Node) -> Bool {
+fn body_term_is_leaf(n: Node) -> Bool
+  admit_callers: [
+    decl_ref(module_path: "v2.compiler.body_lowering_fold", decl_name: "body_term_of")
+  ]
+{
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
       if length(xs: n.children) == 0 {
@@ -3991,8 +3995,15 @@ fn body_lower_body_after_eq_token(captured: Node) -> Optional<Node> {
 // not a node of unknown provenance: it is kept as it stands, where it used to pass the deleted
 // allowlist. A stamped composite or a leaf under it is still read as the parse wrote it. This
 // reading is confined to the reify pass; everywhere else an unstamped, unwrapped composite refuses.
+// The question is asked of the term authority: a parse production or a leaf is read as the parse
+// wrote it; a Lowered term, or a composite body_term_of cannot place, is lowered by position here.
 fn body_lower_reify_interior_is_lowered(node: Node) -> Bool {
-  !body_lower_has_grammar_projection_edge(node: node) && !body_term_is_leaf(n: node)
+  match body_term_of(node: node) {
+    Accepted { value: RawParse { node: _ }, diagnostics: _ } => false
+    Accepted { value: RawLeaf { node: _ }, diagnostics: _ } => false
+    Accepted { value: Lowered { node: _, shape: _ }, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => true
+  }
 }
 
 fn body_lower_reify_operand_read(node: Node) -> Outcome<Node> {
