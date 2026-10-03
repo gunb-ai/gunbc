@@ -3,7 +3,9 @@ module test.claim.bmc_intake_first_contact_witness
 import std.types { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.machine_intake_bmc_first_contact_standing { FamilyObserved, FamilyUnobserved }
-import gunbc.machine_intake_mtjade1_access_observation { mtjade1_firmware_family_standing }
+import gunbc.machine_intake_mtjade1_access_observation { mtjade1_firmware_family_standing, mtjade1_redfish_manager_observation }
+import gunbc.machine_intake_bmc_firmware_family_discriminator { ManagerIdentityObservation, discriminate_family, family_standing_from_discrimination }
+import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
 import gunbc.tools.bmc_intake_first_contact {
   HostUnreachable,
   RedfishHttpSurface,
@@ -65,12 +67,26 @@ test fn w_intake_probe_success_without_write_out_line_is_unreadable() -> Bool {
 // in two frontier triggers as the property they rest on -- the exact shape ten earlier commits on
 // this branch deleted elsewhere, surviving in the one file whose prose defended it.
 //
-// What remains is the one conjunct that can actually fail: this unit's standing is unobserved
-// today, and re-binding it to FamilyObserved without the separate per-unit discriminator reddens
-// this claim.
-test fn w_mtjade1_firmware_family_is_unobserved_until_a_discriminator_lands() -> Bool {
-  match mtjade1_firmware_family_standing {
+// What remains is the conjunct that can actually fail: this unit's standing is the Manager
+// observation run THROUGH discriminate_family, and it is AmiMegaRac because the recorded Oem keys
+// carry Ami and not OpenBmc. Reds: the same observation without the Ami key is unobserved (no
+// family from a bare manager), and with both keys it is unobserved (ambiguity refuses).
+test fn w_mtjade1_firmware_family_is_discriminated_from_the_manager_oem_keys() -> Bool {
+  let o = mtjade1_redfish_manager_observation
+  let derived_ami = match mtjade1_firmware_family_standing {
+    FamilyObserved { family: f } => match f { AmiMegaRac => true  OpenBmc => false }
+    FamilyUnobserved { discriminator: _ } => false
+  }
+  let bare = ManagerIdentityObservation { manager_id: o.manager_id, firmware_version: o.firmware_version, model: o.model, oem_keys: ["Amp"] }
+  let red_bare = match family_standing_from_discrimination(discrimination: discriminate_family(observation: bare)) {
     FamilyUnobserved { discriminator: _ } => true
     FamilyObserved { family: _ } => false
   }
+  let both = ManagerIdentityObservation { manager_id: o.manager_id, firmware_version: o.firmware_version, model: o.model, oem_keys: ["Ami", "OpenBmc"] }
+  let red_both = match family_standing_from_discrimination(discrimination: discriminate_family(observation: both)) {
+    FamilyUnobserved { discriminator: _ } => true
+    FamilyObserved { family: _ } => false
+  }
+  derived_ami && red_bare && red_both
 }
+

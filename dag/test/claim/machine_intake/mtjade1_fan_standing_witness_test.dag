@@ -70,10 +70,13 @@ test fn w_mtjade1_first_post_fan_finding_includes_stay_at_failsafe() -> Bool {
 // write operation, a transport and a readback -- and the MegaRAC family to an UNBOUND one that
 // carries its read obligation. That is the difference between a ceiling this fleet can converge
 // and one it can only refuse against.
-test fn w_mtjade1_fan_convergence_awaits_family_then_openbmc_pid_or_megarac_unexecuted() -> Bool {
+test fn w_mtjade1_fan_convergence_selects_the_observed_megarac_route_unbound() -> Bool {
   match jade_current_fan_policy_convergence() {
-    FamilyUnobservedNoFanRealizer => true
-    JadeFanRouteSelected { route: _ } => false
+    JadeFanRouteSelected { route: r } => match r {
+      ConvergeRouteUnbound { authority: _, read_obligation: _ } => true
+      ConvergeRouteBound { authority: _, write_operation: _, transport: _, readback: _ } => false
+    }
+    FamilyUnobservedNoFanRealizer => false
   }
     && match jade_fan_policy_convergence(family: FamilyObserved { family: OpenBmc }) {
       JadeFanRouteSelected { route: r } => match r {

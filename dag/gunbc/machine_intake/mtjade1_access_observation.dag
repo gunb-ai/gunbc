@@ -2,26 +2,52 @@ module gunbc.machine_intake_mtjade1_access_observation
 
 import gunbc.machine_intake_bmc_first_contact_standing {
   BmcFirmwareFamilyStanding,
-  FamilyUnobserved,
+}
+import gunbc.machine_intake_bmc_firmware_family_discriminator {
+  ManagerIdentityObservation,
+  discriminate_family,
+  family_standing_from_discrimination,
 }
 import gunbc.machine_intake_subject {
   BoardSerialAbsent,
   UnitKeyRefused,
   UnitKeyStanding,
 }
+import std.types { NonEmptyStr }
 import gunbc.secret_provision { mtjade1_bmc_gunbc_secret_ref }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 
-// MT. JADE UNIT 1 BMC ACCESS, AND NOTHING HERE IS A LIVE READING. The operator has AC and a BMC
-// in standby; this module does not invent a host, serial, firmware family, or BaseboardModel arm.
+// MT. JADE UNIT 1 BMC ACCESS. The BMC firmware family below is a live reading (2026-10-03); this
+// module still does not invent a host, serial, or BaseboardModel arm.
 // Identity stays on extdeps.ocp.mt_jade until a FRU/SMBIOS join is captured. There is no
 // UnitIdentityInputs row, because that type requires a host and we do not have one. The standing
 // is the same UnitKeyStanding bind_unit_key returns for an empty observation list
 // (BoardSerialAbsent) — not a Jade-only one-arm type (review 67792).
 
-data mtjade1_firmware_family_standing: BmcFirmwareFamilyStanding = FamilyUnobserved {
-  discriminator: "Wiwynn SV328R / OCP Mt. Jade cites MegaRAC or OpenBMC. This unit has no bound mc-info, Redfish Manager, or OEM fingerprint capture.",
+// THE FAMILY IS DISCRIMINATED, 2026-10-03, THROUGH THE ONE ROUTE THAT MAY CONSTRUCT IT. The operator
+// cabled the unit's single rear port (the GSG's BMC Ethernet Management port; the host has no NIC);
+// the controller answered on its factory static 10.0.7.2 and accepted the factory admin account
+// read-only. The Redfish Manager resource /redfish/v1/Managers/Self names its Oem members as Ami
+// and Amp, and discriminate_family -- not this row -- turns that into the family. Corroborating
+// readings from the same session, recorded here and not consumed: IPMI mc info manufacturer 52538
+// (Ampere Computing), product 0x0082, firmware 2.11; FwInfo FW_DESC "JADE LTS_SPX12.3", FW_VERSION
+// 2.11.104000 (Aug 20 2021); kernel 5.2.8-ami; hostname AMI70E28495336B; sshd
+// "OpenSSH_7.9p1 Debian-10+deb10u2". The ASF presence pong's IANA 36465 is the DCMI Forum and
+// discriminates nothing.
+data mtjade1_redfish_manager_capture_path: NonEmptyStr = "artifacts/bmc/mtjade1-redfish-manager-self-2026-10-03.json"
+
+data mtjade1_redfish_manager_capture_sha256: NonEmptyStr = "9888b0d065547861cdb5560fbb6fe62a5728acd9834685f3f4cd406f9123d4df"
+
+data mtjade1_redfish_manager_observation: ManagerIdentityObservation = ManagerIdentityObservation {
+  manager_id: "Self",
+  firmware_version: "2.11.104000",
+  model: "130582050",
+  oem_keys: ["Ami", "Amp"],
 }
+
+data mtjade1_firmware_family_standing: BmcFirmwareFamilyStanding = family_standing_from_discrimination(
+  discrimination: discriminate_family(observation: mtjade1_redfish_manager_observation),
+)
 
 data mtjade1_unit_key_standing: UnitKeyStanding = UnitKeyRefused {
   cause: BoardSerialAbsent,
