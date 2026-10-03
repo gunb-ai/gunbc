@@ -631,6 +631,12 @@ import v2.std.collection { List }
 // .fold_operand_structure fos_outcomes parses the `&&` and call-argument snippets once each and stores
 // six Bool verdicts; the first floor run of its PR judged each claim that paid its own parse and lowering
 // against the new-witness budget. Portable for the same reason.
+// THE GRAMMAR-OVERLAP ROUTE ROWS ARE THE SAME GROUND AT TWO FILES: v2.test.parse.else_less_if_value_category
+// elif_verdicts parses its two sources once each (a fn body and an expression) and stores four Bool
+// verdicts; v2.test.parse.brace_and_lambda_head_route bhr_verdicts parses four one-line modules and
+// stores four. Each claim that paid its own parse measured at the new-witness budget's edge on the
+// floor runs of #13056 (eval steps 66-72k, enrolment margin refused on cpu). Portable because each
+// holds only Bools.
 // THE XL-2 IF-ARM AND STATEMENT-SPINE ROW IS THE SAME GROUND AT THIRTEEN SPECIMENS:
 // v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal iasl_outcomes drives one front
 // end over thirteen inline modules and stores one verdict arm per module, portable for the same reason.
@@ -885,6 +891,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.call_argument_value_resolve_refusal.cav_outcomes",
   "v2.test.claim.normalize.authored_marker_spelling.ams_verdicts",
   "v2.test.claim.body_lowering.caret_symbol_value_lowering.csv_verdicts",
+  "v2.test.parse.else_less_if_value_category.elif_verdicts",
+  "v2.test.parse.brace_and_lambda_head_route.bhr_verdicts",
   "v2.test.parse.type_decl_modifier_g0_parse_probe.caret_tree_atom_identities",
   "v2.test.claim.body_lowering.string_literal_value_lowering.slv_verdicts",
   "v2.test.claim.namespace_xl0.value_read_refusal.vrr_outcomes",

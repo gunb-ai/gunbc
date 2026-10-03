@@ -55,8 +55,8 @@ fn bhr_route(text: String, file: Symbol, emitted: Symbol, times: Int) -> Bool {
   }
 }
 
-test fn empty_braces_as_a_value_take_the_brace_literal_route() -> Bool {
-  match bhr_parse(text: bhr_empty_literal_source, file: ^bhr_lit) {
+fn bhr_brace_literal(text: String) -> Bool {
+  match bhr_parse(text: text, file: ^bhr_lit) {
     Accepted { value: tree, diagnostics: _ } =>
       bhr_count(root: tree, emitted: ^dag_surface_block_expr) == 0
         && bhr_count(root: tree, emitted: ^dag_surface_empty_block_body) == 0
@@ -64,14 +64,37 @@ test fn empty_braces_as_a_value_take_the_brace_literal_route() -> Bool {
   }
 }
 
+// THE FOUR ROUTES, FROM ONE PARSE OF EACH SOURCE. Nullary and pure, enrolled WARM in
+// v2.workflow.floor_pure_producer_share: each source is parsed once at preparation and every claim
+// reads its stored Bool, so no claim pays a parse.
+type BhrVerdicts {
+  empty_literal: Bool
+  empty_arm: Bool
+  lambda: Bool
+  group: Bool
+}
+
+fn bhr_verdicts() -> BhrVerdicts {
+  BhrVerdicts {
+    empty_literal: bhr_brace_literal(text: bhr_empty_literal_source),
+    empty_arm: bhr_route(text: bhr_empty_arm_source, file: ^bhr_arm, emitted: ^dag_surface_empty_block_body, times: 1),
+    lambda: bhr_route(text: bhr_lambda_source, file: ^bhr_lam, emitted: ^dag_surface_arrow_lambda, times: 1),
+    group: bhr_route(text: bhr_group_source, file: ^bhr_grp, emitted: ^dag_surface_arrow_lambda, times: 0)
+  }
+}
+
+test fn empty_braces_as_a_value_take_the_brace_literal_route() -> Bool {
+  bhr_verdicts().empty_literal
+}
+
 test fn empty_braces_as_an_arm_body_take_the_empty_block_route() -> Bool {
-  bhr_route(text: bhr_empty_arm_source, file: ^bhr_arm, emitted: ^dag_surface_empty_block_body, times: 1)
+  bhr_verdicts().empty_arm
 }
 
 test fn parenthesised_parameter_list_takes_the_lambda_route() -> Bool {
-  bhr_route(text: bhr_lambda_source, file: ^bhr_lam, emitted: ^dag_surface_arrow_lambda, times: 1)
+  bhr_verdicts().lambda
 }
 
 test fn grouped_expression_takes_no_lambda_route() -> Bool {
-  bhr_route(text: bhr_group_source, file: ^bhr_grp, emitted: ^dag_surface_arrow_lambda, times: 0)
+  bhr_verdicts().group
 }
