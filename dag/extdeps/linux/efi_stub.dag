@@ -1,0 +1,50 @@
+module extdeps.linux.efi_stub
+
+import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Https, Uri }
+
+// THE LINUX EFI STUB'S CONSOLE LINES, Linux v6.8 drivers/firmware/efi/libstub. The stub runs as a
+// UEFI application before the kernel proper: efi_printk (printk.c) writes "EFI stub: " before every
+// message, efi_err (efistub.h) prefixes "ERROR: ", and efi_load_initrd (efi-stub-helper.c) prints
+// efi_err("Failed to load initrd: 0x%lx\n", status) when no initrd could be loaded, status being the
+// UEFI status it got. Only the lines the boot model reads are carried.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/torvalds/linux/blob/v6.8/drivers/firmware/efi/libstub/efi-stub-helper.c"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.efi_stub",
+      decl_name: "linux_efi_stub_initrd_load_failed_prefix",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    ExternalAuthority {
+      uri: Uri { scheme: Https, locator: "github.com/torvalds/linux/blob/v6.8/drivers/firmware/efi/libstub/printk.c" },
+    },
+    ExternalAuthority {
+      uri: Uri { scheme: Https, locator: "github.com/torvalds/linux/blob/v6.8/drivers/firmware/efi/libstub/efistub.h" },
+    },
+    ExternalAuthority {
+      uri: Uri { scheme: Https, locator: "github.com/torvalds/linux/blob/v6.8/include/linux/efi.h" },
+    },
+  ],
+}
+
+// efi_printk: efi_puts("EFI stub: ") before the message.
+data linux_efi_stub_line_prefix: NonEmptyStr = "EFI stub: "
+
+// efi_err("Failed to load initrd: 0x%lx\n", status), so the whole printed prefix of the line.
+data linux_efi_stub_initrd_load_failed_prefix: NonEmptyStr = "EFI stub: ERROR: Failed to load initrd: 0x"
+
+// include/linux/efi.h: #define EFI_LOAD_ERROR ( 1 | (1UL << (BITS_PER_LONG-1))), printed by %lx on a
+// 64-bit stub. Any other status is carried as its printed digits, never mapped onto this one.
+data linux_efi_load_error_rendering: NonEmptyStr = "8000000000000001"
