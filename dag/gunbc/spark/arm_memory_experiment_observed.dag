@@ -1,6 +1,7 @@
 module gunbc.spark.arm_memory_experiment_observed
 
 import std.types { Bool, NonEmptyStr, List }
+import gunbc.spark.glm_group_b_launch { glm_group_b_deployment_env }
 import std.nat { Nat, nat_max, nat_min, nat_range_inclusive }
 import std.checked_arithmetic { nat_magnitude }
 import std.measure {
@@ -1505,7 +1506,7 @@ fn arm_experiment_kvplan_v2_2026_09_26_loader_transient_plan() -> ArmMemoryExper
     topology: FourSparkTp4,
     workload: arm_experiment_kvplan_v2_2026_09_26_workload(),
     policy_profile: arm_experiment_kvplan_v2_2026_09_26_policy_profile(),
-    targets: [ArmLoaderTransform])
+    targets: [ArmLoaderTransform], deployment_env: glm_group_b_deployment_env())
 }
 
 type ArmExperimentRunbookRow {
@@ -1540,7 +1541,7 @@ fn arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan() -> ArmMemoryEx
     topology: FourSparkTp4,
     workload: arm_experiment_kvplan_v2_2026_09_26_workload(),
     policy_profile: arm_experiment_kvplan_v2_2026_09_26_policy_profile(),
-    targets: [ArmFragmentationAllowance])
+    targets: [ArmFragmentationAllowance], deployment_env: glm_group_b_deployment_env())
 }
 
 data arm_experiment_kvplan_v2_2026_09_26_fragmentation_runbook: ArmExperimentRunbookRow = ArmExperimentRunbookRow {

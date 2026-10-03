@@ -2622,7 +2622,7 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("import std.content_hash { ContentHash, Fnv1a64, Fnv1a64Structural }\n");
     out.push_str("import v2.std.algebra { Cons, Empty }\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
-    out.push_str("import v2.std.collection { List }\n");
+    out.push_str("import std.types { List }\n");
     out.push_str("import v2.std.text { String }\n");
     // Each DagSourceReadWitness carries a grounded `source_root: SourceRootRef` (V2Tree/DagTree,
     // #5473/#5486), so the manifest must import the constructors it references or every witness
@@ -2640,7 +2640,7 @@ pub fn emit_source_root_ingest_manifest(
         out.push_str("  ResolutionSubject\n");
         out.push_str("}\n");
         out.push_str("import v2.std.algebra { Cons, Empty }\n");
-        out.push_str("import v2.std.collection { List }\n");
+        out.push_str("import std.types { List }\n");
     }
     out.push('\n');
     out.push_str(&format!(

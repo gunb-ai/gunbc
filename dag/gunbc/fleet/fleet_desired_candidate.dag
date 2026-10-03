@@ -1,0 +1,163 @@
+module gunbc.fleet_desired_candidate
+
+import std.types { String, List }
+import v2.std.node { Node }
+import v2.std.diagnostic { Outcome, Accepted, Rejected }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.extdeps.languages.bash_build {
+  bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes, bash_build_word_cmdsubst,
+  bash_build_assign, bash_build_command_with_words, bash_build_command_from_lits,
+  bash_build_if, bash_build_if_else, bash_build_test_bracket, bash_build_stmt_list_from_nodes,
+  bash_build_or_else, bash_build_subshell_from_stmts, bash_build_with_redir_to_file, bash_build_exit,
+  bash_build_pipe,
+}
+import gunbc.fleet_release_bins_key { compiler_pair_candidate_artifact_name, release_bins_pack_object_name }
+
+// WHERE fleet-desired FINDS THE CANDIDATE THE MERGE QUEUE BUILT FOR THE REVISION THAT JUST LANDED.
+//
+// The merge queue moves main to exactly the composed revision its required run judged
+// (gunbc.fleet_desired_admission's own premise), so the checked-out commit IS the merge_group run's
+// head sha. It is read from the checkout (git rev-parse HEAD), never from the event: the workflow names
+// no revision of its own, and the bytes it will verify are the bytes it holds.
+// This step asks the Actions API for the successful merge_group runs of the required workflow on that
+// sha, takes the newest one that still holds the candidate artifact, and downloads that artifact's
+// pack object. It decides only WHETHER a candidate exists: whether the candidate is the product it
+// claims to be is gunbc.fleet_release_bins_key's canonical consumer, run next, which verifies kind,
+// source tree and every member before anything executes. So an API answer can make this step report
+// absence, never trust.
+//
+// ABSENCE IS A MISS, AND A MISS BUILDS. No successful merge_group run (a push that bypassed the queue),
+// or no live artifact (it expired, or the floor's candidate steps did not run): standing=absent, and
+// the workflow builds gunbc as it did before. A transport or decode failure is NOT absence: the step
+// refuses, because a run that cannot read the forge cannot say there is no candidate.
+//
+// BOUNDED POPULATIONS, AND A LISTING IS READ WHOLE OR REFUSED (review 74644). The run is the newest
+// successful merge_group run of the required workflow on this exact sha; the candidate is looked for
+// among THAT run's artifacts only (/actions/runs/{id}/artifacts), a population of a handful. Each
+// listing must be complete on its one page -- total_count equal to the rows read -- or the step
+// refuses: an unread page is a non-observation, never established absence (DESIGN 5). Only an empty,
+// complete listing is a miss.
+//
+// It runs before gunbc exists, so it is shell rendered through the bash grammar fold; the parsing is
+// jq's, and the archive GitHub serves is unzipped by Python's standard-library zipfile CLI.
+data fleet_desired_candidate_required_workflow_path: String = ".github/workflows/witnesses.yml"
+data fleet_desired_candidate_dir: String = "pair-candidate"
+
+fn lit(t: String) -> Node { bash_build_word_lit(text: t) }
+fn var(n: String) -> Node { bash_build_word_var(name: n) }
+fn words(ws: List<Node>) -> Node { bash_build_word_concat_from_nodes(parts: ws) }
+fn cmd(ws: List<Node>) -> Node { bash_build_command_with_words(words: ws) }
+fn dir(file: String) -> Node { words(ws: [var(n: "RUNNER_TEMP"), lit(t: join(["/", fleet_desired_candidate_dir, "/", file], ""))]) }
+fn assign_sub(name: String, body: Node) -> Node { bash_build_assign(name: name, value: bash_build_word_cmdsubst(body: body)) }
+fn test_words(ws: List<Node>) -> Node { bash_build_test_bracket(words: ws) }
+
+fn refuse(name: String, message: String) -> Node {
+  bash_build_subshell_from_stmts(stmts: [
+    cmd(ws: [lit(t: "echo"), lit(t: join(["::error title=pair-candidate ", name, "::", message], ""))]),
+    bash_build_exit(code: "1"),
+  ])
+}
+
+fn or_refuse(check: Node, name: String, message: String) -> Node {
+  bash_build_or_else(left: check, right: refuse(name: name, message: message))
+}
+
+fn append_output(line: String) -> Node {
+  bash_build_with_redir_to_file(
+    inner: bash_build_pipe(left: cmd(ws: [lit(t: "echo"), lit(t: line)]), right: cmd(ws: [lit(t: "tee"), lit(t: "-a"), var(n: "GITHUB_OUTPUT")])),
+    path: lit(t: "/dev/null"),
+  )
+}
+
+fn api_get(url: Node, out: Node) -> Node {
+  cmd(ws: [
+    lit(t: "curl"), lit(t: "-fsSL"), lit(t: "--max-time"), lit(t: "300"),
+    lit(t: "-H"), words(ws: [lit(t: "Authorization: Bearer "), var(n: "GITHUB_TOKEN")]),
+    lit(t: "-H"), lit(t: "Accept: application/vnd.github+json"),
+    lit(t: "-o"), out, url,
+  ])
+}
+
+fn absent_and_stop(reason: String) -> Node {
+  bash_build_stmt_list_from_nodes(stmts: [
+    cmd(ws: [lit(t: "echo"), lit(t: join(["pair-candidate: absent (", reason, "); this run builds gunbc itself"], ""))]),
+    append_output(line: "standing=absent"),
+    bash_build_exit(code: "0"),
+  ])
+}
+
+fn fleet_desired_candidate_fetch_statements() -> List<Node> {
+  [
+    cmd(ws: [lit(t: "rm"), lit(t: "-rf"), dir(file: "")]),
+    cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), dir(file: "")]),
+    assign_sub(name: "CHECKED_OUT", body: bash_build_command_from_lits(lits: ["git", "rev-parse", "HEAD"])),
+    or_refuse(
+      check: api_get(
+        url: words(ws: [var(n: "GITHUB_API_URL"), lit(t: "/repos/"), var(n: "GITHUB_REPOSITORY"), lit(t: "/actions/runs?event=merge_group&status=success&per_page=100&head_sha="), var(n: "CHECKED_OUT")]),
+        out: dir(file: "runs.json"),
+      ),
+      name: "RunsUnreadable", message: "the Actions API did not answer the merge_group run query; that is not absence",
+    ),
+    or_refuse(
+      check: cmd(ws: [lit(t: "jq"), lit(t: "-e"), lit(t: ".total_count == (.workflow_runs | length)"), dir(file: "runs.json")]),
+      name: "RunsListingTruncated", message: "the merge_group run listing for this revision is not complete on one page; an unread page is not absence",
+    ),
+    assign_sub(name: "RUN_ID", body: cmd(ws: [
+      lit(t: "jq"), lit(t: "-r"),
+      lit(t: join([
+        "[.workflow_runs[] | select(.path == \"", fleet_desired_candidate_required_workflow_path, "\")]",
+        " | sort_by(.created_at) | reverse | .[0].id // empty",
+      ], "")),
+      dir(file: "runs.json"),
+    ])),
+    bash_build_if(cond: test_words(ws: [lit(t: "-z"), var(n: "RUN_ID")]), body: absent_and_stop(reason: "no successful merge_group run of the required workflow on this revision")),
+    or_refuse(
+      check: api_get(
+        url: words(ws: [var(n: "GITHUB_API_URL"), lit(t: "/repos/"), var(n: "GITHUB_REPOSITORY"), lit(t: "/actions/runs/"), var(n: "RUN_ID"), lit(t: join(["/artifacts?per_page=100&name=", compiler_pair_candidate_artifact_name], ""))]),
+        out: dir(file: "artifacts.json"),
+      ),
+      name: "ArtifactsUnreadable", message: "the Actions API did not answer the candidate artifact query; that is not absence",
+    ),
+    or_refuse(
+      check: cmd(ws: [lit(t: "jq"), lit(t: "-e"), lit(t: ".total_count == (.artifacts | length)"), dir(file: "artifacts.json")]),
+      name: "ArtifactsListingTruncated", message: "the run's candidate artifact listing is not complete on one page; an unread page is not absence",
+    ),
+    assign_sub(name: "ARTIFACT_ID", body: cmd(ws: [
+      lit(t: "jq"), lit(t: "-r"),
+      lit(t: "[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | reverse | .[0].id // empty"),
+      dir(file: "artifacts.json"),
+    ])),
+    bash_build_if(cond: test_words(ws: [lit(t: "-z"), var(n: "ARTIFACT_ID")]), body: absent_and_stop(reason: "the newest successful merge_group run of this revision holds no unexpired candidate artifact")),
+    or_refuse(
+      check: api_get(
+        url: words(ws: [var(n: "GITHUB_API_URL"), lit(t: "/repos/"), var(n: "GITHUB_REPOSITORY"), lit(t: "/actions/artifacts/"), var(n: "ARTIFACT_ID"), lit(t: "/zip")]),
+        out: dir(file: "candidate.zip"),
+      ),
+      name: "ArtifactUndownloadable", message: "the candidate artifact exists and could not be downloaded; that is not absence",
+    ),
+    or_refuse(
+      check: cmd(ws: [lit(t: "python3"), lit(t: "-m"), lit(t: "zipfile"), lit(t: "-e"), dir(file: "candidate.zip"), dir(file: "unzipped")]),
+      name: "ArtifactUnreadable", message: "the candidate artifact is not a readable zip",
+    ),
+    or_refuse(
+      check: test_words(ws: [lit(t: "-f"), dir(file: join(["unzipped/", release_bins_pack_object_name], ""))]),
+      name: "ArtifactIncomplete", message: "the candidate artifact holds no pack object",
+    ),
+    bash_build_with_redir_to_file(
+      inner: bash_build_pipe(
+        left: cmd(ws: [lit(t: "echo"), words(ws: [lit(t: "FABRIC_BLOB_OUT="), dir(file: join(["unzipped/", release_bins_pack_object_name], ""))])]),
+        right: cmd(ws: [lit(t: "tee"), lit(t: "-a"), var(n: "GITHUB_ENV")]),
+      ),
+      path: lit(t: "/dev/null"),
+    ),
+    cmd(ws: [lit(t: "echo"), words(ws: [lit(t: "pair-candidate: present, artifact "), var(n: "ARTIFACT_ID")])]),
+    append_output(line: "standing=present"),
+  ]
+}
+
+fn fleet_desired_candidate_fetch_script() -> String {
+  match bash_emit_stmts(statements: fleet_desired_candidate_fetch_statements(), set_e: true) {
+    Accepted { value: v, diagnostics: _ } => v
+    Rejected { diagnostics: _ } => ""
+  }
+}

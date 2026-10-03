@@ -1,6 +1,7 @@
 module gunbc.spark.native_experiment_apply
 
 import std.types { String, Bool, List, NonEmptyStr, Secret }
+import gunbc.spark.glm_group_b_launch { glm_group_b_deployment_env }
 import std.nat { Nat }
 import std.measure { token_count_value }
 import v2.std.algebra { zip_map }
@@ -1048,7 +1049,7 @@ fn spark_native_experiment_default_actuation() -> ArmExperimentActuationAdmissio
             ArmMemoryFitUnestablished { obligations: _ } =>
               match arm_memory_fit_experiment_plan(
                 checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
-                workload: subject.intent, policy_profile: profile, targets: arm_memory_subject_open_components(subject: subject)) {
+                workload: subject.intent, policy_profile: profile, targets: arm_memory_subject_open_components(subject: subject), deployment_env: glm_group_b_deployment_env()) {
                 ArmMemoryExperimentAdmitted { plan: p } => arm_experiment_actuation_admission(
                   checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
                   verdict: arm_memory_fit_verdict(subject: subject), plan: Present { value: p })
