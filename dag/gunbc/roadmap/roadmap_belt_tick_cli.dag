@@ -35,7 +35,8 @@ import gunbc.roadmap_dogfood_route {
   DogfoodStartRecorded, DogfoodStartAlreadyRecorded, DogfoodStartNoCompleteAttempt, DogfoodStartRefused,
 }
 import gunbc.roadmap.roadmap_result_returned {
-  ResultReturnPass, result_return_attempts_for_instance, result_return_pass_exit, result_return_pass_failure,
+  ResultReturnPass, ResultReturnPassRan, ResultReturnPassWithheld, ResultReturnPassRefused,
+  result_return_attempts_for_instance, result_return_pass_exit, result_return_pass_failure,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.json.emit { json_array }
@@ -55,8 +56,10 @@ import gunbc.roadmap.roadmap_review_function { review_report_json }
 // in the receipt, not a failure to run or record the tick. Nonzero ONLY when the tick could not
 // persist its receipt or its served observation (BeltPassFailed on write), could not append a
 // terminal attempt's result to its issue's event history (gunbc.roadmap.roadmap_result_returned
-// result_return_pass_exit -- an answer owed to a requester and not delivered), or when
-// GUNBC_BELT_SPAWN_WORKDIR is missing/empty. systemd therefore distinguishes 'tick crashed' from
+// result_return_pass_exit -- an answer owed to a requester and not delivered), when
+// GUNBC_BELT_SPAWN_WORKDIR is missing/empty, or when the dogfood start record
+// (gunbc.roadmap_dogfood_route dogfood_start_record_for_instance), which runs only after the
+// served observation is persisted, refuses. systemd therefore distinguishes 'tick crashed' from
 // 'tick ran, work refused'. The stdout JSON (roadmap-belt-tick/v1) remains the per-tick
 // operational receipt for journald; the persisted BeltTickReceipt is what /workflow.json's
 // producer reads, and the persisted served observation is what the dashboard serves.
@@ -118,14 +121,12 @@ fn belt_run_once_cli_in(spawn_workdir: String) -> ProcessExit {
             "\n",
             r,
           ], ""))
-        BeltPassRecorded => {
-          let returned = result_return_attempts_for_instance(instance: instance, recorded_at: observed_at)
-          let start = dogfood_start_record_for_instance(instance: instance)
-          belt_tick_result_tail_exit(
-            returned: returned,
-            tail: belt_tick_tail_exit(served: belt_served_observation_exit(instance: instance, observed_at: observed_at), start: start),
+        BeltPassRecorded =>
+          belt_tick_tail_after_result_return(
+            instance: instance,
+            observed_at: observed_at,
+            returned: result_return_attempts_for_instance(instance: instance, recorded_at: observed_at),
           )
-        }
         BeltPassDeferred { reason: r } =>
           exit_failure(reason: join(["belt tick receipt write returned deferred: ", r], ""))
         BeltPassRefused { reason: r } =>
@@ -135,31 +136,49 @@ fn belt_run_once_cli_in(spawn_workdir: String) -> ProcessExit {
   }
 }
 
-// THE TICK'S TAIL, pure so both orders are witnessed. A start receipt that could not be recorded
-// fails the tick loudly, but never instead of the served observation: the page is written either
-// way, and a failed observation write is reported first because it is the older obligation.
-fn belt_tick_tail_exit(served: ProcessExit, start: DogfoodStartRecord) -> ProcessExit {
-  match served {
-    ExitFailure { code: _, reason: _ } => served
-    ExitSuccess =>
-      match start {
-        DogfoodStartRefused { reason: r } => exit_failure(reason: join(["dogfood start receipt could not be recorded: ", r], ""))
-        DogfoodStartRecorded { receipt: _ } => ExitSuccess
-        DogfoodStartAlreadyRecorded => ExitSuccess
-        DogfoodStartNoCompleteAttempt => ExitSuccess
-      }
+// THE START RECORD'S EXIT. The recorder runs only after the served observation was written (the
+// match at the tick's tail above makes that a dependency, not an ordering of independent lets), so a
+// slow, failing or terminated recorder can no longer freeze the page; a refused start then fails
+// the tick loudly, and the other outcomes leave it successful.
+fn belt_start_record_exit(start: DogfoodStartRecord) -> ProcessExit {
+  match start {
+    DogfoodStartRefused { reason: r } => exit_failure(reason: join(["dogfood start receipt could not be recorded: ", r], ""))
+    DogfoodStartRecorded { receipt: _ } => ExitSuccess
+    DogfoodStartAlreadyRecorded => ExitSuccess
+    DogfoodStartNoCompleteAttempt => ExitSuccess
   }
 }
 
-// THE RESULT RETURN BESIDE THE REST OF THE TAIL, AND BOTH CAUSES WHEN BOTH FAIL. After the tick's
-// receipt is written, every attempt of the durable history whose final result is not yet on its
-// issue's event log has it appended (gunbc.roadmap.roadmap_result_returned), and then the rest of
-// the tail runs -- the dogfood start receipt and the served observation, whose joint exit
-// (belt_tick_tail_exit) arrives here as `tail` -- in that order, so the standing the dashboard
-// serves already reads an event this tick appended. The result return runs on EVERY tick, including
-// one whose passes were withheld: an answer owed to a requester is a standing obligation that an
-// unrelated launch refusal does not discharge. Everything has already run by the time the exit is
-// decided, so no failure hides another's write, and the exit names both.
+// THE TAIL IN ITS ORDER, EACH STEP A DEPENDENCY OF THE NEXT: result return, then served
+// observation, then start record. The result return has already run -- its pass is this function's
+// argument -- and the observation is taken INSIDE a match on that pass, so it cannot be evaluated
+// before the pass exists; every arm of the pass proceeds to the observation, because an undelivered
+// result must not freeze the page. The start record runs only after a persisted observation
+// (belt_observation_then_start_exit). So the standing the dashboard serves already reads an event
+// this tick appended, and a slow or failing recorder cannot stop the page being written.
+fn belt_tick_tail_after_result_return(instance: HostDashboardInstance, observed_at: String, returned: ResultReturnPass) -> ProcessExit {
+  belt_tick_result_tail_exit(
+    returned: returned,
+    tail: match returned {
+      ResultReturnPassRan { outcomes: _ } => belt_observation_then_start_exit(instance: instance, observed_at: observed_at)
+      ResultReturnPassWithheld { reason: _ } => belt_observation_then_start_exit(instance: instance, observed_at: observed_at)
+      ResultReturnPassRefused { step: _, reason: _ } => belt_observation_then_start_exit(instance: instance, observed_at: observed_at)
+    },
+  )
+}
+
+fn belt_observation_then_start_exit(instance: HostDashboardInstance, observed_at: String) -> ProcessExit {
+  match belt_served_observation_exit(instance: instance, observed_at: observed_at) {
+    ExitFailure { code, reason } => ExitFailure { code: code, reason: reason }
+    ExitSuccess => belt_start_record_exit(start: dogfood_start_record_for_instance(instance: instance))
+  }
+}
+
+// THE ONE JOIN OF THE RESULT RETURN WITH THE REST OF THE TAIL, pure: `tail` is the exit of the
+// observation-then-start chain. The result return runs on EVERY tick, including one whose passes
+// were withheld: an answer owed to a requester is a standing obligation that an unrelated launch
+// refusal does not discharge. When both the result return and the tail failed, the exit names
+// both; neither cause replaces the other.
 fn belt_tick_result_tail_exit(returned: ResultReturnPass, tail: ProcessExit) -> ProcessExit {
   match tail {
     ExitSuccess => result_return_pass_exit(pass: returned)

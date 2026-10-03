@@ -7,6 +7,7 @@ import v2.std.grammar { Holds, Violates }
 import v2.std.compilers.target_model {
   TargetModel,
   TargetText,
+  FixedToken,
   target_text_line_breaks,
   text_atom,
   target_text_seq,
@@ -16,7 +17,7 @@ import v2.std.compilers.target_model {
   render_target_text,
   fixed_token_spelling_from_model
 }
-import v2.compiler.target_serialize { target_serialize_relation_row_from_model_bounded }
+import v2.compiler.target_serialize { serialize_concrete_syntax_tokens_to_source_string, target_serialize_relation_row_from_model_bounded }
 import v2.extdeps.languages.verilog {
   verilog_interlock_emitted,
   verilog_relation_row_for,
@@ -68,6 +69,29 @@ test fn a_layout_token_class_refuses_the_flat_spelling() -> Bool {
       match fixed_token_spelling_from_model(target: verilog_target_model_with_single_row(row: row), token_class: ^verilog_token_semicolon) {
         Rejected { diagnostics: r } => r.head.reason == ^target_layout_token_spelled_flat
         Accepted { value: _, diagnostics: _ } => false
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+// THE FLAT TOKEN ROUTE SPELLS A TOKEN CLASS AS THE RELATION-ROW ROUTE DOES. The flat fold
+// (v2.compiler.target_serialize serialize_concrete_syntax_tokens_to_source_string) read no
+// transform rows, so the same class rendered two ways depending on which fold spelled it. Here the
+// consuming target's own rows apply: `assign` keeps its trailing space, `=` its two, and `;` its
+// line break instead of refusing or dropping it.
+test fn the_flat_token_route_applies_the_targets_transform_rows() -> Bool {
+  match verilog_relation_row_for(lhs: ^verilog_production_ansi_module_decl, emitted: verilog_interlock_emitted()) {
+    Holds { value: row } =>
+      match serialize_concrete_syntax_tokens_to_source_string(
+        target: verilog_target_model_with_single_row(row: row),
+        tokens: [
+          FixedToken { token_class: ^verilog_token_kw_assign },
+          FixedToken { token_class: ^verilog_token_equals },
+          FixedToken { token_class: ^verilog_token_semicolon }
+        ]
+      ) {
+        Accepted { value: t, diagnostics: _ } => render_target_text(t: t) == "assign  = ;\n"
+        Rejected { diagnostics: _ } => false
       }
     Violates { diagnostic: _ } => false
   }
