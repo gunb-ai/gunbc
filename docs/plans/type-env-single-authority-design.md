@@ -872,3 +872,9 @@ trace marks in `04_infer.dag`.
   - Per-module encoded bytes grow with the size of the module's import closure, approaching proportionality.
   - A module with no imports encodes small.
   - If encoded size is flat in closure size, this reading is falsified.
+- **Snapshot-grain discriminator (pin `e479390`, neat-boar-16, srv1, cold): CONFIRMED.**
+  - Per module, the encoded `type_env` size is a near-exact linear function of the number of distinct environments reachable through `parents`, and is independent of the module's item count.
+  - Each reachable environment is serialized in full, per module, with no sharing.
+  - The 47-module sum reconciles with the counters run's encode total.
+  - Figures are in that run's log and are not copied here.
+  - The repair proceeds under calm-boar-904's pre-set conditions: parents carried as module identities and resolved at decode; a format-version bump with old entries refused as a typed stale miss; a missing parent refused as typed; digest, bound and heap-ratio controls; the v1 purpose test.
