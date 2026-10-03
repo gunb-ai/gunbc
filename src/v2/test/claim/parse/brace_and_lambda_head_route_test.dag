@@ -1,0 +1,72 @@
+module v2.test.parse.brace_and_lambda_head_route
+
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex, parse_production_emitted_identity_optional }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.optional { Absent, Present }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ROUTE EACH BRACE- OR PAREN-HEADED INPUT TAKES, NOT ONLY ITS VERDICT (v2.extdeps.languages.dag
+// dag_grammar_block_literal_head_expr, dag_grammar_empty_block_body_expr,
+// dag_grammar_arrow_lambda_name_head_expr). `= {}` is the empty brace literal (operator ruling
+// 2026-10-03, A): no block. `A => {}` is an empty arm block: the empty_block_body production.
+// `(a, b) => a` is an arrow lambda; `(a)` is a grouped expression and no lambda.
+data bhr_empty_literal_source: String = "module probe.bhr_lit\ndata d: Map<String, Int> = {}\n"
+data bhr_empty_arm_source: String = "module probe.bhr_arm\nfn f(b: Bool) -> Int {\n  match b {\n    true => {}\n    false => 1\n  }\n}\n"
+data bhr_lambda_source: String = "module probe.bhr_lam\nfn f() -> Int {\n  g((a, b) => a)\n}\n"
+data bhr_group_source: String = "module probe.bhr_grp\nfn f(a: Int) -> Int {\n  (a)\n}\n"
+
+fn bhr_parse(text: String, file: Symbol) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(text: text, file: file, rules: dag_lex()),
+        f: fn(token_stream) {
+          match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
+fn bhr_count(root: Node, emitted: Symbol) -> Int {
+  let here = match parse_production_emitted_identity_optional(node: root) {
+    Present { value: id } => if id == emitted { 1 } else { 0 }
+    Absent => 0
+  }
+  fold(root.children, init: here, f: fn(acc, e) { acc + bhr_count(root: e.target, emitted: emitted) })
+}
+
+// Accepted, with `emitted` appearing `times` times in the tree.
+fn bhr_route(text: String, file: Symbol, emitted: Symbol, times: Int) -> Bool {
+  match bhr_parse(text: text, file: file) {
+    Accepted { value: tree, diagnostics: _ } => bhr_count(root: tree, emitted: emitted) == times
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn empty_braces_as_a_value_take_the_brace_literal_route() -> Bool {
+  bhr_route(text: bhr_empty_literal_source, file: ^bhr_lit, emitted: ^dag_surface_block_expr, times: 0)
+    && bhr_route(text: bhr_empty_literal_source, file: ^bhr_lit, emitted: ^dag_surface_empty_block_body, times: 0)
+}
+
+test fn empty_braces_as_an_arm_body_take_the_empty_block_route() -> Bool {
+  bhr_route(text: bhr_empty_arm_source, file: ^bhr_arm, emitted: ^dag_surface_empty_block_body, times: 1)
+}
+
+test fn parenthesised_parameter_list_takes_the_lambda_route() -> Bool {
+  bhr_route(text: bhr_lambda_source, file: ^bhr_lam, emitted: ^dag_surface_arrow_lambda, times: 1)
+}
+
+test fn grouped_expression_takes_no_lambda_route() -> Bool {
+  bhr_route(text: bhr_group_source, file: ^bhr_grp, emitted: ^dag_surface_arrow_lambda, times: 0)
+}

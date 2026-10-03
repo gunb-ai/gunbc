@@ -6723,7 +6723,25 @@ fn body_lower_match_arm_statement_spine_optional(body_capture: Node) -> Optional
   }
 }
 
+// AN EMPTY ARM BODY HAS NO STATEMENT (v2.extdeps.languages.dag dag_grammar_empty_block_body_expr), so
+// it refuses as an empty block's spine always has: headless, at the body.
+fn body_lower_match_arm_empty_body_optional(body_capture: Node) -> Optional<Node> {
+  let shell = body_lower_deep_unwrap_optional(node: body_capture)
+  match parse_production_emitted_identity_optional(node: shell) {
+    Present { value: emitted } => if emitted == ^dag_surface_empty_block_body { optional_present(value: shell) } else { optional_absent() }
+    Absent => optional_absent()
+  }
+}
+
 fn body_lower_match_arm_body_lowered(body_capture: Node) -> Outcome<Node> {
+  match body_lower_match_arm_empty_body_optional(body_capture: body_capture) {
+    Present { value: empty } =>
+      outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_statement_spine_headless, n: empty))
+    Absent => body_lower_match_arm_nonempty_body_lowered(body_capture: body_capture)
+  }
+}
+
+fn body_lower_match_arm_nonempty_body_lowered(body_capture: Node) -> Outcome<Node> {
   match body_lower_match_arm_statement_spine_optional(body_capture: body_capture) {
     Present { value: spine } => body_lower_stmt_spine(spine: spine)
     Absent => body_lower_tail_statement_read(stmt: body_capture)
