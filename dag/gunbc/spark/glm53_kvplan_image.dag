@@ -53,7 +53,7 @@ data glm53_kvplan_probe_script: String = "import os, vllm\nprint('VLLM_VERSION '
 data glm53_kvplan_engine_version: String = "0.1.dev1+g8d09804c8"
 
 fn glm53_kvplan_probe_argv(digest: NonEmptyStr) -> List<String> {
-  argv_words(command: docker_run_ephemeral_command(image: digest, gpus_all: false, mounts: [], labels: [], memory_limit: none, entrypoint: "python3" as NonEmptyStr, argv: ["-c", glm53_kvplan_probe_script]))
+  argv_words(command: docker_run_ephemeral_command(image: digest, gpus_all: false, mounts: [], labels: [], memory_limit: Absent, entrypoint: "python3" as NonEmptyStr, argv: ["-c", glm53_kvplan_probe_script]))
 }
 
 fn probe_line_value(stdout: String, prefix: String) -> String? {
