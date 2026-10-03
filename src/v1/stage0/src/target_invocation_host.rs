@@ -1830,8 +1830,13 @@ pub fn classify_binary_inputs(
         if input.contains("/.git/") {
             continue;
         }
+        // Only NotFound is `Missing`; any other stat failure (permission, I/O) is a reading we
+        // could not take, which refuses with its own cause rather than a wrong label (review 74474).
         let classified = match std::fs::metadata(input).and_then(|m| m.modified()) {
-            Err(_) => BinaryInput::Missing(input.clone()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                BinaryInput::Missing(input.clone())
+            }
+            Err(e) => return Err(format!("cannot stat dep-info input {input}: {e}")),
             Ok(modified) if modified > built_at => BinaryInput::Newer(input.clone()),
             Ok(_) => BinaryInput::NotNewer(input.clone()),
         };
