@@ -1,5 +1,8 @@
 module v2.test.tokenize.lex_match_thunk_claims
 
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.compiler.tokenize { lex_cursor_empty }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -38,7 +41,7 @@ test fn lex_match_thunk_claims_holds() -> Bool {
     rule: TriviaRule { pattern: LiteralPattern { text: str_ab } },
     source: str_abc
   ) {
-    LexRuleTrivia { lexeme: _, remaining: rem } => is_empty(xs: rem) == false
+    LexRuleTrivia { lexeme: _, remaining: rem } => lex_cursor_empty(cursor: rem) == false
     LexRuleNoMatch => false
     LexRuleAnnotation { class: _, lexeme: _, remaining: _ } => false
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
@@ -217,7 +220,7 @@ test fn lex_match_thunk_claims_holds() -> Bool {
     rule: TriviaRule { pattern: RepeatPattern { element: CharPattern { char: 97 } } },
     source: str_aab
   ) {
-    LexRuleTrivia { lexeme: _, remaining: rem } => is_empty(xs: rem) == false
+    LexRuleTrivia { lexeme: _, remaining: rem } => lex_cursor_empty(cursor: rem) == false
     LexRuleNoMatch => false
     LexRuleAnnotation { class: _, lexeme: _, remaining: _ } => false
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false
@@ -265,7 +268,7 @@ test fn lex_match_thunk_claims_holds() -> Bool {
     } },
     source: str_block_comment
   ) {
-    LexRuleTrivia { lexeme: _, remaining: rem } => is_empty(xs: rem)
+    LexRuleTrivia { lexeme: _, remaining: rem } => lex_cursor_empty(cursor: rem)
     LexRuleNoMatch => false
     LexRuleAnnotation { class: _, lexeme: _, remaining: _ } => false
     LexRuleToken { class: _, lexeme: _, remaining: _ } => false

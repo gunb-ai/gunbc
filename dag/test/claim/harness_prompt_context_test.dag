@@ -1,0 +1,182 @@
+module test.claim.harness_prompt_context_test
+
+import std.types { Bool, String, List }
+import std.decl_ref { decl_ref }
+import gunbc.harness.harness_prompt_context {
+  PromptInput, AuthorityInput, EvidenceInput, GuidanceInput,
+  ContextStanding, EstablishedObservation, Hypothesis, Withdrawn,
+  PromptContextSnapshot, prompt_snapshot_digest, prompt_input_canonical_text,
+  PromptSegment, prompt_segment_render, prompt_segment_required,
+  PromptPlan, PromptPlanAssembly, PromptPlanReady, PromptPlanRefused,
+  PromptAssemblyRefusal, RequiredSourceUnrendered, MissingRendering, DuplicateRendering,
+  UnexpectedRendering, WithdrawnSourceRendered, prompt_assembly_refusal_text,
+  prompt_plan_assemble, semantic_prompt_render, provider_prompt_artifact, prompt_render_receipt,
+}
+
+fn fx_authority(id: String, revision: String) -> PromptInput {
+  AuthorityInput {
+    declaration: decl_ref(module_path: "gunbc.design_document", decl_name: "design_document"),
+    revision: join([id, revision], ""),
+    required: true,
+  }
+}
+
+fn fx_evidence(standing: ContextStanding, required: Bool) -> PromptInput {
+  EvidenceInput { artifact: "receipt-x", subject: "claim-y", standing: standing, required: required }
+}
+
+fn fx_snapshot(inputs: List<PromptInput>) -> PromptContextSnapshot {
+  PromptContextSnapshot {
+    attempt_lineage: "worker:task-a-deadbeef",
+    epoch: 1,
+    source_revision: "rev-src",
+    work_contract_revision: "rev-contract",
+    inputs: inputs,
+  }
+}
+
+fn fx_seg(input: PromptInput, content: String) -> PromptSegment {
+  prompt_segment_render(purpose: "test segment", source: input, content: content)
+}
+
+// THE SNAPSHOT DIGEST IS DERIVATION-EXACT: identical inputs digest identically, and any moved
+// revision moves it.
+test fn identical_snapshots_digest_identically_and_any_revision_moves_it() -> Bool {
+  let base = prompt_snapshot_digest(snapshot: fx_snapshot(inputs: [fx_authority(id: "a", revision: "r1")]))
+  base == prompt_snapshot_digest(snapshot: fx_snapshot(inputs: [fx_authority(id: "a", revision: "r1")]))
+    && base != prompt_snapshot_digest(snapshot: fx_snapshot(inputs: [fx_authority(id: "a", revision: "r2")]))
+    && base != ""
+}
+
+// STANDING IS IDENTITY (review 5358022153): the same artifact as a hypothesis and as an
+// established observation are two different inputs, and a length-prefixed preimage cannot be
+// manufactured by a field containing a separator.
+test fn a_standing_change_is_a_different_input_not_a_restated_one() -> Bool {
+  prompt_input_canonical_text(input: fx_evidence(standing: Hypothesis, required: false))
+    != prompt_input_canonical_text(input: fx_evidence(standing: EstablishedObservation, required: false))
+    && prompt_input_canonical_text(input: fx_evidence(standing: EstablishedObservation, required: false))
+      != prompt_input_canonical_text(input: fx_evidence(standing: EstablishedObservation, required: true))
+}
+
+// ASSEMBLY IS THE EXACT JOIN: a withdrawn input renders ZERO segments; a required input that never
+// rendered refuses; an input rendered twice refuses; a segment foreign to the snapshot refuses.
+test fn the_assembly_join_is_exact() -> Bool {
+  let authority = fx_authority(id: "a", revision: "r1")
+  let withdrawn = fx_evidence(standing: Withdrawn, required: false)
+  let snapshot = fx_snapshot(inputs: [authority, withdrawn])
+  let ready = prompt_plan_assemble(
+    snapshot: snapshot,
+    rendered: [fx_seg(input: authority, content: "the principles pointer")],
+  )
+  let unrendered = prompt_plan_assemble(snapshot: fx_snapshot(inputs: [authority]), rendered: [])
+  let duplicated = prompt_plan_assemble(
+    snapshot: fx_snapshot(inputs: [authority]),
+    rendered: [fx_seg(input: authority, content: "one"), fx_seg(input: authority, content: "two")],
+  )
+  let foreign = prompt_plan_assemble(
+    snapshot: fx_snapshot(inputs: [authority]),
+    rendered: [
+      fx_seg(input: authority, content: "the principles pointer"),
+      fx_seg(input: fx_authority(id: "b", revision: "r1"), content: "foreign segment"),
+    ],
+  )
+  let withdrawn_rendered = prompt_plan_assemble(
+    snapshot: snapshot,
+    rendered: [
+      fx_seg(input: authority, content: "the principles pointer"),
+      fx_seg(input: withdrawn, content: "stale claim"),
+    ],
+  )
+  (match ready {
+    PromptPlanReady { plan } =>
+      count(plan.ordered_segments) == 1
+        && (match plan.ordered_segments.first() {
+          Present { value: s } => s.content == "the principles pointer" && prompt_segment_required(segment: s)
+          Absent => false
+        })
+    PromptPlanRefused { refusals: _ } => false
+  })
+    && (match unrendered {
+      PromptPlanRefused { refusals } =>
+        count(refusals) == 1 && (match refusals.first() {
+          Present { value: RequiredSourceUnrendered { input_key: _ } } => true
+          _ => false
+        })
+      PromptPlanReady { plan: _ } => false
+    })
+    && (match duplicated {
+      PromptPlanRefused { refusals } =>
+        match refusals.first() {
+          Present { value: DuplicateRendering { input_key: _ } } => true
+          _ => false
+        }
+      PromptPlanReady { plan: _ } => false
+    })
+    && (match foreign {
+      PromptPlanRefused { refusals } =>
+        any(refusals, r => match r {
+          UnexpectedRendering { source_key: _ } => true
+          _ => false
+        })
+      PromptPlanReady { plan: _ } => false
+    })
+    && (match withdrawn_rendered {
+      PromptPlanRefused { refusals } =>
+        any(refusals, r => match r {
+          WithdrawnSourceRendered { input_key: _ } => true
+          _ => false
+        })
+      PromptPlanReady { plan: _ } => false
+    })
+}
+
+// THE SEGMENT ORDER IS THE SNAPSHOT'S, not the caller's render order.
+test fn the_plan_orders_segments_by_snapshot_input_order() -> Bool {
+  let a = fx_authority(id: "a", revision: "r1")
+  let b = GuidanceInput { receipt_identity: "g1", resolved: false, required: true }
+  match prompt_plan_assemble(
+    snapshot: fx_snapshot(inputs: [a, b]),
+    rendered: [fx_seg(input: b, content: "guidance first rendered"), fx_seg(input: a, content: "authority")],
+  ) {
+    PromptPlanRefused { refusals: _ } => false
+    PromptPlanReady { plan } =>
+      match plan.ordered_segments.first() {
+        Present { value: s } => s.content == "authority"
+        Absent => false
+      }
+  }
+}
+
+// THE SEMANTIC ARTIFACT carries exact extents over the joined text, and the provider artifacts of
+// one plan share the semantic digest while their wire digests differ.
+test fn the_semantic_and_wire_identities_are_distinct() -> Bool {
+  let a = fx_authority(id: "a", revision: "r1")
+  let b = GuidanceInput { receipt_identity: "g1", resolved: false, required: true }
+  match prompt_plan_assemble(
+    snapshot: fx_snapshot(inputs: [a, b]),
+    rendered: [fx_seg(input: a, content: "alpha"), fx_seg(input: b, content: "beta")],
+  ) {
+    PromptPlanRefused { refusals: _ } => false
+    PromptPlanReady { plan } => {
+      let semantic = semantic_prompt_render(plan: plan)
+      let anthropic = provider_prompt_artifact(semantic: semantic, provider_projection: "anthropic", wire_text: "{\"system\": \"...\"}")
+      let openai = provider_prompt_artifact(semantic: semantic, provider_projection: "openai-chat", wire_text: "{\"messages\": [...]}")
+      let receipt_a = prompt_render_receipt(plan: plan, wire: anthropic)
+      semantic.text == "alpha\nbeta"
+        && count(semantic.extents) == 2
+        && (match semantic.extents.first() {
+          Present { value: e } => e.start == 0 && e.end == 5
+          Absent => false
+        })
+        && (match semantic.extents.last() {
+          Present { value: e } => e.start == 6 && e.end == 10
+          Absent => false
+        })
+        && anthropic.semantic_digest == openai.semantic_digest
+        && anthropic.wire_digest != openai.wire_digest
+        && receipt_a.semantic_digest == semantic.semantic_digest
+        && receipt_a.plan_snapshot_digest == plan.snapshot_digest
+        && count(receipt_a.input_digests) == 2
+    }
+  }
+}

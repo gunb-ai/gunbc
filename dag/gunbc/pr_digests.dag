@@ -27,6 +27,7 @@ type RestFallbackReason
 
 service gunbc.PrDigests {
   operation ExtractAttachedUrls {
+    requires none
     input {
       pr: extdeps.github.pulls.PullRequest
       reviews: List<PullReview>
@@ -39,6 +40,7 @@ service gunbc.PrDigests {
   }
 
   operation RenderPrSummaryLine {
+    requires none
     input {
       pr: extdeps.github.pulls.PullRequest
     }
@@ -49,6 +51,7 @@ service gunbc.PrDigests {
   }
 
   operation JudgeMergeReadiness {
+    requires none
     input {
       pr: extdeps.github.pulls.PullRequest
       reviews: List<PullReview>
@@ -60,6 +63,7 @@ service gunbc.PrDigests {
   }
 
   operation ClassifyRestFallback {
+    requires none
     input {
       error: GitHubErrorShape
     }

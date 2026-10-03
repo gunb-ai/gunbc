@@ -4,7 +4,6 @@ import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
 import extdeps.transports.shell { ShellOutcome }
 import std.types { NonEmptyStr, List, Bool, Int, Unit }
-import std.string_type { String }
 import std.algebra { trim }
 import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire, systemd_binary_path }
 
@@ -762,6 +761,40 @@ service systemd.Systemctl {
         stdout: "actions-runner@srv3-01.service loaded active running GitHub Actions Runner\nactions-runner@srv3-02.service loaded inactive dead GitHub Actions Runner\n",
         success: true,
       } "hermetic systemd.Systemctl.ListUnitsAllLoaded (complete loaded-unit population)"
+    }
+  }
+
+  operation ListUnitsUserAllLoaded {
+    input {
+      pattern: NonEmptyStr,
+      unit_type: String = "service",
+    }
+    output {
+      stdout: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "systemctl",
+        "--user",
+        "list-units",
+        "--type={unit_type}",
+        "--all",
+        "--no-legend",
+        "--plain",
+        "{pattern}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl --user list-units --all failed"
+    }
+    mock_response {
+      0 => {
+        stdout: "gunbc-attempt-node-1-feedfacefeedface.service loaded active running gunbc attempt\n",
+        success: true,
+      } "hermetic systemd.Systemctl.ListUnitsUserAllLoaded (user-manager population -- the belt's transient units are user units, invisible to the system manager -- first field only)"
     }
   }
 
