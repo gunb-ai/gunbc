@@ -30,6 +30,7 @@ import std.markup { Fragment, Element, FragmentText, RawNode, Attribute, attr }
 import gunbc.site.markup { txt, el, el_class, el_attrs }
 import std.markdown { markdown_inlines_to_fragments }
 import extdeps.languages.markdown { parse_inline_markdown_minimal }
+import extdeps.auth.oidc { OidcLoginPromptSelectAccount, oidc_login_prompt_label }
 import gunbc.roadmap_style { roadmap_css, round_fill_delay_var, round_fill_duration_var }
 import gunbc.fleet_capacity_panel { fleet_capacity_panel }
 import gunbc.roadmap_model {
@@ -282,7 +283,7 @@ fn header_account_nodes() -> List<Fragment> {
   ], [ avatar, name ])
   let switch_item = el_attrs("a", [
     attr(name: "class", value: "header-account-menu-item" ),
-    attr(name: "href", value: "/auth/login?prompt=select_account" ),
+    attr(name: "href", value: concat("/auth/login?prompt=", oidc_login_prompt_label(prompt: OidcLoginPromptSelectAccount) as String) ),
     attr(name: "role", value: "menuitem" ),
   ], [ txt("Switch account") ])
   let signout_btn = el_attrs("button", [

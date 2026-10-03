@@ -181,6 +181,19 @@ fn oidc_login_scope_label(scope: OidcLoginScope) -> NonEmptyStr {
   }
 }
 
+// THE LOGIN PROMPT (OpenID Connect Core 1.0 section 3.1.2.1, the `prompt` request parameter). The
+// one value this login flow sends is select_account, which asks the provider to show its account
+// chooser. The upstream spelling is written HERE once: the route that admits the parameter, the
+// authorization request that carries it and the link that asks for it all read this label.
+type OidcLoginPrompt
+  = | OidcLoginPromptSelectAccount
+
+fn oidc_login_prompt_label(prompt: OidcLoginPrompt) -> NonEmptyStr {
+  match prompt {
+    OidcLoginPromptSelectAccount => "select_account" as NonEmptyStr
+  }
+}
+
 // RELATIVE-RETURN-PATH ADMISSION. The login transaction names where the browser returns after the
 // Google redirect, and that value must not be able to leave the origin: an absolute URL or a
 // protocol-relative "//host/path" spelling would hand the redirect to whoever the value named.

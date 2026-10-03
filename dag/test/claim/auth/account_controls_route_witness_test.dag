@@ -6,13 +6,13 @@ import extdeps.http.server {
   ServeHttpRequest, ServeHttpResponse, RequestSecurityContext, AccessPathLocalDev,
   ServeResponseHeader, ServeResponseHeaderLocation, ServeResponseHeaderSetCookie, ServeResponseHeaderNoStore,
 }
-import extdeps.auth.oidc { OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath }
+import extdeps.auth.oidc { OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath, OidcLoginPrompt, OidcLoginPromptSelectAccount }
 import gunbc.auth.oidc_deployment_config { OidcDeploymentConfig }
 import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent }
 import gunbc.auth.session { session_cookie_name }
 import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
 import gunbc.roadmap_auth_routes {
-  auth_login_prompt_admit, LoginPromptAdmitted, LoginPromptRefused, OidcLoginPrompt, OidcLoginPromptSelectAccount,
+  auth_login_prompt_admit, LoginPromptAdmitted, LoginPromptRefused,
   auth_login_redirect_location, auth_logout_response,
 }
 
