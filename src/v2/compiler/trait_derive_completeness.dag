@@ -1,5 +1,6 @@
 module v2.compiler.trait_derive_completeness
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.trait_derive_shape {
   ReprDeriveElemKernelBool,
@@ -36,9 +37,6 @@ import extdeps.languages.rust.capabilities {
 import v2.std.algebra {
   Cons,
   Empty
-}
-import v2.std.collection {
-  List
 }
 import v2.std.optional {
   Absent,

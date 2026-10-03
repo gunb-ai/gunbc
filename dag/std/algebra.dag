@@ -489,15 +489,6 @@ fn template_accumulator_position(t: AlgebraFieldTemplate) -> Int? {
   }
 }
 
-fn is_collection_filter_template(t: AlgebraFieldTemplate) -> Bool {
-  let proto = collection_filter_shape()
-  t.return_type == proto.return_type
-    && t.size_effect == proto.size_effect
-    && t.cost_shape == proto.cost_shape
-    && t.callback_element_position == proto.callback_element_position
-    && t.param_types == proto.param_types
-}
-
 // ONE ROSTER, DECLARED ONCE, AND EVERY SPELLING-KEYED MAP BELOW IS A FOLD OVER IT.
 //
 // What stood here was `kernel_algebra_profile` written out as a nest of ten `map_insert` calls
