@@ -67,14 +67,14 @@ where it matters for sequencing.
 
 | # | Root (row predicate) | Earliest unjustified boundary | Class | Repair class | Owner |
 |---|---|---|---|---|---|
-| R2 | **The builtin vocabulary has no bindable declaration.** The fatal is unbound, and the symbol is in the `std.primitives` name rows or is an `*Ops` template field: `concat`, `join`, `count`, `map`, `filter`, `length`, `string_contains`, `to_string`, `starts_with`, `substring`, `parse_int`… This root also takes the `elsewhere`/`several` advisories that point at `std.languages.StringOps.*` / `CollectionOps.*`. Those pointers are template fields, not declarations. | No `.dag` carrier declares the builtin callables (name and signature) for "builtins bind at root" to bind; the roster is host Rust and string rows. | (b), with a modeling prerequisite | **Model first:** declare the builtin callable roster as declarations in `std` (signatures already partly exist as `std.algebra` op rows, see `gunbc.rung_drop` `concat_binary_signature_exempt_from_arg_binding`). **Then** bind that roster at the root of v2's namespace. Separately, stop the symbol index offering template-record fields as declaration candidates in the unbound oracle. | none found; namespace-resolution lane is the natural home |
+| R2 | **The builtin vocabulary has no bindable declaration.** The fatal is unbound, and the symbol is in the `std.primitives` name rows or is an `*Ops` template field: `concat`, `join`, `count`, `map`, `filter`, `length`, `string_contains`, `to_string`, `starts_with`, `substring`, `parse_int`… This root also takes the `elsewhere`/`several` advisories that point at `std.languages.StringOps.*` / `CollectionOps.*`. Those pointers are template fields, not declarations. | No `.dag` carrier declares the builtin callables (name and signature) for "builtins bind at root" to bind; the roster is host Rust and string rows. | (b) | **One binder, already ruled in the N7 lane (calm-boar-904). Not a second 'bind at root' path.** Collection `concat`/`map`/`filter` bind through #13069's one roster binder: stern-swift-290 adds a non-fold `RosterPrimitiveCall` form, and inference takes the roster row as the signature, with a carrier check. The remaining builtins (`join`, `count`, `string_contains`, `to_string`…) use that **same** binder. Specific names already have routes: `reverse` → import `list_reverse` (#13138); `chars`/`chars_to_string` → the named conversions `unicode_scalar_unfold`/`fold` (#13143/#13151). Kernel-`String` `concat` waits on a pending kernel-monoid-row design. A separate repair: stop the symbol index offering template-record fields as declaration candidates in the unbound oracle. | N7 lane (calm-boar-904); roster binder #13069 / stern-swift-290 |
 | R4 | **A declared name is used without an import (`global_bare` dependence).** The fatal is unbound with the `elsewhere`/`several` advisory pointing at a real declaration: `Present`, `Absent`, `List`, `Node`, `LiveTreeDisposition`, `NonEmptyStr`, `PartialFunction`, `Outcome`… The same root covers bare variant constructors (e.g. `OrthogonalReady`, declared in `std.orthogonal_geometry`). Those get no advisory because the oracle doesn't index variants. | Corpus source. The seed's `global_bare` tier resolved these, and §13 deleted it. | (c) | Corpus migration: add the import, or graft by containment per `gunbc.namespace_cut_landing_order` `current_landing_order`. It's mechanical per module, and the receipt's advisory names the declaration. #13048 is a precedent for one name (`List`). The `several` names (`Absent`, `Present`, `List`) also need a choice between real homonyms; see R6. | namespace-cut program (`gunbc.namespace_cut_landing_order`) |
 | R7 | **Declared nowhere in the index (non-builtin).** It splits by re-derivation into: | | | | |
 | R7a | …the declaring file was refused at ingest, e.g. `extdeps.languages.typescript.program`, `extdeps.filesystem.filesystem_io`, `extdeps.git`, `v2.compiler.compile`. | The front-end refusal of the declaring file. Fixing that file is what unblocks its importers. | (e) cascade | Fix the root file's front-end refusal: `parse_g0_tokens_remain`, `body_lowering_reason_service_realization_unreachable`, `body_lowering_reason_uses_clause_unmodeled`. | census lane step C (#13120, silent-stag-648) ranks these roots by fan-out |
 | R7b | …the first segment of an absolute qualified path: `gunbc.`, `extdeps.`, `git.`, `github.` | Same boundary as R2: the root namespace binds no package heads. | (b) | The same root binding as R2, covering top-level namespaces. | as R2 |
 | R7c | …the residue: names declared in accepted files that the index does not bind at the reference (`Run`, `WitnessBin`, `identity`, `subject`, `host`…). | **Not yet re-derived.** These may be fields, parameters or locals reached from the wrong scope. | (e) unclassified | A targeted read per name is owed before any repair is chosen. | — |
 | R3 | **`none` is unbound.** | The Optional `none` literal is a seed kernel value with no v2 binding. | (b) | Declare it with the Optional carrier (`v2.std.optional`) or bind it at root with R2. | as R2 |
-| R1 | **Ambiguity where both candidates are one declaration.** The fatal is ambiguous and every `resolve_ambiguous_competing_declaration` names the same path. The routes are own import + ancestor-module import, or own import + an ancestor that declares the name. | `v2.std.symbol_index` `symbol_index_lexical_selection` counts binding rows rather than declaration identities. | (b), **resolver ambiguity** | v2 repair: two routes to one declaration are one meaning. Key the candidate set by declaration path before the none/one/many trichotomy. Keep ambiguity for distinct paths, as the zero-ambiguity ruling requires. A separate design question, not decided here: should an import row bind only the importing module's body, rather than its whole namespace subtree? | namespace-resolution lane; no session found holding it |
+| R1 | **Ambiguity where both candidates are one declaration.** The fatal is ambiguous and every `resolve_ambiguous_competing_declaration` names the same path. The routes are own import + ancestor-module import, or own import + an ancestor that declares the name. | `v2.std.symbol_index` `symbol_index_lexical_selection` counts binding rows rather than declaration identities. | (b), **resolver ambiguity** | v2 repair: two routes to one declaration are one meaning. Key the candidate set by declaration path before the none/one/many trichotomy. Keep ambiguity for distinct paths, as the zero-ambiguity ruling requires. **Open question for the operator:** should an import row bind only the importing module's body, rather than its whole namespace subtree? This plan does not decide it. | namespace-resolution lane; no session found holding it |
 | R5 | **An effect/resource name is unbound** (`Filesystem`, `Read`, `Write`, `shell`, `Env`, `Exec`, `Clock`). | The `uses` clause has no v2 carrier: `gunbc.recurring_failure_mode` `uses_clause_has_no_carrier`, `gunbc.rung_drop` `network_requirement_unrepresented_after_uses_cut`. | (c) | Waits on D13's resource-keyed DependencyDemand carrier (`gunbc.plans.demand_engine_program`). | D13 / demand-engine program |
 | R6 | **Ambiguity between distinct homonyms**: `std.types.List` vs `v2.std.collection.List`, `std.constructors.Optional` vs `v2.std.optional.Optional`, `Cardinality`, `Unit`. Per-module `extdeps_external_authority_anchor` declarations also become visible down a containment chain. | Corpus: the two-std forks, and an anchor name minted once per module. | (a) / (d) | Fix in source. The two-std defork (docs/plans/namespace-flip-last-28-root-a-two-std-defork.md; #13048's `List` class). For the anchor, it needs a ruling on whether a per-module anchor should be visible to contained modules at all. | two-std defork lane |
 | R8 | **Other fatals:** `binder_hides_visible_value`, `realized_declaration_mismatch` (`fold_list`), `construct_tag_not_a_constructor`, anonymous record/map expected-type refusals, `float_literal_not_lowered`. | Per-cause; small populations. | mixed | Read each after R1–R6, because most of these modules also carry R2/R4 rows. | — |
@@ -88,13 +88,27 @@ unblocks them on its own. That makes it the cheapest first PR even though it ran
 
 ## In the native tests' import closure
 
-The population is the import closure of every `v2.test.*` module, so the tests plus everything
-they import. Every root R1–R8 has members in it. The ordering inside it matches the corpus-wide
-ordering: R4, R2, R7, R3, R1, R5. Over a thousand non-test modules in that closure (mostly `extdeps.*`) are
-refused, and they are what the tests import.
+**N7's population** is the target `//v2/test/parse/expression_bodied_fn_decl_parse:all`
+(module `v2.test.parse.expression_bodied_fn_decl_parse`) plus its import closure. N7 is
+calm-boar-904's lane. Ordered by modules touched in that closure, the roots are:
 
-calm-boar-904 (the N7 manager) is told directly. Whether "native tests" means all of `v2.test.*`
-or N7's narrower roster is N7's to state. The same derivation runs against either population.
+- R4 and R2, which dominate;
+- then R3;
+- then a smaller set of R7, R1, R8, R6 and R5.
+
+Specific members, by symbol:
+
+- **R1:** the `extdeps.cache.*` modules (`catalog_io`, `catalog_placement`, `materialization`,
+  `types`).
+- **R6:** `v2.std.grammar` and `v2.std.node_query`.
+- **R2:** `v2.std.node`, whose own resolve refusal is N7's current fatal, reached through its
+  `root.children` provider names. It is being cleared through #13069's roster binder (`map`), and
+  then `concat`.
+
+The member list for each root is in the PR body's snapshot.
+
+**The wider population** is every `v2.test.*` module plus what it imports. Every root R1–R8 has
+members there, in the same ordering as corpus-wide.
 
 ## Recommended first PRs
 
@@ -104,12 +118,8 @@ or N7's narrower roster is N7's to state. The same derivation runs against eithe
      declaration.
    - **Positive control:** two distinct declarations still refuse with both candidates.
 
-   This lane does not decide whether ancestor imports should be visible to contained modules. That
-   is a follow-up question for the namespace-resolution design.
-2. **R2 / R3 / R7b, model first.** A model PR declaring the builtin callable roster and `none` in
-   `std`, with signatures, consumed by its own executing control. Then the resolve PR that binds
-   that roster, and the top-level namespace heads, at root. The model PR comes first, because
-   binding a host string table at root would cement the seed's roster in v2.
+   Whether ancestor imports should be visible to contained modules at all is open, and is with the operator.
+2. **R2: coordinate with the N7 lane; don't build a parallel path.** Extend #13069's roster binder over the remaining builtin names, row by row, in that lane's sequence. Building a separate 'builtins bind at root' path would fork the §3 authority. R3 (`none`) and R7b (absolute-path heads) need their own ruling on whether the roster binder or the Optional carrier owns them. Ask N7 before authoring.
 3. **R4 (corpus).** A per-subtree import migration driven by the receipt's
    `resolve_unbound_name_is_declared_elsewhere` advisory paths, sequenced under
    `gunbc.namespace_cut_landing_order` rather than as an independent sweep. The `several` names
