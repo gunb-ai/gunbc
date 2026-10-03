@@ -557,7 +557,16 @@ pub fn template_param_position(
 pub fn template_step_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64> {
     template_param_position(t.clone(), |p| match (*p.clone()).clone() {
         AlgebraTypeTemplate::CallableOf { .. } => true,
-        _ => false,
+        AlgebraTypeTemplate::ReceiverSelf => false,
+        AlgebraTypeTemplate::ReceiverElement => false,
+        AlgebraTypeTemplate::ReceiverKey => false,
+        AlgebraTypeTemplate::ReceiverValue => false,
+        AlgebraTypeTemplate::NamedTemplate { name: _, .. } => false,
+        AlgebraTypeTemplate::ContainerOf { .. } => false,
+        AlgebraTypeTemplate::OptionalOf { inner: _, .. } => false,
+        AlgebraTypeTemplate::WitnessOf { inner: _, .. } => false,
+        AlgebraTypeTemplate::TupleOf { .. } => false,
+        AlgebraTypeTemplate::AlgebraTypeVariable { id: _, .. } => false,
     })
 }
 
@@ -575,7 +584,18 @@ pub fn template_accumulator_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64>
                 Some(_) => acc.clone(),
                 std::option::Option::None => match (*p.clone()).clone() {
                     AlgebraTypeTemplate::CallableOf { return_type: r, .. } => Some(r.clone()),
-                    _ => std::option::Option::None,
+                    AlgebraTypeTemplate::ReceiverSelf => std::option::Option::None,
+                    AlgebraTypeTemplate::ReceiverElement => std::option::Option::None,
+                    AlgebraTypeTemplate::ReceiverKey => std::option::Option::None,
+                    AlgebraTypeTemplate::ReceiverValue => std::option::Option::None,
+                    AlgebraTypeTemplate::NamedTemplate { name: _, .. } => std::option::Option::None,
+                    AlgebraTypeTemplate::ContainerOf { .. } => std::option::Option::None,
+                    AlgebraTypeTemplate::OptionalOf { inner: _, .. } => std::option::Option::None,
+                    AlgebraTypeTemplate::WitnessOf { inner: _, .. } => std::option::Option::None,
+                    AlgebraTypeTemplate::TupleOf { .. } => std::option::Option::None,
+                    AlgebraTypeTemplate::AlgebraTypeVariable { id: _, .. } => {
+                        std::option::Option::None
+                    }
                 },
             },
         );
@@ -587,7 +607,24 @@ pub fn template_accumulator_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64>
                 } else {
                     template_param_position(t.clone(), |p| match (*p.clone()).clone() {
                         AlgebraTypeTemplate::CallableOf { .. } => false,
-                        _ => (p.clone() == acc_type.clone()),
+                        AlgebraTypeTemplate::ReceiverSelf => (p.clone() == acc_type.clone()),
+                        AlgebraTypeTemplate::ReceiverElement => (p.clone() == acc_type.clone()),
+                        AlgebraTypeTemplate::ReceiverKey => (p.clone() == acc_type.clone()),
+                        AlgebraTypeTemplate::ReceiverValue => (p.clone() == acc_type.clone()),
+                        AlgebraTypeTemplate::NamedTemplate { name: _, .. } => {
+                            (p.clone() == acc_type.clone())
+                        }
+                        AlgebraTypeTemplate::ContainerOf { .. } => (p.clone() == acc_type.clone()),
+                        AlgebraTypeTemplate::OptionalOf { inner: _, .. } => {
+                            (p.clone() == acc_type.clone())
+                        }
+                        AlgebraTypeTemplate::WitnessOf { inner: _, .. } => {
+                            (p.clone() == acc_type.clone())
+                        }
+                        AlgebraTypeTemplate::TupleOf { .. } => (p.clone() == acc_type.clone()),
+                        AlgebraTypeTemplate::AlgebraTypeVariable { id: _, .. } => {
+                            (p.clone() == acc_type.clone())
+                        }
                     })
                 }
             }
