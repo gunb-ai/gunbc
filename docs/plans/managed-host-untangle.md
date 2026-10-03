@@ -15,7 +15,7 @@ This is an import census over every `.dag` module under `dag/` and `src/v2/`, no
 - **Gate**: transitive import closure from `v2.workflow.required_floor` `required_gate_prefixes`.
 - **Constants**: the `mtcollins|mt_collins|MtCollins` symbols each module imports from another module. These are the unit/platform constants it depends on.
 
-The full receipt and method are under **Instrument** below.
+The method is under **Census method** below. It is a one-off that each cut re-runs at its own head.
 
 ### Findings that shape the plan
 
@@ -171,7 +171,7 @@ So the BMC and silicon leaves it needs move first.
 
 These modules are outside the required gate, so a green required run proves nothing about them. Each PR's description carries all of the following:
 
-1. **Consumer witnesses, run by name.** The cut's complete consumer roster, recomputed at the PR head with the instrument below (not copied from this receipt). Each named witness is executed with `gunbc run` against the head, with binary path and build sha printed.
+1. **Consumer witnesses, run by name.** The cut's complete consumer roster, recomputed at the PR head with the census method below and included in full in the PR description. Each named witness is executed with `gunbc run` against the head, with binary path and build sha printed.
 2. **A same-path RED.** On the acceptance path the cut's witness actually runs, remove the binding the cut introduced (the `ManagedHost` row, the standing arm, the parameter) and show the named witness refusing. Then restore it and show it accepted. A RED reached by a different route does not count.
 3. **A corpus sweep.** `git grep` at the head for every deleted module name and symbol, across `.dag`, `.rs`, `.yml`, `docs/` and `artifacts/`. Every remaining hit is classified with the dispositions in the non-import census below.
 4. **No aliases.** No module re-exports, wraps or renames-through the deleted root, and no `mtcollins1_*` function is a one-line call into the generic one.
@@ -193,18 +193,21 @@ These occurrences do not refuse through an import edge, so the import census abo
 
 Exact token `mtcollins1_boot`: 19 files at `26e99a9c7f`, all inside the populations above.
 
-## Instrument
+## Census method: a one-off, re-run by each cut (not an instrument)
 
-The import census in [managed-host-untangle-census.tsv](managed-host-untangle-census.tsv) is the receipt. It lists every module with its layer, path, required-gate membership, imported unit symbols, and its **complete** importer list. The method:
+No entry point in the tree derives an import-graph consumer roster, and building one is outside this program. So the census is a **one-off measurement** (DESIGN §6), and no snapshot of its output is the authority for anything.
 
+**Each cut re-runs it at its own PR head** over its own deleted roots, and puts the **complete** consumer roster in that PR's description, bound to that head sha. That roster is the §3 "enumerate the consumers by name before you delete" receipt for the cut, and it lives with the deletion it licenses, where it cannot go stale.
+
+The method:
 1. Walk `dag/` and `src/v2/` for `.dag` files.
 2. Read each `^module` and each `^import <name>`.
 3. The population is the modules whose name or text matches `mtcollins` (case-insensitive).
-4. Importers are the reverse import edges.
+4. Consumers are the reverse import edges.
 5. Gate membership is the transitive import closure from the modules matching `v2.workflow.required_floor` `required_gate_prefixes`.
 6. Imported unit symbols are the names inside each module's `import … { … }` lists that match `mtcollins|mt_collins|MtCollins`.
 
-Each cut recomputes its own root's roster at its head this way. The table below is a reading aid. It truncates consumer lists, and the TSV does not.
+It is a regex over source text, so it censuses *import shapes*. The terminal receipt's corpus sweep and the non-import census above cover what an import edge cannot see.
 
 ## Census
 
@@ -212,7 +215,7 @@ The layer is assigned per module from its subject.
 - **R** = mentions the unit only in prose or receipts.
 - **W** = witness.
 
-Consumers list production importers by name, truncated after six with a count, plus the number of witness importers. **The complete lists are in the TSV.**
+Consumers list production importers by name, truncated after six with a count, plus the number of witness importers. **This table is a dated reading aid at `26e99a9c7f`, used to plan the order. It is not a consumer receipt: each cut recomputes its own roster at its head (see Census method).**
 
 ### Layer 3 — silicon (3 modules)
 
