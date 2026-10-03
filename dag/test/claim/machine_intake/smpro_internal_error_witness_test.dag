@@ -1,5 +1,6 @@
 module test.claim.machine_intake.smpro_internal_error_witness_test
 
+import v2.std.algebra { any, contains }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.optional { Present }
@@ -90,9 +91,9 @@ test fn a_warning_reads_its_own_words() -> Bool {
 
 // ── RED: an unlisted code is its number, never the nearest name ────────────────────────────────
 
+// INFO_HI 0xA099: image nibble 10 (the table ends at 9), location 0x99 = 153 (it ends at 77);
+// INFO_LO 146 (it ends at 145).
 test fn red_an_unlisted_location_error_and_image_are_undefined() -> Bool {
-  // INFO_HI 0xA099: image nibble 10 (the table ends at 9), location 0x99 = 153 (it ends at 77);
-  // INFO_LO 146 (it ends at 145).
   match smpro_internal_error_of(type_word: 2, info_hi: 41113, info_lo: 146, data_hi: 0, data_lo: 0) {
     Present { value: r } => undefined(c: r.image, code: 10) && undefined(c: r.location, code: 153) && undefined(c: r.error, code: 146)
       && contains(smpro_internal_record_text(r: r), "code 146 (no row in internalErrors.hpp)")
