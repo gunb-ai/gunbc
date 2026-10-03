@@ -5,7 +5,8 @@ import std.nat { Nat }
 import std.machine_constraints { Compose, MachineWidth, PointerWidth }
 import std.measure { bit_width, bit_width_count, bits_per_byte }
 import std.induction { int_pow_bounded }
-import std.types { gt_zero }
+import std.types { gt_zero, List }
+import v2.std.optional { Absent, Present }
 
 type Int8 = Compose<Int, MachineWidth<8>>
 type Int16 = Compose<Int, MachineWidth<16>>
@@ -233,6 +234,6 @@ fn uint8_channel_bit_width_int() -> Int {
 fn uint8_channel_inclusive_max_value_derived() -> Int? {
   match int_pow_bounded(base: 2, exp: uint8_channel_bit_width_int()) {
     Present { value: two_pow } => Present { value: two_pow - 1 }
-    Absent => none
+    Absent => Absent
   }
 }

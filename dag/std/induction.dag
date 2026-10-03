@@ -1,8 +1,8 @@
 module std.induction
 
-import std.termination { DescentEvidence, PositiveDescentAmount, ProportionalDivisor, RankingDimension, peano_literal_materialization_cap, positive_descent_amount_from_positive_int, positive_descent_count, proportional_divisor_from_int_at_least_two, proportional_divisor_to_int }
+import std.termination { DescentEvidence, PositiveDescentAmount, ProportionalDivisor, RankingDimension, peano_literal_materialization_cap, positive_descent_amount_from_positive_int, positive_descent_count, proportional_divisor_from_int_at_least_two, proportional_divisor_to_int, DescentUnknown, DivideByTwo, NonIncreasing, OneStep, Strict, TreeSize }
 
-import std.computation { CallPattern, IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound, tree_size_bound }
+import std.computation { CallPattern, IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound, tree_size_bound, ArithmeticDivideCall, ArithmeticParam, ArithmeticSubtractCall, ChildAccessorCall, CollectionSize, ConstantShrink, Descend, Fold, Forever, ProportionalShrink, Repeat, SameArgumentCall, UnitShrink }
 
 import std.checked_arithmetic { checked_int_add, checked_int_multiply, checked_int_optional }
 import std.algebra {
@@ -11,7 +11,13 @@ import std.algebra {
   ShapeIterateBody,
   ShapeLinearScan,
   ShapeSortBody,
+  Equal,
+  Greater,
+  Less,
+  Ordering
 }
+import std.types { List }
+import v2.std.optional { Absent, Present }
 
 
 type RecursionShape
@@ -307,10 +313,10 @@ fn sub_value_to_call_pattern(relation: SubValueRelation) -> CallPattern? {
       }
     PreservedValue                            => Present { value: SameArgumentCall }
 
-    NonIncreasingValue                        => none
-    StrictAxisErased                          => none
-    MixedTop                                  => none
-    SubValueUnknown                           => none
+    NonIncreasingValue                        => Absent
+    StrictAxisErased                          => Absent
+    MixedTop                                  => Absent
+    SubValueUnknown                           => Absent
   }
 }
 
@@ -328,7 +334,7 @@ fn sub_value_to_lowering_target(relation: SubValueRelation) -> LoweringTarget? {
         primitive: Fold,
         bound: CollectionSize { param: f.field_name },
         evidence: Strict,
-        factor: none
+        factor: Absent
       }}
     ArithmeticDescent { param: p, factor: fac } =>
       Present { value: LoweringTarget {
@@ -342,7 +348,7 @@ fn sub_value_to_lowering_target(relation: SubValueRelation) -> LoweringTarget? {
         primitive: Repeat,
         bound: Forever,
         evidence: NonIncreasing,
-        factor: none
+        factor: Absent
       }}
 
     NonIncreasingValue =>
@@ -350,13 +356,13 @@ fn sub_value_to_lowering_target(relation: SubValueRelation) -> LoweringTarget? {
         primitive: Repeat,
         bound: Forever,
         evidence: NonIncreasing,
-        factor: none
+        factor: Absent
       }}
 
-    StrictAxisErased => none
+    StrictAxisErased => Absent
 
-    MixedTop => none
-    SubValueUnknown => none
+    MixedTop => Absent
+    SubValueUnknown => Absent
   }
 }
 
@@ -683,7 +689,7 @@ fn shape_for_growth_rank(r: GrowthRank) -> CostShape? {
         if r.degree == 1 && r.logs == 1 && r.bodies == 0 {
           Present { value: ShapeSortBody }
         } else {
-          none
+          Absent
         }
       }
     }
@@ -692,7 +698,7 @@ fn shape_for_growth_rank(r: GrowthRank) -> CostShape? {
 
 fn shape_for_param_growth(growth: ParamGrowth) -> CostShape? {
   match growth {
-    GrowthNotOrderable => none
+    GrowthNotOrderable => Absent
     OrderableGrowth { rank: r } => shape_for_growth_rank(r: r)
   }
 }
@@ -702,22 +708,22 @@ fn cost_bound_to_shape(b: CostBound) -> CostShape? {
   if params.length() == 0 {
     match b {
       ConstantBound => Present { value: ShapeConstant }
-      AtomicBound { cost: _ } => none
-      ProductBound { factors: _ } => none
-      SumOfProductsBound { terms: _ } => none
-      SumBound { terms: _ } => none
-      ForeverBound => none
-      ErrorBound => none
+      AtomicBound { cost: _ } => Absent
+      ProductBound { factors: _ } => Absent
+      SumOfProductsBound { terms: _ } => Absent
+      SumBound { terms: _ } => Absent
+      ForeverBound => Absent
+      ErrorBound => Absent
     }
   } else {
     if params.length() == 1 {
       match params.first() {
-        Absent => none
+        Absent => Absent
         Present { value: only } =>
           shape_for_param_growth(growth: cost_bound_growth_in_param(b: b, param: only))
       }
     } else {
-      none
+      Absent
     }
   }
 }
@@ -730,16 +736,16 @@ type RecurrenceForm {
 }
 
 fn bounded_int_pow_exponent(k: Int) -> Int? {
-  if k < 0 { none }
+  if k < 0 { Absent }
   else {
-    if k > peano_literal_materialization_cap() { none }
+    if k > peano_literal_materialization_cap() { Absent }
     else { Present { value: k } }
   }
 }
 
 fn int_pow_bounded(base: Int, exp: Int) -> Int? {
   match bounded_int_pow_exponent(k: exp) {
-    Absent => none
+    Absent => Absent
     Present { value: e } =>
       if e == 0 { Present { value: 1 } }
       else {
@@ -757,9 +763,9 @@ fn int_pow_bounded(base: Int, exp: Int) -> Int? {
                 Present { value: prev } =>
                   match checked_int_optional(r: checked_int_multiply(a: base, b: prev)) {
                     Present { value: prod } => Present { value: prod }
-                    Absent => none
+                    Absent => Absent
                   }
-                Absent => none
+                Absent => Absent
               }
             }
           }
@@ -769,7 +775,7 @@ fn int_pow_bounded(base: Int, exp: Int) -> Int? {
 }
 
 fn ceil_log(base: Int, argument: Int) -> Int? {
-  if base < 2 || argument < 1 { none }
+  if base < 2 || argument < 1 { Absent }
   else { ceil_log_iter(base: base, argument: argument, k: 0, power: 1) }
 }
 
@@ -777,10 +783,10 @@ fn ceil_log_iter(base: Int, argument: Int, k: Int, power: Int) -> Int? {
   if power >= argument { Present { value: k } }
   else {
     match checked_int_optional(r: checked_int_multiply(a: power, b: base)) {
-      Absent => none
+      Absent => Absent
       Present { value: next_power } =>
         match checked_int_optional(r: checked_int_add(a: k, b: 1)) {
-          Absent => none
+          Absent => Absent
           Present { value: k1 } =>
             ceil_log_iter(base: base, argument: argument, k: k1, power: next_power)
         }

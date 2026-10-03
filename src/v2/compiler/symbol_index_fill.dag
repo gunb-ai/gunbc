@@ -61,6 +61,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.compiler.parse { parse_tree_projection_edge }
 import v2.std.type_binder { OpaqueTypeDecl, TypeAlias, GenericTypeDecl, PlainTypeDecl, type_decl_view, type_param_names }
+import std.types { List }
 
 data symbol_index_fill_extdeps_coupling_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,

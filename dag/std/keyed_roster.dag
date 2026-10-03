@@ -2,6 +2,7 @@ module std.keyed_roster
 
 import std.types { List, Bool, Int, String }
 import std.keyed_row { KeyedRow, keyed_row_find }
+import v2.std.optional { Absent, Present }
 
 // Keyed roster set/map CONSTRUCTION semantics (generated-file conflict policy lane 4, operator
 // ruling 2026-08-01). Path-keyed grant and roster carriers are row 3 in the four-case policy: never
@@ -81,8 +82,8 @@ fn keyed_roster_locate_second_row<K, V>(
     }
   }) {
     KeyedRosterSecondRowScanFound { row: row } => Present { value: row }
-    KeyedRosterSecondRowScanAbsent => none
-    KeyedRosterSecondRowScanAwaitingSecond => none
+    KeyedRosterSecondRowScanAbsent => Absent
+    KeyedRosterSecondRowScanAwaitingSecond => Absent
   }
 }
 
@@ -91,7 +92,7 @@ fn keyed_roster_locate_first_row<K, V>(
   wanted_key: K,
   key_eq: fn(K, K) -> Bool,
 ) -> KeyedRow<K, V>? {
-  fold(rows, init: none, f: fn(acc, row) {
+  fold(rows, init: Absent, f: fn(acc, row) {
     match acc {
       Present { value: _ } => acc
       Absent =>
@@ -108,7 +109,7 @@ fn keyed_roster_locate_duplicate<K, V>(
   rows: List<KeyedRow<K, V>>,
   key_eq: fn(K, K) -> Bool,
 ) -> KeyedRosterDuplicateEvidence<K, V>? {
-  fold(rows, init: none, f: fn(acc, row) {
+  fold(rows, init: Absent, f: fn(acc, row) {
     match acc {
       Present { value: _ } => acc
       Absent =>

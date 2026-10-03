@@ -1,6 +1,6 @@
 module std.cache_interface
 
-import std.types { NonEmptyStr, Bool, Int, LogicalTime, brand }
+import std.types { NonEmptyStr, Bool, Int, LogicalTime, brand, List }
 import v2.std.optional { Absent, Optional, Present }
 import std.decl_ref { DeclarationRef }
 import std.content_hash { ContentHash }
@@ -13,6 +13,7 @@ import std.pareto {
   LowerIsBetter,
   axis_comparison_int,
   dominance_of_comparisons,
+  Dominates
 }
 import std.realization_schedule {
   CostAccount,
@@ -429,7 +430,7 @@ type CacheReachCandidate {
 
 fn cache_reach_candidate_recompute() -> CacheReachCandidate {
   CacheReachCandidate {
-    layer: none
+    layer: Absent
     fetch_cost: nanosecond(count: 0)
     recompute_saved: nanosecond(count: 0)
     latency: nanosecond(count: 0)
@@ -452,10 +453,10 @@ fn cache_reach_candidate_probe(
   recompute: CostAccount<Nano>,
 ) -> CacheReachCandidate? {
   match cache_facts_for_id(id: id, catalog: catalog) {
-    Absent => none
+    Absent => Absent
     Present { value: facts } =>
       match cost_time_axis_established(axis: recompute.time) {
-        Absent => none
+        Absent => Absent
         Present { value: saved } =>
           let fetch = read_latency_cost(facts: facts)
           Present {

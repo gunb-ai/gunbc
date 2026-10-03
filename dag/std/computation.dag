@@ -4,7 +4,9 @@ import std.termination {
   DescentEvidence, DescentUnknown, RankingDimension,
   PositiveDescentAmount, OneStep, AdditionalStep,
   ProportionalDivisor, DivideByTwo, StrictlyLarger,
-  positive_descent_count
+  positive_descent_count,
+  NonIncreasing,
+  Strict
 }
 import std.algebra {
   AlgebraProfile, OrderedRingProfile, OrderedSemiringProfile, ApproximateFieldProfile,
@@ -14,6 +16,7 @@ import std.algebra {
   PartialFunctionProfile, FinitelySupportedFunctionProfile,
   kernel_algebra_profile
 }
+import v2.std.optional { Absent, Present }
 
 
 type SizeBound
@@ -62,7 +65,7 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
     ChildAccessorCall { accessor: a } =>
       LoweringTarget { primitive: Descend,
         bound: SubtreeSize { param: a },
-        evidence: Strict, factor: none }
+        evidence: Strict, factor: Absent }
 
     CollectionShrinkCall { amount: p, collection: c } =>
       LoweringTarget { primitive: Fold,
@@ -85,22 +88,22 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
     ParserAdvanceCall { witness: w } =>
       LoweringTarget { primitive: Fold,
         bound: ParserStreamSize { witness: w },
-        evidence: Strict, factor: none }
+        evidence: Strict, factor: Absent }
 
     WorklistDrainCall { element: e } =>
       LoweringTarget { primitive: Fold,
         bound: WorklistDrainSize { element: e },
-        evidence: Strict, factor: none }
+        evidence: Strict, factor: Absent }
 
     FoldBodyCall { outer_collection: oc } =>
       LoweringTarget { primitive: Fold,
         bound: CollectionSize { param: oc },
-        evidence: NonIncreasing, factor: none }
+        evidence: NonIncreasing, factor: Absent }
 
     SameArgumentCall =>
       LoweringTarget { primitive: Repeat,
         bound: Forever,
-        evidence: NonIncreasing, factor: none }
+        evidence: NonIncreasing, factor: Absent }
   }
 }
 
@@ -111,9 +114,9 @@ fn size_bound_param(bound: SizeBound) -> String? {
     ParserStreamSize { witness: w } => Present { value: w }
     WorklistDrainSize { element: e } => Present { value: e }
     ArithmeticParam { param: p } => Present { value: p }
-    ExplicitCountZero           => none
-    ExplicitCountPositive { steps: _ } => none
-    Forever                     => none
+    ExplicitCountZero           => Absent
+    ExplicitCountPositive { steps: _ } => Absent
+    Forever                     => Absent
   }
 }
 
@@ -133,7 +136,7 @@ fn constant_bound_value(bound: SizeBound) -> Int? {
     ExplicitCountZero => Present { value: 0 }
     ExplicitCountPositive { steps: s } => Present { value: positive_descent_count(s) }
     Forever                    => Present { value: forever_iteration_bound() }
-    _                          => none
+    _                          => Absent
   }
 }
 
@@ -154,12 +157,12 @@ fn algebra_profile_to_dimension(profile: AlgebraProfile) -> IterationDimension? 
     FreeMonoidScalarProfile            => Present { value: CollectionFold }
     FinitePowerSetProfile              => Present { value: CollectionFold }
     FinitelySupportedFunctionProfile   => Present { value: CollectionFold }
-    PointwisePowerCollectionProfile    => none
-    PartialFunctionProfile             => none
+    PointwisePowerCollectionProfile    => Absent
+    PartialFunctionProfile             => Absent
     OrderedRingProfile                 => Present { value: ArithmeticRepeat }
     OrderedSemiringProfile             => Present { value: ArithmeticRepeat }
     ApproximateFieldProfile            => Present { value: ArithmeticRepeat }
-    BooleanAlgebraProfile              => none
+    BooleanAlgebraProfile              => Absent
   }
 }
 
@@ -168,7 +171,7 @@ fn type_iteration_dimension(type_name: String) -> IterationDimension? {
   else {
     match kernel_algebra_profile |> get(type_name) {
       Present { value: p } => algebra_profile_to_dimension(profile: p)
-      Absent => none
+      Absent => Absent
     }
   }
 }

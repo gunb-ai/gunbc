@@ -1,6 +1,7 @@
 module std.checked_arithmetic
 
 import std.nat { Nat }
+import v2.std.optional { Absent, Present }
 
 // THE FINITE-MACHINE INTEGER BOUNDARY, in one place.
 //
@@ -190,7 +191,7 @@ fn checked_int_multiply(a: Int, b: Int) -> CheckedInt {
 fn checked_int_optional(r: CheckedInt) -> Int? {
   match r {
     CheckedIntReady { value: v } => Present { value: v }
-    CheckedIntOverflow { cause: _ } => none
+    CheckedIntOverflow { cause: _ } => Absent
   }
 }
 
@@ -240,10 +241,10 @@ fn checked_int_magnitude(a: Int) -> CheckedNat {
 // where it was the only definition of this fact.
 fn checked_int_to_nat(n: Int) -> Nat? {
   if n < 0 {
-    none
+    Absent
   } else {
     match checked_int_magnitude(a: n) {
-      CheckedNatOverflow { cause: _ } => none
+      CheckedNatOverflow { cause: _ } => Absent
       CheckedNatReady { value: v } => Present { value: v }
     }
   }

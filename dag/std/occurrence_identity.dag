@@ -4,7 +4,8 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import std.algebra { FreeMonoid }
 import std.content_hash { Fnv1a64Structural }
-import std.types { Bool, Int, String, SourceSpan }
+import std.types { Bool, Int, String, SourceSpan, List, Map }
+import v2.std.optional { Absent, Present }
 
 data occurrence_identity_scope_law: String = "OccurrenceId values are unique only inside one explicit graph-scoped OccurrenceIdAllocator. A production source graph threads one allocator across every parsed source; a standalone parse creates one isolated allocator scope. Filename, SourceSpan, authored name, structural Node equality, content hash, and module-local allocator reset are forbidden identity inputs."
 
@@ -600,7 +601,7 @@ fn occurrence_transport_index_build(
     index.entries,
     init: OccurrenceTransportIndexBuild {
       entries_by_id: empty_map(),
-      refusal: none,
+      refusal: Absent,
     },
     f: (build, entry) =>
       match build.refusal {
@@ -631,7 +632,7 @@ fn occurrence_transport_index_build(
                     entry.projection.occurrence.value,
                     entry
                   ),
-                  refusal: none,
+                  refusal: Absent,
                 }
               } else {
                 OccurrenceTransportIndexBuild {
@@ -664,7 +665,7 @@ fn occurrence_transport_role_index_build(
     init: OccurrenceTransportRoleIndexBuild {
       declarations_by_id: empty_map(),
       references_by_id: empty_map(),
-      refusal: none,
+      refusal: Absent,
     },
     f: (build, declaration) =>
       match build.refusal {
@@ -693,7 +694,7 @@ fn occurrence_transport_role_index_build(
                   declaration
                 ),
                 references_by_id: build.references_by_id,
-                refusal: none,
+                refusal: Absent,
               }
           }
       }
@@ -731,7 +732,7 @@ fn occurrence_transport_role_index_build(
                       reference.occurrence.value,
                       reference
                     ),
-                    refusal: none,
+                    refusal: Absent,
                   }
               }
           }
@@ -766,7 +767,7 @@ fn declaration_occurrence_refusal(
                 diagnostic_span: declaration.diagnostic_span,
               },
             }
-          Absent => none
+          Absent => Absent
         }
       } else {
         Present {
@@ -806,7 +807,7 @@ fn reference_occurrence_refusal(
                 diagnostic_span: reference.diagnostic_span,
               },
             }
-          Absent => none
+          Absent => Absent
         }
       } else {
         Present {
@@ -856,7 +857,7 @@ fn occurrence_transport_validate(
         Absent =>
           let declaration_refusal = fold(
             transport.declarations,
-            init: none,
+            init: Absent,
             f: (refusal, declaration) =>
               match refusal {
                 Present { value: _ } => refusal
@@ -872,7 +873,7 @@ fn occurrence_transport_validate(
             Absent =>
               let reference_refusal = fold(
                 transport.references,
-                init: none,
+                init: Absent,
                 f: (refusal, reference) =>
                   match refusal {
                     Present { value: _ } => refusal
@@ -905,7 +906,7 @@ fn occurrence_transport_refusal(
 ) -> OccurrenceTransportRefusal? {
   match occurrence_transport_validate(transport: transport) {
     OccurrenceTransportRefused { refusal: refusal } => Present { value: refusal }
-    OccurrenceTransportValidated { transport: _ } => none
+    OccurrenceTransportValidated { transport: _ } => Absent
   }
 }
 

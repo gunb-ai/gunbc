@@ -24,6 +24,7 @@ import std.process_termination { ProcessTermination, ProcessExited, ProcessSigna
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.witness_admission { WitnessConsumerCadence }
+import v2.std.optional { Absent, Present }
 
 // EPISTEMIC BASIS IS PER AXIS, NOT PER ACCOUNT. One CostBasis over the whole account could not
 // say which of time, space and power the basis was about, so a constructor supplying only a time
@@ -120,14 +121,14 @@ fn cost_time_axis_established<S>(axis: CostTimeAxis<S>) -> Measure<Time, S, Nat>
   match axis {
     CostTimeMeasured { value: t } => Present { value: t }
     CostTimePredicted { value: t } => Present { value: t }
-    CostTimeUnestablished => none
+    CostTimeUnestablished => Absent
   }
 }
 
 fn cost_account_time_count<S>(account: CostAccount<S>) -> Nat? {
   match cost_time_axis_established(axis: account.time) {
     Present { value: t } => Present { value: measure_count(m: t) }
-    Absent => none
+    Absent => Absent
   }
 }
 

@@ -33,6 +33,7 @@ import std.realization_schedule {
   cost_account_measured,
   cost_account_time_count,
 }
+import v2.std.optional { Absent, Present }
 
 // PEAK AND CURRENT ARE DIFFERENT QUESTIONS AND ONLY ONE OF THEM CAN SEE A RELEASE.
 //
@@ -85,7 +86,7 @@ type ResidencyObservation
 fn residency_observed_bytes(o: ResidencyObservation) -> ByteSize? {
   match o {
     ResidencyObserved { bytes: b } => Present { value: b }
-    ResidencyUnobservable { axis: _, reason: _ } => none
+    ResidencyUnobservable { axis: _, reason: _ } => Absent
   }
 }
 

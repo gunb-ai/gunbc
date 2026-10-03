@@ -1,6 +1,7 @@
 module extdeps.transports.shell_declared
 
 import std.types { Int, String }
+import v2.std.optional { Absent, Present }
 
 // THE DECLARED VOCABULARY OF THE SHELL TRANSPORT (XL-2 PR3a, moved here in PR3b-i): what an operation
 // AUTHORS for this transport -- its binding fields, the channels its `from "key"` names and its exit-status patterns -- apart from
@@ -50,7 +51,7 @@ fn shell_output_channel_of_key(key: String) -> ShellOutputChannel? {
   else if key == "stderr_truncated" { Present { value: StderrTruncated } }
   else if key == "stderr_total_bytes" { Present { value: StderrTotalBytes } }
   else if key == "stderr_retained_bytes" { Present { value: StderrRetainedBytes } }
-  else { none }
+  else { Absent }
 }
 
 // WHAT AN OPERATION'S `exit { .. }` ARM MATCHES: the process's exit status (POSIX.1-2017 2.8.2,
@@ -83,5 +84,5 @@ fn shell_binding_field_key(field: ShellBindingField) -> String {
 fn shell_binding_field_of_key(key: String) -> ShellBindingField? {
   if key == "argv" { Present { value: ShellArgv } }
   else if key == "stdin" { Present { value: ShellStdin } }
-  else { none }
+  else { Absent }
 }

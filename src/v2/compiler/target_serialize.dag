@@ -29,7 +29,9 @@ import v2.std.compilers.target_model {
   target_value_expr_arrow_has_value_expression_body,
   target_value_expr_diagnostic,
   target_value_expression_projection_from_target,
-  target_value_expression_tokens_from_target
+  target_value_expression_tokens_from_target,
+  TypeExprKindAuthority,
+  TypeExprKindNotEmitted
 }
 import v2.compiler.wrap_decision {
   wrap_decision_gate
