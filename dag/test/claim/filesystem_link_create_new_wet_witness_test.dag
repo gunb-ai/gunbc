@@ -7,14 +7,17 @@ import extdeps.filesystem.filesystem_io {
   FilesystemLinkRefused, FilesystemLinkKindUnrecognized, FilesystemNotFound,
   filesystem_link_create_new,
 }
-import std.types { Bool, String }
+import std.types { Bool, String, NonEmptyStr }
+import std.algebra { trim }
+import extdeps.tools.coreutils_stat
 
-// Controls for Filesystem.LinkCreateNew. The three wet controls reach the host through a throwaway
-// /tmp/gunbc_link.* directory and remove it; the classifier controls are hermetic. A REAL
-// cross-device link needs two filesystems the runner may not have, so the cross-device arm is
-// pinned here at the classifier (the host answers ErrorKind::CrossesDevices -> "cross_device" in
-// v1_interpreter io_error_kind_name and the emitted file_io_error_kind, one mapping each side), not
-// by real execution; that gap is the price of not guessing the runner's mount table.
+// Controls for Filesystem.LinkCreateNew. The wet controls reach the host through throwaway
+// /tmp/gunbc_link.* (and, for cross-device, /dev/shm/gunbc_link.*) directories and remove them; the
+// classifier controls are hermetic. The REAL cross-device control stages its source in /dev/shm
+// (tmpfs on Linux runners) and links into a /tmp root, and it ASSERTS ITS OWN PRECONDITION: the two
+// directories' device numbers (st_dev, coreutils.Stat.PathDevice) must differ. Where they do not,
+// the claim is RED, never green -- a runner without a second filesystem cannot evidence the refusal,
+// and must not be read as having done so.
 
 fn link_outcome(source: String, path: String) -> FilesystemLinkCreateNew {
   let l = Filesystem.LinkCreateNew(source: source, path: path)
@@ -98,4 +101,32 @@ test fn an_unknown_kind_is_unrecognized_not_folded_into_a_refusal() -> Bool {
     FilesystemLinkCrossDevice { source: _, path: _ } => false
     FilesystemLinkRefused { path: _, kind: _, error: _ } => false
   }
+}
+
+
+fn device_of(path: String) -> String {
+  let d = coreutils.Stat.PathDevice(path: path as NonEmptyStr)
+  if d.success { trim(s: d.device_text) } else { "" }
+}
+
+test fn a_link_across_filesystems_refuses_as_cross_device_by_real_execution() -> Bool {
+  let disk = fresh_dir()
+  let shm = shell.Mktemp.DirWithTemplate(template: "/dev/shm/gunbc_link.XXXXXX").path
+  let dev_disk = device_of(path: disk)
+  let dev_shm = device_of(path: shm)
+  let precondition = dev_disk != "" && dev_shm != "" && dev_disk != dev_shm
+  let source = concat(shm, "/staged")
+  let target = concat(disk, "/published")
+  let staged = Filesystem.WriteCreateNew(path: source, content: "bytes on another filesystem")
+  let refused = match link_outcome(source: source, path: target) {
+    FilesystemLinkCrossDevice { source: s, path: p } => s == source && p == target
+    FilesystemLinked { path: _ } => false
+    FilesystemLinkTargetOccupied { path: _ } => false
+    FilesystemLinkRefused { path: _, kind: _, error: _ } => false
+    FilesystemLinkKindUnrecognized { path: _, observed: _, error: _ } => false
+  }
+  let nothing = !Filesystem.Read(path: target).success
+  let removed_disk = shell.Remove.RecursiveForce(path: disk)
+  let removed_shm = shell.Remove.RecursiveForce(path: shm)
+  precondition && staged.success && refused && nothing && removed_disk.success && removed_shm.success
 }

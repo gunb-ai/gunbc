@@ -27,7 +27,7 @@ import gunbc.spark.serving_arm {
   ServingLaunchProfile,
 }
 import gunbc.spark.serving_capacity_intent {
-  uniform_cold_seats, profile_for_intent,
+  uniform_cold_seats, profile_for_envelope, envelope_at_cold_floor,
   ServingCapacityIntentAdmitted, ServingCapacityIntentRefused,
 }
 import gunbc.spark.arm_memory_fit {
@@ -158,8 +158,8 @@ fn arm_experiment_2026_09_25_subject_mint() -> MemoryProofSubjectMint {
         checkpoint: Glm53NativeFp8,
         runtime: GunbcGlm53NopeDerivedGb10,
         topology: FourSparkTp4,
-        profile: profile_for_intent(
-          intent: experiment_intent,
+        profile: profile_for_envelope(
+          envelope: envelope_at_cold_floor(cold: experiment_intent),
           decided_gpu_memory_basis_points: basis_point(count: 8567),
           kv_cache_dtype: KvFp8,
           serve_port: 30000,
@@ -524,8 +524,8 @@ fn arm_experiment_2026_09_26_subject_mint() -> MemoryProofSubjectMint {
         checkpoint: Glm53NativeFp8,
         runtime: GunbcGlm53NopeDerivedGb10,
         topology: FourSparkTp4,
-        profile: profile_for_intent(
-          intent: experiment_intent,
+        profile: profile_for_envelope(
+          envelope: envelope_at_cold_floor(cold: experiment_intent),
           decided_gpu_memory_basis_points: basis_point(count: 8567),
           kv_cache_dtype: KvFp8,
           serve_port: 30000,
@@ -740,8 +740,8 @@ fn arm_experiment_kvplan_v2_2026_09_26_subject_mint() -> MemoryProofSubjectMint 
         checkpoint: Glm53NativeFp8,
         runtime: GunbcGlm53NopeDerivedGb10,
         topology: FourSparkTp4,
-        profile: profile_for_intent(
-          intent: experiment_intent,
+        profile: profile_for_envelope(
+          envelope: envelope_at_cold_floor(cold: experiment_intent),
           decided_gpu_memory_basis_points: basis_point(count: 8567),
           kv_cache_dtype: KvFp8,
           serve_port: 30000,
@@ -1493,8 +1493,8 @@ fn arm_experiment_kvplan_v2_2026_09_26_workload() -> ServingCapacityIntent {
 }
 
 fn arm_experiment_kvplan_v2_2026_09_26_policy_profile() -> ServingLaunchProfile {
-  profile_for_intent(
-    intent: arm_experiment_kvplan_v2_2026_09_26_workload(),
+  profile_for_envelope(
+    envelope: envelope_at_cold_floor(cold: arm_experiment_kvplan_v2_2026_09_26_workload()),
     decided_gpu_memory_basis_points: basis_point(count: 8567),
     kv_cache_dtype: KvFp8,
     serve_port: 30000,
@@ -1599,19 +1599,11 @@ data arm_loader_trace_min_hundredths_gib: List<Nat> = [770, 814, 819, 786]
 // observed MemAvailable floor -- the load-phase peak pressure of the unified pool, page cache
 // included, at the conservative floor spelling.
 fn arm_loader_trace_pool_hundredths(rank: Nat) -> Nat {
-  match rank {
-    3 => 11969
-    _ => 12169
-  }
+  if rank == 3 { 11969 } else { 12169 }
 }
 
 fn arm_loader_trace_host_floor_hundredths(rank: Nat) -> Nat {
-  match rank {
-    0 => 770
-    1 => 814
-    2 => 819
-    _ => 786
-  }
+  if rank == 0 { 770 } else if rank == 1 { 814 } else if rank == 2 { 819 } else { 786 }
 }
 
 fn arm_loader_trace_bound(rank: Nat) -> ByteSize {
