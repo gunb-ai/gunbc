@@ -3090,7 +3090,7 @@ mod tests {
     /// head at an invariant port, the fatal at line 12 byte column 5.
     #[test]
     fn a_file_refusal_row_decodes_its_fatal_line_and_byte_column() {
-        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":1,\"admitted\":false,\"summary\":\"s\",\"frontier\":\"held\"}";
+        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":1,\"advised_files\":0,\"admitted\":false,\"summary\":\"s\",\"frontier\":\"held\"}";
         let located = format!(
             "{{\"file_refusal\":{{\"path\":\"a.dag\",\"module\":{{\"_variant\":\"Absent\"}},\"head_reason\":\"parse_grammar_choice_overlap_residue\",\"fatal_reason\":\"parse_g0_tokens_remain\",\"chain\":[{{\"reason\":\"parse_grammar_choice_overlap_residue\",\"at\":{{\"_variant\":\"FileRefusalAtInvariant\",\"invariant\":\"grammar_choice_overlap\"}}}},{{\"reason\":\"parse_g0_tokens_remain\",\"at\":{{\"_variant\":\"FileRefusalAtLine\",\"line\":12,\"byte_column\":5}}}}]}}}}\n{marker}\n"
         );
@@ -3103,7 +3103,14 @@ mod tests {
         let unlocated = format!(
             "{{\"file_refusal\":{{\"path\":\"a.dag\",\"head_reason\":\"h\",\"fatal_reason\":\"f\"}}}}\n{marker}\n"
         );
-        assert!(parse_native_run_output(&unlocated).is_err());
+        // Asserted by CAUSE, not by is_err: a marker the decoder rejects for another reason would
+        // also be an error, and this arm passed that way once (after #13022 made advised_files
+        // required) while proving nothing about the chain.
+        let cause = match parse_native_run_output(&unlocated) {
+            Err(cause) => cause,
+            Ok(_) => panic!("a row with no chain must refuse"),
+        };
+        assert!(cause.contains("carries no chain"), "got: {cause}");
         // An arm the vocabulary does not declare is a decoder refusal, never a blank position.
         assert!(file_refusal_at_text(&serde_json::json!({"_variant": "Somewhere"})).is_err());
     }
