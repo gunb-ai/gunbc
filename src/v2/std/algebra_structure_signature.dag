@@ -2,9 +2,9 @@ module v2.std.algebra_structure_signature
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.algebra { algebra_empty_conj }
 import v2.std.arrow_signature { anonymous_signature_arrow }
-import v2.std.node_query { NamedChildFound, binder_edge, binder_node_parts, named_child_lookup }
+import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, binder_edge, binder_node_parts, named_child_lookup }
 import v2.std.logic { bool_node }
-import v2.std.node { Atom, Conj, Disj, Edge, Authored, Node, Symbol, TypeNode, content_hash }
+import v2.std.node { Arrow, Atom, Cardinality, ComputationNode, Conj, Disj, Edge, Authored, Instantiation, Node, Positional, StructuralLabel, Symbol, TypeNode, content_hash }
 import v2.std.optional { Absent, Present }
 
 // THE ALGEBRA'S STRUCTURE SIGNATURES AS NODES: each algebraic structure std.algebra declares (magma
@@ -277,9 +277,11 @@ fn algebra_inhabitance_declares_field(inhabitance: Node, field: Symbol) -> Bool 
     NamedChildFound { target: algebra } =>
       match named_child_lookup(root: inhabitance, name: ^inhabitant_edge) {
         NamedChildFound { target: inhabitant } => algebra_structure_declares_field(structure: algebra, inhabitant: inhabitant, field: field)
-        _ => false
+        NamedChildMissing => false
+        NamedChildAmbiguous => false
       }
-    _ => false
+    NamedChildMissing => false
+    NamedChildAmbiguous => false
   }
 }
 
@@ -296,11 +298,17 @@ fn algebra_structure_declares_field(structure: Node, inhabitant: Node, field: Sy
                 Present { value: parts } => algebra_structure_declares_field(structure: parts.type_node, inhabitant: inhabitant, field: field)
                 Absent => false
               }
-            _ => false
+            StructuralLabel { label: _ } => false
+            Positional => false
           }
         })
       }
-    _ => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
