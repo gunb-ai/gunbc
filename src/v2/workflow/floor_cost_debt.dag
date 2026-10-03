@@ -1017,8 +1017,47 @@ fn floor_cost_debt_proven_chunk_21() -> List<String> {
   Cons { head: "v2.test.parse.expression_bodied_fn_decl_parse.braced_fn_decl_survives_normalize_holds", tail: Empty {} }
 }
 
+// PROVEN, AND ADDED BY THE DELETION OF THE HAND SHARE ROSTER (gunbc#13043), so the shrink-only
+// contract is crossed in the open and with the cause beside it. Each of these claims is the ONLY
+// declared claim reaching its fixture producer (a `*_subject` / `*_route_verdict` front-end
+// fixture). The deleted roster warmed those producers in preparation, which billed each claim's
+// own fixture work to preparation -- DESIGN section 5's externalization: the cost hidden from the
+// claim that causes it. The derived share (v2.workflow.floor_pure_producer_share
+// derive_cross_claim_share) admits only declared cross-claim recurrence, so the fill is now charged
+// to its claim and each completes over the new-witness eval-step budget. Ruling: sharp-raven-357,
+// 2026-10-03 (class 2: disposition each claim; no class-2 claim may pass by being shared).
+// Measured on the required floor of record, run 37096345499 (head f64b8f9c64), verdict reached:
+//   v2.test.claim.body_lowering.statement_let_bind.single_statement_body_unchanged_holds  eval_steps=132825
+//   v2.test.claim.body_lowering.statement_let_bind.statement_let_chain_lowers_holds  eval_steps=198260
+//   v2.test.claim.body_lowering.statement_let_bind.statement_let_then_reference_lowers_holds  eval_steps=162404
+//   v2.test.claim.body_lowering.statement_let_bind.typed_statement_let_lowers_with_its_annotation_carried_holds  eval_steps=172723
+//   v2.test.claim.body_lowering.statement_let_bind.unbound_statement_prefix_refuses_holds  eval_steps=87928
+//   v2.test.claim.coercion.identity_cast_emission_route.a_cast_with_no_witness_refuses_before_realization_holds  eval_steps=1617281
+//   v2.test.claim.coercion.identity_cast_emission_route.an_admitted_identity_cast_emits_through_the_closure_route_holds  eval_steps=2010279
+//   v2.test.claim.namespace_xl0.reference_conservation.a_block_with_a_second_statement_is_refused_not_accepted_holds  eval_steps=109109
+//   v2.test.claim.namespace_xl0.reference_conservation.a_list_literal_call_argument_conserves_every_element_holds  eval_steps=509842
+//   v2.test.claim.namespace_xl0.reference_conservation.a_named_argument_label_is_conserved_holds  eval_steps=359882
+//   v2.test.claim.namespace_xl0.reference_conservation.a_repeated_spelling_with_one_copy_dropped_is_exactly_one_row_holds  eval_steps=192203
+//   v2.test.claim.namespace_xl0.reference_conservation.a_statement_let_binder_is_reported_dropped_holds  eval_steps=172464
+//   v2.test.claim.namespace_xl0.reference_conservation.a_string_literal_is_conserved_by_its_value_holds  eval_steps=241864
+//   v2.test.claim.namespace_xl0.reference_conservation.caret_symbol_payloads_are_conserved_holds  eval_steps=353331
+//   v2.test.claim.namespace_xl0.reference_conservation.dotted_spine_segments_keep_their_own_occurrence_holds  eval_steps=303359
+//   v2.test.claim.namespace_xl0.reference_conservation.the_if_arm_call_argument_is_conserved_holds  eval_steps=504422
+//   v2.test.claim.namespace_xl0.reference_conservation.the_infix_right_operand_is_conserved_holds  eval_steps=327104
+//   v2.test.claim.namespace_xl0.reference_conservation.the_third_match_arm_is_conserved_holds  eval_steps=544612
+//   v2.test.claim.namespace_xl0.reference_conservation.the_where_refinement_predicates_are_conserved_holds  eval_steps=152556
+//   v2.test.claim.namespace_xl0.reference_conservation.two_anonymous_parameter_slots_are_conserved_by_minted_identity_holds  eval_steps=184724
+// TRIGGER (per row, and it is the capability, not an artifact): the claim's module supplies its
+// subject at the interface the claim judges (DESIGN section 3 witness rule) and keeps ONE
+// inhabitance claim on the real front-end path, so this row's own eval steps fall under its budget;
+// the row then leaves through the debt-removal transaction. The rung loss is declared at
+// gunbc.rung_drop.derived_share_single_claim_fixtures_withheld.
+fn floor_cost_debt_proven_chunk_22() -> List<String> {
+  Cons { head: "v2.test.claim.body_lowering.statement_let_bind.single_statement_body_unchanged_holds", tail: Cons { head: "v2.test.claim.body_lowering.statement_let_bind.statement_let_chain_lowers_holds", tail: Cons { head: "v2.test.claim.body_lowering.statement_let_bind.statement_let_then_reference_lowers_holds", tail: Cons { head: "v2.test.claim.body_lowering.statement_let_bind.typed_statement_let_lowers_with_its_annotation_carried_holds", tail: Cons { head: "v2.test.claim.body_lowering.statement_let_bind.unbound_statement_prefix_refuses_holds", tail: Cons { head: "v2.test.claim.coercion.identity_cast_emission_route.a_cast_with_no_witness_refuses_before_realization_holds", tail: Cons { head: "v2.test.claim.coercion.identity_cast_emission_route.an_admitted_identity_cast_emits_through_the_closure_route_holds", tail: Cons { head: "v2.test.claim.namespace_xl0.reference_conservation.a_block_with_a_second_statement_is_refused_not_accepted_holds", tail: Cons { head: "v2.test.claim.namespace_xl0.reference_conservation.a_list_literal_call_argument_conserves_every_element_holds", tail: Cons { head: "v2.test.claim.namespace_xl0.reference_conservation.a_named_argument_label_is_conserved_holds", tail: Cons { head: "v2.test.claim.namespace_xl0.reference_conservation.a_repeated_spelling_with_one_copy_dropped_is_exactly_one_row_holds", tail: Cons { head: "v2.test.claim.namespace_xl0.reference_conservation.a_statement_let_binder_is_reported_dropped_holds", tail: Cons { head: "v2.test.claim.namespace_xl0.reference_conservation.a_string_literal_is_conserved_by_its_value_holds", tail: Cons { head: "v2.test.claim.namespace_xl0.reference_conservation.caret_symbol_payloads_are_conserved_holds", tail: Cons { head: "v2.test.claim.namespace_xl0.reference_conservation.dotted_spine_segments_keep_their_own_occurrence_holds", tail: Cons { head: "v2.test.claim.namespace_xl0.reference_conservation.the_if_arm_call_argument_is_conserved_holds", tail: Cons { head: "v2.test.claim.namespace_xl0.reference_conservation.the_infix_right_operand_is_conserved_holds", tail: Cons { head: "v2.test.claim.namespace_xl0.reference_conservation.the_third_match_arm_is_conserved_holds", tail: Cons { head: "v2.test.claim.namespace_xl0.reference_conservation.the_where_refinement_predicates_are_conserved_holds", tail: Cons { head: "v2.test.claim.namespace_xl0.reference_conservation.two_anonymous_parameter_slots_are_conserved_by_minted_identity_holds", tail: Empty {} }}}}}}}}}}}}}}}}}}}}
+}
+
 fn floor_cost_debt_proven_chunks() -> List<List<String>> {
-  Cons { head: floor_cost_debt_proven_chunk_00(), tail: Cons { head: floor_cost_debt_proven_chunk_01(), tail: Cons { head: floor_cost_debt_proven_chunk_02(), tail: Cons { head: floor_cost_debt_proven_chunk_03(), tail: Cons { head: floor_cost_debt_proven_chunk_04(), tail: Cons { head: floor_cost_debt_proven_chunk_05(), tail: Cons { head: floor_cost_debt_proven_chunk_06(), tail: Cons { head: floor_cost_debt_proven_chunk_07(), tail: Cons { head: floor_cost_debt_proven_chunk_08(), tail: Cons { head: floor_cost_debt_proven_chunk_09(), tail: Cons { head: floor_cost_debt_proven_chunk_10(), tail: Cons { head: floor_cost_debt_proven_chunk_11(), tail: Cons { head: floor_cost_debt_proven_chunk_12(), tail: Cons { head: floor_cost_debt_proven_chunk_13(), tail: Cons { head: floor_cost_debt_proven_chunk_14(), tail: Cons { head: floor_cost_debt_proven_chunk_15(), tail: Cons { head: floor_cost_debt_proven_chunk_16(), tail: Cons { head: floor_cost_debt_proven_chunk_17(), tail: Cons { head: floor_cost_debt_proven_chunk_18(), tail: Cons { head: floor_cost_debt_proven_chunk_19(), tail: Cons { head: floor_cost_debt_proven_chunk_20(), tail: Cons { head: floor_cost_debt_proven_chunk_21(), tail: Empty {} } } } } } } } } } } }}}}}}}}}}}}
+  Cons { head: floor_cost_debt_proven_chunk_00(), tail: Cons { head: floor_cost_debt_proven_chunk_01(), tail: Cons { head: floor_cost_debt_proven_chunk_02(), tail: Cons { head: floor_cost_debt_proven_chunk_03(), tail: Cons { head: floor_cost_debt_proven_chunk_04(), tail: Cons { head: floor_cost_debt_proven_chunk_05(), tail: Cons { head: floor_cost_debt_proven_chunk_06(), tail: Cons { head: floor_cost_debt_proven_chunk_07(), tail: Cons { head: floor_cost_debt_proven_chunk_08(), tail: Cons { head: floor_cost_debt_proven_chunk_09(), tail: Cons { head: floor_cost_debt_proven_chunk_10(), tail: Cons { head: floor_cost_debt_proven_chunk_11(), tail: Cons { head: floor_cost_debt_proven_chunk_12(), tail: Cons { head: floor_cost_debt_proven_chunk_13(), tail: Cons { head: floor_cost_debt_proven_chunk_14(), tail: Cons { head: floor_cost_debt_proven_chunk_15(), tail: Cons { head: floor_cost_debt_proven_chunk_16(), tail: Cons { head: floor_cost_debt_proven_chunk_17(), tail: Cons { head: floor_cost_debt_proven_chunk_18(), tail: Cons { head: floor_cost_debt_proven_chunk_19(), tail: Cons { head: floor_cost_debt_proven_chunk_20(), tail: Cons { head: floor_cost_debt_proven_chunk_21(), tail: Cons { head: floor_cost_debt_proven_chunk_22(), tail: Empty {} } } } } } } } } } } } }}}}}}}}}}}}
 }
 
 fn floor_cost_debt_censored_chunks() -> List<List<String>> {
