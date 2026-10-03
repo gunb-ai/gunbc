@@ -54,8 +54,9 @@ type NvParamKey {
   region: NvParamRegion
 }
 
-// NVPARAM_SIZE (Silicon/Ampere/AmpereAltraPkg/Include/Library/NVParamLib.h): the stride between keys.
-data nvparam_bytes_per_parameter: Int = 8
+// NVPARAM_SIZE (Silicon/Ampere/AmpereAltraPkg/Include/Library/NVParamLib.h `#define NVPARAM_SIZE 0x8`):
+// the stride between keys, under the header's own name.
+data nvparam_size: Int = 8
 
 // Each region's first and last key, as the header defines them: NV_PREBOOT_PARAM_START 0x0000 and
 // NV_PREBOOT_PARAM_MAX (86 * 8) + start; NV_MANU_PARAM_START 0x4000 and NV_MANU_PARAM_MAX (66 * 8) +
@@ -591,13 +592,6 @@ type NvParamKeyReading
   = NvParamKeyDefined { key: NvParamKey }
   | NvParamKeyUndefined { key: Int }
 
-fn nvparam_key_of(key: Int) -> NvParamKeyReading {
-  match filter(nvparam_keys, k => k.key == key).first() {
-    Present { value: k } => NvParamKeyDefined { key: k }
-    Absent => NvParamKeyUndefined { key: key }
-  }
-}
-
 fn nvparam_key_text(r: NvParamKeyReading) -> String {
   match r {
     NvParamKeyDefined { key: k } => k.name as String
@@ -605,8 +599,8 @@ fn nvparam_key_text(r: NvParamKeyReading) -> String {
   }
 }
 
-// The key table as an index, for a reader that names many keys at once: built once per caller and
-// queried per key, rather than scanning all rows for every key.
+// The key table as an index -- the one key-to-name route: built once per caller and queried per key,
+// rather than scanning all rows for every key.
 fn nvparam_key_index() -> Map<Int, NvParamKey> {
   fold(nvparam_keys, init: empty_map(), f: (acc, k) => map_insert(m: acc, key: k.key, value: k))
 }

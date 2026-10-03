@@ -1,13 +1,14 @@
 module gunbc.machine_intake_ampere_nvparam_console_observation
 
-import v2.std.algebra { filter, any }
+import v2.std.algebra { filter, any, list_reverse }
+import std.algebra { Cons }
 import std.types { Bool, Int, List, Map, NonEmptyStr, String }
 import std.algebra { trim }
 import v2.std.optional { Present }
 import extdeps.numeric.base16 { base16_word_value }
 import extdeps.ampere.nvparam {
   NvParamRegion, NvPreboot, NvManufacturing, NvUser, NvBoard,
-  NvParamKey, NvParamKeyReading, NvParamKeyDefined, NvParamKeyUndefined, nvparam_key_of, nvparam_key_index, nvparam_key_in, nvparam_key_text, nvparam_bytes_per_parameter, nvparam_region_start, nvparam_region_max,
+  NvParamKey, NvParamKeyReading, NvParamKeyDefined, NvParamKeyUndefined, nvparam_key_index, nvparam_key_in, nvparam_key_text, nvparam_size, nvparam_region_start, nvparam_region_max,
 }
 import gunbc.machine_intake_ampere_dram_console_observation { ampere_dram_console_line }
 
@@ -107,15 +108,27 @@ type NvParamReadState {
   observation: NvParamConsoleObservation
 }
 
+// The fold accumulates newest-first (one cons per row) and ampere_nvparam_console_observation
+// reverses once at the end: appending per row would copy the accumulator every row.
 fn with_setting(o: NvParamConsoleObservation, s: NvParamSetting) -> NvParamConsoleObservation {
-  NvParamConsoleObservation { settings: concat(o.settings, [s]), malformed: o.malformed }
+  NvParamConsoleObservation { settings: Cons { head: s, tail: o.settings }, malformed: o.malformed }
 }
 
 fn with_malformed(o: NvParamConsoleObservation, m: NvParamMalformedRow) -> NvParamConsoleObservation {
-  NvParamConsoleObservation { settings: o.settings, malformed: concat(o.malformed, [m]) }
+  NvParamConsoleObservation { settings: o.settings, malformed: Cons { head: m, tail: o.malformed } }
 }
 
+// Outside a section only a header can matter, and every header ends "Configuration Setting:", so a
+// line without that text is passed over before it is normalized: a whole boot capture costs one
+// substring test per line until the dump begins.
 fn nvparam_read_step(state: NvParamReadState, raw: String) -> NvParamReadState {
+  match state.section {
+    Absent => if !raw.contains("Configuration Setting:") { state } else { nvparam_read_line(state: state, raw: raw) }
+    Present { value: _ } => nvparam_read_line(state: state, raw: raw)
+  }
+}
+
+fn nvparam_read_line(state: NvParamReadState, raw: String) -> NvParamReadState {
   let line = ampere_dram_console_line(raw: raw)
   match nvparam_section_of(line: line) {
     Present { value: r } => NvParamReadState { index: state.index, section: Present { value: r }, observation: state.observation }
@@ -128,7 +141,7 @@ fn nvparam_read_step(state: NvParamReadState, raw: String) -> NvParamReadState {
           let base = nvparam_region_start(r: region)
           if k < base || k > nvparam_region_max(r: region) {
             NvParamReadState { index: state.index, section: state.section, observation: with_malformed(o: state.observation, m: NvParamMalformedRow { region: region, line: line, reason: "the key lies outside the START..MAX range PrintNVRAM walks for this section's region" }) }
-          } else if (k - base) % nvparam_bytes_per_parameter != 0 {
+          } else if (k - base) % nvparam_size != 0 {
             NvParamReadState { index: state.index, section: state.section, observation: with_malformed(o: state.observation, m: NvParamMalformedRow { region: region, line: line, reason: "the key is not on the 8-byte NVPARAM_SIZE stride from its region base" }) }
           } else {
             NvParamReadState { index: state.index, section: state.section, observation: with_setting(o: state.observation, s: NvParamSetting { region: region, key: nvparam_key_in(index: state.index, key: k), value: v }) }
@@ -142,19 +155,12 @@ fn nvparam_read_step(state: NvParamReadState, raw: String) -> NvParamReadState {
 fn ampere_nvparam_console_observation(lines: List<String>) -> NvParamConsoleObservation {
   let none_set: List<NvParamSetting> = []
   let none_bad: List<NvParamMalformedRow> = []
-  fold(lines, init: NvParamReadState { index: nvparam_key_index(), section: none, observation: NvParamConsoleObservation { settings: none_set, malformed: none_bad } }, f: (s, l) => nvparam_read_step(state: s, raw: l)).observation
+  let rev = fold(lines, init: NvParamReadState { index: nvparam_key_index(), section: none, observation: NvParamConsoleObservation { settings: none_set, malformed: none_bad } }, f: (s, l) => nvparam_read_step(state: s, raw: l)).observation
+  NvParamConsoleObservation { settings: list_reverse(xs: rev.settings), malformed: list_reverse(xs: rev.malformed) }
 }
 
 fn nvparam_setting_text(s: NvParamSetting) -> String {
   concat(nvparam_key_text(r: s.key), " = ", to_string(s.value))
-}
-
-// The value a dump reported for one named key, if the dump carried it.
-fn nvparam_setting_named(o: NvParamConsoleObservation, name: String) -> Int? {
-  match filter(o.settings, s => match s.key { NvParamKeyDefined { key: k } => (k.name as String) == name NvParamKeyUndefined { key: _ } => false }).first() {
-    Present { value: s } => Present { value: s.value }
-    Absent => none
-  }
 }
 
 fn nvparam_region_label(r: NvParamRegion) -> String {

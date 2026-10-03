@@ -3,9 +3,10 @@ module test.claim.machine_intake.ampere_nvparam_console_observation_witness_test
 import std.types { Bool, Int, List, String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.optional { Present }
-import extdeps.ampere.nvparam { NvParamKeyDefined, NvParamKeyUndefined, nvparam_key_of, nvparam_keys }
+import v2.std.algebra { filter }
+import extdeps.ampere.nvparam { NvParamKeyDefined, NvParamKeyUndefined, nvparam_key_in, nvparam_key_index, nvparam_keys }
 import gunbc.machine_intake_ampere_nvparam_console_observation {
-  NvParamConsoleObservation, ampere_nvparam_console_observation, nvparam_setting_named, ampere_nvparam_console_text,
+  NvParamConsoleObservation, NvParamSetting, ampere_nvparam_console_observation, ampere_nvparam_console_text,
 }
 import gunbc.machine_intake_mtcollins1_sixteen_module_restore_observation { mtcollins1_run_a_sparse_reference_capture }
 
@@ -14,7 +15,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // ── the key table (extdeps.ampere.nvparam) ──────────────────────────────────────────────────────
 
 fn key_named(key: Int, name: String) -> Bool {
-  match nvparam_key_of(key: key) { NvParamKeyDefined { key: k } => (k.name as String) == name NvParamKeyUndefined { key: _ } => false }
+  match nvparam_key_in(index: nvparam_key_index(), key: key) { NvParamKeyDefined { key: k } => (k.name as String) == name NvParamKeyUndefined { key: _ } => false }
 }
 
 test fn the_header_keys_resolve_by_region_base_plus_eight_per_parameter() -> Bool {
@@ -28,7 +29,15 @@ test fn the_header_keys_resolve_by_region_base_plus_eight_per_parameter() -> Boo
 }
 
 test fn red_a_key_the_header_does_not_define_is_its_number() -> Bool {
-  match nvparam_key_of(key: 32801) { NvParamKeyUndefined { key: n } => n == 32801 NvParamKeyDefined { key: _ } => false }
+  match nvparam_key_in(index: nvparam_key_index(), key: 32801) { NvParamKeyUndefined { key: n } => n == 32801 NvParamKeyDefined { key: _ } => false }
+}
+
+// The value a dump reported for one named key, if it carried it (a reading for this witness only).
+fn nvparam_setting_named(o: NvParamConsoleObservation, name: String) -> Int? {
+  match filter(o.settings, s => match s.key { NvParamKeyDefined { key: k } => (k.name as String) == name NvParamKeyUndefined { key: _ } => false }).first() {
+    Present { value: s } => Present { value: s.value }
+    Absent => none
+  }
 }
 
 fn has_value(o: NvParamConsoleObservation, name: String, v: Int) -> Bool {
@@ -107,13 +116,14 @@ fn without_rendered_cr(line: String) -> String {
   if line.ends_with("^M") { line.substring(start: 0, end: line.length() - 2) } else { line }
 }
 
-// THE COMMITTED BYTES FROM THE FIRST SECTION HEADER ON. The boot output before the dump is lines the
-// grammar only skips; starting at the header keeps this claim's cost on the dump itself (the floor's
-// enrolment margin), while every byte the grammar reads is still the capture's own.
+// THE COMMITTED BYTES: THE FIRST FIFTY LINES FROM THE FIRST SECTION HEADER -- the whole user section
+// and the first board rows, including the keys asserted below. The claim establishes the ROUTE (real
+// bytes through the real grammar, key index and rendering); every further row is the same route again,
+// so the slice keeps the claim inside the floor's new-witness step budget without supplying a byte.
 fn run_a_observation() -> NvParamConsoleObservation {
   let content = Filesystem.Read(path: mtcollins1_run_a_sparse_reference_capture.artifact_path as String).content
   let from_dump = concat("User Configuration Setting:", join(content.split(sep: "User Configuration Setting:").skip(n: 1), "User Configuration Setting:"))
-  ampere_nvparam_console_observation(lines: map(from_dump.split(sep: "\n"), l => without_rendered_cr(line: l)))
+  ampere_nvparam_console_observation(lines: map(from_dump.split(sep: "\n").take(n: 50), l => without_rendered_cr(line: l)))
 }
 
 // The inhabitance claim: the committed boot's dump reaches the real grammar, the real key table and
