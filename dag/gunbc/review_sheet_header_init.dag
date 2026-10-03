@@ -60,9 +60,9 @@ import gunbc.review_sheet_formula_observation {
 // the write arm is reachable only from the carrier, by construction.
 //
 // THE RUNG IS THE SAME AS THE OBSERVATION'S. sole_constructor is enforced on the v1 seed's
-// acceptance path and parsed without enforcement on the native v2 path (gunbc.rung_drop
-// g0_type_decl_modifier_parse_without_sealing_property), so the wall on the authorisation is real
-// on the seed only. WHO may call plan_header_init is not confined here: .dag has no module-private
+// acceptance path, and on the native v2 path since gunbc.rung_drop
+// g0_type_decl_modifier_parse_without_sealing_property retired (v2.compiler.construction_confinement);
+// this module's own evidence is the seed's, so the wall on the authorisation is evidenced there. WHO may call plan_header_init is not confined here: .dag has no module-private
 // and the consumer is in another repository, so the confinement of the mint's callers is the
 // private H2 caller's job (its write permit wraps this call), and this module states that
 // boundary rather than claiming it.

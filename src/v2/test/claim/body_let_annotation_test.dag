@@ -590,7 +590,7 @@ fn bla_single_tree_resolved(text: String) -> Outcome<ResolvedTree> {
   match conservation_subject_of_text(path: "body_let_annotation_subject", text: text).normalized {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: t, diagnostics: _ } =>
-      match admit_normalized_tree(root: t.root, test_markers: t.test_markers, import_bindings: t.import_bindings, type_declaration_kinds: t.type_declaration_kinds, type_declaration_modifiers: t.type_declaration_modifiers, diagnostics: None) {
+      match admit_normalized_tree(root: t.root, test_markers: t.test_markers, import_bindings: t.import_bindings, type_declaration_kinds: t.type_declaration_kinds, type_declaration_modifiers: t.type_declaration_modifiers, declared_admitted_callers: t.declared_admitted_callers, diagnostics: None) {
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
         Accepted { value: tree, diagnostics: _ } => resolve(tree: tree, lm: dag_language_model())
       }
@@ -1083,7 +1083,7 @@ fn bla_reordered_resolve(text: String) -> BlaReorderedResolve {
     Rejected { diagnostics: d } => BlaReorderedResolve { reordered: false, fatal: optional_present(value: diagnostics_fatal_reason(d: d)) }
     Accepted { value: t, diagnostics: _ } =>
       let root = bla_annotation_second(n: t.root)
-      match admit_normalized_tree(root: root, test_markers: t.test_markers, import_bindings: t.import_bindings, type_declaration_kinds: t.type_declaration_kinds, type_declaration_modifiers: t.type_declaration_modifiers, diagnostics: None) {
+      match admit_normalized_tree(root: root, test_markers: t.test_markers, import_bindings: t.import_bindings, type_declaration_kinds: t.type_declaration_kinds, type_declaration_modifiers: t.type_declaration_modifiers, declared_admitted_callers: t.declared_admitted_callers, diagnostics: None) {
         Rejected { diagnostics: d } => BlaReorderedResolve { reordered: false, fatal: optional_present(value: diagnostics_fatal_reason(d: d)) }
         Accepted { value: tree, diagnostics: _ } =>
           BlaReorderedResolve {

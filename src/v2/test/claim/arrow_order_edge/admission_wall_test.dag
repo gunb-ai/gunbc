@@ -4,7 +4,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty }
 import v2.compiler.infer { infer }
 import v2.compiler.name_resolve { validate_module_roots }
-import v2.compiler.normalized_tree { admit_normalized_tree, no_import_bindings, no_type_declaration_kinds, no_type_declaration_modifiers }
+import v2.compiler.normalized_tree { admit_normalized_tree, no_import_bindings, no_type_declaration_kinds, no_type_declaration_modifiers, no_declared_admitted_callers }
 import v2.compiler.resolve { ResolvedTree, resolve }
 import v2.extdeps.languages.dag { dag_language_model_void }
 import v2.std.arrow_signature { declared_signature }
@@ -95,7 +95,7 @@ test fn aoe_infer_refuses_a_named_domain_without_order() -> Bool {
 
 // PATH: resolve, over an admitted NormalizedTree.
 fn aoe_resolve_reason(arrow: Node) -> Symbol {
-  match admit_normalized_tree(root: aoe_module_root(arrow: arrow), test_markers: test_marker_channel_empty(), import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), diagnostics: None) {
+  match admit_normalized_tree(root: aoe_module_root(arrow: arrow), test_markers: test_marker_channel_empty(), import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), declared_admitted_callers: no_declared_admitted_callers(), diagnostics: None) {
     Rejected { diagnostics: _ } => ^aoe_not_admitted
     Accepted { value: tree, diagnostics: _ } =>
       match resolve(tree: tree, lm: dag_language_model_void()) {
@@ -114,7 +114,7 @@ test fn aoe_resolve_refuses_a_named_domain_without_order() -> Bool {
 // PATH: assemble_program_from_ingest, at its root gate. Every ingested root reaches resolution through
 // v2.compiler.name_resolve validate_module_roots, whose well_formed check is where this path refuses.
 fn aoe_assembly_gate_reason(arrow: Node) -> Symbol {
-  match admit_normalized_tree(root: aoe_module_root(arrow: arrow), test_markers: test_marker_channel_empty(), import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), diagnostics: None) {
+  match admit_normalized_tree(root: aoe_module_root(arrow: arrow), test_markers: test_marker_channel_empty(), import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), declared_admitted_callers: no_declared_admitted_callers(), diagnostics: None) {
     Rejected { diagnostics: _ } => ^aoe_not_admitted
     Accepted { value: tree, diagnostics: _ } =>
       match validate_module_roots(roots: Cons { head: tree, tail: Empty }) {

@@ -1,0 +1,147 @@
+module v2.test.claim.construction_confinement.construction_confinement
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { fold_list }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected }
+import v2.std.integer { Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// CONSTRUCTOR CONFINEMENT, ON THE NATIVE ROUTE (gunbc.rung_drop
+// g0_type_decl_modifier_parse_without_sealing_property, admit_callers_discarded_on_the_native_route;
+// the stage is v2.compiler.construction_confinement). Every row runs the REAL route over authored
+// text -- ingest, normalize (where the `sole_constructor` slot and the `admit_callers` clause are
+// captured), the closure symbol-index fill (where they become confinements), resolve, infer (whose
+// entry asks the stage) -- so deleting any link of that chain makes a row here red: a lost capture
+// or fill turns the refusing rows green-for-the-wrong-reason into ACCEPTED, which they assert is not
+// the answer.
+//
+// THE ROUTE, NOT ONLY THE VERDICT. A refusing row asserts the exact count of each confinement reason
+// in the refusal chain, so a refusal reached by another mechanism (a resolve miss, a coercion
+// mismatch) does not satisfy it; an accepting row asserts the program infers ACCEPTED, so the wall
+// does not fire on an admitted introduction.
+//
+// DIFFERENTIAL REFERENCE: the seed refuses the same programs -- v1.compiler.infer
+// sole_constructor_construction_diags (SoleConstructorViolation, on the record-literal and cast arms)
+// and constructor_call_admission_diags (ConstructorCallAdmissionRefused) -- and accepts the same
+// admitted ones. Written expecting red: before this change the native route accepted the refusing
+// fixture, because neither fact reached any stage.
+//
+// TWO PROGRAMS, NOT ONE PER CASE: each fixture is one assembly, and its rows read one decided value,
+// so the floor pays two assemblies for six rows.
+
+data cc_provider_artifact: Artifact = Artifact {
+  kind: SourceFile, id: ^cc_provider_artifact, file_path: "src/v2/pilot/cc_provider.dag"
+}
+
+data cc_consumer_artifact: Artifact = Artifact {
+  kind: SourceFile, id: ^cc_consumer_artifact, file_path: "src/v2/pilot/cc_consumer.dag"
+}
+
+// The provider: a sealed record, its checked constructor (an INSIDE construction), and a fn that
+// admits exactly one caller, p.ok.
+fn cc_provider() -> String {
+  "module a\n\ntype Port sole_constructor {\n  value: Int\n}\n\nfn port_of(n: Int) -> Port {\n  Port { value: n }\n}\n\nfn raw(n: Int) -> Int\n  admit_callers: [decl_ref(module_path: \"p\", decl_name: \"ok\")]\n  = n\n"
+}
+
+fn cc_assemble(consumer: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: cc_provider(), fidelity: Lossless },
+        artifact: cc_provider_artifact,
+        compilation_unit: ^cc_provider_cu,
+        source_root: V2Tree
+      },
+      tail: Cons {
+        head: DagSourceReadWitness {
+          source: Medium { carried: consumer, fidelity: Lossless },
+          artifact: cc_consumer_artifact,
+          compilation_unit: ^cc_consumer_cu,
+          source_root: V2Tree
+        },
+        tail: Empty
+      }
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+// What the route answers: the stage that refused and, for an infer refusal, how many diagnostics in
+// the chain carry each confinement reason.
+type CcReading {
+  assembled: Bool
+  inferred: Bool
+  sealed_refusals: Int
+  caller_refusals: Int
+}
+
+fn cc_count(head: Diagnostic, tail: List<Diagnostic>, reason: Symbol) -> Int {
+  fold_list(xs: tail, empty: if head.reason == reason { 1 } else { 0 }, cons: fn(n, d) { if d.reason == reason { n + 1 } else { n } })
+}
+
+fn cc_reading(consumer: String) -> CcReading {
+  match cc_assemble(consumer: consumer) {
+    Rejected { diagnostics: _ } => CcReading { assembled: false, inferred: false, sealed_refusals: 0, caller_refusals: 0 }
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Accepted { value: _, diagnostics: _ } => CcReading { assembled: true, inferred: true, sealed_refusals: 0, caller_refusals: 0 }
+        Rejected { diagnostics: r } =>
+          CcReading {
+            assembled: true,
+            inferred: false,
+            sealed_refusals: cc_count(head: r.head, tail: r.tail, reason: ^construction_confinement_reason_sole_constructor_outside_declaring_module),
+            caller_refusals: cc_count(head: r.head, tail: r.tail, reason: ^construction_confinement_reason_caller_not_admitted)
+          }
+      }
+  }
+}
+
+// THE ADMITTED PROGRAM: the checked-constructor path (p.good calls a.port_of, whose body is the
+// inside construction) and the admitted caller (p.ok calls a.raw).
+fn cc_admitted_reading() -> CcReading {
+  cc_reading(consumer: "module p\n\nimport a { Port, port_of, raw }\n\nfn good() -> Port {\n  port_of(n: 1)\n}\n\nfn ok() -> Int {\n  raw(n: 1)\n}\n")
+}
+
+// THE REFUSED PROGRAM: an outside record construction (p.bad), an outside cast into the sealed type
+// (p.cast), and a call from a declaration off the admitted list (p.other).
+fn cc_refused_reading() -> CcReading {
+  cc_reading(consumer: "module p\n\nimport a { Port, raw }\n\nfn bad() -> Port {\n  Port { value: 1 }\n}\n\nfn cast(x: Int) -> Port {\n  x as Port\n}\n\nfn other() -> Int {\n  raw(n: 1)\n}\n")
+}
+
+// (1) INSIDE CONSTRUCTION, CHECKED CONSTRUCTOR AND ADMITTED CALL are accepted, on the real route.
+test fn cc_admitted_introductions_infer_holds() -> Bool {
+  let r = cc_admitted_reading()
+  r.assembled && r.inferred
+}
+
+// (2) The refused program reaches infer -- it is not refused earlier by some other stage.
+test fn cc_refused_program_reaches_infer_holds() -> Bool {
+  let r = cc_refused_reading()
+  r.assembled && !r.inferred
+}
+
+// (3) OUTSIDE CONSTRUCTION AND OUTSIDE CAST each refuse, as sole_constructor confinement.
+test fn cc_outside_construction_and_cast_refuse_as_sealed_holds() -> Bool {
+  cc_refused_reading().sealed_refusals == 2
+}
+
+// (4) THE NON-ADMITTED CALL refuses, as caller admission -- once, at p.other, not at the admitted ok.
+test fn cc_non_admitted_call_refuses_as_caller_admission_holds() -> Bool {
+  cc_refused_reading().caller_refusals == 1
+}
+
