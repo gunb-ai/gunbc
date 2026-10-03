@@ -324,12 +324,14 @@ fn dag_emit_real_grammar_round_trips_entry() -> String {
 
 // THE MATERIALIZATION STORE CLOSURE, EMITTED, BUILT UNDER CARGO AND RUN: the NativeClaimDriver
 // program gunbc.instruments.native_materialization_store_closure, whose closure contains
-// extdeps.realization.materialization_store_local. It is the executing control for three classes of
-// accepted source that emitted Rust rustc refused -- item bounds missing from hand-written impl and
-// fn headers, an optional-returning lambda unwrapped inside its own body, and five kernel-String
-// values at structural-text parameters (specimens of gunbc.rung_drop text_boundary_identity_wall)
-// -- so the BUILD is a verdict here, not only the cases: a regression in any of them is a red
-// emitted-crate build before a single case runs. Run by name, not a merge gate.
+// extdeps.realization.materialization_store_local. Its cargo compilation discriminates two emitter
+// classes of accepted source that emitted Rust rustc refused -- item bounds missing from
+// hand-written impl and fn headers (class A), and an optional-returning lambda unwrapped inside its
+// own body (class C) -- so for those two the BUILD is a verdict, not only the cases. The cases over
+// the five representation-local simplifications (class B, specimens of gunbc.rung_drop
+// text_boundary_identity_wall) are behavioral controls of the simplified functions: restoring an
+// unnecessary identified crossing may unfold or refuse at source acceptance and is not guaranteed
+// to fail this build. Run by name, not a merge gate.
 // `gunbc test //gunbc/instruments:native-materialization-store-closure`.
 fn native_materialization_store_closure_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "native-materialization-store-closure" } }
