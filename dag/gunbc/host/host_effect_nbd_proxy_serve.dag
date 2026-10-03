@@ -21,7 +21,16 @@ import extdeps.bmc.webui.nbd_proxy_serve {
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.tools.nbdkit { nbdkit_readonly_file_serve_command }
 import extdeps.tools.websocat { websocat_nbd_proxy_bridge_command }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  FilesystemEstablishedAbsence,
+  FilesystemFileObservation,
+  FilesystemFileAbsent,
+  FilesystemFileRead,
+  FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree,
+  FilesystemFileSubjectRefused,
+}
+import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import extdeps.gunbc
 import gunbc.session_lease {
   ProcessPortScope,
@@ -202,15 +211,62 @@ fn host_effect_nbd_proxy_serve_apply_drains_stale_matching(
   }
 }
 
-fn host_effect_nbd_proxy_serve_read_session_token() -> String? {
-  let read = Filesystem.Read(path: srv3_bmcweb_token_path)
-  match read.success {
-    true =>
-      match read.content != "" {
-        true => Present { value: read.content }
-        false => Absent
+// ABSENCE IS ESTABLISHED BY THE LISTING, NEVER BY THE READ, AND NEVER BY SHELL TEST. This site
+// used to answer `Absent` on a refused read AND on an empty content, so an unreadable-but-present
+// token file (a permission on the file, not a missing step) reported exactly what a token the
+// materialization never wrote reports: "session token absent". Those two worlds have opposite
+// remedies, so the read and the listing are now one observation through
+// filesystem_file_observation, and Absent is reachable only from a listing that succeeded and did
+// not name the file. An empty content is a THIRD fact and is carried as one: the file exists and
+// holds no token, which is a broken materialization, not an absent one.
+type BmcwebSessionTokenObservation
+  = BmcwebSessionTokenRead { token: String }
+  | BmcwebSessionTokenAbsent(FilesystemEstablishedAbsence)
+  | BmcwebSessionTokenUnobservable { cause: String }
+
+fn bmcweb_session_token_observation_of(o: FilesystemFileObservation) -> BmcwebSessionTokenObservation {
+  match o {
+    FilesystemFileRead { path: _, content: token } => BmcwebSessionTokenRead { token: token }
+    FilesystemFileAbsent(established) => BmcwebSessionTokenAbsent(established)
+    FilesystemFileIndeterminate { cause: c } => BmcwebSessionTokenUnobservable { cause: c }
+    FilesystemFileObservationsDisagree { path: _, cause: c } => BmcwebSessionTokenUnobservable { cause: c }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: c } =>
+      BmcwebSessionTokenUnobservable { cause: c }
+  }
+}
+
+fn host_effect_nbd_proxy_serve_read_session_token() -> BmcwebSessionTokenObservation {
+  bmcweb_session_token_observation_of(o: filesystem_file_observation_of_path(path: srv3_bmcweb_token_path))
+}
+
+// THE START DECISION IS PURE SO IT IS CLAIMABLE. The wet read above runs the host operations; this
+// function is total over what they reported, and the unit-start caller consumes its verdict
+// verbatim -- so the claim suite can hold the policy (an unobservable token refuses with its cause,
+// an established absence refuses as absent, an empty file refuses as present-but-empty, and only a
+// non-empty token starts the units) without starting any unit.
+type BmcwebSessionTokenStartDecision
+  = BmcwebSessionTokenUsable { token: NonEmptyStr }
+  | BmcwebSessionTokenStartRefused { reason: NonEmptyStr }
+
+fn bmcweb_session_token_start_decision(o: BmcwebSessionTokenObservation) -> BmcwebSessionTokenStartDecision {
+  match o {
+    BmcwebSessionTokenRead { token: t } =>
+      if t == "" {
+        BmcwebSessionTokenStartRefused {
+          reason: "the BMCWEB session token file is present and holds no token" as NonEmptyStr,
+        }
+      } else {
+        BmcwebSessionTokenUsable { token: t as NonEmptyStr }
       }
-    false => Absent
+    BmcwebSessionTokenAbsent(_) =>
+      BmcwebSessionTokenStartRefused { reason: "BMCWEB session token absent" as NonEmptyStr }
+    BmcwebSessionTokenUnobservable { cause: c } =>
+      BmcwebSessionTokenStartRefused {
+        reason: join(
+          ["the BMCWEB session token could not be observed, so the units were not started: ", c],
+          "",
+        ) as NonEmptyStr,
+      }
   }
 }
 
@@ -257,9 +313,9 @@ fn host_effect_nbd_proxy_serve_start_units(
 ) -> String? {
   let nbdkit_unit = nbd_proxy_serve_nbdkit_unit_name(lease_key: binding.lease_key)
   let websocat_unit = nbd_proxy_serve_websocat_unit_name(lease_key: binding.lease_key)
-  match host_effect_nbd_proxy_serve_read_session_token() {
-    Absent => Present { value: "BMCWEB session token absent" }
-    Present { value: token } =>
+  match bmcweb_session_token_start_decision(o: host_effect_nbd_proxy_serve_read_session_token()) {
+    BmcwebSessionTokenStartRefused { reason: why } => Present { value: why as String }
+    BmcwebSessionTokenUsable { token: token } =>
       match host_effect_nbd_proxy_serve_systemd_run_transient(
         unit: nbdkit_unit,
         command_argv: argv_words(command: nbdkit_readonly_file_serve_command(
@@ -274,7 +330,7 @@ fn host_effect_nbd_proxy_serve_start_units(
             unit: websocat_unit,
             command_argv: argv_words(command: host_effect_nbd_proxy_serve_websocat_command_materialized(
               intent: binding.intent,
-              token: token as NonEmptyStr,
+              token: token,
             )),
             transport: transport,
           )
