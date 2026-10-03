@@ -119,17 +119,11 @@ data output_compute_work_log: ArtifactOutputId = "compute_work_log"
 
 data output_compute_work_outputs: ArtifactOutputId = "compute_work_outputs"
 
-// ONE OUTPUT PER DECLARED BINARY of a compute build, named by the binary: the roster is the build's
-// own bin list, so a build of different bins requires different outputs and none can be dropped.
-data compute_work_binary_output_prefix: String = "compute_work_binary."
+// ONE DECLARED OUTPUT PER COMPUTE BINARY (gunbc.compute.work_request GunbcBinary): the set is closed,
+// so each binary part has its own row rather than an id recovered from a name.
+data output_compute_work_gunbc_binary: ArtifactOutputId = "compute_work_gunbc_binary"
 
-fn output_compute_work_binary(bin: NonEmptyStr) -> ArtifactOutputId {
-  concat(compute_work_binary_output_prefix, bin as String) as ArtifactOutputId
-}
-
-fn output_is_compute_work_binary(id: ArtifactOutputId) -> Bool {
-  starts_with(s: id as String, prefix: compute_work_binary_output_prefix)
-}
+data output_compute_work_claim_batch_binary: ArtifactOutputId = "compute_work_claim_batch_binary"
 
 
 type DeclaredInput {

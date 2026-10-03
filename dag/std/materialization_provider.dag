@@ -76,8 +76,8 @@ import std.judgment_contract {
   output_compute_work_outcome,
   output_compute_work_log,
   output_compute_work_outputs,
-  output_compute_work_binary,
-  output_is_compute_work_binary,
+  output_compute_work_gunbc_binary,
+  output_compute_work_claim_batch_binary,
   output_module_test_verdicts,
   output_native_compiler_build_diagnostics,
   output_native_compiler_executable,
@@ -103,6 +103,7 @@ import std.materialization_ladder { DemandNature, PureComputation, IdempotentEff
 // reaches this one, so the edge is acyclic, which is the import graph's only law (DESIGN section 3).
 import gunbc.compute.work_request {
   WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, WorkToolchainIdentity,
+  GunbcBinary, GunbcDriver, ClaimBatchRunner, gunbc_binary_name,
   CargoRelease, CargoDebug,
 }
 import extdeps.git.object_store { git_object_id_wire_hex }
@@ -681,7 +682,7 @@ fn compute_work_operation_preimage(operation: WorkOperation) -> NonEmptyStr {
     BuildGunbcBinaries { profile, bins } =>
       join(concat(
         [length_prefixed_encode(s: "build"), length_prefixed_encode(s: match profile { CargoRelease => "release"  CargoDebug => "debug" }), length_prefixed_encode(s: to_string(value: count(bins)))],
-        bins |> map(b => length_prefixed_encode(s: b as String))
+        bins |> map(b => length_prefixed_encode(s: gunbc_binary_name(b: b) as String))
       ), "") as NonEmptyStr
     CompileEntry { entry } =>
       join([length_prefixed_encode(s: "compile"), length_prefixed_encode(s: entry as String)], "") as NonEmptyStr
@@ -700,9 +701,16 @@ fn compute_work_operation_preimage(operation: WorkOperation) -> NonEmptyStr {
 // The binaries a build materializes are REQUIRED OUTPUTS of its record, one per declared bin, carried
 // as byte parts (extdeps.realization.materialization_store_local LocalStoreStagedPart). The checking
 // operations materialize none.
+fn compute_work_binary_output(b: GunbcBinary) -> ArtifactOutputId {
+  match b {
+    GunbcDriver => output_compute_work_gunbc_binary
+    ClaimBatchRunner => output_compute_work_claim_batch_binary
+  }
+}
+
 fn compute_work_binary_outputs(operation: WorkOperation) -> List<ArtifactOutputId> {
   match operation {
-    BuildGunbcBinaries { profile: _, bins } => bins |> map(b => output_compute_work_binary(bin: b))
+    BuildGunbcBinaries { profile: _, bins } => bins |> map(b => compute_work_binary_output(b: b))
     CompileEntry { entry: _ } => []
     RunClaims { entry: _, functions: _, hermetic: _, window: _ } => []
   }
@@ -996,7 +1004,8 @@ type MaterializedArtifact
       outcome: ArtifactPart,
       log: ArtifactPart,
       outputs: ArtifactPart,
-      binaries: List<CarriedOutput>
+      gunbc_binary: ArtifactPart?,
+      claim_batch_binary: ArtifactPart?
     }
   | LegacyIncompleteArtifact {
       kind: ArtifactKindId,
@@ -1012,7 +1021,7 @@ fn artifact_fold<T>(
   native_compiler: fn(ContentHash, ArtifactPart, ArtifactPart) -> T,
   universe: fn(ContentHash, ArtifactPart, ArtifactPart) -> T,
   module_verdict_bundle: fn(ContentHash, ArtifactPart, ArtifactPart) -> T,
-  compute_work: fn(ContentHash, ArtifactPart, ArtifactPart, ArtifactPart, List<CarriedOutput>) -> T,
+  compute_work: fn(ContentHash, ArtifactPart, ArtifactPart, ArtifactPart, ArtifactPart?, ArtifactPart?) -> T,
   legacy_incomplete: fn(ArtifactKindId, ContentHash, List<CarriedOutput>) -> T
 ) -> T {
   match artifact {
@@ -1031,7 +1040,7 @@ fn artifact_fold<T>(
       universe(k, p, c)
     ModuleVerdictBundleArtifact { request_key: k, test_verdicts: v, preparation_diagnostics: d } =>
       module_verdict_bundle(k, v, d)
-    ComputeWorkArtifact { request_key: k, outcome: o, log: l, outputs: x, binaries: bs } => compute_work(k, o, l, x, bs)
+    ComputeWorkArtifact { request_key: k, outcome: o, log: l, outputs: x, gunbc_binary: g, claim_batch_binary: c } => compute_work(k, o, l, x, g, c)
     LegacyIncompleteArtifact { kind: kd, request_key: k, carried_outputs: cs } =>
       legacy_incomplete(kd, k, cs)
   }
@@ -1046,7 +1055,7 @@ fn artifact_kind(artifact: MaterializedArtifact) -> ArtifactKindId {
     native_compiler: (k, e, d) => native_compiler_artifact_kind,
     universe: (k, p, c) => native_test_universe_artifact_kind,
     module_verdict_bundle: (k, v, d) => native_module_verdict_bundle_artifact_kind,
-    compute_work: (k, o, l, x, bs) => compute_work_artifact_kind,
+    compute_work: (k, o, l, x, g, c) => compute_work_artifact_kind,
     legacy_incomplete: (kd, k, cs) => kd
   )
 }
@@ -1060,7 +1069,7 @@ fn artifact_request_key(artifact: MaterializedArtifact) -> ContentHash {
     native_compiler: (k, e, d) => k,
     universe: (k, p, c) => k,
     module_verdict_bundle: (k, v, d) => k,
-    compute_work: (k, o, l, x, bs) => k,
+    compute_work: (k, o, l, x, g, c) => k,
     legacy_incomplete: (kd, k, cs) => k
   )
 }
@@ -1093,11 +1102,12 @@ fn artifact_carried_outputs(artifact: MaterializedArtifact) -> List<CarriedOutpu
       positioned_part(id: output_module_test_verdicts, part: v),
       positioned_part(id: output_module_preparation_diagnostics, part: d)
     ],
-    compute_work: (k, o, l, x, bs) => concat([
+    compute_work: (k, o, l, x, g, c) => concat(concat([
       positioned_part(id: output_compute_work_outcome, part: o),
       positioned_part(id: output_compute_work_log, part: l),
       positioned_part(id: output_compute_work_outputs, part: x)
-    ], bs),
+    ], match g { Present { value: p } => [positioned_part(id: output_compute_work_gunbc_binary, part: p)]  Absent => [] }),
+      match c { Present { value: p } => [positioned_part(id: output_compute_work_claim_batch_binary, part: p)]  Absent => [] }),
     legacy_incomplete: (kd, k, cs) => cs
   )
 }
@@ -1225,15 +1235,15 @@ fn manifest_three_part(
   }
 }
 
-// THE COMPUTE RECORD'S ROSTER IS OPEN IN ONE DECLARED DIRECTION: its three text parts are fixed, and
-// every further part must be a compute binary output (output_is_compute_work_binary). Which binaries
-// are required is the REQUEST's fact (compute_work_binary_outputs), so completeness is the door's
-// request-derived check, exactly as for every other family; the decode refuses any other id, and a
-// record missing a fixed part decodes to the named incompleteness.
+// THE COMPUTE RECORD'S ROSTER IS FIVE DECLARED PARTS: three text parts every record carries, and one
+// optional byte part per GunbcBinary. Which binaries a record must carry is the REQUEST's fact
+// (compute_work_binary_outputs), so that completeness is the door's request-derived check, exactly as
+// for every other family; the decode refuses any id outside the five, and a record missing a text
+// part decodes to the named incompleteness.
 fn manifest_compute_work(m: ArtifactManifest) -> ManifestDecode {
-  let fixed = [output_compute_work_outcome, output_compute_work_log, output_compute_work_outputs]
-  match m.parts |> filter(o => !output_list_contains(xs: fixed, wanted: o.id) && !output_is_compute_work_binary(id: o.id)) |> first() {
-    Present { value: p } => ManifestPartUndeclared { kind: m.kind, part: p.id }
+  let roster = [output_compute_work_outcome, output_compute_work_log, output_compute_work_outputs, output_compute_work_gunbc_binary, output_compute_work_claim_batch_binary]
+  match manifest_first_undeclared(parts: m.parts, roster: roster) {
+    Present { value: p } => ManifestPartUndeclared { kind: m.kind, part: p }
     Absent =>
       match manifest_first_repeated(parts: m.parts) {
         Present { value: p } => ManifestPartRepeated { kind: m.kind, part: p }
@@ -1249,7 +1259,8 @@ fn manifest_compute_work(m: ArtifactManifest) -> ManifestDecode {
                     Present { value: x } =>
                       ManifestDecoded { artifact: ComputeWorkArtifact {
                         request_key: m.request_key, outcome: o, log: l, outputs: x,
-                        binaries: m.parts |> filter(p => output_is_compute_work_binary(id: p.id))
+                        gunbc_binary: manifest_part(parts: m.parts, id: output_compute_work_gunbc_binary),
+                        claim_batch_binary: manifest_part(parts: m.parts, id: output_compute_work_claim_batch_binary),
                       } }
                   }
               }

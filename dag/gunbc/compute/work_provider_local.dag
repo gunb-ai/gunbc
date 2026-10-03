@@ -67,9 +67,9 @@ import gunbc.compute.host_capacity {
 }
 import std.measure { kibibyte }
 import std.content_hash { serialize_content_hash }
-import std.materialization_provider { ArtifactRequest, ComputeWorkRequest, request_key, request_kind, request_judgment_contract }
+import std.materialization_provider { ArtifactRequest, ComputeWorkRequest, request_key, request_kind, request_judgment_contract, compute_work_binary_output }
 import std.cache_identity { ArtifactKindId }
-import std.judgment_contract { output_compute_work_outcome, output_compute_work_log, output_compute_work_outputs, output_compute_work_binary }
+import std.judgment_contract { output_compute_work_outcome, output_compute_work_log, output_compute_work_outputs }
 import std.materialization_ladder {
   Frame, FrameDemand, UnboundedSiblingsFrame, LadderVerdict, RefusedNoProvider,
   materialization_ladder, ladder_verdict_is_green, ladder_verdict_prescribes, verdict_identity,
@@ -95,7 +95,8 @@ import extdeps.realization.materialization_store_local {
 import std.fabric_blob { FabricBlobReading, fabric_blob_reading_path }
 import gunbc.compute.work_request {
   WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
-  WorkToolchainIdentity, work_toolchain_observed, rustc_verbose_host_triple, work_default_build, work_default_bins, work_declared_outputs,
+  WorkToolchainIdentity, work_toolchain_observed, rustc_verbose_host_triple, work_default_build, work_default_bins,
+  gunbc_binary_name, work_binary_declared_path, work_declared_outputs,
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
   WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
@@ -349,7 +350,7 @@ fn compute_command_argv(instance: HostDashboardInstance, layout: ComputeLayout, 
     BuildGunbcBinaries { profile, bins } =>
       concat(
         concat([compute_program(instance: instance, cap: CargoCapability), "build"], match profile { CargoRelease => ["--release"]  CargoDebug => [] }),
-        concat(["-p", "v1-compiler"], flat_map(bins, b => ["--bin", b as String])),
+        concat(["-p", "v1-compiler"], flat_map(bins, b => ["--bin", gunbc_binary_name(b: b) as String])),
       )
     CompileEntry { entry } =>
       [compute_dependency_program(dependency: dependency, bin: "gunbc"), "compile",
@@ -1457,7 +1458,7 @@ fn compute_settled_record(
   outcome: WorkOutcome,
 ) -> ProvideResult {
   let document = work_outcome_wire(o: outcome, subject: subject, op: op)
-  match compute_store_commit(materialization: materialization, layout: layout, outcome: outcome, document: document) {
+  match compute_store_commit(materialization: materialization, layout: layout, op: op, outcome: outcome, document: document) {
     ComputeCommitNotOwed => ProvideFresh { outcome: outcome, document: document, host_record: HostRecordWritten }
     ComputeCommitted => ProvideFresh { outcome: outcome, document: document, host_record: HostRecordWritten }
     ComputeCommitRefused { detail } =>
@@ -1786,7 +1787,21 @@ fn compute_outputs_manifest(outputs: List<WorkOutput>) -> String {
   ]))))
 }
 
-fn compute_store_commit(materialization: ComputeMaterialization, layout: ComputeLayout, outcome: WorkOutcome, document: String) -> ComputeStoreCommit {
+// THE BYTE PARTS A BUILD COMMITS: one per binary its operation declares, under that binary's declared
+// output id, staged where compute_return_outputs put it. A checking operation commits none.
+fn compute_binary_parts(layout: ComputeLayout, op: WorkOperation) -> List<LocalStoreStagedPart> {
+  match op {
+    BuildGunbcBinaries { profile, bins } =>
+      bins |> map(b => LocalStoreStagedPart {
+        id: compute_work_binary_output(b: b),
+        staged: compute_staged_path(layout: layout, declared: work_binary_declared_path(profile: profile, b: b)) as NonEmptyStr,
+      })
+    CompileEntry { entry: _ } => []
+    RunClaims { entry: _, functions: _, hermetic: _, window: _ } => []
+  }
+}
+
+fn compute_store_commit(materialization: ComputeMaterialization, layout: ComputeLayout, op: WorkOperation, outcome: WorkOutcome, document: String) -> ComputeStoreCommit {
   match materialization.plan {
     ComputeRecomputed { verdict: _ } => ComputeCommitNotOwed
     ComputeMemoized =>
@@ -1803,10 +1818,7 @@ fn compute_store_commit(materialization: ComputeMaterialization, layout: Compute
                   LocalStoreUnavailable { root_path, cause } => ComputeCommitRefused { detail: join(["the materialization store at ", root_path, " is unavailable: ", compute_store_unavailable_detail(c: cause)], "") }
                   LocalStoreOpened { root, store, durability: _, sweep: _ } =>
                     {
-                      let parts = outputs |> map(o => LocalStoreStagedPart {
-                        id: output_compute_work_binary(bin: compute_basename(path: o.declared) as NonEmptyStr),
-                        staged: compute_staged_path(layout: layout, declared: o.declared) as NonEmptyStr,
-                      })
+                      let parts = compute_binary_parts(layout: layout, op: op)
                       let committed = local_store_commit(root: root, store: store, req: materialization.request, payloads: [
                         ArtifactPayload { id: output_compute_work_outcome, content: document },
                         ArtifactPayload { id: output_compute_work_log, content: log.content },
@@ -1868,8 +1880,8 @@ fn compute_dependency_decide(read: LocalStorePartsLookup) -> ComputeDependencyRe
     StoreLookupRefused { key: _, refusal } => ComputeDependencyRefused { detail: join(["the build this request depends on did not verify: ", compute_store_lookup_refusal_detail(r: refusal)], "") }
     StoreLookupHit { artifact: _, payloads: _, blobs: _, receipt: _, evaluation_identity: _ } => {
       let found = work_default_bins |> map(b => ComputeDependencyBinaryFound {
-        bin: b as String,
-        reading: read.parts |> filter(r => ends_with(s: fabric_blob_reading_path(reading: r) as String, suffix: local_store_part_name(record: "", id: output_compute_work_binary(bin: b)))) |> first(),
+        bin: gunbc_binary_name(b: b) as String,
+        reading: read.parts |> filter(r => ends_with(s: fabric_blob_reading_path(reading: r) as String, suffix: local_store_part_name(record: "", id: compute_work_binary_output(b: b)))) |> first(),
       })
       match found |> filter(f => match f.reading { Present { value: _ } => false  Absent => true }) |> first() {
         Present { value: missing } => ComputeDependencyRefused { detail: join(["the build record carries no verified part for ", missing.bin], "") }

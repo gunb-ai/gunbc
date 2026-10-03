@@ -455,7 +455,7 @@ test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() 
   ], log_path: layout.log_path }
   let committed = compute_store_commit(
     materialization: ComputeMaterialization { root: root, request: request, plan: ComputeMemoized },
-    layout: layout, outcome: outcome,
+    layout: layout, op: work_default_build(), outcome: outcome,
     document: work_outcome_wire(o: outcome, subject: ExactTree { tree: tree }, op: work_default_build()))
   let served = compute_store_read(root: root, req: request)
   let resolved = compute_dependency_read(root: root, build: request)
