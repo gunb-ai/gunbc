@@ -4,6 +4,7 @@ import std.types { Bool, String, NonEmptyStr, List }
 import v2.std.optional { Present, Absent }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value }
+import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
 import extdeps.vllm.engine_args {
   VllmKvCacheDtypeRequest, vllm_kv_cache_dtype_wire, VllmSpeculativePolicy, vllm_speculative_policy_wire, SpeculativeDecodingOff,
   VllmIndexerKvDtypeRequest, vllm_indexer_kv_dtype_key, VllmSchedulerAdmissionRequest, vllm_scheduler_admission_key,
@@ -129,7 +130,6 @@ fn serving_performance_subject(
 // the profile renders no speculative configuration (gunbc.spark.serving_arm_launch arm_engine_argv), so a
 // launch's speculation is off, known, not unread. Only the realized collective transport is a reading.
 fn serving_subject_for_launch(
-  checkpoint: ServingCheckpoint,
   checkpoint_revision: NonEmptyStr?,
   runtime: ServingRuntime,
   runtime_image_reference: NonEmptyStr,
@@ -138,7 +138,7 @@ fn serving_subject_for_launch(
   collective_transport: NcclRealizedTransport?,
 ) -> ServingPerformanceSubject {
   serving_performance_subject(
-    checkpoint: checkpoint,
+    checkpoint: profile.checkpoint,
     checkpoint_revision: checkpoint_revision,
     runtime: runtime,
     runtime_image_reference: runtime_image_reference,
@@ -578,4 +578,39 @@ fn serving_subject_axis_delta(
       AxisDeltaNone
     }
   }
+}
+
+// ── THE SUBJECT'S IDENTITY KEY, FOR RECEIPTS THAT MUST NAME EXACTLY ONE SUBJECT ─────────────────
+//
+// THE KEY RELATION (DESIGN 3b keys/hashing; review 74175). Relation: "this receipt is evidence about this
+// serving subject". Scope: promotion evidence (gunbc.spark.serving_promotion). Preimage: every axis of
+// serving_subject_axes, in roster order, each written as its name and its value, EACH LENGTH-PREFIXED
+// ("<len>:<text>"), so no axis value can forge a separator and two different subjects cannot share a
+// preimage. Equality: exact equality of that preimage -- not of the digest -- so a hash collision cannot
+// merge two subjects. The digest is std.content_hash content_hash_of_value over the preimage, carried for
+// display and indexing only. An unread axis is part of the preimage as unread, so a receipt taken with an
+// axis unread does not stand for a subject that has it read.
+type ServingSubjectKey sole_constructor {
+  preimage: NonEmptyStr
+  digest: ContentHash
+}
+
+fn length_prefixed(text: String) -> String {
+  join([to_string(string_length(s: text)), ":", text], "")
+}
+
+fn serving_subject_key(s: ServingPerformanceSubject) -> ServingSubjectKey {
+  let pre = join(map(serving_subject_axes, a => join([
+    length_prefixed(text: serving_subject_axis_wire(a: a) as String),
+    length_prefixed(text: serving_subject_axis_value(s: s, a: a) as String),
+  ], "")), "") as NonEmptyStr
+  ServingSubjectKey { preimage: pre, digest: content_hash_of_value(value: pre) }
+}
+
+fn serving_subject_key_equal(a: ServingSubjectKey, b: ServingSubjectKey) -> Bool {
+  (a.preimage as String) == (b.preimage as String)
+}
+
+fn serving_subject_key_display(k: ServingSubjectKey) -> NonEmptyStr {
+  serialize_content_hash(hash: k.digest)
 }

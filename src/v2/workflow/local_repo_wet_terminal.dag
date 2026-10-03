@@ -1,6 +1,6 @@
 module v2.workflow.local_repo_wet_terminal
 
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.integer { Int }
@@ -1193,6 +1193,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_authority_log_real_execution", function: "a_standing_recovery_selects_the_one_claim_quiesces_after_selection_and_reads_back_by_real_execution" },
+      entry: "dag/test/claim/spark/pair_serving_authority_log_real_execution_witness_test.dag",
+      function: "a_standing_recovery_selects_the_one_claim_quiesces_after_selection_and_reads_back_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_authority_log_real_execution", function: "a_transition_is_read_back_and_a_stale_one_names_the_current_by_real_execution" },
       entry: "dag/test/claim/spark/pair_serving_authority_log_real_execution_witness_test.dag",
       function: "a_transition_is_read_back_and_a_stale_one_names_the_current_by_real_execution",
@@ -1214,6 +1220,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "a_filing_frozen_once_is_read_back_as_the_same_request_without_a_live_subject_by_real_execution" },
       entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
       function: "a_filing_frozen_once_is_read_back_as_the_same_request_without_a_live_subject_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "a_standing_release_resumes_from_its_frozen_approval_after_the_main_row_changes_by_real_execution" },
+      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
+      function: "a_standing_release_resumes_from_its_frozen_approval_after_the_main_row_changes_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -2462,6 +2474,30 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.machine_intake.sol_hold_stdin_wet_witness", function: "an_unconfirmed_termination_is_residue_and_the_supervisor_returns" },
       entry: "dag/test/claim/machine_intake/sol_hold_stdin_wet_witness_test.dag",
       function: "an_unconfirmed_termination_is_residue_and_the_supervisor_returns",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.auth.login_transaction_consume_wet_witness", function: "transaction_consume_has_one_winner_over_real_files" },
+      entry: "dag/test/claim/auth/login_transaction_consume_wet_witness_test.dag",
+      function: "transaction_consume_has_one_winner_over_real_files",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.auth.login_transaction_consume_wet_witness", function: "a_consumer_that_loses_the_create_new_claim_refuses_and_deletes_nothing" },
+      entry: "dag/test/claim/auth/login_transaction_consume_wet_witness_test.dag",
+      function: "a_consumer_that_loses_the_create_new_claim_refuses_and_deletes_nothing",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.auth.login_callback_hold_wet_witness", function: "foreign_browser_cannot_consume_and_cached_replay_cannot_exchange" },
+      entry: "dag/test/claim/auth/login_callback_hold_wet_witness_test.dag",
+      function: "foreign_browser_cannot_consume_and_cached_replay_cannot_exchange",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_state_namespace_wet_witness", function: "witness_public_head_cannot_alias_private_state_object" },
+      entry: "dag/test/claim/fabric/fabric_state_namespace_wet_witness_test.dag",
+      function: "witness_public_head_cannot_alias_private_state_object",
       expectation: ExpectedToHold {}
     }
   ]

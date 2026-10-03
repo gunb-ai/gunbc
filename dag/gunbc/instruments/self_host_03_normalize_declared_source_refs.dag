@@ -1,7 +1,7 @@
 module tools.self_host_03_normalize_declared_source_refs
 
+import std.types { List }
 import v2.compiler.source_authority { SourceRef, source_ref_for_storage_path }
-import v2.std.collection { List }
 
 // declared_source_refs for the 03_normalize behavioral witness only (review 41433 fix): this list
 // opts src/v2/compiler/03_normalize.dag's witness entry into the cli_run.rs affected-set selection
