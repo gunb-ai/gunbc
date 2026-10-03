@@ -1336,6 +1336,13 @@ pub enum InterpError {
         marginal_cpu_nanos: u128,
         limit_ms: u64,
     },
+    /// A fixture compile instrument (`compile_dag_rust_emit_check`) refused to answer: the
+    /// typed cause says which arm fired (`cli_run::FixtureRenderRefusal`). Refusing is the
+    /// fail-closed alternative to rendering every module or reading an absent file as `false`.
+    FixtureRenderRefused {
+        instrument: &'static str,
+        refusal: crate::cli_run::FixtureRenderRefusal,
+    },
     /// The fast-lane per-witness eval budget, enforced on THREAD CPU by the cooperative
     /// stride-poll in `eval_expr`. The measured field is named for its clock: this and the
     /// wall-clock budget below are different quantities of one occurrence, and a shared
@@ -1486,6 +1493,10 @@ impl fmt::Display for InterpError {
                  fill_cpu_ns={} marginal_cpu_ns={} limit_ms={}",
                 entry, producer, fill_cpu_nanos, marginal_cpu_nanos, limit_ms
             ),
+            InterpError::FixtureRenderRefused {
+                instrument,
+                refusal,
+            } => write!(f, "{instrument}: {refusal}"),
             InterpError::EvalBudgetExceeded {
                 cpu_ms: elapsed_ms,
                 budget_ms,
@@ -20600,7 +20611,7 @@ fn eval_emit_host_run_transport_builtin(
 /// observation/apply helpers when the self-emitted transport consumes the modeled
 /// ResolvedBuildContext and the dispatcher-change, environment-change, and cold/warm
 /// agreement witnesses remain green without them.
-/// Durable re-root (realization-side config, GUNBC_RESOLVED_GRAPH_CACHE_DIR precedent): the
+/// Durable re-root (realization-side config): the
 /// root is WHERE the cache lives, never WHAT identifies an artifact — the content-hash path
 /// component stays the key. Opt-in; only the declared /tmp/gunbc_ scratch prefix
 /// (std.emit_on_demand root authority) is rebased, so an arbitrary caller path never silently
@@ -22033,6 +22044,27 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(Value::Int(s.string_length())))
             },
 
+            // THE NATIVE STRING-SPAN SCAN THE JSON GRAMMAR'S PRODUCTIONS USE (RFC 8259 string
+            // body scan, escapes honored) -- v1_rt::scan_string_end is indexed in CHARS like
+            // every other string carrier here, so the position it returns is the position the
+            // interpreted parser's own indexing speaks.
+            arm "free_call.scan_string_end" { "scan_string_end" } => {
+                let s = expect_value_str($positional.first().copied(), "scan_string_end")?;
+                let start = expect_int($positional.get(1).copied(), "scan_string_end start")?;
+                Ok(Some(Value::Int(v1_rt::scan_string_end(&s, start))))
+            },
+
+            // THE VALIDATED JSON UNESCAPE, NATIVE (RFC 8259 section 7; \u decodes through
+            // from_code_point's own semantics, lone surrogates included). None is the escape-set
+            // refusal: the grammar maps it to its parse failure before any value is built.
+            arm "free_call.json_unescape_checked" { "json_unescape_checked" } => {
+                let s = expect_str($positional.first().copied(), "json_unescape_checked")?;
+                match v1_rt::json_unescape_checked(&s) {
+                    Some(out) => Ok(Some(str_value(out))),
+                    None => Ok(Some(Value::Null)),
+                }
+            },
+
             arm "free_call.substring" { "substring" } => {
                 // `v1_rt::substring` clamps negative start/end to 0, and `RcStr::substring`
                 // clamps identically, so routing through the carrier preserves this arm exactly.
@@ -23087,11 +23119,14 @@ macro_rules! v1_builtin_arms {
                 let file_path = expect_str($positional.get(1).copied(), $name)?;
                 let includes = expect_str_list($positional.get(2).copied(), $name)?;
                 let excludes = expect_str_list($positional.get(3).copied(), $name)?;
-                Ok(Some(Value::Bool(
-                    crate::cli_run::compile_dag_rust_emit_check(
-                        &source, &file_path, &includes, &excludes,
-                    ),
-                )))
+                crate::cli_run::compile_dag_rust_emit_check(
+                    &source, &file_path, &includes, &excludes,
+                )
+                .map(|verdict| Some(Value::Bool(verdict)))
+                .map_err(|refusal| InterpError::FixtureRenderRefused {
+                    instrument: "compile_dag_rust_emit_check",
+                    refusal,
+                })
             },
 
             arm "free_call.compile_dag_diagnostic_census" { "compile_dag_diagnostic_census" } => {
