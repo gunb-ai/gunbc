@@ -21,7 +21,7 @@ import extdeps.bmc.ipmi_sel { FirmwareError, FirmwareHang, FirmwareProgress }
 import extdeps.bmc.ipmi_sdr { SdrLineResult, sdr_decode_lines }
 import gunbc.machine_intake_ampere_smpro_observation {
   SmproProbeOutcome, SmproWordRead, SmproControllerRefused, SmproTransportFailed, SmproResponseMalformed,
-  smpro_pass_probe_count, smpro_pass_dossier_text, smpro_pass_findings,
+  SmproPassObservation, smpro_site_probe_bound, smpro_pass_dossier_text, smpro_pass_findings,
 }
 import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
 import gunbc.machine_intake_mtcollins1_bmc_sensor_observation { mtcollins1_sensor_findings, mtcollins1_sensor_table_text }
@@ -331,7 +331,7 @@ type SensorReading
 // was established on. Its probes are kept whole, every one with its raw observation, including when none of
 // them was answered: the dossier is rendered for any outcome list.
 type SmproReading
-  = SmproProbed { outcomes: List<SmproProbeOutcome> }
+  = SmproProbed { observation: SmproPassObservation }
   | SmproNotTaken { reason: NonEmptyStr }
 
 type MembersReading<T>
@@ -1101,12 +1101,12 @@ fn console_findings(c: ConsoleReading) -> List<String> {
 }
 
 fn smpro_findings(s: SmproReading) -> List<String> {
-  match s { SmproProbed { outcomes: os } => smpro_pass_findings(site: mtcollins1_smpro_site, outcomes: os) SmproNotTaken { reason: _ } => [] }
+  match s { SmproProbed { observation: o } => smpro_pass_findings(obs: o) SmproNotTaken { reason: _ } => [] }
 }
 
 fn smpro_text(s: SmproReading) -> String {
   match s {
-    SmproProbed { outcomes: os } => smpro_pass_dossier_text(site: mtcollins1_smpro_site, outcomes: os)
+    SmproProbed { observation: o } => smpro_pass_dossier_text(obs: o)
     SmproNotTaken { reason: why } => concat("NOT TAKEN: ", why as String)
   }
 }
@@ -1284,7 +1284,8 @@ fn members_channel(channel: NonEmptyStr, m: MembersReading<T>) -> BmcChannelRead
 fn smpro_channel(s: SmproReading) -> BmcChannelRead {
   BmcChannelRead { channel: "ipmi master write-read (smpro)", standing: match s {
     SmproNotTaken { reason: _ } => BmcChannelNotAttempted
-    SmproProbed { outcomes: os } =>
+    SmproProbed { observation: obs } => {
+      let os = obs.outcomes
       if any(os, o => match o { SmproWordRead { raw: _, word: _ } => true SmproControllerRefused { raw: _, completion: _ } => true SmproResponseMalformed { raw: _, detail: _ } => true SmproTransportFailed { raw: _, timed_out: _ } => false SmproNotSent { socket: _, register: _, reason: _ } => false SmproRequestUnencodable { socket: _, register: _, detail: _ } => false }) { BmcChannelAnswered }
       else {
         match flat_map(os, o => match o { SmproTransportFailed { raw: r, timed_out: _ } => [r] SmproWordRead { raw: _, word: _ } => [] SmproControllerRefused { raw: _, completion: _ } => [] SmproResponseMalformed { raw: _, detail: _ } => [] SmproNotSent { socket: _, register: _, reason: _ } => [] SmproRequestUnencodable { socket: _, register: _, detail: _ } => [] }).first() {
@@ -1292,6 +1293,7 @@ fn smpro_channel(s: SmproReading) -> BmcChannelRead {
           Present { value: r } => BmcChannelFailed { cause: bmc_ipmitool_read_cause(endpoint: mtcollins1_ipmi_endpoint(), at: r.at, exit_code: r.exit_code, stderr: r.stderr) }
         }
       }
+    }
   } }
 }
 
@@ -1525,7 +1527,7 @@ data mtcollins1_boot_redfish_read_deadline: Second = second(count: 15)
 // two boot parameter 5 reads and the final-power poll -- are paid inside the actuation, and their
 // allowance is gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_in_run_smpro_allowance.
 fn mtcollins1_boot_ipmi_read_count() -> Int {
-  4 + smpro_pass_probe_count(site: mtcollins1_smpro_site)
+  4 + smpro_site_probe_bound(standing: mtcollins1_smpro_site())
 }
 
 data mtcollins1_boot_redfish_read_budget: Int = 48
