@@ -266,16 +266,23 @@ fn redemption_release_owner(state: RedemptionState) -> RedemptionReleaseOwner {
 // redemption record is the attribution -- which request, through which holder, since when -- so the
 // held capacity is charged to that use rather than becoming nobody's. Only an observation that the use
 // is quiescent lets recovery end it, after which the ordinary release follows.
+//
+// NEVER-REDEEMED AND ALREADY-ENDED ARE DIFFERENT STATES AND RECOVERY KEEPS THEM APART (ruling on
+// gunbc#13129 at e544220f602). An Unredeemed grant has had no use: it still belongs to its holder,
+// who may present it or release it, and recovery has nothing to do with it -- releasing it would
+// revoke an untouched grant. Only UseEnded owes a release: its use is over and the gate's release may
+// not have landed.
 type RedemptionRecovery
-  = RecoveryNothingInFlight
+  = RecoveryNoUseToRecover
+  | RecoveryReleaseOwed { request: NonEmptyStr }
   | RecoveryHoldCharged { request: NonEmptyStr, holder: NonEmptyStr, since: EpochSecs }
   | RecoveryEndThenRelease { request: NonEmptyStr }
   | RecoveryUndecidable { detail: String }
 
 fn redemption_recovery(state: RedemptionState, quiescence: QuiescenceFact) -> RedemptionRecovery {
   match state {
-    Unredeemed => RecoveryNothingInFlight
-    UseEnded { request: _, outcome: _ } => RecoveryNothingInFlight
+    Unredeemed => RecoveryNoUseToRecover
+    UseEnded { request: q, outcome: _ } => RecoveryReleaseOwed { request: q }
     InFlight { request: q, holder: h, redeemed_at: at, by: _ } =>
       match quiescence {
         QuiescenceUnobserved => RecoveryHoldCharged { request: q, holder: h, since: at }

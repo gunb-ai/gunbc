@@ -17,7 +17,10 @@ import gunbc.auth.request_authentication {
 import gunbc.principal_projection { PrincipalRef, principal_ref_eq, principal_ref_label }
 import std.access { AccessDecision, Permit, Deny, AccessRefusal, AccessRefusalLocation, AccessPolicyRefused }
 import product.capacity.lease { LeaseGrant, GrantIdentity, QuiescenceFact }
-import product.capacity.redemption { RedemptionRefusal, redemption_refusal_wire, redemption_recovery, RecoveryNothingInFlight, RecoveryHoldCharged, RecoveryEndThenRelease, RecoveryUndecidable }
+import product.capacity.redemption {
+  RedemptionRefusal, RedemptionRecovery, redemption_refusal_wire, redemption_recovery,
+  RecoveryNoUseToRecover, RecoveryReleaseOwed, RecoveryHoldCharged, RecoveryEndThenRelease, RecoveryUndecidable,
+}
 import product.capacity.event_chain { PartitionId, EventId, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted }
 import product.capacity.pool_events {
   PoolEvent, PoolAcquired, PoolSettled, PoolReleased, PoolLapsed, PoolUpstreamObserved, PoolResetObserved,
@@ -234,8 +237,32 @@ type FrontDoorIdentity {
   pools: List<HarnessSeatPoolIdentity>
 }
 
-fn front_door_pool_for(door: FrontDoorIdentity, class: ServingCoTenancyClass) -> HarnessSeatPoolIdentity? {
-  first(filter(door.pools, p => (serving_co_tenancy_class_wire(c: p.class) as String) == (serving_co_tenancy_class_wire(c: class) as String)))
+// THE POOL IS FOUND BY CLASS AND MUST BELONG TO THE DOOR'S GROUP. The pool identity carries its
+// group, so the group participates in the join: a pool of another group configured into this door is
+// a configuration defect and refuses rather than being joined against, and two pools for one class
+// refuse rather than the first being taken -- either way the door does not guess which pool a permit
+// is redeemed in.
+type FrontDoorPoolSelection
+  = DoorPoolSelected { pool: HarnessSeatPoolIdentity }
+  | DoorPoolNone
+  | DoorPoolOfAnotherGroup { pool_group: NonEmptyStr }
+  | DoorPoolDuplicated { pools: Nat }
+
+fn front_door_pool_for(door: FrontDoorIdentity, class: ServingCoTenancyClass) -> FrontDoorPoolSelection {
+  let candidates = filter(door.pools, p => (serving_co_tenancy_class_wire(c: p.class) as String) == (serving_co_tenancy_class_wire(c: class) as String))
+  let foreign = filter(candidates, p => (fabric_group_wire(g: p.group) as String) != (fabric_group_wire(g: door.group) as String))
+  match first(foreign) {
+    Present { value: p } => DoorPoolOfAnotherGroup { pool_group: fabric_group_wire(g: p.group) }
+    Absent =>
+      if length(candidates) > 1 {
+        DoorPoolDuplicated { pools: length(candidates) }
+      } else {
+        match first(candidates) {
+          Absent => DoorPoolNone
+          Present { value: p } => DoorPoolSelected { pool: p }
+        }
+      }
+  }
 }
 
 // WHERE THE SEAT STANDS IN THE LEDGER, read for the exact pool the door serves the permit's class
@@ -391,6 +418,8 @@ type FrontDoorRefusal
   | DoorPermitExpired { expires_at: EpochSecs, observed_at: EpochSecs }
   | DoorPermitForAnotherCaller { permit_caller: PrincipalRef, caller: PrincipalRef }
   | DoorPermitClassNotServed { class: NonEmptyStr }
+  | DoorPoolConfiguredForAnotherGroup { class: NonEmptyStr, pool_group: NonEmptyStr }
+  | DoorPoolConfiguredTwice { class: NonEmptyStr, pools: Nat }
   | DoorPermitPartitionNotThisPool { partition: PartitionId, pool_partition: PartitionId }
   | DoorSeatReleased { reason: NonEmptyStr }
   | DoorSeatNeverAdmitted
@@ -427,6 +456,8 @@ fn front_door_refusal_wire(r: FrontDoorRefusal) -> NonEmptyStr {
     DoorPermitExpired { expires_at: _, observed_at: _ } => "permit-expired" as NonEmptyStr
     DoorPermitForAnotherCaller { permit_caller: _, caller: _ } => "permit-for-another-caller" as NonEmptyStr
     DoorPermitClassNotServed { class: _ } => "permit-class-not-served" as NonEmptyStr
+    DoorPoolConfiguredForAnotherGroup { class: _, pool_group: _ } => "door-pool-of-another-group" as NonEmptyStr
+    DoorPoolConfiguredTwice { class: _, pools: _ } => "door-pool-duplicated" as NonEmptyStr
     DoorPermitPartitionNotThisPool { partition: _, pool_partition: _ } => "permit-partition-not-this-pool" as NonEmptyStr
     DoorSeatReleased { reason: _ } => "seat-released" as NonEmptyStr
     DoorSeatNeverAdmitted => "seat-never-admitted" as NonEmptyStr
@@ -458,6 +489,8 @@ fn front_door_refusal_detail(r: FrontDoorRefusal) -> String {
     DoorPermitExpired { expires_at: x, observed_at: o } => join(["the permit's lease term ended at ", to_string(x), "; the door observed ", to_string(o)], "")
     DoorPermitForAnotherCaller { permit_caller: p, caller: c } => join(["the permit was minted for ", principal_ref_label(p: p), " and presented by ", principal_ref_label(p: c)], "")
     DoorPermitClassNotServed { class: c } => join(["this door serves no seat pool for class ", c as String], "")
+    DoorPoolConfiguredForAnotherGroup { class: c, pool_group: g } => join(["this door's configured pool for class ", c as String, " belongs to ", g as String, ", not to the group the door fronts"], "")
+    DoorPoolConfiguredTwice { class: c, pools: n } => join(["this door is configured with ", to_string(n), " pools for class ", c as String], "")
     DoorPermitPartitionNotThisPool { partition: p, pool_partition: q } => join(["the permit names partition ", p as String, " but this door's pool for its class is ", q as String], "")
     DoorSeatReleased { reason: why } => join(["the seat this permit names was released: ", why as String], "")
     DoorSeatNeverAdmitted => "no acquisition of the permit's reference appears in its pool's partition"
@@ -570,8 +603,10 @@ fn front_door_admit_authenticated(
     door_refuse(cause: DoorPermitForAnotherCaller { permit_caller: c.caller, caller: caller })
   } else {
     match front_door_pool_for(door: door, class: c.class) {
-      Absent => door_refuse(cause: DoorPermitClassNotServed { class: serving_co_tenancy_class_wire(c: c.class) })
-      Present { value: pool } =>
+      DoorPoolNone => door_refuse(cause: DoorPermitClassNotServed { class: serving_co_tenancy_class_wire(c: c.class) })
+      DoorPoolOfAnotherGroup { pool_group: g } => door_refuse(cause: DoorPoolConfiguredForAnotherGroup { class: serving_co_tenancy_class_wire(c: c.class), pool_group: g })
+      DoorPoolDuplicated { pools: n } => door_refuse(cause: DoorPoolConfiguredTwice { class: serving_co_tenancy_class_wire(c: c.class), pools: n })
+      DoorPoolSelected { pool: pool } =>
         if (c.partition as String) != (pool.partition as String) {
           door_refuse(cause: DoorPermitPartitionNotThisPool { partition: c.partition, pool_partition: pool.partition })
         } else {
@@ -693,26 +728,48 @@ fn front_door_stream_end(store: FabricStorageBinding, pool: HarnessSeatPoolIdent
 // RECOVERY ACTS ONLY ON AN OBSERVED FACT. A use still in flight with no observation that its request
 // is quiescent stays held and charged to its redemption (product.capacity.redemption
 // redemption_recovery); an observed quiescence ends it and releases; a use already ended with the seat
-// still held is released.
+// still held is released. A seat that was NEVER redeemed is left with its holder untouched: nothing
+// was in flight, so there is nothing to recover, and releasing it would revoke an unused grant.
 type FrontDoorRecovery
   = RecoveryReleased
+  | RecoveryLeftWithHolder
   | RecoveryHeldCharged { request: NonEmptyStr, holder: NonEmptyStr, since: EpochSecs }
   | RecoveryRefused { detail: String }
+
+// THE PLAN IS DECIDED BEFORE ANY EFFECT, as a pure function of the redemption state and the
+// quiescence observation, so which states release is a fact a witness can read off directly.
+type FrontDoorRecoveryPlan
+  = PlanLeaveWithHolder
+  | PlanHoldCharged { request: NonEmptyStr, holder: NonEmptyStr, since: EpochSecs }
+  | PlanRelease
+  | PlanEndThenRelease { request: NonEmptyStr }
+  | PlanRefuse { detail: String }
+
+fn front_door_recovery_plan(recovery: RedemptionRecovery) -> FrontDoorRecoveryPlan {
+  match recovery {
+    RecoveryNoUseToRecover => PlanLeaveWithHolder
+    RecoveryReleaseOwed { request: _ } => PlanRelease
+    RecoveryHoldCharged { request: q, holder: h, since: s } => PlanHoldCharged { request: q, holder: h, since: s }
+    RecoveryEndThenRelease { request: q } => PlanEndThenRelease { request: q }
+    RecoveryUndecidable { detail: d } => PlanRefuse { detail: d }
+  }
+}
 
 fn front_door_recover(store: FabricStorageBinding, pool: HarnessSeatPoolIdentity, reference: NonEmptyStr, quiescence: QuiescenceFact, proxy: NonEmptyStr, now: EpochSecs) -> FrontDoorRecovery {
   match fabric_redemption_read(store: store, pool_partition: pool.partition, reference: reference) {
     RedemptionReadRefused { cause: c } => RecoveryRefused { detail: event_log_refusal_wire(cause: c) }
     RedemptionReadAt { head: _, state: st } =>
-      match redemption_recovery(state: st, quiescence: quiescence) {
-        RecoveryHoldCharged { request: q, holder: h, since: s } => RecoveryHeldCharged { request: q, holder: h, since: s }
-        RecoveryUndecidable { detail: d } => RecoveryRefused { detail: d }
-        RecoveryNothingInFlight =>
+      match front_door_recovery_plan(recovery: redemption_recovery(state: st, quiescence: quiescence)) {
+        PlanLeaveWithHolder => RecoveryLeftWithHolder
+        PlanHoldCharged { request: q, holder: h, since: s } => RecoveryHeldCharged { request: q, holder: h, since: s }
+        PlanRefuse { detail: d } => RecoveryRefused { detail: d }
+        PlanRelease =>
           match front_door_release_after_end(store: store, pool: pool, reference: reference, now: now) {
             StreamEndedSeatReleased => RecoveryReleased
             StreamEndRefused { detail: d } => RecoveryRefused { detail: d }
             StreamEndedReleaseRefused { detail: d } => RecoveryRefused { detail: d }
           }
-        RecoveryEndThenRelease { request: q } =>
+        PlanEndThenRelease { request: q } =>
           match front_door_stream_end(store: store, pool: pool, reference: reference, request: q, outcome: "ended by recovery after observed quiescence" as NonEmptyStr, proxy: proxy, now: now) {
             StreamEndedSeatReleased => RecoveryReleased
             StreamEndRefused { detail: d } => RecoveryRefused { detail: d }

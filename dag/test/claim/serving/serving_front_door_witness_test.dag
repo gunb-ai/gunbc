@@ -23,7 +23,7 @@ import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolReleased, Poo
 import product.capacity.redemption {
   RedemptionEvent, GrantRedeemed, RedemptionState, Unredeemed, InFlight, UseEnded,
   RedemptionProposed, RedemptionRefused, GrantAlreadyRedeemed, GrantUseAlreadyEnded,
-  ReleaseOpen, ReleaseOwnedByGate, RecoveryHoldCharged, RecoveryEndThenRelease,
+  ReleaseOpen, ReleaseOwnedByGate, RecoveryHoldCharged, RecoveryEndThenRelease, GrantUseEnded,
   redemption_partition_of, redemption_state_of, propose_redemption, propose_use_end,
   redemption_release_owner, redemption_recovery,
 }
@@ -37,6 +37,8 @@ import gunbc.serving.serving_front_door {
   DoorSeatHeldByAnotherCaller, DoorSeatLeaseExpired, DoorPermitPartitionNotThisPool, DoorPermitClassNotServed,
   DoorSeatAmountNotOneSeat, DoorSeatAcquiredMoreThanOnce, DoorSeatFenceGenerationDisagrees, DoorPermitAlreadyRedeemed,
   FrontDoorRedemption, DoorRedeemed, DoorRedemptionRefused,
+  DoorPoolConfiguredForAnotherGroup, DoorPoolConfiguredTwice, DoorPoolSelected, front_door_pool_for,
+  PlanLeaveWithHolder, PlanRelease, front_door_recovery_plan,
   SeatGrantCurrency, FrontDoorTally,
   serving_seat_permit_claims, serving_seat_permit_signing_input, issue_serving_seat_permit, serving_seat_permit_key_id,
   seat_grant_currency_of, front_door_admit, front_door_tally, front_door_tally_empty, front_door_refused_count,
@@ -568,4 +570,74 @@ test fn two_seat_records_that_collide_under_a_plain_join_render_apart() -> Bool 
   let swallowing = harness_seat_reference_record(attempt: "a@1#1/k" as NonEmptyStr, offer_key: "x" as NonEmptyStr, now: 5, round: 1, head: "h" as NonEmptyStr)
   let honest = harness_seat_reference_record(attempt: "a" as NonEmptyStr, offer_key: "k@5#1/x" as NonEmptyStr, now: 1, round: 1, head: "h" as NonEmptyStr)
   (harness_seat_reference_wire(r: swallowing) as String) != (harness_seat_reference_wire(r: honest) as String)
+}
+
+// ── Recovery never releases a grant that was never used ─────────────────────────────────────
+
+// THE RULING'S RED. An acquired seat whose permit was never presented is Unredeemed. Recovery -- with
+// or without a quiescence observation -- leaves it with its holder; it is not a release.
+test fn an_acquired_seat_that_was_never_redeemed_survives_recovery() -> Bool {
+  let state = redemption_state_of(walk: no_redemptions, reference: witness_reference)
+  let left_quiescent = match front_door_recovery_plan(recovery: redemption_recovery(state: state, quiescence: Quiescent { observed_at: 1300 })) {
+    PlanLeaveWithHolder => true
+    _ => false
+  }
+  let left_unobserved = match front_door_recovery_plan(recovery: redemption_recovery(state: state, quiescence: QuiescenceUnobserved)) {
+    PlanLeaveWithHolder => true
+    _ => false
+  }
+  left_quiescent && left_unobserved
+}
+
+// THE CONTROL BESIDE IT: a use that ENDED with its seat still held is what recovery releases.
+test fn a_seat_whose_use_ended_but_was_not_released_is_released_by_recovery() -> Bool {
+  let ended = ChainWalked { oldest_first: [
+    redemption_envelope(id: "ev-redeem-1" as NonEmptyStr, payload: GrantRedeemed { reference: witness_reference, request: request_one, holder: proxy }),
+    redemption_envelope(id: "ev-end-1" as NonEmptyStr, payload: GrantUseEnded { reference: witness_reference, request: request_one, outcome: "stream complete" as NonEmptyStr }),
+  ] }
+  match front_door_recovery_plan(recovery: redemption_recovery(state: redemption_state_of(walk: ended, reference: witness_reference), quiescence: QuiescenceUnobserved)) {
+    PlanRelease => true
+    _ => false
+  }
+}
+
+// ── The door's pools belong to the door's group ──────────────────────────────────────────────
+
+fn door_with(pools: List<HarnessSeatPoolIdentity>) -> FrontDoorIdentity {
+  FrontDoorIdentity { group: FabricGroupB, launch: group_b_launch, suite: HmacSha256, pools: pools }
+}
+
+fn verdict_at_door(door: FrontDoorIdentity) -> FrontDoorVerdict {
+  let presented = good_permit()
+  front_door_admit(
+    evidence: service_caller, presented: presented, mac_result: mac_for(presented: presented), door: door, observed_at: 1100, request: request_one,
+    ledger: fn(pool, reference, grant, generation) { seat_grant_currency_of(pool: pool, walk: held_history, reference: reference, grant: grant, generation: generation) },
+    redeem: redeem_against(redemptions: no_redemptions),
+  )
+}
+
+test fn a_door_configured_with_another_groups_pool_for_the_class_refuses() -> Bool {
+  match verdict_at_door(door: door_with(pools: [group_a_pool, tolerant_pool])) {
+    FrontDoorRefused { cause: DoorPoolConfiguredForAnotherGroup { class: _, pool_group: g } } => (g as String) == "group-a"
+    _ => false
+  }
+}
+
+test fn a_door_configured_with_two_pools_for_one_class_refuses_rather_than_choosing() -> Bool {
+  match verdict_at_door(door: door_with(pools: [quality_pool, quality_pool, tolerant_pool])) {
+    FrontDoorRefused { cause: DoorPoolConfiguredTwice { class: _, pools: n } } => n == 2
+    _ => false
+  }
+}
+
+test fn the_pool_derived_for_the_doors_own_group_still_admits() -> Bool {
+  let selected = match front_door_pool_for(door: group_b_door, class: InteractiveQualitySensitive) {
+    DoorPoolSelected { pool: p } => (p.partition as String) == (harness_seat_pool_identity_at(group: FabricGroupB, class: InteractiveQualitySensitive, seats: 1).partition as String)
+    _ => false
+  }
+  let admits = match verdict_at_door(door: group_b_door) {
+    FrontDoorForward { claims: _, pool: _, request: _ } => true
+    FrontDoorRefused { cause: _ } => false
+  }
+  selected && admits
 }

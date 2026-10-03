@@ -15,7 +15,7 @@ Item 3 of [dogfood-route-manual-interventions](dogfood-route-manual-intervention
   - Issuance refuses an unexpected protocol.
   - The permit header's decoder (owed under Proposal A) must consume exactly this encoding.
 - **The ledger join is on the exact seat pool.** The door is configured with `HarnessSeatPoolIdentity` values minted by the seat authority (`harness_seat_pool_identity`: group, class, partition, ceiling, root). It then checks, against the ledger:
-  1. The permit's partition equals the pool partition for its class. A prefix match is not accepted, so `group-b-not-a-seat` refuses.
+  1. The permit's partition equals the pool partition for its class. A prefix match is not accepted, so `group-b-not-a-seat` refuses. The selected pool must belong to the door's own group, and two configured pools for one class refuse rather than one being chosen.
   2. Exactly one acquisition of the reference exists, for exactly one seat.
   3. That acquisition was made by the grant event the permit names.
   4. The fence generation equals the acquisition's position in the chain.
@@ -28,11 +28,11 @@ Item 3 of [dogfood-route-manual-interventions](dogfood-route-manual-intervention
   - **Concurrent and replayed admissions.** A second admission of the same permit, concurrent or replayed, re-reads `InFlight` and refuses (`permit-already-redeemed`).
   - **Release while in flight.** Every seat release passes the redemption gate in `release_retry`, so a sender's release while a request is in flight refuses.
   - **Stream end.** The door ends the use (`fabric_grant_use_end`, exactly once per request) and then releases.
-  - **Recovery.** A door that dies after redeeming leaves `InFlight` standing. The seat stays held and is charged to the redeemed request and proxy. It is ended only on *observed* quiescence (`front_door_recover`), never by a timer.
+  - **Recovery.** A door that dies after redeeming leaves `InFlight` standing. The seat stays held and is charged to the redeemed request and proxy. It is ended only on *observed* quiescence (`front_door_recover`), never by a timer. Recovery releases only `UseEnded`; a seat that was never redeemed (`Unredeemed`) is left with its holder.
 - **Minting.** `gunbc.harness.harness_cli` `harness_place_for` mints the permit after the seat is bound and records the principal it acts for as the acquisition actor; it no longer takes a free-text actor. If no permit can be minted, the seat is released and placement fails.
 - **Counting.** `front_door_tally` keeps one count per refusal cause, plus the number of forwarded requests.
 - **Router contract.** `gunbc.serving.router_realization` gains the forbidden arm `ForwardWithoutPermit`.
-- **Witnesses** are in `test.claim.serving.serving_front_door_witness_test` (30 claims). They include:
+- **Witnesses** are in `test.claim.serving.serving_front_door_witness_test` (35 claims). They include:
   - the RED-first case;
   - each pool-join red (non-seat partition, another group's partition, class/partition mismatch, unserved class, zero amount, duplicate acquisition, wrong fence generation);
   - a protocol rewrite;
