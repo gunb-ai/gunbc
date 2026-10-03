@@ -1,7 +1,7 @@
 module test.claim.cloudflare_r2_origin_mint_run
 
 import std.types { String, NonEmptyStr, Bool, Secret }
-import v2.std.collection { map_get }
+import v2.std.collection { map_lookup }
 import extdeps.cloudflare.account_api_tokens {
   CreatedAccountToken, CreateAccountTokenRequest, TokenActive,
 }
@@ -237,7 +237,7 @@ test fn r2_origin_mint_is_ready_and_names_the_declared_account_and_bucket() -> B
         && all(request.policies, p =>
              any(p.permission_groups, g =>
                (g.id as String) == (workers_r2_storage_bucket_item_read_permission_group_id as String))
-             && match map_get(p.resources, r2_bucket_resource_name(
+             && match map_lookup(m: p.resources, key: r2_bucket_resource_name(
                   account_id: fleet_cloudflare_account_id as String,
                   jurisdiction: R2JurisdictionDefault,
                   bucket_name: declared_bucket_name())) {
@@ -422,7 +422,7 @@ test fn r2_origin_write_mint_is_ready_and_carries_the_observed_write_group() -> 
                (g.id as String) == (cloudflare_r2_bucket_item_write_observed_permission_group_id as String))
              && !any(p.permission_groups, g =>
                (g.id as String) == (workers_r2_storage_bucket_item_read_permission_group_id as String))
-             && match map_get(p.resources, r2_bucket_resource_name(
+             && match map_lookup(m: p.resources, key: r2_bucket_resource_name(
                   account_id: fleet_cloudflare_account_id as String,
                   jurisdiction: R2JurisdictionDefault,
                   bucket_name: declared_bucket_name())) {
@@ -781,11 +781,11 @@ test fn r2_bucket_admin_mint_is_account_scoped_with_only_the_storage_write_group
              all(p.permission_groups, g =>
                (g.id as String) == (cloudflare_r2_storage_write_observed_permission_group_id as String))
              && p.permission_groups.length() == 1
-             && match map_get(p.resources, r2_account_resource_name(account_id: fleet_cloudflare_account_id as String)) {
+             && match map_lookup(m: p.resources, key: r2_account_resource_name(account_id: fleet_cloudflare_account_id as String)) {
                   Present { value: scope } => scope == "*"
                   Absent => false
                 }
-             && match map_get(p.resources, r2_bucket_resource_name(
+             && match map_lookup(m: p.resources, key: r2_bucket_resource_name(
                   account_id: fleet_cloudflare_account_id as String,
                   jurisdiction: R2JurisdictionDefault,
                   bucket_name: declared_bucket_name())) {
@@ -823,14 +823,14 @@ fn purpose_mint_is_scoped_to_its_bucket(profile: R2OriginTokenProfileArg, purpos
       request.name == concat(purpose_bucket_name(purpose: purpose), profile.suffix)
         && purpose_bucket_name(purpose: purpose) != declared_bucket_name()
         && all(request.policies, p =>
-             match map_get(p.resources, r2_bucket_resource_name(
+             match map_lookup(m: p.resources, key: r2_bucket_resource_name(
                   account_id: fleet_cloudflare_account_id as String,
                   jurisdiction: R2JurisdictionDefault,
                   bucket_name: purpose_bucket_name(purpose: purpose))) {
                   Present { value: scope } => scope == "*"
                   Absent => false
                 }
-             && match map_get(p.resources, r2_bucket_resource_name(
+             && match map_lookup(m: p.resources, key: r2_bucket_resource_name(
                   account_id: fleet_cloudflare_account_id as String,
                   jurisdiction: R2JurisdictionDefault,
                   bucket_name: declared_bucket_name())) {
