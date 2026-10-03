@@ -32,6 +32,7 @@ type TargetProducer
   | CompileCleanDiagnosticCensusProducer
   | V2NativeCliProducer
   | V2NativeFrontierProducer
+  | V2NativeCensusProducer
   | EmittedCrateWorkspaceProducer
   | EvaluationStoreAddressExactHeadProducer
   | PrimitiveEgressCensusProducer

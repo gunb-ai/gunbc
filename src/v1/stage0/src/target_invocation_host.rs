@@ -250,6 +250,7 @@ pub enum TargetProducer {
     SelfHost,
     V2NativeCli,
     V2NativeFrontier,
+    V2NativeCensus,
     EmittedCrateWorkspace,
     HeadsReadingDifferential,
     BehavioralReceiptPlan,
@@ -335,6 +336,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("v2-native-frontier"),
             TargetProducer::V2NativeFrontier,
+        ),
+        (
+            instrument_label("v2-native-census"),
+            TargetProducer::V2NativeCensus,
         ),
         (
             instrument_label("emitted-crate-workspace"),
@@ -785,6 +790,7 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::SelfHost => run_self_host(&self_host_source_roots()),
         TargetProducer::V2NativeCli => run_v2_native_cli(&v2_native_cli_source_roots()),
         TargetProducer::V2NativeFrontier => run_v2_native_frontier(&self_host_source_roots()),
+        TargetProducer::V2NativeCensus => run_v2_native_census(&self_host_source_roots()),
         TargetProducer::NativeClaimProgram { entry } => run_native_claim_program(entry),
         TargetProducer::EmittedCrateWorkspace => {
             run_emitted_crate_workspace(&emitted_crate_workspace_source_roots())
@@ -1145,22 +1151,18 @@ fn run_v2_native_frontier(source_roots: &[String]) -> InvocationOutcome {
     }
 }
 
-/// THE DEPENDENCY-DEMAND CENSUS PRODUCER (D13 step b2; `gunbc.instrument_targets`
-/// `dependency_demand_census_label`). The seed emits and builds the compiler closure exactly as the
-/// self-host step does, and spawns it in `demand-census` mode over the same corpus; every line and
-/// the exit are decided by `v2.compiler.compile` `native_demand_census_output`, so the host adds no
-/// verdict: exit 0 is the census holding (its rows account for every uses fn), 1 is a census finding,
-/// and 2 or a refused preparation is no observation.
-fn run_dependency_demand_census(source_roots: &[String]) -> InvocationOutcome {
-    match cli_run::run_v2_demand_census(source_roots) {
-        Ok(code) => InvocationOutcome {
-            termination: match code {
-                0 => Termination::ObservationHeld,
-                1 => Termination::ObservationDidNotHold,
-                _ => Termination::SubjectUnreached,
-            },
+/// THE V2-NATIVE CENSUS PRODUCER. A report: a completed census is held, a run that did not complete
+/// is the subject unreached, and there is deliberately no did-not-hold arm because no red of the
+/// census is authorable in a real run (review 74324; `gunbc.instrument_targets`
+/// `v2_native_census_label`).
+fn run_v2_native_census(source_roots: &[String]) -> InvocationOutcome {
+    match cli_run::run_v2_native_census(source_roots) {
+        Ok(run) => InvocationOutcome {
+            termination: Termination::ObservationHeld,
             message: format!(
-                "dependency-demand-census: exit {code}; the [demand-census] lines above are the census"
+                "v2-native-census: modules={} file_refusals={} residual_rows={} cause_groups={}; \
+                 the rows grouped by fatal reason are the cause_group lines above",
+                run.modules, run.file_refusals, run.residual_rows, run.cause_groups
             ),
         },
         Err(cause) => InvocationOutcome {
@@ -3051,5 +3053,30 @@ mod binary_freshness_tests {
             outcome.message
         );
         assert!(outcome.message.contains("a.rs"));
+    }
+}
+
+/// THE DEPENDENCY-DEMAND CENSUS PRODUCER (D13 step b2; `gunbc.instrument_targets`
+/// `dependency_demand_census_label`). The seed emits and builds the compiler closure exactly as the
+/// self-host step does, and spawns it in `demand-census` mode over the same corpus; every line and
+/// the exit are decided by `v2.compiler.compile` `native_demand_census_output`, so the host adds no
+/// verdict: exit 0 is the census holding (its rows account for every uses fn), 1 is a census finding,
+/// and 2 or a refused preparation is no observation.
+fn run_dependency_demand_census(source_roots: &[String]) -> InvocationOutcome {
+    match cli_run::run_v2_demand_census(source_roots) {
+        Ok(code) => InvocationOutcome {
+            termination: match code {
+                0 => Termination::ObservationHeld,
+                1 => Termination::ObservationDidNotHold,
+                _ => Termination::SubjectUnreached,
+            },
+            message: format!(
+                "dependency-demand-census: exit {code}; the [demand-census] lines above are the census"
+            ),
+        },
+        Err(cause) => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: cause,
+        },
     }
 }

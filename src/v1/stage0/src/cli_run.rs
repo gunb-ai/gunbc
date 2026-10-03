@@ -101,8 +101,9 @@ mod serve_budget_refusal;
 pub use emitted_crate_workspace_host::{run_emitted_crate_workspace, EmittedCrateWorkspaceHeld};
 pub use native_lane_runner::{
     emitted_build_not_clean_cause, run_native_claim_program, run_required_v2_native, run_self_host,
-    run_v2_demand_census, run_v2_native_cli, run_v2_native_frontier, NativeClaimProgramRun,
-    NativeFrontierRun, NativeMemberTermination, NativeRouteOutcome, SelfHostHeld, V2NativeCliHeld,
+    run_v2_demand_census, run_v2_native_census, run_v2_native_cli, run_v2_native_frontier,
+    NativeCensusRun, NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination,
+    NativeRouteOutcome, SelfHostHeld, V2NativeCliHeld,
 };
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
@@ -123,16 +124,6 @@ pub use required_lane_resolution_census::{
 
 pub fn required_lane_judged_module_identities_for_ci() -> Vec<String> {
     entry_resolve::required_lane_judged_module_identities()
-}
-
-pub fn required_lane_cross_process_content_judged_module_identities_for_ci() -> Vec<String> {
-    // The weaker column still has content provenance: `subject_digest_for_closure` keys the
-    // artifact by closure-content digest plus compiler-transform digest, and disk lookup verifies
-    // both the request key and stored semantic digest. It does not prove judgment by this run.
-    // Required CI does not arm `GUNBC_RESOLVED_GRAPH_CACHE_DIR`, so this split has no reachable
-    // nonempty arm there today: its expected empty column must be read beside the in-run column,
-    // and its presence is not evidence that disk provenance has been exercised.
-    entry_resolve::required_lane_cross_process_content_judged_module_identities()
 }
 
 /// Module identities admitted by the same source-root ingestion used by compilation.
@@ -204,7 +195,6 @@ pub(crate) use test_migration::*;
 // and a second acquisition of the corpus to answer a second question is the cost-shape defect
 // DESIGN §6 names.
 pub(crate) mod floor_discovery_snapshot;
-pub(crate) mod materialization_provider_consumer;
 #[path = "namespace_baseline.rs"]
 pub mod namespace_baseline;
 #[path = "phase_profile.rs"]
@@ -245,20 +235,9 @@ pub use floor_discovery_snapshot::{
     request_identity_digest, verify_floor_discovery_terminal_for_coordinator,
     FloorDiscoveryConsumerRole,
 };
-#[doc(hidden)]
-pub use materialization_provider_consumer::{
-    materialization_provider_ctx_build_count_for_test, provider_ctx_reentrancy_refusal_for_test,
-    reset_materialization_provider_ctx_for_test, resolve_closure_request_key_from_digests,
-    resolved_graph_parts_semantic_digest, serve_resolved_graph_stored_disk_probe,
-    serve_resolved_graph_stored_disk_probe_for_test, ResolvedGraphProviderOutcome,
-    OUTPUT_COMPILE_CLEAN_DIAGNOSTIC_UNION,
-};
 pub use phase_profile::{set_phase, FloorPhase, PhaseProfile};
 
-use crate::resolved_graph_cache::{
-    resolved_graph_cache_root_from_env, subject_digest_for_closure, transform_content_digest,
-    CacheRejectReason, CachedResolvedGraph,
-};
+use crate::closure_identity::{subject_digest_for_closure, transform_content_digest};
 use crate::std_content_hash::fnv1a64_structural_hex_digest;
 use crate::std_interface_summary::{module_key, typed_module_key};
 use crate::std_keyed_roster::{keyed_roster_build, KeyedRosterBuild};
@@ -12691,40 +12670,6 @@ pub fn exceeds_completed_cost_line(
     }
 }
 
-pub(crate) fn cross_process_provider_routing_suppressed() -> bool {
-    CROSS_PROCESS_PROVIDER_ROUTING_SUPPRESSED.with(|c| c.get() > 0)
-}
-
-/// Count of resolved-graph stores skipped because the provider-bootstrap window was
-/// open. The skip is bounded (only the provider's own closure resolves inside that
-/// window) and observable, so the deficit can never be masked by silence.
-static PROVIDER_BOOTSTRAP_STORE_SKIPS: std::sync::atomic::AtomicUsize =
-    std::sync::atomic::AtomicUsize::new(0);
-
-fn record_provider_bootstrap_store_skip() {
-    PROVIDER_BOOTSTRAP_STORE_SKIPS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-}
-
-pub(crate) fn with_cross_process_provider_routing_suppressed<F, R>(f: F) -> R
-where
-    F: FnOnce() -> R,
-{
-    struct Guard;
-    impl Drop for Guard {
-        fn drop(&mut self) {
-            CROSS_PROCESS_PROVIDER_ROUTING_SUPPRESSED.with(|c| {
-                c.set(c.get().saturating_sub(1));
-            });
-        }
-    }
-
-    CROSS_PROCESS_PROVIDER_ROUTING_SUPPRESSED.with(|c| {
-        c.set(c.get().saturating_add(1));
-    });
-    let _guard = Guard;
-    f()
-}
-
 /// Test-only: drop the process-shared index slots so the NEXT compile in this process is COLD.
 ///
 /// This exists so `cached == cold` can be asserted by EXECUTION rather than by reading the cache
@@ -13599,14 +13544,10 @@ pub struct MultiEntryIndex {
     /// this one value; the file's bytes and the pool's module names are fixed for the index's life.
     parsed_references:
         RefCell<HashMap<String, Result<Rc<entry_resolve::ParsedFileReferences>, &'static str>>>,
-    // Per-process subject-digest → resolved-graph share, the ReferenceTier in
-    // front of the cross-process store (materialization-ladder tier ordering:
-    // the share serves repeats, the store serves the process's FIRST touch of a
-    // subject, and a store hit is INSTALLED here so every later demand takes the
-    // reference). Always populated on first assembly — not gated on
-    // GUNBC_RESOLVED_GRAPH_CACHE_DIR (the disk tier is opt-in separately).
-    // Without the install-back, N same-subject resolves each retained an independent
-    // graph — the reconcile_assembly per-entry rerun receipt (resolve-split #6535).
+    // Per-process subject-digest → resolved-graph share, the ReferenceTier and the only
+    // tier of the resolved graph: it serves same-subject repeats within the process and is
+    // populated on first assembly. Without it, N same-subject resolves each retained an
+    // independent graph — the reconcile_assembly per-entry rerun receipt (resolve-split #6535).
     resolved_graph_memo: RefCell<
         HashMap<
             String,
@@ -13617,10 +13558,6 @@ pub struct MultiEntryIndex {
             ),
         >,
     >,
-    /// Subjects whose current `resolved_graph_memo` value was installed from the on-disk
-    /// cross-process store rather than computed by this process. Kept alongside the memo so a
-    /// reference hit cannot erase the provenance distinction.
-    resolved_graph_memo_cross_process_subjects: RefCell<std::collections::HashSet<String>>,
     /// Schedule-derived per-module retention bookkeeping (v1-run-stability M2 — the
     /// retention keystone). Armed at the start of a private-index (`cross_worker_store
     /// == None`) discovery run from the schedule's per-entry closures, driven per
@@ -13709,10 +13646,6 @@ pub fn entry_closure_sources_len_for_test(index: &MultiEntryIndex) -> usize {
 #[cfg(any(test, feature = "interp_test_witness"))]
 pub fn clear_resolved_graph_memo_for_test(index: &MultiEntryIndex) {
     index.resolved_graph_memo.borrow_mut().clear();
-    index
-        .resolved_graph_memo_cross_process_subjects
-        .borrow_mut()
-        .clear();
 }
 
 /// Install a schedule retention armed over `per_entry` with an EXPLICIT eviction switch,
@@ -13896,13 +13829,7 @@ pub fn drop_private_term_for_test(index: &MultiEntryIndex, term: &str) -> bool {
         "bare_reference_admission" => index.bare_reference_admission.borrow_mut().clear(),
         "entry_closure_sources" => index.entry_closure_sources.borrow_mut().clear(),
         "both_closure_edges" => *index.both_closure_edges.borrow_mut() = None,
-        "resolved_graph_memo" => {
-            index.resolved_graph_memo.borrow_mut().clear();
-            index
-                .resolved_graph_memo_cross_process_subjects
-                .borrow_mut()
-                .clear();
-        }
+        "resolved_graph_memo" => index.resolved_graph_memo.borrow_mut().clear(),
         "intern_table" => {
             *index.intern_table.borrow_mut() = crate::v1_std_core::empty_intern_table();
         }
@@ -14146,7 +14073,7 @@ fn shared_caches_write<'a>(
 ///   its import. The interface hash is the Inc-B `ModuleInterface.summary.interface_hash`
 ///   (v0 fingerprint; its declared-weak grain and upgrade trigger live at
 ///   `src/v1/04_infer.dag` the `interface_signature_fingerprint_v0_note` annotation).
-/// - Compiler identity is `resolved_graph_cache::transform_content_digest` — the same
+/// - Compiler identity is `closure_identity::transform_content_digest` — the same
 ///   single authority the resolved-graph subject digest consumes (§3: one concept, one
 ///   authority; a seed rebuild invalidates both stores through one term).
 fn closure_path_to_authored_name_map<'a>(
@@ -14198,8 +14125,8 @@ fn note_interface_hash(
 //
 // Authority is the modeled carrier `dag/gunbc/executor_schedule_retention.dag`; the
 // consts below MIRROR it and `schedule_retention_policy_matches_modeled_authority`
-// (this module's tests) reds on drift — the `extdeps.realization.resolved_graph`
-// `SizeBounded`-cap lockstep pattern applied to a policy instead of a number.
+// (this module's tests) reds on drift — an exact modeled-authority lockstep applied to a
+// policy instead of a number.
 //
 // Correctness license (why evicting typed state can never yield a wrong verdict):
 // the typed-module cache is CONTENT-keyed, so a later entry that reaches an evicted
@@ -14798,17 +14725,11 @@ fn index_schedule_entry_completed(
     // retain EVERYTHING — graphs included — so it faithfully reproduces pre-M2 peak
     // retention (D0.4). Before this the pole understated peak by silently freeing graphs.
     let graph_evicted = match subject {
-        Some(subj) if evict_enabled => {
-            index
-                .resolved_graph_memo_cross_process_subjects
-                .borrow_mut()
-                .remove(subj);
-            index
-                .resolved_graph_memo
-                .borrow_mut()
-                .remove(subj)
-                .is_some()
-        }
+        Some(subj) if evict_enabled => index
+            .resolved_graph_memo
+            .borrow_mut()
+            .remove(subj)
+            .is_some(),
         _ => false,
     };
     let (sched_releases, sched_evictions, retention_unknown, graph_evictions) = {
@@ -15627,14 +15548,6 @@ fn emit_floor_drain_receipt(
             .unwrap_or_else(|| "unreadable".into()),
         typed_module_cache_cap(index),
     );
-    // The ladder's RetentionUnobserved refusal is discharged by an OBSERVATION,
-    // not by a declaration, so the persistent tier reports its live occupancy
-    // beside its throughput on the same receipt the floor already emits. Absent
-    // when the tier is not armed: a run that never opened a store must not
-    // print a zero that reads as an empty one.
-    if let Some(line) = shared_typecheck_store::persistent_typed_store_receipt_line() {
-        eprintln!("{line}");
-    }
 }
 
 /// Enforce the host-budget-derived entry cap on the private typed cache. Evictions
@@ -15679,72 +15592,9 @@ fn index_get_typed(
 ) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
     let Some(store) = index.cross_worker_store.as_ref() else {
         shared_typecheck_store::record_private_store_fallback();
-        if let Some(hit) = index.typed_module_cache.borrow().get(typed_key).cloned() {
-            return Ok(Some(hit));
-        }
-        return persist_get_typed(index, typed_key);
+        return Ok(index.typed_module_cache.borrow().get(typed_key).cloned());
     };
-    match shared_get_typed(store, typed_key)? {
-        Some(hit) => Ok(Some(hit)),
-        None => persist_get_typed(index, typed_key),
-    }
-}
-
-/// The host-persisted tier behind both in-process tiers
-/// (`gunbc.floor_materialization` `host_persisted_typecheck_store`). A hit here
-/// is served BEFORE `collect_parent_envs` and the typecheck compute at the one
-/// call site above, which is the expensive production computation this tier
-/// exists to skip; it is not a byte load placed after the work has been done.
-///
-/// A decode failure on a verified entry is a REFUSAL, not a miss: the entry
-/// passed the store's own magic/version/length/key verification, so a payload
-/// the transport cannot read is codec drift and the line stops here rather than
-/// widening into a silent recompute (DESIGN section 5). Absence, rejection at
-/// verification and IO failure are already counted misses inside the store.
-fn persist_get_typed(
-    index: &MultiEntryIndex,
-    typed_key: &str,
-) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
-    let Some(store) = shared_typecheck_store::persistent_typed_store_for(&index.source_roots)?
-    else {
-        return Ok(None);
-    };
-    let Some(payload) = store.get(typed_key) else {
-        return Ok(None);
-    };
-    let decoded = SharedTypecheckCaches::decode_typed_snapshot(payload.as_slice()).map_err(|e| {
-        format!(
-            "persistent typed store refused: entry for key '{typed_key}' verified against its              header but its payload did not decode ({e}) -- this is codec drift between the              store format version and the transport, not a cache miss"
-        )
-    })?;
-    // Readmit into the in-process tier so the repeat within this process is a
-    // reference, not a second disk read.
-    if index.cross_worker_store.is_none() {
-        index
-            .typed_module_cache
-            .borrow_mut()
-            .insert(typed_key.to_string(), decoded.clone());
-        enforce_typed_cache_entry_cap(index);
-    }
-    Ok(Some(decoded))
-}
-
-/// Write-through to the host-persisted tier. Publication failures (IO, ceiling
-/// reached) are counted inside the store and never fail the run: this tier is
-/// an optimization over a pure computation, so an unavailable store costs time
-/// and can never change a verdict.
-fn persist_put_typed(
-    index: &MultiEntryIndex,
-    typed_key: &str,
-    result: &Rc<v1_compiler_infer::TypecheckModuleResult>,
-) -> Result<(), String> {
-    let Some(store) = shared_typecheck_store::persistent_typed_store_for(&index.source_roots)?
-    else {
-        return Ok(());
-    };
-    let bytes = SharedTypecheckCaches::encode_typed_snapshot(result)?;
-    store.put(typed_key, bytes.as_slice());
-    Ok(())
+    shared_get_typed(store, typed_key)
 }
 
 fn check_index_module_source_identity(
@@ -15840,7 +15690,6 @@ fn index_insert_typed(
 ) -> Result<Rc<v1_compiler_infer::TypecheckModuleResult>, String> {
     let Some(store) = index.cross_worker_store.as_ref() else {
         shared_typecheck_store::record_private_store_fallback();
-        persist_put_typed(index, &typed_key, &result)?;
         index
             .typed_module_cache
             .borrow_mut()
@@ -15848,7 +15697,6 @@ fn index_insert_typed(
         enforce_typed_cache_entry_cap(index);
         return Ok(result);
     };
-    persist_put_typed(index, &typed_key, &result)?;
     if let Some(bytes) = {
         let caches = shared_caches_read(store)?;
         caches.clone_typed_bytes(&typed_key)
@@ -17021,96 +16869,6 @@ pub fn render_exclusive_cost_partition_json(
 pub(crate) enum ResolvedGraphMemoShare {
     Memoize,
     Ephemeral,
-}
-
-fn provider_integrity_refusal_message(outcome: ResolvedGraphProviderOutcome) -> Option<String> {
-    match outcome {
-        ResolvedGraphProviderOutcome::RefusedWrongArtifact => {
-            Some("resolved-graph-cache provider refused disk hit: wrong artifact key".to_string())
-        }
-        ResolvedGraphProviderOutcome::RefusedKindMismatch => {
-            Some("resolved-graph-cache provider refused disk hit: kind mismatch".to_string())
-        }
-        ResolvedGraphProviderOutcome::RefusedWrongContent => {
-            Some("resolved-graph-cache provider refused disk hit: wrong content".to_string())
-        }
-        ResolvedGraphProviderOutcome::RefusedCrossFamilyContentHash => {
-            Some(
-                "resolved-graph-cache provider refused disk hit: cross-family content hash at fnv1a64 seam"
-                    .to_string(),
-            )
-        }
-        ResolvedGraphProviderOutcome::RefusedUnqualifiedPersistedFormat => {
-            Some(
-                "resolved-graph-cache provider refused disk hit: unqualified persisted format"
-                    .to_string(),
-            )
-        }
-        ResolvedGraphProviderOutcome::LookupUnclassified { label } => Some(format!(
-            "resolved-graph-cache provider refused disk hit: {label}"
-        )),
-        ResolvedGraphProviderOutcome::Miss => {
-            Some("resolved-graph-cache provider refused disk hit: probe miss".to_string())
-        }
-        ResolvedGraphProviderOutcome::RefusedIncomplete { missing } => Some(format!(
-            "resolved-graph-cache provider refused disk hit: incomplete artifact (missing: {})",
-            missing.join(", ")
-        )),
-        ResolvedGraphProviderOutcome::Hit => None,
-    }
-}
-
-#[doc(hidden)]
-pub fn provider_integrity_refusal_message_for_test(
-    outcome: ResolvedGraphProviderOutcome,
-) -> Option<String> {
-    provider_integrity_refusal_message(outcome)
-}
-
-fn install_cross_process_materialization_hit(
-    index: &MultiEntryIndex,
-    subject: &str,
-    cached: CachedResolvedGraph,
-    memo_share: ResolvedGraphMemoShare,
-) -> (
-    Rc<v1_compiler_compile::ResolvedGraph>,
-    Rc<HashMap<String, Rc<NewlineIndex>>>,
-    Rc<im::Vector<Rc<ErrorNode>>>,
-) {
-    if memo_share == ResolvedGraphMemoShare::Memoize {
-        index
-            .resolved_graph_memo_cross_process_subjects
-            .borrow_mut()
-            .insert(subject.to_string());
-        index.resolved_graph_memo.borrow_mut().insert(
-            subject.to_string(),
-            (
-                cached.graph.clone(),
-                cached.source_indices.clone(),
-                cached.compile_clean_diags.clone(),
-            ),
-        );
-    }
-    (
-        cached.graph,
-        cached.source_indices,
-        cached.compile_clean_diags,
-    )
-}
-
-fn cross_process_cache_integrity_refusal(reason: CacheRejectReason) -> String {
-    match reason {
-        CacheRejectReason::ContentDigestMismatch => {
-            "resolved-graph-cache refused poisoned artifact: content digest mismatch".to_string()
-        }
-        CacheRejectReason::BackendKeyMalformed => {
-            "resolved-graph-cache refused artifact: backend key malformed".to_string()
-        }
-        CacheRejectReason::PartDecodeFailure => {
-            "resolved-graph-cache refused artifact: part decode failure after hash verification"
-                .to_string()
-        }
-    }
 }
 
 fn join_via_index_stage_refusal(
