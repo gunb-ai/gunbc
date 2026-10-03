@@ -325,11 +325,13 @@ fn iard_sites(tree: Node) -> FreeMonoid<IardSite> {
 
 // A NODE'S LOCATION, AS THE SPAN INDEX RESOLVES IT (v2.std.provenance is the one authority for
 // following a derived occurrence to its source): the file's byte range, in the UTF-8 octets the
-// tokenizer counts (v2.compiler.tokenize lexeme_utf8_octet_count). NO LINE IS DERIVED HERE. No
-// line-from-octet reader exists in the corpus, and deriving one with `substring` is wrong: the
-// emitted substring indexes Unicode scalars, so every multibyte character before a site moved the
-// line it reported (calm-boar-904, review of gunbc#13051). The byte range is the authority; a reader
-// converts it to a line with a byte-aware tool.
+// tokenizer counts (v2.compiler.tokenize lexeme_utf8_octet_count). NO LINE IS DERIVED HERE. The one
+// line-from-octet reader in the corpus is private to a lens (v2.lens.text_string_importer_census
+// newline_offsets), and swift-lynx-592 is moving it into v2.std.source_position as the shared
+// authority. Deriving a line with `substring` instead is wrong: the emitted substring indexes Unicode
+// scalars, so every multibyte character before a site moved the line it reported (calm-boar-904,
+// review of gunbc#13051). Until that authority lands, the byte range is the answer. A line, if it
+// returns, comes from that authority and from no second reader.
 fn iard_location(node: Node, spans: SpanIndex) -> String {
   match node_occurrence_id_optional(node: node) {
     Absent => "<no occurrence>"
