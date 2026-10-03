@@ -499,8 +499,15 @@ fn refusal_accounts_for_population(r: ReferenceConservationReport) -> Bool {
   r.authored > 0 && r.refused + length(xs: r.dropped) == r.authored
 }
 
+// The report is computed ONCE as a nullary value, enrolled WARM in v2.workflow.floor_pure_producer_share
+// (the clean_control_report pattern): building the planted admission over the whole grammar inside the
+// claim put it over the new-witness budget once the grammar grew its per-kind productions (XL-2 PR3b-i).
+fn refused_normalization_report() -> ReferenceConservationReport {
+  reference_conservation_of_subject_admitted(subject: normalization_refused_subject(), token_classes: dag_declared_token_classes(), admission: planted_param_list_unread_admission())
+}
+
 test fn a_refused_normalization_still_reports_observed_role_gaps_holds() -> Bool {
-  let r = reference_conservation_of_subject_admitted(subject: normalization_refused_subject(), token_classes: dag_declared_token_classes(), admission: planted_param_list_unread_admission())
+  let r = refused_normalization_report()
   refusal_accounts_for_population(r: r) && r.role_not_yet_read == 1 && r.role_reader_refused == 0 && length(xs: r.unmeasured) == 0
 }
 
