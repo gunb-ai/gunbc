@@ -182,11 +182,17 @@ type CheckpointVerifyReading
   | CheckpointVerifyFailed { cause: String }
   | CheckpointVerifyUnread { cause: String }
 
-fn checkpoint_peer_admissible(m: CheckpointMaterialization, candidate: HostIdentity, host_path: NonEmptyStr, snapshot: ModelSnapshotDesired) -> Bool {
+// EACH NESTED HOST SESSION HAS ITS OWN CREDENTIAL FILE. A session's bracket writes its password file and
+// WIPES it when the session ends; a nested peer session that reused the outer target session's file name
+// wiped the target's credential mid-run, so every later target leg failed at `sudo` (run 37145004207). The
+// readback and serve sessions name their own files.
+// A CANDIDATE PEER'S OWN VERIFY, AS A CAUSE: none when it verified, else why not (kept for the receipt, so a
+// fall-through to the Hub names each peer's reason rather than only that none qualified).
+fn checkpoint_peer_cause(m: CheckpointMaterialization, candidate: HostIdentity, host_path: NonEmptyStr, snapshot: ModelSnapshotDesired) -> String? {
   match with_spark_build_host(
     host: candidate,
     attempt_raw: "checkpoint-peer-readback",
-    identity_file_name: "gunbc-checkpoint-materialize-admin-password" as NonEmptyStr,
+    identity_file_name: "gunbc-checkpoint-peer-readback-admin-password" as NonEmptyStr,
     use: fn(t, c, sctx) {
       match checkpoint_verify_with(ctx: sctx, image: m.image, host_path: host_path, snapshot: snapshot) {
         CheckpointVerified => SparkBuildHostWork { receipt: "verified", converged: true }
@@ -195,13 +201,26 @@ fn checkpoint_peer_admissible(m: CheckpointMaterialization, candidate: HostIdent
       }
     },
   ) {
-    SparkBuildHostRefused { cause: _ } => false
-    SparkBuildHostRan { work: w, endpoint: _, executor: _, trust_receipt: _ } => w.converged
+    SparkBuildHostRefused { cause: x } => Present { value: join([candidate as String, ": ", x], "") }
+    SparkBuildHostRan { work: w, endpoint: _, executor: _, trust_receipt: _ } => if w.converged { none } else { Present { value: join([candidate as String, ": ", w.receipt], "") } }
   }
 }
 
-fn checkpoint_admissible_peer(m: CheckpointMaterialization, target: HostIdentity, host_path: NonEmptyStr, snapshot: ModelSnapshotDesired) -> HostIdentity? {
-  first(filter(filter(fabric_group_hosts(g: m.group), h => !host_identity_eq(a: h, b: target)), h => checkpoint_peer_admissible(m: m, candidate: h, host_path: host_path, snapshot: snapshot)))
+type PeerSelection {
+  peer: HostIdentity?
+  causes: List<String>
+}
+
+fn checkpoint_admissible_peer(m: CheckpointMaterialization, target: HostIdentity, host_path: NonEmptyStr, snapshot: ModelSnapshotDesired) -> PeerSelection {
+  fold(filter(fabric_group_hosts(g: m.group), h => !host_identity_eq(a: h, b: target)), init: PeerSelection { peer: none, causes: [] as List<String> }, f: (acc, h) =>
+    match acc.peer {
+      Present { value: _ } => acc
+      Absent =>
+        match checkpoint_peer_cause(m: m, candidate: h, host_path: host_path, snapshot: snapshot) {
+          Absent => PeerSelection { peer: Present { value: h }, causes: acc.causes }
+          Present { value: why } => PeerSelection { peer: none, causes: concat(acc.causes, [why]) }
+        }
+    })
 }
 
 fn cancel_line(c: SparkTransferCancel) -> String {
@@ -228,7 +247,7 @@ fn checkpoint_replicate_after_cancel(m: CheckpointMaterialization, peer: HostIde
   match with_spark_build_host(
     host: peer,
     attempt_raw: "checkpoint-peer-serve",
-    identity_file_name: "gunbc-checkpoint-materialize-admin-password" as NonEmptyStr,
+    identity_file_name: "gunbc-checkpoint-peer-serve-admin-password" as NonEmptyStr,
     use: fn(t, c, sctx) {
       match replicate_snapshot_over_rail(source: sctx, target: tctx, snapshot: snapshot) {
         SnapshotReplicaRefused { step: st, cause: x } => SparkBuildHostWork { receipt: join([note, "REFUSED at ", st as String, ": ", x, "\n"], ""), converged: false }
@@ -267,11 +286,13 @@ fn checkpoint_materialize_work(m: CheckpointMaterialization, ctx: SparkMateriali
 // absence, so it goes the same way: the acquisition that follows observes the snapshot again under its own
 // typed verdicts, and the receipt says why it ran.
 fn checkpoint_acquire(m: CheckpointMaterialization, ctx: SparkMaterializeContext, host_path: NonEmptyStr, snapshot: ModelSnapshotDesired, note: String) -> SparkBuildHostWork {
-  let w = match checkpoint_admissible_peer(m: m, target: ctx.host, host_path: host_path, snapshot: snapshot) {
+  let sel = checkpoint_admissible_peer(m: m, target: ctx.host, host_path: host_path, snapshot: snapshot)
+  let peer_lines = join(map(sel.causes, x => join(["  peer not admitted: ", x, "\n"], "")), "")
+  let w = match sel.peer {
     Present { value: peer } => checkpoint_replicate_from(m: m, peer: peer, tctx: ctx, host_path: host_path, snapshot: snapshot)
     Absent => checkpoint_seed_from_hub(m: m, ctx: ctx, host_path: host_path, snapshot: snapshot)
   }
-  SparkBuildHostWork { receipt: join([note, w.receipt], ""), converged: w.converged }
+  SparkBuildHostWork { receipt: join([note, peer_lines, w.receipt], ""), converged: w.converged }
 }
 
 // THE BYTES ARE ON THE HOST, NOT WHERE THE CLI HAPPENED TO PUT THEM (valiant-crab-775, 2026-10-03). A verify
