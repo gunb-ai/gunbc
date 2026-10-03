@@ -47354,6 +47354,14 @@ mod warm_route_bytes_probe {
             heap.uordblks + heap.hblkhd
         );
         eprintln!("[m4] label={label} point=after_resolve in_use={}", in_use());
+        let pc = crate::shared_typecheck_store::persistent_typed_store_counters_snapshot();
+        eprintln!(
+            "[m5] label={label} persist_hit={} persist_miss={} persist_read_bytes={} persist_write_bytes={} persist_rejected={} occupancy_entries={} occupancy_bytes={}",
+            pc.persist_hit, pc.persist_miss, pc.persist_read_bytes, pc.persist_write_bytes,
+            pc.persist_rejected, pc.persist_occupancy_entries, pc.persist_occupancy_bytes
+        );
+        let sc = crate::shared_typecheck_store::shared_typecheck_store_counters_snapshot();
+        eprintln!("[m5] label={label} shared={sc:?}");
         super::arm_floor_byte_attribution();
         super::typed_graph_byte_attribution(&label, graph);
         drop(_si);
