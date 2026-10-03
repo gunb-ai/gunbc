@@ -6,7 +6,7 @@ import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex, dag_lex_rules, dag_target_model }
 import v2.std.algebra { fold_list }
 import v2.std.collection { map_lookup }
-import v2.std.compilers.lexing { AnnotationRule, TokenRule, TriviaRule }
+import v2.std.compilers.lexing { lex_rule_set_matching_rules, lex_rule_token_class_optional }
 import v2.std.compilers.target_model {
   EmitLineBreaks,
   EmitSpellingConstant,
@@ -135,11 +135,10 @@ fn dag_class_breaks_no_line(class: Symbol) -> Bool {
 }
 
 test fn no_dag_token_class_emits_a_line_break_holds() -> Bool {
-  fold_list(xs: dag_lex_rules().rules, empty: true, cons: fn(acc, rule) {
-    acc && match rule {
-      TokenRule { token_class: c, pattern: _ } => dag_class_breaks_no_line(class: c)
-      TriviaRule { pattern: _ } => true
-      AnnotationRule { annotation_class: _, pattern: _ } => true
+  fold_list(xs: lex_rule_set_matching_rules(rules: dag_lex_rules()), empty: true, cons: fn(acc, rule) {
+    acc && match lex_rule_token_class_optional(rule: rule) {
+      Present { value: c } => dag_class_breaks_no_line(class: c)
+      Absent => true
     }
   })
 }

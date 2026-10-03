@@ -6,7 +6,7 @@ import v2.std.node {
   ComputationNode,
   Edge,
   Loop,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -14,6 +14,8 @@ import v2.std.node {
   TypeNode,
   content_hash,
   well_formed,
+  LoopBoundEdge,
+  core_edge_label,
 }
 import v2.std.verification {
   ManualAnchorAbsent,
@@ -47,7 +49,7 @@ data loop_linear_bound_subject: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
     Edge { label: Positional, target: loop_linear_bound_body },
-    Edge { label: Named { name: ^loop_bound_edge }, target: loop_linear_bound_measure_leaf }
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: loop_linear_bound_measure_leaf }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -86,7 +88,7 @@ data loop_linear_bound_subject_rebuilt: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
     Edge { label: Positional, target: loop_linear_bound_body },
-    Edge { label: Named { name: ^loop_bound_edge }, target: loop_linear_bound_measure_leaf }
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: loop_linear_bound_measure_leaf }
   ],
   occurrence_id: OccurrenceSynthetic
 }

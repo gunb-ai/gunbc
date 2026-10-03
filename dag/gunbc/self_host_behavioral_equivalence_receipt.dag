@@ -16,7 +16,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // `gunbc test //gunbc/instruments:self-host-behavioral-equivalence`
 // (tools.self_host_behavioral_equivalence_take take_self_host_behavioral_equivalence_receipt), which
 // prints the receipt as the declaration to append below; the persisted row is the data, and
-// gunbc.compiler_frontend_program_status derives SelfHostBehavioralEquivalenceReestablished from
+// gunbc.compiler_frontend_program_status derives SelfHostEmittedContractsHeld from
 // the latest one. The shape follows gunbc.self_host_compile_phase_frontier: an authored series of
 // observations, each naming the revision it measured, judged by a fold rather than re-measured.
 //

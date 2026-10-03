@@ -12,7 +12,7 @@ import v2.std.diagnostic {
   Suggested,
   diagnostics_singleton
 }
-import v2.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }
+import v2.std.node { Edge, Authored, Node, Symbol, TypeNode, Atom, Conj }
 import v2.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -36,8 +36,8 @@ fn complexity_contract(body: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^complexity_bound_field }, target: atom_node(s: ^complexity_contract_symbol) },
-      Edge { label: Named { name: ^complexity_body_field }, target: body },
+      Edge { label: Authored { name: ^complexity_bound_field }, target: atom_node(s: ^complexity_contract_symbol) },
+      Edge { label: Authored { name: ^complexity_body_field }, target: body },
     ],
     occurrence_id: OccurrenceSynthetic
 }

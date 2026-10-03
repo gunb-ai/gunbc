@@ -28,6 +28,23 @@ test fn witness_escape_control_u0001() -> Bool {
   escape_json_string(s: from_code_point(cp: 1)) == "\\u0001"
 }
 
+// THE PASS DECOMPOSITION'S LOAD-BEARING ORDER, pinned: the backslash pass leads, so a literal
+// backslash-newline pair escapes to \\ + \n and never to \\\n (a re-escaped sequence); and the
+// control range is covered to its top, so cp 31 escapes as \u001f exactly as the per-char fold
+// produced it. Both rows red the moment a pass is reordered or dropped.
+test fn witness_escape_backslash_leads_over_newline() -> Bool {
+  escape_json_string(s: concat(from_code_point(cp: 92), from_code_point(cp: 10))) == "\\\\\\n"
+}
+
+test fn witness_escape_control_top_of_range() -> Bool {
+  escape_json_string(s: from_code_point(cp: 31)) == "\\u001F"
+    && escape_json_string(s: from_code_point(cp: 11)) == "\\u000B"
+}
+
+test fn witness_escape_combined_source_text() -> Bool {
+  escape_json_string(s: "q\" b\\ n\n end") == "q\\\" b\\\\ n\\n end"
+}
+
 test fn witness_quote_json_string() -> Bool {
   quote_json_string(s: "hello") == "\"hello\""
     && quote_json_string(s: "a\"b") == "\"a\\\"b\""
