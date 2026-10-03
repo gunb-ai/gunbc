@@ -1,7 +1,0 @@
-module v2.test.n7probe.n7_provider
-
-import std.types { Int }
-
-type N7Leg {
-  target: Int
-}
