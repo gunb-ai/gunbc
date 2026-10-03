@@ -26,12 +26,7 @@ import v2.std.symbol_index { SymbolIndex, symbol_index_lookup }
 import v2.std.node_query { node_positional_child_targets, find_arrow_body_child }
 import v2.std.collection { list_at_optional }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
-import v2.compiler.compile {
-  NativeTestContext, NativeCensusModule, NativeInferCensusOutcome, NativeInferCensusFileRefused,
-  NativeInferCensusResolveRefused, NativeInferCensusInferred, NativeInferCensusInferRefused
-}
 import v2.compiler.normalized_tree { NormalizedTree }
-import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.witness { Holds, Violates }
 import std.compiler_entry { NativeClaimTerminal, NativeClaimHeld, NativeClaimNoObservation }
 import v2.std.compilers.target_model {
@@ -947,7 +942,9 @@ fn type_census_receipt(run: TypeCensusRun) -> TypeCensusReceipt {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════════════════
-// THE WALK'S SIDE: one census-infer step in, one contribution out.
+// THE WALK'S SIDE: one module in, one contribution out. The dispatch over the census-infer step's
+// outcome lives in the walk (v2.compiler.compile native_census_infer_type_contribution), which owns
+// that outcome; this module imports nothing from it, so the compiler can import this one.
 // ════════════════════════════════════════════════════════════════════════════════════════════════
 //
 // The native driver's census-infer loop hands each module's step here and keeps what comes back; at
@@ -959,42 +956,20 @@ type TypeCensusContribution
   = TypeCensusContributed { module: TypeCensusModule }
   | TypeCensusUnreached { unreached: UnreachedModule }
 
-fn normalized_tree_of(context: NativeTestContext, module: String) -> Optional<NormalizedTree> {
-  match context.resolution {
-    Accepted { value: shared, diagnostics: _ } => map_get(shared.roots.by_name, qualified_name_from_dotted_string(dotted: module))
-    Rejected { diagnostics: _ } => Absent
-  }
-}
-
-fn type_census_contribution_of(
-  context: NativeTestContext,
-  entry: NativeCensusModule,
-  outcome: NativeInferCensusOutcome
-) -> TypeCensusContribution {
-  match outcome {
-    NativeInferCensusFileRefused =>
-      TypeCensusUnreached { unreached: UnreachedModule { module: entry.module, stage: "front_end", cause: "file refused by the context" } }
-    NativeInferCensusResolveRefused { first: f, rest: _, observation: _ } =>
-      TypeCensusUnreached { unreached: UnreachedModule { module: entry.module, stage: "resolve", cause: symbol_lexeme(sym: diagnostics_fatal_reason(d: f)) } }
-    NativeInferCensusInferred { resolved: r, inferred: i } =>
-      type_census_from_resolved(context: context, entry: entry, resolved: r, typing: AsTypedBy { tree: i, resolved: r })
-    NativeInferCensusInferRefused { resolved: r, chain: c } =>
-      type_census_from_resolved(context: context, entry: entry, resolved: r, typing: AsUntyped { cause: "module did not infer: " + symbol_lexeme(sym: diagnostics_fatal_reason(d: c)) })
-  }
-}
-
-fn type_census_from_resolved(
-  context: NativeTestContext,
-  entry: NativeCensusModule,
+// One module that resolved, with the normalized tree the context holds for it (Absent when it holds
+// none under that name, which is unreached, never an empty module) and the source of its operand types.
+fn type_census_contribution(
+  module: String,
   resolved: ResolvedTree,
+  normalized: Optional<NormalizedTree>,
   typing: AsTyping
 ) -> TypeCensusContribution {
-  match normalized_tree_of(context: context, module: entry.module) {
+  match normalized {
     Absent =>
-      TypeCensusUnreached { unreached: UnreachedModule { module: entry.module, stage: "normalize", cause: "resolved, but the context holds no normalized tree under this name" } }
+      TypeCensusUnreached { unreached: UnreachedModule { module: module, stage: "normalize", cause: "resolved, but the context holds no normalized tree under this name" } }
     Present { value: nt } =>
       TypeCensusContributed { module: type_census_module(
-        module: entry.module,
+        module: module,
         root: resolved.root,
         kinds: nt.type_declaration_kinds,
         modifiers: nt.type_declaration_modifiers,
@@ -1002,6 +977,10 @@ fn type_census_from_resolved(
         index: resolved.symbol_index
       ) }
   }
+}
+
+fn type_census_unreached(module: String, stage: String, cause: String) -> TypeCensusContribution {
+  TypeCensusUnreached { unreached: UnreachedModule { module: module, stage: stage, cause: cause } }
 }
 
 // The run, accumulated contribution by contribution; the driver folds every step through this.
