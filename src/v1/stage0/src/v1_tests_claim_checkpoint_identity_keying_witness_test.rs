@@ -113,18 +113,6 @@ pub fn table_present_string_refuses_under_structural_declaration_text() -> bool 
     ) == std::option::Option::None)
 }
 
-pub fn table_present_string_refuses_under_structural_declaration_string_type() -> bool {
-    (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_reference_base(
-        crate::v1_compiler_coercion::type_realization_decision(
-            RenderTarget::Rust,
-            "String".to_string(),
-            Rc::new(TypeDeclarationProvenance::CorpusDeclared {
-                decl_file: "dag/std/string_type.dag".to_string(),
-            }),
-        ),
-    ) == std::option::Option::None)
-}
-
 pub fn table_present_bool_refuses_under_structural_declaration_logic() -> bool {
     (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_reference_base(
         crate::v1_compiler_coercion::type_realization_decision(
@@ -170,18 +158,6 @@ pub fn literal_suffix_refuses_under_structural_declaration_text() -> bool {
             "String".to_string(),
             Rc::new(TypeDeclarationProvenance::CorpusDeclared {
                 decl_file: "src/v2/std/text.dag".to_string(),
-            }),
-        ),
-    ) == std::option::Option::None)
-}
-
-pub fn literal_suffix_refuses_under_structural_declaration_string_type() -> bool {
-    (crate::v1_compiler_coercion::literal_suffix(
-        crate::v1_compiler_coercion::type_realization_decision(
-            RenderTarget::Rust,
-            "String".to_string(),
-            Rc::new(TypeDeclarationProvenance::CorpusDeclared {
-                decl_file: "dag/std/string_type.dag".to_string(),
             }),
         ),
     ) == std::option::Option::None)

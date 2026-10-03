@@ -1,0 +1,68 @@
+module v2.test.scratch_tidy.decl_rows
+
+import std.process { ProcessExit, ExitFailure }
+import gunbc.instruments.type_declaration_use_census {
+  TypeDeclRow, TypeDeclForm, AliasForm, BodylessForm, CoproductForm, RecordForm, RefinementForm, ResourceForm, FormUndecided,
+  TypeRefText, DeclaredRef, KernelRef, ParamRef, StructuralRef, NoBase, type_declaration_rows
+}
+import v2.compiler.normalize { normalize }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.resolve { resolve }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.diagnostic { Accepted, Rejected, bind_outcome }
+import v2.std.algebra { fold_list }
+import v2.std.node { symbol_lexeme }
+
+data src: String = "module m\ntype A = Int\ntype B nominal_opaque = Int\ntype C = Int where brand(\"c\")\ntype D = Int where range(min: 1, max: 9)\ntype R1 { x: Int }\ntype R2 { x: Int, y: Int }\ntype S = P | Q\ntype G<T> = T\n"
+
+fn form_text(f: TypeDeclForm) -> String {
+  match f {
+    AliasForm => "alias"
+    BodylessForm => "bodyless"
+    CoproductForm { variants: v } => "sum" + to_string(v)
+    RecordForm { fields: n } => "record" + to_string(n)
+    RefinementForm => "refinement"
+    ResourceForm => "resource"
+    FormUndecided => "UNDECIDED"
+  }
+}
+fn base_text(b: TypeRefText) -> String {
+  match b {
+    DeclaredRef { path: p } => "decl:" + p
+    KernelRef { name: n } => "kernel:" + n
+    StructuralRef => "structural"
+    ParamRef { name: n } => "param:" + n
+    NoBase => "-"
+  }
+}
+
+fn main() -> ProcessExit {
+  let lines = ["type A = Int", "type B nominal_opaque = Int", "type C = Int where pos\nfn pos(value: Int) -> Bool {\n  true\n}", "type D = Int where atl(min: 0)\nfn atl(value: Int, min: Int) -> Bool {\n  true\n}", "type R1 { x: Int }", "type R2 { x: Int, y: Int }", "type S = P | Q", "type G<T> = T"]
+  ExitFailure { code: 3, reason: fold(lines, init: "", f: fn(acc, l) { acc + "\n" + l + " => " + one(text: "module m\n" + l + "\n") }) }
+}
+
+fn one(text: String) -> String {
+  let lm = dag_language_model()
+  let ingest = Cons { head: DagSourceReadWitness { source: Medium { carried: text, fidelity: Lossless }, artifact: Artifact { kind: SourceFile, id: ^scratch_artifact, file_path: "src/v2/pilot/scratch.dag" }, compilation_unit: ^scratch_cu, source_root: V2Tree }, tail: Empty }
+  let o = bind_outcome(o: module_roots_from_source_root_ingest(ingest: ingest, lm: lm), f: fn(roots) {
+    match roots {
+      Empty => Accepted { value: "no roots", diagnostics: v2.std.diagnostic.None }
+      Cons { head: nt, tail: _ } =>
+        bind_outcome(o: resolve(tree: nt, lm: lm), f: fn(rt) {
+          Accepted { value: fold_list(xs: type_declaration_rows(module: "m", root: rt.root, kinds: nt.type_declaration_kinds, modifiers: nt.type_declaration_modifiers), empty: "", cons: fn(acc, r) {
+            acc + " | " + r.symbol + " " + form_text(f: r.form) + " base=" + base_text(b: r.base) + " mods=" + to_string(count(r.modifiers)) + " preds=" + fold_list(xs: r.predicates, empty: "", cons: fn(a, p) { a + p + "," })
+          }), diagnostics: v2.std.diagnostic.None }
+        })
+    }
+  })
+  match o {
+    Rejected { diagnostics: d } => "refused " + symbol_lexeme(sym: d.head.reason)
+    Accepted { value: t, diagnostics: _ } => t
+  }
+}

@@ -2520,7 +2520,7 @@ pub fn run_v2_native_frontier(
     })
 }
 
-/// THE NATIVE CENSUS, AS THE EMITTED BINARY REPORTED IT. The grouping and the partition verdict are
+/// THE NATIVE CENSUS, AS THE EMITTED BINARY REPORTED IT. The grouping is
 /// decided inside the binary (`v2.compiler.compile` `native_census_cause_groups_add`); the host
 /// carries the terminal marker's counts and decides nothing about them.
 pub struct NativeCensusRun {
