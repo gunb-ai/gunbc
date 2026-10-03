@@ -1018,7 +1018,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             ms(st.ownership),
         );
         eprintln!(
-            "[assembly-split] schedule={:.1}ms probe={:.1}ms graph={:.1}ms symbol_index={:.1}ms pool_fill={:.1}ms symbol_index_merge={:.1}ms variant_base={:.1}ms root_symbol_index={:.1}ms root_variant_base={:.1}ms environment={:.1}ms diagnostics={:.1}ms registry={:.1}ms services={:.1}ms rewire_type_env={:.1}ms rewire_import_str={:.1}ms rewire_func_env={:.1}ms emit_info={:.1}ms other={:.1}ms rewire_total_observation={:.1}ms",
+            "[assembly-split] schedule={:.1}ms probe={:.1}ms graph={:.1}ms symbol_index={:.1}ms pool_fill={:.1}ms symbol_index_merge={:.1}ms variant_base={:.1}ms root_symbol_index={:.1}ms root_variant_base={:.1}ms environment={:.1}ms diagnostics={:.1}ms registry={:.1}ms services={:.1}ms rewire_type_env={:.1}ms rewire_func_env={:.1}ms emit_info={:.1}ms other={:.1}ms rewire_total_observation={:.1}ms",
             ms(st.assembly_schedule),
             ms(st.assembly_probe),
             ms(st.assembly_graph),
@@ -1033,7 +1033,6 @@ fn run() -> Result<ExitCode, ExitCode> {
             ms(st.assembly_registry),
             ms(st.assembly_services),
             ms(st.assembly_rewire_type_env),
-            ms(st.assembly_rewire_import_str),
             ms(st.assembly_rewire_func_env),
             ms(st.assembly_emit_info),
             ms(st.reconcile_assembly),
