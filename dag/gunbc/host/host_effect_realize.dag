@@ -5564,66 +5564,46 @@ fn compile_pool_slice_install_step(
       )
       if written.success == false {
         let discarded = run_argv_over_host_effect_transport(command: discard, transport: transport)
-        NotConverged {
-          reason: join(
-            [
-              compile_pool_install_stage_failure(step: "stage write", slice_unit: slice_unit, observed: written),
-              " (staged bytes discarded, exit ",
-              to_string(discarded.exit_code),
-              ")",
-            ],
-            "",
-          ),
-          applied: effect_intent,
-        }
+        compile_pool_install_failed_step_result(
+          failed_step: "stage write",
+          slice_unit: slice_unit,
+          observed: written,
+          discarded: discarded,
+          effect_intent: effect_intent,
+        )
       } else {
         let installed = run_argv_over_host_effect_transport(command: install, transport: transport)
         if installed.success == false {
           let discarded = run_argv_over_host_effect_transport(command: discard, transport: transport)
-          NotConverged {
-            reason: join(
-              [
-                compile_pool_install_stage_failure(step: "install", slice_unit: slice_unit, observed: installed),
-                " (staged bytes discarded, exit ",
-                to_string(discarded.exit_code),
-                ")",
-              ],
-              "",
-            ),
-            applied: effect_intent,
-          }
+          compile_pool_install_failed_step_result(
+            failed_step: "install",
+            slice_unit: slice_unit,
+            observed: installed,
+            discarded: discarded,
+            effect_intent: effect_intent,
+          )
         } else {
           let reloaded = run_argv_over_host_effect_transport(command: reload, transport: transport)
           if reloaded.success == false {
             let discarded = run_argv_over_host_effect_transport(command: discard, transport: transport)
-            NotConverged {
-              reason: join(
-                [
-                  compile_pool_install_stage_failure(step: "daemon-reload", slice_unit: slice_unit, observed: reloaded),
-                  " (staged bytes discarded, exit ",
-                  to_string(discarded.exit_code),
-                  ")",
-                ],
-                "",
-              ),
-              applied: effect_intent,
-            }
+            compile_pool_install_failed_step_result(
+              failed_step: "daemon-reload",
+              slice_unit: slice_unit,
+              observed: reloaded,
+              discarded: discarded,
+              effect_intent: effect_intent,
+            )
           } else {
             let started = run_argv_over_host_effect_transport(command: start, transport: transport)
             let discarded = run_argv_over_host_effect_transport(command: discard, transport: transport)
             if started.success == false {
-              NotConverged {
-                reason: join(
-                  [
-                    compile_pool_install_stage_failure(step: "start", slice_unit: slice_unit, observed: started),
-                    " (staged bytes discarded, exit ",
-                    to_string(discarded.exit_code),
-                    ")",
-                  ],
-                  "",
-                ),
-                applied: effect_intent,
-              }
+              compile_pool_install_failed_step_result(
+                failed_step: "start",
+                slice_unit: slice_unit,
+                observed: started,
+                discarded: discarded,
+                effect_intent: effect_intent,
+              )
             } else {
               let after = compile_pool_ensure_admission_for(node: node, transport: transport)
               if compile_pool_ensure_is_converged(admission: after) {
@@ -5683,6 +5663,40 @@ fn compile_pool_install_stage_failure(step: String, slice_unit: NonEmptyStr, obs
     ],
     "",
   )
+}
+
+// THE INSTALL SEQUENCE'S FAILURE DECISION, AS A PURE FOLD OVER SUPPLIED OUTCOMES (DESIGN 3: the
+// witness discriminates at this interface, and the values are supplied -- no operation, no ssh, no
+// sudo, no network). compile_pool_slice_install_step runs the staged operations in order and, when
+// one fails, hands THIS fold the failed step's own observation and the observation the discard leg
+// brought back. The fold's whole decision is the failure sequence: the cleanup is ATTEMPTED BEFORE
+// the failure is reported -- its observation is a parameter, so a caller that skipped the second leg
+// could not produce this call -- and the report carries both the failed step and the cleanup's own
+// exit status, interpolated from the supplied observation rather than a constant, so the marker's
+// presence is evidence the second leg ran. A failed cleanup is not silent either: its exit status
+// is in the reason, it is just not the headline. The wet step is the only side that can run the
+// operations, so it is the only side that can supply these values; all four failure arms delegate
+// here, which makes this fold the sequence's single decision point -- the witness supplies DESIGNED
+// outcomes (a failed write, a failing cleanup) and pins the same NotConverged the wet fold returns.
+fn compile_pool_install_failed_step_result(
+  failed_step: String,
+  slice_unit: NonEmptyStr,
+  observed: ShellExecObserved,
+  discarded: ShellExecObserved,
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  NotConverged {
+    reason: join(
+      [
+        compile_pool_install_stage_failure(step: failed_step, slice_unit: slice_unit, observed: observed),
+        " (staged bytes discarded, exit ",
+        to_string(discarded.exit_code),
+        ")",
+      ],
+      "",
+    ),
+    applied: effect_intent,
+  }
 }
 
 

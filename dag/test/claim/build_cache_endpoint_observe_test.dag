@@ -10,14 +10,13 @@ import gunbc.host_effect { LocalShell, SshShell }
 import gunbc.compile_pool_ensure { compile_pool_slice_unit_file }
 import gunbc.typed_argv_exec { typed_argv_shell_safe_refusal_argv }
 import std.realization_reconcile { Converged, NotConverged }
-import std.measure { byte_size }
 import gunbc.host_effect_realize {
   compile_pool_slice_install_staging,
-  compile_pool_slice_install_step,
+  compile_pool_install_failed_step_result,
   run_argv_over_host_effect_transport,
   run_argv_stdin_over_host_effect_transport,
-  provision_build_cache_arch_unknown_host_fixture,
   provision_build_cache_arch_unknown_intent_fixture,
+  ShellExecObserved,
   CompilePoolInstallReady,
   CompilePoolInstallRefused,
 }
@@ -891,36 +890,43 @@ test fn witness_compile_pool_install_vectors_pass_the_portable_wall() -> Bool {
   }
 }
 
-// THE FAILURE SEQUENCE, NOT JUST THE FAILURE. Until this review the stage-write arm was the one arm
-// of the fold that reported failure WITHOUT attempting the discard, while the install, daemon-reload
-// and start arms each attempted it: dd receiving unit bytes on stdin can write PARTIAL bytes and
-// still exit nonzero, and the staged sibling then survives until some later install moves it -- the
-// next run could move a STALE stage file into /etc/systemd/system believing it fresh. The witness
-// below runs the fold over the SshShell transport against a name the resolver must refuse (.invalid,
-// RFC 2606): the write leg fails, the discard leg is then attempted over the same transport, and the
-// returned reason must name BOTH the failed stage write AND the cleanup attempt --
-// "(staged bytes discarded, exit N)" where N is the discard leg's OWN observed exit status,
-// interpolated from the observation rather than a constant, so the marker's presence is evidence the
-// second leg ran. Delete the discard from the write-failure arm and the reason reverts to the bare
-// stage-write text and this goes red. Nothing is mutated on either leg: the write never happens (the
-// leg dies at name resolution), and the discard targets a staged sibling that was never created.
+// THE FAILURE SEQUENCE, HERMETIC (DESIGN 3: the witness discriminates at one interface, and the
+// values are supplied). The first cut of this witness ran the fold wet over the SshShell transport
+// against a .invalid host -- two real ssh legs whose outcome depends on the runner's DNS and ssh
+// behavior, so the claim was not the floor's to own, and the floor refused it. The sequence's
+// decision now lives in compile_pool_install_failed_step_result, a PURE fold over SUPPLIED
+// outcomes: the wet step supplies each operation's observation as it comes back, and the fold
+// decides that the cleanup is attempted BEFORE the failure is reported and that the report carries
+// both the failed step and the cleanup's own exit status. This witness supplies the designed
+// sequence -- the write leg failed (dd's own complaint on stderr), the discard leg was attempted
+// and itself failed -- and pins the NotConverged: the reason names the stage write AND carries
+// "(staged bytes discarded, exit 1)" with the discard leg's OWN exit status interpolated from the
+// supplied observation rather than a constant, so the marker's presence is evidence the second leg
+// ran. A failed cleanup is visible, not silent. The wet step's four failure arms all delegate to
+// this fold, so the fold is the sequence's single decision point and no operation, ssh leg, sudo or
+// DNS query is needed to pin it.
 test fn witness_stage_write_failure_still_attempts_the_discard() -> Bool {
-  let node = provision_build_cache_arch_unknown_host_fixture()
-  let sized = byte_size(134217728)
-  match compile_pool_slice_install_step(
-    node: node,
+  match compile_pool_install_failed_step_result(
+    failed_step: "stage write",
     slice_unit: "gunbc-compile-pool.slice" as NonEmptyStr,
-    sized: sized,
-    slice_unit_file: compile_pool_slice_unit_file(
-      slice_unit: "gunbc-compile-pool.slice" as NonEmptyStr,
-      sized: sized,
-    ),
-    transport: SshShell { ssh_host: "compile-pool-stage-failure-witness.invalid" as NonEmptyStr },
+    observed: ShellExecObserved {
+      exit_code: 1,
+      success: false,
+      stdout: "",
+      stderr: "dd: error writing '/etc/systemd/system/gunbc-compile-pool.slice.gunbc-stage': No space left on device",
+    },
+    discarded: ShellExecObserved {
+      exit_code: 1,
+      success: false,
+      stdout: "",
+      stderr: "rm: cannot remove '/etc/systemd/system/gunbc-compile-pool.slice.gunbc-stage': Permission denied",
+    },
     effect_intent: provision_build_cache_arch_unknown_intent_fixture(),
   ) {
     NotConverged { reason: r, applied: _ } =>
       string_contains(s: r, pattern: "stage write")
-        && string_contains(s: r, pattern: "staged bytes discarded, exit ")
+        && string_contains(s: r, pattern: "staged bytes discarded, exit 1")
+        && string_contains(s: r, pattern: "No space left on device")
     Converged { evidence: _, applied: _ } => false
   }
 }
