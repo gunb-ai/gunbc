@@ -6972,7 +6972,9 @@ pub(crate) fn derive_and_install_cross_claim_share(
             return Err(malformed("a declined row is not a DeclinedShareRow record"));
         };
         *decline_counts.entry(variant_of(r, "decline")?).or_default() += 1;
-        if variant_of(r, "decline")? != "DemandedByOneClaim" {
+        // EVERY decline is printed, single-claim ones included, so each producer's disposition is
+        // readable by identity from the run's own log.
+        {
             eprintln!(
                 "[cross-claim-share-declined] producer={} decline={} argument_preimage={}",
                 text_of(r, "producer")?,
