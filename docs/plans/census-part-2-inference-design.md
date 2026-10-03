@@ -46,6 +46,26 @@ is **not a part 2 subject**. It still appears in the receipt as an `UpstreamRefu
 (§5), so the identity join over `native_census_modules` stays complete (DESIGN §5: completeness is
 an identity join, not a count).
 
+
+### 2a. The infer demand is shared (sharp-raven-357 ruling)
+
+The per-module infer step is **one demand subject in the native drain**, not a walk owned by this
+census. The working name is `NativeInferCensusSubject { entry }`. It resolves via
+`native_demand_resolved_tree`, then runs `native_test_infer_resolved`, and yields
+`Inferred { InferredTree } | InferRefused { chains }`. Two folds read that one result:
+
+- This census reads the `InferRefused` arm: one row per chain, with cascade attribution (§4).
+- M0 of the nominal-type plan (gunbc#13024) reads the `Inferred` arm: type declarations and
+  `as` sites. On `InferRefused`, M0 records each of the module's `as` sites as
+  `OperandTypeUndecided` with the infer cause, counted and never dropped.
+
+Each fold measures a different fact, so each keeps its own line kind (refusal rows vs
+classification rows) in one stdout. They share the subject. They do not share a row format.
+
+The driver verb is **`census-infer`**. Widening `census-resolve` would make that word mean two
+things, and §3 forbids a meaning fork. `census-resolve` stays part 1's verb. Its resolve rows and
+`census-infer`'s rows are the one carrier of §5, distinguished by `stage`.
+
 ## 3. What a refusal at each stage means
 
 | stage | refusal means | row stage |
