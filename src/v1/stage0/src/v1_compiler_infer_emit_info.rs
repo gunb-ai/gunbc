@@ -11,9 +11,14 @@ use crate::v1_compiler_artifact::RenderTarget::Rust;
 pub use crate::v1_compiler_coercion::{declaration_realization, realized_checkpoint};
 pub use crate::v1_compiler_infer_env::TypeEnv;
 pub use crate::v1_compiler_infer_env::{empty_symbol_index, empty_type_env};
+use crate::v1_compiler_infer_types::TextJudgment::{TextJudgedIn, TextNotAsked};
+use crate::v1_compiler_infer_types::TextNotAskedReason::{
+    TextNotAskedForCallableComponentResidue, TextNotAskedInVariantFieldSummary,
+};
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, node_type_equals, normalize_access_type_node, resolved_type,
 };
+pub use crate::v1_compiler_infer_types::{TextJudgment, TextNotAskedReason};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::CardOptional;
@@ -660,6 +665,9 @@ pub fn enum_field_type_consistent(
                     crate::v1_compiler_infer_types::child_type_node(field_child.clone()),
                     expected.clone(),
                     source_indices.clone(),
+                    Rc::new(TextJudgment::TextNotAsked {
+                        reason: TextNotAskedReason::TextNotAskedInVariantFieldSummary,
+                    }),
                 ),
                 std::option::Option::None => false,
             }) {

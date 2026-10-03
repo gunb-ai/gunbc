@@ -20,7 +20,10 @@ import product.data_class {
   DataHandlingRow, DataHandlingMap, DurableOrigin, StoreDurably, DataEffectAdmitted, DataEffectRefused,
   admit_data_effect, durable_origin_sink, personal_identity_category, data_handling_map, public_fabric_posture,
 }
-import gunbc.principal_projection { oidc_projection }
+import gunbc.principal_projection {
+  VerifiedOidcProjectionProjected, VerifiedOidcProjectionRefused, verified_oidc_projection,
+}
+import extdeps.auth.oidc { OidcIdTokenVerified }
 import test.fixture.data_handling_map_fixture { sealed_fixture_map }
 
 fn claims() -> OidcIdTokenClaims {
@@ -30,8 +33,8 @@ fn claims() -> OidcIdTokenClaims {
     audience: JwtAudienceSingle { value: JwtBareString { value: "client" as NonEmptyStr } },
     expires_at: NumericDateWholeSeconds { seconds: 2000 },
     issued_at: NumericDateWholeSeconds { seconds: 1000 },
-    auth_time: none, nonce: none, acr: none, amr: none, azp: none, session_id: none,
-    standard: OidcStandardClaims { email: Present { value: "person@example.test" }, email_verified: none, name: none },
+    auth_time: none, nonce: none, acr: none, amr: none, azp: none, session_id: none, hosted_domain: none,
+    standard: OidcStandardClaims { email: Present { value: "person@example.test" }, email_verified: none, name: none, picture: none },
   }
 }
 
@@ -58,9 +61,13 @@ fn my_rows() -> List<DataHandlingRow> {
 
 fn reveal_under(handling_map: DataHandlingMap) -> OidcStandardClaims? {
   let sink = durable_origin_sink(category: personal_identity_category(), route: my_route(), purpose: personal_identity_ref(), recipient: personal_identity_ref())
-  match admit_data_effect(classified: oidc_projection(claims: claims()).standard, sink: sink, operation: StoreDurably, handling_map: handling_map, posture: public_fabric_posture()) {
-    DataEffectAdmitted { permit: p } => Present { value: p.value }
-    DataEffectRefused { cause: _ } => none
+  match verified_oidc_projection(verdict: OidcIdTokenVerified { claims: claims() }) {
+    VerifiedOidcProjectionRefused { cause: _ } => none
+    VerifiedOidcProjectionProjected { projection: p } =>
+      match admit_data_effect(classified: p.standard, sink: sink, operation: StoreDurably, handling_map: handling_map, posture: public_fabric_posture()) {
+        DataEffectAdmitted { permit: p } => Present { value: p.value }
+        DataEffectRefused { cause: _ } => none
+      }
   }
 }
 

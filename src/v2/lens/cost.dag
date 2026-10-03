@@ -49,7 +49,7 @@ import v2.std.node {
   Value,
   fold_node
 }
-import v2.std.nat { Nat, Succ, Zero, nat_add }
+import std.nat { Nat, Succ, Zero, nat_add, nat_compare }
 import v2.std.witness { Holds, Violates, Witness }
 
 type SizeVariable {
@@ -69,7 +69,7 @@ type ExponentialBase {
 }
 
 type SymbolicCost
-  = ConstantCost { value: v2.std.nat.Nat }
+  = ConstantCost { value: std.nat.Nat }
   | LinearCost { variable: SizeVariable }
   | LogCost { variable: SizeVariable }
   | PolynomialCost { variable: SizeVariable, degree: PolynomialDegree }
@@ -111,7 +111,7 @@ fn symbolic_cost_fold_total(s: SymbolicCostFoldState) -> SymbolicCost {
   symbolic_sequential(a: s.cost, b: s.once)
 }
 
-fn constant_cost(value: v2.std.nat.Nat) -> SymbolicCost {
+fn constant_cost(value: std.nat.Nat) -> SymbolicCost {
   ConstantCost { value: value }
 }
 
@@ -481,8 +481,8 @@ fn nonzero_nat_dominates(a: NonZeroNat, b: NonZeroNat) -> Bool {
   nat_dominates(a: a.prev, b: b.prev)
 }
 
-fn nat_dominates(a: v2.std.nat.Nat, b: v2.std.nat.Nat) -> Bool {
-  match v2.std.nat.nat_compare(a: a, b: b) {
+fn nat_dominates(a: std.nat.Nat, b: std.nat.Nat) -> Bool {
+  match nat_compare(a: a, b: b) {
     Greater => true
     Equal => true
     Less => false

@@ -7,7 +7,7 @@ import std.termination {
   positive_descent_count
 }
 import std.algebra {
-  AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
+  AlgebraProfile, OrderedRingProfile, OrderedSemiringProfile, ApproximateFieldProfile,
   BooleanAlgebraProfile, FinitePowerSetProfile,
   PointwisePowerCollectionProfile,
   FreeMonoidScalarProfile, FreeMonoidCollectionProfile,
@@ -165,6 +165,7 @@ fn algebra_profile_to_dimension(profile: AlgebraProfile) -> IterationDimension? 
     PointwisePowerCollectionProfile    => none
     PartialFunctionProfile             => none
     OrderedRingProfile                 => Present { value: ArithmeticRepeat }
+    OrderedSemiringProfile             => Present { value: ArithmeticRepeat }
     ApproximateFieldProfile            => Present { value: ArithmeticRepeat }
     BooleanAlgebraProfile              => none
   }
