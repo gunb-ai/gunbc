@@ -19,14 +19,9 @@
 #   * claim fixtures are the dag/test/claim/ prefix;
 #   * count unconverted rows and distinct paths.
 #
-# Calibration (recorded in the PR that checked this tool in):
-#   * b21b710d5378387ae0c841f07323292c5d72faba (the baseline the row's count was recorded on):
-#     92 sites / 48 files, 0 converted -- exact agreement with the row's recorded baseline.
-#   * 6471587dbaa (DP-M5's head): 246 bindings / 31 converted / 8 exact_read_typed / 207 raw
-#     unconverted / 98 files with raw-unconverted / 43 claim fixtures. DP-M5's session
-#     reported 242/28/205/103/39 from a one-off script that no longer exists and that itself
-#     disagreed with the row's b21 baseline by 2 (90/46); the deltas here are the honest
-#     reconciliation, not a claim that the two were the same instrument.
+# Calibration: run it against the row's baseline commit and against the tree under test, and
+# record the numbers where the count is USED (the PR carrying the row update) -- this header
+# carries the method, never transcribed output (DESIGN §6).
 #
 # Usage: tools/read_outcome_recount.sh [TREE_ROOT]     (default: the repo root of this script)
 # Output: TSV to stdout: one line per unconverted site `path<TAB>line<TAB>binding<TAB>fields`,

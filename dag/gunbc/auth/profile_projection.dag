@@ -376,8 +376,10 @@ fn profile_store_decode_entries(
       } else {
         let read_result = Filesystem.Read(path: join([layout.root as String, "/", entry], ""))
         match filesystem_read_outcome(content: read_result.content, success: read_result.success, error: read_result.error) {
-          FilesystemReadRefused { error } =>
-            { profiles: acc, skipped: concat(skipped_acc, [ProfileStoreSkipped { entry: entry, reason: join(["read failed: ", error], "") }]) }
+          FilesystemReadRefused { error } => {
+            let refused_file = { profiles: acc, skipped: concat(skipped_acc, [ProfileStoreSkipped { entry: entry, reason: join(["read failed: ", error], "") }]) }
+            refused_file
+          }
           FilesystemReadSucceeded { content } =>
             match principal_profile_of_json(text: content) {
               ProfileFileMalformed { detail } => {
