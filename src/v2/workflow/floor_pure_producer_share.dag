@@ -802,6 +802,10 @@ import v2.std.collection { List }
 // PreparedGrammar is one nullary producer, and the refusal-arm counts over the live grammar are
 // another. A PreparedGrammar is the value dag_prepared_grammar already serves; the census is a record
 // of two Ints. Both WARM: one grammar preparation is more than one claim's budget.
+// THE infer_fold_member_instance PROGRAMS ARE ASSEMBLED ONCE EACH: four one-module fold sources through the
+// production assembly route plus infer. The record fold's producer serves three claims (a record of two Bools and
+// the supplied-tree control's reason); the other three each return one Symbol. WARM: one assembly is more than
+// one claim's budget.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.parameter_reference.pr_program_parameter_paths",
   "v2.test.claim.parameter_reference.pr_program_grounding",
@@ -1431,7 +1435,11 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.declaration_graft_assemble.declaration_graft_record_type_only_assembled",
   "v2.test.claim.declaration_graft_assemble.declaration_graft_flag_and_rec_assembled",
   "v2.test.claim.declaration_graft_assemble.declaration_graft_where_alias_undeclared_carrier_assembled",
-  "v2.test.claim.body_cast_node.bcn_refinement_of_refinement_as_its_carrier"
+  "v2.test.claim.body_cast_node.bcn_refinement_of_refinement_as_its_carrier",
+  "v2.test.claim.compiler.infer_fold_member_instance.fmi_record_fold_reading",
+  "v2.test.claim.compiler.infer_fold_member_instance.fmi_undeclared_field_reason",
+  "v2.test.claim.compiler.infer_fold_member_instance.fmi_sum_fold_reason",
+  "v2.test.claim.compiler.infer_fold_member_instance.fmi_body_not_carrier_reason"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.
