@@ -1,0 +1,19 @@
+module gunbc.recurring_failure_mode.fold_realized_loop_carries_no_iteration_direction
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data fold_realized_loop_carries_no_iteration_direction: RecurringFailureMode = RecurringFailureMode {
+  identity: "fold_realized_loop_carries_no_iteration_direction" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: a fold-realized Loop carries no iteration direction. v2.compiler.fold_lowering fold_recurrence_encoding builds the identical Loop for the collection fold, fold_list (left) and fold_list_right (right), and since N7-1b for map, whose synthesized step conses onto the carrier and is order-preserving ONLY under right-to-left iteration (all joins with &&, which is order-insensitive). The meaning is implied by the realized declaration (^loop_realized_declaration_edge), and no executor reads it: v2.compiler.eval executes a Loop through the runtime LoopInterpreter (eval_loop_node, step_loop) without consulting the realized edge, and the native route executes the seed's emission of the .dag source, not this encoding. HARM, latent: an executor that ran these encodings left-to-right would return map results reversed, which is silent wrongness, and fold_list vs fold_list_right would be indistinguishable. Today nothing executes them, so no program observes it.",
+    "DISTINGUISHING FACTS: this is not a cost defect. Each synthesized step is O(1) per member (one Cons onto the carrier, never snoc or append), held structurally by v2.test.claim.compiler.collection_callback_realization ccr_map_step_conses_onto_its_accumulator. It is also why an eval_steps figure for `map` measures the seed path, not this lowering.",
+    "RUNG FOUND AT: outside the executed path, latent; it becomes silent wrongness the moment an executor consumes the encoding, so it must climb before any does. CEILING: structurally impossible, since direction is decidable from the realized row. NEXT-RUNG TRIGGER, stated as the capability: a per-row iteration-direction fact derived from the template (or the realized declaration) AND an executor of fold-realized Loops that consumes it, SUFFICIENT FOR map, fold_list and fold_list_right encodings to evaluate in their declared order, with a control that reverses the fact and goes red.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.fold_lowering", decl_name: "fold_recurrence_encoding", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.fold_lowering", decl_name: "CallbackRealization", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.test.claim.compiler.collection_callback_realization", decl_name: "ccr_map_step_conses_onto_its_accumulator", field: WholeDeclaration },
+  ],
+}
