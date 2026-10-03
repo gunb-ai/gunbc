@@ -123,3 +123,32 @@ test fn uri_percent_encode_code_points_e_acute_sequence_holds() -> Bool {
     UriPercentComponentRefused { cause: _ } => false
   }
 }
+
+fn witness_percent_decoded(value: String) -> String {
+  match uri_percent_decode_component(value: value) {
+    UriPercentComponentDecoded { value: v } => v
+    UriPercentDecodeRefused { cause: c } => join(["REFUSED: ", uri_percent_decode_refusal_reason(cause: c)], "")
+  }
+}
+
+// THE DECODE READS EACH ESCAPE ONCE. An encoded percent sign followed by hex digits stays the
+// literal three characters, which is the case a replace-in-sequence decode gets wrong; an
+// authorization-code-shaped value decodes its reserved characters in either hex case; a value
+// with no escape, and the empty value, are themselves.
+test fn uri_percent_decode_reads_each_escape_exactly_once() -> Bool {
+  witness_percent_decoded(value: "%252F") == "%2F"
+    && witness_percent_decoded(value: "4%2F0AX4-b%3D%2B") == "4/0AX4-b=+"
+    && witness_percent_decoded(value: "a%2fb%3d") == "a/b="
+    && witness_percent_decoded(value: "plain-code_1") == "plain-code_1"
+    && witness_percent_decoded(value: "") == ""
+}
+
+// THE DECODE REFUSES WHAT IT CANNOT READ, each with its own cause: a truncated escape, a non-hex
+// digit, a control octet and a non-ASCII octet. None passes through as plausible text.
+test fn uri_percent_decode_refuses_malformed_and_unadmitted_escapes() -> Bool {
+  uri_percent_decode_component(value: "abc%2") == UriPercentDecodeRefused { cause: UriPercentDecodeTruncatedEscape }
+    && uri_percent_decode_component(value: "abc%") == UriPercentDecodeRefused { cause: UriPercentDecodeTruncatedEscape }
+    && uri_percent_decode_component(value: "%G1") == UriPercentDecodeRefused { cause: UriPercentDecodeNonHexDigit { cp: 71 } }
+    && uri_percent_decode_component(value: "a%0D%0Ab") == UriPercentDecodeRefused { cause: UriPercentDecodeOctetNotAdmitted { octet: 13 } }
+    && uri_percent_decode_component(value: "%C3%A9") == UriPercentDecodeRefused { cause: UriPercentDecodeOctetNotAdmitted { octet: 195 } }
+}

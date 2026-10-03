@@ -4,6 +4,9 @@
 use self::ParsedHrefScheme::*;
 use self::UriHexNibble::*;
 use self::UriHexNibbleConstruction::*;
+use self::UriPercentDecodeComponent::*;
+use self::UriPercentDecodeHexDigit::*;
+use self::UriPercentDecodeRefusalCause::*;
 use self::UriPercentEncodeComponent::*;
 use self::UriPercentEncodeFoldState::*;
 use self::UriPercentEncodeRefusalCause::*;
@@ -1021,6 +1024,234 @@ pub fn uri_percent_encode_code_points(code_points: Rc<Vec<i64>>) -> Rc<UriPercen
                     ))
                 }
             }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum UriPercentDecodeRefusalCause {
+    UriPercentDecodeTruncatedEscape,
+    UriPercentDecodeNonHexDigit { cp: i64 },
+    UriPercentDecodeOctetNotAdmitted { octet: i64 },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum UriPercentDecodeComponent {
+    UriPercentComponentDecoded {
+        value: String,
+    },
+    UriPercentDecodeRefused {
+        cause: Rc<UriPercentDecodeRefusalCause>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum UriPercentDecodeHexDigit {
+    UriPercentDecodeHexDigitRead {
+        digit: i64,
+    },
+    UriPercentDecodeHexDigitRefused {
+        cause: Rc<UriPercentDecodeRefusalCause>,
+    },
+}
+
+pub fn uri_percent_decode_hex_digit(position: Option<i64>) -> Rc<UriPercentDecodeHexDigit> {
+    match position.clone() {
+        std::option::Option::None => {
+            Rc::new(UriPercentDecodeHexDigit::UriPercentDecodeHexDigitRefused {
+                cause: Rc::new(UriPercentDecodeRefusalCause::UriPercentDecodeTruncatedEscape),
+            })
+        }
+        Some(cp) => {
+            if ((cp.clone() >= 48) && (cp.clone() <= 57)) {
+                Rc::new(UriPercentDecodeHexDigit::UriPercentDecodeHexDigitRead {
+                    digit: v1_rt::int_sub(cp.clone(), 48),
+                })
+            } else {
+                if ((cp.clone() >= 65) && (cp.clone() <= 70)) {
+                    Rc::new(UriPercentDecodeHexDigit::UriPercentDecodeHexDigitRead {
+                        digit: v1_rt::int_sub(cp.clone(), 55),
+                    })
+                } else {
+                    if ((cp.clone() >= 97) && (cp.clone() <= 102)) {
+                        Rc::new(UriPercentDecodeHexDigit::UriPercentDecodeHexDigitRead {
+                            digit: v1_rt::int_sub(cp.clone(), 87),
+                        })
+                    } else {
+                        Rc::new(UriPercentDecodeHexDigit::UriPercentDecodeHexDigitRefused {
+                            cause: Rc::new(
+                                UriPercentDecodeRefusalCause::UriPercentDecodeNonHexDigit {
+                                    cp: cp.clone(),
+                                },
+                            ),
+                        })
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn uri_percent_decode_escaped_piece(piece: String) -> Rc<UriPercentDecodeComponent> {
+    {
+        let cps = Rc::new(piece.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
+        match (*uri_percent_decode_hex_digit(cps.clone().first().cloned())).clone() {
+            UriPercentDecodeHexDigit::UriPercentDecodeHexDigitRefused { cause: c, .. } => {
+                Rc::new(UriPercentDecodeComponent::UriPercentDecodeRefused { cause: c.clone() })
+            }
+            UriPercentDecodeHexDigit::UriPercentDecodeHexDigitRead { digit: hi, .. } => {
+                match (*uri_percent_decode_hex_digit(
+                    cps.clone().iter().cloned().skip(1 as usize).next(),
+                ))
+                .clone()
+                {
+                    UriPercentDecodeHexDigit::UriPercentDecodeHexDigitRefused {
+                        cause: c, ..
+                    } => Rc::new(UriPercentDecodeComponent::UriPercentDecodeRefused {
+                        cause: c.clone(),
+                    }),
+                    UriPercentDecodeHexDigit::UriPercentDecodeHexDigitRead {
+                        digit: lo, ..
+                    } => {
+                        let octet = v1_rt::int_add(v1_rt::int_mul(hi.clone(), 16), lo.clone());
+                        if ((octet.clone() >= 32) && (octet.clone() <= 126)) {
+                            Rc::new(UriPercentDecodeComponent::UriPercentComponentDecoded {
+                                value: v1_rt::concat(
+                                    Rc::new(vec![v1_rt::from_code_point(octet.clone())]),
+                                    Rc::new({
+                                        let mut __result = Vec::new();
+                                        for cp in Rc::new(
+                                            cps.clone()
+                                                .iter()
+                                                .cloned()
+                                                .skip(2 as usize)
+                                                .collect::<Vec<_>>(),
+                                        )
+                                        .iter()
+                                        .cloned()
+                                        {
+                                            __result.push(v1_rt::from_code_point(cp.clone()));
+                                        }
+                                        __result
+                                    }),
+                                )
+                                .join(&"".to_string()),
+                            })
+                        } else {
+                            Rc::new(UriPercentDecodeComponent::UriPercentDecodeRefused {
+    cause: Rc::new(UriPercentDecodeRefusalCause::UriPercentDecodeOctetNotAdmitted {
+    octet: octet.clone(),
+}),
+})
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn uri_percent_decode_component(value: String) -> Rc<UriPercentDecodeComponent> {
+    {
+        let pieces = Rc::new(
+            value
+                .clone()
+                .split(&"%".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        );
+        let literal_head = match pieces.clone().first().cloned() {
+            Some(head) => head.clone(),
+            std::option::Option::None => "".to_string(),
+        };
+        let decoded = Rc::new({
+            let mut __result = Vec::new();
+            for piece in Rc::new(
+                pieces
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .skip(1 as usize)
+                    .collect::<Vec<_>>(),
+            )
+            .iter()
+            .cloned()
+            {
+                __result.push(uri_percent_decode_escaped_piece(piece.clone()));
+            }
+            __result
+        });
+        let first_refusal = decoded.iter().cloned().fold(
+            std::option::Option::None,
+            |acc: _, d: Rc<UriPercentDecodeComponent>| match acc.clone() {
+                Some(_) => acc.clone(),
+                std::option::Option::None => match (*d.clone()).clone() {
+                    UriPercentDecodeComponent::UriPercentDecodeRefused { cause: c, .. } => {
+                        Some(c.clone())
+                    }
+                    UriPercentDecodeComponent::UriPercentComponentDecoded { value: _, .. } => {
+                        std::option::Option::None
+                    }
+                },
+            },
+        );
+        match first_refusal.clone() {
+            Some(cause) => Rc::new(UriPercentDecodeComponent::UriPercentDecodeRefused {
+                cause: cause.clone(),
+            }),
+            std::option::Option::None => {
+                Rc::new(UriPercentDecodeComponent::UriPercentComponentDecoded {
+                    value: v1_rt::concat(
+                        Rc::new(vec![literal_head.clone()]),
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for d in decoded.iter().cloned() {
+                                __result.extend(
+                                    (*match (*d.clone()).clone() {
+                                        UriPercentDecodeComponent::UriPercentComponentDecoded {
+                                            value: text,
+                                            ..
+                                        } => Rc::new(vec![text.clone()]),
+                                        UriPercentDecodeComponent::UriPercentDecodeRefused {
+                                            cause: _,
+                                            ..
+                                        } => Rc::new(vec![]),
+                                    })
+                                    .iter()
+                                    .cloned(),
+                                );
+                            }
+                            __result
+                        }),
+                    )
+                    .join(&"".to_string()),
+                })
+            }
+        }
+    }
+}
+
+pub fn uri_percent_decode_refusal_reason(cause: Rc<UriPercentDecodeRefusalCause>) -> String {
+    match (*cause.clone()).clone() {
+        UriPercentDecodeRefusalCause::UriPercentDecodeTruncatedEscape => {
+            "a percent sign is not followed by two hex digits".to_string()
+        }
+        UriPercentDecodeRefusalCause::UriPercentDecodeNonHexDigit { cp: cp, .. } => Rc::new(vec![
+            "a percent escape carries a non-hex digit (code point ".to_string(),
+            (cp.clone()).to_string(),
+            ")".to_string(),
+        ])
+        .join(&"".to_string()),
+        UriPercentDecodeRefusalCause::UriPercentDecodeOctetNotAdmitted { octet: o, .. } => {
+            Rc::new(vec![
+                "a percent escape decodes to octet ".to_string(),
+                (o.clone()).to_string(),
+                ", outside printable ASCII".to_string(),
+            ])
+            .join(&"".to_string())
         }
     }
 }

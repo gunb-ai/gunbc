@@ -21988,6 +21988,27 @@ pub fn handle_serve(
             .unwrap_or_else(|| "unset".to_string()),
     );
     let listener_attests_peer = matches!(listener, ServeListener::Unix(..));
+    // THE ARGUMENT PLAN IS DERIVED ONCE FROM THE ENTRY'S DECLARED PARAMETERS. A parameter naming
+    // no request fact, or naming an attested peer on a listener that attests none, refuses here,
+    // before the first connection, rather than as a per-request 500.
+    let handler_facts = match v1_interpreter::declared_parameter_names(
+        &ctx,
+        serve_budget_refusal::serve_contract_entry(&armed_contract),
+    )
+    .ok_or_else(|| {
+        format!(
+            "no function `{}` in the entry closure",
+            serve_budget_refusal::serve_contract_entry(&armed_contract)
+        )
+    })
+    .and_then(|declared| serve_handler_fact_plan(&declared, listener_attests_peer))
+    {
+        Ok(plan) => plan,
+        Err(e) => {
+            eprintln!("error: {}", e);
+            std::process::exit(1);
+        }
+    };
     v1_interpreter::with_active_context(&ctx, || {
         loop {
             let (mut conn, peer_user) = match listener.accept() {
@@ -22004,6 +22025,7 @@ pub fn handle_serve(
                     400,
                     "text/plain; charset=utf-8",
                     &format!("bad request: {}\n", reason),
+                    &[],
                 ),
                 // Idle or cleanly-closed connection: no request was made, so the
                 // connection is dropped without a response.
@@ -22028,8 +22050,8 @@ pub fn handle_serve(
                 // NO BUDGET IS ARMED and no `.dag` function is called, deliberately: arming a
                 // deadline around a `format!` would be ceremony, and reaching the evaluator at all
                 // would reintroduce the dependency this endpoint exists to remove.
-                Ok(Some((method, path, _body, _identity)))
-                    if method == "GET" && path == SERVE_LIVENESS_PATH =>
+                Ok(Some(request))
+                    if request.method == "GET" && request.path == SERVE_LIVENESS_PATH =>
                 {
                     serve_write_response(
                         &mut *stream,
@@ -22045,16 +22067,16 @@ pub fn handle_serve(
                             serve_json_string(&bound.host),
                             bound.port,
                         ),
-                    )
+                    &[],
+                )
                 }
-                Ok(Some((method, path, body, tailscale_identity))) => {
+                Ok(Some(request)) => {
                     let args = serve_handler_args(
-                        method,
-                        path,
-                        body,
-                        tailscale_identity,
-                        release_revision.clone(),
-                        if listener_attests_peer { Some(peer_user.clone()) } else { None },
+                        &ctx,
+                        &handler_facts,
+                        request,
+                        &release_revision,
+                        &peer_user,
                     );
                     // THE DEADLINE IS ARMED HERE, AROUND THIS CALL, AND THE SCOPE IS THE POINT.
                     // Before this existed the serve path armed nothing, so a route evaluation
@@ -22105,7 +22127,8 @@ pub fn handle_serve(
                                         500,
                                         "text/plain; charset=utf-8",
                                         "budget refusal did not name the armed contract\n",
-                                    )
+                    &[],
+                )
                                 } else {
                                 // Refusal rendering is HOST-SIDE by necessity, not by preference:
                                 // the evaluation that would have rendered it is the one that was
@@ -22128,7 +22151,8 @@ pub fn handle_serve(
                                     &serve_budget_refusal::serve_budget_refusal_machine_body(
                                         &refusal,
                                     ),
-                                )
+                    &[],
+                )
                                 }
                             }
                             None => serve_write_response(
@@ -22136,24 +22160,38 @@ pub fn handle_serve(
                                 500,
                                 "text/plain; charset=utf-8",
                                 &format!("handler error: {}\n", e),
-                            ),
+                    &[],
+                ),
                         },
                         Ok(val) => match serve_wire_fields(&val, &ctx) {
-                            Some((status, content_type, resp_body)) => serve_write_response(
-                                &mut *stream,
-                                status,
-                                &content_type,
-                                &resp_body,
-                            ),
+                            Some((status, content_type, resp_body, resp_headers)) => {
+                                match serve_response_headers_admitted(&resp_headers) {
+                                    Ok(()) => serve_write_response(
+                                        &mut *stream,
+                                        status,
+                                        &content_type,
+                                        &resp_body,
+                                        &resp_headers,
+                                    ),
+                                    Err(reason) => serve_write_response(
+                                        &mut *stream,
+                                        500,
+                                        "text/plain; charset=utf-8",
+                                        &format!("handler response header refused: {}\n", reason),
+                                        &[],
+                                    ),
+                                }
+                            }
                             None => serve_write_response(
                                 &mut *stream,
                                 500,
                                 "text/plain; charset=utf-8",
                                 &format!(
-                                    "handler returned `{}`, not ServeWireResponse {{ status: Int, content_type_label: String, body: String }}\n",
+                                    "handler returned `{}`, not ServeWireResponse {{ status: Int, content_type_label: String, body: String, headers: List<ServeWireHeader> }}\n",
                                     ctx.format_value(&val)
                                 ),
-                            ),
+                    &[],
+                ),
                         },
                     }
                 }
@@ -22301,37 +22339,126 @@ impl ServeListener {
     }
 }
 
-// THE HANDLER'S ARGUMENTS, NAMED. The tailscale identity is empty when the header was absent (the
-// `.dag` side refuses on empty rather than treating it as anonymous); the release revision is fixed
-// for the process lifetime. THE PEER IS AN ARGUMENT ONLY WHERE THE KERNEL ATTESTS ONE: a named
-// argument the handler does not declare is a call-contract refusal, not a dropped value, so handing
-// peer_user to a TCP handler (the roadmap's) refused every request with a 500 on srv1
-// (dashboard_deploy run 36584004074). Only the --unix-socket listener passes Some.
-fn serve_handler_args(
+// THE HANDLER'S ARGUMENTS ARE DERIVED FROM THE ENTRY'S DECLARED PARAMETERS. The seam offers a
+// closed vocabulary of request facts; an entry receives exactly the facts it declares, by name.
+// A named argument the handler does not declare is a call-contract refusal (srv1 500, run
+// 36584004074), which is why the facts are selected by the declaration rather than pushed
+// unconditionally or conditioned per fact. The tailscale identity is empty when the header was
+// absent (the `.dag` side refuses on empty rather than treating it as anonymous); the release
+// revision is fixed for the process lifetime; `request_headers` is every header field of the
+// request as `ServeRequestHeader { name, value }` with the name lowercased (field names are
+// case-insensitive, RFC 9110 section 5.1) and nothing interpreted.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ServeRequestFact {
+    Method,
+    Path,
+    Body,
+    TailscaleIdentity,
+    ReleaseRevision,
+    PeerUser,
+    RequestHeaders,
+}
+
+impl ServeRequestFact {
+    const ALL: [ServeRequestFact; 7] = [
+        ServeRequestFact::Method,
+        ServeRequestFact::Path,
+        ServeRequestFact::Body,
+        ServeRequestFact::TailscaleIdentity,
+        ServeRequestFact::ReleaseRevision,
+        ServeRequestFact::PeerUser,
+        ServeRequestFact::RequestHeaders,
+    ];
+
+    fn parameter_name(self) -> &'static str {
+        match self {
+            ServeRequestFact::Method => "method",
+            ServeRequestFact::Path => "path",
+            ServeRequestFact::Body => "body",
+            ServeRequestFact::TailscaleIdentity => "tailscale_identity",
+            ServeRequestFact::ReleaseRevision => "release_revision",
+            ServeRequestFact::PeerUser => "peer_user",
+            ServeRequestFact::RequestHeaders => "request_headers",
+        }
+    }
+}
+
+// THE PEER IS A FACT ONLY WHERE THE KERNEL ATTESTS ONE: an entry declaring `peer_user` behind a
+// listener that attests none is refused, never handed an empty peer.
+fn serve_handler_fact_plan(
+    declared: &[String],
+    listener_attests_peer: bool,
+) -> Result<Vec<ServeRequestFact>, String> {
+    declared
+        .iter()
+        .map(|name| {
+            let fact = ServeRequestFact::ALL
+                .iter()
+                .copied()
+                .find(|fact| fact.parameter_name() == name)
+                .ok_or_else(|| {
+                    format!(
+                        "serve entry declares parameter `{}`, which names no request fact (offered: {})",
+                        name,
+                        ServeRequestFact::ALL
+                            .iter()
+                            .map(|fact| fact.parameter_name())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                })?;
+            if fact == ServeRequestFact::PeerUser && !listener_attests_peer {
+                return Err(
+                    "serve entry declares `peer_user`, but only the --unix-socket listener attests a peer"
+                        .to_string(),
+                );
+            }
+            Ok(fact)
+        })
+        .collect()
+}
+
+struct ServeRequest {
     method: String,
     path: String,
     body: String,
     tailscale_identity: String,
-    release_revision: String,
-    attested_peer: Option<String>,
+    headers: Vec<(String, String)>,
+}
+
+fn serve_handler_args(
+    ctx: &v1_interpreter::InterpContext,
+    plan: &[ServeRequestFact],
+    request: ServeRequest,
+    release_revision: &str,
+    peer_user: &str,
 ) -> Vec<(Option<String>, v1_interpreter::Value)> {
-    let mut args = vec![
-        (Some("method".to_string()), str_value(method)),
-        (Some("path".to_string()), str_value(path)),
-        (Some("body".to_string()), str_value(body)),
-        (
-            Some("tailscale_identity".to_string()),
-            str_value(tailscale_identity),
-        ),
-        (
-            Some("release_revision".to_string()),
-            str_value(release_revision),
-        ),
-    ];
-    if let Some(peer) = attested_peer {
-        args.push((Some("peer_user".to_string()), str_value(peer)));
-    }
-    args
+    plan.iter()
+        .map(|fact| {
+            let value = match fact {
+                ServeRequestFact::Method => str_value(&request.method),
+                ServeRequestFact::Path => str_value(&request.path),
+                ServeRequestFact::Body => str_value(&request.body),
+                ServeRequestFact::TailscaleIdentity => str_value(&request.tailscale_identity),
+                ServeRequestFact::ReleaseRevision => str_value(release_revision),
+                ServeRequestFact::PeerUser => str_value(peer_user),
+                ServeRequestFact::RequestHeaders => list_value_from_vec(
+                    request
+                        .headers
+                        .iter()
+                        .map(|(name, value)| v1_interpreter::Value::Record {
+                            type_name: ctx.sym("ServeRequestHeader"),
+                            fields: Rc::new(v1_interpreter::sorted_fields(vec![
+                                (ctx.sym("name"), str_value(name)),
+                                (ctx.sym("value"), str_value(value)),
+                            ])),
+                        })
+                        .collect(),
+                ),
+            };
+            (Some(fact.parameter_name().to_string()), value)
+        })
+        .collect()
 }
 
 fn serve_peer_user(s: &std::os::unix::net::UnixStream) -> std::io::Result<String> {
@@ -22365,9 +22492,7 @@ fn serve_peer_user(s: &std::os::unix::net::UnixStream) -> std::io::Result<String
     Ok(name.to_string_lossy().into_owned())
 }
 
-fn serve_read_request(
-    stream: &mut dyn ServeConnection,
-) -> Result<Option<(String, String, String, String)>, String> {
+fn serve_read_request(stream: &mut dyn ServeConnection) -> Result<Option<ServeRequest>, String> {
     use std::io::{BufRead, Read};
     const MAX_HEAD: usize = 16 << 10;
     const MAX_BODY: usize = 1 << 20;
@@ -22415,6 +22540,7 @@ fn serve_read_request(
     }
     let mut content_length: Option<usize> = None;
     let mut tailscale_identity: Option<String> = None;
+    let mut headers: Vec<(String, String)> = Vec::new();
     loop {
         let mut line = String::new();
         let n = reader
@@ -22435,6 +22561,7 @@ fn serve_read_request(
             break;
         }
         if let Some((name, value)) = line.split_once(':') {
+            headers.push((name.to_ascii_lowercase(), value.trim().to_string()));
             if name.eq_ignore_ascii_case("content-length") {
                 if content_length.is_some() {
                     return Err("duplicate Content-Length header".to_string());
@@ -22469,12 +22596,13 @@ fn serve_read_request(
         .read_exact(&mut body_bytes)
         .map_err(|e| format!("read body: {}", e))?;
     let body = String::from_utf8(body_bytes).map_err(|e| format!("body not utf-8: {}", e))?;
-    Ok(Some((
+    Ok(Some(ServeRequest {
         method,
-        target,
+        path: target,
         body,
-        tailscale_identity.unwrap_or_default(),
-    )))
+        tailscale_identity: tailscale_identity.unwrap_or_default(),
+        headers,
+    }))
 }
 
 fn serve_write_response(
@@ -22482,10 +22610,13 @@ fn serve_write_response(
     status: u16,
     content_type: &str,
     body: &str,
+    headers: &[(String, String)],
 ) {
     use std::io::Write;
     let reason = match status {
         200 => "OK",
+        302 => "Found",
+        303 => "See Other",
         400 => "Bad Request",
         404 => "Not Found",
         405 => "Method Not Allowed",
@@ -22496,12 +22627,20 @@ fn serve_write_response(
         503 => "Service Unavailable",
         _ => "",
     };
+    let mut extra = String::new();
+    for (name, value) in headers {
+        extra.push_str(name);
+        extra.push_str(": ");
+        extra.push_str(value);
+        extra.push_str("\r\n");
+    }
     let response = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n{}\r\n{}",
         status,
         reason,
         content_type,
         body.len(),
+        extra,
         body
     );
     if let Err(e) = stream.write_all(response.as_bytes()) {
@@ -22509,12 +22648,42 @@ fn serve_write_response(
     }
 }
 
+/// THE RESPONSE-HEADER WALL. The seam writes a handler's header fields verbatim, so it refuses
+/// the two things that would let a field escape its line or contradict the framing the seam owns:
+/// a name that is not an RFC 9110 token or a value carrying CR, LF or NUL (response splitting),
+/// and a name the seam itself writes (Content-Type, Content-Length, Connection).
+fn serve_response_headers_admitted(headers: &[(String, String)]) -> Result<(), String> {
+    for (name, value) in headers {
+        let token = !name.is_empty()
+            && name
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b));
+        if !token {
+            return Err(format!("field name {:?} is not an HTTP token", name));
+        }
+        if ["content-type", "content-length", "connection"]
+            .iter()
+            .any(|owned| name.eq_ignore_ascii_case(owned))
+        {
+            return Err(format!("field {:?} is written by the serve seam", name));
+        }
+        if value.bytes().any(|b| b == b'\r' || b == b'\n' || b == 0) {
+            return Err(format!(
+                "field {:?} carries CR, LF or NUL in its value",
+                name
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Read back the .dag handler's ServeWireResponse record. None = wrong shape
-/// (surfaced as a typed 500 by the caller, never a fabricated response).
+/// (surfaced as a typed 500 by the caller, never a fabricated response). `headers` is a list of
+/// `ServeWireHeader { name, value }` in write order; no field is interpreted here.
 fn serve_wire_fields(
     val: &v1_interpreter::Value,
     ctx: &v1_interpreter::InterpContext,
-) -> Option<(u16, String, String)> {
+) -> Option<(u16, String, String, Vec<(String, String)>)> {
     if let v1_interpreter::Value::Record { type_name, fields } = val {
         if !ctx.sym_eq(*type_name, "ServeWireResponse") {
             return None;
@@ -22531,7 +22700,22 @@ fn serve_wire_fields(
             Some(Value::Str(s)) => s.to_string(),
             _ => return None,
         };
-        return Some((status, content_type, body));
+        let mut headers = Vec::new();
+        for item in v1_interpreter::free_monoid_to_vec(ctx.field(fields, "headers")?)? {
+            let v1_interpreter::Value::Record { type_name, fields } = &item else {
+                return None;
+            };
+            if !ctx.sym_eq(*type_name, "ServeWireHeader") {
+                return None;
+            }
+            match (ctx.field(fields, "name"), ctx.field(fields, "value")) {
+                (Some(Value::Str(name)), Some(Value::Str(value))) => {
+                    headers.push((name.to_string(), value.to_string()))
+                }
+                _ => return None,
+            }
+        }
+        return Some((status, content_type, body, headers));
     }
     None
 }
@@ -47066,42 +47250,58 @@ mod serve_unix_socket_door_tests {
         assert_eq!(std::fs::read(&path).unwrap(), b"data");
     }
 
-    // A TCP handler is handed exactly the five arguments every existing handler declares -- never
-    // peer_user, whose presence refuses a handler that does not declare it (srv1 500, run 36584004074).
+    // The argument plan is the entry's declared parameters, in order: a three-parameter entry
+    // is handed three facts, a declared `request_headers` is handed the header list, an unknown
+    // name refuses, and `peer_user` refuses on a listener that attests none.
     #[test]
-    fn a_tcp_handler_is_not_handed_peer_user() {
-        let names = |a: &Vec<(Option<String>, v1_interpreter::Value)>| -> Vec<String> {
-            a.iter()
-                .map(|(n, _)| n.clone().unwrap_or_default())
-                .collect()
-        };
-        let tcp = serve_handler_args(
-            "GET".into(),
-            "/x".into(),
-            String::new(),
-            String::new(),
-            "r".into(),
-            None,
-        );
+    fn handler_facts_follow_the_declared_parameters() {
+        let declared =
+            |names: &[&str]| -> Vec<String> { names.iter().map(|n| n.to_string()).collect() };
+        let plan = serve_handler_fact_plan(&declared(&["method", "path", "body"]), false).unwrap();
         assert_eq!(
-            names(&tcp),
+            plan,
             vec![
-                "method",
-                "path",
-                "body",
-                "tailscale_identity",
-                "release_revision"
+                ServeRequestFact::Method,
+                ServeRequestFact::Path,
+                ServeRequestFact::Body
             ]
         );
-        let unix = serve_handler_args(
-            "GET".into(),
-            "/x".into(),
-            String::new(),
-            String::new(),
-            "r".into(),
-            Some("ghrunner".into()),
+        assert_eq!(
+            serve_handler_fact_plan(&declared(&["request_headers"]), false).unwrap(),
+            vec![ServeRequestFact::RequestHeaders]
         );
-        assert_eq!(names(&unix).last().map(|s| s.as_str()), Some("peer_user"));
+        assert!(
+            serve_handler_fact_plan(&declared(&["cookie_header"]), false)
+                .unwrap_err()
+                .contains("names no request fact")
+        );
+        assert!(serve_handler_fact_plan(&declared(&["peer_user"]), false)
+            .unwrap_err()
+            .contains("attests a peer"));
+        assert_eq!(
+            serve_handler_fact_plan(&declared(&["peer_user"]), true).unwrap(),
+            vec![ServeRequestFact::PeerUser]
+        );
+    }
+
+    // The header wall refuses a split value, a non-token name and a seam-owned field, and admits
+    // the three fields the sign-in surface sets.
+    #[test]
+    fn response_header_wall_refuses_splitting_and_seam_owned_fields() {
+        let h = |n: &str, v: &str| vec![(n.to_string(), v.to_string())];
+        assert!(serve_response_headers_admitted(&h("Location", "/a\r\nSet-Cookie: x=1")).is_err());
+        assert!(serve_response_headers_admitted(&h("Bad Name", "v")).is_err());
+        assert!(serve_response_headers_admitted(&h("", "v")).is_err());
+        assert!(serve_response_headers_admitted(&h("content-length", "0")).is_err());
+        assert!(serve_response_headers_admitted(&[
+            ("Location".to_string(), "/".to_string()),
+            (
+                "Set-Cookie".to_string(),
+                "a=b; Path=/; HttpOnly".to_string()
+            ),
+            ("Cache-Control".to_string(), "no-store".to_string()),
+        ])
+        .is_ok());
     }
 
     // A TCP listener attests nothing: its peer is empty, which the fabric door refuses to admit.

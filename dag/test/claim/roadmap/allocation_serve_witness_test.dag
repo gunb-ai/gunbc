@@ -2,9 +2,24 @@ module test.claim.allocation_serve_witness
 
 import std.types { Bool }
 import extdeps.ietf.http_semantics { GET, POST }
-import extdeps.http.server { serve_select_route, MethodNotAllowed }
-import gunbc.roadmap_serve { AllocationPageHandler, AllocationClientHandler }
-import test.claim.roadmap_serve_witness { selects, live_table_or_empty }
+import extdeps.http.server {
+  ServeResponseHeaderNoStore, ServeResponseHeaderLocation, ServeResponseHeaderSetCookie,
+  serve_select_route, MethodNotAllowed,
+}
+import gunbc.roadmap_serve { allocation_page_response_over, AllocationPageHandler, AllocationClientHandler }
+import test.claim.roadmap_serve_witness { fixture_request, selects, live_table_or_empty }
+
+// The no-store decision does not read the roadmap stylesheet, so the claim supplies an empty one
+// (gunbc.roadmap_serve allocation_page_response_over); the served route passes roadmap_css(), whose
+// bytes test.claim.design_register_lift_parity_witness witness_roadmap_css_digest_pinned derives.
+test fn allocation_personalized_response_is_not_cached() -> Bool {
+  let response = allocation_page_response_over(request: fixture_request(method: GET, path: "/allocations"), roadmap_stylesheet: "")
+  response.status == 200 && any(response.headers, h => match h {
+    ServeResponseHeaderNoStore => true
+    ServeResponseHeaderLocation { location: _ } => false
+    ServeResponseHeaderSetCookie { set_cookie: _ } => false
+  })
+}
 
 test fn allocation_routes_have_no_write_handler() -> Bool {
   selects(method: GET, path: "/allocations", want: AllocationPageHandler)

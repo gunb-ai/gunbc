@@ -112,6 +112,7 @@ fn mint_authenticated_session(
   admit_callers: [
     decl_ref(module_path: "test.claim.auth_session_witness_test", decl_name: "witness_mint_session"),
     decl_ref(module_path: "test.claim.request_authentication_witness_test", decl_name: "witness_mint_session"),
+    decl_ref(module_path: "gunbc.roadmap_serve", decl_name: "auth_callback_mint_session"),
   ]
 {
   if login_transaction_expired(t: transaction, observed_at: observed_at) {
@@ -310,15 +311,15 @@ fn session_cookie_id_of_value(value: String) -> SessionCookieIdParse {
   }
 }
 
-// THE OUTBOUND Set-Cookie LINE, derived from the attribute data rows so the spelling the ruling
+// THE OUTBOUND Set-Cookie FIELD VALUE (the field name is the header carrier's fact,
+// extdeps.http.server ServeResponseHeaderSetCookie), derived from the attribute data rows so the spelling the ruling
 // spelled ("Secure, HttpOnly, SameSite=Lax, path-bound, bounded lifetime") is emitted verbatim
 // and cannot drift from the rows the witness checks. Max-Age is the bounded lifetime in whole
 // seconds; the caller supplies it because the lifetime bound is the login policy's fact
 // (gunbc.auth.oidc_deployment_config), not this module's.
-fn session_cookie_set_cookie_line(session_id: NonEmptyStr, max_age_seconds: Nat) -> String {
+fn session_cookie_set_cookie_value(session_id: NonEmptyStr, max_age_seconds: Nat) -> String {
   join(
     [
-      "Set-Cookie: ",
       session_cookie_name as String,
       "=",
       session_id as String,
@@ -336,10 +337,9 @@ fn session_cookie_set_cookie_line(session_id: NonEmptyStr, max_age_seconds: Nat)
 
 // THE LOGOUT CLEARING LINE: same attributes, empty value, zero lifetime, so the browser drops
 // the cookie whether or not the server-side session could be deleted.
-fn session_cookie_clear_line() -> String {
+fn session_cookie_clear_value() -> String {
   join(
     [
-      "Set-Cookie: ",
       session_cookie_name as String,
       "=; Path=",
       session_cookie_path as String,

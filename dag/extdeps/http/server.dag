@@ -295,24 +295,78 @@ type ServeHttpRequest<Authentication> {
   security: RequestSecurityContext<Authentication>
 }
 
+// ONE REQUEST HEADER FIELD AS THE SEAM HANDS IT OVER (RFC 9110 section 5: a field is a name and
+// a value). The name is lowercased by the seam because field names are case-insensitive (section
+// 5.1), so a handler compares against one spelling; the value is the field value with its
+// surrounding whitespace removed and nothing else interpreted. A handler that reads headers
+// declares `request_headers: List<ServeRequestHeader>` on its served entry and receives every
+// field of the request, in arrival order; a handler that declares no such parameter receives
+// none. Which fields mean anything is the handler's fact, never the seam's.
+type ServeRequestHeader {
+  name: String
+  value: String
+}
+
+// Every value the request carried under one field name, in arrival order. The result is a list
+// because a field may legitimately repeat (section 5.3) and whether repetition is admissible is
+// decided by the field's owner: zero, one and many are three different facts.
+fn serve_request_header_values(headers: List<ServeRequestHeader>, name: String) -> List<String> {
+  headers |> flat_map(h => if h.name == name { [h.value] } else { [] })
+}
+
+// THE HANDLER'S RESPONSE, the modeled authority a route returns: status, content type, body and
+// the response HEADERS a route sets. Headers live here because a redirect IS a Location field
+// plus a status and a session IS a Set-Cookie field: they are the handler's answer, not the
+// socket's. Handlers that set none construct the empty list.
 type ServeHttpResponse {
   status: HttpStatus
   content_type: MediaType
   body: String
+  headers: List<ServeResponseHeader>
+}
+
+// ONE RESPONSE HEADER FIELD ON THE WIRE PROJECTION: name and value, kept apart so the seam
+// writes `name: value` and can refuse a value that would escape its line. Content-Type,
+// Content-Length and Connection are the seam's own and are refused here.
+type ServeWireHeader {
+  name: String
+  value: String
 }
 
 // The WIRE projection of ServeHttpResponse — the shape the host accept-loop seam reads back from the one .dag entry it calls (gunbc serve). Status is the bare Int and content type the wire label String so the seam never touches a modeled enum; the modeled ServeHttpResponse stays the authority and this record is its one-way projection (serve_wire_response), never authored directly by handlers.
+// `headers` is in WRITE ORDER.
 type ServeWireResponse {
   status: Int
   content_type_label: String
   body: String
+  headers: List<ServeWireHeader>
 }
 
+// THE RESPONSE FIELDS THE SERVED SURFACES SET, as a closed coproduct a handler constructs rather
+// than a line it concatenates: a redirect target (RFC 9110 section 10.2.2), a cookie (RFC 6265
+// section 4.1) and the no-store cache directive (RFC 9111 section 5.2.2.5). A field outside
+// this set is a new arm with its own construction rule.
+type ServeResponseHeader
+  = ServeResponseHeaderLocation { location: NonEmptyStr }
+  | ServeResponseHeaderSetCookie { set_cookie: NonEmptyStr }
+  | ServeResponseHeaderNoStore
+
+fn serve_response_header_wire(header: ServeResponseHeader) -> ServeWireHeader {
+  match header {
+    ServeResponseHeaderLocation { location: l } => ServeWireHeader { name: "Location", value: l as String }
+    ServeResponseHeaderSetCookie { set_cookie: c } => ServeWireHeader { name: "Set-Cookie", value: c as String }
+    ServeResponseHeaderNoStore => ServeWireHeader { name: "Cache-Control", value: "no-store" }
+  }
+}
+
+// THE ONE PROJECTION. Every served entry returns through it, so a header a handler sets reaches
+// the wire from any route and no entry can drop one by choosing a header-free spelling.
 fn serve_wire_response(r: ServeHttpResponse) -> ServeWireResponse {
   ServeWireResponse {
     status: r.status,
     content_type_label: media_type_wire_label(m: r.content_type),
     body: r.body,
+    headers: map(r.headers, h => serve_response_header_wire(header: h)),
   }
 }
 
