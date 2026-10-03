@@ -2232,7 +2232,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/rung_drop.dag"),
       line: ticket(t: level_fields(
           headline: "DP-M6: v2 native-route walls restored",
-          boundary: "The native-route rung drops retired and the eval-step drop family shrunk. The three drops the census names (g0_type_decl_modifier_parse_without_sealing_property, variant_fields_unlowered_on_the_native_route, admit_callers_discarded_on_the_native_route) exist on main and not on this line, so this milestone's population is re-derived from gunbc.rung_drop once the line carries them.",
+          boundary: "The native-route rung drops retired and the eval-step drop family shrunk. The three drops the census names (g0_type_decl_modifier_parse_without_sealing_property, variant_fields_unlowered_on_the_native_route, admit_callers_discarded_on_the_native_route) existed on main and not on this line. admit_callers_discarded_on_the_native_route is now retired by its own trigger -- the native route checks caller admission from the fn's declared admit_callers list, with the Arrow carrier and its consumer landing together (v2.compiler body_lowering_fold body_lower_fn_admit_clause_edges; v2.compiler.infer infer_caller_admission_diags) -- so it no longer counts. The other two remain, re-derived from gunbc.rung_drop once the line carries them.",
           approach: "Re-derive the population from gunbc.rung_drop, then one drop per change with its RED fixture and positive control.",
           red_control: "A drop retired without its restoration capability executing keeps this open (§4b(3)).",
           displaced_cost: "Each standing drop is a known wall down on the path v2 is meant to run on.",

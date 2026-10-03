@@ -6682,7 +6682,9 @@ fn infer_admission_diags_of(ds: List<Diagnostic>) -> Diagnostics {
 }
 
 // ONE APPLICATION'S VERDICT UNDER `caller`. Only a callee whose Arrow carries the admit edge is
-// judged; every other call is outside this wall.
+// judged; every other call is outside this wall. Failure arms FAIL CLOSED: more than one
+// AdmitCallersEdge on a callee Arrow is not "no restriction" -- it refuses with a typed, located
+// diagnostic rather than passing the application unjudged.
 fn infer_caller_admission_application_diags(
   application: Node,
   caller: Optional<InferAdmitCallerCoords>,
@@ -6695,7 +6697,6 @@ fn infer_caller_admission_application_diags(
         Absent => None
         Present { value: arrow } =>
           match core_edge_target_lookup(children: arrow.children, marker: AdmitCallersEdge) {
-        // FAIL CLOSED: more than one AdmitCallersEdge is not "no restriction"; refuse.
         Ambiguous =>
           infer_admission_diags_of([
             Diagnostic {
@@ -6822,11 +6823,11 @@ fn infer_admission_child_context(self: Node, ctx: InferAdmissionCtx, edge: Edge)
 }
 
 // THE WALL, over the whole resolved tree, top-down so each application is judged under the
-// declaration it sits in.
+// declaration it sits in. Failure arms FAIL CLOSED (DESIGN.md §5: refuse, never widen): an
+// unreadable module name cannot key the judge, so the tree refuses with a typed, located
+// diagnostic rather than passing unjudged.
 fn infer_caller_admission_diags(tree: ResolvedTree) -> Diagnostics {
   match qualified_name_from_module_node(root: tree.root) {
-    // FAIL CLOSED: an unreadable module name cannot key the judge, so the tree refuses rather
-    // than passing unjudged (DESIGN.md §5: a failure arm must refuse, never widen).
     Rejected { diagnostics: _ } =>
       infer_admission_diags_of([
         Diagnostic {
