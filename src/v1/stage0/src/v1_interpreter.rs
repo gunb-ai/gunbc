@@ -2195,6 +2195,7 @@ pub fn clear_cross_claim_pure_memos() {
     CROSS_CLAIM_COST_FLOOR_STEPS.with(|c| c.set(0));
     CROSS_CLAIM_STORE_DECLINES.with(|d| d.borrow_mut().clear());
     CROSS_CLAIM_IN_FLIGHT_WALL_CAP_NANOS.with(|c| c.set(0));
+    CROSS_CLAIM_FILL_NS_PER_STEP_CEILING.with(|c| c.set(0));
     CROSS_CLAIM_SHARE_OBSERVER.with(|o| *o.borrow_mut() = None);
     // The prepared effect inputs are tier state too, and for the sharpest reason: a carry that
     // outlived its subject would serve a later, differently-prepared evaluation a value acquired
@@ -3922,12 +3923,15 @@ mod cross_claim_memo_tests {
         super::clear_cross_claim_pure_memos();
     }
 
-    // AN IN-FLIGHT FILL'S WALL IS EXCUSED ONLY UP TO THE CAP, AND NOTHING WITHOUT ONE.
+    // THE EXCUSAL IS BOUNDED BY THE FILL'S OWN WORK. The stalled control is the point: a fill in
+    // flight that performs NO evaluator steps is excused nothing, however long it has run, so the
+    // claim's wall deadline fires on it. The same fill after doing work is excused in proportion
+    // to its steps, and never past the outer cap.
     #[test]
-    fn in_flight_fill_wall_is_excused_up_to_the_cap_and_not_without_one() {
+    fn a_stalled_in_flight_fill_is_excused_nothing_and_a_working_one_by_its_steps() {
         use super::{
-            in_flight_cross_claim_fill_wall_nanos, install_cross_claim_in_flight_wall_cap_ms,
-            CrossClaimFillGuard,
+            in_flight_cross_claim_fill_wall_nanos, install_cross_claim_in_flight_wall_bound,
+            record_eval_step, CrossClaimFillGuard,
         };
         super::clear_cross_claim_pure_memos();
         let guard = CrossClaimFillGuard::enter("tm_slow");
@@ -3935,19 +3939,34 @@ mod cross_claim_memo_tests {
         assert_eq!(
             in_flight_cross_claim_fill_wall_nanos(),
             0,
-            "no cap installed, nothing excused"
+            "no bound installed: nothing excused"
         );
-        install_cross_claim_in_flight_wall_cap_ms(1);
-        let excused = in_flight_cross_claim_fill_wall_nanos();
-        assert_eq!(
-            excused, 1_000_000,
-            "a 5ms fill against a 1ms cap is excused exactly the cap"
-        );
-        drop(guard);
+        install_cross_claim_in_flight_wall_bound(1_000, 1_000);
         assert_eq!(
             in_flight_cross_claim_fill_wall_nanos(),
             0,
-            "no fill in flight, nothing excused"
+            "STALLED: 5ms of wall and zero steps is excused nothing"
+        );
+        for _ in 0..1_000 {
+            record_eval_step();
+        }
+        assert_eq!(
+            in_flight_cross_claim_fill_wall_nanos(),
+            1_000_000,
+            "1000 steps at a 1000ns ceiling excuse exactly 1ms of the 5ms"
+        );
+        install_cross_claim_in_flight_wall_bound(0, 1_000);
+        assert_eq!(
+            in_flight_cross_claim_fill_wall_nanos(),
+            0,
+            "no outer cap: nothing excused"
+        );
+        drop(guard);
+        install_cross_claim_in_flight_wall_bound(1_000, 1_000);
+        assert_eq!(
+            in_flight_cross_claim_fill_wall_nanos(),
+            0,
+            "no fill in flight: nothing excused"
         );
         super::clear_cross_claim_pure_memos();
     }
@@ -6302,6 +6321,22 @@ impl InterpContext {
         let (elapsed_nanos, budget_ms) = self.wall_deadline_marginal_nanos()?;
         let elapsed = std::time::Duration::from_nanos(elapsed_nanos as u64);
         if elapsed.as_millis() as u64 > budget_ms {
+            // WHEN A FILL IS IN FLIGHT, THE REFUSAL NAMES IT: the producer, the steps it has
+            // performed and its wall, beside what was excused. A fill that stopped advancing, or
+            // outran the outer cap, is then visible as such rather than as an unexplained
+            // interrupted claim.
+            if let Some((producer, fill_steps, fill_wall)) = in_flight_cross_claim_fill_progress() {
+                eprintln!(
+                    "[cross-claim-fill-wall-deadline] entry={} producer={producer} \
+                     fill_steps={fill_steps} fill_wall_ms={} excused_wall_ms={} limit_ms={budget_ms} \
+                     ns_per_step_ceiling={} outer_cap_ms={}",
+                    self.budget_entry_or_unnamed(),
+                    fill_wall / 1_000_000,
+                    in_flight_cross_claim_fill_wall_nanos() / 1_000_000,
+                    CROSS_CLAIM_FILL_NS_PER_STEP_CEILING.with(|c| c.get()),
+                    CROSS_CLAIM_IN_FLIGHT_WALL_CAP_NANOS.with(|c| c.get()) / 1_000_000,
+                );
+            }
             Some(InterpError::EvaluationBudgetExceeded {
                 entry: self.budget_entry_or_unnamed(),
                 clock: EvaluationClock::MonotonicWall,
@@ -7051,19 +7086,25 @@ pub fn shared_artifact_fill_cpu_nanos() -> u128 {
 }
 
 thread_local! {
-    /// The most wall time an IN-FLIGHT admitted fill may be excused from a claim's wall deadline.
-    /// Zero (the default) excuses nothing. The floor installs its preparation wall safety limit,
-    /// so a fill a claim performs on first touch is bounded exactly as a preparation build is,
-    /// and a runaway fill still interrupts.
+    /// THE OUTER HARD CAP on the wall an in-flight admitted fill may be excused from a claim's
+    /// wall deadline, so a fill that advances forever still terminates. Zero (the default)
+    /// excuses nothing. The floor installs its preparation wall safety limit.
     static CROSS_CLAIM_IN_FLIGHT_WALL_CAP_NANOS: std::cell::Cell<u128> = const { std::cell::Cell::new(0) };
+    /// THE WORK BOUND: wall is excused only in proportion to the evaluator steps the fill has
+    /// performed, at this declared ceiling of nanoseconds per step
+    /// (`v2.workflow.floor_pure_producer_share`
+    /// `floor_cross_claim_fill_wall_ns_per_step_ceiling`). A fill that is blocked or descheduled
+    /// accrues wall without steps and is therefore not excused. Zero excuses nothing.
+    static CROSS_CLAIM_FILL_NS_PER_STEP_CEILING: std::cell::Cell<u128> = const { std::cell::Cell::new(0) };
     /// The declared cost floor (evaluator steps) below which a derived share's fill is not
     /// retained. Zero (the default) retains every admitted fill.
     static CROSS_CLAIM_COST_FLOOR_STEPS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
-/// Install the in-flight fill wall cap (see `CROSS_CLAIM_IN_FLIGHT_WALL_CAP_NANOS`).
-pub fn install_cross_claim_in_flight_wall_cap_ms(cap_ms: u64) {
+/// Install the in-flight fill excusal: the outer hard cap and the nanoseconds-per-step ceiling.
+pub fn install_cross_claim_in_flight_wall_bound(cap_ms: u64, ns_per_step_ceiling: u64) {
     CROSS_CLAIM_IN_FLIGHT_WALL_CAP_NANOS.with(|c| c.set(u128::from(cap_ms) * 1_000_000));
+    CROSS_CLAIM_FILL_NS_PER_STEP_CEILING.with(|c| c.set(u128::from(ns_per_step_ceiling)));
 }
 
 /// Install the derived share's cost floor (see `CROSS_CLAIM_COST_FLOOR_STEPS`).
@@ -7071,24 +7112,39 @@ pub fn install_cross_claim_cost_floor_steps(steps: u64) {
     CROSS_CLAIM_COST_FLOOR_STEPS.with(|c| c.set(steps));
 }
 
-/// Wall time the outermost in-flight admitted fill has run, less its stored children (already
-/// netted when they completed), capped at the installed cap. This is the wall-clock sibling of
-/// `in_flight_cross_claim_fill`: a claim that first-touches a shared fill is not charged the
-/// fill's wall while it runs, exactly as it is not charged it once it completes.
+/// The outermost in-flight admitted fill, as (producer, its own steps so far, its own wall so
+/// far), each less the stored children already netted when they completed.
+fn in_flight_cross_claim_fill_progress() -> Option<(String, u64, u128)> {
+    CROSS_CLAIM_FILL_FRAMES.with(|frames| {
+        frames.borrow().first().map(|outermost| {
+            (
+                outermost.producer.clone(),
+                evaluator_steps()
+                    .wrapping_sub(outermost.steps_started)
+                    .saturating_sub(outermost.stored_children_steps),
+                outermost
+                    .wall_started
+                    .elapsed()
+                    .as_nanos()
+                    .saturating_sub(outermost.stored_children_wall),
+            )
+        })
+    })
+}
+
+/// Wall the outermost in-flight admitted fill is EXCUSED from a claim's wall deadline: its own
+/// wall so far, bounded by its own WORK (steps so far times the declared ceiling) and by the
+/// outer hard cap. This is the wall-clock sibling of `in_flight_cross_claim_fill`: a claim that
+/// first-touches a fill is not charged the fill's wall while the fill is doing work, and is
+/// charged all of it the moment the fill stops advancing.
 fn in_flight_cross_claim_fill_wall_nanos() -> u128 {
     let cap = CROSS_CLAIM_IN_FLIGHT_WALL_CAP_NANOS.with(|c| c.get());
-    if cap == 0 {
+    let ceiling = CROSS_CLAIM_FILL_NS_PER_STEP_CEILING.with(|c| c.get());
+    if cap == 0 || ceiling == 0 {
         return 0;
     }
-    CROSS_CLAIM_FILL_FRAMES.with(|frames| {
-        frames.borrow().first().map_or(0, |outermost| {
-            outermost
-                .wall_started
-                .elapsed()
-                .as_nanos()
-                .saturating_sub(outermost.stored_children_wall)
-                .min(cap)
-        })
+    in_flight_cross_claim_fill_progress().map_or(0, |(_, steps, wall)| {
+        wall.min(u128::from(steps).saturating_mul(ceiling)).min(cap)
     })
 }
 

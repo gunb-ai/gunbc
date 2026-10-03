@@ -7110,9 +7110,10 @@ pub(crate) fn derive_and_install_cross_claim_share(
     // a value (the first derived runs built one frame per site module -- 169 -- to warm 2523
     // identities and then discarded 2404 below the floor). The fill's evaluator steps are netted
     // from the paying claim's budget by the existing fill guard, so budgets stay deterministic; its
-    // wall is excused from the claim's wall deadline while in flight, capped at the preparation
-    // wall safety limit, so a runaway fill still interrupts; and the cost floor is applied to the
-    // fill's own measured steps at the moment it would be retained.
+    // wall is excused from the claim's wall deadline only in proportion to the steps it has
+    // performed (a declared ns-per-step ceiling), under the preparation wall safety limit as the
+    // outer hard cap, so a stalled fill and a runaway one both still interrupt; and the cost floor
+    // is applied to the fill's own measured steps at the moment it would be retained.
     let cost_floor_steps = match v1_interpreter::run_in_context(
         ctx,
         &format!("{MODULE}.floor_cross_claim_share_cost_floor_eval_steps"),
@@ -7131,10 +7132,31 @@ pub(crate) fn derive_and_install_cross_claim_share(
         }
     };
     v1_interpreter::install_cross_claim_cost_floor_steps(cost_floor_steps);
-    v1_interpreter::install_cross_claim_in_flight_wall_cap_ms(in_flight_wall_cap_ms);
+    let ns_per_step_ceiling = match v1_interpreter::run_in_context(
+        ctx,
+        &format!("{MODULE}.floor_cross_claim_fill_wall_ns_per_step_ceiling"),
+        false,
+    ) {
+        Ok(Value::Int(n)) if n > 0 => n as u64,
+        other => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=CrossClaimFillWallCeilingUnreadable -- \
+                 floor_cross_claim_fill_wall_ns_per_step_ceiling must be a positive Int, got {}",
+                match other {
+                    Ok(v) => ctx.format_value(&v),
+                    Err(e) => e.to_string(),
+                }
+            ))
+        }
+    };
+    v1_interpreter::install_cross_claim_in_flight_wall_bound(
+        in_flight_wall_cap_ms,
+        ns_per_step_ceiling,
+    );
     eprintln!(
         "[floor-phase] phase=cross-claim-share-install state=completed \
-         cost_floor_eval_steps={cost_floor_steps} in_flight_wall_cap_ms={in_flight_wall_cap_ms}"
+         cost_floor_eval_steps={cost_floor_steps} fill_wall_ns_per_step_ceiling={ns_per_step_ceiling} \
+         in_flight_wall_outer_cap_ms={in_flight_wall_cap_ms}"
     );
     Ok(())
 }

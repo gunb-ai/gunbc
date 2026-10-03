@@ -395,6 +395,27 @@ fn floor_cross_claim_share_cost_floor_eval_steps() -> Int {
   5000
 }
 
+// THE IN-FLIGHT FILL WALL CEILING: a declared POLICY budget, in nanoseconds of wall per evaluator
+// step. A claim that first-touches an admitted fill has the fill's wall excused from its own wall
+// safety deadline only while the fill is DOING WORK: the excused wall is at most the fill's steps
+// so far times this ceiling, under the preparation wall safety limit as the outer hard cap
+// (v2.workflow.required_floor required_floor_preparation_wall_safety_limit). The wall deadline
+// exists to catch a claim that is blocked or descheduled, which step counting cannot see; a fill
+// that stops advancing accrues wall without steps, is excused nothing, and the deadline fires
+// naming the producer, its steps and its wall. There is no per-producer cost list: the bound is
+// each fill's own work, measured in the run it happens in (sharp-raven-357 ruling, 2026-10-03).
+//
+// HOW THE VALUE WAS SET, as policy and not as a fact about the tree: on the planning probe
+// 37147337255 the interpreted fills of 200ms or more ran between the calibrated rate
+// (v2.workflow.floor_eval_step_calibration) and about 6,200 ns of wall per step; the ceiling is
+// set at four times that observed top, to cover the runner-to-runner timing variance this floor
+// has measured without admitting a stall of any useful length. Re-derive the observation from
+// that run's [floor-shared-fill] claim= rows (fill_wall_ms over fill_eval_steps); change the
+// policy here, never by copying a new figure in.
+fn floor_cross_claim_fill_wall_ns_per_step_ceiling() -> Int {
+  25000
+}
+
 // The live derivation, over the refused and carried rows this file declares. The seed calls this.
 fn floor_cross_claim_share_derivation(
   observations: List<CallSiteDemandObservation>
