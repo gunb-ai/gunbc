@@ -1,0 +1,4 @@
+1790987744.366695160 MARKER power-on issued
+Chassis Power Control: Up/On
+System Power         : off
+System Power         : off

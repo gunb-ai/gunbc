@@ -1,0 +1,4 @@
+Chassis Power Control: Up/On
+1790991775.899128855 poweron
+1790992955.952929962 socket0=256 socket1=256
+System Power         : off

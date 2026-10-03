@@ -1,0 +1,33 @@
+FRU Device Description : Builtin FRU Device (ID 0)
+ Chassis Type          : Rack Mount Chassis
+ Chassis Part Number   : 1A624RA00-600-G
+ Chassis Serial        : NULL
+ Chassis Extra         : XXXXXXXXXXXX
+ Chassis Extra         : YYYYYYYYYYYY
+ Chassis Extra         : ZZZZZZZZZZZZ
+ Board Mfg Date        : Mon 18 Oct 2021 06:36:00 PM UTC UTC
+ Board Mfg             : FOXCONN
+ Board Product         : Mt. Collins
+ Board Serial          : 02030A800TEXFT02L
+ Board Part Number     : 02030A800-600-G
+ Board Extra           : 28C13C8AD64C
+ Board Extra           : PCBAVer:EX
+ Board Extra           : XXXXXXXXXXXX
+ Product Manufacturer  : FOXCONN
+ Product Name          : Mt. Collins
+ Product Part Number   : 1A62AT100-600-G
+ Product Version       : Ver 0.01
+ Product Serial        : MXX2080619
+ Product Asset Tag     : XXXXXXXXXXXXXXXXXX
+ Product Extra         : XXQQQQQQQQQQ
+ Product Extra         : XXXXXXXXXXXX
+ Product Extra         : XXXXXXXXXXXX
+
+FRU Device Description : BP_FRU (ID 1)
+ Board Mfg Date        : Sat 20 Mar 2021 01:24:00 AM UTC UTC
+ Board Mfg             : FOXCONN
+ Board Product         : Rainbow, 1U 12xSFF NVMe HDDs BP
+ Board Serial          : 10041HV00TBXFM046
+ Board Part Number     : 10041HV00-600-G
+ Board Extra           : PCBA Ver:BX
+

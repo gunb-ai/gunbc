@@ -1,0 +1,167 @@
+FAN0_0_Speed     | 52.000     | RPM        | ok    | na        | na        | 552.000   | na        | na        | na        
+FAN0_1_Speed     | 52.000     | RPM        | ok    | na        | na        | 552.000   | na        | na        | na        
+FAN1_0_Speed     | 52.000     | RPM        | ok    | na        | na        | 552.000   | na        | na        | na        
+FAN1_1_Speed     | 52.000     | RPM        | ok    | na        | na        | 552.000   | na        | na        | na        
+FAN2_0_Speed     | 52.000     | RPM        | ok    | na        | na        | 552.000   | na        | na        | na        
+FAN2_1_Speed     | 52.000     | RPM        | ok    | na        | na        | 552.000   | na        | na        | na        
+FAN3_0_Speed     | 52.000     | RPM        | ok    | na        | na        | 552.000   | na        | na        | na        
+FAN3_1_Speed     | 52.000     | RPM        | ok    | na        | na        | 552.000   | na        | na        | na        
+FAN4_0_Speed     | 52.000     | RPM        | ok    | na        | na        | 552.000   | na        | na        | na        
+FAN4_1_Speed     | 52.000     | RPM        | ok    | na        | na        | 552.000   | na        | na        | na        
+FAN5_0_Speed     | 52.000     | RPM        | ok    | na        | na        | 552.000   | na        | na        | na        
+FAN5_1_Speed     | 52.000     | RPM        | ok    | na        | na        | 552.000   | na        | na        | na        
+FAN6_0_Speed     | 52.000     | RPM        | ok    | na        | na        | 552.000   | na        | na        | na        
+FAN6_1_Speed     | 52.000     | RPM        | ok    | na        | na        | 552.000   | na        | na        | na        
+FAN7_0_Speed     | 52.000     | RPM        | ok    | na        | na        | 552.000   | na        | na        | na        
+FAN7_1_Speed     | 52.000     | RPM        | ok    | na        | na        | 552.000   | na        | na        | na        
+FAN0_Presence    | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+FAN1_Presence    | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+FAN2_Presence    | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+FAN3_Presence    | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+FAN4_Presence    | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+FAN5_Presence    | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+FAN6_Presence    | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+FAN7_Presence    | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+FAN0_Failure     | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+FAN1_Failure     | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+FAN2_Failure     | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+FAN3_Failure     | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+FAN4_Failure     | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+FAN5_Failure     | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+FAN6_Failure     | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+FAN7_Failure     | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+CPU0_0V8_VDDCSOC | na         | Volts      | na    | na        | 0.680     | 0.720     | 0.880     | 0.920     | na        
+CPU0_0V75_PCP    | na         | Volts      | na    | na        | 0.635     | 0.675     | 1.210     | 1.265     | na        
+CPU0_1V2VDDQ0123 | na         | Volts      | na    | na        | 1.020     | 1.080     | 1.320     | 1.380     | na        
+CPU0_0V6_VTT0123 | na         | Volts      | na    | na        | 0.510     | 0.540     | 0.660     | 0.690     | na        
+CPU0_2V5_VPP0123 | na         | Volts      | na    | na        | 2.128     | 2.256     | 2.752     | 2.880     | na        
+CPU0_1V2VDDQ4567 | na         | Volts      | na    | na        | 1.020     | 1.080     | 1.320     | 1.380     | na        
+CPU0_0V6_VTT4567 | na         | Volts      | na    | na        | 0.510     | 0.540     | 0.660     | 0.690     | na        
+CPU0_2V5_VPP4567 | na         | Volts      | na    | na        | 2.128     | 2.256     | 2.752     | 2.880     | na        
+CPU0_0V85_RCA    | na         | Volts      | na    | na        | 0.724     | 0.764     | 0.940     | 0.980     | na        
+CPU0_1V8_VDDH    | na         | Volts      | na    | na        | 1.532     | 1.622     | 1.982     | 2.072     | na        
+CPU0_1V5_VDDH    | na         | Volts      | na    | na        | 1.275     | 1.350     | 1.650     | 1.725     | na        
+CPU0_1V8_SOC     | na         | Volts      | na    | na        | 1.532     | 1.622     | 1.982     | 2.072     | na        
+CPU0_1V8_PCP     | na         | Volts      | na    | na        | 1.532     | 1.622     | 1.982     | 2.072     | na        
+CPU0_3V3_SOC     | na         | Volts      | na    | na        | 2.808     | 2.968     | 3.636     | 3.796     | na        
+CPU1_0V8_VDDCSOC | na         | Volts      | na    | na        | 0.680     | 0.720     | 0.880     | 0.920     | na        
+CPU1_0V75_PCP    | na         | Volts      | na    | na        | 0.635     | 0.675     | 1.210     | 1.265     | na        
+CPU1_1V2VDDQ0123 | na         | Volts      | na    | na        | 1.020     | 1.080     | 1.320     | 1.380     | na        
+CPU1_0V6_VTT0123 | na         | Volts      | na    | na        | 0.510     | 0.540     | 0.660     | 0.690     | na        
+CPU1_2V5_VPP0123 | na         | Volts      | na    | na        | 2.128     | 2.256     | 2.752     | 2.880     | na        
+CPU1_1V2VDDQ4567 | na         | Volts      | na    | na        | 1.020     | 1.080     | 1.320     | 1.380     | na        
+CPU1_0V6_VTT4567 | na         | Volts      | na    | na        | 0.510     | 0.540     | 0.660     | 0.690     | na        
+CPU1_2V5_VPP4567 | na         | Volts      | na    | na        | 2.128     | 2.256     | 2.752     | 2.880     | na        
+CPU1_0V85_RCA    | na         | Volts      | na    | na        | 0.724     | 0.764     | 0.940     | 0.980     | na        
+CPU1_1V8_VDDH    | na         | Volts      | na    | na        | 1.532     | 1.622     | 1.982     | 2.072     | na        
+CPU1_1V5_VDDH    | na         | Volts      | na    | na        | 1.275     | 1.350     | 1.650     | 1.725     | na        
+CPU1_1V8_SOC     | na         | Volts      | na    | na        | 1.532     | 1.622     | 1.982     | 2.072     | na        
+CPU1_1V8_PCP     | na         | Volts      | na    | na        | 1.532     | 1.622     | 1.982     | 2.072     | na        
+CPU1_3V3_SOC     | na         | Volts      | na    | na        | 2.808     | 2.968     | 3.636     | 3.796     | na        
+CPU0_SOC_Temp    | na         | degrees C  | na    | na        | na        | na        | 100.000   | 105.000   | na        
+CPU0_SOC_VRDTemp | na         | degrees C  | na    | na        | na        | na        | 110.000   | 115.000   | na        
+CPU0_DIMMVRDTemp | na         | degrees C  | na    | na        | na        | na        | 110.000   | 115.000   | na        
+CPU0_PMD_VRDTemp | na         | degrees C  | na    | na        | na        | na        | 110.000   | 115.000   | na        
+CPU0_DIMMG0_Temp | na         | degrees C  | na    | na        | na        | na        | 85.000    | na        | na        
+CPU0_DIMMG1_Temp | na         | degrees C  | na    | na        | na        | na        | 85.000    | na        | na        
+CPU0_CPU_Pwr     | na         | Watts      | na    | na        | na        | na        | na        | na        | na        
+CPU0_DIMM_VR1Pwr | na         | Watts      | na    | na        | na        | na        | na        | na        | na        
+CPU0_DIMM_VR2Pwr | na         | Watts      | na    | na        | na        | na        | na        | na        | na        
+CPU0_MEM_Pwr     | na         | Watts      | na    | na        | na        | na        | na        | na        | na        
+CPU0_CPU_VCORE   | na         | Volts      | na    | 0.510     | na        | na        | na        | 1.320     | na        
+CPU0_DIMMVR1Volt | na         | Volts      | na    | na        | 1.020     | 1.080     | 1.320     | 1.380     | na        
+CPU0_DIMMVR2Volt | na         | Volts      | na    | na        | 1.020     | 1.080     | 1.320     | 1.380     | na        
+CPU0_DIMMDDRVolt | na         | Volts      | na    | na        | 1.020     | 1.080     | 1.320     | 1.380     | na        
+CPU0_Hightemp    | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+CPU0_Overtemp    | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+CPU1_SOC_Temp    | na         | degrees C  | na    | na        | na        | na        | 100.000   | 105.000   | na        
+CPU1_SOC_VRDTemp | na         | degrees C  | na    | na        | na        | na        | 110.000   | 115.000   | na        
+CPU1_DIMMVRDTemp | na         | degrees C  | na    | na        | na        | na        | 110.000   | 115.000   | na        
+CPU1_PMD_VRDTemp | na         | degrees C  | na    | na        | na        | na        | 110.000   | 115.000   | na        
+CPU1_DIMMG0_Temp | na         | degrees C  | na    | na        | na        | na        | 85.000    | na        | na        
+CPU1_DIMMG1_Temp | na         | degrees C  | na    | na        | na        | na        | 85.000    | na        | na        
+CPU1_CPU_Pwr     | na         | Watts      | na    | na        | na        | na        | na        | na        | na        
+CPU1_DIMM_VR1Pwr | na         | Watts      | na    | na        | na        | na        | na        | na        | na        
+CPU1_DIMM_VR2Pwr | na         | Watts      | na    | na        | na        | na        | na        | na        | na        
+CPU1_MEM_Pwr     | na         | Watts      | na    | na        | na        | na        | na        | na        | na        
+CPU1_CPU_VCORE   | na         | Volts      | na    | 0.510     | na        | na        | na        | 1.320     | na        
+CPU1_DIMMVR1Volt | na         | Volts      | na    | na        | 1.020     | 1.080     | 1.320     | 1.380     | na        
+CPU1_DIMMVR2Volt | na         | Volts      | na    | na        | 1.020     | 1.080     | 1.320     | 1.380     | na        
+CPU1_DIMMDDRVolt | na         | Volts      | na    | na        | 1.020     | 1.080     | 1.320     | 1.380     | na        
+CPU1_Hightemp    | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+CPU1_Overtemp    | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+FIO_Inlet_Temp   | na         | degrees C  | na    | na        | na        | na        | na        | na        | na        
+Outlet_1_Temp    | na         | degrees C  | na    | na        | na        | na        | na        | na        | na        
+Outlet_2_Temp    | na         | degrees C  | na    | na        | na        | na        | na        | na        | na        
+BMC_Zone_Temp    | na         | degrees C  | na    | na        | na        | na        | na        | na        | na        
+PSU_Zone_Temp    | na         | degrees C  | na    | na        | na        | na        | na        | na        | na        
+OCP_Zone_Temp    | na         | degrees C  | na    | na        | na        | na        | na        | na        | na        
+M2_Zone_Temp     | na         | degrees C  | na    | na        | na        | na        | na        | na        | na        
+HDD_BP_Temp1     | na         | degrees C  | na    | na        | na        | na        | na        | na        | na        
+HDD_BP_Temp2     | na         | degrees C  | na    | na        | na        | na        | na        | na        | na        
+PSU1_POUT        | na         | Watts      | na    | na        | na        | na        | na        | na        | na        
+PSU2_POUT        | na         | Watts      | na    | na        | na        | na        | na        | na        | na        
+Total_Power      | na         | Watts      | na    | na        | na        | na        | na        | na        | na        
+PSU1_TEMP        | na         | degrees C  | na    | na        | na        | na        | 60.000    | na        | na        
+PSU2_TEMP        | na         | degrees C  | na    | na        | na        | na        | 60.000    | na        | na        
+PSU1_FAN_SPEED   | na         | RPM        | na    | na        | na        | na        | na        | na        | na        
+PSU2_FAN_SPEED   | na         | RPM        | na    | na        | na        | na        | na        | na        | na        
+PSU1_Status      | 0x1        | discrete   | 0x0180| na        | na        | na        | na        | na        | na        
+PSU2_Status      | 0x9        | discrete   | 0x0980| na        | na        | na        | na        | na        | na        
+HDD0_Status      | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+HDD1_Status      | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+HDD2_Status      | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+HDD3_Status      | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+HDD4_Status      | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+HDD5_Status      | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+HDD6_Status      | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+HDD7_Status      | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+HDD8_Status      | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+HDD9_Status      | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+HDD10_Status     | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+HDD11_Status     | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+HDD0_Temp        | na         | degrees C  | na    | na        | na        | na        | 70.000    | 75.000    | na        
+HDD1_Temp        | na         | degrees C  | na    | na        | na        | na        | 70.000    | 75.000    | na        
+HDD2_Temp        | na         | degrees C  | na    | na        | na        | na        | 70.000    | 75.000    | na        
+HDD3_Temp        | na         | degrees C  | na    | na        | na        | na        | 70.000    | 75.000    | na        
+HDD4_Temp        | na         | degrees C  | na    | na        | na        | na        | 70.000    | 75.000    | na        
+HDD5_Temp        | na         | degrees C  | na    | na        | na        | na        | 70.000    | 75.000    | na        
+HDD6_Temp        | na         | degrees C  | na    | na        | na        | na        | 70.000    | 75.000    | na        
+HDD7_Temp        | na         | degrees C  | na    | na        | na        | na        | 70.000    | 75.000    | na        
+HDD8_Temp        | na         | degrees C  | na    | na        | na        | na        | 70.000    | 75.000    | na        
+HDD9_Temp        | na         | degrees C  | na    | na        | na        | na        | 70.000    | 75.000    | na        
+HDD10_Temp       | na         | degrees C  | na    | na        | na        | na        | 70.000    | 75.000    | na        
+HDD11_Temp       | na         | degrees C  | na    | na        | na        | na        | 70.000    | 75.000    | na        
+OCP_Temp         | na         | degrees C  | na    | na        | na        | na        | 100.000   | 105.000   | na        
+OCP_OPT1_Temp    | na         | degrees C  | na    | na        | na        | na        | 70.000    | 80.000    | na        
+OCP_OPT2_Temp    | na         | degrees C  | na    | na        | na        | na        | 70.000    | 80.000    | na        
+GPU1_Temp        | na         | degrees C  | na    | na        | na        | na        | 85.000    | 90.000    | na        
+GPU2_Temp        | na         | degrees C  | na    | na        | na        | na        | 85.000    | 90.000    | na        
+Riser0_Zone_Temp | na         | degrees C  | na    | na        | na        | na        | 70.000    | 80.000    | na        
+Riser1_Zone_Temp | na         | degrees C  | na    | na        | na        | na        | 70.000    | 80.000    | na        
+CPU0_3V3_SRD_ADC | na         | Volts      | na    | na        | 2.808     | 2.968     | 3.636     | 3.796     | na        
+CPU1_3V3_SRD_ADC | na         | Volts      | na    | na        | 2.808     | 2.968     | 3.636     | 3.796     | na        
+CPU0_5V_SRD      | na         | Volts      | na    | na        | 4.249     | 4.502     | 5.491     | 5.744     | na        
+CPU1_5V_SRD      | na         | Volts      | na    | na        | 4.249     | 4.502     | 5.491     | 5.744     | na        
+3V3_SB           | na         | Volts      | na    | na        | 2.808     | 2.970     | 3.636     | 3.798     | na        
+System_Inlet     | na         | degrees C  | na    | na        | na        | na        | 42.000    | 46.000    | na        
+Sys_Boot_Restart | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+Event_log        | 0x20       | discrete   | 0x2080| na        | na        | na        | na        | na        | na        
+Watchdog2        | 0x0        | discrete   | 0x0080| na        | na        | na        | na        | na        | na        
+CPU0_SCP_Status  | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+CPU1_SCP_Status  | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+EndOfPost        | 0x0        | discrete   | 0x0080| na        | na        | na        | na        | na        | na        
+BmcReset         | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+ReadFrontBPHDD   | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+M2_SSD_Temp      | na         | degrees C  | na    | na        | na        | na        | 70.000    | 75.000    | na        
+Host_SPI_Auth    | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+CPU1_MemStatus   | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+CPU1_ACPI_State  | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+CPU1_CPU_Status  | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+CPU1_PCIeStatus  | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+CPU1_OtherStatus | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+CPU0_MemStatus   | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+CPU0_CPU_Status  | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+CPU0_ACPI_State  | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+CPU0_OtherStatus | na         | discrete   | na    | na        | na        | na        | na        | na        | na        
+CPU0_PCIeStatus  | na         | discrete   | na    | na        | na        | na        | na        | na        | na        

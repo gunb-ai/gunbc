@@ -1,0 +1,54 @@
+CPU0_0V8_VDDCSOC | 0.756      | Volts      | ok    | na        | 0.680     | 0.720     | 0.880     | 0.920     | na        
+CPU0_1V2VDDQ0123 | 1.230      | Volts      | ok    | na        | 1.020     | 1.080     | 1.320     | 1.380     | na        
+CPU0_2V5_VPP0123 | 2.480      | Volts      | ok    | na        | 2.128     | 2.256     | 2.752     | 2.880     | na        
+CPU0_1V2VDDQ4567 | 1.230      | Volts      | ok    | na        | 1.020     | 1.080     | 1.320     | 1.380     | na        
+CPU0_2V5_VPP4567 | 2.496      | Volts      | ok    | na        | 2.128     | 2.256     | 2.752     | 2.880     | na        
+CPU1_0V8_VDDCSOC | na         | Volts      | na    | na        | 0.680     | 0.720     | 0.880     | 0.920     | na        
+CPU1_1V2VDDQ0123 | na         | Volts      | na    | na        | 1.020     | 1.080     | 1.320     | 1.380     | na        
+CPU1_2V5_VPP0123 | na         | Volts      | na    | na        | 2.128     | 2.256     | 2.752     | 2.880     | na        
+CPU1_1V2VDDQ4567 | na         | Volts      | na    | na        | 1.020     | 1.080     | 1.320     | 1.380     | na        
+CPU1_2V5_VPP4567 | na         | Volts      | na    | na        | 2.128     | 2.256     | 2.752     | 2.880     | na        
+CPU0_SOC_Temp    | 34.000     | degrees C  | ok    | na        | na        | na        | 100.000   | 105.000   | na        
+CPU0_CPU_Pwr     | 0.000      | Watts      | ok    | na        | na        | na        | na        | na        | na        
+CPU0_MEM_Pwr     | 0.000      | Watts      | ok    | na        | na        | na        | na        | na        | na        
+CPU0_CPU_VCORE   | 1.062      | Volts      | ok    | 0.510     | na        | na        | na        | 1.320     | na        
+CPU1_SOC_Temp    | 0.000      | degrees C  | ok    | na        | na        | na        | 100.000   | 105.000   | na        
+CPU1_CPU_Pwr     | 0.000      | Watts      | ok    | na        | na        | na        | na        | na        | na        
+CPU1_MEM_Pwr     | 0.000      | Watts      | ok    | na        | na        | na        | na        | na        | na        
+CPU1_CPU_VCORE   | na         | Volts      | na    | 0.510     | na        | na        | na        | 1.320     | na        
+CPU0_0V8_VDDCSOC | 0.756      | Volts      | ok    | na        | 0.680     | 0.720     | 0.880     | 0.920     | na        
+CPU0_1V2VDDQ0123 | 1.230      | Volts      | ok    | na        | 1.020     | 1.080     | 1.320     | 1.380     | na        
+CPU0_2V5_VPP0123 | 2.480      | Volts      | ok    | na        | 2.128     | 2.256     | 2.752     | 2.880     | na        
+CPU0_1V2VDDQ4567 | 1.230      | Volts      | ok    | na        | 1.020     | 1.080     | 1.320     | 1.380     | na        
+CPU0_2V5_VPP4567 | 2.496      | Volts      | ok    | na        | 2.128     | 2.256     | 2.752     | 2.880     | na        
+CPU1_0V8_VDDCSOC | na         | Volts      | na    | na        | 0.680     | 0.720     | 0.880     | 0.920     | na        
+CPU1_1V2VDDQ0123 | na         | Volts      | na    | na        | 1.020     | 1.080     | 1.320     | 1.380     | na        
+CPU1_2V5_VPP0123 | na         | Volts      | na    | na        | 2.128     | 2.256     | 2.752     | 2.880     | na        
+CPU1_1V2VDDQ4567 | na         | Volts      | na    | na        | 1.020     | 1.080     | 1.320     | 1.380     | na        
+CPU1_2V5_VPP4567 | na         | Volts      | na    | na        | 2.128     | 2.256     | 2.752     | 2.880     | na        
+CPU0_SOC_Temp    | 34.000     | degrees C  | ok    | na        | na        | na        | 100.000   | 105.000   | na        
+CPU0_CPU_Pwr     | 0.000      | Watts      | ok    | na        | na        | na        | na        | na        | na        
+CPU0_MEM_Pwr     | 0.000      | Watts      | ok    | na        | na        | na        | na        | na        | na        
+CPU0_CPU_VCORE   | 1.062      | Volts      | ok    | 0.510     | na        | na        | na        | 1.320     | na        
+CPU1_SOC_Temp    | 0.000      | degrees C  | ok    | na        | na        | na        | 100.000   | 105.000   | na        
+CPU1_CPU_Pwr     | 0.000      | Watts      | ok    | na        | na        | na        | na        | na        | na        
+CPU1_MEM_Pwr     | 0.000      | Watts      | ok    | na        | na        | na        | na        | na        | na        
+CPU1_CPU_VCORE   | na         | Volts      | na    | 0.510     | na        | na        | na        | 1.320     | na        
+CPU0_0V8_VDDCSOC | 0.756      | Volts      | ok    | na        | 0.680     | 0.720     | 0.880     | 0.920     | na        
+CPU0_1V2VDDQ0123 | 1.230      | Volts      | ok    | na        | 1.020     | 1.080     | 1.320     | 1.380     | na        
+CPU0_2V5_VPP0123 | 2.480      | Volts      | ok    | na        | 2.128     | 2.256     | 2.752     | 2.880     | na        
+CPU0_1V2VDDQ4567 | 1.230      | Volts      | ok    | na        | 1.020     | 1.080     | 1.320     | 1.380     | na        
+CPU0_2V5_VPP4567 | 2.496      | Volts      | ok    | na        | 2.128     | 2.256     | 2.752     | 2.880     | na        
+CPU1_0V8_VDDCSOC | na         | Volts      | na    | na        | 0.680     | 0.720     | 0.880     | 0.920     | na        
+CPU1_1V2VDDQ0123 | na         | Volts      | na    | na        | 1.020     | 1.080     | 1.320     | 1.380     | na        
+CPU1_2V5_VPP0123 | na         | Volts      | na    | na        | 2.128     | 2.256     | 2.752     | 2.880     | na        
+CPU1_1V2VDDQ4567 | na         | Volts      | na    | na        | 1.020     | 1.080     | 1.320     | 1.380     | na        
+CPU1_2V5_VPP4567 | na         | Volts      | na    | na        | 2.128     | 2.256     | 2.752     | 2.880     | na        
+CPU0_SOC_Temp    | 34.000     | degrees C  | ok    | na        | na        | na        | 100.000   | 105.000   | na        
+CPU0_CPU_Pwr     | 0.000      | Watts      | ok    | na        | na        | na        | na        | na        | na        
+CPU0_MEM_Pwr     | 0.000      | Watts      | ok    | na        | na        | na        | na        | na        | na        
+CPU0_CPU_VCORE   | 1.062      | Volts      | ok    | 0.510     | na        | na        | na        | 1.320     | na        
+CPU1_SOC_Temp    | 0.000      | degrees C  | ok    | na        | na        | na        | 100.000   | 105.000   | na        
+CPU1_CPU_Pwr     | 0.000      | Watts      | ok    | na        | na        | na        | na        | na        | na        
+CPU1_MEM_Pwr     | 0.000      | Watts      | ok    | na        | na        | na        | na        | na        | na        
+CPU1_CPU_VCORE   | na         | Volts      | na    | 0.510     | na        | na        | na        | 1.320     | na        

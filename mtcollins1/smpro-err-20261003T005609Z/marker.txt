@@ -1,0 +1,2 @@
+Chassis Power Control: Up/On
+1790988969.678166992 poweron

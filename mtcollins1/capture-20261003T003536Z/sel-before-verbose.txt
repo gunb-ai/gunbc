@@ -1,0 +1,2460 @@
+Loading IANA PEN Registry...
+Using best available cipher suite 17
+
+Running Get VSO Capabilities my_addr 0x20, transit 0, target 0x20
+Invalid completion code received: Invalid command
+Discovered IPMB address 0x0
+SEL Record ID          : 0001
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:22:54 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Power Unit
+ Sensor Number         : e0
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 04ffff
+ Description           : AC lost
+
+SEL Record ID          : 0002
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:23:27 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Fan
+ Sensor Number         : 0f
+ Event Type            : Generic Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 01ffff
+ Description           : Device Present
+
+SEL Record ID          : 0003
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:23:27 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Fan
+ Sensor Number         : 10
+ Event Type            : Generic Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 01ffff
+ Description           : Device Present
+
+SEL Record ID          : 0004
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:23:27 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Fan
+ Sensor Number         : 11
+ Event Type            : Generic Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 01ffff
+ Description           : Device Present
+
+SEL Record ID          : 0005
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:23:27 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Fan
+ Sensor Number         : 12
+ Event Type            : Generic Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 01ffff
+ Description           : Device Present
+
+SEL Record ID          : 0006
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:23:27 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Fan
+ Sensor Number         : 13
+ Event Type            : Generic Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 01ffff
+ Description           : Device Present
+
+SEL Record ID          : 0007
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:23:27 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Fan
+ Sensor Number         : 14
+ Event Type            : Generic Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 01ffff
+ Description           : Device Present
+
+SEL Record ID          : 0008
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:23:44 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 0009
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:23:45 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 000a
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:24:08 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 000b
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:24:08 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 000c
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:24:11 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Power Unit
+ Sensor Number         : e0
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 00ffff
+ Description           : Power off/down
+
+SEL Record ID          : 000d
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:24:11 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 000e
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:27:57 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Power Unit
+ Sensor Number         : e0
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 04ffff
+ Description           : AC lost
+
+SEL Record ID          : 000f
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:28:44 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Fan
+ Sensor Number         : 0f
+ Event Type            : Generic Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 01ffff
+ Description           : Device Present
+
+SEL Record ID          : 0010
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:28:44 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Fan
+ Sensor Number         : 10
+ Event Type            : Generic Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 01ffff
+ Description           : Device Present
+
+SEL Record ID          : 0011
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:28:44 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Fan
+ Sensor Number         : 11
+ Event Type            : Generic Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 01ffff
+ Description           : Device Present
+
+SEL Record ID          : 0012
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:28:44 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Fan
+ Sensor Number         : 12
+ Event Type            : Generic Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 01ffff
+ Description           : Device Present
+
+SEL Record ID          : 0013
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:28:44 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Fan
+ Sensor Number         : 13
+ Event Type            : Generic Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 01ffff
+ Description           : Device Present
+
+SEL Record ID          : 0014
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:28:44 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Fan
+ Sensor Number         : 14
+ Event Type            : Generic Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 01ffff
+ Description           : Device Present
+
+SEL Record ID          : 0015
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:29:02 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 0016
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:29:03 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 0017
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:29:26 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 0018
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:29:26 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 0019
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:29:27 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 001a
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:29:27 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Power Supply
+ Sensor Number         : ea
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 00ffff
+ Description           : Presence detected
+
+SEL Record ID          : 001b
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:29:27 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Power Supply
+ Sensor Number         : eb
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 00ffff
+ Description           : Presence detected
+
+SEL Record ID          : 001c
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:29:27 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Power Supply
+ Sensor Number         : eb
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 03ffff
+ Description           : Power Supply AC lost
+
+SEL Record ID          : 001d
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:29:28 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 001e
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:29:52 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 001f
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:29:52 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 0020
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:29:53 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 0021
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:29:54 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 0022
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:30:18 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 0023
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:30:18 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 0024
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:30:19 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 0025
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:30:20 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 0026
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:30:44 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 0027
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:30:44 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 0028
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:30:45 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 0029
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:30:45 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 002a
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:31:09 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 002b
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:31:09 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 002c
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:31:09 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 002d
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:31:11 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 002e
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:31:35 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 002f
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:31:35 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 0030
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:31:36 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 0031
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:31:37 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 0032
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:32:01 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 0033
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:32:01 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 0034
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:32:02 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 0035
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:32:03 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 0036
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:32:27 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 0037
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:32:27 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 0038
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:32:28 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 0039
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:32:28 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 003a
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:32:52 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 003b
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:32:52 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 003c
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:32:52 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 003d
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:32:54 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 003e
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:33:18 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 003f
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:33:18 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 0040
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:33:19 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 0041
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:33:20 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 0042
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:33:44 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 0043
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:33:44 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 0044
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:33:45 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 0045
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:33:46 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 0046
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:34:10 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 0047
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:34:10 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 0048
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:34:11 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 0049
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:34:12 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 004a
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:34:36 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 004b
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:34:36 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 004c
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:34:36 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 004d
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:34:37 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 004e
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:35:01 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 004f
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:35:01 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 0050
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:35:02 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 0051
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:35:03 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 0052
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:35:27 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 0053
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:35:27 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 0054
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:35:28 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 0055
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:35:29 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 0056
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:35:53 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 0057
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:35:53 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 0058
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:35:54 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 0059
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:35:55 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 005a
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:36:19 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 005b
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:36:19 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 005c
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:36:19 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 005d
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:36:20 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 005e
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:36:44 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 005f
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:36:44 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 0060
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:36:45 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 0061
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:36:46 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 0062
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:37:10 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 0063
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:37:10 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 0064
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:37:11 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 0065
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:37:12 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 0066
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:37:36 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 0067
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:37:36 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 0068
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:37:37 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 0069
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:37:38 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 006a
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:38:02 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 006b
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:38:02 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 006c
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:38:02 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 006d
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:38:03 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 006e
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:38:27 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 006f
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:38:27 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 0070
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:38:28 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 0071
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:38:29 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 0072
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:38:53 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 0073
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:38:53 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 0074
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:38:54 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 0075
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:38:55 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 0076
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:39:19 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 0077
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:39:19 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 0078
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:39:20 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 0079
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:39:21 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 007a
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:39:45 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 007b
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:39:45 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 007c
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:39:45 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 007d
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:39:46 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 007e
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:40:10 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 007f
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:40:10 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 0080
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:40:11 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 0081
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:40:12 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 0082
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:40:36 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 0083
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:40:36 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 0084
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:40:39 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Power Unit
+ Sensor Number         : e0
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 00ffff
+ Description           : Power off/down
+
+SEL Record ID          : 0085
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:40:39 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 0086
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:41:29 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 0087
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:41:30 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 0088
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:41:53 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 0089
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:41:53 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 008a
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:41:54 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 008b
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:41:54 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 008c
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:42:18 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 008d
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:42:18 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 008e
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:42:18 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 008f
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:42:20 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 0090
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:42:44 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 0091
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:42:44 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 0092
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:42:47 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Power Unit
+ Sensor Number         : e0
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 00ffff
+ Description           : Power off/down
+
+SEL Record ID          : 0093
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:42:47 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 0094
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:48:54 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Session Audit
+ Sensor Number         : e5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 000000
+ Description           : 
+
+SEL Record ID          : 0095
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:49:16 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 0096
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:49:17 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 0097
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:49:40 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 0098
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:49:40 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 0099
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:49:41 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 009a
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:49:42 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 009b
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:50:06 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 009c
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:50:06 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 009d
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:50:06 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 009e
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:50:07 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Session Audit
+ Sensor Number         : e5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 010000
+ Description           : 
+
+SEL Record ID          : 009f
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:50:58 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 00a0
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:50:58 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 00a1
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:51:24 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 00a2
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:51:24 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 00a3
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:51:49 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 00a4
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:51:49 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 00a5
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:52:15 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 00a6
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:52:15 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 00a7
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:52:18 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Power Unit
+ Sensor Number         : e0
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 00ffff
+ Description           : Power off/down
+
+SEL Record ID          : 00a8
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:52:18 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 00a9
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:57:27 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Power Unit
+ Sensor Number         : e0
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 04ffff
+ Description           : AC lost
+
+SEL Record ID          : 00aa
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:58:03 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Fan
+ Sensor Number         : 0f
+ Event Type            : Generic Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 01ffff
+ Description           : Device Present
+
+SEL Record ID          : 00ab
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:58:03 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Fan
+ Sensor Number         : 10
+ Event Type            : Generic Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 01ffff
+ Description           : Device Present
+
+SEL Record ID          : 00ac
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:58:03 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Fan
+ Sensor Number         : 11
+ Event Type            : Generic Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 01ffff
+ Description           : Device Present
+
+SEL Record ID          : 00ad
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:58:03 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Fan
+ Sensor Number         : 12
+ Event Type            : Generic Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 01ffff
+ Description           : Device Present
+
+SEL Record ID          : 00ae
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:58:03 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Fan
+ Sensor Number         : 13
+ Event Type            : Generic Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 01ffff
+ Description           : Device Present
+
+SEL Record ID          : 00af
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:58:03 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Fan
+ Sensor Number         : 14
+ Event Type            : Generic Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 01ffff
+ Description           : Device Present
+
+SEL Record ID          : 00b0
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:58:20 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 00b1
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:58:21 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 00b2
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:58:44 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 00b3
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:58:44 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 00b4
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:58:45 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 00b5
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:58:46 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 00b6
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:59:10 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 00b7
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:59:10 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 00b8
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:59:11 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 00b9
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:59:12 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 00ba
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:59:36 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 00bb
+ Record Type           : 02
+ Timestamp             : 10/02/2026 07:59:36 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 00bc
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:59:37 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 00bd
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 07:59:38 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 00be
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:00:02 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 00bf
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:00:02 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 00c0
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:00:03 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Power Supply
+ Sensor Number         : ea
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 00ffff
+ Description           : Presence detected
+
+SEL Record ID          : 00c1
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:00:03 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Power Supply
+ Sensor Number         : eb
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 00ffff
+ Description           : Presence detected
+
+SEL Record ID          : 00c2
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:00:03 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Power Supply
+ Sensor Number         : eb
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 03ffff
+ Description           : Power Supply AC lost
+
+SEL Record ID          : 00c3
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 08:00:03 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 00c4
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 08:00:03 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 00c5
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:00:27 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 00c6
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:00:27 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 00c7
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 08:00:27 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 00c8
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 08:00:29 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 00c9
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:00:53 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 00ca
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:00:53 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 00cb
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 08:00:54 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 00cc
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 08:00:55 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 00cd
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:01:19 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 00ce
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:01:19 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 00cf
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 08:01:20 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 00d0
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 08:01:21 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 00d1
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:01:45 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 00d2
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:01:45 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 00d3
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 08:01:46 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 00d4
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 08:01:47 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 00d5
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:02:11 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 00d6
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:02:11 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 00d7
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 08:02:11 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 00d8
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 08:02:12 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 00d9
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:02:36 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 00da
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:02:36 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 00db
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 08:02:37 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 00dc
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 08:02:38 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 00dd
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:03:02 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 00de
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:03:02 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 00df
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 08:03:03 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 00e0
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 08:03:04 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 00e1
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:03:28 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 00e2
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:03:28 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 00e3
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 08:03:29 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 00e4
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 08:03:30 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 00e5
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:03:54 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 00e6
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:03:54 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 00e7
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 08:03:54 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 00e8
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 08:03:55 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 00e9
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:04:19 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 00ea
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:04:19 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 00eb
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 08:04:20 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 00ec
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 08:04:21 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 00ed
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:04:45 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 00ee
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:04:45 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 00ef
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:04:48 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Power Unit
+ Sensor Number         : e0
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 00ffff
+ Description           : Power off/down
+
+SEL Record ID          : 00f0
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:04:48 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 00f1
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:33:02 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Session Audit
+ Sensor Number         : e5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 000000
+ Description           : 
+
+SEL Record ID          : 00f2
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 08:33:24 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 00f3
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 08:33:25 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 00f4
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:33:48 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 00f5
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:33:48 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 00f6
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 08:33:49 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 00f7
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 08:33:50 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 00f8
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:34:14 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 00f9
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:34:14 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 00fa
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 08:34:15 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8f7114ffff [..q...]
+
+SEL Record ID          : 00fb
+ Record Type           : c0  (OEM timestamped)
+ Timestamp             : 10/02/2026 08:34:16 PM UTC
+ Manufactacturer ID    : 00cd3a
+ OEM Defined           : ca8ff114ffff [......]
+
+SEL Record ID          : 00fc
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:34:37 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Session Audit
+ Sensor Number         : e5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 010000
+ Description           : 
+
+SEL Record ID          : 00fd
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:34:40 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
+SEL Record ID          : 00fe
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:34:40 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System Boot Initiated
+ Sensor Number         : d5
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 07ffff
+ Description           : System Restart
+
+SEL Record ID          : 00ff
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:35:09 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : Power Unit
+ Sensor Number         : e0
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 00ffff
+ Description           : Power off/down
+
+SEL Record ID          : 0100
+ Record Type           : 02
+ Timestamp             : 10/02/2026 08:35:09 PM UTC
+ Generator ID          : 0020
+ EvM Revision          : 04
+ Sensor Type           : System ACPI Power State
+ Sensor Number         : 4d
+ Event Type            : Sensor-specific Discrete
+ Event Direction       : Assertion Event
+ Event Data            : 05ffff
+ Description           : S5/G2: soft-off
+
