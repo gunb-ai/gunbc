@@ -9746,7 +9746,28 @@ fn visit_bare_reference_providers(
         .iter()
         .map(String::as_str)
         .filter(|h| !candidates.names.contains(*h))
-        .filter(|h| v1_rt::map_get(&census.services, (*h).to_string()).is_none())
+        .filter(|h| {
+            // A namespace head need not itself be a service key: github.Api.Get
+            // resolves through github.Api. Keep the bare obligation if ANY use of
+            // that head has no service prefix, including a separate member access.
+            let prefix = format!("{h}.");
+            let mut chains = candidates
+                .dotted_chains
+                .iter()
+                .filter(|chain| chain.starts_with(&prefix))
+                .peekable();
+            chains.peek().is_none()
+                || chains.any(|chain| {
+                    let mut key = String::new();
+                    !chain.split('.').any(|segment| {
+                        if !key.is_empty() {
+                            key.push('.');
+                        }
+                        key.push_str(segment);
+                        v1_rt::map_get(&census.services, key.clone()).is_some()
+                    })
+                })
+        })
         .map(|h| h.to_string())
         .collect();
     let all_names: Vec<(String, bool)> = candidates
@@ -10267,6 +10288,52 @@ mod closure_edge_demand_tests {
         );
     }
 
+    #[test]
+    fn qualified_service_prefix_does_not_pull_an_unrelated_bare_helper() {
+        let service = "module svc.api\nservice github.Api {\n operation Get {\n input { id: Int }\n output { id: Int from \"id\" }\n readonly\n transport rest { method: GET, path: \"/x\" }\n }\n}\n";
+        let helper = "module helper\nfn github(value: Int) -> Int { value }\n";
+        for (extra, should_pull_helper) in [
+            ("", false),
+            ("fn bare() -> Int { github(value: 1) }\n", true),
+            ("fn member() -> Int { github.other }\n", true),
+        ] {
+            let consumer = format!(
+                "module svc.consumer\nimport svc.api\nfn run() -> Int {{ github.Api.Get(id: 1) }}\n{extra}"
+            );
+            let fixture = Fixture::new(&[
+                ("api.dag", service),
+                ("helper.dag", helper),
+                ("consumer.dag", &consumer),
+            ]);
+            let index = fixture.index();
+            let found =
+                unimported_bare_providers(&index.source_files["svc.consumer"], &index).unwrap();
+            assert_eq!(
+                found
+                    .iter()
+                    .any(|row| row.name == "github" && row.provider_module == "helper"),
+                should_pull_helper,
+                "extra={extra:?}: {found:?}"
+            );
+        }
+        // Resolving the service prefix must still demand the service's own import.
+        let fixture = Fixture::new(&[
+            ("api.dag", service),
+            ("helper.dag", helper),
+            ("other.dag", "module other\ndata value: Int = 1\n"),
+            ("consumer.dag", "module svc.consumer\nimport other { value }\nfn run() -> Int { github.Api.Get(id: 1) }\n"),
+        ]);
+        let index = fixture.index();
+        let found = unimported_bare_providers(&index.source_files["svc.consumer"], &index).unwrap();
+        assert!(
+            found
+                .iter()
+                .any(|row| row.name == "github.Api" && row.provider_module == "svc.api"),
+            "{found:?}"
+        );
+        assert!(!found.iter().any(|row| row.name == "github"), "{found:?}");
+    }
+
     /// THE ORIGINAL NON-CLOSURE AMBIGUITY SPECIMEN, KEPT, with its entry-local outcome paired with
     /// the mandatory global refusal (#12419 decision 5857893764). An entry whose closure never
     /// reaches the ambiguous consumer is admitted; the whole-pool demand -- the required floor's
@@ -10449,6 +10516,11 @@ mod closure_edge_demand_tests {
                 .is_some_and(|f| f.contains("bypassed")),
             "a judgment of OTHER roots is not a judgment of these"
         );
+        // The twin is a separate qualification subject, not a second resident
+        // production pool. Preserve the cross-root bypass check above, then end
+        // the bad subject's index lifetime before evaluating the clean subject.
+        drop(index);
+        reset_process_shared_index_for_test();
         let ok = run_required_bare_reference_admission(&twin_roots).unwrap();
         assert!(ok.contains("judged=2 pool=2"), "{ok}");
         assert_eq!(
@@ -10757,6 +10829,64 @@ mod closure_edge_demand_tests {
     }
 
     #[test]
+    fn entry_preparation_covers_the_closure_union_and_leaves_refusals_to_their_entry() {
+        let fixture = Fixture::new(&[
+            (
+                "a.dag",
+                "module entry_a\nimport chain.provider { first }\nfn main() -> Int { first() }\n",
+            ),
+            ("b.dag", "module entry_b\nfn main() -> Int { next() }\n"),
+            (
+                "provider.dag",
+                "module chain.provider\nfn first() -> Int { next() }\n",
+            ),
+            ("tail.dag", "module chain.tail\nfn next() -> Int { 1 }\n"),
+            (
+                "unrelated.dag",
+                "module unrelated\nfn unused() -> Int { 1 }\n",
+            ),
+        ]);
+        let index = fixture.index();
+        let entry = |file: &str| fixture.0.join(file).to_string_lossy().into_owned();
+        let entries = [entry("a.dag"), entry("b.dag"), entry("absent.dag")];
+        let warm = warm_bare_reference_edge_index_for_entries(&index, &entries).unwrap();
+        assert!(matches!(
+            warm.observation.provenance,
+            SharedBuildProvenance::BuiltByPreparation
+        ));
+        assert_eq!(
+            (warm.entries, warm.entries_refused, warm.pool_files),
+            (3, 1, 5)
+        );
+        let rows: BTreeSet<_> = index
+            .both_closure_edges
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .ref_out
+            .keys()
+            .cloned()
+            .collect();
+        let union: BTreeSet<_> = entries[..2]
+            .iter()
+            .flat_map(|e| load_sources_for_entry_with_pool(&index, e).unwrap())
+            .map(|s| workspace_relative_repo_path(&s.path))
+            .collect();
+        assert_eq!(rows, union);
+        assert_eq!(warm.observation.source_files, 4);
+        assert!(!rows.iter().any(|file| file.ends_with("unrelated.dag")));
+        // The refused entry still refuses at its owner.
+        assert!(load_sources_for_entry_with_pool(&index, &entries[2]).is_err());
+        assert!(matches!(
+            warm_bare_reference_edge_index_for_entries(&index, &entries[..2])
+                .unwrap()
+                .observation
+                .provenance,
+            SharedBuildProvenance::AlreadyWarmOnEntry { .. }
+        ));
+    }
+
+    #[test]
     fn decomposition_releases_production_name_censuses_and_admission() {
         let fixture = Fixture::new(&[(
             "entry.dag",
@@ -11003,6 +11133,93 @@ pub fn warm_bare_reference_edge_index(
         source_files: index.source_files.len(),
         bare_eligible: edges.bare_scan_eligible.len(),
         provenance,
+    })
+}
+
+/// The preparation of a run whose subject is a NAMED SET OF ENTRIES, not the tree.
+pub struct EntryClosureEdgeWarm {
+    /// `source_files` is the edge rows the index holds after this preparation -- the union of the
+    /// requested entries' closures -- which is the same quantity the whole-pool warm reports (there
+    /// every pool file has a row, so the two readings coincide exactly when the subject is the tree).
+    pub observation: SharedBuildObservation,
+    pub entries: usize,
+    /// Entries whose loader refused. The refusal is NOT answered here: the entry's own resolve
+    /// reaches the same loader, refuses identically, and reports it against that entry.
+    pub entries_refused: usize,
+    pub pool_files: usize,
+}
+
+/// Edge-index preparation for an entry-subject run: the per-file judgment
+/// (`build_both_closure_edge_index`) demanded over the union of the requested entries' closures,
+/// through the same loader fixpoint each entry's resolve runs (`load_sources_for_entry_with_pool`).
+///
+/// `warm_bare_reference_edge_index` asks the whole-pool question because the floor's claims
+/// collectively consume the pool. A run over named entries has no such consumer: every row outside
+/// the closure union is produced for nobody (DESIGN §2 -- authored duplication of nothing, so it is
+/// deleted, not cached). The preparation still exists, at this narrower subject, for the reason the
+/// whole-pool one does: the shared rows are attributed to the run rather than to whichever entry
+/// resolves first.
+pub fn warm_bare_reference_edge_index_for_entries(
+    index: &MultiEntryIndex,
+    entries: &[String],
+) -> Result<EntryClosureEdgeWarm, String> {
+    let provenance = if !entries.is_empty()
+        && entries.iter().all(|entry| {
+            index
+                .entry_closure_sources
+                .borrow()
+                .contains_key(&workspace_relative_entry_path(entry))
+        }) {
+        SharedBuildProvenance::AlreadyWarmOnEntry {
+            triggered_by: "a-site-ahead-of-entry-preparation",
+        }
+    } else {
+        SharedBuildProvenance::BuiltByPreparation
+    };
+    let rss_before = current_rss_bytes().unwrap_or(0);
+    let cpu_before = v1_interpreter::thread_cpu_nanos();
+    let wall_before = std::time::Instant::now();
+    let mut entries_refused = 0usize;
+    for entry in entries {
+        if load_sources_for_entry_with_pool(index, entry).is_err() {
+            entries_refused += 1;
+        }
+    }
+    let edges = index.both_closure_edges.borrow().clone();
+    let (source_files, bare_eligible) = match &edges {
+        Some(edges) => {
+            // The same reconciliation demand the whole-pool preparation keeps, over the roots the
+            // demanded rows actually reach.
+            let roots: BTreeSet<_> = edges
+                .bare_scan_eligible
+                .iter()
+                .filter_map(|file| source_tree_root_of(&index.source_roots, file))
+                .collect();
+            for root in roots {
+                tree_bare_census_for_root(index, &root)?;
+            }
+            (edges.ref_out.len(), edges.bare_scan_eligible.len())
+        }
+        None => (0, 0),
+    };
+    let wall_ms = wall_before.elapsed().as_millis() as u64;
+    let cpu_ms =
+        ((v1_interpreter::thread_cpu_nanos().saturating_sub(cpu_before)) / 1_000_000) as u64;
+    let rss_growth_bytes = current_rss_bytes()
+        .unwrap_or(rss_before)
+        .saturating_sub(rss_before);
+    Ok(EntryClosureEdgeWarm {
+        observation: SharedBuildObservation {
+            cpu_ms,
+            wall_ms,
+            rss_growth_bytes,
+            source_files,
+            bare_eligible,
+            provenance,
+        },
+        entries: entries.len(),
+        entries_refused,
+        pool_files: index.source_files.len(),
     })
 }
 
@@ -15778,12 +15995,10 @@ pub struct ResolveStageNanos {
     /// `expand_transitive_services` (monotone fixpoint over every bodied item, under a bound
     /// derived from the registry rather than a chosen pass count).
     pub assembly_services: u128,
-    /// The three `rewire_*` passes (type-env parents, import-str identity, func-env parents).
+    /// The two `rewire_*` passes (type-env parents, func-env parents).
     pub assembly_rewire: u128,
     /// `rewire_type_env_parent_links` alone.
     pub assembly_rewire_type_env: u128,
-    /// `rewire_type_env_import_str_binding_identity` alone.
-    pub assembly_rewire_import_str: u128,
     /// `rewire_func_env_parent_links` alone.
     pub assembly_rewire_func_env: u128,
     /// `corpus_has_v1_seed_source_indices` + `build_emit_graph_info`.
@@ -15918,7 +16133,6 @@ impl ResolveStageNanos {
         self.assembly_services += other.assembly_services;
         self.assembly_rewire += other.assembly_rewire;
         self.assembly_rewire_type_env += other.assembly_rewire_type_env;
-        self.assembly_rewire_import_str += other.assembly_rewire_import_str;
         self.assembly_rewire_func_env += other.assembly_rewire_func_env;
         self.assembly_emit_info += other.assembly_emit_info;
         self.load_reference_scan += other.load_reference_scan;
@@ -15979,7 +16193,6 @@ impl ResolveStageNanos {
             + self.assembly_registry
             + self.assembly_services
             + self.assembly_rewire_type_env
-            + self.assembly_rewire_import_str
             + self.assembly_rewire_func_env
             + self.assembly_emit_info
     }
@@ -16004,7 +16217,6 @@ impl ResolveStageNanos {
             + self.assembly_registry
             + self.assembly_services
             + self.assembly_rewire_type_env
-            + self.assembly_rewire_import_str
             + self.assembly_rewire_func_env
             + self.assembly_emit_info
     }
@@ -16036,7 +16248,6 @@ thread_local! {
             assembly_services: 0,
             assembly_rewire: 0,
             assembly_rewire_type_env: 0,
-            assembly_rewire_import_str: 0,
             assembly_rewire_func_env: 0,
             assembly_emit_info: 0,
             load_reference_scan: 0,
@@ -16436,10 +16647,6 @@ pub fn exclusive_cost_partition_from(
         CostPartitionRow {
             name: "assembly_rewire_type_env",
             nanos: st.assembly_rewire_type_env,
-        },
-        CostPartitionRow {
-            name: "assembly_rewire_import_str",
-            nanos: st.assembly_rewire_import_str,
         },
         CostPartitionRow {
             name: "assembly_rewire_func_env",
@@ -17200,14 +17407,6 @@ fn finish_resolved_graph_assembly(
     let modules =
         v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
     resolve_stage_slot_add(|s| s.assembly_rewire_type_env += rewire_started.elapsed().as_nanos());
-    let rewire2_started = std::time::Instant::now();
-    let modules = v1_compiler_infer::rewire_type_env_import_str_binding_identity(
-        modules.clone(),
-        source_indices.clone(),
-    );
-    resolve_stage_slot_add(|s| {
-        s.assembly_rewire_import_str += rewire2_started.elapsed().as_nanos()
-    });
     let rewire3_started = std::time::Instant::now();
     let modules =
         v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
@@ -17884,10 +18083,6 @@ fn reconcile_with_typed_cache(
     index: &MultiEntryIndex,
 ) -> Result<Rc<ResolvedGraph>, String> {
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
-    // The import-union surface pool, admitted module by module exactly as the modeled realize loop
-    // (`v1.compiler.infer` `realize_module`) admits it: a module is typechecked against the pool of
-    // the modules before it, then admitted.
-    let mut surface_pool = crate::v1_compiler_infer_env::empty_surface_pool();
     let mut diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
@@ -18123,7 +18318,6 @@ fn reconcile_with_typed_cache(
                                 let computed = v1_compiler_infer::typecheck_module(
                                     resolved.clone(),
                                     module_index.clone(),
-                                    surface_pool.clone(),
                                     variant_surfaces.clone(),
                                     source_indices.clone(),
                                     intern_table.clone(),
@@ -18182,13 +18376,6 @@ fn reconcile_with_typed_cache(
                 );
                 variant_surfaces =
                     v1_rt::rc_map_insert(variant_surfaces, typed_path.clone(), variant_surface);
-                surface_pool = crate::v1_compiler_infer_env::surface_pool_admit(
-                    surface_pool,
-                    typed_path.clone(),
-                    typed.interface.env.str_bindings.clone(),
-                    typed.interface.surface_imports.clone(),
-                    typed.type_env.ancestry.contested.clone(),
-                );
                 module_index = v1_rt::rc_map_insert(module_index, typed_path, typed.clone());
                 dispatched[slot] = Some((parent_diags, tc_result));
                 resolve_stage_slot_add(|s| {
@@ -28076,142 +28263,6 @@ fn entry_touches_rerun_frontier(
         }
     }
     Ok(!saw_claim)
-}
-
-/// P4 advisory-first (witness-realization plan): marshal an `Option<i64>` into the
-/// `.dag` `Int?` (Optional) `Value` the modeled `realize_advisory` expects.
-fn realize_advisory_optional_int(
-    ctx: &v1_interpreter::InterpContext,
-    v: Option<i64>,
-) -> v1_interpreter::Value {
-    use std::rc::Rc;
-    use v1_interpreter::Value;
-    match v {
-        Some(n) => Value::Variant {
-            type_name: ctx.sym("Optional"),
-            variant_name: ctx.sym("Present"),
-            fields: Rc::new(vec![(ctx.sym("value"), Value::Int(n))]),
-        },
-        None => Value::Variant {
-            type_name: ctx.sym("Optional"),
-            variant_name: ctx.sym("Absent"),
-            fields: Rc::new(vec![]),
-        },
-    }
-}
-
-/// P4 advisory-first: for each discovery witness, DERIVE its space bound
-/// (`ComplexityReport.function_space_bytes` at an empty size-env — a closed
-/// witness has no free size-vars) and log the memory-packed width `std.realize_pack`
-/// would schedule, alongside the live `MemoryGovernor` admission. This changes NO
-/// scheduling — it proves the derived bounds are sound on the real corpus before
-/// the governor is demoted (§5). The packing LAW stays modeled: `realize_advisory`
-/// is interpreted through the bridge, never reimplemented in Rust (§2). Gated by
-/// `GUNBC_REALIZE_ADVISORY`.
-pub fn emit_realize_advisory_for_rows(source_roots: &[String], rows: &[DiscoveryRow]) {
-    use v1_interpreter::Value;
-    // The witness graphs don't import std.realize_pack, so interpret the law in its
-    // own ctx, built once.
-    let realize_ctx = match resolve_entry_graph(source_roots, "dag/std/realize_pack.dag") {
-        Ok((g, idx)) => make_eval_context(&g, idx, v1_interpreter::ExecutionMode::Hermetic),
-        Err(e) => {
-            eprintln!("[realize-advisory] disabled: cannot load std.realize_pack: {e}");
-            return;
-        }
-    };
-    // Host planning ceiling: the SAME single authority the MemoryGovernor schedules against.
-    // It is the minimum of an optional env request and observed cgroup lines; an env-only
-    // declaration is unverified and unreadable to consumers. Unreadable -> the
-    // modeled law refuses (BudgetRefused), never a fabricated width.
-    let (budget_opt, budget_source) = crate::memory_governor::read_host_budget_bytes();
-    let budget_bytes: Option<i64> = budget_opt.map(|b| b as i64);
-    let independence: i64 = std::thread::available_parallelism()
-        .map(|n| n.get() as i64)
-        .unwrap_or(1);
-    // Group by entry so each entry resolves + analyzes once.
-    let mut by_entry: std::collections::BTreeMap<String, Vec<String>> =
-        std::collections::BTreeMap::new();
-    for r in rows {
-        by_entry
-            .entry(r.entry.clone())
-            .or_default()
-            .push(r.function.clone());
-    }
-    let (mut derivable, mut unknown) = (0usize, 0usize);
-    for (entry, functions) in &by_entry {
-        let (graph, source_indices) = match resolve_entry_graph(source_roots, entry) {
-            Ok(p) => p,
-            Err(_) => continue,
-        };
-        let report =
-            v1_compiler_compile::run_complexity_analysis(graph.clone(), source_indices.clone());
-        for function in functions {
-            let derived: Option<i64> = report.function_space_bytes.get(function).copied();
-            if derived.is_some() {
-                derivable += 1;
-            } else {
-                unknown += 1;
-            }
-            let args = vec![
-                (
-                    Some("derived_bytes".to_string()),
-                    realize_advisory_optional_int(&realize_ctx, derived),
-                ),
-                (
-                    Some("budget_bytes".to_string()),
-                    realize_advisory_optional_int(&realize_ctx, budget_bytes),
-                ),
-                (
-                    Some("independence_width".to_string()),
-                    Value::Int(independence),
-                ),
-            ];
-            match v1_interpreter::run_in_context_with_args(
-                &realize_ctx,
-                "realize_advisory",
-                &args,
-                false,
-            ) {
-                Ok(Value::Record { ref fields, .. }) => {
-                    let width = match realize_ctx.field(&fields, "width") {
-                        Some(Value::Int(w)) => *w,
-                        _ => -1,
-                    };
-                    let verdict = match realize_ctx.field(&fields, "verdict") {
-                        Some(Value::Str(s)) => s.to_string(),
-                        _ => String::new(),
-                    };
-                    let db = derived
-                        .map(|d| d.to_string())
-                        .unwrap_or_else(|| "unknown".to_string());
-                    let bb = budget_bytes
-                        .map(|b| b.to_string())
-                        .unwrap_or_else(|| "unreadable".to_string());
-                    eprintln!(
-                        "[realize-advisory] entry={entry} fn={function} derived_bytes={db} \
-                         budget={bb} independence={independence} predicted_width={width} verdict={verdict}"
-                    );
-                }
-                Ok(_) => eprintln!(
-                    "[realize-advisory] entry={entry} fn={function} — bridge returned non-record"
-                ),
-                Err(e) => {
-                    eprintln!("[realize-advisory] entry={entry} fn={function} — bridge error: {e}")
-                }
-            }
-        }
-    }
-    eprintln!(
-        "[realize-advisory] summary: {} function(s), {} with a derived bound, \
-         {} unknown (maturation reserve); budget={} source={}",
-        derivable + unknown,
-        derivable,
-        unknown,
-        budget_bytes
-            .map(|b| b.to_string())
-            .unwrap_or_else(|| "unreadable".to_string()),
-        budget_source,
-    );
 }
 
 /// Discovery per-phase wall totals (CI floor endgame D4 — the lever-1 re-diagnosis
@@ -41035,7 +41086,7 @@ mod peel_alias_fixpoint_termination {
                 module_path: "".to_string(),
                 bindings: crate::v1_rt::rc_empty_map(),
                 str_bindings: crate::v1_rt::rc_empty_map(),
-                ancestry: crate::v1_compiler_infer_env::empty_ancestry_view(),
+                ancestry_str_bindings: crate::v1_rt::rc_empty_map(),
                 parents: std::rc::Rc::new(im::vector![]),
                 recursive_types: std::rc::Rc::new(im::vector![]),
                 recursive_type_set: crate::v1_rt::rc_empty_map(),
@@ -41722,18 +41773,17 @@ mod exclusive_cost_partition_law {
 
     #[test]
     fn rewire_sub_rows_are_exclusive_and_total_is_observation_only() {
-        // The three non-overlapping passes enter the partition directly. Their enclosing
+        // The two non-overlapping passes enter the partition directly. Their enclosing
         // timer remains available on the text receipt but cannot become a quoted share.
         let st = ResolveStageNanos {
-            assembly_rewire: 300,
+            assembly_rewire: 150,
             assembly_rewire_type_env: 100,
-            assembly_rewire_import_str: 150,
             assembly_rewire_func_env: 50,
             ..ResolveStageNanos::default()
         };
         let p = exclusive_cost_partition_from(&st, "test_basis", 1_000, 1, 0, Vec::new());
-        assert_eq!(p.sum_exclusive_nanos(), 300);
-        assert_eq!(p.remainder_nanos, 700);
+        assert_eq!(p.sum_exclusive_nanos(), 150);
+        assert_eq!(p.remainder_nanos, 850);
 
         assert_eq!(p.share_of_parent("assembly_rewire"), None);
         assert_eq!(
@@ -41742,14 +41792,14 @@ mod exclusive_cost_partition_law {
                 .filter(|r| r.name.starts_with("assembly_rewire_"))
                 .map(|r| r.nanos)
                 .sum::<u128>(),
-            300
+            150
         );
 
         // The invariant that actually matters, over every inclusive row from every parent:
         // an inclusive row is contained in some other row (exclusive, or another inclusive
         // row -- `load_bare_*` nest under `load_bare_reference_closure`, which nests under
         // `load`), and is therefore already counted there. `sum_exclusive_nanos` above is
-        // 300, not 600, which is the double-count this control exists to catch.
+        // 150, not 300, which is the double-count this control exists to catch.
         let exclusive_names: Vec<&str> = p.exclusive.iter().map(|r| r.name).collect();
         let inclusive_names: Vec<&str> = p.inclusive.iter().map(|r| r.name).collect();
         for row in &p.inclusive {
@@ -43890,6 +43940,17 @@ fn claim_scope_for_with_memos(
             };
             let site_file = module.module.span.file.as_str();
             for name in refs.iter() {
+                // A kernel or container spelling binds the substrate, never a declaring module
+                // (`is_substrate_vocabulary`, the one rule every bare-name producer reads), so two
+                // corpus modules declaring `String` do not make a bare `String` contested. This
+                // held by accident while some import in each scope named one of the declarers;
+                // gunbc.rung_drop text_boundary_identity_wall deleted 71 such imports. Not redundant
+                // with the parse fix that carries a service exit arm's type as a type: bare `String`
+                // reads outside exit arms remain (measured: the floor refused gunbc.output_policy at
+                // 4 sites, e.g. extdeps.github.issues, with this skip removed).
+                if is_substrate_vocabulary(name) {
+                    continue;
+                }
                 let Some(claimants) = ambiguous.get(name) else {
                     continue;
                 };
@@ -47242,144 +47303,5 @@ mod collect_node_values_depth_tests {
         }
         let mut out = Vec::new();
         super::collect_node_values(&value, &ctx, &mut out);
-    }
-}
-
-/// PERMANENT CONTROLS FOR THE IMPORT UNION'S DERIVED VIEW (PR-2 of
-/// docs/plans/type-env-single-authority-design.md), one per defect the regen caught while it was
-/// built. Both drive the generated `v1.compiler.infer_env` and `v1.compiler.infer` functions
-/// directly over a pool built by `surface_pool_admit`, the one admission the compiler uses.
-#[cfg(test)]
-mod surface_view_controls {
-    use crate::v1_compiler_infer::view_over_pool;
-    use crate::v1_compiler_infer_env::{
-        ancestry_lookup, empty_surface_pool, surface_contested_walk, surface_pool_admit,
-        surface_reach_of, AncestryView, SurfaceImport, SurfacePool, TypeBinding,
-    };
-    use im::Vector;
-    use std::rc::Rc;
-
-    fn binding(name: &str) -> Rc<TypeBinding> {
-        Rc::new(TypeBinding {
-            name: name.to_string(),
-            resolved: crate::v1_compiler_infer::kernel_bool_type_node(),
-            provenance: Rc::new(crate::std_induction::SubValueRelation::SubValueUnknown),
-            alias_rhs: None,
-        })
-    }
-
-    fn own(names: &[&str]) -> Rc<im::HashMap<String, Rc<TypeBinding>>> {
-        Rc::new(names.iter().map(|n| (n.to_string(), binding(n))).collect())
-    }
-
-    fn imports(paths: &[&str]) -> Rc<Vector<Rc<SurfaceImport>>> {
-        Rc::new(
-            paths
-                .iter()
-                .map(|p| {
-                    Rc::new(SurfaceImport {
-                        module_path: p.to_string(),
-                        is_all: false,
-                        specific_names: Rc::new(Vector::new()),
-                    })
-                })
-                .collect(),
-        )
-    }
-
-    // A contested name's winner is produced once per module by the production walk, so a module is
-    // admitted with the table that walk computes over the pool as it stood, exactly as the realize
-    // loop admits it.
-    fn contested(
-        over: &[&str],
-        pool: &Rc<SurfacePool>,
-    ) -> Rc<im::HashMap<String, Rc<TypeBinding>>> {
-        surface_contested_walk(pool.clone(), Rc::new(im::HashMap::new()), imports(over))
-            .table
-            .clone()
-    }
-
-    fn admit(
-        pool: Rc<SurfacePool>,
-        module: String,
-        own_names: &[&str],
-        over: &[&str],
-    ) -> Rc<SurfacePool> {
-        let table = contested(over, &pool);
-        surface_pool_admit(pool, module, own(own_names), imports(over), table)
-    }
-
-    fn view(module: &str, over: &[&str], pool: Rc<SurfacePool>) -> Rc<AncestryView> {
-        let imports = imports(over);
-        Rc::new(AncestryView {
-            module_path: module.to_string(),
-            reach: surface_reach_of(imports.clone(), pool.clone()),
-            contested: contested(over, &pool),
-            imports,
-            kernel: Rc::new(im::HashMap::new()),
-            rewrites: Rc::new(im::HashMap::new()),
-            pool,
-        })
-    }
-
-    /// THE DESCENT IS ONE PATH. A diamond lattice 40 levels deep, two modules per level each
-    /// importing both of the level below, with the name exported at the bottom by two modules
-    /// (so it has two exporters and takes the union walk). A descent that branched into every
-    /// import holding the name would take about 2^40 steps; the one-path descent takes about
-    /// 2 x 40. The watchdog turns a hang into a red.
-    #[test]
-    fn a_diamond_lattice_lookup_is_linear_in_depth() {
-        let (tx, rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            let mut pool = empty_surface_pool();
-            pool = admit(pool, "a0".into(), &["X"], &[]);
-            pool = admit(pool, "b0".into(), &["X"], &[]);
-            for level in 1..40 {
-                let below = [format!("a{}", level - 1), format!("b{}", level - 1)];
-                let below: Vec<&str> = below.iter().map(String::as_str).collect();
-                pool = admit(pool, format!("a{level}"), &[], &below);
-                pool = admit(pool, format!("b{level}"), &[], &below);
-            }
-            let found = ancestry_lookup(view("top", &["a39", "b39"], pool), "X".into()).is_some();
-            let _ = tx.send(found);
-        });
-        let found = rx.recv_timeout(std::time::Duration::from_secs(10)).expect(
-            "the lookup did not finish in 10s: the descent branches instead of following one path",
-        );
-        assert!(found);
-    }
-
-    /// RE-POINTING A VIEW RECOMPUTES ITS CLOSURE. Two pools admit the same modules in a different
-    /// order, so their ordinals differ. A view built over pool 1 and re-pointed at pool 2 through
-    /// `view_over_pool` must still find a name its closure exports; the same view carrying pool 1's
-    /// bitset over pool 2 must not (that is the stale-bitset defect, and this arm shows the control
-    /// discriminates it).
-    #[test]
-    fn a_view_repointed_across_pools_recomputes_its_closure() {
-        let admit = |order: &[&str]| {
-            let mut pool = empty_surface_pool();
-            for m in order {
-                let (own_names, over): (&[&str], &[&str]) = match *m {
-                    "a" => (&["FromA"], &[]),
-                    "b" => (&["FromB"], &[]),
-                    _ => (&[], &["a"]),
-                };
-                pool = admit(pool, m.to_string(), own_names, over);
-            }
-            pool
-        };
-        let pool1 = admit(&["a", "b", "c"]);
-        let pool2 = admit(&["b", "a", "c"]);
-        let built = view("d", &["c"], pool1);
-        let repointed = view_over_pool(built.clone(), pool2.clone());
-        assert!(ancestry_lookup(repointed, "FromA".into()).is_some());
-        let stale = Rc::new(AncestryView {
-            pool: pool2,
-            ..(*built).clone()
-        });
-        assert!(
-            ancestry_lookup(stale, "FromA".into()).is_none(),
-            "a carried-over bitset happened to agree; the control would not discriminate"
-        );
     }
 }

@@ -1,0 +1,1084 @@
+module gunbc.roadmap.roadmap_alignment
+
+import std.types { String, Int, Bool, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.languages.json.emit {
+  JsonValue,
+  JsonNull,
+  JsonBool,
+  JsonString,
+  JsonNumber,
+  JsonArray,
+  JsonObject,
+  json_string,
+  json_int,
+  json_array,
+  json_object,
+  json_kv,
+  serialize_json,
+}
+import extdeps.languages.json.parse {
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  json_document_gap_text,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
+}
+import gunbc.roadmap_nesting { roadmap_roots }
+import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, MemberOf, AdmittedRoot, Closes }
+import gunbc.roadmap_status { TicketLine, DerivableLine, AuthoredLine, PlainLine, SupersededLine }
+import gunbc.roadmap_authority { declared_roadmap_nodes, closing_contract_task_for }
+import gunbc.roadmap.roadmap_lineage {
+  LineageWalk,
+  LineageRooted,
+  LineageNoParent,
+  LineageUndeclared,
+  LineageCyclic,
+  lineage_walk_in,
+  lineage_index,
+  lineage_lookup,
+}
+import gunbc.roadmap.roadmap_attempt_continuation {
+  continuation_alignment_l0_pointer,
+  continuation_alignment_ask,
+}
+import std.content_hash { content_hash_atom }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+
+// The recursive alignment ladder follows the parent each row declares, never reverse blocking. Each
+// level carries the node's declared ticket structure and the edge's contribution argument.
+//
+// THE CARRIER PRESERVES THE TICKET, it does not reduce it (review 5354823380): purpose and
+// boundary alone forced every level to answer from two fields, while TicketFields already
+// declares the current approach, the red control, the handback and the displaced cost a
+// checkpoint must be read against. contribution_to_parent is the edge's argument -- why THIS
+// child's work advances THIS parent -- carried on the level it explains.
+type AlignmentChainLink {
+  node_id: String
+  purpose: String
+  boundary: String
+  current_approach: String
+  red_control: String
+  handback: String
+  displaced_cost: String
+  contribution_to_parent: String
+}
+
+// THE TERMINAL LEVEL IS A POINTER, not text: the root principles are gunbc.design_document, and
+// carrying the ref rather than an excerpt is what keeps the chain answerable to the live authority
+// instead of to a copy of it.
+//
+// ONE PARENT PER ROW (operator ruling, 2026-09-30) retires the refusals the keyed membership roster
+// needed: a node claimed by two projects, and an edge whose contribution was missing, empty or
+// disagreeing, have no constructor now that the parent and its contribution live on the row
+// (gunbc.roadmap_model NodeParent carries a NonEmptyStr contribution). The walk itself is
+// gunbc.roadmap.roadmap_lineage lineage_walk, shared with readiness and minting, so the chain and
+// the dispatcher cannot disagree about where a node sits.
+type AlignmentChain
+  = AlignmentChained {
+      task: AlignmentChainLink,
+      projects: List<AlignmentChainLink>,
+      root: DeclarationRef,
+    }
+  | AlignmentChainUnrooted {
+      walked: List<AlignmentChainLink>,
+      at: String,
+    }
+  | AlignmentChainRowUndeclared { node_id: String }
+  | AlignmentChainCyclic { node_id: String }
+
+fn alignment_root_pointer() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.design_document", decl_name: "design_document")
+}
+
+// THE ROW PROJECTION, fail-closed. Exactly one declared row must carry the node: zero is an
+// undeclared halt, and more than one is an authority defect this module refuses to arbitrate by
+// first() -- both refuse rather than guess. Only a ticket row carries the purpose/boundary
+// contribution; any other line kind is an undeclared halt, because a chain link without the carried
+// contribution is a level no check can read against.
+type AlignmentLinkProjection
+  = LinkProjected { link: AlignmentChainLink }
+  | LinkRowUndeclared { node_id: String }
+
+// ONE INDEX PER CHAIN, built once from the rows the chain is resolved over: the first row per id
+// (the lineage walk's own first-match rule, gunbc.roadmap.roadmap_lineage lineage_index) beside how
+// many rows declare that id, so a link still refuses a duplicated or missing id exactly as the
+// per-link filter did, without re-scanning every row for every link.
+type AlignmentIndex {
+  first: Map<String, RoadmapNode>
+  counts: Map<String, Int>
+}
+
+fn alignment_index(nodes: List<RoadmapNode>) -> AlignmentIndex {
+  let empty: Map<String, Int> = empty_map()
+  AlignmentIndex {
+    first: lineage_index(nodes: nodes),
+    counts: fold(nodes, init: empty, f: fn(acc, n) {
+      let k = n.node as String
+      match map_lookup(m: acc, key: k) {
+        Present { value: c } => map_insert(m: acc, key: k, value: c + 1)
+        Absent => map_insert(m: acc, key: k, value: 1)
+      }
+    }),
+  }
+}
+
+fn alignment_link_project(node_id: String, index: AlignmentIndex, contribution_to_parent: String) -> AlignmentLinkProjection {
+  let declared = match map_lookup(m: index.counts, key: node_id) { Present { value: c } => c  Absent => 0 }
+  if declared != 1 {
+    LinkRowUndeclared { node_id: node_id }
+  } else {
+    match lineage_lookup(index: index.first, id: node_id) {
+      Absent => LinkRowUndeclared { node_id: node_id }
+      Present { value: node } =>
+        match node.line {
+          TicketLine { done: _, ticket } =>
+            LinkProjected {
+              link: AlignmentChainLink {
+                node_id: node_id,
+                purpose: ticket.headline,
+                boundary: ticket.brief,
+                current_approach: ticket.current_state,
+                red_control: ticket.red_control,
+                handback: ticket.handback,
+                displaced_cost: ticket.displaced_cost,
+                contribution_to_parent: contribution_to_parent,
+              },
+            }
+          DerivableLine { prs: _, title: _, description: _ } => LinkRowUndeclared { node_id: node_id }
+          AuthoredLine { done: _, content: _ } => LinkRowUndeclared { node_id: node_id }
+          PlainLine { content: _ } => LinkRowUndeclared { node_id: node_id }
+          SupersededLine { by: _, content: _ } => LinkRowUndeclared { node_id: node_id }
+        }
+    }
+  }
+}
+
+// THE EDGE'S ARGUMENT a row states for its own parent. A derived closing-contract task stands in
+// its target's place, so it carries the target's argument.
+fn alignment_contribution_of(index: AlignmentIndex, id: String) -> String {
+  match lineage_lookup(index: index.first, id: id) {
+    Absent => ""
+    Present { value: n } =>
+      match n.parent {
+        Absent => ""
+        Present { value: p } =>
+          match p {
+            MemberOf { project: _, contribution } => contribution as String
+            AdmittedRoot => ""
+            Closes { target } => alignment_contribution_of(index: index, id: target)
+          }
+      }
+  }
+}
+
+type AlignmentLinksBuild
+  = AlignmentLinksBuilt { links: List<AlignmentChainLink> }
+  | AlignmentLinksRowUndeclared { node_id: String }
+
+fn alignment_links_for_ids(ids: List<String>, index: AlignmentIndex) -> AlignmentLinksBuild {
+  fold(ids, init: AlignmentLinksBuilt { links: [] }, f: fn(acc, id) {
+    match acc {
+      AlignmentLinksRowUndeclared { node_id } => AlignmentLinksRowUndeclared { node_id: node_id }
+      AlignmentLinksBuilt { links } =>
+        match alignment_link_project(node_id: id, index: index, contribution_to_parent: alignment_contribution_of(index: index, id: id)) {
+          LinkRowUndeclared { node_id } => AlignmentLinksRowUndeclared { node_id: node_id }
+          LinkProjected { link } => AlignmentLinksBuilt { links: concat(links, [link]) }
+        }
+    }
+  })
+}
+
+fn alignment_link_list_tail(items: List<AlignmentChainLink>) -> List<AlignmentChainLink> {
+  let folded = fold(items, init: { seen: 0, kept: [] as List<AlignmentChainLink> }, f: fn(acc, item) {
+    if acc.seen == 0 {
+      { seen: 1, kept: acc.kept }
+    } else {
+      { seen: acc.seen + 1, kept: concat(acc.kept, [item]) }
+    }
+  })
+  folded.kept
+}
+
+fn alignment_list_string_at(items: List<String>, index: Int) -> String? {
+  if index < 0 {
+    none
+  } else {
+    let found = fold(
+      items,
+      init: { seen: 0, hit: false, value: "" },
+      f: fn(acc, item) {
+        if acc.hit {
+          acc
+        } else if acc.seen == index {
+          { seen: acc.seen + 1, hit: true, value: item }
+        } else {
+          { seen: acc.seen + 1, hit: false, value: "" }
+        }
+      },
+    )
+    if found.hit {
+      Present { value: found.value }
+    } else {
+      none
+    }
+  }
+}
+
+// THE CHAIN. Task level first, then the motivating project chain nearest-first, then the root
+// principles pointer. The walk must end at an admitted root (review 5354823380): a walk that stops
+// at a node declaring no parent refuses as Unrooted with the prefix it walked, rather than crowning
+// an arbitrary node. A Closes task's chain is its target's chain with the task standing at the task
+// level (the walk already substitutes it), which is what lets a derived closing-contract task
+// resolve alignment instead of refusing as undeclared.
+fn alignment_chain(node_id: String, nodes: List<RoadmapNode>) -> AlignmentChain {
+  alignment_chain_in(node_id: node_id, index: alignment_index(nodes: nodes), fuel: count(nodes) + 1)
+}
+
+// The chain over an index the caller built once; alignment_chain is this at a fresh index.
+fn alignment_chain_in(node_id: String, index: AlignmentIndex, fuel: Int) -> AlignmentChain {
+  match lineage_walk_in(node_id: node_id, index: index.first, fuel: fuel) {
+    LineageCyclic { node_id: at } => AlignmentChainCyclic { node_id: at }
+    LineageUndeclared { walked: _, node_id: missing } => AlignmentChainRowUndeclared { node_id: missing }
+    LineageNoParent { walked, at } =>
+      match alignment_links_for_ids(ids: walked, index: index) {
+        AlignmentLinksRowUndeclared { node_id: missing } => AlignmentChainRowUndeclared { node_id: missing }
+        AlignmentLinksBuilt { links } =>
+          AlignmentChainUnrooted { walked: alignment_link_list_tail(items: links), at: at }
+      }
+    LineageRooted { ids } =>
+      match alignment_links_for_ids(ids: ids, index: index) {
+        AlignmentLinksRowUndeclared { node_id: missing } => AlignmentChainRowUndeclared { node_id: missing }
+        AlignmentLinksBuilt { links } =>
+          match links.first() {
+            Absent => AlignmentChainRowUndeclared { node_id: node_id }
+            Present { value: task } =>
+              AlignmentChained {
+                task: task,
+                projects: alignment_link_list_tail(items: links),
+                root: alignment_root_pointer(),
+              }
+          }
+      }
+  }
+}
+
+// THE AUTHORITY-BOUND DERIVATION. Every production consumer names the node; the rows are the
+// declared authority's own, so the chain renders what the authority says NOW, not what a copy said
+// when it was written. A derived closing-contract task has no declared row, so its minted row joins
+// the universe here (the AlignmentRowUndeclared defect the derived tasks used to hit).
+fn alignment_nodes_for(node_id: String) -> List<RoadmapNode> {
+  let declared = declared_roadmap_nodes()
+  concat(
+    declared,
+    declared
+      |> filter(n => concat(n.node as String, "-closing-contract") == node_id)
+      |> map(n => closing_contract_task_for(n: n)),
+  )
+}
+
+fn alignment_chain_for(node_id: String) -> AlignmentChain {
+  alignment_chain(node_id: node_id, nodes: alignment_nodes_for(node_id: node_id))
+}
+
+// ------------------------------------------------------------------------------------------------
+// The check-outcome vocabulary. The ladder's cadence point 2 declares exactly these verdicts and
+// nothing else: a magnitudinal standing (a Fermi estimate, order-of-magnitude, evidence-cited --
+// ALIGNED (+0/-0), MISALIGNED with a named direction, EXTREMELY MISALIGNED with a named direction,
+// CATASTROPHICALLY MISALIGNED with a named reason) plus RoutedConflict, which is NOT a magnitude
+// and not a worker signal: instructions disagreeing is a routing arm, it tunes no cadence. The
+// outcome must be able to change the next work performed -- a check whose answer cannot is
+// ceremony, and ceremony here reads as diligence.
+// ------------------------------------------------------------------------------------------------
+
+type AlignmentVerdict
+  = Aligned
+  | Misaligned { direction: String }
+  | ExtremelyMisaligned { direction: String }
+  | CatastrophicallyMisaligned { reason: String }
+  | RoutedConflict { conflict: String }
+
+fn alignment_verdict_key(v: AlignmentVerdict) -> String {
+  match v {
+    Aligned => "aligned"
+    Misaligned { direction: _ } => "misaligned"
+    ExtremelyMisaligned { direction: _ } => "extremely-misaligned"
+    CatastrophicallyMisaligned { reason: _ } => "catastrophically-misaligned"
+    RoutedConflict { conflict: _ } => "routed-conflict"
+  }
+}
+
+// THE CADENCE STEP'S ANSWER, typed because "stop the line" is not an interval. CATASTROPHICALLY
+// MISALIGNED convenes the supervisor immediately and no candidate work continues -- mapping that to
+// a number (0, -1, a floor) would be a verdict masquerading as tuning. Every other verdict answers
+// with the interval to use next.
+type AlignmentCadenceStep
+  = CadenceStepInterval { turns: Int }
+  | CadenceStepStopTheLine
+
+// ------------------------------------------------------------------------------------------------
+// The magnitudinal cadence, derived. A budget is not a failure measure -- it is the alignment
+// cadence: the task aligns most often, and each level up aligns an order of magnitude less often.
+// Base 20 turns is half the leaf attempt's 40-round budget, so a budget-exhausted attempt has
+// always faced at least one task-level check; each level up multiplies by the magnitude. Cadence
+// values are computed from the LEVEL INDEX ONLY -- no per-node overrides, because an override is
+// exactly where a quiet exemption would live.
+// ------------------------------------------------------------------------------------------------
+
+data alignment_cadence_base_turns: Int = 20
+
+data alignment_cadence_magnitude: Int = 10
+
+// THE DECLARED STEP. ALIGNED widens by this many turns; MISALIGNED shortens by the same step
+// (sooner re-check). One step value serves every level: the verdict's magnitude moves the interval,
+// never the interval's scale.
+data alignment_cadence_step_turns: Int = 2
+
+fn alignment_magnitude_pow(exp: Int) -> Int {
+  if exp <= 0 {
+    1
+  } else {
+    alignment_cadence_magnitude * alignment_magnitude_pow(exp: exp - 1)
+  }
+}
+
+// THE MAGNITUDINAL INTERVAL for a level index: task contract at 0 -> 20, first project at 1 -> 200,
+// next at 2 -> 2000, matching the 40-round leaf budget. Levels below 0 refuse the index by reading
+// it as 0 rather than by inventing a rarer tier.
+fn alignment_interval(level_index: Int) -> Int {
+  alignment_cadence_base_turns * alignment_magnitude_pow(exp: level_index)
+}
+
+// THE PER-LEVEL FLOOR: one magnitude more frequent than the base, the most often a level may be
+// probed. Probe cost stays subordinate to work: even a level under an EXTREMELY MISALIGNED streak
+// re-checks no more often than base/magnitude.
+fn alignment_interval_floor(level_index: Int) -> Int {
+  alignment_interval(level_index: level_index) / alignment_cadence_magnitude
+}
+
+// THE PER-LEVEL CEILING IS THE MAGNITUDINAL EPOCH: the level's own base interval. Widen a level
+// past its epoch and it would no longer re-check at its epoch regardless of streaks -- the ceiling
+// is what keeps ALIGNED from spacing a level off the ladder altogether.
+fn alignment_interval_ceiling(level_index: Int) -> Int {
+  alignment_interval(level_index: level_index)
+}
+
+fn alignment_int_min(a: Int, b: Int) -> Int {
+  if a < b { a } else { b }
+}
+
+fn alignment_int_max(a: Int, b: Int) -> Int {
+  if a > b { a } else { b }
+}
+
+// THE CLAMP IS THE BOUND, never the verdict: a step result is clamped into [floor, ceiling] so no
+// verdict sequence can fabricate an interval outside the ladder's declared bounds. The clamp is
+// monotone in the level: clamp(k, t) <= clamp(k+1, t), because ceiling(k) == floor(k+1) == the
+// magnitudinal base -- which is exactly the witness's monotonicity claim, a level never aligns more
+// often than any level below it.
+fn alignment_clamp_turns(level_index: Int, turns: Int) -> Int {
+  alignment_int_max(
+    a: alignment_interval_floor(level_index: level_index),
+    b: alignment_int_min(a: turns, b: alignment_interval_ceiling(level_index: level_index)),
+  )
+}
+
+// THE STEP FUNCTION OVER VERDICTS, the cadence's adaptive half (owner direction 2026-09-21). Each
+// level's interval starts at its magnitudinal base, then steps with the verdict's magnitude:
+// ALIGNED widens (+step), MISALIGNED shortens (-step), EXTREMELY drops to the floor outright,
+// CATASTROPHICALLY stops the line rather than tuning anything, and a RoutedConflict leaves the
+// interval unchanged. The step reads only typed verdicts -- never vibes -- and
+// verification/publication/review gates are untouched by it: cadence tunes HOW OFTEN we look, never
+// what advancing requires.
+fn alignment_next_interval(level_index: Int, current: Int, verdict: AlignmentVerdict) -> AlignmentCadenceStep {
+  match verdict {
+    Aligned =>
+      CadenceStepInterval { turns: alignment_clamp_turns(level_index: level_index, turns: current + alignment_cadence_step_turns) }
+    Misaligned { direction: _ } =>
+      CadenceStepInterval { turns: alignment_clamp_turns(level_index: level_index, turns: current - alignment_cadence_step_turns) }
+    ExtremelyMisaligned { direction: _ } =>
+      CadenceStepInterval { turns: alignment_interval_floor(level_index: level_index) }
+    CatastrophicallyMisaligned { reason: _ } =>
+      CadenceStepStopTheLine
+    RoutedConflict { conflict: _ } =>
+      CadenceStepInterval { turns: alignment_clamp_turns(level_index: level_index, turns: current) }
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// The per-lineage cadence state, recorded on the alignment receipt so a later reader can replay why
+// the checks came when they did (docs/plans/harness-work-lifecycle.md: "the interval used and the
+// verdict that moved it"). level_intervals[i] is the CURRENT interval for chain level i (task level
+// at 0); last_verdicts[i] is the verdict that moved it there. The two lists are parallel by
+// construction and the codec refuses a state whose lengths disagree.
+// ------------------------------------------------------------------------------------------------
+
+type AlignmentCadenceState {
+  level_intervals: List<Int>
+  last_verdicts: List<AlignmentVerdict>
+}
+
+// THE STATE'S READ OF ONE LEVEL: the recorded interval when the state reaches that level, else the
+// magnitudinal base -- a state authored before a level existed starts that level at its declared
+// base, never at a fabricated or zero interval.
+fn alignment_list_int_at(items: List<Int>, index: Int) -> Int? {
+  if index < 0 {
+    none
+  } else {
+    let found = fold(
+      items,
+      init: { seen: 0, hit: false, value: 0 },
+      f: fn(acc, item) {
+        if acc.hit {
+          acc
+        } else if acc.seen == index {
+          { seen: acc.seen + 1, hit: true, value: item }
+        } else {
+          { seen: acc.seen + 1, hit: false, value: 0 }
+        }
+      },
+    )
+    if found.hit {
+      Present { value: found.value }
+    } else {
+      none
+    }
+  }
+}
+
+fn alignment_state_interval(state: AlignmentCadenceState, level_index: Int) -> Int {
+  match alignment_list_int_at(items: state.level_intervals, index: level_index) {
+    Present { value: n } => n
+    Absent => alignment_interval(level_index: level_index)
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// The levels of a chain, indexed: task contract at 0, each motivating project in turn, root
+// principles last. The harness asks which levels are due at turn N of an attempt.
+// ------------------------------------------------------------------------------------------------
+
+type AlignmentLevel
+  = TaskContractLevel { link: AlignmentChainLink }
+  | ProjectIntentLevel { link: AlignmentChainLink }
+  | RootPrinciplesLevel
+
+// THE LEVEL MATH'S DOMAIN IS THE RESOLVED CHAIN, and only it. This record IS the AlignmentChained
+// variant's payload under a type the refusal arms cannot inhabit: a chain that refused (ambiguous,
+// undeclared row) can no longer be passed where levels are computed, so "the chain cannot be
+// derived" can never again read downstream as "no levels are due" (review finding 2026-09-26;
+// conservation law 2 in docs/plans/harness-work-lifecycle.md — no refusal-to-neutral conversion).
+// The ONLY way across is alignment_resolve_chain, which matches the refusal arms FIRST and hands
+// them to AlignmentUnresolved, so a levels answer exists exclusively on the Ready arm.
+type AlignmentResolvedChain {
+  task: AlignmentChainLink
+  projects: List<AlignmentChainLink>
+  root: DeclarationRef
+}
+
+fn alignment_link_list_reverse(items: List<AlignmentChainLink>) -> List<AlignmentChainLink> {
+  fold(items, init: [] as List<AlignmentChainLink>, f: fn(acc, item) { concat([item], acc) })
+}
+
+// THE LEVELS OF A CHAIN, ROOT TO LEAF (review 5354823380): the principles pointer first, then the
+// root project, each intermediate project in turn, and the task contract last. The cadence still
+// counts FROM THE LEAF -- the task aligns most often, each level up an order of magnitude less --
+// so a level's cadence index is its distance from the end of this list, never its position in it.
+fn alignment_levels(chain: AlignmentResolvedChain) -> List<AlignmentLevel> {
+  concat(
+    concat(
+      [RootPrinciplesLevel],
+      map(alignment_link_list_reverse(items: chain.projects), p => ProjectIntentLevel { link: p }),
+    ),
+    [TaskContractLevel { link: chain.task }],
+  )
+}
+
+// DUE EVALUATION. A level is due when the elapsed turns land exactly on its interval -- so with the
+// initial (base) intervals, at turn 20 only the task is due, at turn 200 the task and the first
+// project, at turn 2000 the next level joins -- and the adaptive state replaces the base with the
+// per-lineage interval, so a level under a MISALIGNED streak comes due sooner without any level
+// ever aligning more often than one below it. The answer is ordered task level first. Turn 0 is
+// dispatch, not a checkpoint: orientation and the load phase own initial alignment, so nothing is
+// due at zero elapsed turns. A chain that refused never reaches this function: its question was
+// already answered AlignmentUnresolved, above.
+fn alignment_levels_due(chain: AlignmentResolvedChain, turns_elapsed: Int, state: AlignmentCadenceState) -> List<AlignmentLevel> {
+  if turns_elapsed <= 0 {
+    []
+  } else {
+    let levels = alignment_levels(chain: chain)
+    let total = count(levels)
+    let due_fold = levels
+      |> fold(
+        init: { due: [] as List<AlignmentLevel>, index: 0 },
+        f: fn(acc, level) {
+          {
+            due: if turns_elapsed % alignment_state_interval(state: state, level_index: total - 1 - acc.index) == 0 {
+              concat(acc.due, [level])
+            } else {
+              acc.due
+            },
+            index: acc.index + 1,
+          }
+        },
+      )
+    due_fold.due
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// The ONE AUTHORITY over alignment-consumers (review finding 2026-09-26: the typed chain used to be
+// PARALLEL to execution — the brief rendered its own prose answer while the chain's refusal arms
+// mapped to [], and execution proceeded on either). Everything a consumer needs is ONE resolution:
+// the derived chain, the levels due at this turn, and the rendered prompt — or a typed refusal
+// cause. No consumer may project a second answer from the raw rows: dispatch and the belt consume
+// this result whole, so the safe answer and the executed answer are the same value by construction.
+// ------------------------------------------------------------------------------------------------
+
+// WHY THE CHAIN COULD NOT BE READ, as data. AlignmentRowUndeclared names the exact node whose row
+// could not be projected; AlignmentWalkUnrooted keeps the walked prefix and names where the walk
+// stopped. Both carry the derivation's facts, so the escalation route reads causes, never prose.
+// The fork and edge-contribution refusals of the keyed membership roster are gone with the roster:
+// one parent per row has no second owner and no missing argument to refuse.
+type AlignmentRefusal
+  = AlignmentWalkUnrooted { at: String, walked: List<AlignmentChainLink> }
+  | AlignmentRowUndeclared { node_id: String }
+  | AlignmentNestingCyclic { node_id: String }
+
+fn alignment_refusal_reason(cause: AlignmentRefusal) -> String {
+  match cause {
+    AlignmentWalkUnrooted { at, walked: _ } =>
+      join([
+        "the parent walk from the task ended at ", at,
+        ", which declares no parent and is not an admitted root (gunbc.roadmap_nesting roadmap_roots);",
+        " a chain that never reaches the top of its functional decomposition has no alignment answer,",
+        " so the node must be attached to the hierarchy before it can dispatch",
+      ], "")
+    AlignmentNestingCyclic { node_id } => concat("Cyclic project nesting at ", node_id)
+    AlignmentRowUndeclared { node_id } =>
+      join([
+        "the authority declares no ticket row for node ", node_id,
+        " (or a row that is not a ticket), so that level's carried contribution cannot be projected",
+      ], "")
+  }
+}
+
+// THE RESOLUTION. Ready carries the whole answer — the resolved chain (every level, node to root),
+// the levels due at the asked turn under the asked cadence state, and the rendered prompt the
+// brief splices verbatim. Unresolved carries the typed cause and NOTHING else: there is no empty
+// chain, no empty due list, no rendered guess. A consumer that needs alignment matches this
+// coproduct; the refusal arm reaches no worker-start effect.
+type AlignmentResolution
+  = AlignmentReady {
+      chain: AlignmentResolvedChain,
+      due_levels: List<AlignmentLevel>,
+      rendered_prompt: String,
+    }
+  | AlignmentUnresolved { cause: AlignmentRefusal }
+
+// THE RENDER, one per level, node to root. L0 stays a pointer (the load phase carries the
+// principles' text; the prompt names their home and no more) and the ask stays bounded — both are
+// the continuation lane's authored cadence rows, imported, so this module owns the DERIVATION's
+// rendering and the continuation lane owns its standing text. Every level between the node and the
+// root renders with the row's carried contribution (headline and boundary brief), never a fresh
+// interpretation and never only the immediate L1: the whole derived chain is the brief's alignment
+// answer. Project levels render nearest-first (the walk's order); the task contract level closes
+// the ladder; a projectless node names its own row as the intent, the honest standalone shape.
+// THE RENDER, ROOT TO LEAF, one per level (review 5354823380). L0 stays a pointer (the load phase
+// carries the principles' text; the prompt names their home and no more) and the ask stays bounded
+// -- both are the continuation lane's authored cadence rows, imported, so this module owns the
+// DERIVATION's rendering and the continuation lane owns its standing text. Every project level
+// renders with its carried ticket contribution (approach, boundary, red control) and the edge's
+// contribution argument, never a fresh interpretation; the task contract closes the ladder. The
+// root project's line names it as the admitted end of the walk.
+fn alignment_link_line(prefix: String, link: AlignmentChainLink) -> String {
+  join([
+    prefix, link.node_id, ": ", link.purpose,
+    "\n  approach: ", link.current_approach,
+    "\n  boundary: ", link.boundary,
+    "\n  contribution to parent: ",
+    if any(roadmap_roots(), r => r == link.node_id) {
+      "none -- this level is the admitted root project"
+    } else {
+      link.contribution_to_parent
+    },
+    "\n  red control: ", link.red_control,
+    "\n  handback: ", link.handback,
+    "\n  displaced cost: ", link.displaced_cost,
+  ], "")
+}
+
+fn alignment_project_lines(projects: List<AlignmentChainLink>) -> String {
+  let ordered = alignment_link_list_reverse(items: projects)
+  let numbered = fold(ordered, init: { out: "", index: 1 }, f: fn(acc, link) {
+    {
+      out: join([
+        acc.out,
+        alignment_link_line(
+          prefix: join(["L", to_string(value: acc.index), " project intent: "], ""),
+          link: link,
+        ),
+        "\n",
+      ], ""),
+      index: acc.index + 1,
+    }
+  })
+  numbered.out
+}
+
+fn alignment_chain_render(chain: AlignmentResolvedChain) -> String {
+  join([
+    "\nAlignment (re-checked at every checkpoint adjudication):\n",
+    continuation_alignment_l0_pointer, "\n",
+    alignment_project_lines(projects: chain.projects),
+    alignment_link_line(
+      prefix: join(["L", to_string(value: count(chain.projects) + 1), " task contract: "], ""),
+      link: chain.task,
+    ),
+    "\n", continuation_alignment_ask, "\n\n",
+  ], "")
+}
+
+// THE CHAIN FINGERPRINT binds the chain to whatever identity carries it: a structural digest over
+// the canonical preimage of EVERY link (node id, carried purpose, boundary, approach, red control,
+// and the edge's contribution argument) and the root pointer, so any authority edit that moves the
+// chain — a rewired edge, a retitled row, a reworded boundary, a changed contribution — moves the
+// fingerprint with it. Drift detection, not a security boundary: the
+// Fnv1a64Structural family is the corpus's structural-fingerprint family (std.content_hash), the
+// preimage is label-prefixed by construction (it begins with a constant), so the atom's NonEmptyStr
+// input is grounded, never asserted, and the unit separator cannot collide with a field's content.
+fn alignment_chain_canonical_text(chain: AlignmentResolvedChain) -> String {
+  join([
+      "alignment-chain/v2",
+      "task", chain.task.node_id, chain.task.purpose, chain.task.boundary,
+        chain.task.current_approach, chain.task.red_control, chain.task.handback,
+        chain.task.displaced_cost, chain.task.contribution_to_parent,
+      fold(chain.projects, init: "", f: fn(acc, link) {
+        join([acc, "project", link.node_id, link.purpose, link.boundary,
+          link.current_approach, link.red_control, link.handback, link.displaced_cost,
+          link.contribution_to_parent], "\u{1f}")
+      }),
+      "root", chain.root.module_path as String, chain.root.decl_name as String,
+    ], "\u{1f}")
+}
+
+fn alignment_chain_fingerprint(chain: AlignmentResolvedChain) -> String {
+  content_hash_atom(value: alignment_chain_canonical_text(chain: chain) as NonEmptyStr).digest as String
+}
+
+// ------------------------------------------------------------------------------------------------
+// The checkpoint identity (review 5358022153). A chain fingerprint alone is not a checkpoint: one
+// lineage crosses many checkpoints under the same chain. This record is the idempotency key the
+// belt's adjudication lane consumes -- probe obligation creation, verdict publication, roundup
+// publication and worker resumption all key on it, so a crash after the roundup publishes but
+// before the next epoch starts recovers exactly one resume.
+// ------------------------------------------------------------------------------------------------
+
+type AlignmentCheckpointIdentity {
+  attempt_lineage: String
+  epoch: Int
+  checkpoint_ordinal: Int
+  chain_fingerprint: String
+  conversation_tip: String
+  candidate_subject: String
+}
+
+fn alignment_checkpoint_identity_digest(id: AlignmentCheckpointIdentity) -> String {
+  content_hash_atom(value: join([
+    "alignment-checkpoint/v1",
+    id.attempt_lineage,
+    to_string(value: id.epoch),
+    to_string(value: id.checkpoint_ordinal),
+    id.chain_fingerprint,
+    id.conversation_tip,
+    id.candidate_subject,
+  ], "") as NonEmptyStr).digest as String
+}
+
+// THE RESOLUTION FOLD, over one derived chain. This is the only crossing from AlignmentChain to a
+// consumer answer: the Chained arm builds Ready (levels and render computed from the resolved
+// record), the refusal arms freeze into Unresolved with their typed causes. Fuel, membership and
+// row projection are unchanged — this fold adds no second derivation.
+fn alignment_resolve_chain(chain: AlignmentChain, turns_elapsed: Int, state: AlignmentCadenceState) -> AlignmentResolution {
+  match chain {
+    AlignmentChained { task, projects, root } => {
+      let resolved = AlignmentResolvedChain { task: task, projects: projects, root: root }
+      AlignmentReady {
+        chain: resolved,
+        due_levels: alignment_levels_due(chain: resolved, turns_elapsed: turns_elapsed, state: state),
+        rendered_prompt: alignment_chain_render(chain: resolved),
+      }
+    }
+    AlignmentChainUnrooted { walked, at } =>
+      AlignmentUnresolved { cause: AlignmentWalkUnrooted { at: at, walked: walked } }
+    AlignmentChainCyclic { node_id } => AlignmentUnresolved { cause: AlignmentNestingCyclic { node_id: node_id } }
+    AlignmentChainRowUndeclared { node_id } =>
+      AlignmentUnresolved { cause: AlignmentRowUndeclared { node_id: node_id } }
+  }
+}
+
+// THE AUTHORITY-BOUND RESOLUTION, the entry production consumers name. The edges and rows are the
+// declared authority's own, so the chain renders what the authority says NOW, not what a copy said
+// when it was written; the cadence state is the caller's per-lineage record (an empty state reads
+// every level at its declared magnitudinal base).
+fn alignment_resolve(node_id: String, turns_elapsed: Int, state: AlignmentCadenceState) -> AlignmentResolution {
+  alignment_resolve_chain(
+    chain: alignment_chain_for(node_id: node_id),
+    turns_elapsed: turns_elapsed,
+    state: state,
+  )
+}
+
+// THE EMPTY CADENCE STATE: no per-lineage intervals recorded, so every level reads its declared
+// magnitudinal base. Dispatch owns no lineage state at spawn; the cadence record lands on the
+// alignment receipt as checks produce verdicts.
+fn alignment_base_cadence_state() -> AlignmentCadenceState {
+  AlignmentCadenceState { level_intervals: [], last_verdicts: [] }
+}
+
+// ------------------------------------------------------------------------------------------------
+// The attempt binding: the resolved chain's fingerprint bound to the attempt identity that spawned
+// with it (review finding 2026-09-26, attempt binding). Written at attempt-state initialization
+// and read back before a continuation spawns, so a lineage whose authority rows moved mid-flight
+// refuses instead of silently re-briefing against a changed chain. The codec is the submission/
+// receipt idiom: a schema wall (a document whose schema is not exactly this string is refused), a
+// typed decode envelope, and a text round-trip.
+// ------------------------------------------------------------------------------------------------
+
+data alignment_binding_schema: NonEmptyStr = "roadmap-alignment-binding/v1"
+
+type AlignmentBinding {
+  attempt_identity: String
+  fingerprint: String
+}
+
+fn alignment_binding_json(binding: AlignmentBinding) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: alignment_binding_schema as String)),
+    json_kv(key: "attempt_identity", value: json_string(s: binding.attempt_identity)),
+    json_kv(key: "fingerprint", value: json_string(s: binding.fingerprint)),
+  ])
+}
+
+fn alignment_binding_text(binding: AlignmentBinding) -> String {
+  serialize_json(v: alignment_binding_json(binding: binding))
+}
+
+type AlignmentBindingDecode
+  = AlignmentBindingDecoded { binding: AlignmentBinding }
+  | AlignmentBindingNotDecodable { reason: String }
+
+fn alignment_binding_member_string(doc: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: JsonString { value: s } } => Present { value: s }
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+    JsonMemberFound { value: JsonArray { elements: _ } } => none
+    JsonMemberFound { value: JsonObject { members: _ } } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+  }
+}
+
+fn alignment_binding_decode_document(doc: JsonValue) -> AlignmentBindingDecode {
+  match alignment_binding_member_string(doc: doc, key: "schema") {
+    Absent => AlignmentBindingNotDecodable { reason: "alignment binding has no schema member" }
+    Present { value: schema } =>
+      if schema != (alignment_binding_schema as String) {
+        AlignmentBindingNotDecodable {
+          reason: join(["alignment binding schema is ", schema, ", not ", alignment_binding_schema as String], ""),
+        }
+      } else {
+        match alignment_binding_member_string(doc: doc, key: "attempt_identity") {
+          Absent => AlignmentBindingNotDecodable { reason: "alignment binding attempt_identity member is absent, duplicated, or not a string" }
+          Present { value: attempt_identity } =>
+            match alignment_binding_member_string(doc: doc, key: "fingerprint") {
+              Absent => AlignmentBindingNotDecodable { reason: "alignment binding fingerprint member is absent, duplicated, or not a string" }
+              Present { value: fingerprint } =>
+                AlignmentBindingDecoded {
+                  binding: AlignmentBinding { attempt_identity: attempt_identity, fingerprint: fingerprint },
+                }
+            }
+        }
+      }
+  }
+}
+
+fn alignment_binding_decode(text: String) -> AlignmentBindingDecode {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap } =>
+      AlignmentBindingNotDecodable {
+        reason: concat("the alignment binding is ", json_document_gap_text(gap: gap)),
+      }
+    JsonDocumentParsed { value: doc } => alignment_binding_decode_document(doc: doc)
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// The state codec, on the submission/integration receipt idiom: a schema wall (a document whose
+// schema is not exactly this string is refused, so a future shape cannot be silently read as this
+// one with members missing), a typed decode envelope, and a text round-trip.
+// ------------------------------------------------------------------------------------------------
+
+data alignment_cadence_state_schema: NonEmptyStr = "roadmap-alignment-cadence-state/v1"
+
+// THE VERDICT CARRIES ITS PAYLOAD on the wire, not just its kind: a receipt reader needs the named
+// direction or reason, and a kind-only codec would force re-interpretation from prose.
+fn alignment_verdict_json(v: AlignmentVerdict) -> JsonValue {
+  match v {
+    Aligned =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: alignment_verdict_key(v: v))),
+      ])
+    Misaligned { direction } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: alignment_verdict_key(v: v))),
+        json_kv(key: "direction", value: json_string(s: direction)),
+      ])
+    ExtremelyMisaligned { direction } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: alignment_verdict_key(v: v))),
+        json_kv(key: "direction", value: json_string(s: direction)),
+      ])
+    CatastrophicallyMisaligned { reason } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: alignment_verdict_key(v: v))),
+        json_kv(key: "reason", value: json_string(s: reason)),
+      ])
+    RoutedConflict { conflict } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: alignment_verdict_key(v: v))),
+        json_kv(key: "conflict", value: json_string(s: conflict)),
+      ])
+  }
+}
+
+fn alignment_verdict_decode_json(v: JsonValue) -> AlignmentVerdict? {
+  match json_object_unique_member(v: v, key: "kind") {
+    JsonMemberFound { value: JsonString { value: kind } } =>
+      if kind == "aligned" {
+        Present { value: Aligned }
+      } else if kind == "misaligned" {
+        match json_object_unique_member(v: v, key: "direction") {
+          JsonMemberFound { value: JsonString { value: d } } => Present { value: Misaligned { direction: d } }
+          JsonMemberFound { value: JsonNull } => none
+          JsonMemberFound { value: JsonBool { value: _ } } => none
+          JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+          JsonMemberFound { value: JsonArray { elements: _ } } => none
+          JsonMemberFound { value: JsonObject { members: _ } } => none
+          JsonMemberAbsent => none
+          JsonMemberDuplicated { count: _ } => none
+          JsonMemberNotAnObject => none
+        }
+      } else if kind == "extremely-misaligned" {
+        match json_object_unique_member(v: v, key: "direction") {
+          JsonMemberFound { value: JsonString { value: d } } => Present { value: ExtremelyMisaligned { direction: d } }
+          JsonMemberFound { value: JsonNull } => none
+          JsonMemberFound { value: JsonBool { value: _ } } => none
+          JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+          JsonMemberFound { value: JsonArray { elements: _ } } => none
+          JsonMemberFound { value: JsonObject { members: _ } } => none
+          JsonMemberAbsent => none
+          JsonMemberDuplicated { count: _ } => none
+          JsonMemberNotAnObject => none
+        }
+      } else if kind == "catastrophically-misaligned" {
+        match json_object_unique_member(v: v, key: "reason") {
+          JsonMemberFound { value: JsonString { value: r } } => Present { value: CatastrophicallyMisaligned { reason: r } }
+          JsonMemberFound { value: JsonNull } => none
+          JsonMemberFound { value: JsonBool { value: _ } } => none
+          JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+          JsonMemberFound { value: JsonArray { elements: _ } } => none
+          JsonMemberFound { value: JsonObject { members: _ } } => none
+          JsonMemberAbsent => none
+          JsonMemberDuplicated { count: _ } => none
+          JsonMemberNotAnObject => none
+        }
+      } else if kind == "routed-conflict" {
+        match json_object_unique_member(v: v, key: "conflict") {
+          JsonMemberFound { value: JsonString { value: c } } => Present { value: RoutedConflict { conflict: c } }
+          JsonMemberFound { value: JsonNull } => none
+          JsonMemberFound { value: JsonBool { value: _ } } => none
+          JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+          JsonMemberFound { value: JsonArray { elements: _ } } => none
+          JsonMemberFound { value: JsonObject { members: _ } } => none
+          JsonMemberAbsent => none
+          JsonMemberDuplicated { count: _ } => none
+          JsonMemberNotAnObject => none
+        }
+      } else {
+        none
+      }
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+    JsonMemberFound { value: JsonArray { elements: _ } } => none
+    JsonMemberFound { value: JsonObject { members: _ } } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+  }
+}
+
+fn alignment_cadence_state_json(state: AlignmentCadenceState) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: alignment_cadence_state_schema as String)),
+    json_kv(key: "level_intervals", value: json_array(elements: map(state.level_intervals, n => json_int(n: n)))),
+    json_kv(key: "last_verdicts", value: json_array(elements: map(state.last_verdicts, v => alignment_verdict_json(v: v)))),
+  ])
+}
+
+fn alignment_cadence_state_text(state: AlignmentCadenceState) -> String {
+  serialize_json(v: alignment_cadence_state_json(state: state))
+}
+
+type AlignmentCadenceStateDecode
+  = AlignmentCadenceStateDecoded { state: AlignmentCadenceState }
+  | AlignmentCadenceStateNotDecodable { reason: String }
+
+fn alignment_member_string(doc: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: JsonString { value: s } } => Present { value: s }
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+    JsonMemberFound { value: JsonArray { elements: _ } } => none
+    JsonMemberFound { value: JsonObject { members: _ } } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+  }
+}
+
+// AN INTERVAL LIST IS ALL-OR-NOTHING: one malformed element refuses the whole member rather than
+// reading a partially-populated interval list, and a non-positive interval is refused here so the
+// due-evaluation modulo can never meet a fabricated zero.
+fn alignment_member_int_array(doc: JsonValue, key: String) -> List<Int>? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: JsonArray { elements } } =>
+      if count(elements) == 0 {
+        Present { value: [] }
+      } else {
+        let parsed = map(elements, e => match e {
+          JsonNumber { lexeme: lx } => parse_int(s: lx as String)
+          JsonNull => none
+          JsonBool { value: _ } => none
+          JsonString { value: _ } => none
+          JsonArray { elements: _ } => none
+          JsonObject { members: _ } => none
+        })
+        let readable = filter(parsed, n => match n {
+          Present { value: _ } => true
+          Absent => false
+        })
+        let positive = filter(readable, n => match n {
+          Present { value: v } => v > 0
+          Absent => false
+        })
+        if count(positive) == count(elements) {
+          Present {
+            value: map(positive, n => match n {
+              Present { value: v } => v
+              Absent => 0
+            }),
+          }
+        } else {
+          none
+        }
+      }
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+    JsonMemberFound { value: JsonString { value: _ } } => none
+    JsonMemberFound { value: JsonObject { members: _ } } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+  }
+}
+
+fn alignment_member_verdict_array(doc: JsonValue, key: String) -> List<AlignmentVerdict>? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: JsonArray { elements } } =>
+      if count(elements) == 0 {
+        Present { value: [] }
+      } else {
+        let parsed = map(elements, e => alignment_verdict_decode_json(v: e))
+        let readable = filter(parsed, n => match n {
+          Present { value: _ } => true
+          Absent => false
+        })
+        if count(readable) == count(elements) {
+          Present {
+            value: map(readable, n => match n {
+              Present { value: v } => v
+              Absent => Aligned
+            }),
+          }
+        } else {
+          none
+        }
+      }
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+    JsonMemberFound { value: JsonString { value: _ } } => none
+    JsonMemberFound { value: JsonObject { members: _ } } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+  }
+}
+
+fn alignment_cadence_state_decode_document(doc: JsonValue) -> AlignmentCadenceStateDecode {
+  match alignment_member_string(doc: doc, key: "schema") {
+    Absent => AlignmentCadenceStateNotDecodable { reason: "cadence state has no schema member" }
+    Present { value: schema } =>
+      if schema != (alignment_cadence_state_schema as String) {
+        AlignmentCadenceStateNotDecodable {
+          reason: join(["cadence state schema is ", schema, ", not ", alignment_cadence_state_schema as String], ""),
+        }
+      } else {
+        match alignment_member_int_array(doc: doc, key: "level_intervals") {
+          Absent => AlignmentCadenceStateNotDecodable { reason: "cadence state level_intervals member is absent, duplicated, not an integer array, or carries a non-positive interval" }
+          Present { value: intervals } =>
+            match alignment_member_verdict_array(doc: doc, key: "last_verdicts") {
+              Absent => AlignmentCadenceStateNotDecodable { reason: "cadence state last_verdicts member is absent, duplicated, not an array, or carries an unknown verdict kind" }
+              Present { value: verdicts } =>
+                if count(intervals) != count(verdicts) {
+                  AlignmentCadenceStateNotDecodable {
+                    reason: join([
+                      "cadence state carries ", to_string(count(intervals)),
+                      " level intervals but ", to_string(count(verdicts)),
+                      " last verdicts, and the two are parallel by construction",
+                    ], ""),
+                  }
+                } else {
+                  AlignmentCadenceStateDecoded {
+                    state: AlignmentCadenceState {
+                      level_intervals: intervals,
+                      last_verdicts: verdicts,
+                    },
+                  }
+                }
+            }
+        }
+      }
+  }
+}
+
+fn alignment_cadence_state_decode(text: String) -> AlignmentCadenceStateDecode {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap } =>
+      AlignmentCadenceStateNotDecodable {
+        reason: concat("the cadence state is ", json_document_gap_text(gap: gap)),
+      }
+    JsonDocumentParsed { value: doc } => alignment_cadence_state_decode_document(doc: doc)
+  }
+}

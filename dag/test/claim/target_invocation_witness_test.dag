@@ -41,6 +41,10 @@ import gunbc.target_binding {
   BareChannelEntryAbsent, BareChannelIndexRefused,
 }
 import gunbc.target_invocation {
+  BinaryInput, InputNotNewer, InputNewer, InputMissing, InputOutsideWorktree,
+  BinaryInputObservation, InputsObserved, DepInfoUnreadable,
+  BinaryFreshness, BinaryFresh, BinaryStale, BinaryFreshnessUndecided,
+  assess_binary_freshness,
   TargetInvocationRoute, TargetInvocationRouted, TargetInvocationRouteRefused,
   TargetInvocationRefusal,
   OperandNotALabel, InvocationRegistryRefused, InvocationLabelNotCanonical,
@@ -1093,6 +1097,41 @@ test fn a_refused_single_target_renders_the_label_grammars_located_cause() -> Bo
       string_contains(s: test_operand_refusal_rendered(operand: o, cause: c), pattern: "label grammar refuses")
         && string_contains(s: test_operand_refusal_rendered(operand: o, cause: c), pattern: "contains `/`")
         && string_contains(s: test_operand_refusal_rendered(operand: o, cause: c), pattern: "bad/name")
+    _ => false
+  }
+}
+
+// STALE-BINARY CONTROLS. Before `assess_binary_freshness` existed every arm below ran its
+// instrument; the stale and undecided arms are the reds that old behaviour lacked. The fresh arm
+// is the positive control that an unrelated commit no longer refuses: no input moved.
+fn observed(inputs: List<BinaryInput>) -> BinaryInputObservation {
+  InputsObserved { binary: "bin", inputs: inputs }
+}
+
+test fn a_binary_whose_inputs_did_not_move_is_fresh() -> Bool {
+  match assess_binary_freshness(observed: observed(inputs: [InputNotNewer { path: "a.rs" }, InputNotNewer { path: "b.dag" }])) {
+    BinaryFresh { binary: _, inputs: n } => n == 2
+    _ => false
+  }
+}
+
+test fn the_first_changed_input_is_named_as_stale() -> Bool {
+  match assess_binary_freshness(observed: observed(inputs: [InputNotNewer { path: "a.rs" }, InputNewer { path: "b.rs" }, InputMissing { path: "c.rs" }])) {
+    BinaryStale { binary: _, input: p, why: _ } => p == "b.rs"
+    _ => false
+  }
+}
+
+test fn an_input_from_another_worktree_outranks_staleness() -> Bool {
+  match assess_binary_freshness(observed: observed(inputs: [InputNewer { path: "b.rs" }, InputOutsideWorktree { path: "/w/other/a.rs" }])) {
+    BinaryFreshnessUndecided { binary: _, reason: _ } => true
+    _ => false
+  }
+}
+
+test fn unreadable_dep_info_is_undecided_not_fresh() -> Bool {
+  match assess_binary_freshness(observed: DepInfoUnreadable { binary: "bin", reason: "no bin.d" }) {
+    BinaryFreshnessUndecided { binary: _, reason: _ } => true
     _ => false
   }
 }

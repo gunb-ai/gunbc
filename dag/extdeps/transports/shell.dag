@@ -14,12 +14,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data shell_transport_fidelity: TransportFidelity = TransportFidelity { depth: S, hermetic: true }
 
-type ShellOutputChannel
-  = Stdout
-  | Stderr
-  | StdoutLines
-  | ExitSuccess
-
 type ShellTransportConfig {
   working_dir: String?
   env: Map<String, String>
