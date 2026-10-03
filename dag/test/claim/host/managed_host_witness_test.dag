@@ -1,0 +1,65 @@
+module test.claim.managed_host_witness
+
+import std.types { Bool, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.bmc.access_profile { BmcAccessObserved, BmcAccessUnobserved }
+import gunbc.machine_intake_bmc_first_contact_standing { FamilyObserved, FamilyUnobserved }
+import gunbc.managed_host {
+  CredentialLocusReserved,
+  CredentialOnAccessorRoster,
+  ResetNoUnitHold,
+  ResetUnitHoldRequired,
+  ResetUnitHoldUndeclared,
+  managed_host_mtjade1,
+  managed_hosts,
+}
+import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.host_reset_subject_roster { reset_subject_is_admitted, reset_subject_roster }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE MT. JADE ROW FABRICATES NOTHING: every standing is its unobserved arm, and the hold policy is
+// undeclared rather than ResetNoUnitHold, which would license a write without a hold.
+test fn w_mtjade1_row_carries_only_unobserved_standings() -> Bool {
+  let h = managed_host_mtjade1()
+  let family_unobserved = match h.bmc_stack {
+    FamilyUnobserved { discriminator: _ } => true
+    FamilyObserved { family: _ } => false
+  }
+  let access_unobserved = match h.access {
+    BmcAccessUnobserved { endpoint: _ } => true
+    BmcAccessObserved { observation: _ } => false
+  }
+  let credential_reserved = match h.credential {
+    CredentialLocusReserved { locus: _ } => true
+    CredentialOnAccessorRoster { accessor: _, secured_account: _ } => false
+  }
+  let hold_undeclared = match h.unit_hold {
+    ResetUnitHoldUndeclared { reason: _ } => true
+    ResetUnitHoldRequired { key: _, store_host: _ } => false
+    ResetNoUnitHold => false
+  }
+  let no_board = match h.baseboard {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let no_capability = match h.capability {
+    Absent => true
+    Present { value: _ } => false
+  }
+  family_unobserved && access_unobserved && credential_reserved && hold_undeclared && no_board && no_capability
+}
+
+// THE ROUTE, NOT ONLY THE ANSWER: the fold runs over both managed hosts and refuses mtjade1 through
+// the admission predicate, so the roster is exactly [mtcollins1] because of the filter, not because
+// the input list held one row.
+test fn w_reset_roster_is_exactly_mtcollins1_filtered_from_both_managed_hosts() -> Bool {
+  let hosts = managed_hosts()
+  let admitted = hosts |> filter(h => reset_subject_is_admitted(host: h))
+  let roster = reset_subject_roster()
+  count(hosts) == 2
+    && count(admitted) == 1
+    && !reset_subject_is_admitted(host: managed_host_mtjade1())
+    && count(roster) == 1
+    && roster |> all(r => (r as String) == (operator_host_mtcollins1 as String))
+}
