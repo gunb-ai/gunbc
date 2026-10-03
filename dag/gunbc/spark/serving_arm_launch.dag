@@ -86,7 +86,7 @@ import std.measure {
 }
 import std.decl_ref { decl_ref }
 import extdeps.vllm.runtime_defaults { resolve_vllm_scheduler_admission, VllmDefaultsKnown, SchedulerAdmissionResolved, SchedulerAdmissionUnresolvable }
-import extdeps.vllm.engine_args { vllm_prefix_caching_argv, vllm_basis_point_fraction_wire, vllm_kv_cache_dtype_wire, vllm_engram_config_argv, vllm_modality_argv, vllm_scheduler_admission_argv }
+import extdeps.vllm.engine_args { vllm_prefix_caching_argv, vllm_basis_point_fraction_wire, vllm_kv_cache_dtype_wire, vllm_engram_config_argv, vllm_modality_argv, vllm_scheduler_admission_argv, vllm_indexer_kv_dtype_argv }
 
 import gunbc.spark.model_snapshot_acquisition {
   SnapshotPlacement,
@@ -496,7 +496,7 @@ fn arm_engine_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRo
   ], concat(
     vllm_prefix_caching_argv(r: profile.prefix_caching),
     concat(checkpoint_quantization_argv(row: crow), concat(arm_headless_argv(node: node),
-      concat(arm_tokenizer_mode_argv(crow: crow), concat(vllm_engram_config_argv(r: profile.engram), concat(vllm_modality_argv(r: profile.modality), vllm_scheduler_admission_argv(r: profile.scheduler_admission))))))))
+      concat(arm_tokenizer_mode_argv(crow: crow), concat(vllm_engram_config_argv(r: profile.engram), concat(vllm_modality_argv(r: profile.modality), concat(vllm_scheduler_admission_argv(r: profile.scheduler_admission), vllm_indexer_kv_dtype_argv(r: profile.indexer_kv_dtype)))))))))
 }
 
 // ── ONLY RANK ZERO HOSTS AN API SERVER, AND THE OTHER THREE MUST BE TOLD SO ────────────────────
@@ -652,7 +652,9 @@ fn scheduler_admission_runtime_refusal(profile: ServingLaunchProfile, rrow: Serv
 
 fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, intent: ArmIntent, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>, container: ArmContainerIdentity) -> ArmLaunchPlan {
   let subject = launch_compatibility_subject(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile)
-  if measured_subject_refuses(subject: subject) {
+  if !(profile.checkpoint == checkpoint) {
+    ArmLaunchRefused { cause: "the launch profile was derived from another checkpoint's launch policy than the arm deploys: a profile carries the checkpoint its policy row names, and the arm's assignment must be that checkpoint" as NonEmptyStr }
+  } else if measured_subject_refuses(subject: subject) {
     ArmLaunchRefused { cause: measured_refusal_cause(subject: subject) }
   } else {
   match intent_refusal(admission: measured_admission_for(subject: subject), intent: intent) {
@@ -707,14 +709,16 @@ fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, t
 // a conservative envelope, a finite runtime, the receipts the run must mint, and the stop/cleanup
 // and no-enrollment contract.
 //
-// WHO IT BINDS, AND WHY NOT EVERY CALLER YET. The proof's component model is GLM-5.3-Flash's --
-// its prefill-transient and cache-roster terms read extdeps.zhipu.glm_5_3_flash's hybrid shape and
-// its experiment runtime is that model's ready timeout -- so pricing another checkpoint through it
-// would charge that checkpoint GLM's terms. It therefore binds the arm whose terms it models: Group
-// B's launch (gunbc.spark.glm_group_b_launch glm_group_b_launch_plan) plans through this function,
-// and no Group-B plan exists that did not pass it. The V4.1 arm on Group A plans through
-// plan_arm_launch_for directly, unchanged; generalizing the component model to that checkpoint is
-// the trigger for binding it there too.
+// WHO IT BINDS: EVERY ARM. Group B's launch (gunbc.spark.glm_group_b_launch glm_group_b_launch_plan)
+// and the V4.1 arm on Group A (gunbc.spark.v41_group_a_launch v41_group_a_launch_plan) both plan through
+// this function, and no plan for either exists that did not pass it. The experiment runtime is derived
+// from each launch's own container environment (gunbc.spark.arm_memory_fit engine_ready_timeout_for)
+// and its own sequence ceiling, never a model constant. The component model's terms are not general:
+// the prefill-transient and cache-roster terms read extdeps.zhipu.glm_5_3_flash's hybrid shape, and a
+// checkpoint whose terms are not modeled -- V4.1 today -- enters with every per-rank term OPEN, so its
+// verdict is Unestablished: it is admitted only as a bounded experiment, and normal serving refuses until
+// its own terms are modeled and proved. Modeling V4.1's per-rank terms is the trigger that can take it
+// past Unestablished; it is not a trigger for passing this wall, which it already does.
 //
 // THE PLAN IS COMPUTED FIRST AND GATED SECOND. Planning is pure, so a plan the gate refuses is
 // discarded with nothing sent anywhere, and every execution-wall refusal keeps its own cause.
@@ -722,7 +726,7 @@ fn plan_arm_launch_under_memory_fit(checkpoint: ServingCheckpoint, runtime: Serv
   match plan_arm_launch_for(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, intent: intent, profile: profile, deployment_env: deployment_env, container: container) {
     ArmLaunchRefused { cause: c } => ArmLaunchRefused { cause: c }
     ArmLaunchPlanned { lines: ls, master: m } =>
-      match arm_memory_fit_subject_for_launch(checkpoint: checkpoint, runtime: runtime, topology: topology, profile: profile) {
+      match arm_memory_fit_subject_for_launch(runtime: runtime, topology: topology, profile: profile) {
         ArmMemorySubjectRefused { cause: c } => ArmLaunchRefused { cause: c }
         ArmMemorySubjectReady { subject: mem_subject } => {
           let verdict = arm_memory_fit_verdict(subject: mem_subject)
@@ -734,7 +738,8 @@ fn plan_arm_launch_under_memory_fit(checkpoint: ServingCheckpoint, runtime: Serv
             topology: topology,
             profile: profile,
             workload: mem_subject.intent,
-            open: arm_memory_subject_open_components(subject: mem_subject)) {
+            open: arm_memory_subject_open_components(subject: mem_subject),
+            deployment_env: deployment_env) {
             ArmWallExperimentRefused { cause: c } => ArmLaunchRefused { cause: c }
             ArmWallExperimentNotRequired =>
               arm_memory_gated_plan(gate: arm_memory_launch_gate(intent: intent, verdict: verdict, experiment: none), lines: ls, master: m)
@@ -775,6 +780,7 @@ fn arm_memory_experiment_for_wall(
   profile: ServingLaunchProfile,
   workload: ServingCapacityIntent,
   open: List<ArmMemoryComponent>,
+  deployment_env: List<DockerEnvAssignment>,
 ) -> ArmWallExperiment {
   match intent {
     ArmNormalServing => ArmWallExperimentNotRequired
@@ -783,7 +789,7 @@ fn arm_memory_experiment_for_wall(
         ArmMemoryFitUnestablished { obligations: _ } =>
           match arm_memory_fit_experiment_plan(
             checkpoint: checkpoint, runtime: runtime, topology: topology,
-            workload: workload, policy_profile: profile, targets: open) {
+            workload: workload, policy_profile: profile, targets: open, deployment_env: deployment_env) {
             ArmMemoryExperimentAdmitted { plan: p } => ArmWallExperimentPlanned { plan: p }
             ArmMemoryExperimentRefused { cause: c } => ArmWallExperimentRefused { cause: c }
           }

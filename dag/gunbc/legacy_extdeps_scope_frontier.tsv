@@ -18,12 +18,9 @@ dag/extdeps/bmc/access.dag
 dag/extdeps/bmc/capability.dag
 dag/extdeps/bmc.dag
 dag/extdeps/bmc/http.dag
-dag/extdeps/bmc/ipmi.dag
-dag/extdeps/bmc/ipmi_boot_selection.dag
 dag/extdeps/bmc/openbmc.dag
 dag/extdeps/bmc/openbmc_fan_control.dag
 dag/extdeps/bmc/openbmc_operation.dag
-dag/extdeps/bmc/openbmc_password_ssh_transport.dag
 dag/extdeps/bmc/os_install_actuator_toolchain.dag
 dag/extdeps/bmc/redfish.dag
 dag/extdeps/bmc/serial_console.dag
@@ -208,7 +205,6 @@ dag/extdeps/llm/llm.dag
 dag/extdeps/llm/openai_contracts.dag
 dag/extdeps/llm/openai.dag
 dag/extdeps/llm/openai_errors.dag
-dag/extdeps/llm/openai_rest.dag
 dag/extdeps/memory.dag
 dag/extdeps/memory/jedec.dag
 dag/extdeps/memory/types.dag
@@ -241,7 +237,6 @@ dag/extdeps/pricing/hetzner_dedicated.dag
 dag/extdeps/pricing/object_storage.dag
 dag/extdeps/pricing/regional_compute.dag
 dag/extdeps/pricing/ubicloud.dag
-dag/extdeps/process/gnu_bash_exit.dag
 dag/extdeps/process/posix_exit.dag
 dag/extdeps/provisioning/dhcp_client_arch.dag
 dag/extdeps/provisioning/network_boot.dag
@@ -318,7 +313,6 @@ dag/extdeps/sudo/nopasswd_execute_probe.dag
 dag/extdeps/systemd/oomd.dag
 dag/extdeps/systemd/systemctl.dag
 dag/extdeps/systemd/systemd.dag
-dag/extdeps/tailscale/acl_api.dag
 dag/extdeps/tailscale/acl.dag
 dag/extdeps/tailscale/serve.dag
 dag/extdeps/tcgplayer/catalog.dag

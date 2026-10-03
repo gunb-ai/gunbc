@@ -5,7 +5,7 @@ use self::KeyedMapVerdict::*;
 use self::V1FreeMonoidSupplementalRoute::*;
 pub use crate::extdeps_languages_rust_capabilities::RustCapability;
 use crate::extdeps_languages_rust_capabilities::RustCapability::{
-    RustClone, RustDebug, RustDeserialize, RustPartialEq, RustSerialize,
+    RustDebug, RustDeserialize, RustPartialEq, RustSerialize,
 };
 pub use crate::extdeps_languages_rust_capabilities::{
     derive_traits_union, fn_field_derive_traits, kernel_int_arithmetic_traits,
@@ -699,14 +699,47 @@ pub fn v1_freemonoid_param_in_fields(
 }
 
 pub fn v1_freemonoid_supplemental_bound_spelling() -> String {
-    v1_freemonoid_supplemental_bound_spellings().join(&" + ".to_string())
+    crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
+        let mut __result = Vec::new();
+        for row in rust_vec_freemonoid_supplemental_generic_bound_rows()
+            .iter()
+            .cloned()
+        {
+            __result.push(
+                crate::extdeps_languages_rust_emit::rust_trait_derive_spelling(
+                    row.required.clone(),
+                ),
+            );
+        }
+        __result
+    }))
+    .join(&" + ".to_string())
 }
 
-pub fn v1_hand_written_impl_type_params(
+pub fn v1_item_header_bound_spellings(
+    param_name: String,
+    header_clone_param_names: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
+    if {
+        let mut __found = false;
+        for h in header_clone_param_names.iter().cloned() {
+            if (h.clone() == param_name.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    } {
+        Rc::new(vec!["Clone".to_string()])
+    } else {
+        Rc::new(vec![])
+    }
+}
+
+pub fn v1_freemonoid_impl_type_params(
     generic_param_names: Rc<Vec<String>>,
-    header_clone_params: Rc<Vec<String>>,
-    supplemental_params: Rc<Vec<String>>,
-    supplemental_spellings: Rc<Vec<String>>,
+    header_clone_param_names: Rc<Vec<String>>,
+    fm_params: Rc<Vec<String>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
     structural_spelling: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -720,9 +753,13 @@ pub fn v1_hand_written_impl_type_params(
                 for p in generic_param_names.iter().cloned() {
                     __result.push({
                         let pascal = crate::v1_compiler_emit_core_support::to_pascal(p.clone());
+                        let header = v1_item_header_bound_spellings(
+                            p.clone(),
+                            header_clone_param_names.clone(),
+                        );
                         let supplemental = if {
                             let mut __found = false;
-                            for f in supplemental_params.iter().cloned() {
+                            for f in fm_params.iter().cloned() {
                                 if (f.clone() == p.clone()) {
                                     __found = true;
                                     break;
@@ -730,25 +767,7 @@ pub fn v1_hand_written_impl_type_params(
                             }
                             __found
                         } {
-                            supplemental_spellings.clone()
-                        } else {
-                            Rc::new(vec![])
-                        };
-                        let header = if {
-                            let mut __found = false;
-                            for f in header_clone_params.iter().cloned() {
-                                if (f.clone() == p.clone()) {
-                                    __found = true;
-                                    break;
-                                }
-                            }
-                            __found
-                        } {
-                            Rc::new(vec![
-                                crate::extdeps_languages_rust_emit::rust_trait_derive_spelling(
-                                    RustCapability::RustClone,
-                                ),
-                            ])
+                            Rc::new(vec![v1_freemonoid_supplemental_bound_spelling()])
                         } else {
                             Rc::new(vec![])
                         };
@@ -763,8 +782,8 @@ pub fn v1_hand_written_impl_type_params(
                         };
                         let parts =
                             crate::v1_compiler_emit_core_support::unique_strings(v1_rt::concat(
-                                v1_rt::concat(supplemental.clone(), header.clone()),
-                                structural.clone(),
+                                header.clone(),
+                                v1_rt::concat(supplemental.clone(), structural.clone()),
                             ));
                         if ((parts.clone().len() as i64) == 0) {
                             pascal.clone()
@@ -784,42 +803,6 @@ pub fn v1_hand_written_impl_type_params(
             )
         }
     }
-}
-
-pub fn v1_freemonoid_supplemental_bound_spellings() -> Rc<Vec<String>> {
-    crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
-        let mut __result = Vec::new();
-        for row in rust_vec_freemonoid_supplemental_generic_bound_rows()
-            .iter()
-            .cloned()
-        {
-            __result.push(
-                crate::extdeps_languages_rust_emit::rust_trait_derive_spelling(
-                    row.required.clone(),
-                ),
-            );
-        }
-        __result
-    }))
-}
-
-pub fn v1_freemonoid_impl_type_params(
-    generic_param_names: Rc<Vec<String>>,
-    header_clone_params: Rc<Vec<String>>,
-    fm_params: Rc<Vec<String>>,
-    field_type_exprs: Rc<Vec<Rc<Node>>>,
-    structural_spelling: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    v1_hand_written_impl_type_params(
-        generic_param_names.clone(),
-        header_clone_params.clone(),
-        fm_params.clone(),
-        v1_freemonoid_supplemental_bound_spellings(),
-        field_type_exprs.clone(),
-        structural_spelling.clone(),
-        source_indices.clone(),
-    )
 }
 
 pub fn v1_freemonoid_bare_type_args(generic_param_names: Rc<Vec<String>>) -> String {
@@ -1061,7 +1044,7 @@ pub fn v1_set_required_traits_for(derive_trait: RustCapability) -> Rc<Vec<RustCa
     })
 }
 
-pub fn v1_set_supplemental_bound_spellings_for(derive_trait: RustCapability) -> Rc<Vec<String>> {
+pub fn v1_set_supplemental_bound_spelling_for(derive_trait: RustCapability) -> String {
     crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
         let mut __result = Vec::new();
         for t in v1_set_required_traits_for(derive_trait.clone())
@@ -1073,10 +1056,7 @@ pub fn v1_set_supplemental_bound_spellings_for(derive_trait: RustCapability) -> 
         }
         __result
     }))
-}
-
-pub fn v1_set_supplemental_bound_spelling_for(derive_trait: RustCapability) -> String {
-    v1_set_supplemental_bound_spellings_for(derive_trait.clone()).join(&" + ".to_string())
+    .join(&" + ".to_string())
 }
 
 pub fn v1_set_serde_bound_attr(
@@ -1207,7 +1187,7 @@ pub fn v1_set_serde_bound_attr_for_traits(
 pub fn v1_freemonoid_struct_debug_impl(
     name: String,
     generic_param_names: Rc<Vec<String>>,
-    header_clone_params: Rc<Vec<String>>,
+    header_clone_param_names: Rc<Vec<String>>,
     fm_params: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
@@ -1216,7 +1196,7 @@ pub fn v1_freemonoid_struct_debug_impl(
     {
         let tp = v1_freemonoid_impl_type_params(
             generic_param_names.clone(),
-            header_clone_params.clone(),
+            header_clone_param_names.clone(),
             fm_params.clone(),
             field_type_exprs.clone(),
             "std::fmt::Debug".to_string(),
@@ -1252,7 +1232,7 @@ pub fn v1_freemonoid_struct_debug_impl(
 pub fn v1_freemonoid_struct_partial_eq_impl(
     name: String,
     generic_param_names: Rc<Vec<String>>,
-    header_clone_params: Rc<Vec<String>>,
+    header_clone_param_names: Rc<Vec<String>>,
     fm_params: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
@@ -1261,7 +1241,7 @@ pub fn v1_freemonoid_struct_partial_eq_impl(
     {
         let tp = v1_freemonoid_impl_type_params(
             generic_param_names.clone(),
-            header_clone_params.clone(),
+            header_clone_param_names.clone(),
             fm_params.clone(),
             field_type_exprs.clone(),
             "PartialEq".to_string(),
@@ -1329,7 +1309,7 @@ pub fn v1_freemonoid_struct_partial_eq_impl(
 pub fn v1_freemonoid_enum_debug_impl(
     name: String,
     generic_param_names: Rc<Vec<String>>,
-    header_clone_params: Rc<Vec<String>>,
+    header_clone_param_names: Rc<Vec<String>>,
     fm_params: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
@@ -1338,7 +1318,7 @@ pub fn v1_freemonoid_enum_debug_impl(
     {
         let tp = v1_freemonoid_impl_type_params(
             generic_param_names.clone(),
-            header_clone_params.clone(),
+            header_clone_param_names.clone(),
             fm_params.clone(),
             field_type_exprs.clone(),
             "std::fmt::Debug".to_string(),
@@ -1437,7 +1417,7 @@ pub fn v1_freemonoid_enum_debug_impl(
 pub fn v1_freemonoid_enum_partial_eq_impl(
     name: String,
     generic_param_names: Rc<Vec<String>>,
-    header_clone_params: Rc<Vec<String>>,
+    header_clone_param_names: Rc<Vec<String>>,
     fm_params: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
@@ -1446,7 +1426,7 @@ pub fn v1_freemonoid_enum_partial_eq_impl(
     {
         let tp = v1_freemonoid_impl_type_params(
             generic_param_names.clone(),
-            header_clone_params.clone(),
+            header_clone_param_names.clone(),
             fm_params.clone(),
             field_type_exprs.clone(),
             "PartialEq".to_string(),
@@ -1613,28 +1593,80 @@ pub fn v1_freemonoid_enum_partial_eq_impl(
 
 pub fn v1_set_impl_type_params(
     generic_param_names: Rc<Vec<String>>,
-    header_clone_params: Rc<Vec<String>>,
+    header_clone_param_names: Rc<Vec<String>>,
     set_params: Rc<Vec<String>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
     structural_spelling: String,
     derive_trait: RustCapability,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    v1_hand_written_impl_type_params(
-        generic_param_names.clone(),
-        header_clone_params.clone(),
-        set_params.clone(),
-        v1_set_supplemental_bound_spellings_for(derive_trait.clone()),
-        field_type_exprs.clone(),
-        structural_spelling.clone(),
-        source_indices.clone(),
-    )
+    if ((generic_param_names.clone().len() as i64) == 0) {
+        "".to_string()
+    } else {
+        {
+            let entries = Rc::new({
+                let mut __result = Vec::new();
+                for p in generic_param_names.iter().cloned() {
+                    __result.push({
+                        let pascal = crate::v1_compiler_emit_core_support::to_pascal(p.clone());
+                        let header = v1_item_header_bound_spellings(
+                            p.clone(),
+                            header_clone_param_names.clone(),
+                        );
+                        let supplemental = if {
+                            let mut __found = false;
+                            for f in set_params.iter().cloned() {
+                                if (f.clone() == p.clone()) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        } {
+                            Rc::new(vec![v1_set_supplemental_bound_spelling_for(
+                                derive_trait.clone(),
+                            )])
+                        } else {
+                            Rc::new(vec![])
+                        };
+                        let structural = if v1_freemonoid_param_in_fields(
+                            p.clone(),
+                            field_type_exprs.clone(),
+                            source_indices.clone(),
+                        ) {
+                            Rc::new(vec![structural_spelling.clone()])
+                        } else {
+                            Rc::new(vec![])
+                        };
+                        let parts =
+                            crate::v1_compiler_emit_core_support::unique_strings(v1_rt::concat(
+                                header.clone(),
+                                v1_rt::concat(supplemental.clone(), structural.clone()),
+                            ));
+                        if ((parts.clone().len() as i64) == 0) {
+                            pascal.clone()
+                        } else {
+                            v1_rt::concat(
+                                v1_rt::concat(pascal.clone(), ": ".to_string()),
+                                parts.clone().join(&" + ".to_string()),
+                            )
+                        }
+                    });
+                }
+                __result
+            });
+            v1_rt::concat(
+                v1_rt::concat("<".to_string(), entries.clone().join(&", ".to_string())),
+                ">".to_string(),
+            )
+        }
+    }
 }
 
 pub fn v1_set_enum_debug_impl(
     name: String,
     generic_param_names: Rc<Vec<String>>,
-    header_clone_params: Rc<Vec<String>>,
+    header_clone_param_names: Rc<Vec<String>>,
     set_params: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
@@ -1643,7 +1675,7 @@ pub fn v1_set_enum_debug_impl(
     {
         let tp = v1_set_impl_type_params(
             generic_param_names.clone(),
-            header_clone_params.clone(),
+            header_clone_param_names.clone(),
             set_params.clone(),
             field_type_exprs.clone(),
             "std::fmt::Debug".to_string(),
@@ -1743,7 +1775,7 @@ pub fn v1_set_enum_debug_impl(
 pub fn v1_set_enum_partial_eq_impl(
     name: String,
     generic_param_names: Rc<Vec<String>>,
-    header_clone_params: Rc<Vec<String>>,
+    header_clone_param_names: Rc<Vec<String>>,
     set_params: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
@@ -1752,7 +1784,7 @@ pub fn v1_set_enum_partial_eq_impl(
     {
         let tp = v1_set_impl_type_params(
             generic_param_names.clone(),
-            header_clone_params.clone(),
+            header_clone_param_names.clone(),
             set_params.clone(),
             field_type_exprs.clone(),
             "PartialEq".to_string(),
@@ -2048,75 +2080,10 @@ pub fn v1_item_ord_propagated_param_names(
     })
 }
 
-pub fn v1_set_element_bound_spellings() -> Rc<Vec<String>> {
-    crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
-        let mut __result = Vec::new();
-        for row in rust_btree_set_supplemental_generic_bound_rows()
-            .iter()
-            .cloned()
-        {
-            __result.push(
-                crate::extdeps_languages_rust_emit::rust_trait_derive_spelling(
-                    row.required.clone(),
-                ),
-            );
-        }
-        __result
-    }))
-}
-
-pub fn v1_fn_signature_set_element_param_names(
-    signature_type_exprs: Rc<Vec<Rc<Node>>>,
-    generic_param_names: Rc<Vec<String>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
-    {
-        let direct = v1_set_element_params(
-            generic_param_names.clone(),
-            signature_type_exprs.clone(),
-            source_indices.clone(),
-        );
-        let propagated = v1_item_ord_propagated_param_names(
-            generic_param_names.clone(),
-            signature_type_exprs.clone(),
-            type_decl_items.clone(),
-            source_indices.clone(),
-        );
-        Rc::new({
-            let mut __result = Vec::new();
-            for g in generic_param_names.iter().cloned() {
-                if ({
-                    let mut __found = false;
-                    for d in direct.iter().cloned() {
-                        if (d.clone() == g.clone()) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                } || {
-                    let mut __found = false;
-                    for d in propagated.iter().cloned() {
-                        if (d.clone() == g.clone()) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                }) {
-                    __result.push(g);
-                }
-            }
-            __result
-        })
-    }
-}
-
 pub fn v1_set_struct_debug_impl(
     name: String,
     generic_param_names: Rc<Vec<String>>,
-    header_clone_params: Rc<Vec<String>>,
+    header_clone_param_names: Rc<Vec<String>>,
     set_params: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
@@ -2125,7 +2092,7 @@ pub fn v1_set_struct_debug_impl(
     {
         let tp = v1_set_impl_type_params(
             generic_param_names.clone(),
-            header_clone_params.clone(),
+            header_clone_param_names.clone(),
             set_params.clone(),
             field_type_exprs.clone(),
             "std::fmt::Debug".to_string(),
@@ -2162,7 +2129,7 @@ pub fn v1_set_struct_debug_impl(
 pub fn v1_set_struct_partial_eq_impl(
     name: String,
     generic_param_names: Rc<Vec<String>>,
-    header_clone_params: Rc<Vec<String>>,
+    header_clone_param_names: Rc<Vec<String>>,
     set_params: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
@@ -2171,7 +2138,7 @@ pub fn v1_set_struct_partial_eq_impl(
     {
         let tp = v1_set_impl_type_params(
             generic_param_names.clone(),
-            header_clone_params.clone(),
+            header_clone_param_names.clone(),
             set_params.clone(),
             field_type_exprs.clone(),
             "PartialEq".to_string(),
@@ -4177,12 +4144,11 @@ pub fn v1_emit_struct_from_capability_table(
     map_key_required: bool,
     generic_param_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    header_clone_params: Rc<Vec<String>>,
+    header_clone_param_names: Rc<Vec<String>>,
     deserialize_forbidden: bool,
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
 ) -> Rc<StructCapabilityEmit> {
     {
-        let carrier_param_needs_clone = ((header_clone_params.clone().len() as i64) > 0);
         let field_type_exprs = Rc::new({
             let mut __result = Vec::new();
             for f in children.iter().cloned() {
@@ -4233,7 +4199,7 @@ pub fn v1_emit_struct_from_capability_table(
                             v1_freemonoid_struct_debug_impl(
                                 name.clone(),
                                 generic_param_names.clone(),
-                                header_clone_params.clone(),
+                                header_clone_param_names.clone(),
                                 fm_params.clone(),
                                 children.clone(),
                                 field_type_exprs.clone(),
@@ -4245,7 +4211,7 @@ pub fn v1_emit_struct_from_capability_table(
                     v1_freemonoid_struct_partial_eq_impl(
                         name.clone(),
                         generic_param_names.clone(),
-                        header_clone_params.clone(),
+                        header_clone_param_names.clone(),
                         fm_params.clone(),
                         children.clone(),
                         field_type_exprs.clone(),
@@ -4299,7 +4265,7 @@ pub fn v1_emit_struct_from_capability_table(
                                     v1_set_struct_debug_impl(
                                         name.clone(),
                                         generic_param_names.clone(),
-                                        header_clone_params.clone(),
+                                        header_clone_param_names.clone(),
                                         ord_propagated_params.clone(),
                                         children.clone(),
                                         field_type_exprs.clone(),
@@ -4311,7 +4277,7 @@ pub fn v1_emit_struct_from_capability_table(
                             v1_set_struct_partial_eq_impl(
                                 name.clone(),
                                 generic_param_names.clone(),
-                                header_clone_params.clone(),
+                                header_clone_param_names.clone(),
                                 ord_propagated_params.clone(),
                                 children.clone(),
                                 field_type_exprs.clone(),
@@ -4335,7 +4301,7 @@ pub fn v1_emit_struct_from_capability_table(
                             source_indices.clone(),
                         );
                         let impl_bodies = if (crate::std_trait_derive_shape::repr_grounding_group_completion_carrier(module_path.clone(), name.clone()) && crate::std_trait_derive_shape::repr_grounding_derive_completeness_predicate(crate::extdeps_languages_rust_capabilities::rust_capability_shape_table(), crate::extdeps_languages_rust_capabilities::kernel_int_arithmetic_traits(), ReprGroundingDeriveElemShape::ReprDeriveElemKernelInt)) {
-                            crate::extdeps_languages_rust_emit::rust_supplemental_impls_group_completion(carrier_param_needs_clone.clone())
+                            crate::extdeps_languages_rust_emit::rust_supplemental_impls_group_completion(((header_clone_param_names.clone().len() as i64) > 0))
                         } else {
                             "".to_string()
                         };
@@ -4375,7 +4341,7 @@ pub fn v1_emit_enum_supplemental_impls(
     name: String,
     children: Rc<Vec<Rc<Node>>>,
     generic_param_names: Rc<Vec<String>>,
-    header_clone_params: Rc<Vec<String>>,
+    header_clone_param_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
@@ -4398,7 +4364,7 @@ pub fn v1_emit_enum_supplemental_impls(
                         v1_freemonoid_enum_debug_impl(
                             name.clone(),
                             generic_param_names.clone(),
-                            header_clone_params.clone(),
+                            header_clone_param_names.clone(),
                             fm_params.clone(),
                             children.clone(),
                             field_type_exprs.clone(),
@@ -4410,7 +4376,7 @@ pub fn v1_emit_enum_supplemental_impls(
                 v1_freemonoid_enum_partial_eq_impl(
                     name.clone(),
                     generic_param_names.clone(),
-                    header_clone_params.clone(),
+                    header_clone_param_names.clone(),
                     fm_params.clone(),
                     children.clone(),
                     field_type_exprs.clone(),
@@ -4426,7 +4392,7 @@ pub fn v1_emit_enum_supplemental_impls(
                             v1_set_enum_debug_impl(
                                 name.clone(),
                                 generic_param_names.clone(),
-                                header_clone_params.clone(),
+                                header_clone_param_names.clone(),
                                 set_params.clone(),
                                 children.clone(),
                                 field_type_exprs.clone(),
@@ -4438,7 +4404,7 @@ pub fn v1_emit_enum_supplemental_impls(
                     v1_set_enum_partial_eq_impl(
                         name.clone(),
                         generic_param_names.clone(),
-                        header_clone_params.clone(),
+                        header_clone_param_names.clone(),
                         set_params.clone(),
                         children.clone(),
                         field_type_exprs.clone(),

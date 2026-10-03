@@ -1,5 +1,7 @@
 module gunbc.fleet.org_actions_converge
 
+import gunbc.auth.approved_secret_grants { secret_grants_via_approval }
+
 import std.process { ProcessExit, exit_failure }
 import gunbc.auth.github_apps { gunbai_ci_app_pem_secret }
 import gunbc.auth.gcp_secret_access { secret_access_ensure_for, secret_accessor_grant }
@@ -22,4 +24,13 @@ fn org_admin_app_key_access_converge_with_supplied_token() -> ProcessExit
     SuppliedTokenReady { token: t } =>
       secret_access_ensure_for(grant: secret_accessor_grant(target: gunbai_ci_app_pem_secret), token_source: OperatorSuppliedToken { token: t })
   }
+}
+
+// The shared approval workflow binds the exact grants and beneficiary before obtaining its credential.
+fn org_admin_app_key_access_request_approval() -> ProcessExit {
+  secret_grants_via_approval(grants: [secret_accessor_grant(target: gunbai_ci_app_pem_secret)], request_only: true)
+}
+
+fn org_admin_app_key_access_converge_via_approval() -> ProcessExit {
+  secret_grants_via_approval(grants: [secret_accessor_grant(target: gunbai_ci_app_pem_secret)], request_only: false)
 }
