@@ -6,6 +6,7 @@ import gunbc.seed_growth_admission {
   seed_growth_forward_freeze_policy_note,
   seed_growth_unjustified_additions,
   seed_growth_stale_justifications,
+  seed_growth_stale_over,
   seed_growth_roster_all_declarations,
   seed_growth_roster_mechanical_checks_holds,
   seed_growth_roster_well_formed_gate_holds
@@ -40,9 +41,17 @@ test fn seed_growth_join_refuses_unknown_declaration() -> Bool {
   length(xs: seed_growth_unjustified_additions(added: [seed_growth_rogue_declaration()])) == 1
 }
 
+// THE ROSTER IS SUPPLIED, THE RELATION IS REAL. Over the whole roster this claim cost ~74.5k eval
+// steps against the ~72.3k new-witness ceiling (gunbc#13101 floor), all of it the key map the
+// assertion does not inspect. The real-roster path is still executed by
+// a_live_roster_declaration_is_not_reported_stale below, which is the pairing obligation.
 test fn an_unknown_live_population_reports_every_roster_row_stale() -> Bool {
-  length(xs: seed_growth_stale_justifications(live_items: [seed_growth_rogue_declaration()]))
-    == length(xs: seed_growth_roster_all_declarations())
+  let roster = [
+    DeclarationRef { module_path: "v1_compiler.a", decl_name: "first", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.b", decl_name: "second", field: WholeDeclaration }
+  ]
+  length(xs: seed_growth_stale_over(roster: roster, live_items: [seed_growth_rogue_declaration()])) == 2
+    && length(xs: seed_growth_stale_over(roster: roster, live_items: roster)) == 0
 }
 
 // A ROSTER ROW THAT STILL NAMES A LIVE ITEM IS NOT STALE. Without this control the staleness

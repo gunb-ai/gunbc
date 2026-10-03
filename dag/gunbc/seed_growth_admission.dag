@@ -468,9 +468,16 @@ fn seed_growth_live_lookup(live: Map<String, Bool>, key: String) -> Bool? {
 }
 
 fn seed_growth_stale_justifications(live_items: List<DeclarationRef>) -> List<String> {
+  seed_growth_stale_over(roster: seed_growth_roster_all_declarations(), live_items: live_items)
+}
+
+// THE STALENESS RELATION OVER A SUPPLIED ROSTER. The public function above binds it to the real
+// roster; a witness of the relation's shape supplies a small roster instead of paying the
+// whole-roster key map per claim (DESIGN section 3, a witness discriminates at one interface).
+fn seed_growth_stale_over(roster: List<DeclarationRef>, live_items: List<DeclarationRef>) -> List<String> {
   let live = seed_growth_live_set(live_items: live_items)
   filter(
-    xs: seed_growth_roster_all_declarations(),
+    xs: roster,
     predicate: fn(r) { !seed_growth_live_has(live: live, r: r) }
   )
     |> map(r => declaration_ref_display_key(ref: r))

@@ -805,16 +805,7 @@ import v2.std.collection { List }
 // PreparedGrammar is one nullary producer, and the refusal-arm counts over the live grammar are
 // another. A PreparedGrammar is the value dag_prepared_grammar already serves; the census is a record
 // of two Ints. Both WARM: one grammar preparation is more than one claim's budget.
-// THE SEED-GROWTH ROSTER IS ONE NULLARY PRODUCER READ BY EVERY CLAIM OF ITS WITNESS.
-// test.claim.seed_growth_admission_witness (admitted to the required gate by operator ruling
-// msg_341a9785, 2026-10-03) reads gunbc.seed_growth_admission seed_growth_roster_all_declarations
-// in its mechanical-checks, well-formed, staleness and addition claims, and each claim frame
-// rebuilt the ~400-row fold. claim_batch --hermetic over that entry (silent-stag-886's receipt for
-// gunbc#13101) put the staleness claim near the 100ms new-witness ceiling with the fold paid inline.
-// The value is a list of DeclarationRef records, small and portable. Re-derive from this run's
-// [floor-shared-fill] ledger: the fill lands at preparation, Stored, and the claims serve hits.
 data floor_cross_claim_pure_producers_warm: List<String> = [
-  "gunbc.seed_growth_admission.seed_growth_roster_all_declarations",
   "v2.test.claim.parameter_reference.pr_program_parameter_paths",
   "v2.test.claim.parameter_reference.pr_program_grounding",
   "v2.test.claim.parameter_reference.pr_program_lexical_reads",

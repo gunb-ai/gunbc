@@ -12,11 +12,14 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // constructors out of the tree before the interpreter sees it. What is ADDED is the residue that
 // keeps the deletion fail-closed and keeps a structural Peano type structural.
 data kernel_grounding_interpreter_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  // ONE ROW PER DECLARATION. eval_match and match_pattern are already carried by the
+  // match-guard and value-depth rows (gunbc.interpreter_eval_correctness_seed_growth, #12903);
+  // naming them here too made the roster's duplicate-key check red, unseen until the witness
+  // was admitted to the required gate (gunbc#13101). This row's reason and trigger still
+  // describe the eval_match refusal and match_pattern deletion it made.
   hand_authored_declarations: [
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "eval_expr_inner", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "eval_match", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "eval_record_lit", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "match_pattern", field: WholeDeclaration },
   ],
   reason: "The subject is the seed interpreter's own evaluation of three tree forms, which no .dag program can reach: eval_record_lit and match_pattern LOSE their spelling-keyed Zero/Succ arms (a deletion); eval_expr_inner evaluates a Peano-unfolded elaborated literal as its constructor image instead of as the kernel literal, because a Peano unfolding's destination is structural on every route now that a kernel-realized carrier never reaches that arm; and eval_match refuses, located, a constructor pattern matched against a host integer, because with the grounding arms gone such a match could only fall through to a later wildcard silently. The fold that replaces the deleted arms is .dag (v1.compiler.infer ground_kernel_views), so the only hand Rust this adds is the refusal and the image evaluation.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
