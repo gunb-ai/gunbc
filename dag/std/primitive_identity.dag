@@ -1057,9 +1057,6 @@ fn primitive_definition_identity(definition: PrimitiveDefinition) -> PrimitiveId
   definition.identity
 }
 
-// The filter is let-bound, not written in the branch condition: a filter in a condition is an
-// unprojectable construct (the FilterInBranchCondition wall), so the condition reads the bound
-// name.
 fn primitive_duplicate_semantic_definition_violation(
   definitions: List<PrimitiveDefinition>,
   target: PrimitiveIdentity

@@ -25,7 +25,7 @@ import extdeps.linux.procfs { procfs_pid_file_path }
 import extdeps.linux.proc_pid_stat { proc_pid_stat_start_time, StartTimeObserved }
 
 // THE CONTRACT OF THE NTFY RUNTIME-OBSERVATION HELPER, and only the contract. The enrolment-code
-// verb (gunbc.auth.approval_device_routes issue_device_enrolment_code, #12077) must join its ACL
+// verb (gunbc.auth.approval_device_enrolment_code issue_device_enrolment_code, #12077) must join its ACL
 // readback to the LIVE ntfy process: its actual environment, its exe, and its open fds (the auth
 // file and the 127.0.0.1:2586 listening socket). Those are /proc/<MainPID> reads that only the
 // process's own uid (gunbc-ntfy) or root can make. The verb runs as the operator's account, so it
