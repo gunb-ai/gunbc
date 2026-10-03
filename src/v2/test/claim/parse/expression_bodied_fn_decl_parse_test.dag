@@ -131,8 +131,9 @@ test fn braced_fn_decl_survives_normalize_holds() -> Bool {
 // THE REFUSAL IS THE GRAMMAR'S OWN EXPECTATION, NOT ANY REFUSAL. The fn_decl and data_decl rows
 // wrap the expression after `=` in `Expect` with a variant of the closed parse-stage vocabulary
 // (v2.std.parse_refusal_reason), so the fatal diagnostic must be exactly that reason's identity,
-// located at the `=` token on the parse stage's port. `parse_g0_tokens_remain` is what the parse said
-// before the rows carried the label; it as the fatal reason reds these claims.
+// located at the `=` token on the parse stage's port. The overlap residue rides in front as an
+// advisory, and `parse_g0_tokens_remain` is what the parse said before the rows carried the label;
+// either one as the fatal reason reds these claims.
 fn g_fatal_at(parsed: Outcome<Node>, reason: ParseRefusalReason, file: Symbol, start: Int, end: Int) -> Bool {
   match parsed {
     Accepted { value: _, diagnostics: _ } => false
