@@ -9487,6 +9487,148 @@ fn declared_resource_names(kinds: FreeMonoid<DeclaredTypeKind>) -> FreeMonoid<Sy
   )
 }
 
+// THE TYPE-DECLARATION MODIFIER SLOT, CARRIED. `type X <modifier> = Y` -- the slot
+// v2.extdeps.languages.dag dag_grammar_type_decl_modifiers_expr admits between the name (and its
+// `<T>`) and the body -- was consumed and minted nothing on this route
+// (gunbc.rung_drop g0_type_decl_modifier_parse_without_sealing_property), so no reader of a lowered
+// declaration could tell `type X nominal_opaque = Y` from `type X = Y`. It is read HERE, on the parse,
+// for the reason DeclaredTypeKind is: lowering leaves no trace of it in the node.
+//
+// A CLOSED VOCABULARY, NOT A FLAG PER SPELLING. The slot is where the ruled nominal-type plan
+// (docs/plans/nominal-type-declaration-plan.md S1) puts constructor and view visibility, so a later
+// modifier is a new variant here and a new terminal in the grammar's slot, never a second carrier.
+// Carrying a modifier ENFORCES nothing: the sealing property v1 parsed_sole_constructor_properties
+// mints is still not checked on this route, which is the half of that drop this does not restore.
+type TypeDeclModifier
+  = NominalOpaqueModifier
+  | SoleConstructorModifier
+
+// One row per declaration that carries at least one modifier, in slot order. A declaration with an
+// empty slot has no row: absence of a row is the empty modifier set, never "unknown", because the
+// reader below refuses every slot it cannot read.
+type DeclaredTypeModifiers {
+  name: Symbol
+  modifiers: FreeMonoid<TypeDeclModifier>
+}
+
+type TypeDeclModifierSlotRead
+  = TypeDeclModifierSlotEmpty
+  | TypeDeclModifierSlotCarries { modifier: TypeDeclModifier }
+  | TypeDeclModifierSlotUnreadable { at: Node }
+
+// One optional terminal of the slot, as the parse leaves it: the keyword atom itself when present (an
+// atom named by its token class), an empty Conj when absent. Anything else in the slot -- another
+// atom, a Conj with children -- is unreadable and refuses, located: the grammar admits nothing else
+// there, so that arm is the reader's own fail-closed boundary, never read as an empty slot.
+fn body_lower_type_decl_modifier_slot(slot: Node) -> TypeDeclModifierSlotRead {
+  let element = body_lower_deep_unwrap_optional(node: slot)
+  match node_atom_identity_optional(node: element) {
+    Present { value: id } =>
+      if id == ^dag_token_kw_nominal_opaque {
+        TypeDeclModifierSlotCarries { modifier: NominalOpaqueModifier }
+      } else if id == ^dag_token_kw_sole_constructor {
+        TypeDeclModifierSlotCarries { modifier: SoleConstructorModifier }
+      } else {
+        TypeDeclModifierSlotUnreadable { at: element }
+      }
+    Absent =>
+      match element.kind {
+        TypeNode { connective: c } =>
+          match c {
+            Conj =>
+              if count(element.children) == 0 { TypeDeclModifierSlotEmpty } else { TypeDeclModifierSlotUnreadable { at: element } }
+            Atom { identity: _ } => TypeDeclModifierSlotUnreadable { at: element }
+            Disj => TypeDeclModifierSlotUnreadable { at: element }
+            Arrow => TypeDeclModifierSlotUnreadable { at: element }
+            Cardinality => TypeDeclModifierSlotUnreadable { at: element }
+            Instantiation => TypeDeclModifierSlotUnreadable { at: element }
+          }
+        ComputationNode { behavior: _ } => TypeDeclModifierSlotUnreadable { at: element }
+      }
+  }
+}
+
+type TypeDeclModifiersRead
+  = TypeDeclModifiersRead { modifiers: FreeMonoid<TypeDeclModifier> }
+  | TypeDeclModifiersUnreadable { at: Node }
+
+fn body_lower_type_decl_modifier_snoc(acc: TypeDeclModifiersRead, slot: Node) -> TypeDeclModifiersRead {
+  match acc {
+    TypeDeclModifiersUnreadable { at: a } => TypeDeclModifiersUnreadable { at: a }
+    TypeDeclModifiersRead { modifiers: ms } =>
+      match body_lower_type_decl_modifier_slot(slot: slot) {
+        TypeDeclModifierSlotEmpty => TypeDeclModifiersRead { modifiers: ms }
+        TypeDeclModifierSlotCarries { modifier: m } => TypeDeclModifiersRead { modifiers: list_snoc_item(xs: ms, item: m) }
+        TypeDeclModifierSlotUnreadable { at: a } => TypeDeclModifiersUnreadable { at: a }
+      }
+  }
+}
+
+// seq(kw_type, seq(name, seq(opt(generic_params), seq(modifiers, body)))): the modifiers are the LEFT
+// of the fourth spine node, the same positional read body_lower_type_decl_eq_rhs_optional makes of its
+// right. modifiers = seq(opt(kw_nominal_opaque), opt(kw_sole_constructor)).
+fn body_lower_type_decl_modifiers_read(shell: Node, captured: Node) -> TypeDeclModifiersRead {
+  match body_lower_fn_decl_spine_right(node: captured) {
+    Absent => TypeDeclModifiersUnreadable { at: shell }
+    Present { value: after_kw } =>
+      match body_lower_fn_decl_spine_right(node: after_kw) {
+        Absent => TypeDeclModifiersUnreadable { at: shell }
+        Present { value: after_name } =>
+          match body_lower_fn_decl_spine_right(node: after_name) {
+            Absent => TypeDeclModifiersUnreadable { at: shell }
+            Present { value: after_params } =>
+              match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: after_params)) {
+                Absent => TypeDeclModifiersUnreadable { at: shell }
+                Present { value: slot_and_body } =>
+                  match sugar_sequence_pair_optional(node: slot_and_body.left) {
+                    Absent => TypeDeclModifiersUnreadable { at: slot_and_body.left }
+                    Present { value: slots } =>
+                      body_lower_type_decl_modifier_snoc(
+                        acc: body_lower_type_decl_modifier_snoc(acc: TypeDeclModifiersRead { modifiers: Empty }, slot: slots.left),
+                        slot: slots.right
+                      )
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn body_lower_type_decl_modifiers_unreadable_diagnostic(at: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^body_lowering_reason_type_decl_modifier_unreadable,
+    at: node_locus(node: at),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+type DeclaredTypeModifiersCapture
+  = DeclaredTypeModifiersAbsent
+  | DeclaredTypeModifiersPresent { row: DeclaredTypeModifiers }
+
+// THE ONE QUESTION normalize asks of a type_decl shell. A shell this cannot name or read refuses; the
+// declaration's own lowering refuses an unreadable shell too, so the two decisions cannot disagree.
+fn body_lower_type_decl_declared_modifiers(shell: Node) -> Outcome<DeclaredTypeModifiersCapture> {
+  match parse_production_captured_child_optional(node: shell) {
+    Absent => Rejected { diagnostics: diagnostics_singleton(d: body_lower_type_decl_modifiers_unreadable_diagnostic(at: shell)) }
+    Present { value: captured } =>
+      match dag_surface_kw_then_ident_from_captured(captured: captured) {
+        Absent => Rejected { diagnostics: diagnostics_singleton(d: body_lower_type_decl_modifiers_unreadable_diagnostic(at: shell)) }
+        Present { value: name } =>
+          match body_lower_type_decl_modifiers_read(shell: shell, captured: captured) {
+            TypeDeclModifiersUnreadable { at: a } =>
+              Rejected { diagnostics: diagnostics_singleton(d: body_lower_type_decl_modifiers_unreadable_diagnostic(at: a)) }
+            TypeDeclModifiersRead { modifiers: ms } =>
+              match ms {
+                Empty => outcome_accepted(value: DeclaredTypeModifiersAbsent)
+                Cons { head: _, tail: _ } =>
+                  outcome_accepted(value: DeclaredTypeModifiersPresent { row: DeclaredTypeModifiers { name: name, modifiers: ms } })
+              }
+          }
+      }
+  }
+}
+
 fn body_lower_type_decl(shell: Node) -> Outcome<Node> {
   match parse_production_captured_child_optional(node: shell) {
     Absent => body_lower_type_decl_unreadable(shell: shell)
