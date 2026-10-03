@@ -1,0 +1,101 @@
+module test.claim.harness_supervisor_guidance_test
+
+import std.types { Bool, String, Int }
+import gunbc.roadmap.roadmap_supervisor {
+  SupervisorEscalation, SupervisorForNode, SupervisorAtTop,
+  SupervisorVerdictReceipt, VerdictNominal, VerdictPlanDefect, VerdictStuck,
+  supervisor_verdict_schema, supervisor_verdict_decode, VerdictDecoded, VerdictNotDecodable,
+}
+import gunbc.harness.harness_supervisor_guidance {
+  SupervisorCheckpoint, supervisor_brief_for, supervisor_system_prompt_at, supervisor_verdict_skeleton,
+}
+
+fn escalation() -> SupervisorEscalation {
+  SupervisorEscalation {
+    node_id: "shell-dag-cron-entry-line-builder",
+    attempt_key: "cd172fe81b806160",
+    branch: "dispatch/shell-dag-cron-entry-line-builder-acd172fe81b806160",
+    turn: 3,
+    target: SupervisorForNode { node_id: "shell-typed-invocation" },
+    reason: "its submission still declares blocked",
+  }
+}
+
+fn checkpoint() -> SupervisorCheckpoint {
+  SupervisorCheckpoint {
+    head_sha: "b04485cffb000000000000000000000000000000",
+    capture_line: "a capture binds the head, declaring blocked",
+    explanation: "the acceptance run was still in flight when the budget died",
+    limitations: "acceptance unconfirmed",
+    history_line: "turn 1 fresh, turn 2 continued on a failed verdict, turn 3 declared blocked",
+  }
+}
+
+// THE BRIEF IS A PROJECTION, and this is the control that proves it: every checkpoint ref and the
+// escalation's own fields arrive in the text BECAUSE they were supplied, so changing the record
+// changes the brief -- a hand-copied brief satisfies nothing here.
+test fn the_brief_projects_the_escalation_and_the_checkpoint_verbatim() -> Bool {
+  let brief = supervisor_brief_for(
+    escalation: escalation(),
+    checkpoint: checkpoint(),
+    intent_line: "Describe what a command should do, instead of writing shell text",
+    contract_line: "Cron remains the executor; a crontab line remains shell-shaped output",
+  )
+  brief.contains("cd172fe81b806160")
+    && brief.contains("dispatch/shell-dag-cron-entry-line-builder-acd172fe81b806160")
+    && brief.contains("b04485cffb000000000000000000000000000000")
+    && brief.contains("the acceptance run was still in flight when the budget died")
+    && brief.contains("acceptance unconfirmed")
+    && brief.contains("turn 1 fresh, turn 2 continued on a failed verdict, turn 3 declared blocked")
+    && brief.contains("the supervisor of node shell-typed-invocation")
+    && brief.contains("L1 project intent: Describe what a command should do, instead of writing shell text")
+    && brief.contains("L2 task contract: Cron remains the executor; a crontab line remains shell-shaped output")
+    && brief.contains("DESIGN.md")
+}
+
+// THE THREE ROUTES ARE THE ONLY VERDICTS, and the shape the supervisor copies decodes through the
+// verdict's own codec -- bound to THIS lineage's attempt and turn, so the example it writes from
+// is already the receipt the belt will read.
+test fn the_brief_carries_the_three_routes_and_a_skeleton_that_decodes_for_this_turn() -> Bool {
+  let brief = supervisor_brief_for(
+    escalation: escalation(),
+    checkpoint: checkpoint(),
+    intent_line: "i",
+    contract_line: "c",
+  )
+  brief.contains(supervisor_verdict_schema as String)
+    && brief.contains("- nominal:")
+    && brief.contains("- plan-defect:")
+    && brief.contains("- stuck:")
+    && brief.contains("a worker is never re-dispatched against a known-bad plan")
+    && (match supervisor_verdict_decode(text: supervisor_verdict_skeleton(attempt_key: "cd172fe81b806160", adjudicated_turn: 3)) {
+      VerdictNotDecodable { reason: _ } => false
+      VerdictDecoded { receipt } =>
+        receipt.attempt_key == "cd172fe81b806160" && receipt.adjudicated_turn == 3
+    })
+}
+
+// A TOP-LEVEL ESCALATION NAMES THE TOP, not a node: the root arc's supervisor is the top, and the
+// brief says so rather than inventing a parent.
+test fn a_root_lineage_brief_names_the_top_as_its_supervisor() -> Bool {
+  let top = SupervisorEscalation {
+    node_id: "root-arc",
+    attempt_key: "a9",
+    branch: "dispatch/root-arc-aa9",
+    turn: 3,
+    target: SupervisorAtTop,
+    reason: "its verification still fails",
+  }
+  supervisor_brief_for(escalation: top, checkpoint: checkpoint(), intent_line: "i", contract_line: "c")
+    .contains("the top (a root arc has no supervisor above it)")
+}
+
+// THE ROLE CONTRACT NAMES THE WORKTREE AND THE VERDICT PATH as the session's only completion, the
+// same discipline the reviewer's contract carries.
+test fn the_system_prompt_binds_completion_to_the_verdict_file() -> Bool {
+  let prompt = supervisor_system_prompt_at(worktree: "/x/attempts/n-a1", verdict_path: "/x/attempts/n-a1/supervisor-verdict.json")
+  prompt.contains("/x/attempts/n-a1")
+    && prompt.contains("/x/attempts/n-a1/supervisor-verdict.json")
+    && prompt.contains("nominal, plan-defect or stuck")
+    && prompt.contains("you do not continue the implementation yourself")
+}

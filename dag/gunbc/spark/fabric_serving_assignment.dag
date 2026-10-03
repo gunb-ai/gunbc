@@ -6,7 +6,7 @@ import product.placement_supply { HostIdentity }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB }
 import gunbc.spark.serving_arm {
   ServingCheckpoint, ServingRuntime, ServingTopology, ServingLaunchProfile,
-  Glm53NativeFp8, GunbcGlm53DerivedGb10, FourSparkTp4,
+  Glm53NativeFp8, GunbcGlm53DerivedKvplanV2Gb10, FourSparkTp4,
   glm_native_concurrent_profile, serving_topology_rank_count,
 }
 import gunbc.spark.serving_arm_launch { arm_node_roster, ArmNodesResolved, ArmNodeRosterRefused }
@@ -37,10 +37,18 @@ type FabricServingAssignment sole_constructor {
 // GunbcGlm53NopeDerivedGb10, whose pin is the OLDER 2026-09-12 hand build (sha256:41366caf...); a
 // relaunch planned from it would have moved group B backwards onto an image it no longer serves.
 // The NoPE row stays in gunbc.spark.serving_arm as history, not as an alternative (#11565).
+//
+// AND SINCE 2026-09-26 THE ARM SERVES GunbcGlm53DerivedKvplanV2Gb10: the same derived build with the
+// v2 KV allocation-plan emission layered over it (gunbc.spark.serving_arm glm53_derived_kvplan_v2_row),
+// which is the image the Group B experiments since then ran and the one the fleet holds. Keeping the
+// assignment on the base row would make a converge move the arm BACKWARDS onto an image it no longer
+// runs -- the same near-miss as the NoPE row, one layer later. That row carries no registry reading
+// yet, so every Group B launch refuses by name until one is recorded inside the tag; that refusal is
+// the correct state, and the one that stops a silent downgrade.
 data glm_group_b_serving_assignment: FabricServingAssignment = FabricServingAssignment {
   group: FabricGroupB,
   checkpoint: Glm53NativeFp8,
-  runtime: GunbcGlm53DerivedGb10,
+  runtime: GunbcGlm53DerivedKvplanV2Gb10,
   topology: FourSparkTp4,
   profile: glm_native_concurrent_profile,
 }

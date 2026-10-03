@@ -31,6 +31,8 @@ import gunbc.roadmap_dashboard_instance {
   DashboardPrepareGitBundle,
   DashboardStageGitBundle,
   DashboardEnsureDirectory,
+  dashboard_auth_stores,
+  dashboard_instance_auth_store_root,
   DashboardEnsureProviderStateRoot,
   DashboardEnsureServeBinary,
   DashboardEnsureOwnershipMarker,
@@ -221,7 +223,8 @@ fn plan_binds_source_ref_translation(
 test fn dashboard_provision_plan_consumes_one_instance() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
-  count(plan) == 14
+  count(plan) == 18
+    && plan_ensures_every_auth_store_root(plan: plan, instance: lab)
     && plan_binds_instance_paths(plan: plan, instance: lab)
     && plan_binds_source_ref_translation(plan: plan, instance: lab)
 }
@@ -617,12 +620,27 @@ test fn srv2_lab_owns_paths_disjoint_from_preview_and_production() -> Bool {
 test fn srv2_lab_has_a_provision_plan_bound_to_itself() -> Bool {
   let lab = srv2_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
-  count(plan) == 14
+  count(plan) == 18
+    && plan_ensures_every_auth_store_root(plan: plan, instance: lab)
     && plan_binds_instance_paths(plan: plan, instance: lab)
     && plan_binds_source_ref_translation(plan: plan, instance: lab)
 }
 
 // TWO PATHS THE PLAN VERIFIED WITHOUT EVER CREATING, both found by running the thing rather than reading it. The provider state root: DashboardVerifyProviderAuth reads it, nothing made it, so the only command that can populate it failed with 'that path does not exist' before any OAuth began — an operator hitting a CLI error instead of a typed refusal. The serve binary: instances used to BORROW production's, which is why no install step existed; making each instance own its own closed a retract hazard and left the install with no owner.\n\nBoth claims are stated as containment in the plan rather than as a count, because a count says the plan has sixteen things and nothing about whether the right two are among them. Each asserts the op targets the INSTANCE's own path — a plan that ensured some other instance's binary would satisfy a count and fail here.
+// THE AUTH STORES ARE PROVISIONED, stated as containment: every store the auth modules write
+// into has an ensure step for THIS instance's root. The profile store once had none, so every
+// login's profile publication was refused and the assignee surfaces rendered the raw principal.
+fn plan_ensures_every_auth_store_root(
+  plan: List<DashboardInstanceProvisionOp>,
+  instance: HostDashboardInstance,
+) -> Bool {
+  all(dashboard_auth_stores, store => any(plan, op => match op {
+    DashboardEnsureDirectory { path } =>
+      path == dashboard_instance_auth_store_root(instance: instance, store: store)
+    _ => false
+  }))
+}
+
 fn plan_ensures_provider_state_root(
   plan: List<DashboardInstanceProvisionOp>,
   instance: HostDashboardInstance,

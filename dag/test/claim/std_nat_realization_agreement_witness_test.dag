@@ -1,0 +1,65 @@
+module test.claim.std_nat_realization_agreement_witness_test
+
+import std.types { Bool, Int }
+import std.nat {
+  Nat, Zero, Succ,
+  nat_cata, nat_add, nat_mul, nat_sub, nat_div_rem, nat_div_rem_by_succ,
+  NatDifference, NatSubtrahendExceedsMinuend, NatQuotientRemainder, NatDivisionByZero
+}
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ONE PROGRAM OVER std.nat Nat, THE INTERPRETED HALF (operator ruling A, 2026-09-30, condition 3).
+// std.nat Nat is declared inductively and realized as the kernel integer on both seed routes. The
+// observations below are computed here by the seed INTERPRETER; the same std.nat functions, as the
+// seed EMITTER rendered them into the stage0 mirror, are called with the same arguments and held to
+// the same expected values by the Rust unit test
+// v1.compiler.compiler_tests_rust ct_std_nat_realization_agreement_test. The two halves share
+// their expectations, which are arithmetic facts about small naturals and not a reading of either
+// route, so a route that realized a constructor, a constructor match or the eliminator differently
+// fails its own half.
+//
+// WHAT EACH ROW EXERCISES IN THE REALIZATION: nat_cata is a constructor match with a predecessor
+// binder under a tail call; nat_div_rem matches its divisor's constructors and rebuilds a successor;
+// nat_sub crosses a difference back into the naturals; zero and the numerals are constructors
+// folded to literals.
+
+fn agreement_three() -> Nat { Succ { prev: Succ { prev: Succ { prev: Zero } } } }
+
+fn agreement_seventeen() -> Nat { nat_add(a: nat_mul(a: agreement_three(), b: 5), b: 2) }
+
+test fn w_the_eliminator_applies_its_step_once_per_successor() -> Bool {
+  nat_cata(n: agreement_three(), zero: 10, succ: fn(acc) { acc + 7 }) == 31
+    && nat_cata(n: Zero, zero: 10, succ: fn(acc) { acc + 7 }) == 10
+}
+
+test fn w_numerals_and_arithmetic_are_the_integers_they_denote() -> Bool {
+  agreement_three() == 3 && agreement_seventeen() == 17 && Zero == 0 && agreement_three() != 0
+}
+
+test fn w_subtraction_answers_a_difference_or_its_underflow() -> Bool {
+  let difference_holds = match nat_sub(a: agreement_seventeen(), b: agreement_three()) {
+    NatDifference { value: d } => d == 14
+    NatSubtrahendExceedsMinuend => false
+  }
+  let underflow_holds = match nat_sub(a: agreement_three(), b: agreement_seventeen()) {
+    NatDifference { value: _ } => false
+    NatSubtrahendExceedsMinuend => true
+  }
+  difference_holds && underflow_holds
+}
+
+test fn w_division_matches_its_divisor_by_constructor() -> Bool {
+  let divides = match nat_div_rem(a: agreement_seventeen(), b: 5) {
+    NatQuotientRemainder { quotient: q, remainder: r } => q == 3 && r == 2
+    NatDivisionByZero => false
+  }
+  let refuses_zero = match nat_div_rem(a: agreement_seventeen(), b: Zero) {
+    NatQuotientRemainder { quotient: _, remainder: _ } => false
+    NatDivisionByZero => true
+  }
+  let by_succ = nat_div_rem_by_succ(a: agreement_seventeen(), divisor_prev: 4)
+  divides && refuses_zero && by_succ.quotient == 3 && by_succ.remainder == 2
+}
