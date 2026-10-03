@@ -1,75 +1,93 @@
 # Serving front door: closing the second door onto the serving groups
 
-Item 3 of [dogfood-route-manual-interventions](dogfood-route-manual-interventions.md). Decision home: `gunbc.serving.serving_front_door`.
+Item 3 of [dogfood-route-manual-interventions](dogfood-route-manual-interventions.md). The decision home is `gunbc.serving.serving_front_door`. The redemption chain's home is `product.capacity.redemption`, realized in `gunbc.fabric_event_log`.
 
 ## What landed in this change
 
 - **The permit** (`ServingSeatPermitClaims`). It holds the claims a successful `gunbc.harness.harness_seat` `harness_bind_seat` already has:
-  - the admitted launch (`vllm_endpoint_process_launch_key`);
-  - the group, the partition and the co-tenancy class (the seat entitlement);
-  - the `product.capacity.lease` `LeaseGrant` reference, plus the fence grant and generation;
-  - the caller principal and the work (attempt) identity.
-
-  The expiry is `LeaseGrant.expires_at`. Revocation is the seat ledger: a released seat refuses at the door, whatever its permit says.
-- **Integrity** comes from `extdeps.crypto.mac` over one signing input, using the separator from `gunbc.auth.approval_capability`. The MAC authenticates the claims. Currency is a separate, stateful read of the partition (`seat_grant_currency_of`).
-- **Minting.** `gunbc.harness.harness_cli` `harness_place_for` mints the permit right after the seat is bound and prints it in the placement receipt. If no permit can be minted, the seat is released and placement fails. A seat with no permit would sit held for a full lease while the door refused every request on it.
-- **The decision.** `front_door_admit` checks, in order:
-  1. caller authentication;
-  2. that a permit is present;
-  3. the MAC join;
-  4. protocol, group, launch, validity window and caller binding;
-  5. the ledger.
-
-  It has exactly one forwarding arm, and that arm requires both axes. `front_door_access_decision` projects the verdict onto `std.access` `AccessDecision`. This is a stated departure from building the verdict out of `decision_meet`: `decision_meet` erases which axis refused, and the counter needs that.
-- **Counting.** `front_door_tally` keeps one count per refusal wire, plus the number of forwarded requests.
+  - the group, the exact seat partition and the co-tenancy class;
+  - the structured seat reference (`HarnessSeatReference`: attempt = work identity, offer key = launch, stamp, round, head);
+  - the `product.capacity.lease` grant identity and fence generation;
+  - the caller principal and the lease term.
+- **The signed representation is injective.** `serving_seat_permit_signing_input` length-prefixes every field, including the protocol, which is taken from the claim itself. As a result:
+  - No content in one field can move a boundary into its neighbour.
+  - A protocol rewritten after signing fails the MAC join.
+  - Issuance refuses an unexpected protocol.
+  - The permit header's decoder (owed under Proposal A) must consume exactly this encoding.
+- **The ledger join is on the exact seat pool.** The door is configured with `HarnessSeatPoolIdentity` values minted by the seat authority (`harness_seat_pool_identity`: group, class, partition, ceiling, root). It then checks, against the ledger:
+  1. The permit's partition equals the pool partition for its class. A prefix match is not accepted, so `group-b-not-a-seat` refuses.
+  2. Exactly one acquisition of the reference exists, for exactly one seat.
+  3. That acquisition was made by the grant event the permit names.
+  4. The fence generation equals the acquisition's position in the chain.
+  5. The partition folds under the pool's own root and ceiling.
+  6. The seat has not been released.
+  7. The recorded actor equals the authenticated caller.
+  8. The recorded acquisition time plus the recorded term is still in the future.
+- **Admission is a transition, not a read** (`product.capacity.redemption`):
+  - **Redeem.** A seat moves `Unredeemed → InFlight { request, holder } → UseEnded`. The front door appends the redemption to the seat's redemption chain, beside its pool partition on the same fabric event log, by compare-and-set (`gunbc.fabric_event_log` `fabric_grant_redeem`). Only an admitted redemption forwards.
+  - **Concurrent and replayed admissions.** A second admission of the same permit, concurrent or replayed, re-reads `InFlight` and refuses (`permit-already-redeemed`).
+  - **Release while in flight.** Every seat release passes the redemption gate in `release_retry`, so a sender's release while a request is in flight refuses.
+  - **Stream end.** The door ends the use (`fabric_grant_use_end`, exactly once per request) and then releases.
+  - **Recovery.** A door that dies after redeeming leaves `InFlight` standing. The seat stays held and is charged to the redeemed request and proxy. It is ended only on *observed* quiescence (`front_door_recover`), never by a timer.
+- **Minting.** `gunbc.harness.harness_cli` `harness_place_for` mints the permit after the seat is bound and records the principal it acts for as the acquisition actor; it no longer takes a free-text actor. If no permit can be minted, the seat is released and placement fails.
+- **Counting.** `front_door_tally` keeps one count per refusal cause, plus the number of forwarded requests.
 - **Router contract.** `gunbc.serving.router_realization` gains the forbidden arm `ForwardWithoutPermit`.
-- **Witnesses** are in `test.claim.serving.serving_front_door_witness_test`. The RED-first case is a valid caller with no grant: it is refused and counted. A grant for another group, a grant for another launch, an expired grant, a released seat, a seat that was never admitted, rewritten claims and an unauthenticated caller all refuse. The positive control forwards. A mutation run weakened the expiry boundary and the counter, and the matching claims went red. A second mutation disabled the ledger-actor and ledger-term checks, and their two reds failed.
+- **Witnesses** are in `test.claim.serving.serving_front_door_witness_test` (30 claims). They include:
+  - the RED-first case;
+  - each pool-join red (non-seat partition, another group's partition, class/partition mismatch, unserved class, zero amount, duplicate acquisition, wrong fence generation);
+  - a protocol rewrite;
+  - the ruling's outer-field collision;
+  - all five redemption controls: two concurrent admissions give exactly one forward; a replay refuses; a sender release while the stream is in flight does not free the seat; stream end permits exactly one release; controller death leaves recoverable, charged state.
+
+  Mutation runs disabled each new wall in turn, and its witnesses went red: the separator-joined signing input, the unsigned protocol, partition equality, the amount check, redemption ignoring state, and in-flight release.
 
 ## Proposal A: the forwarding realization (NOT applied; needs bold-bee-114's go)
 
-**Constraint.** The interpreter is never on the token stream. vLLM responses are mostly SSE streams, and the gunbc serve channel is request/response. A per-request `.dag` MAC verification on a TP=4 engine's hot path has an unmeasured cost. So admission runs **once per request**, and the body then streams without interpretation.
+**Constraint.** The interpreter is never on the token stream. Admission, which includes the redemption, runs **once per request**, and the body then streams without interpretation.
 
-**Shape.** Use an auth-subrequest. A stock reverse proxy (for example nginx `auth_request`) listens on the public `:30000`. For each request it makes one subrequest to a decision endpoint that evaluates `front_door_admit_on_store` and answers 2xx or 403. Only on 2xx does it stream the request and response to vLLM on loopback, with buffering off. The decision endpoint emits the tally. A v2-emitted binary hosting the same fold is the alternative. The subrequest shape is preferred because the proxy then owns streaming and none of the streaming code is ours.
+**Shape.** Use an auth-subrequest. A stock reverse proxy listens on the public `:30000`. For each request it makes one subrequest to a decision endpoint, which evaluates `front_door_admit_on_store` with the request's identity and the proxy's identity. Only a 2xx response streams to vLLM on loopback. The stream's end, whether complete, client-aborted or upstream-failed, must reach `front_door_stream_end` exactly once for that request. If the proxy cannot guarantee that hook, the seat stays `InFlight` and is recovered only on observed quiescence.
 
 **Owed before Proposal A can be applied:**
-1. **A measured admission latency budget.** Measure the decision endpoint's p50 and p99 against group-b's time-to-first-token. Name the budget before any traffic moves.
-2. **The permit header wire form and its decoder** (`serving_seat_permit_header`). Today the receipt prints the permit's fields one at a time. The header needs one canonical encoding with exactly one decoding, so a permit cannot be authenticated under one reading and acted on under another (see the note in `gunbc.auth.approval_capability`). The decoder belongs to the realization that consumes it.
-3. **Tally persistence.** Decide where the counts land (a fabric observation event, or the metrics the dashboard reads).
+1. **A measured admission latency budget.** Measure p50 and p99 of the decision endpoint, which now includes one compare-and-set, against group-b's time-to-first-token.
+2. **The permit header wire form and its decoder.** It must decode exactly the length-prefixed signing encoding.
+3. **The stream-end hook and the quiescence observation** that `front_door_recover` consumes. One candidate is vLLM's per-request state, observed through `gunbc.serving.engine_progress`.
+4. **Tally persistence.**
 
-**Consumption.** Until Proposal A lands, `front_door_admit_on_store`, `seat_grant_currency_on_store` and `front_door_access_decision` have no production caller. This is a declared frontier, and its trigger is Proposal A's go.
+**Consumption.** Until Proposal A lands, `front_door_admit_on_store`, `front_door_stream_end`, `front_door_recover` and `front_door_access_decision` have no production caller. This is a declared frontier, and its trigger is Proposal A's go. The redemption gate in `release_retry` *is* consumed today, by every harness release.
 
 ## Proposal B: the host change (NOT applied; needs bold-bee-114's go, because it takes group-b's traffic)
 
 On each serving group's head (group-b: 192.168.1.236):
-- vLLM binds to `127.0.0.1` on an internal port.
+- vLLM binds to `127.0.0.1`.
 - The front door takes `0.0.0.0:30000`.
-- The permit key is materialized at `serving_seat_permit_key_path`, readable by the door and by the placement authority, and by no sender.
+- The permit key is materialized at `serving_seat_permit_key_path`, readable only by the door and the placement authority.
 
-This is converged through the existing `gunbc.spark` serving deployment authority, not by hand. The cutover is atomic per group: the door and the loopback rebind move in one convergence step.
+This is converged through the existing `gunbc.spark` serving deployment authority. The door and the loopback rebind move in one step.
+
+**Owed population before Proposal B (rollout correction from the ruling).** Only `harness_place_cli` mints a permit today. The probe, worker, reviewer, auditor and supervisor paths in `gunbc.harness.harness_cli` acquire a seat and then call `harness_run_turn` with the URL, ignoring the seat record. Their acquisition actors are free-text role identities (`worker:<worktree>`), not the authenticated principal the door requires. Moving vLLM to loopback before they change would refuse the factory's own harness traffic. Each of these paths must do one of two things:
+- **(a)** Mint and present a permit under a principal the door authenticates, record that principal as the actor, and end its use at the door.
+- **(b)** Use an explicitly modeled internal route that a bypasser cannot reach.
+
+Choosing between them is part of Proposal B's go.
 
 ## Credential: the permit key
 
-- **Key id:** `serving-seat-permit-2026-10` (HMAC-SHA-256). With HMAC, the verifying key is also the issuing key, so custody is the boundary. The key must not reach a sender.
-- **The ledger is the authority; the MAC only protects the claims.** `front_door_admit_held` forwards only when everything it reads from what placement *recorded* holds, not from the permit:
-  1. The reference was acquired, by the permit's grant event, in the named partition, and has not been released.
-  2. The acquisition's recorded actor equals the authenticated caller. `harness_place_for` now records the principal it acts for as the actor, and no longer takes a free-text actor argument.
-  3. The seat is a structured record (`gunbc.harness.harness_seat` `HarnessSeatReference`: attempt, offer key = launch, stamp, round, head). The permit carries the record, and its offer key must equal this door's launch key. The ledger entry is found by the record's exact rendering (`harness_seat_reference_wire`), which is injective by construction because the free-text parts are length-prefixed. Nothing parses a rendering back apart (review 74943). The partition must be one of the door's group's partitions.
-  4. The recorded acquisition time plus its recorded term is still in the future.
-
-  So a holder of the real key cannot get through by minting. A permit for a grant that doesn't exist, for another caller's live seat, for other work, for another launch, or with a stretched expiry each refuses (witnessed, with a mutation control).
-- **What check 2 can tell apart today.** The authentication layer has exactly one service principal (`principal:gunbc/workflows/fabric`). So check 2 distinguishes a human session from the service, and one human from another, but not one service sender from another. Every service caller that passes authentication *and* holds the permit key passes check 2 for any service-held seat. Splitting that needs per-sender service principals, which is credential issuance and belongs to the managed-identity row (#13068). This change does not fork it. Until then, the permit key must reach only the placement authority and the door.
-- **Issuance, rotation and revocation drill:** owned by `credential-lifecycle-revocation` (gunb-ai/gunbc#13068, the managed-identity row). This key is registered there as a member that row must cover. This change issues no credential.
+- **Key id:** `serving-seat-permit-2026-10` (HMAC-SHA-256). With HMAC, the verifying key is also the issuing key, so custody is the boundary.
+- **The ledger and the redemption chain are the authority; the MAC only protects the claims.** A holder of the real key cannot forward by minting:
+  - A permit for a seat that does not exist, sits in another pool, belongs to another caller or another launch, claims another fence generation or stretches its own expiry is refused on what placement recorded.
+  - A permit for a seat it does hold forwards at most one request at a time.
+- **What the caller check can tell apart today.** There is one service principal (`principal:gunbc/workflows/fabric`). So the check separates humans from the service, but not one service sender from another. Per-sender principals are credential issuance, which belongs to the managed-identity row (#13068), and this change does not fork it.
+- **Issuance, rotation and revocation drill** are owned by `credential-lifecycle-revocation` (gunb-ai/gunbc#13068). This key is registered there as a member that row must cover.
 
 ## Migration note: what the existing senders must change (stays manual)
 
 - **ctrl dashboard router.**
-  - Delete its load score and its host selection; this is already required by `gunbc.serving.router_realization`.
-  - Per request, call `harness_place_cli` and read the receipt.
-  - Send the permit, in the header form fixed under Proposal A item 2, to the granted `url`.
-  - Release with `harness_release_cli` using the receipt's capability when the proxied request ends.
+  - Delete its load score and its host selection.
+  - Per request, call `harness_place_cli` and present the permit, in the header form fixed under Proposal A item 2.
+  - Do **not** release a seat that the door has redeemed. The door releases at stream end, and a sender release refuses while the request is in flight. A seat that was placed but never forwarded is still released with `harness_release_cli`.
   - Authenticate as Fabric service evidence.
 - **ac-dialogue batch.**
   - Stop POSTing raw requests.
-  - Take one seat per in-flight request (class `BatchQualityTolerant` when that entry exists; `harness_place_cli` binds `InteractiveQualitySensitive` today), present that seat's permit, and release on completion.
-  - A batch that wants N concurrent requests holds N seats. It is bounded by the tolerant ceiling and never exceeds it by sharing one permit: each permit names exactly one reference.
-- **Which identities may request grants.** This stays an operator decision at placement. The door only checks that the principal presenting a permit is the principal it was minted for. Today the only service principal is `principal:gunbc/workflows/fabric`, so the caller binding is coarse until managed identity gives each sender its own principal.
+  - Take one seat per in-flight request and present that seat's permit.
+  - A batch wanting N concurrent requests holds N seats. A permit is redeemable once, so one permit cannot carry two requests.
+- **Which identities may request grants.** This stays an operator decision at placement.

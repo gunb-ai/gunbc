@@ -28,7 +28,9 @@ import gunbc.fabric_event_log {
   EventAppendStale, EventAppendRefused, event_log_append, SeatGranted, SeatFull, SeatContended,
   SeatAcquireRefused, fabric_seat_acquire, SeatRoomObserved, SeatFullObserved, SeatStandingUnobserved,
   fabric_seat_observe, PartitionRead, PartitionReadOk, PartitionReadRefused, event_log_read_partition,
+  RedemptionReading, RedemptionReadAt, RedemptionReadRefused, fabric_redemption_read,
 }
+import product.capacity.redemption { redemption_release_owner, ReleaseOpen, ReleaseOwnedByGate, ReleaseUndecidable }
 import gunbc.harness.harness_backend {
   HarnessBackendStanding, HarnessBackendServing, HarnessBackendModelNotAdmitted, HarnessBackendUnreachable,
   HarnessBackendUnreadable, harness_observe_replica, harness_standing_detail,
@@ -147,14 +149,8 @@ import gunbc.serving.serving_availability {
 // is running. Nothing produces that arm today -- both routes carry a CeilingByDeclaredPolicy row. When something does, the ceiling moves with an OBSERVATION and there is no edit and no
 // author to bump anything -- at which point a derived suffix is the only mechanism that can hold, and
 // having it already in place is what stops that landing from silently reinterpreting live history.
-// WHICH GROUP A SEAT PARTITION BELONGS TO, decided against the one spelling above rather than by a
-// consumer taking a prefix of its own: every class's partition for a group begins with this stem.
 fn harness_seat_partition_stem(group: FabricGroup) -> String {
   join(["group-", fabric_group_wire(g: group) as String, "-"], "")
-}
-
-fn harness_seat_partition_is_for_group(partition: PartitionId, group: FabricGroup) -> Bool {
-  starts_with(s: partition as String, prefix: harness_seat_partition_stem(group: group))
 }
 
 fn harness_seat_partition(group: FabricGroup, class: ServingCoTenancyClass, ceiling: Nat) -> PartitionId {
@@ -234,13 +230,45 @@ fn harness_seat_capacity_for(route: ServingRoute, class: ServingCoTenancyClass) 
     ServingRouteUnresolved { group: g, obligation: why } =>
       AdmissionCeilingUnestablished { group: g, cause: why }
     ServingRouteResolved { endpoint: e, ceiling: c } => {
-      let seats = harness_class_ceiling(class: class, route_ceiling: c)
-      SeatCeilingByDeclaredPolicy {
-        class: class,
-        pool: harness_seat_pool_root(partition: harness_seat_partition(group: e.group, class: class, ceiling: seats), ceiling: seats),
-        seats: seats,
-      }
+      let identity = harness_seat_pool_identity_at(group: e.group, class: class, seats: harness_class_ceiling(class: class, route_ceiling: c))
+      SeatCeilingByDeclaredPolicy { class: class, pool: identity.root, seats: identity.ceiling }
     }
+  }
+}
+
+// ── WHICH POOL A SEAT IS IN, AS ONE TYPED FACT ────────────────────────────────────────────────
+//
+// A consumer that must decide whether a ledger entry is a harness seat -- the serving front door --
+// needs the exact pool: the group, the co-tenancy class, the partition and the ceiling its history is
+// folded against. A prefix of a partition name is not that fact (any partition starting with the
+// group stem would pass it), and neither is a partition without its class or ceiling. So the seat
+// authority mints the identity from the same three inputs acquisition uses, and a consumer compares
+// it by exact equality.
+type HarnessSeatPoolIdentity {
+  group: FabricGroup
+  class: ServingCoTenancyClass
+  partition: PartitionId
+  ceiling: Nat
+  root: Pool<Count, One>
+}
+
+fn harness_seat_pool_identity_at(group: FabricGroup, class: ServingCoTenancyClass, seats: Nat) -> HarnessSeatPoolIdentity {
+  let partition = harness_seat_partition(group: group, class: class, ceiling: seats)
+  HarnessSeatPoolIdentity { group: group, class: class, partition: partition, ceiling: seats, root: harness_seat_pool_root(partition: partition, ceiling: seats) }
+}
+
+type HarnessSeatPoolReading
+  = SeatPoolEstablished { pool: HarnessSeatPoolIdentity }
+  | SeatPoolUnestablished { cause: NonEmptyStr }
+
+// The current pools of a group, one per class, from the enrolled route -- what a front door is
+// configured with. A class whose ceiling cannot be established has no pool, and the door then serves
+// no permit for it.
+fn harness_seat_pool_identity(group: FabricGroup, class: ServingCoTenancyClass) -> HarnessSeatPoolReading {
+  match serving_route(group: group) {
+    ServingRouteUnresolved { group: _, obligation: why } => SeatPoolUnestablished { cause: why }
+    ServingRouteResolved { endpoint: e, ceiling: c } =>
+      SeatPoolEstablished { pool: harness_seat_pool_identity_at(group: e.group, class: class, seats: harness_class_ceiling(class: class, route_ceiling: c)) }
   }
 }
 
@@ -1474,7 +1502,28 @@ fn release_append(store: FabricStorageBinding, partition: PartitionId, ceiling: 
   }
 }
 
+// EVERY SEAT RELEASE PASSES THE REDEMPTION GATE FIRST. A seat whose use the serving front door has
+// redeemed is in flight, and its release belongs to the door at stream end
+// (product.capacity.redemption redemption_release_owner): a sender holding the release capability may
+// not free capacity a running request is still consuming. An unreadable redemption chain refuses the
+// release -- a held seat is the fail-closed direction. Every release in this module, the door's own
+// after the use's end included, reaches the pool through here.
 fn release_retry(store: FabricStorageBinding, partition: PartitionId, ceiling: Nat, reference: NonEmptyStr, reason: NonEmptyStr, now: EpochSecs) -> HarnessSeatRelease {
+  match fabric_redemption_read(store: store, pool_partition: partition, reference: reference) {
+    RedemptionReadRefused { cause: c } =>
+      HarnessSeatReleaseRefused { detail: join(["the seat's redemption chain could not be read, so whether a request is in flight on it is unknown: ", event_log_refusal_wire(cause: c)], "") }
+    RedemptionReadAt { head: _, state: st } =>
+      match redemption_release_owner(state: st) {
+        ReleaseOwnedByGate { request: q, holder: h } =>
+          HarnessSeatReleaseRefused { detail: join(["request ", q as String, " is in flight on this seat through ", h as String, "; its release belongs to the front door at stream end"], "") }
+        ReleaseUndecidable { detail: d } =>
+          HarnessSeatReleaseRefused { detail: join(["whether a request is in flight on this seat is undecidable: ", d], "") }
+        ReleaseOpen => release_retry_open(store: store, partition: partition, ceiling: ceiling, reference: reference, reason: reason, now: now)
+      }
+  }
+}
+
+fn release_retry_open(store: FabricStorageBinding, partition: PartitionId, ceiling: Nat, reference: NonEmptyStr, reason: NonEmptyStr, now: EpochSecs) -> HarnessSeatRelease {
   let st = fold(nat_range_inclusive(lo: 1, hi: 3), init: ReleaseFold { done: none }, f: (acc, _i) =>
     match acc.done {
       Present { value: _ } => acc
