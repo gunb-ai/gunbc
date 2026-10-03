@@ -27,7 +27,7 @@ import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Authored, Edge, Node, Positional, StructuralLabel, Symbol, is_empty_conj_root, symbol_lexeme }
 import v2.std.optional { Absent, Optional, Present }
-import v2.std.text { String, string_join }
+import v2.std.text { String }
 import std.algebra { list_snoc_item }
 import v2.std.collection { List }
 import v2.std.algebra { length, list_map }
@@ -70,7 +70,7 @@ fn route_parse_at(text: String, production: Symbol) -> Outcome<Node> {
 }
 
 fn route_joined(xs: List<String>) -> String {
-  string_join(fields: xs, separator: ",")
+  fold(xs, init: "", f: fn(acc, x) { if acc == "" { x } else { acc + "," + x } })
 }
 
 // Every shell emitted as `emitted`, in source order.
