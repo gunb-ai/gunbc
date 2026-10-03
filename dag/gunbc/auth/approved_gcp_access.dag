@@ -1,0 +1,59 @@
+module gunbc.auth.approved_gcp_access
+
+import std.types { NonEmptyStr, String, Secret, Timestamp }
+import std.measure { second }
+import std.scoped_authorization { AuthorizationRequest, ScopedAuthorization }
+import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.auth.approval_request_client { ApprovalPollStanding, stored_request_from_authorization }
+import gunbc.auth.approval_gate {
+  approval_gate_from_poll, GateAdmitted, GateRefused, approval_refusal_text,
+  approval_instant_now, approval_expires_at, approval_standing_read, StandingReadAt, StandingClockUnreadable,
+  approval_file_stored_request, ApprovalFiling,
+}
+
+// The app authorizes one exact intent/run. Workload federation supplies the GCP credential.
+// This join rechecks the app decision immediately before exposing the actuation credential;
+// it never falls back to a supplied bearer file or an interactive operator credential.
+// The reviewed workflow must bind token_variable to its approval-gated auth-step output.
+type ApprovedGcpAccess<Subject>
+  = ApprovedGcpAccessReady { authorization: ScopedAuthorization<Subject>, token: Secret }
+  | ApprovedGcpAccessRefused { reason: String }
+
+fn approved_gcp_access_from_poll<Subject>(request: AuthorizationRequest<Subject>, poll: ApprovalPollStanding,
+  observed_at: Timestamp, token_variable: NonEmptyStr) -> ApprovedGcpAccess<Subject> {
+  match approval_gate_from_poll(poll: poll, request: request, observed_at: observed_at) {
+    GateRefused { cause } => ApprovedGcpAccessRefused { reason: approval_refusal_text(cause: cause) }
+    GateAdmitted { authorization } => approved_gcp_access_with_credential(authorization: authorization,
+      token_variable: token_variable, credential: actions_variable_trimmed(name: token_variable))
+  }
+}
+
+// The join after admission: the approval alone never exposes a token, and the credential alone
+// never authorizes. Split from the variable read so the decision is a function of its inputs.
+fn approved_gcp_access_with_credential<Subject>(authorization: ScopedAuthorization<Subject>, token_variable: NonEmptyStr,
+  credential: String) -> ApprovedGcpAccess<Subject> {
+  if credential == "" {
+    ApprovedGcpAccessRefused { reason: concat("Approval admitted, but the workload credential is unavailable: ", token_variable as String) }
+  } else { ApprovedGcpAccessReady { authorization: authorization, token: credential as Secret } }
+}
+
+// Call with the freshly re-derived concrete plan, not a cached approval bit or an arbitrary ID.
+fn approved_gcp_access_for_request<Subject>(request: AuthorizationRequest<Subject>, token_variable: NonEmptyStr) -> ApprovedGcpAccess<Subject> {
+  match approval_instant_now() {
+    Absent => ApprovedGcpAccessRefused { reason: "Approval clock unreadable; GCP access withheld" }
+    Present { value: now } => match approval_standing_read(escalation_id: request.escalation_id,
+      expires_at: approval_expires_at(issued: now, window: second(count: 1))) {
+      StandingClockUnreadable => ApprovedGcpAccessRefused { reason: "Approval clock unreadable; GCP access withheld" }
+      StandingReadAt { standing, observed_at } => approved_gcp_access_from_poll(request: request, poll: standing,
+        observed_at: observed_at, token_variable: token_variable)
+    }
+  }
+}
+
+// Filing uses the existing signed broker protocol and therefore reaches the existing approval app.
+// The caller persists its plan first and chooses its bounded filing window; this does not poll.
+fn approved_gcp_file_request<Subject>(request: AuthorizationRequest<Subject>, issued_at: Timestamp,
+  expires_at: Timestamp, body_file_name: String) -> ApprovalFiling {
+  approval_file_stored_request(stored: stored_request_from_authorization(request: request, issued_at: issued_at, expires_at: expires_at),
+    body_file_name: body_file_name, submit_timeout: second(count: 30))
+}
