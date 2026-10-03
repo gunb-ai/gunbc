@@ -12,6 +12,13 @@ import extdeps.vllm.engine_args {
   VllmEngramConfigRequest, EngramConfigOmitted, EngramConfigExplicit,
   VllmModalityRequest, ModalityOmitted, LanguageModelOnly, vllm_hf_override,
   VllmSchedulerAdmissionRequest, vllm_scheduler_admission_omitted, vllm_scheduler_admission_argv, vllm_scheduler_admission_key,
+  KvFp8E4m3, KvNvfp4, KvNvfp4DsMla, IndexerKvDtypeOmitted,
+  VllmIndexerKvDtypeRequest, vllm_indexer_kv_dtype_argv, vllm_indexer_kv_dtype_key,
+}
+import extdeps.vllm.kv_dtype_capability {
+  KvMainDtypeRow, kv_main_dtype_row, FlashInferMlaSparseSm120, KvBasisObservedOnBuild, RowOnBuild, kv_runtime,
+  KvCapabilitySubject, DsaSparseIndexer, kv_capability_verdict, upstream_kv_main_dtype_rows,
+  KvCombinationAdmitted, KvCombinationRefused, KvCombinationUnanswered,
 }
 import extdeps.zhipu.glm_5_3_flash {
   glm_5_3_flash_native_manifest, glm_5_3_flash_vllm_integration_commit, glm_5_3_flash_mla_pe_dim,
@@ -955,6 +962,7 @@ type ServingLaunchProfile sole_constructor {
   engram: VllmEngramConfigRequest
   modality: VllmModalityRequest
   scheduler_admission: VllmSchedulerAdmissionRequest
+  indexer_kv_dtype: VllmIndexerKvDtypeRequest
 }
 
 // THE MINT, EXPORTED SO A PROFILE CAN BE DERIVED, NOT ONLY AUTHORED. The seal's job is keeping a
@@ -979,6 +987,7 @@ fn serving_launch_profile(
   engram: VllmEngramConfigRequest,
   modality: VllmModalityRequest,
   scheduler_admission: VllmSchedulerAdmissionRequest,
+  indexer_kv_dtype: VllmIndexerKvDtypeRequest,
 ) -> ServingLaunchProfile {
   ServingLaunchProfile {
     max_model_len: max_model_len,
@@ -993,6 +1002,7 @@ fn serving_launch_profile(
     engram: engram,
     modality: modality,
     scheduler_admission: scheduler_admission,
+    indexer_kv_dtype: indexer_kv_dtype,
   }
 }
 
@@ -1042,6 +1052,7 @@ fn serving_launch_profile_key(p: ServingLaunchProfile) -> String {
     },
     if p.guaranteed_cold_seqs == p.max_num_seqs { "" } else { join([" cold=", to_string(p.guaranteed_cold_seqs)], "") },
     if vllm_scheduler_admission_argv(r: p.scheduler_admission) == [] { "" } else { join([" sched=", vllm_scheduler_admission_key(r: p.scheduler_admission)], "") },
+    if vllm_indexer_kv_dtype_argv(r: p.indexer_kv_dtype) == [] { "" } else { join([" ", vllm_indexer_kv_dtype_key(r: p.indexer_kv_dtype)], "") },
   ], "")
 }
 
@@ -1113,21 +1124,40 @@ fn stock_fp8_ds_mla_admission(dtype: VllmKvCacheDtypeRequest, because: NonEmptyS
   }
 }
 
+// THE DERIVED BUILD'S ROW IS AN OBSERVATION, SO IT LIVES HERE AND NOT IN extdeps. The lane-built
+// image selects FLASHINFER_MLA_SPARSE_SM120 for this model, announces fp8_ds_mla and serves under
+// `--kv-cache-dtype fp8` (smoke on srv10, 2026-09-17), and the selector refuses bfloat16 with
+// "kv_cache_dtype not supported" on the same build. That is a receipt about a build this repository
+// runs, joined beside the upstream rows by extdeps.vllm.kv_dtype_capability kv_capability_verdict --
+// the same join the DeepSeek V4.1 arm is answered by, so neither model carries a private table.
+data glm_derived_flashinfer_sm120_row: KvMainDtypeRow = kv_main_dtype_row(
+  backend: FlashInferMlaSparseSm120,
+  runtime: RowOnBuild { image: glm_native_engine_build_image(build: GlmNativeEngineDerived8d09804) },
+  device_major: 12,
+  admitted: [KvAuto, KvFp8, KvFp8DsMla],
+  basis: KvBasisObservedOnBuild {
+    build: glm_native_engine_build_image(build: GlmNativeEngineDerived8d09804),
+    observation: "the selector admits only the fp8 KV cache for this model on this build: fp8 and fp8_ds_mla served (srv10 2026-09-17; the hand-built twin 2026-09-13 to 2026-09-16), auto inherits the fp8 checkpoint dtype, bfloat16 refused with 'kv_cache_dtype not supported'; no other spelling was launched" as NonEmptyStr,
+  },
+)
+
 fn glm_native_kv_cache_dtype_admission(build: GlmNativeEngineBuild, dtype: VllmKvCacheDtypeRequest) -> GlmNativeKvCacheDtypeAdmission {
   match build {
     GlmNativeEngineDerived8d09804 =>
-      match dtype {
-        KvAuto => GlmNativeKvCacheDtypeAdmitted { dtype: dtype }
-        KvFp8 => GlmNativeKvCacheDtypeAdmitted { dtype: dtype }
-        KvFp8DsMla => GlmNativeKvCacheDtypeAdmitted { dtype: dtype }
-        KvBf16 => GlmNativeKvCacheDtypeRefused {
-          dtype: dtype,
-          cause: "this build's only backend for the model (FLASHINFER_MLA_SPARSE_SM120) supports only the fp8 KV cache; the selector refused bfloat16 with 'kv_cache_dtype not supported' (smoke on srv10 2026-09-17)" as NonEmptyStr,
-        }
-        KvFp16 => GlmNativeKvCacheDtypeRefused {
-          dtype: dtype,
-          cause: "unobserved, and this build's only backend for the model supports only the fp8 KV cache (the selector's refusal vocabulary for bfloat16, 2026-09-17)" as NonEmptyStr,
-        }
+      match kv_capability_verdict(
+        subject: KvCapabilitySubject {
+          backend: FlashInferMlaSparseSm120,
+          runtime: kv_runtime(image: Present { value: glm_native_engine_build_image(build: GlmNativeEngineDerived8d09804) }, source: vllm_8d09804_sm121_recipe.source),
+          device_major: 12,
+          main: dtype,
+          indexer_kind: Present { value: DsaSparseIndexer },
+          indexer: IndexerKvDtypeOmitted,
+        },
+        rows: concat(upstream_kv_main_dtype_rows, [glm_derived_flashinfer_sm120_row]),
+      ) {
+        KvCombinationAdmitted { bases: _ } => GlmNativeKvCacheDtypeAdmitted { dtype: dtype }
+        KvCombinationRefused { cause: c, basis: _ } => GlmNativeKvCacheDtypeRefused { dtype: dtype, cause: c }
+        KvCombinationUnanswered { obligation: o } => GlmNativeKvCacheDtypeRefused { dtype: dtype, cause: o }
       }
     GlmNativeEngineStockG385dce36b =>
       match dtype {
@@ -1139,8 +1169,17 @@ fn glm_native_kv_cache_dtype_admission(build: GlmNativeEngineBuild, dtype: VllmK
           dtype: dtype,
           cause: "no observation admits float16 for this model on this build" as NonEmptyStr,
         }
+        KvNvfp4 => GlmNativeKvCacheDtypeRefused {
+          dtype: dtype,
+          cause: "no observation admits an nvfp4 KV cache for this model on this build" as NonEmptyStr,
+        }
+        KvNvfp4DsMla => GlmNativeKvCacheDtypeRefused {
+          dtype: dtype,
+          cause: "no observation admits nvfp4_ds_mla for this model on this build" as NonEmptyStr,
+        }
         KvAuto => stock_fp8_ds_mla_admission(dtype: dtype, because: "auto inherits this fp8-quantized checkpoint's dtype and resolves to fp8_ds_mla" as NonEmptyStr)
         KvFp8 => stock_fp8_ds_mla_admission(dtype: dtype, because: "fp8 resolves to fp8_ds_mla on this MLA checkpoint" as NonEmptyStr)
+        KvFp8E4m3 => stock_fp8_ds_mla_admission(dtype: dtype, because: "fp8_e4m3 resolves to fp8_ds_mla on this MLA checkpoint" as NonEmptyStr)
         KvFp8DsMla => stock_fp8_ds_mla_admission(dtype: dtype, because: "this names the fp8_ds_mla kernel directly" as NonEmptyStr)
       }
   }
@@ -1159,6 +1198,7 @@ data glm_native_initial_profile: ServingLaunchProfile = ServingLaunchProfile {
   engram: EngramConfigOmitted,
   modality: ModalityOmitted,
   scheduler_admission: vllm_scheduler_admission_omitted,
+  indexer_kv_dtype: IndexerKvDtypeOmitted,
 }
 
 // ── THE CONCURRENT PROFILE IS A DIFFERENT SUBJECT, AND THAT IS THE POINT ──────────────────────
@@ -1218,6 +1258,7 @@ data glm_native_concurrent_profile: ServingLaunchProfile = ServingLaunchProfile 
   engram: EngramConfigOmitted,
   modality: ModalityOmitted,
   scheduler_admission: vllm_scheduler_admission_omitted,
+  indexer_kv_dtype: IndexerKvDtypeOmitted,
 }
 
 // ── THE V4.1 MEASUREMENT PROFILE: WHAT V4.1 DECIDES, OVER WHAT THE MEASUREMENT DECIDES ─────────
@@ -1266,6 +1307,7 @@ fn deepseek_v41_measurement_profile(
     engram: EngramConfigExplicit { cpu_offload: true, dp_shared_memory: false },
     modality: LanguageModelOnly { hf_overrides: [vllm_hf_override(key: "vision_n_layers" as NonEmptyStr, json_value: "0" as NonEmptyStr)] },
     scheduler_admission: vllm_scheduler_admission_omitted,
+    indexer_kv_dtype: IndexerKvDtypeOmitted,
   }
 }
 
@@ -1301,6 +1343,7 @@ data glm_exl3_canary_profile: ServingLaunchProfile = ServingLaunchProfile {
   engram: EngramConfigOmitted,
   modality: ModalityOmitted,
   scheduler_admission: vllm_scheduler_admission_omitted,
+  indexer_kv_dtype: IndexerKvDtypeOmitted,
 }
 
 
