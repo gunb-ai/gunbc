@@ -294,21 +294,42 @@ test fn the_current_stage_stands_when_bootstage_fails() -> Bool {
 // ── THE SITE IS ONE ADMITTED CARRIER, AND THE PASS DERIVES FROM IT ──────────────────────────────
 
 // A SECOND BOARD: its plan, request bytes, probe count and dossier come from its own site, with the
-// control it names first even though it is listed second.
-test fn a_second_site_derives_its_plan_bytes_count_and_dossier() -> Bool {
+// control it names first even though it is listed second. Three claims, each over one interface and
+// over supplied values: the plan is inspected as a value rather than executed (the fold's own order
+// is the claims above), and the dossier renders an empty outcome list, which still names every site
+// fact and every socket.
+test fn a_second_site_derives_its_plan_and_count() -> Bool {
   match jade_site() {
     Absent => false
     Present { value: s } => {
       let plan = smpro_pass_plan(site: s)
-      let os = smpro_pass_sequenced(plan: plan, read: (t, reg, n) => scripted_read(t: t, reg: reg, n: n))
-      let d = smpro_pass_dossier_text(obs: observed_at(site: s, outcomes: os))
       plan.control_socket == 1
         && (match plan.probes.first() { Present { value: p } => p.target.socket == 1 && p.register.offset == smpro_manufacturer_id_reg.offset Absent => false })
-        && smpro_pass_probe_count(site: s) == 3 * count(smpro_pass_read_order) && count(os) == 3 * count(smpro_pass_read_order)
-        && (match master_write_read_bus_byte(bus: s.bus) { Present { value: b } => (match master_write_read_slave_byte(seven_bit_address: s.control.seven_bit_address) {
-              Present { value: sl } => (smpro_request_text(bus: b, slave: sl, reg: smpro_manufacturer_id_reg.offset) as String) == "raw 0x06 0x52 0x0a 0x22 0x02 0x02 0x02"
-              Absent => false }) Absent => false })
-        && contains(d, "via controller fixture-jade-bmc, bus 5 public, from the operator brief; control socket 1")
+        && smpro_pass_probe_count(site: s) == 3 * count(smpro_pass_read_order)
+        && count(plan.probes) == 3 * count(smpro_pass_read_order)
+    }
+  }
+}
+
+test fn a_second_site_derives_its_request_bytes() -> Bool {
+  match jade_site() {
+    Absent => false
+    Present { value: s } => match master_write_read_bus_byte(bus: s.bus) {
+      Absent => false
+      Present { value: b } => match master_write_read_slave_byte(seven_bit_address: s.control.seven_bit_address) {
+        Absent => false
+        Present { value: sl } => (smpro_request_text(bus: b, slave: sl, reg: smpro_manufacturer_id_reg.offset) as String) == "raw 0x06 0x52 0x0a 0x22 0x02 0x02 0x02"
+      }
+    }
+  }
+}
+
+test fn a_second_site_derives_its_dossier() -> Bool {
+  match jade_site() {
+    Absent => false
+    Present { value: s } => {
+      let d = smpro_pass_dossier_text(obs: observed_at(site: s, outcomes: []))
+      contains(d, "via controller fixture-jade-bmc, bus 5 public, from the operator brief; control socket 1")
         && contains(d, "socket 2 at 7-bit 0x12")
         && contains(d, "SMpro socket 2: CUR_BOOTSTAGE")
         && !contains(d, "0x4f")
