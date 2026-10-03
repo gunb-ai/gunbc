@@ -16,12 +16,23 @@ import std.content_hash {
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "csrc.nist.gov/pubs/fips/180-4/upd1/final"
   }
+}
+
+// Reading: NIST FIPS 180-4 (Secure Hash Standard) owns the SHA-2 family; service crypto.Sha256Sum binds the sha256sum invocation to produce exactly FIPS 180-4 digests, so the service is the surface this citation owns.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.crypto.hash", decl_name: "crypto.Sha256Sum", field: WholeDeclaration
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 type HashAlgorithm =

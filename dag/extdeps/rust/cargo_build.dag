@@ -7,12 +7,23 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import std.resources { Network }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "doc.rust-lang.org/cargo/commands/cargo-build.html"
   }
+}
+
+// Reading: Cargo (doc.rust-lang.org/cargo) owns the `cargo build` command surface - argv, environment, working directory and exit contract; service cargo.Build models exactly that command.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.cargo_build", decl_name: "cargo.Build", field: WholeDeclaration
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data cargo_compile_env: Map<String, String> = empty_map()
