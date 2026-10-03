@@ -15,7 +15,7 @@ import product.data_class { Classified, classify_personal_identity }
 // THE PRINCIPAL AUTHORITY (owner directive 2026-09-25, lane A1). A gunbc principal is a
 // projection of VERIFIED external authentication evidence, never an independently authored
 // identity. PrincipalRef { authority, namespace, subject } is the one qualified-principal
-// carrier: every object names itself with one
+// carrier (docs/plans/qualified-subject-identity.md): every object names itself with one
 // construction while preserving its owning authority.
 //
 // TWO AUTHORITIES EXIST TODAY, exactly the two the directive names:

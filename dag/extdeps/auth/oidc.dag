@@ -19,6 +19,7 @@ import extdeps.auth.jwt {
   jwt_string_or_uri_wire,
   jwt_audience_values,
 }
+import v2.std.algebra { any }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -420,7 +421,7 @@ fn oidc_audience_admitted(presented: JwtAudience, admitted: List<JwtStringOrUri>
   fold(
     admitted,
     init: false,
-    f: (acc, a) => acc || presented_values.any(p => p == a),
+    f: (acc, a) => acc || any(presented_values, p => p == a),
   )
 }
 

@@ -1,7 +1,5 @@
 module gunbc.auth.oidc_id_token_verification
 
-import std.integer { uint8_octets_of_ints, QualifiedOctetsReady, QualifiedOctetsRefused }
-
 // THE PRODUCTION PRODUCER OF OidcIdTokenSignature — the realization the frontier row in
 // extdeps.auth.oidc named. It dissolves oidc_jwks_verification_frontier by binding the whole
 // signature seam end to end: fetch Google's JWKS with a file cache and a TTL, decode the ID
@@ -26,7 +24,9 @@ import std.integer { uint8_octets_of_ints, QualifiedOctetsReady, QualifiedOctets
 // admitted as the one unverified step and named here rather than implied.
 
 import std.types { String, NonEmptyStr, Int, List, FilePath, Email }
-import std.encoding { base64_decode, base64_encode, UrlSafe, Standard, utf8_decode_octets }
+import std.encoding { base64_decode, base64_encode, base64_octets, UrlSafe, Standard, utf8_decode_octets }
+import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused }
+import std.bytes { pure_dag_seam_unreachable_string }
 import std.algebra { trim }
 import extdeps.uri { Uri, Http, Https }
 import extdeps.auth.jwt {
@@ -61,7 +61,7 @@ import extdeps.filesystem.filesystem_io {
 import extdeps.gunbc
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.principal_projection { google_oidc_issuer }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_auth_store_root, DashboardAuthJwksCache }
 
 // ── The Google endpoints and cache policy ──────────────────────────────────────────────────────
 // THE GOOGLE REALIZATION FACTS as data rows: the JWKS endpoint this module fetches and the
@@ -773,9 +773,9 @@ fn rsa_public_key_pem(spki: List<UInt8>) -> String {
   join(
     [
       "-----BEGIN PUBLIC KEY-----\n",
-      match uint8_octets_of_ints(values: map(spki, o => o as Int)) {
+      match base64_octets(values: spki) {
         QualifiedOctetsReady { value: qualified } => base64_encode(octets: qualified, variant: Standard)
-        QualifiedOctetsRefused { observed: _ } => ""
+        QualifiedOctetsRefused { observed: _ } => pure_dag_seam_unreachable_string()
       },
       "\n-----END PUBLIC KEY-----\n",
     ],
@@ -792,8 +792,6 @@ fn rsa_public_key_pem(spki: List<UInt8>) -> String {
 // cache write proceeds on the freshly fetched bytes. The other direction refuses: a fetch that
 // fails with no fresh cache NEVER falls through to a stale entry.
 
-data jwks_cache_dir_segment: String = "auth-jwks"
-
 data jwks_cache_file_name: String = "cache.json"
 
 data jwks_cache_schema: String = "gunbc-jwks-cache/v1"
@@ -805,8 +803,8 @@ type JwksCacheLayout {
 
 fn jwks_cache_layout_for_instance(instance: HostDashboardInstance) -> JwksCacheLayout {
   JwksCacheLayout {
-    dir: join([instance.instance_root as String, "/", jwks_cache_dir_segment], "") as FilePath,
-    file: join([instance.instance_root as String, "/", jwks_cache_dir_segment, "/", jwks_cache_file_name], ""),
+    dir: dashboard_instance_auth_store_root(instance: instance, store: DashboardAuthJwksCache),
+    file: join([(dashboard_instance_auth_store_root(instance: instance, store: DashboardAuthJwksCache) as String), "/", jwks_cache_file_name], ""),
   }
 }
 

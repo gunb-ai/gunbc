@@ -18,7 +18,7 @@ module gunbc.auth.session_store
 // filesystem_listing_observation discipline): "the read failed" and "the store holds no such
 // session" are different facts, and only the second mints an Unknown standing.
 
-import std.types { String, NonEmptyStr, Bool, Int, List, FilePath, Timestamp }
+import std.types { String, NonEmptyStr, Bool, Int, List, FilePath, Timestamp, Email }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   filesystem_read_outcome,
@@ -33,10 +33,11 @@ import extdeps.languages.json.parse {
   parse_json_document, json_field_string, json_document_gap_text,
   JsonDocumentUnreadable, FieldAbsent, FieldRead, FieldMalformed,
 }
+import extdeps.uri { Uri, Http, Https, uri_wire }
 import gunbc.auth.session {
   AuthenticatedSession, SessionAuthMethod, AuthMethodGoogleOidc,
   SessionClient, SessionClientTrackerWeb, SessionClientApprovalsWeb, session_client_label,
-  CsrfToken, session_not_expired,
+  CsrfToken, session_not_expired, SessionProfile,
   SessionCookieStanding, SessionCookieValid, SessionCookieExpired, SessionCookieUnknown,
   SessionCookieUnread, SessionCookieMalformed,
   SessionCookieIdParsed, SessionCookieIdNotPresent, SessionCookieIdMalformed,
@@ -45,9 +46,7 @@ import gunbc.auth.session {
 import gunbc.principal_projection {
   PrincipalRef, principal_ref_label, principal_ref_parse_label, principal_ref_eq,
 }
-import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
-
-data session_store_dir_segment: String = "auth-sessions"
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_auth_store_root, DashboardAuthSessions }
 
 data session_store_file_suffix: String = ".json"
 
@@ -63,7 +62,7 @@ type SessionStoreLayout {
 // process already owns, plus the one directory segment this store adds.
 fn session_store_layout_for_instance(instance: HostDashboardInstance) -> SessionStoreLayout {
   SessionStoreLayout {
-    root: join([instance.instance_root as String, "/", session_store_dir_segment], "") as FilePath,
+    root: dashboard_instance_auth_store_root(instance: instance, store: DashboardAuthSessions),
   }
 }
 
@@ -82,9 +81,12 @@ fn session_store_file_path(layout: SessionStoreLayout, session_id: NonEmptyStr) 
 // decodes under any revision whose label parse holds — the same round-trip discipline the v3
 // event codec keeps. The CSRF token rides the file because the file is owner-only (0600); the
 // cookie value itself is NEVER in the store (the store maps an id to a session; the id is the
-// only cookie fact).
+// only cookie fact). The profile rides as THREE OPTIONAL MEMBERS: a login whose token carried
+// no picture, name, or email writes no such member, and a file written before the projection
+// landed decodes each to absent — never a malformed file, so the projection never forces a
+// re-login (the never-blocks law at the durable carrier).
 fn authenticated_session_json(session: AuthenticatedSession) -> String {
-  serialize_json(v: json_object(members: [
+  serialize_json(v: json_object(members: concat(concat([
     json_kv(key: "schema", value: json_string(s: session_file_schema)),
     json_kv(key: "session_id", value: json_string(s: session.session_id as String)),
     json_kv(key: "principal", value: json_string(s: principal_ref_label(p: session.principal))),
@@ -93,7 +95,34 @@ fn authenticated_session_json(session: AuthenticatedSession) -> String {
     json_kv(key: "auth_method", value: json_string(s: session_auth_method_label(method: session.auth_method))),
     json_kv(key: "client", value: json_string(s: session_client_label(client: session.client) as String)),
     json_kv(key: "csrf", value: json_string(s: session.csrf.token as String)),
-  ]))
+  ], session_profile_picture_members(picture: session.profile.picture)), concat(session_profile_name_members(name: session.profile.name), session_profile_email_members(email: session.profile.email)))))
+}
+
+// THE OPTIONAL PICTURE MEMBER, emitted only when the login projected one: absence is the
+// member's ABSENCE on the wire, never an empty string standing in for none. The spelling is
+// the Uri wire form (https://… or http://…), the same claim the ID-token reader admitted.
+fn session_profile_picture_members(picture: Uri?) -> List<JsonValue> {
+  match picture {
+    Present { value: u } => [ json_kv(key: "picture", value: json_string(s: uri_wire(uri: u) as String)) ]
+    Absent => []
+  }
+}
+
+// THE OPTIONAL NAME MEMBER, the same law as the picture: absence is the member's ABSENCE,
+// never an empty string standing in for none.
+fn session_profile_name_members(name: String?) -> List<JsonValue> {
+  match name {
+    Present { value: n } => [ json_kv(key: "name", value: json_string(s: n)) ]
+    Absent => []
+  }
+}
+
+// THE OPTIONAL EMAIL MEMBER, the same law again.
+fn session_profile_email_members(email: Email?) -> List<JsonValue> {
+  match email {
+    Present { value: e } => [ json_kv(key: "email", value: json_string(s: e as String)) ]
+    Absent => []
+  }
 }
 
 // THE ONE METHOD SPELLING: the closed coproduct has exactly one constructor, and the wire says
@@ -114,7 +143,11 @@ type SessionFileDecode
 // that located the file; the auth_method names the one admitted method; the client names an
 // admitted client; the principal parses as the one label spelling), or the file is Malformed
 // with the located cause. A malformed session file is a deployment fact about ONE session, so
-// the refusal names the member that refused rather than refusing the whole store.
+// the refusal names the member that refused rather than refusing the whole store. The picture
+// name, and email members are the THREE OPTIONAL members: each absent decodes to none (a file
+// written before the projection landed is a projection-less profile, never a malformed file), a
+// present picture decodes only as the http/https Uri spellings, and a present name or email
+// decodes only as non-empty — the same admissions the ID-token reader keeps.
 fn authenticated_session_of_json(text: String) -> SessionFileDecode {
   match parse_json_document(s: text) {
     JsonDocumentUnreadable { gap: g } =>
@@ -184,6 +217,7 @@ fn session_file_decode_body(doc: JsonValue) -> SessionFileDecode {
                               SessionFileFieldMalformed { detail: d } => SessionFileMalformed { detail: d }
                               SessionFileFieldRead { value: csrf_value } =>
                                 session_file_decode_finish(
+                                  doc: doc,
                                   session_id: sid,
                                   principal_label: p_label,
                                   authenticated_at: at,
@@ -201,7 +235,77 @@ fn session_file_decode_body(doc: JsonValue) -> SessionFileDecode {
   }
 }
 
+// THE OPTIONAL PICTURE MEMBER, decoded three-valued like every wire fact. ABSENT names a file
+// written before the projection landed (or a login whose token carried no picture) and decodes
+// to none — never Malformed, so an old file is never a forced re-login. PRESENT decodes only as
+// the http/https Uri spellings the ID-token reader admits (the file is the durable spelling of
+// the same claim, so the admission is the same), and any other spelling is Malformed with the
+// member named.
+type SessionFilePicture
+  = SessionFilePictureRead { picture: Uri? }
+  | SessionFilePictureMalformed { detail: String }
+
+fn session_file_picture_of(doc: JsonValue) -> SessionFilePicture {
+  match json_field_string(obj: doc, key: "picture") {
+    FieldAbsent => SessionFilePictureRead { picture: none }
+    FieldMalformed { cause: c } => SessionFilePictureMalformed { detail: join(["member picture refused: ", c], "") }
+    FieldRead { value: raw } =>
+      if starts_with(s: raw, prefix: "https://") {
+        SessionFilePictureRead {
+          picture: Present { value: Uri { scheme: Https, locator: substring(s: raw, start: 8, end: string_length(s: raw)) as NonEmptyStr } },
+        }
+      } else if starts_with(s: raw, prefix: "http://") {
+        SessionFilePictureRead {
+          picture: Present { value: Uri { scheme: Http, locator: substring(s: raw, start: 7, end: string_length(s: raw)) as NonEmptyStr } },
+        }
+      } else {
+        SessionFilePictureMalformed { detail: "member picture is present but is not an http/https Uri spelling" }
+      }
+  }
+}
+
+// THE OPTIONAL NAME MEMBER, decoded three-valued like the picture. ABSENT names a file written
+// before the projection landed and decodes to none — never Malformed. PRESENT decodes only as
+// a non-empty string (the mint never writes an empty name, so a present empty member names a
+// malformed file with the member named).
+type SessionFileName
+  = SessionFileNameRead { name: String? }
+  | SessionFileNameMalformed { detail: String }
+
+fn session_file_name_of(doc: JsonValue) -> SessionFileName {
+  match json_field_string(obj: doc, key: "name") {
+    FieldAbsent => SessionFileNameRead { name: none }
+    FieldMalformed { cause: c } => SessionFileNameMalformed { detail: join(["member name refused: ", c], "") }
+    FieldRead { value: raw } =>
+      if raw == "" {
+        SessionFileNameMalformed { detail: "member name is present but empty" }
+      } else {
+        SessionFileNameRead { name: Present { value: raw } }
+      }
+  }
+}
+
+// THE OPTIONAL EMAIL MEMBER, decoded three-valued like the name: ABSENT decodes to none;
+// PRESENT decodes only as a non-empty string (the mint never writes an empty email).
+type SessionFileEmail
+  = SessionFileEmailRead { email: Email? }
+  | SessionFileEmailMalformed { detail: String }
+
+fn session_file_email_of(doc: JsonValue) -> SessionFileEmail {
+  match json_field_string(obj: doc, key: "email") {
+    FieldAbsent => SessionFileEmailRead { email: none }
+    FieldMalformed { cause: c } => SessionFileEmailMalformed { detail: join(["member email refused: ", c], "") }
+    FieldRead { value: raw } =>
+      if raw == "" {
+        SessionFileEmailMalformed { detail: "member email is present but empty" }
+      } else {
+        SessionFileEmailRead { email: Present { value: raw as Email } }
+      }
+  }
+}
+
 fn session_file_decode_finish(
+  doc: JsonValue,
   session_id: String,
   principal_label: String,
   authenticated_at: String,
@@ -209,40 +313,53 @@ fn session_file_decode_finish(
   client_label: String,
   csrf_value: String,
 ) -> SessionFileDecode {
-  match principal_ref_parse_label(s: principal_label) {
-    Absent =>
-      SessionFileMalformed {
-        detail: join(["member principal \"", principal_label, "\" is not the principal label spelling"], ""),
+  match session_file_picture_of(doc: doc) {
+    SessionFilePictureMalformed { detail: d } => SessionFileMalformed { detail: d }
+    SessionFilePictureRead { picture: pic } =>
+      match session_file_name_of(doc: doc) {
+        SessionFileNameMalformed { detail: d } => SessionFileMalformed { detail: d }
+        SessionFileNameRead { name: nm } =>
+      match session_file_email_of(doc: doc) {
+        SessionFileEmailMalformed { detail: d } => SessionFileMalformed { detail: d }
+        SessionFileEmailRead { email: em } =>
+      match principal_ref_parse_label(s: principal_label) {
+        Absent =>
+          SessionFileMalformed {
+            detail: join(["member principal \"", principal_label, "\" is not the principal label spelling"], ""),
+          }
+        Present { value: p } =>
+          if session_id == "" {
+            SessionFileMalformed { detail: "member session_id is empty" }
+          } else if csrf_value == "" {
+            SessionFileMalformed { detail: "member csrf is empty" }
+          } else if authenticated_at == "" {
+            SessionFileMalformed { detail: "member authenticated_at is empty" }
+          } else if expires_at == "" {
+            SessionFileMalformed { detail: "member expires_at is empty" }
+          } else {
+            match session_client_of_label(label: client_label) {
+              Absent =>
+                SessionFileMalformed {
+                  detail: join(["member client is \"", client_label, "\", not an admitted client label"], ""),
+                }
+              Present { value: client } =>
+                SessionFileDecoded {
+                  session: AuthenticatedSession {
+                    session_id: session_id as NonEmptyStr,
+                    principal: p,
+                    authenticated_at: authenticated_at,
+                    expires_at: expires_at,
+                    auth_method: AuthMethodGoogleOidc,
+                    client: client,
+                    csrf: CsrfToken { token: csrf_value as NonEmptyStr },
+                    profile: SessionProfile { picture: pic, name: nm, email: em },
+                  }
+                }
+            }
+          }
       }
-    Present { value: p } =>
-      if session_id == "" {
-        SessionFileMalformed { detail: "member session_id is empty" }
-      } else if csrf_value == "" {
-        SessionFileMalformed { detail: "member csrf is empty" }
-      } else if authenticated_at == "" {
-        SessionFileMalformed { detail: "member authenticated_at is empty" }
-      } else if expires_at == "" {
-        SessionFileMalformed { detail: "member expires_at is empty" }
-      } else {
-        match session_client_of_label(label: client_label) {
-          Absent =>
-            SessionFileMalformed {
-              detail: join(["member client is \"", client_label, "\", not an admitted client label"], ""),
-            }
-          Present { value: client } =>
-            SessionFileDecoded {
-              session: AuthenticatedSession {
-                session_id: session_id as NonEmptyStr,
-                principal: p,
-                authenticated_at: authenticated_at,
-                expires_at: expires_at,
-                auth_method: AuthMethodGoogleOidc,
-                client: client,
-                csrf: CsrfToken { token: csrf_value as NonEmptyStr },
-              }
-            }
         }
-      }
+        }
   }
 }
 
@@ -435,7 +552,7 @@ fn session_store_purge_targets(
         Absent => SessionStorePurgePlan { targets: targets }
         Present { value: entry } =>
           let rest = entries.skip(n: 1)
-          if entry == "" || !entry.ends_with(suffix: session_store_file_suffix) {
+          if entry == "" || !ends_with(s: entry, suffix: session_store_file_suffix) {
             session_store_purge_targets(
               layout: layout,
               principal: principal,
@@ -559,3 +676,4 @@ fn session_cookie_standing_of_store_result(
     SessionStoreEntryMalformed { session_id: _, detail: d } => SessionCookieMalformed { detail: d }
   }
 }
+

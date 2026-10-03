@@ -180,19 +180,13 @@ fn tailnet_route_readback_observed(acl_revision: ContentHash, serve_route: Tails
 type ServeRouteAction
   = ServeActionAssignIssue
   | ServeActionCommentIssue
-  | ServeActionReviseIssue
   | ServeActionApproveDecision
-  | ServeActionCreateAllocation
-  | ServeActionReleaseAllocation
 
 fn serve_route_action_label(action: ServeRouteAction) -> NonEmptyStr {
   match action {
     ServeActionAssignIssue => "assign-issue" as NonEmptyStr
     ServeActionCommentIssue => "comment-issue" as NonEmptyStr
-    ServeActionReviseIssue => "revise-issue" as NonEmptyStr
     ServeActionApproveDecision => "approve-decision" as NonEmptyStr
-    ServeActionCreateAllocation => "create-allocation" as NonEmptyStr
-    ServeActionReleaseAllocation => "release-own-allocation" as NonEmptyStr
   }
 }
 
@@ -295,9 +289,6 @@ fn human_action_authorization_decision(
       match action {
         ServeActionAssignIssue => Permit
         ServeActionCommentIssue => Permit
-        ServeActionReviseIssue => Permit
-        ServeActionCreateAllocation => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "allocation-specific authorization required" })
-        ServeActionReleaseAllocation => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "allocation-specific authorization required" })
         ServeActionApproveDecision =>
           if principal_in_approve_roster(principal: session.principal, roster: policy.approve_roster) {
             Permit
@@ -393,8 +384,20 @@ fn deployment_path_decision(
   } else {
     match security.access_path {
       AccessPathTailnetProxy { transport_observation: _, route_readback: _ } => Permit
-      AccessPathDirectHttps => tailnet_path_required_refusal(route_path: route_path, action: action, security: security)
-      AccessPathLocalDev => tailnet_path_required_refusal(route_path: route_path, action: action, security: security)
+      AccessPathDirectHttps =>
+        write_refused(
+          route_path: route_path,
+          action: action,
+          security: security,
+          cause: AccessContextAbsent { context: "this deployment requires the tailnet access path for writes" },
+        )
+      AccessPathLocalDev =>
+        write_refused(
+          route_path: route_path,
+          action: action,
+          security: security,
+          cause: AccessContextAbsent { context: "this deployment requires the tailnet access path for writes" },
+        )
     }
   }
 }
@@ -479,19 +482,6 @@ fn evidence_subject_label(evidence: RequestAuthenticationEvidence) -> String {
     SessionStandingInvalid { standing: _ } => "session-standing-invalid" as String
     AuthAbsent => "auth-absent" as String
   }
-}
-
-fn tailnet_path_required_refusal(
-  route_path: NonEmptyStr,
-  action: ServeRouteAction,
-  security: RequestSecurityContext<RequestAuthenticationEvidence>,
-) -> AccessDecision {
-  write_refused(
-    route_path: route_path,
-    action: action,
-    security: security,
-    cause: AccessContextAbsent { context: "this deployment requires the tailnet access path for writes" },
-  )
 }
 
 fn write_refused(

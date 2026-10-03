@@ -1,8 +1,10 @@
 module gunbc.auth.session
 
-import std.types { NonEmptyStr, String, Bool, Timestamp }
+import std.types { NonEmptyStr, String, Bool, Timestamp, Email, List }
+import std.nat { Nat }
 import std.algebra { trim }
 import std.decl_ref { decl_ref }
+import extdeps.uri { Uri }
 import extdeps.auth.oidc {
   OidcIdTokenVerdict, OidcIdTokenVerified, OidcIdTokenRefused, OidcIdTokenRefusal,
   OidcLoginTransaction, login_transaction_expired,
@@ -10,12 +12,15 @@ import extdeps.auth.oidc {
 import gunbc.principal_projection {
   PrincipalRef, HumanPrincipalMinted, HumanPrincipalRefused, mint_human_principal_from_verdict,
 }
+import v2.std.algebra { filter }
 
 // THE APPLICATION SESSION (ruling authority placement: gunbc.auth.session). An
 // AuthenticatedSession is what a completed Google login mints: the verdict-sealed human
 // principal, the method (Google OIDC — the only human authentication method this deployment
-// admits), the client the login ran for, a bounded lifetime, and the CSRF token the session's
-// mutations must present. The session IDENTIFIES the operator; it never authorizes anything by
+// admits), the client the login ran for, a bounded lifetime, the CSRF token the session's
+// mutations must present, and the login-time slice of the operator's mutable profile
+// projection (today the avatar picture; display-name enrichment is the follow-up). The session
+// IDENTIFIES the operator; it never authorizes anything by
 // itself — action authorization is gunbc.auth.request_authentication's law, and an approval
 // decision additionally requires the exact scoped capability (std.scoped_authorization and the
 // signed approval capability stay that authority; login never substitutes for it).
@@ -45,6 +50,27 @@ type CsrfToken {
   token: NonEmptyStr
 }
 
+// THE LOGIN-TIME PROFILE PROJECTION the session carries beside the identity facts. Profile
+// facts are MUTABLE PROJECTIONS, NEVER IDENTITY — the law gunbc.principal_projection states for
+// PrincipalProfile holds verbatim here: the picture can change (a re-login re-projects it, and
+// the A9 directory lane moves it forward later) while the PrincipalRef does not, and no
+// principal is ever derived from a picture. The projection rides the session for one reason: a
+// completed login is the moment the verified ID token's picture claim is in hand, and the
+// session store is the durable carrier that already answers per-request. THE NEVER-BLOCKS LAW:
+// the picture is OPTIONAL END TO END — absent from the token, absent from the file, unreadable,
+// or malformed renders the initials fallback and never refuses authentication, authorization,
+// or rendering. THE DISPLAY NAME is the same projection shape — the verified token's name
+// claim, optional end to end, presentation only: the header prefers it over the principal
+// label's short form and falls back when absent; identity is never derived from a name. THE
+// EMAIL is the third member of the same shape (the verified token's email claim): the
+// assignee/picker surfaces display it, and identity is never derived from it either — the
+// PrincipalRef stays the only identity all three describe.
+type SessionProfile {
+  picture: Uri?
+  name: String?
+  email: Email?
+}
+
 type AuthenticatedSession {
   session_id: NonEmptyStr
   principal: PrincipalRef
@@ -53,14 +79,17 @@ type AuthenticatedSession {
   auth_method: SessionAuthMethod
   client: SessionClient
   csrf: CsrfToken
+  profile: SessionProfile
 }
 
 // THE SESSION MINT, the sealed boundary that turns a completed login into session identity. The
 // principal comes ONLY from the verdict through the caller-sealed principal mint — there is no
 // principal parameter, so no caller can seat a session on a principal the evidence did not
 // establish (a service writer cannot present a human Google session as workload identity, and a
-// fabricated PrincipalRef cannot be seated at all). The transaction is checked here too:
-// expired or nonce-mismatched transactions refuse before any session exists.
+// fabricated PrincipalRef cannot be seated at all). The profile projection is the same shape of
+// fact: the picture is read from the VERIFIED claims inside the seal — there is no picture
+// parameter, so no caller can seat a picture the evidence did not carry. The transaction is
+// checked here too: expired or nonce-mismatched transactions refuse before any session exists.
 type SessionMint
   = SessionMinted { session: AuthenticatedSession }
   | SessionRefused { cause: SessionRefusalCause }
@@ -83,7 +112,6 @@ fn mint_authenticated_session(
   admit_callers: [
     decl_ref(module_path: "test.claim.auth_session_witness_test", decl_name: "witness_mint_session"),
     decl_ref(module_path: "test.claim.request_authentication_witness_test", decl_name: "witness_mint_session"),
-    decl_ref(module_path: "gunbc.roadmap_auth_routes", decl_name: "auth_callback_mint_session"),
   ]
 {
   if login_transaction_expired(t: transaction, observed_at: observed_at) {
@@ -114,6 +142,7 @@ fn mint_authenticated_session(
                   auth_method: AuthMethodGoogleOidc,
                   client: client,
                   csrf: CsrfToken { token: csrf_token_value },
+                  profile: SessionProfile { picture: claims.standard.picture, name: claims.standard.name, email: claims.standard.email },
                 }
               }
           }
@@ -216,16 +245,17 @@ type SessionCookieIdParse
   | SessionCookieIdNotPresent
   | SessionCookieIdMalformed { detail: String }
 
-fn session_cookie_id_of_header(cookie_header: String, cookie_name: NonEmptyStr = session_cookie_name) -> SessionCookieIdParse {
+fn session_cookie_id_of_header(cookie_header: String) -> SessionCookieIdParse {
   let pairs = split(s: cookie_header, delimiter: ";")
-  let matches = pairs.filter(
-    pair => starts_with(s: trim(pair), prefix: concat(cookie_name as String, "=")),
+  let matches: List<String> = filter(
+    pairs,
+    pair => starts_with(s: trim(pair), prefix: concat(session_cookie_name as String, "=")),
   )
   if count(matches) == 0 {
     SessionCookieIdNotPresent
   } else if count(matches) > 1 {
     SessionCookieIdMalformed {
-      detail: concat("duplicate ", concat(cookie_name as String, " cookie in the Cookie header")),
+      detail: concat("duplicate ", concat(session_cookie_name as String, " cookie in the Cookie header")),
     }
   } else {
     match matches.first() {
@@ -235,7 +265,7 @@ fn session_cookie_id_of_header(cookie_header: String, cookie_name: NonEmptyStr =
         session_cookie_id_of_value(
           value: substring(
             s: trimmed_pair,
-            start: string_length(s: concat(cookie_name as String, "=")),
+            start: string_length(s: concat(session_cookie_name as String, "=")),
             end: string_length(s: trimmed_pair),
           ),
         )
@@ -285,7 +315,7 @@ fn session_cookie_id_of_value(value: String) -> SessionCookieIdParse {
 // and cannot drift from the rows the witness checks. Max-Age is the bounded lifetime in whole
 // seconds; the caller supplies it because the lifetime bound is the login policy's fact
 // (gunbc.auth.oidc_deployment_config), not this module's.
-fn session_cookie_set_cookie_line(session_id: NonEmptyStr, max_age_seconds: Int) -> String {
+fn session_cookie_set_cookie_line(session_id: NonEmptyStr, max_age_seconds: Nat) -> String {
   join(
     [
       "Set-Cookie: ",

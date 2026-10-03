@@ -1908,6 +1908,36 @@ fn floor_route_gap_expectation_chunk_28() -> List<FloorRouteGapExpectation> {
     tail: Empty {} } } } } } } } } } } } } }
 }
 
+// The test.claim.scm_repository_save_real_execution_witness identity: the guarded save's one real
+// write over the committed v7 fixture. First effect without a hermetic arm is Filesystem.Write (no
+// mock_response). Triple enrollment as for chunk_30: this expectation, a WetScheduledClaim row in
+// local_repo_wet_schedule, and the gunbc.ci_layer_roots LocalRepoWetLane row for
+// scm_repository_save_real_execution_witness_test.dag.
+fn floor_route_gap_expectation_chunk_31() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.scm_repository_save_real_execution_witness.scm_sv_a_fresh_generation_save_applies_and_rewrites_identical_bytes", operation: "Write", ground: NoMockResponse {} },
+    tail: Empty {}
+  }
+}
+
+// The three test.claim.auth.profile_store_real_path_witness_test identities: the profile store's real path (upsert then read-all, a stray
+// non-json entry ignored, a missing directory unread at "list") in a throwaway directory. First
+// effect is shell.Mktemp.Dir with no mock_response. Triple enrollment as for chunk_15: this
+// expectation, WetScheduledClaim rows in local_repo_wet_schedule, and the gunbc.ci_layer_roots
+// witness_exclusion_frontier LocalRepoWetLane row for profile_store_real_path_witness_test.dag.
+fn floor_route_gap_expectation_chunk_30() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.auth.profile_store_real_path_witness_test.profile_store_read_all_returns_the_upserted_profile_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.auth.profile_store_real_path_witness_test.profile_store_read_all_ignores_a_non_json_entry_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.auth.profile_store_real_path_witness_test.profile_store_read_all_of_a_missing_directory_is_unread_at_list_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Empty {}
+  }
+  }
+  }
+}
+
 // THE mtcollins1 KVM OBSERVER WET CONTROLS (gunbc#12492) and the SOL channel-loss control that asks the
 // screen run on the local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule),
 // where all held on required-floor run 36583319535 (srv4-03). The same run measured each identity's
@@ -1949,7 +1979,7 @@ fn floor_route_gap_expectation_chunk_29() -> List<FloorRouteGapExpectation> {
 // first effect is shell.Mktemp.Dir / DirWithTemplate, which declares no mock_response; each is
 // executed by the local-repo wet lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule)
 // and its file carries a gunbc.ci_layer_roots LocalRepoWetLane row.
-fn floor_route_gap_expectation_chunk_30() -> List<FloorRouteGapExpectation> {
+fn floor_route_gap_expectation_chunk_32() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.auth.login_transaction_consume_wet_witness.transaction_consume_has_one_winner_over_real_files", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
@@ -1962,7 +1992,7 @@ fn floor_route_gap_expectation_chunk_30() -> List<FloorRouteGapExpectation> {
 }
 
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
-  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Cons { head: floor_route_gap_expectation_chunk_13(), tail: Cons { head: floor_route_gap_expectation_chunk_14(), tail: Cons { head: floor_route_gap_expectation_chunk_15(), tail: Cons { head: floor_route_gap_expectation_chunk_16(), tail: Cons { head: floor_route_gap_expectation_chunk_17(), tail: Cons { head: floor_route_gap_expectation_chunk_18(), tail: Cons { head: floor_route_gap_expectation_chunk_19(), tail: Cons { head: floor_route_gap_expectation_chunk_20(), tail: Cons { head: floor_route_gap_expectation_chunk_21(), tail: Cons { head: floor_route_gap_expectation_chunk_22(), tail: Cons { head: floor_route_gap_expectation_chunk_23(), tail: Cons { head: floor_route_gap_expectation_chunk_24(), tail: Cons { head: floor_route_gap_expectation_chunk_25(), tail: Cons { head: floor_route_gap_expectation_chunk_26(), tail: Cons { head: floor_route_gap_expectation_chunk_27(), tail: Cons { head: floor_route_gap_expectation_chunk_28(), tail: Cons { head: floor_route_gap_expectation_chunk_29(), tail: Cons { head: floor_route_gap_expectation_chunk_30(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Cons { head: floor_route_gap_expectation_chunk_13(), tail: Cons { head: floor_route_gap_expectation_chunk_14(), tail: Cons { head: floor_route_gap_expectation_chunk_15(), tail: Cons { head: floor_route_gap_expectation_chunk_16(), tail: Cons { head: floor_route_gap_expectation_chunk_17(), tail: Cons { head: floor_route_gap_expectation_chunk_18(), tail: Cons { head: floor_route_gap_expectation_chunk_19(), tail: Cons { head: floor_route_gap_expectation_chunk_20(), tail: Cons { head: floor_route_gap_expectation_chunk_21(), tail: Cons { head: floor_route_gap_expectation_chunk_22(), tail: Cons { head: floor_route_gap_expectation_chunk_23(), tail: Cons { head: floor_route_gap_expectation_chunk_24(), tail: Cons { head: floor_route_gap_expectation_chunk_25(), tail: Cons { head: floor_route_gap_expectation_chunk_26(), tail: Cons { head: floor_route_gap_expectation_chunk_27(), tail: Cons { head: floor_route_gap_expectation_chunk_28(), tail: Cons { head: floor_route_gap_expectation_chunk_29(), tail: Cons { head: floor_route_gap_expectation_chunk_30(), tail: Cons { head: floor_route_gap_expectation_chunk_31(), tail: Cons { head: floor_route_gap_expectation_chunk_32(), tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }
 }
 
 fn floor_route_gap_expectations() -> List<FloorRouteGapExpectation> {

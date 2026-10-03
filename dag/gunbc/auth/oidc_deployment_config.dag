@@ -33,6 +33,8 @@ module gunbc.auth.oidc_deployment_config
 
 import std.types { String, NonEmptyStr, Int, List, Secret }
 import std.algebra { trim }
+import std.nat { Nat }
+import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io {
   Filesystem, filesystem_read_outcome, filesystem_listing_observation, filesystem_file_observation,
@@ -58,8 +60,8 @@ type OidcDeploymentConfig {
   redirect_uri: NonEmptyStr
   admitted_audiences: List<NonEmptyStr>
   expected_hosted_domain: NonEmptyStr
-  session_lifetime_seconds: Int
-  login_transaction_lifetime_seconds: Int
+  session_lifetime_seconds: Nat
+  login_transaction_lifetime_seconds: Nat
 }
 
 type OidcDeploymentConfigRead
@@ -229,13 +231,16 @@ fn oidc_config_required_int(doc: JsonValue, key: String) -> OidcConfigFieldInt {
       if v <= 0 {
         OidcConfigFieldIntUnavailable { cause: join(["the config file's ", key, " member must be positive"], "") }
       } else {
-        OidcConfigFieldIntRead { value: v }
+        match checked_int_to_nat(n: v) {
+          Absent => OidcConfigFieldIntUnavailable { cause: join(["the config file's ", key, " member does not cross to Nat"], "") }
+          Present { value: n } => OidcConfigFieldIntRead { value: n }
+        }
       }
   }
 }
 
 type OidcConfigFieldInt
-  = OidcConfigFieldIntRead { value: Int }
+  = OidcConfigFieldIntRead { value: Nat }
   | OidcConfigFieldIntUnavailable { cause: String }
 
 fn oidc_deployment_config_finish(
@@ -244,8 +249,8 @@ fn oidc_deployment_config_finish(
   client_secret: String,
   redirect_uri: String,
   hosted_domain: String,
-  session_lifetime: Int,
-  transaction_lifetime: Int,
+  session_lifetime: Nat,
+  transaction_lifetime: Nat,
 ) -> OidcDeploymentConfigRead {
   match oidc_config_audiences(doc: doc, client_id: client_id) {
     OidcConfigAudiencesUnavailable { cause: c } => OidcDeploymentConfigUnavailable { cause: c }
