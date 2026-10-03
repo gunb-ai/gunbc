@@ -1,7 +1,7 @@
 module v2.extdeps.coordination
 
 import v2.std.collection { List }
-import v2.std.nat { Nat }
+import std.nat { Nat }
 import v2.std.network { NetworkAddress }
 import v2.std.node { Symbol }
 
@@ -29,11 +29,11 @@ type Endpoint {
 }
 
 type SettleBound {
-  steps: v2.std.nat.Nat
+  steps: std.nat.Nat
 }
 
 type ConvergeBound {
-  steps: v2.std.nat.Nat
+  steps: std.nat.Nat
 }
 
 type RequiredSettleBound {}

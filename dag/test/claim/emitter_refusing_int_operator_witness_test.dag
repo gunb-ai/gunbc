@@ -21,6 +21,18 @@ fn w_int_binary_operators_route_through_refusing_helpers() -> Bool {
   )
 }
 
+// std.nat Nat is declared inductively (Zero | Succ) and grounded to the kernel integer, so its type
+// reference has no checkpoint of its own. Its operators must still route through the refusing
+// helpers: the red is the wrapping infix spelling the Nat de-fork first emitted.
+fn w_nat_binary_operators_route_through_refusing_helpers() -> Bool {
+  compile_dag_rust_emit_check(
+    "module nat_refuse_bin\n\nimport std.nat { Nat }\n\nfn bump(x: Nat) -> Nat {\n  x + 1\n}\n\nfn dbl(x: Nat) -> Nat {\n  x * 2\n}\n\nfn cube(k: Nat) -> Nat {\n  k * k * k\n}\n",
+    "src/nat_refuse_bin.rs",
+    ["v1_rt::int_add(", "v1_rt::int_mul("],
+    ["(x.clone() + 1)", "(x.clone() * 2)", "(k.clone() * k.clone())"]
+  )
+}
+
 fn w_int_negation_routes_through_refusing_helper() -> Bool {
   compile_dag_rust_emit_check(
     "module int_refuse_neg\n\nimport std.types { Int }\n\nfn negate(x: Int) -> Int {\n  -x\n}\n",
@@ -51,4 +63,8 @@ test fn int_negation_routes_through_refusing_helper() -> Bool {
 
 test fn float_operators_keep_infix() -> Bool {
   w_float_operators_keep_infix()
+}
+
+test fn nat_binary_operators_route_through_refusing_helpers() -> Bool {
+  w_nat_binary_operators_route_through_refusing_helpers()
 }

@@ -75,6 +75,8 @@ fn fx_node_custom(
     } else { ExecutionContractUnspecified },
     owner: "fixture",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
 }
 
@@ -92,6 +94,8 @@ fn fx_node(id: String, bound: Bool, sized: Bool) -> RoadmapNode {
     } else { ExecutionContractUnspecified },
     owner: "fixture",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
 }
 
@@ -105,6 +109,8 @@ fn fx_pr_node(id: String) -> RoadmapNode {
     execution: ExecutionContract { validations: [CargoFmtValidation], extra_capabilities: [], path_scope: PathsUnrestricted, source_roots: PublicWorktreeLayout },
     owner: "fixture",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
 }
 
