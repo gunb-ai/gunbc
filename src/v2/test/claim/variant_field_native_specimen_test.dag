@@ -3,7 +3,7 @@ module v2.test.claim.variant_field_native_specimen
 import std.algebra { FreeMonoid }
 import v2.compiler.normalized_tree { no_record_declarations, no_resource_declarations }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
-import v2.extdeps.languages.dag { dag_grammar_atom, dag_named_edge }
+import v2.extdeps.languages.dag { dag_grammar_atom, dag_surface_edge_label }
 import v2.std.algebra { fold_list, fold_list_node, is_empty }
 import v2.std.collection { List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -68,14 +68,14 @@ fn vfb_module_root(qn_spine: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      dag_named_edge(
-        name: ^dag_surface_module_header,
+      Edge {
+        label: dag_surface_edge_label(edge: ^dag_surface_module_header),
         target: dag_grammar_atom(id: ^dag_surface_module_header)
-      ),
-      dag_named_edge(
-        name: ^dag_surface_module_header_qualified_name,
+      },
+      Edge {
+        label: dag_surface_edge_label(edge: ^dag_surface_module_header_qualified_name),
         target: qn_spine
-      ),
+      },
       vfb_type_with_variants(type_sym: ^Mood)
     ]
   )
