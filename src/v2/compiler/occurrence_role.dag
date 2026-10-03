@@ -250,7 +250,7 @@ fn dag_name_production_rows() -> List<NameProductionRow> {
     name_row(production: ^dag_production_primary_expr, disposition: NamesAreReferences),
     name_row(production: ^dag_production_postfix_expr, disposition: NamesAreReferences),
     name_row(production: ^dag_production_where_predicate, disposition: NamesAreReferences),
-    name_row(production: ^dag_production_status_pattern, disposition: NamesAreReferences),
+    name_row(production: ^dag_production_status_pattern_name, disposition: NamesAreMarkers),
     name_row(production: ^dag_production_param_list, disposition: NameRoleRead { role: DeclarationRole, category: LexicalValueOccurrence, reader: ReadParamListBinders }),
     name_row(production: ^dag_production_field_decl_block, disposition: NameRoleRead { role: DeclarationRole, category: FieldOccurrence, reader: ReadFieldDeclBinders }),
     name_row(production: ^dag_production_generic_params, disposition: NameRoleRead { role: DeclarationRole, category: TypeOccurrence, reader: ReadGenericParamBinders }),

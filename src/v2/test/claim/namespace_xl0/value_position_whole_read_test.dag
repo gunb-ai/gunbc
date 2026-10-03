@@ -127,7 +127,20 @@ data vpw_call_projection_source: String = "module v2.test.vpw_call_projection\n\
 // a function value's minted variables must be distinct from any other function value's its types can
 // meet -- a nested literal reusing its parameter name, and siblings -- while the same lambda at the same
 // position in two declarations keeps the same type and content hash (no occurrence in the type).
-data vpw_fv_nest_source: String = "module v2.test.vpw_fv_nest\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply_nest(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe_nest(p: Bool) -> Bool {\n  vpw_apply_nest(f: fn(x) {\n    let g = fn(x) { x }\n    g\n  }, v: p)\n}\n"
+// THE NESTED LITERALS BIND DIFFERENT NAMES, AND THE RENAME IS THE POINT OF THIS COMMENT. This fixture
+// used to nest `fn(x) { let g = fn(x) { x } ... }` -- the same value name at both levels. That was
+// INCIDENTAL to what the claim over it establishes, which is that a nested literal's fresh TYPE variables
+// are not a shadow of the outer's; the shared spelling did no work for that subject. Once
+// v2.compiler.resolve admitted value binders through one gate, the inner `x` hid the outer `x` and the
+// fixture refused resolve_reason_binder_hides_visible_value -- so the claim could no longer reach its own
+// subject, and reversing it would have deleted a property rather than recording a rule.
+//
+// The value-shadowing rule has its own control at its own interface
+// (v2.test.claim.binder_admission.callable_binder_slice cbs_a_binder_hiding_an_enclosing_binder_refuses),
+// so nothing is lost by making this fixture bind distinct names: the type-variable property stays
+// exercised by two nested literals that each mint their own, and the shadowing property is asserted where
+// it belongs instead of riding on an unrelated fixture.
+data vpw_fv_nest_source: String = "module v2.test.vpw_fv_nest\n\nimport v2.std.logic { Bool }\n\nfn vpw_apply_nest(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe_nest(p: Bool) -> Bool {\n  vpw_apply_nest(f: fn(x) {\n    let g = fn(y) { y }\n    g\n  }, v: p)\n}\n"
 
 data vpw_fv_siblings_source: String = "module v2.test.vpw_fv_siblings\n\nimport v2.std.logic { Bool }\n\nfn vpw_pair(f: Bool, g: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe_siblings(p: Bool) -> Bool { vpw_pair(f: x => x, g: x => x, v: p) }\n\nfn vpw_site_one(p: Bool) -> Bool { vpw_site(f: y => y, v: p) }\n\nfn vpw_site_two(p: Bool) -> Bool { vpw_site(f: y => y, v: p) }\n\nfn vpw_site(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_order_site(f: Bool, v: Bool) -> Bool { v }\n\nfn vpw_probe_order(p: Bool) -> Bool { vpw_order_site(f: (y, x) => y, v: p) }\n"
 
