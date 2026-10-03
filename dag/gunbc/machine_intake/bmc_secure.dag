@@ -424,16 +424,6 @@ type BmcSecureStanding sole_constructor {
   outcome: BmcSecureOutcome
 }
 
-// THE ACCOUNT A SECURED STANDING NAMES, Absent unless the outcome is BmcSecured. A procedure that
-// drives the controller as that account reads it here, so an unsecured unit has no account to use.
-fn bmc_secured_account(standing: BmcSecureStanding) -> NonEmptyStr? {
-  match standing.outcome {
-    BmcSecured { endpoint: _, reference: r, evidence: _, latest_admitted_probe_at: _, published_credential: _ } =>
-      Present { value: r.account }
-    BmcSecureRefused { cause: _ } => none
-  }
-}
-
 fn bmc_secure_evidence(
   bootstrap: CredentialProbeOutcome,
   rotation_evidence: EvidenceRef,

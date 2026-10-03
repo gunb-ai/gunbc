@@ -1,21 +1,22 @@
 module gunbc.managed_host
 
-import std.types { List, NonEmptyStr }
+import std.types { List, NonEmptyStr, String }
 import product.placement_supply { HostIdentity }
-import extdeps.bmc.access_profile { BmcAccessObservationStanding }
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObservationStanding, BmcAccessObserved, BmcAccessUnobserved }
 import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
-import gunbc.machine_intake_subject { MachineIntakeSubject }
-import gunbc.machine_intake_bmc_secure { BmcSecureStanding }
+import gunbc.machine_intake_bmc_secure { BmcSecureRefusalCause, BmcSecureRefused, BmcSecureStanding, BmcSecured }
 import gunbc.fleet_intent_network { operator_host_mtcollins1 }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_access_standing, mtcollins1_capability_row }
-import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_bmc_secure_standing, mtcollins1_intake_subject }
+import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_bmc_secure_standing }
 import gunbc.machine_intake_mtcollins1_maintenance_hold { mtcollins1_unit_hold_key, mtcollins1_unit_hold_store_host }
 
 // A HOST THIS FLEET DRIVES THROUGH ITS BASEBOARD CONTROLLER, and the one record a host-generic
 // procedure takes instead of a unit's constants (docs/plans/managed-host-untangle.md, cut 0). It is
 // not an executor fleet host: gunbc.fleet_runner_connectivity fleet_hosts() means "commits runner
 // slots", and a managed host commits none. Every value in a row is imported from the unit's own
-// layer-1 modules, never re-spelled.
+// layer-1 modules, never re-spelled. The intake subject is not a field: secure.subject is the one
+// home of it, and a second copy could disagree with the standing it was derived beside.
 //
 // access and capability_row are the pair gunbc.machine_intake_oob_boot_handoff
 // oob_boot_handoff_admission consumes today. DECLARED FRONTIER: they become one
@@ -25,7 +26,6 @@ import gunbc.machine_intake_mtcollins1_maintenance_hold { mtcollins1_unit_hold_k
 // profile catalog), so a bound context cannot be executed for any host and is not hand-built here.
 type ManagedHost {
   host: HostIdentity
-  subject: MachineIntakeSubject
   access: BmcAccessObservationStanding
   capability_row: BmcFirmwareReleaseCapabilityRow
   secure: BmcSecureStanding
@@ -40,26 +40,55 @@ type ResetUnitHold
   = ResetUnitHoldRequired { key: NonEmptyStr, store_host: NonEmptyStr }
   | ResetNoUnitHold
 
-// A UNIT IS A ROW ONLY WHEN ITS INTAKE SUBJECT BINDS AND ITS SECURE STANDING IS DERIVED. Either Absent
-// leaves the unit out rather than in with a stand-in, so a host never enters the fleet's managed set
-// on a fabricated subject; the roster witness then refuses on the missing member.
-fn managed_hosts() -> List<ManagedHost> {
-  match mtcollins1_intake_subject() {
-    Absent => []
-    Present { value: subject } =>
-      match mtcollins1_bmc_secure_standing() {
-        Absent => []
-        Present { value: secure } =>
-          [
-            ManagedHost {
-              host: operator_host_mtcollins1,
-              subject: subject,
-              access: mtcollins1_access_standing,
-              capability_row: mtcollins1_capability_row,
-              secure: secure,
-              unit_hold: ResetUnitHoldRequired { key: mtcollins1_unit_hold_key, store_host: mtcollins1_unit_hold_store_host },
-            },
-          ]
+// THE ONE JOIN A CONTROLLER WRITE MAY READ ITS ACCOUNT AND ENDPOINT FROM. A secure standing names the
+// controller it secured; an access observation names the controller it read. They are evidence about
+// one machine only when they name the same controller, so a write takes the observation and the
+// account from here and never pairs a secured account with some other row's access. The secured
+// subject reaches the row's host through that controller: no carrier binds a MachineIntakeSubject to
+// a HostIdentity directly, so the join is held at controller grain, which is the grain the write uses.
+type ManagedHostBinding {
+  host: ManagedHost
+  observation: BmcAccessObservation
+  account: NonEmptyStr
+}
+
+type ManagedHostBindingStanding
+  = ManagedHostBound { binding: ManagedHostBinding }
+  | ManagedHostAccessUnobserved { endpoint: BmcControllerEndpoint }
+  | ManagedHostNotSecured { cause: BmcSecureRefusalCause }
+  | ManagedHostEndpointMismatch { observed: BmcControllerEndpoint, secured: BmcControllerEndpoint }
+
+fn managed_host_binding(host: ManagedHost) -> ManagedHostBindingStanding {
+  match host.secure.outcome {
+    BmcSecureRefused { cause: c } => ManagedHostNotSecured { cause: c }
+    BmcSecured { endpoint: secured, reference: r, evidence: _, latest_admitted_probe_at: _, published_credential: _ } =>
+      match host.access {
+        BmcAccessUnobserved { endpoint: e } => ManagedHostAccessUnobserved { endpoint: e }
+        BmcAccessObserved { observation: o } =>
+          if (o.endpoint.host as String) == (secured.host as String) {
+            ManagedHostBound { binding: ManagedHostBinding { host: host, observation: o, account: r.account } }
+          } else {
+            ManagedHostEndpointMismatch { observed: o.endpoint, secured: secured }
+          }
       }
+  }
+}
+
+// A UNIT IS A ROW ONLY WHEN ITS SECURE STANDING IS DERIVED, which itself requires its intake subject
+// to bind. Absent leaves the unit out rather than in with a stand-in, so a host never enters the
+// managed set on a fabricated subject; the roster witness then refuses on the missing member.
+fn managed_hosts() -> List<ManagedHost> {
+  match mtcollins1_bmc_secure_standing() {
+    Absent => []
+    Present { value: secure } =>
+      [
+        ManagedHost {
+          host: operator_host_mtcollins1,
+          access: mtcollins1_access_standing,
+          capability_row: mtcollins1_capability_row,
+          secure: secure,
+          unit_hold: ResetUnitHoldRequired { key: mtcollins1_unit_hold_key, store_host: mtcollins1_unit_hold_store_host },
+        },
+      ]
   }
 }

@@ -23,7 +23,7 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 import extdeps.github.actions_environment { github_run_id_variable_name }
 import gunbc.actions_run_binding { ActionsVariableAbsent, ActionsVariablePresent, actions_variable_read }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.placement_supply { HostIdentity }
 import gunbc.host_reset_return {
   AttemptReceiptMinted,
   AttemptReceiptPairingRefused,
@@ -78,13 +78,8 @@ import gunbc.host_reset_return {
   select_reset_observer,
   subject_for_observer,
 }
-import gunbc.host_reset_subject_roster { reset_observer_peer_roster, reset_subject_for, reset_subject_roster }
-import gunbc.managed_host { ManagedHost, ResetNoUnitHold, ResetUnitHoldRequired }
-import gunbc.machine_intake_bmc_secure { bmc_secured_account }
-import extdeps.bmc.access_profile { BmcAccessObserved, BmcAccessUnobserved }
-import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
-import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_cdrom_selection }
-import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.host_reset_subject_roster { AdmittedResetSubject, reset_observer_peer_roster, reset_subject_for, reset_subject_roster }
+import gunbc.managed_host { ResetNoUnitHold, ResetUnitHoldRequired }
 import gunbc.machine_intake_oob_boot_handoff {
   oob_boot_handoff,
   BootControlIssued,
@@ -396,42 +391,12 @@ data host_reset_down_watch_samples: Nat = 120
 
 data host_reset_back_watch_samples: Nat = 200
 
-// THE BOOT A RESET RETURNS THROUGH IS RESET POLICY, not a fact about the host, so it is chosen here
-// in the reset arm rather than carried on gunbc.managed_host ManagedHost. The value is imported from
-// the unit's actuation module, never re-spelled; a host with no selection here is refused before any
-// controller write.
-fn reset_boot_selection(host: ManagedHost) -> IpmiBootSelection? {
-  if host_identity_eq(a: host.host, b: operator_host_mtcollins1) {
-    Present { value: mtcollins1_cdrom_selection }
-  } else {
-    none
-  }
-}
-
-fn reset_not_attempted(
-  selection: ResetObserverSelection,
-  attempt: NonEmptyStr,
-  route: ResetIssuanceRoute,
-  identity: ObserverSelfIdentity,
-  cause: NonEmptyStr,
-) -> ResetAttemptMint
-{
-  mint_reset_attempt_receipt(
-    selection: selection,
-    attempt: attempt,
-    route: route,
-    self_identity: identity,
-    acknowledgement: ResetNotAttempted { cause: cause },
-    observation: HostReturnUnobserved { cause: "no reset was issued, so nothing was watched" },
-  )
-}
-
-fn reset_unit_hold_gate(candidate: ManagedHost, proof: UnitHoldProof?) -> NonEmptyStr? {
-  match candidate.unit_hold {
+fn reset_unit_hold_gate(candidate: AdmittedResetSubject, proof: UnitHoldProof?) -> NonEmptyStr? {
+  match candidate.binding.host.unit_hold {
     ResetNoUnitHold => none
     ResetUnitHoldRequired { key: k, store_host: _ } =>
       match proof {
-        Absent => Present { value: join(["subject ", candidate.host as String, " is hold-gated and no unit hold proof was presented; no controller write was attempted"], "") as NonEmptyStr }
+        Absent => Present { value: join(["subject ", candidate.binding.host.host as String, " is hold-gated and no unit hold proof was presented; no controller write was attempted"], "") as NonEmptyStr }
         Present { value: p } =>
           match unit_hold_proof_refusal(proof: p, key: k, label: "host reset-return") {
             Present { value: why } => Present { value: why as NonEmptyStr }
@@ -443,21 +408,21 @@ fn reset_unit_hold_gate(candidate: ManagedHost, proof: UnitHoldProof?) -> NonEmp
 
 fn host_reset_return_attempt(
   proof: UnitHoldProof?,
-  candidate: ManagedHost,
+  candidate: AdmittedResetSubject,
   observer: NonEmptyStr,
   attempt: NonEmptyStr,
   route: ResetIssuanceRoute,
   password_file: NonEmptyStr,
 ) -> ResetAttemptMint
 {
-  let subject = candidate.host as NonEmptyStr
+  let subject = candidate.binding.host.host as NonEmptyStr
   let selection = select_reset_observer(
     subject_roster: reset_subject_roster(),
     peer_roster: reset_observer_peer_roster(),
     subject: subject,
     observer: observer,
   )
-  let identity = observer_self_corroboration(observer: observer as HostIdentity, subject: candidate.host)
+  let identity = observer_self_corroboration(observer: observer as HostIdentity, subject: candidate.binding.host.host)
   match reset_issuance_block(selection: selection, identity: identity) {
     Present { value: blocked } =>
       return mint_reset_attempt_receipt(
@@ -515,7 +480,7 @@ fn host_reset_return_attempt(
 // entry's live acquire committed (gunbc.machine_intake_mtcollins1_maintenance_hold UnitHoldProof).
 fn host_reset_return_issue_and_watch(
   proof: UnitHoldProof?,
-  candidate: ManagedHost,
+  candidate: AdmittedResetSubject,
   selection: ResetObserverSelection,
   identity: ObserverSelfIdentity,
   attempt: NonEmptyStr,
@@ -536,29 +501,16 @@ fn host_reset_return_issue_and_watch(
       )
     Absent => {}
   }
-  let outcome = match reset_boot_selection(host: candidate) {
-    Absent => return reset_not_attempted(selection: selection, attempt: attempt, route: route, identity: identity, cause: "the subject has no reset boot selection; no controller write was attempted")
-    Present { value: boot } =>
-      match bmc_secured_account(standing: candidate.secure) {
-        Absent => return reset_not_attempted(selection: selection, attempt: attempt, route: route, identity: identity, cause: "the subject's BMC is not BmcSecured; no controller write was attempted")
-        Present { value: username } =>
-          match candidate.access {
-            BmcAccessUnobserved { endpoint: _ } =>
-              return reset_not_attempted(selection: selection, attempt: attempt, route: route, identity: identity, cause: "the subject's controller access is unobserved; no controller write was attempted")
-            BmcAccessObserved { observation: o } =>
-              oob_boot_handoff(
-                observation: o,
-                capability_row: candidate.capability_row,
-                username: username,
-                password_file: password_file,
-                selection: boot,
-              )
-          }
-      }
-  }
+  let outcome = oob_boot_handoff(
+    observation: candidate.binding.observation,
+    capability_row: candidate.binding.host.capability_row,
+    username: candidate.binding.account,
+    password_file: password_file,
+    selection: candidate.boot_selection,
+  )
   let ack = acknowledgement_of_handoff(outcome: outcome, issued_at: issued_at)
   let observation = observe_reset_return(
-    host: candidate.host as NonEmptyStr,
+    host: candidate.binding.host.host as NonEmptyStr,
     down_samples_max: host_reset_down_watch_samples,
     back_samples_max: host_reset_back_watch_samples,
   )
@@ -657,7 +609,7 @@ data host_reset_dispatch_mode_env: NonEmptyStr = "GUNBC_HOST_RESET_DISPATCH_MODE
 
 fn host_reset_return_attempt_exit(
   proof: UnitHoldProof?,
-  candidate: ManagedHost,
+  candidate: AdmittedResetSubject,
   observer: NonEmptyStr,
   subject: NonEmptyStr,
   route: ResetIssuanceRoute,
@@ -732,7 +684,7 @@ fn host_reset_return_wet() -> ProcessExit
             remedy: "the assigned subject has no roster row carrying its controller evidence",
           )
         Present { value: candidate } =>
-          match candidate.unit_hold {
+          match candidate.binding.host.unit_hold {
             ResetNoUnitHold =>
               host_reset_return_attempt_exit(proof: none, candidate: candidate, observer: observer, subject: subject, route: route, password_file: password_file_raw as NonEmptyStr)
             ResetUnitHoldRequired { key: k, store_host: h } =>

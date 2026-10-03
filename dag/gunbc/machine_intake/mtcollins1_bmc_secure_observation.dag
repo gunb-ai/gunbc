@@ -46,6 +46,8 @@ import gunbc.machine_intake_receipt { EvidenceRef }
 import gunbc.machine_intake_phase { DevelopmentAndTest, intake_qualification_policy }
 import gunbc.machine_intake_bmc_secure {
   BmcCredentialRotationObservation,
+  BmcSecured,
+  BmcSecureRefused,
   BmcSecureStanding,
   CredentialAccepted,
   CredentialRejected,
@@ -53,7 +55,6 @@ import gunbc.machine_intake_bmc_secure {
   PublishedCredentialLanProbe,
   PublishedCredentialRetired,
   RotationApplied,
-  bmc_secured_account,
   derive_bmc_secure,
   observed_bmc_credential_rotation,
 }
@@ -252,7 +253,12 @@ fn mtcollins1_bmc_secure_standing() -> BmcSecureStanding? {
 fn mtcollins1_secured_account() -> NonEmptyStr? {
   match mtcollins1_bmc_secure_standing() {
     Absent => none
-    Present { value: standing } => bmc_secured_account(standing: standing)
+    Present { value: standing } =>
+      match standing.outcome {
+        BmcSecured { endpoint: _, reference: r, evidence: _, latest_admitted_probe_at: _, published_credential: _ } =>
+          Present { value: r.account }
+        BmcSecureRefused { cause: _ } => none
+      }
   }
 }
 
