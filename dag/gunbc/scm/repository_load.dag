@@ -63,7 +63,6 @@ import gunbc.scm.object_shard_json { decode_object_shard, ObjectShardDecoded, Ob
 import gunbc.scm.object_store {
   ScmObject, ObjectId, ObjectStore, store_assemble_decoded, StoreAssembled, StoreAssemblyCollision,
   RosteredObject, rostered_store, store_rostered_lookup, find_object, scm_object_identity, scm_object_kind,
-  scm_object_kind_eq,
   store_admit_materialized, MaterializedAdmission, MaterializedAdmitted, MaterializedNotRostered,
   MaterializedKindDisagrees, MaterializedCollision,
 }
@@ -373,7 +372,7 @@ fn shard_objects_agree_with_roster(
           Present { value: row } =>
             if row.shard != shard {
               Present { value: join(["the object roster places ", digest, " in shard ", row.shard, " but shard ", shard, " holds it"], "") }
-            } else if !scm_object_kind_eq(left: row.kind, right: scm_object_kind(object: o)) {
+            } else if row.kind != scm_object_kind(object: o) {
               Present { value: join(["the object roster misstates the kind of ", digest], "") }
             } else {
               none
