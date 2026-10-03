@@ -387,7 +387,7 @@ fn local_store_index_key(family: ArtifactKindId) -> NonEmptyStr {
 
 type LocalStoreIndexRow {
   name: String
-  bytes: Int
+  bytes: ByteSize
   ordinal: Int
 }
 
@@ -403,7 +403,7 @@ type LocalStoreIndexDecode
 data local_store_empty_index: LocalStoreIndex = LocalStoreIndex { next_ordinal: 1, rows: [] }
 
 fn local_store_index_row_line(r: LocalStoreIndexRow) -> String {
-  join([r.name, r.bytes as String, r.ordinal as String], " ")
+  join([r.name, measure_count(m: r.bytes) as String, r.ordinal as String], " ")
 }
 
 fn local_store_index_encode(index: LocalStoreIndex) -> String {
@@ -430,7 +430,7 @@ fn local_store_index_row_decode(line: String) -> LocalStoreIndexRow? {
       Absent => none
       Present { value: b } => match local_store_digits_int(s: ordinal_text) {
         Absent => none
-        Present { value: o } => if name == "" { none } else { Present { value: LocalStoreIndexRow { name: name, bytes: b, ordinal: o } } }
+        Present { value: o } => if name == "" { none } else { Present { value: LocalStoreIndexRow { name: name, bytes: byte_size(count: b), ordinal: o } } }
       }
     }
   }
@@ -474,7 +474,7 @@ fn local_store_artifact_store(budget: ByteSize, index: LocalStoreIndex) -> Artif
   ArtifactStore {
     budget: budget,
     next_ordinal: index.next_ordinal,
-    rows: index.rows |> map(r => ArtifactRow { key: local_store_row_key(name: r.name), artifact_bytes: byte_size(count: r.bytes), last_use_ordinal: r.ordinal })
+    rows: index.rows |> map(r => ArtifactRow { key: local_store_row_key(name: r.name), artifact_bytes: r.bytes, last_use_ordinal: r.ordinal })
   }
 }
 
@@ -484,7 +484,7 @@ fn local_store_index_of(store: ArtifactStore, names: List<String>) -> LocalStore
     next_ordinal: store.next_ordinal,
     rows: store.rows |> fold(init: [], f: (acc, row) => match names |> filter(n => local_store_row_key(name: n) == row.key) |> first {
       Absent => acc
-      Present { value: n } => acc |> list_push(LocalStoreIndexRow { name: n, bytes: measure_count(m: row.artifact_bytes), ordinal: row.last_use_ordinal })
+      Present { value: n } => acc |> list_push(LocalStoreIndexRow { name: n, bytes: row.artifact_bytes, ordinal: row.last_use_ordinal })
     })
   }
 }
