@@ -36,7 +36,6 @@ fn w_profile(ceiling: Nat, cold: Nat, admission: VllmSchedulerAdmissionRequest) 
     served_alias: "glm-5.3-flash" as NonEmptyStr,
     prefix_caching: PrefixCachingExplicit { enabled: true },
     scheduler_admission: admission,
-    indexer_kv_dtype: IndexerKvDtypeOmitted,
   )
 }
 
