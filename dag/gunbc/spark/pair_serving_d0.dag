@@ -1,5 +1,6 @@
 module gunbc.spark.pair_serving_d0
 
+import gunbc.auth.standing_operator_grant { StandingOperatorGrant, group_a_dev_standing_grant, standing_grant_covers, StandingD0ReleaseToFleet }
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs, Port, Timestamp }
 import std.nat { Nat }
 import std.measure { Second, second, second_count }
@@ -729,13 +730,47 @@ type AdmittedD0Grant sole_constructor {
   binding: ContentHash
 }
 
+// A STANDING OPERATOR GRANT ANSWERS FOR EXACTLY THE REQUESTS IT COVERS (gunbc.auth.standing_operator_grant):
+// a release-to-fleet of the grant's group whose subject hosts are all the grant's. For such a request the
+// door admits the grant minted over that exact request, in place of filing with the broker and polling --
+// on a first run and on a rerun alike, since the ruling, unlike a broker decision, is not consumed by the
+// lifecycle that first used it; the durable claim still decides whether a rerun may continue. Every other
+// request -- a suspension, another group, a host outside the grant -- files and polls as before.
+data d0_standing_grants: List<StandingOperatorGrant> = [group_a_dev_standing_grant]
+
+fn d0_standing_grant_for(request: AuthorizationRequest<D0Subject>) -> StandingOperatorGrant? {
+  d0_standing_grant_for_subject(subject: request.subject)
+}
+
+fn d0_standing_grant_for_subject(subject: D0Subject) -> StandingOperatorGrant? {
+  match subject.operation {
+    D0SuspendForSuccessor { successor: _, cleanup: _, term: _ } => none
+    D0ReleaseToFleet { cause: _, approval: _ } =>
+      first(filter(d0_standing_grants, g => standing_grant_covers(g: g, group: subject.group, effect: StandingD0ReleaseToFleet, hosts: subject.hosts)))
+  }
+}
+
+// THE LIFECYCLE TERM OF THE BINDING (side-chat review of #13067). A broker grant's lifecycle is its one
+// decided window, so its expiry is in the binding and a re-issued grant with a later expiry is another
+// lifecycle. A STANDING grant is minted per run with that run's live window, so its expiry would make every
+// rerun a new lifecycle: a crash after the pending write (or after ReleasedToFleet, before the claim
+// completes) could never be resumed. Its lifecycle is the grant's identity, which every run of the
+// request derives the same way. The run's window still bounds the run (authorize checks it); it is only
+// kept out of the identity. A broker grant's binding text is byte-identical to before.
+fn d0_binding_lifecycle_term(grant: OperatorGrant<D0Subject>) -> String {
+  match d0_standing_grant_for_subject(subject: grant.subject) {
+    Present { value: g } => join(["\nstanding_grant=", g.identity as String], "")
+    Absent => join(["\nexpires_at=", grant.expires_at], "")
+  }
+}
+
 fn d0_binding_text(grant: OperatorGrant<D0Subject>, claim_generation: CasGeneration) -> String {
   join([
     "escalation=", grant.escalation_id as String,
     "\nattempt=", grant.attempt as String,
     "\nintent=", serialize_content_hash(hash: grant.intent_hash) as String,
     "\n", d0_subject_wire(subject: grant.subject),
-    "\nexpires_at=", grant.expires_at,
+    d0_binding_lifecycle_term(grant: grant),
     "\nclaim_generation=", to_string(cas_generation_count(g: claim_generation)),
     "\n",
   ], "")

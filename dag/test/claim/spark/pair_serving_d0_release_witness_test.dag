@@ -5,7 +5,7 @@ import std.types { String, NonEmptyStr, List }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
 import std.measure { kibibyte, mebibyte, second }
-import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, content_hash_equal }
+import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, content_hash_equal, content_hash_of_value }
 import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpected }
 import product.placement_supply { HostIdentity }
 import extdeps.systemd { Active }
@@ -22,8 +22,8 @@ import gunbc.spark.pair_serving_authority {
   PairServingGroupAuthority, PairServingActive, ReleasedToFleet, FencedRefusal, PairRealizationUnestablished, pair_serving_committed_hosts,
 }
 import std.scoped_authorization { OperatorGrant, AttemptIdentity, ClaimedBy, authorization_scope_eq, parse_intent_scopes, AuthorizationRequest, authorize, AuthorizationPermitted, AuthorizationRefused }
-import gunbc.spark.pair_serving_d0_door { d0_standing_grant_for }
-import gunbc.auth.standing_operator_grant { group_a_dev_standing_grant, standing_grant_covers, standing_grant_authorization, StandingImageProduce }
+import gunbc.spark.pair_serving_d0 { d0_standing_grant_for, d0_binding_text }
+import gunbc.auth.standing_operator_grant { group_a_dev_standing_grant, standing_grant_covers, standing_grant_authorization, StandingArmLaunch }
 import gunbc.spark.pair_serving_d0 {
   D0Subject, D0SuspendForSuccessor, D0ReleaseToFleet, RankVacancyReading, RankOccupancyReading, D0Observation,
   IncumbentReading, IncumbentDidNotAnswer, IncumbentAnsweredUnread, IncumbentRouteUnread,
@@ -31,11 +31,12 @@ import gunbc.spark.pair_serving_d0 {
   D0Decision, D0DecidedRelease, D0DecidedFence, D0DecidedSuspend, D0DecidedRestore, D0HostNotQuiescent,
   d0_decide, d0_decision_next, d0_decision_is_eligible,
   d0_intent_text, parse_d0_intent_text, d0_release_scope, d0_required_scope,
-  D0ClaimAt, D0Recovery, D0RecoverAbort, d0_recovery,
+  D0ClaimAt, D0Recovery, D0RecoverAbort, D0RecoverResume, D0RecoverComplete, d0_recovery,
   d0_single_lifecycle_admits_under, d0_release_lifecycle_escalation_id,
 }
 import gunbc.spark.pair_serving_d0_authorization { d0_release_row_for, d0_live_subject_for, D0SubjectFor }
 import gunbc.spark.pair_serving_authority_log { AuthorityTransitionRecord }
+import test.claim.spark.pair_serving_d0_witness { d0w_rec_of, d0w_pending }
 
 // ── THE RELEASE DECISION, OVER SUPPLIED READINGS ────────────────────────────────────────────────────
 //
@@ -296,6 +297,91 @@ test fn rw_an_effect_outside_the_scope_is_not_covered() -> Bool {
       destructive: true,
     }
     foreign_host && match d0_standing_grant_for(request: suspend) { Present { value: _ } => false  Absent => true }
-      && !standing_grant_covers(g: group_a_dev_standing_grant, group: FabricGroupA, effect: StandingImageProduce, hosts: [] as List<HostIdentity>)
+      && !standing_grant_covers(g: group_a_dev_standing_grant, group: FabricGroupA, effect: StandingArmLaunch, hosts: [] as List<HostIdentity>)
+  })
+}
+
+// ── A STANDING GRANT IS ONE LIFECYCLE ACROSS RERUNS (side-chat review of #13067) ────────────────────
+//
+// Each run mints the standing grant with ITS OWN live window, so the binding must not carry that window:
+// a crash after the pending write, or after ReleasedToFleet before the claim completed, must be finished by
+// a later rerun whose window differs. The binding text is what D0 digests (admitted_with_binding hashes
+// exactly this text), so equal texts are equal bindings. Supplied here at the recovery join's interface:
+// the lifecycle digests stand in for the SHA-256 of each run's text.
+fn rw_permitted(req: AuthorizationRequest<D0Subject>, issued: String, expires: String, at: String) -> OperatorGrant<D0Subject>? {
+  match d0_standing_grant_for(request: req) {
+    Absent => none
+    Present { value: g } =>
+      match authorize(authorization: standing_grant_authorization(g: g, request: req, issued: issued, expires: expires), request: req, observed_at: at) {
+        AuthorizationPermitted { grant: p } => Present { value: p }
+        AuthorizationRefused { cause: _ } => none
+      }
+  }
+}
+
+fn rw_two_runs(h: ContentHash, f: fn(String, String) -> Bool) -> Bool {
+  let req = rw_release_request(group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), h: h)
+  match rw_permitted(req: req, issued: "2026-10-03T05:10:00Z", expires: "2026-10-03T05:40:00Z", at: "2026-10-03T05:11:00Z") {
+    Absent => false
+    Present { value: first } => match rw_permitted(req: req, issued: "2026-10-03T09:00:00Z", expires: "2026-10-03T09:30:00Z", at: "2026-10-03T09:01:00Z") {
+      Absent => false
+      Present { value: later } => f(d0_binding_text(grant: first, claim_generation: 1), d0_binding_text(grant: later, claim_generation: 1))
+    }
+  }
+}
+
+// THE BINDING: two runs of one standing release with different windows bind the same lifecycle and name
+// the grant; the expiry is not in it. (A broker grant keeps its expiry: d0_binding_lifecycle_term's other
+// arm, unchanged, exercised by the suspension witnesses.)
+test fn rw_a_standing_release_binds_one_lifecycle_across_windows() -> Bool {
+  rw_with(scenario: fn(h) {
+    rw_two_runs(h: h, f: fn(a, b) {
+      a == b && string_contains(s: a, pattern: "standing_grant=group-a-dev-standing-grant-2026-10-03") && !string_contains(s: a, pattern: "expires_at=")
+    })
+  })
+}
+
+// PENDING -> A LATER RERUN RESUMES: the first run wrote the pending state under its binding and died; the
+// later run, with a later window, presents its own binding and the recovery join resumes.
+test fn rw_a_pending_release_is_resumed_by_a_later_rerun() -> Bool {
+  rw_with(scenario: fn(h) {
+    rw_two_runs(h: h, f: fn(a, b) {
+      let first = content_hash_of_value(value: a as NonEmptyStr)
+      let later = content_hash_of_value(value: b as NonEmptyStr)
+      match d0_recovery(
+        claim: D0ClaimAt { state: ClaimedBy { attempt: "tx-rel" as AttemptIdentity, claimed_at: "2026-10-03T05:11:00Z" }, generation: 1 },
+        transaction: "tx-rel" as NonEmptyStr,
+        lifecycle: Present { value: later },
+        executor: "witness" as NonEmptyStr,
+        current: d0w_pending(tx: "tx-rel", h: first),
+        transitions: [d0w_rec_of(id: "e1", tx: "tx-rel", lifecycle: Present { value: first }, next: d0w_pending(tx: "tx-rel", h: first))],
+      ) {
+        D0RecoverResume { claim_generation: _ } => true
+        _ => false
+      }
+    })
+  })
+}
+
+// SETTLED RELEASE -> A LATER RERUN COMPLETES THE CLAIM: the release landed (ReleasedToFleet) and the run
+// died before completing its claim; the later run finds its own lifecycle's settling record and completes.
+test fn rw_a_settled_release_is_completed_by_a_later_rerun() -> Bool {
+  rw_with(scenario: fn(h) {
+    rw_two_runs(h: h, f: fn(a, b) {
+      let first = content_hash_of_value(value: a as NonEmptyStr)
+      let later = content_hash_of_value(value: b as NonEmptyStr)
+      let released = ReleasedToFleet { group: FabricGroupA, release_receipt: h }
+      match d0_recovery(
+        claim: D0ClaimAt { state: ClaimedBy { attempt: "tx-rel" as AttemptIdentity, claimed_at: "2026-10-03T05:11:00Z" }, generation: 1 },
+        transaction: "tx-rel" as NonEmptyStr,
+        lifecycle: Present { value: later },
+        executor: "witness" as NonEmptyStr,
+        current: released,
+        transitions: [d0w_rec_of(id: "e2", tx: "tx-rel", lifecycle: Present { value: first }, next: released)],
+      ) {
+        D0RecoverComplete { claim_generation: _, settled: _ } => true
+        _ => false
+      }
+    })
   })
 }

@@ -63,8 +63,11 @@ fn d0_live_subject(group: FabricGroup) -> D0SubjectStanding {
 // A RELEASE IS REQUESTED BY ITS ESCALATION, NEVER BY A WORD TYPED AT DISPATCH: the door builds a
 // release subject only for an escalation this list names, with the cause and the approval reference
 // written here and therefore in the intent the operator approves and the filing that freezes it. Every
-// other escalation is a suspension for the keyed successor, as before. The operator still decides the
-// filed request in the approvals app; a row here is what is asked, not the answer.
+// other escalation is a suspension for the keyed successor, as before. A row here is what is asked,
+// never the answer. The answer comes from one of two places: the operator deciding the filed request in
+// the approvals app, or, for a release whose group and every host a committed standing grant covers,
+// that grant (gunbc.spark.pair_serving_d0_door d0_standing_grant_for, classified by the census row
+// gunbc.auth.privileged_effect_census for that site). A covered request is never filed.
 type D0ReleaseRequestRow {
   escalation_id: NonEmptyStr
   group: FabricGroup
