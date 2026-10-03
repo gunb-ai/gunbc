@@ -329,19 +329,31 @@ fn algebra_inhabitance_field_declaration(inhabitance: Node, field: Symbol) -> Al
 // THE STRUCTURE IS READ AS WHAT IT MUST BE, AND ANY OTHER SHAPE IS MALFORMED -- never a plausible answer. A
 // structure is a Conj whose every child is an Authored BINDER; a field is declared only by a binder (a matching
 // name on a non-binder edge is malformed, not declared); a composing field must carry a structure (a composing
-// binder over an atom is malformed, not a structure lacking the field). Declared and Malformed both stop the
-// read: the first is the answer, the second makes every answer from this node untrustworthy.
+// binder over an atom is malformed, not a structure lacking the field). EVERY member is classified, and every
+// composing sub-structure validated, before an answer is given: per-member results combine with precedence
+// InhabitanceMalformed > FieldDeclared > FieldNotDeclared, so a declared field never excuses a malformed member
+// beside it or beneath it.
 fn algebra_structure_field_declaration(structure: Node, field: Symbol) -> AlgebraFieldDeclaration {
   match conj_children_optional(n: structure) {
     Absent => InhabitanceMalformed { cause: ^algebra_structure_not_a_conj }
     Present { value: members } =>
       fold(members, init: FieldNotDeclared, f: fn(acc, e) {
-        match acc {
-          FieldDeclared => acc
-          InhabitanceMalformed { cause: _ } => acc
-          FieldNotDeclared => algebra_structure_edge_field_declaration(e: e, field: field)
-        }
+        algebra_field_declaration_join(a: acc, b: algebra_structure_edge_field_declaration(e: e, field: field))
       })
+  }
+}
+
+// The precedence join: the first malformed cause wins, then a declaration, then absence.
+fn algebra_field_declaration_join(a: AlgebraFieldDeclaration, b: AlgebraFieldDeclaration) -> AlgebraFieldDeclaration {
+  match a {
+    InhabitanceMalformed { cause: _ } => a
+    FieldDeclared =>
+      match b {
+        InhabitanceMalformed { cause: _ } => b
+        FieldDeclared => a
+        FieldNotDeclared => a
+      }
+    FieldNotDeclared => b
   }
 }
 
@@ -351,16 +363,17 @@ fn algebra_structure_edge_field_declaration(e: Edge, field: Symbol) -> AlgebraFi
       match binder_node_parts(n: e.target) {
         Absent => InhabitanceMalformed { cause: ^algebra_structure_field_not_a_binder }
         Present { value: parts } =>
-          if name == field {
-            FieldDeclared
-          } else if algebra_field_composes_a_structure(name: name) {
-            match conj_children_optional(n: parts.type_node) {
-              Present { value: _ } => algebra_structure_field_declaration(structure: parts.type_node, field: field)
-              Absent => InhabitanceMalformed { cause: ^algebra_composing_field_not_a_structure }
+          algebra_field_declaration_join(
+            a: if name == field { FieldDeclared } else { FieldNotDeclared },
+            b: if algebra_field_composes_a_structure(name: name) {
+              match conj_children_optional(n: parts.type_node) {
+                Present { value: _ } => algebra_structure_field_declaration(structure: parts.type_node, field: field)
+                Absent => InhabitanceMalformed { cause: ^algebra_composing_field_not_a_structure }
+              }
+            } else {
+              FieldNotDeclared
             }
-          } else {
-            FieldNotDeclared
-          }
+          )
       }
     StructuralLabel { label: _ } => InhabitanceMalformed { cause: ^algebra_structure_edge_not_authored }
     Positional => InhabitanceMalformed { cause: ^algebra_structure_edge_not_authored }
