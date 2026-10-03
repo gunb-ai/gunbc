@@ -1859,8 +1859,6 @@ fn eval_transform_node(
       }
     ValueRuntimeInterpreter { interpreter: _ } =>
       outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
-    TransformRuntimeInterpreter { interpreter: _ } =>
-      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
     BranchRuntimeInterpreter { interpreter: _ } =>
       outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
     LoopRuntimeInterpreter { interpreter: _ } =>
