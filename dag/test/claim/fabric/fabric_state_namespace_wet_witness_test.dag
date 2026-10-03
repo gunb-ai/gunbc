@@ -1,0 +1,30 @@
+module test.claim.fabric.fabric_state_namespace_wet_witness
+
+import std.types { NonEmptyStr }
+import extdeps.shell
+import std.fabric_storage { FabricObject, FabricObjectStored, FabricObjectMissing, FabricHeadAdvanceRefused, ExpectHeadAbsent }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady, fabric_storage_file_put, fabric_storage_file_advance }
+import gunbc.fabric_storage_address { fabric_storage_state_file_root }
+
+// Real temp-directory stores, executed by the local-repo wet lane.
+// A known private object reference still cannot be aliased through the legacy public namespace.
+test fn witness_public_head_cannot_alias_private_state_object() -> Bool {
+  let directory = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_state_isolation.XXXXXX").path
+  if directory == "" { false } else {
+    let public_root = fabric_storage_file_root(root: directory as NonEmptyStr)
+    let private_root = fabric_storage_state_file_root(store_root: directory as NonEmptyStr)
+    match fabric_storage_file_root_ensure(root: public_root) {
+      FabricStorageRootReady => match fabric_storage_file_root_ensure(root: private_root) {
+        FabricStorageRootReady => match fabric_storage_file_put(root: private_root, object: FabricObject { links: [], body: "owner-private-record" }) {
+          FabricObjectStored { object: private_ref } => match fabric_storage_file_advance(root: public_root, name: "public-alias", expected: ExpectHeadAbsent, target: private_ref) {
+            FabricHeadAdvanceRefused { fault: FabricObjectMissing { object: _ } } => true
+            _ => false
+          }
+          _ => false
+        }
+        _ => false
+      }
+      _ => false
+    }
+  }
+}
