@@ -2,9 +2,9 @@ module gunbc.workspace_reservation_record
 
 import std.types { NonEmptyStr, String }
 import std.decl_ref { decl_ref }
-import gunbc.workspace_allocation { WorkspaceRequest, WorkspaceReservation, workspace_reservation_json, workspace_reservation_from_json, workspace_json_string }
-import extdeps.languages.json.emit { JsonValue, JsonString, json_object, json_kv, json_string }
-import extdeps.languages.json.parse { json_object_unique_member, JsonMemberFound, JsonMemberAbsent }
+import gunbc.workspace_allocation { WorkspaceRequest, WorkspaceReservation, workspace_reservation_json, workspace_reservation_from_json, workspace_json_string, workspace_json_member }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, json_object, json_kv, json_string }
+import extdeps.languages.json.parse { json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject }
 
 // The durable contract and codec do not import host acquisition. The preparation authority alone
 // mints a new plan; the existing privileged-document decoder retains the same wire validation.
@@ -30,20 +30,28 @@ fn workspace_reservation_plan_json(plan: WorkspaceReservationPlan) -> JsonValue 
 // This is not an HTTP payload decoder: callers load only their committed convergence artifact.
 fn workspace_reservation_plan_from_json(value: JsonValue) -> WorkspaceReservationPlan? {
   let selection_policy = match json_object_unique_member(v: value, key: "selection_policy") {
-    JsonMemberFound { value: member } => match member { JsonString { value: reference } => reference _ => "" }
+    JsonMemberFound { value: member } => match member {
+      JsonString { value: reference } => reference
+      JsonNull => ""
+      JsonBool { value: _ } => ""
+      JsonNumber { lexeme: _ } => ""
+      JsonArray { elements: _ } => ""
+      JsonObject { members: _ } => ""
+    }
     JsonMemberAbsent => "legacy-price-ranked"
-    _ => ""
+    JsonMemberDuplicated { count: _ } => ""
+    JsonMemberNotAnObject => ""
   }
   if selection_policy == "" { none } else {
   match workspace_json_string(value: value, key: "root") {
     Absent => none
     Present { value: root } => if root == "" { none } else {
-      match json_object_unique_member(v: value, key: "reservation") {
-        JsonMemberFound { value: body } => match workspace_reservation_from_json(value: body) {
+      match workspace_json_member(value: value, key: "reservation") {
+        Absent => none
+        Present { value: body } => match workspace_reservation_from_json(value: body) {
           Present { value: reservation } => Present { value: WorkspaceReservationPlan { root: root as NonEmptyStr, reservation: reservation, selection_policy: selection_policy as NonEmptyStr } }
           Absent => none
         }
-        _ => none
       }
     }
   }

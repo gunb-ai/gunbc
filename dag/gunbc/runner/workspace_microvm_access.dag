@@ -8,7 +8,7 @@ import std.algebra { trim }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import extdeps.exec.command { LocalExec }
-import extdeps.shell.exec { ProcessOutputPresent }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.ssh.openssh_client_commands { ssh_keyscan_command }
 import extdeps.network.ipv4 { render_ipv4_address }
 import gunbc.command_runner { run_shell_command_capture }
@@ -17,9 +17,9 @@ import gunbc.runner_microvm_network { runner_slot_network }
 import gunbc.runner_microvm_lifecycle { AttemptIdentity, in_flight_attempt_of_identity }
 import gunbc.runner_microvm_cell_readiness_store { encode_attempt }
 import extdeps.languages.json.emit { serialize_json }
-import gunbc.runner_microvm_cell_readiness { WorkspaceWorkload }
+import gunbc.runner_microvm_cell_readiness { WorkspaceWorkload, GitHubRunnerWorkload }
 import gunbc.runner_microvm_lifecycle_realize {
-  AttemptLaunch, VmmStarted, bind_attempt_console, AttemptConsoleBound,
+  AttemptLaunch, VmmStarted, bind_attempt_console, AttemptConsoleBound, AttemptConsoleUnbound, AttemptConsoleNotStarted,
 }
 
 type WorkspaceConnection sole_constructor {
@@ -83,7 +83,7 @@ fn workspace_connection_from_observations(
           WorkspaceConnectionUnavailable { reason: "guest bootstrap identity belongs to another allocation" }
         } else { workspace_connection_after_boot(identity: identity, gateway: gateway, systemd_invocation: systemd_invocation, console: console, scanned_keys: scanned_keys, gateway_known_host: gateway_known_host) }
       }
-    _ => WorkspaceConnectionUnavailable { reason: "attempt is not a workspace workload" }
+    GitHubRunnerWorkload { registration_id: _ } => WorkspaceConnectionUnavailable { reason: "attempt is not a workspace workload" }
   } }
 }
 
@@ -134,13 +134,16 @@ fn workspace_observe_connection(identity: AttemptIdentity, launch: AttemptLaunch
               } else {
                 workspace_connection_from_observations(identity: identity, gateway: gateway, systemd_invocation: invocation, console: log.stdout, scanned_keys: scanned, gateway_known_host: gateway_known_host)
               }
-              _ => WorkspaceConnectionUnavailable { reason: "workspace incarnation is no longer observable" }
+              AttemptConsoleUnbound { reason: _ } => WorkspaceConnectionUnavailable { reason: "workspace incarnation is no longer observable" }
+              AttemptConsoleNotStarted => WorkspaceConnectionUnavailable { reason: "workspace incarnation is no longer observable" }
             }
-          _ => WorkspaceConnectionUnavailable { reason: "workspace SSH service is not answering through the selected host" }
+          ProcessOutputAbsent => WorkspaceConnectionUnavailable { reason: "workspace SSH service is not answering through the selected host" }
+          ProcessRefused { exit_code: _, stderr: _ } => WorkspaceConnectionUnavailable { reason: "workspace SSH service is not answering through the selected host" }
         }
       }
     }
-    _ => WorkspaceConnectionUnavailable { reason: "workspace VMM has no attributable running invocation" }
+    AttemptConsoleUnbound { reason: _ } => WorkspaceConnectionUnavailable { reason: "workspace VMM has no attributable running invocation" }
+    AttemptConsoleNotStarted => WorkspaceConnectionUnavailable { reason: "workspace VMM has no attributable running invocation" }
   }
 }
 

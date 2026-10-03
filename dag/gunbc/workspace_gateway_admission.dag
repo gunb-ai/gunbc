@@ -4,7 +4,7 @@ import std.types { NonEmptyStr, String, Timestamp }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import extdeps.shell.exec { ProcessObservation, process_observation }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, serialize_json }
-import extdeps.languages.json.parse { json_field_string, json_field_int, FieldRead }
+import extdeps.languages.json.parse { json_field_string, json_field_int, json_field_value }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.workspace_gateway { workspace_fleet_gateway }
 import gunbc.runner_microvm_network { runner_slot_network }
@@ -13,7 +13,7 @@ import extdeps.dns.domain_name { parse_host_name }
 import std.error_primitives { Ok, Err }
 import extdeps.access.posix { PosixLoginName }
 import extdeps.network.ipv4 { render_ipv4_address }
-import extdeps.ssh.openssh_port_forwarding { ForwardingAdmissionSubject, ForwardingAdmission, ForwardingAdmitted, ForwardingAdministrativelyProhibited, ForwardingAdmissionUnobserved, SshLoginPrincipal, LocalForward, ssh_stdio_forward_admission }
+import extdeps.ssh.openssh_port_forwarding { ForwardingAdmissionSubject, ForwardingAdmission, ForwardingAdmitted, ForwardingAdministrativelyProhibited, ForwardingAdmissionUnobserved, SshLoginPrincipal, SshCertificatePrincipal, LocalForward, ssh_stdio_forward_admission }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
 
 // This is the observation of one real forwarding request, not a host-level declaration that
@@ -48,7 +48,7 @@ fn workspace_gateway_refusal(slot: RunnerSlotIdentity, evidence: WorkspaceGatewa
         let expected_target = render_ipv4_address(addr: runner_slot_network(slot: slot).guest_address)
         let principal_matches = match observed_subject.principal {
           SshLoginPrincipal { login: observed_login } => (observed_login as String) == (expected_gateway.host_account as String)
-          _ => false
+          SshCertificatePrincipal { principal: _ } => false
         }
         if !principal_matches || observed_subject.direction != LocalForward || observed_subject.target.port != 22 {
           Present { value: "forwarding observation names another principal, direction, or target port" }
@@ -99,34 +99,34 @@ fn workspace_gateway_evidence_json(evidence: WorkspaceGatewayEvidence) -> JsonVa
 fn workspace_gateway_evidence_decode(slot: RunnerSlotIdentity, doc: JsonValue) -> WorkspaceGatewayEvidence? {
   match workspace_gateway_subject(slot: slot) {
     Absent => none
-    Present { value: expected_subject } => match json_field_string(obj: doc, key: "subject") {
-      FieldRead { value: wire_subject } => if wire_subject != to_string(expected_subject) { none } else {
-        match json_field_string(obj: doc, key: "stdout") {
-          FieldRead { value: wire_stdout } => match json_field_string(obj: doc, key: "stderr") {
-            FieldRead { value: wire_stderr } => match json_field_int(obj: doc, key: "exit_code") {
-              FieldRead { value: wire_exit } => match json_field_string(obj: doc, key: "observed_at") {
-                FieldRead { value: wire_time } => if !utc_instant_is_canonical(t: wire_time) { none } else {
-                  match json_field_string(obj: doc, key: "known_host") {
-                    FieldRead { value: wire_known_host } => if wire_known_host == "" { none } else {
-                  let decoded = workspace_gateway_evidence(subject: expected_subject, known_host: wire_known_host as NonEmptyStr, observation: process_observation(exit_code: wire_exit, stdout: wire_stdout, stderr: wire_stderr), observed_at: wire_time)
-                  match json_field_string(obj: doc, key: "receipt") {
-                    FieldRead { value: wire_receipt } => if wire_receipt == (decoded.receipt as String) { Present { value: decoded } } else { none }
-                    _ => none
-                  }
+    Present { value: expected_subject } => match json_field_value(r: json_field_string(obj: doc, key: "subject")) {
+      Absent => none
+      Present { value: wire_subject } => if wire_subject != to_string(expected_subject) { none } else {
+        match json_field_value(r: json_field_string(obj: doc, key: "stdout")) {
+          Absent => none
+          Present { value: wire_stdout } => match json_field_value(r: json_field_string(obj: doc, key: "stderr")) {
+            Absent => none
+            Present { value: wire_stderr } => match json_field_value(r: json_field_int(obj: doc, key: "exit_code")) {
+              Absent => none
+              Present { value: wire_exit } => match json_field_value(r: json_field_string(obj: doc, key: "observed_at")) {
+                Absent => none
+                Present { value: wire_time } => if !utc_instant_is_canonical(t: wire_time) { none } else {
+                  match json_field_value(r: json_field_string(obj: doc, key: "known_host")) {
+                    Absent => none
+                    Present { value: wire_known_host } => if wire_known_host == "" { none } else {
+                      let decoded = workspace_gateway_evidence(subject: expected_subject, known_host: wire_known_host as NonEmptyStr, observation: process_observation(exit_code: wire_exit, stdout: wire_stdout, stderr: wire_stderr), observed_at: wire_time)
+                      match json_field_value(r: json_field_string(obj: doc, key: "receipt")) {
+                        Absent => none
+                        Present { value: wire_receipt } => if wire_receipt == (decoded.receipt as String) { Present { value: decoded } } else { none }
+                      }
                     }
-                    _ => none
                   }
                 }
-                _ => none
               }
-              _ => none
             }
-            _ => none
           }
-          _ => none
         }
       }
-      _ => none
     }
   }
 }

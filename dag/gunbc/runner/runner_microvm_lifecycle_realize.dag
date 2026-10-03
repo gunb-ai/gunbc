@@ -6,8 +6,8 @@ import extdeps.virtualization.firecracker { FirecrackerVmConfig, firecracker_vm_
 
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.nat { Nat }
-import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady }
-import extdeps.clock { clock_unix_millis_read, epoch_secs_of_millis, ClockUnixMillisObserved }
+import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
+import extdeps.clock { clock_unix_millis_read, epoch_secs_of_millis, ClockUnixMillisObserved, ClockUnixMillisRefused }
 import extdeps.tools.gnu_coreutils { timeout_command }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -1154,10 +1154,10 @@ fn attempt_jailer_at_launch(receipt: AttemptStagingReceipt) -> ArgvCommand? {
         let remaining = expiry - epoch_secs_of_millis(millis: now)
         if remaining <= 0 { none } else { match checked_int_magnitude(a: remaining) {
           CheckedNatReady { value: duration } => Present { value: timeout_command(duration: second(count: duration), kill_after: second(count: 5), command: receipt.jailer) }
-          _ => none
+          CheckedNatOverflow { cause: _ } => none
         } }
       }
-      _ => none
+      ClockUnixMillisRefused { detail: _ } => none
     }
   }
 }

@@ -7,13 +7,26 @@ import product.fabric.execution { ReservationRef }
 import product.fabric.demand { BudgetAccountId }
 import extdeps.accounting.encumbrance { Encumbrance, EncumbranceLedger, Held, Expended, Released }
 import extdeps.accounting.budget { Appropriation }
-import extdeps.languages.json.emit { JsonValue, JsonString, JsonNumber, JsonArray, json_object, json_kv, json_string, json_int, json_array }
-import extdeps.languages.json.parse { json_object_unique_member, JsonMemberFound }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonString, JsonNumber, JsonArray, JsonObject, json_object, json_kv, json_string, json_int, json_array }
+import extdeps.languages.json.parse { json_field, json_field_string, json_field_int, json_field_value }
 fn workspace_money_string(v: JsonValue, key: String) -> String? {
-  match json_object_unique_member(v: v, key: key) { JsonMemberFound { value: JsonString { value: s } } => Present { value: s } _ => none }
+  json_field_value(r: json_field_string(obj: v, key: key))
 }
 fn workspace_money_int(v: JsonValue, key: String) -> Int? {
-  match json_object_unique_member(v: v, key: key) { JsonMemberFound { value: JsonNumber { lexeme: s } } => parse_int(s: s as String) _ => none }
+  json_field_value(r: json_field_int(obj: v, key: key))
+}
+fn workspace_money_array(v: JsonValue, key: String) -> List<JsonValue>? {
+  match json_field_value(r: json_field(obj: v, key: key)) {
+    Absent => none
+    Present { value: member } => match member {
+      JsonArray { elements: elements } => Present { value: elements }
+      JsonNull => none
+      JsonBool { value: _ } => none
+      JsonNumber { lexeme: _ } => none
+      JsonString { value: _ } => none
+      JsonObject { members: _ } => none
+    }
+  }
 }
 fn workspace_money_entries_json(e: Encumbrance<Currency, Micro>) -> JsonValue {
   let fields = [json_kv(key: "reference", value: json_string(s: e.reference as String))]
@@ -60,11 +73,11 @@ fn workspace_money_from_json(value: JsonValue) -> MoneyAccount? {
   match workspace_money_string(v: value, key: "account") { Absent => none Present { value: account } =>
   match workspace_money_string(v: value, key: "currency") { Absent => none Present { value: currency } =>
   match workspace_money_int(v: value, key: "ceiling") { Absent => none Present { value: ceiling } =>
-  match json_object_unique_member(v: value, key: "entries") { JsonMemberFound { value: JsonArray { elements: entries } } =>
-  match json_object_unique_member(v: value, key: "leases") { JsonMemberFound { value: JsonArray { elements: leases } } => {
+  match workspace_money_array(v: value, key: "entries") { Absent => none Present { value: entries } =>
+  match workspace_money_array(v: value, key: "leases") { Absent => none Present { value: leases } => {
     let es = fold(entries, init: [], f: (acc, e) => match workspace_money_entry_decode(v: e) { Absent => acc Present { value: parsed } => acc + [parsed] })
     let ls = fold(leases, init: [], f: (acc, l) => match workspace_money_lease_decode(v: l) { Absent => acc Present { value: parsed } => acc + [parsed] })
     if account == "" || ceiling < 0 || (currency != "USD" && currency != "EUR") || es.count() != entries.count() || ls.count() != leases.count() { none }
     else { Present { value: MoneyAccount { account: account as BudgetAccountId, currency: if currency == "USD" { Usd } else { Eur }, ledger: EncumbranceLedger { appropriation: Appropriation { ceiling: money_amount_micro(count: ceiling) }, entries: es }, leases: ls } } }
-  } _ => none } _ => none } } } }
+  } } } } } }
 }

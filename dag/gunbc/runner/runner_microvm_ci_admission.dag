@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr }
 import product.fabric.work { ControlPlaneCapacity }
 import gunbc.fabric_executor_class { ExecutorSanction, ExecutorSanctioned, ExecutorUnclassified }
 import gunbc.runner_microvm_cell_readiness {
-  CellIncarnationAdmission, CellIncarnationAdmitted, CellRecoveryRequired, CellBoundAttempt,
+  CellIncarnationAdmission, CellIncarnationAdmitted, CellRecoveryRequired, CellWithdrawn, HostWithdrawn, CellBoundAttempt,
   GitHubRunnerWorkload, WorkspaceWorkload,
 }
 
@@ -36,6 +36,7 @@ fn microvm_ci_admission(executor: NonEmptyStr, sanction: ExecutorSanction,
         MicrovmCiAdmissionRefused { reason: "executor purpose does not admit a new CI launch" }
       } else { MicrovmCiLaunchAdmitted }
     } }
-    _ => MicrovmCiAdmissionRefused { reason: "cell readiness does not admit a new incarnation" }
+    CellWithdrawn { cell: _, withdrawal: _ } => MicrovmCiAdmissionRefused { reason: "cell readiness does not admit a new incarnation" }
+    HostWithdrawn { withdrawal: _ } => MicrovmCiAdmissionRefused { reason: "cell readiness does not admit a new incarnation" }
   }
 }

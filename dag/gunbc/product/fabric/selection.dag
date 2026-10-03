@@ -1454,12 +1454,18 @@ fn select_resource_budget_supply<P>(
         && money_amount_micro_count(m: offer_quote_amount(q: candidate.offer.quote)) == 0
         && (match offer_fungibility_for(requirements: requirements, offer: candidate.offer) {
           Fungible => true
-          _ => false
+          TrustDomainMismatch { required: _, offered: _ } => false
+          CapabilitiesNotOffered { required: _, offered: _ } => false
+          IsolationNotProvided { missing: _ } => false
+          ShapeAxesNotCovered { unmet: _ } => false
         })
         && (match permit_standing(permit: candidate.permit, offer: candidate.offer.id,
           route: candidate.offer.route, demand: demand, work: work) {
           PermitAuthorizesUse => true
-          _ => false
+          PermitNamesAnotherOfferThan { permit_names: _ } => false
+          PermitNamesAnotherRouteThan => false
+          PermitNamesAnotherWorkThan { permit_work: _, subject_work: _ } => false
+          PermitNamesAnotherDemandThan { permit_demand: _, subject_demand: _ } => false
         })
         && (match candidate.dispatch.availability {
           AvailableIndefinitely { delay, receipt: _ } => second_count(s: delay) == 0

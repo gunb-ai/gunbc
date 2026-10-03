@@ -8,7 +8,7 @@ import gunbc.fleet_ssh_access { operator_ssh_principal }
 import std.resources { Filesystem }
 import extdeps.exec.command { LocalExec }
 import extdeps.ssh.openssh_client_commands { ssh_keygen_fingerprint_command }
-import extdeps.tools.stat { stat_owner_uid_command, stat_mode_command, stat_field_reading, StatFieldRead }
+import extdeps.tools.stat { stat_owner_uid_command, stat_mode_command, stat_field_reading, StatFieldRead, StatFieldUnread }
 import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
 import std.measure { byte_size_count, gibibyte_to_byte_size }
@@ -72,8 +72,8 @@ fn workspace_public_key(reference: NonEmptyStr, text: String) -> WorkspacePublic
 fn workspace_public_key_from_file(reference: NonEmptyStr, path: String) -> WorkspacePublicKeyAdmission {
   let uid = stat_field_reading(outcome: run_shell_command_capture(command: stat_owner_uid_command(path: path), transport: LocalExec))
   let mode = stat_field_reading(outcome: run_shell_command_capture(command: stat_mode_command(path: path), transport: LocalExec))
-  let owned = match uid { StatFieldRead { value: value } => value == "0" _ => false }
-  let restricted = match mode { StatFieldRead { value: value } => value == "400" || value == "600" || value == "644" _ => false }
+  let owned = match uid { StatFieldRead { value: value } => value == "0" StatFieldUnread { detail: _ } => false }
+  let restricted = match mode { StatFieldRead { value: value } => value == "400" || value == "600" || value == "644" StatFieldUnread { detail: _ } => false }
   if !owned || !restricted { WorkspacePublicKeyNotAdmitted { reason: "workspace public-key catalog file is not root-owned and protected against other writers" } }
   else {
     let read = Filesystem.Read(path: path)

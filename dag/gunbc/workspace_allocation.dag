@@ -13,12 +13,12 @@ import product.fabric.identity { FabricIdentity, WorkKey, ExecutionAttemptKey, D
 import product.fabric.budget { MoneyAccount }
 import gunbc.workspace_money_codec { workspace_money_json, workspace_money_from_json }
 import product.fabric.memory_grant { MemoryGrant }
-import gunbc.fabric_memory_grant_policy { MicroVmMemoryGrantAuthority, MicroVmMemoryGrantPolicy, MicroVmMemoryGrantIssue, MemoryGrantIssued, microvm_memory_grant }
+import gunbc.fabric_memory_grant_policy { MicroVmMemoryGrantAuthority, MicroVmMemoryGrantPolicy, MicroVmMemoryGrantIssue, MemoryGrantIssued, GrantRefusedUnrepresentable, GrantRefusedUnstatedAxisWithoutPermit, GrantRefusedByLaw, microvm_memory_grant }
 import product.fabric.work { ExecutionRequirements, Shape, HardRequirements, CustomerExecutableCapacity, Work, WorkContract, MaterializedProgram, SourceManifestRef, ArtifactManifestRef, declared_terminal_obligations, work_for }
 import product.fabric.envelope { ResourceEnvelope, CpuRequirement, MemoryRequirement }
 import product.fabric.isolation { tenant_workload_isolation_requirement }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, serialize_json }
-import extdeps.languages.json.parse { json_object_unique_member, JsonMemberFound, JsonString, JsonNumber }
+import extdeps.languages.json.parse { json_field, json_field_string, json_field_int, json_field_value }
 
 // Fixed demo policy: disposable disk, one hour lease, exact guest grants.
 type WorkspaceProfile = SmallWorkspace | LargeWorkspace
@@ -99,16 +99,13 @@ fn workspace_memory_grant(request: WorkspaceRequest, work: FabricIdentity<NonEmp
 }
 
 fn workspace_json_string(value: JsonValue, key: String) -> String? {
-  match json_object_unique_member(v: value, key: key) {
-    JsonMemberFound { value: member } => match member { JsonString { value: text } => Present { value: text } _ => none }
-    _ => none
-  }
+  json_field_value(r: json_field_string(obj: value, key: key))
 }
 fn workspace_json_int(value: JsonValue, key: String) -> Int? {
-  match json_object_unique_member(v: value, key: key) {
-    JsonMemberFound { value: member } => match member { JsonNumber { lexeme: text } => parse_int(s: text as String) _ => none }
-    _ => none
-  }
+  json_field_value(r: json_field_int(obj: value, key: key))
+}
+fn workspace_json_member(value: JsonValue, key: String) -> JsonValue? {
+  json_field_value(r: json_field(obj: value, key: key))
 }
 fn workspace_request_json(request: WorkspaceRequest) -> JsonValue {
   json_object(members: [
@@ -176,8 +173,9 @@ fn workspace_reservation_json(reservation: WorkspaceReservation) -> JsonValue {
 
 // Decode through the same fixed grant policy; never cast a serialized number into authority.
 fn workspace_reservation_from_json(value: JsonValue) -> WorkspaceReservation? {
-  match json_object_unique_member(v: value, key: "request") {
-    JsonMemberFound { value: request_json } => match workspace_request_from_json(value: request_json) {
+  match workspace_json_member(value: value, key: "request") {
+    Absent => none
+    Present { value: request_json } => match workspace_request_from_json(value: request_json) {
       Absent => none
       Present { value: decoded_request } => {
  match workspace_json_string(value: value, key: "host") { Absent => none Present { value: wire_host } => {
@@ -187,7 +185,7 @@ fn workspace_reservation_from_json(value: JsonValue) -> WorkspaceReservation? {
  match workspace_json_string(value: value, key: "work_key") { Absent => none Present { value: wk } => {
  match workspace_json_string(value: value, key: "attempt_principal") { Absent => none Present { value: ap } => {
  match workspace_json_string(value: value, key: "attempt_key") { Absent => none Present { value: ak } => {
- match json_object_unique_member(v: value, key: "money_account") { JsonMemberFound { value: account_json } => match workspace_money_from_json(value: account_json) { Absent => none Present { value: decoded_money_account } => {
+ match workspace_json_member(value: value, key: "money_account") { Absent => none Present { value: account_json } => match workspace_money_from_json(value: account_json) { Absent => none Present { value: decoded_money_account } => {
  match workspace_json_int(value: value, key: "money_generation") { Absent => none Present { value: mg } => {
  match workspace_json_string(value: value, key: "demand_principal") { Absent => none Present { value: dp } => {
  match workspace_json_string(value: value, key: "demand_key") { Absent => none Present { value: dk } => {
@@ -203,7 +201,9 @@ fn workspace_reservation_from_json(value: JsonValue) -> WorkspaceReservation? {
       generation: wire_generation, grant: grant, work: work,
       demand: FabricIdentity { principal: dp as NonEmptyStr, key: dk as DemandKey }, offer: FabricIdentity { principal: op as NonEmptyStr, key: ok as OfferKey }, money_account: decoded_money_account, money_generation: mg,
     } }
-    _ => none
+    GrantRefusedUnrepresentable { sizing: _ } => none
+    GrantRefusedUnstatedAxisWithoutPermit => none
+    GrantRefusedByLaw { refusal: _ } => none
   }
  } }
  }
@@ -213,7 +213,7 @@ fn workspace_reservation_from_json(value: JsonValue) -> WorkspaceReservation? {
  } }
  } }
  } }
- } } _ => none }
+ } } }
  } }
  } }
  } }
@@ -223,7 +223,6 @@ fn workspace_reservation_from_json(value: JsonValue) -> WorkspaceReservation? {
  } }
       }
     }
-    _ => none
   }
 }
 

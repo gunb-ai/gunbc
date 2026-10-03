@@ -16,12 +16,13 @@ import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.squashfs_tools { unsquashfs_extract_command }
 import extdeps.tools.e2fsprogs { Ext4, mke2fs_populate_command }
 import extdeps.posix.test_utility { test_executable_command }
-import extdeps.tools.stat { stat_owner_uid_command, stat_mode_command, stat_field_reading, StatFieldRead }
+import extdeps.tools.stat { stat_owner_uid_command, stat_mode_command, stat_field_reading, StatFieldRead, StatFieldUnread }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
 import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted }
 import gunbc.microvm_guest_artifacts {
   runner_guest_kernel_artifact, runner_guest_base_rootfs_artifact,
   runner_guest_base_artifact_path, guest_artifact_verdict, ArtifactMatchesPin,
+  ArtifactUnpinnedFirstContact, ArtifactBuildReceipt, ArtifactContradictsPin, ArtifactNotMeasured,
 }
 
 // Workspace images reuse the pinned vendor kernel/base, never the Actions runner image.
@@ -41,8 +42,8 @@ type WorkspaceImageProtectedSources sole_constructor { kernel: String, rootfs: S
 fn workspace_image_file_protected(path: String) -> Bool {
   let uid = stat_field_reading(outcome: run_shell_command_capture(command: stat_owner_uid_command(path: path), transport: LocalExec))
   let mode = stat_field_reading(outcome: run_shell_command_capture(command: stat_mode_command(path: path), transport: LocalExec))
-  (match uid { StatFieldRead { value: value } => value == "0" _ => false })
-    && (match mode { StatFieldRead { value: value } => value == "400" || value == "444" || value == "600" || value == "644" _ => false })
+  (match uid { StatFieldRead { value: value } => value == "0" StatFieldUnread { detail: _ } => false })
+    && (match mode { StatFieldRead { value: value } => value == "400" || value == "444" || value == "600" || value == "644" StatFieldUnread { detail: _ } => false })
 }
 
 fn verify_workspace_image(kernel: String, rootfs: String, expected_sha256: NonEmptyStr) -> WorkspaceImageAdmission {
@@ -63,7 +64,10 @@ fn verify_workspace_image_bytes(sources: WorkspaceImageProtectedSources, expecte
       } else { WorkspaceImageRefused { reason: "workspace image contradicts the admitted content pin" } }
       Sha256FileDigestUnavailable { path: _, reason: r } => WorkspaceImageRefused { reason: r }
     }
-    _ => WorkspaceImageRefused { reason: "workspace kernel does not match the shared pinned kernel" }
+    ArtifactUnpinnedFirstContact { digest_hex: _ } => WorkspaceImageRefused { reason: "workspace kernel does not match the shared pinned kernel" }
+    ArtifactBuildReceipt { digest_hex: _ } => WorkspaceImageRefused { reason: "workspace kernel does not match the shared pinned kernel" }
+    ArtifactContradictsPin { expected_hex: _, observed_hex: _ } => WorkspaceImageRefused { reason: "workspace kernel does not match the shared pinned kernel" }
+    ArtifactNotMeasured { reason: _ } => WorkspaceImageRefused { reason: "workspace kernel does not match the shared pinned kernel" }
   }
 }
 
@@ -154,7 +158,10 @@ fn workspace_image_build(root: String) -> Bool {
     ArtifactMatchesPin => if workspace_image_run_commands(commands: workspace_image_tree_commands(root: root)) {
       workspace_image_write_tree(root: root)
     } else { false }
-    _ => false
+    ArtifactUnpinnedFirstContact { digest_hex: _ } => false
+    ArtifactBuildReceipt { digest_hex: _ } => false
+    ArtifactContradictsPin { expected_hex: _, observed_hex: _ } => false
+    ArtifactNotMeasured { reason: _ } => false
   }
 }
 
@@ -165,7 +172,7 @@ fn workspace_image_tree_ownership(root: String) -> Bool {
   all([tree, concat(tree, "/root"), concat(tree, "/usr/sbin/sshd")], path =>
     match stat_field_reading(outcome: run_shell_command_capture(command: stat_owner_uid_command(path: path), transport: LocalExec)) {
       StatFieldRead { value: owner } => owner == "0"
-      _ => false
+      StatFieldUnread { detail: _ } => false
     }
   )
 }

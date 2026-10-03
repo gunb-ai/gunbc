@@ -5,7 +5,7 @@ import std.decl_ref { decl_ref }
 import std.types { String, NonEmptyStr, Timestamp, Bool }
 import std.durable_compare_and_set { CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent, CasCommitted, CasPreconditionFailed, CasStoreRefused }
 import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
-import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string, FieldRead, FieldAbsent }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string, FieldRead, FieldAbsent, FieldMalformed }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fabric_storage_client { FabricStorageBinding }
 import gunbc.durable_cas_fabric_storage { fabric_storage_observe_cas_slot, fabric_storage_compare_and_set }
@@ -37,10 +37,12 @@ fn workspace_gateway_stored_decode(slot: RunnerSlotIdentity, wire: NonEmptyStr) 
                 Present { value: WorkspaceGatewayStored { observed_at: at,
                   reading: WorkspaceGatewayEvidenceUnavailable { reason: reason as NonEmptyStr } } }
               }
-              _ => none
+              FieldAbsent => none
+              FieldMalformed { cause: _ } => none
             }
           }
-          _ => none
+          FieldAbsent => none
+          FieldMalformed { cause: _ } => none
         }
       }
       FieldAbsent => match workspace_gateway_evidence_decode(slot: slot, doc: doc) {
@@ -48,7 +50,7 @@ fn workspace_gateway_stored_decode(slot: RunnerSlotIdentity, wire: NonEmptyStr) 
         Present { value: decoded } => Present { value: WorkspaceGatewayStored {
           observed_at: decoded.observed_at, reading: WorkspaceGatewayEvidenceRead { evidence: decoded } } }
       }
-      _ => none
+      FieldMalformed { cause: _ } => none
     }
   }
 }
@@ -90,9 +92,9 @@ fn workspace_gateway_observation_supersedes(prior: WorkspaceGatewayStored, next:
   elapsed > 0 || (elapsed == 0 && (match prior.reading {
     WorkspaceGatewayEvidenceRead { evidence: _ } => match next.reading {
       WorkspaceGatewayEvidenceUnavailable { reason: _ } => true
-      _ => false
+      WorkspaceGatewayEvidenceRead { evidence: _ } => false
     }
-    _ => false
+    WorkspaceGatewayEvidenceUnavailable { reason: _ } => false
   }))
 }
 

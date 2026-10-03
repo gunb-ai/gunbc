@@ -3,12 +3,12 @@ module gunbc.workspace_allocation_admission
 import std.types { NonEmptyStr, String, Timestamp, List }
 import gunbc.workspace_allocation { WorkspaceRequest, workspace_profile_parse, workspace_policy_ref, workspace_lease_seconds }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
-import std.access { AccessDecision, Permit, AccessActionNotGranted, decision_meet }
+import std.access { AccessDecision, Permit, Deny, AccessActionNotGranted, decision_meet }
 import extdeps.http.server { RequestSecurityContext }
 import gunbc.principal_projection { PrincipalRef, principal_ref_eq }
 import gunbc.auth.request_authentication {
-  RequestAuthenticationEvidence, GoogleOidcSession, DeploymentAccessPolicy,
-  ServeActionCreateAllocation, ServeActionReleaseAllocation, ServeRouteAction,
+  RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid, AuthAbsent, DeploymentAccessPolicy,
+  ServeActionCreateAllocation, ServeActionReleaseAllocation, ServeActionAssignIssue, ServeActionCommentIssue, ServeActionApproveDecision, ServeRouteAction,
   human_authentication_decision, csrf_write_decision, deployment_path_decision, write_refused,
 }
 
@@ -29,7 +29,9 @@ fn workspace_owner_admission(
       GoogleOidcSession { session } =>
         if principal_ref_eq(a: session.principal, b: owner) && any(policy.principals, p => principal_ref_eq(a: p, b: session.principal)) { Permit }
         else { write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "workspace owner and explicit allocation authorization required" }) }
-      _ => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "workspace requires authenticated owner" })
+      FabricServiceEvidence { kind: _, authenticated_at: _ } => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "workspace requires authenticated owner" })
+      SessionStandingInvalid { standing: _ } => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "workspace requires authenticated owner" })
+      AuthAbsent => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "workspace requires authenticated owner" })
     },
   )
 }
@@ -47,7 +49,9 @@ fn workspace_write_admission(
   match action {
     ServeActionCreateAllocation => workspace_mutation_admission(security: security, owner: owner, policy: policy, deployment_policy: deployment_policy, observed_at: observed_at, route_path: route_path, action: action, csrf_presented: csrf_presented)
     ServeActionReleaseAllocation => workspace_mutation_admission(security: security, owner: owner, policy: policy, deployment_policy: deployment_policy, observed_at: observed_at, route_path: route_path, action: action, csrf_presented: csrf_presented)
-    _ => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
+    ServeActionAssignIssue => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
+    ServeActionCommentIssue => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
+    ServeActionApproveDecision => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
   }
 }
 
@@ -96,9 +100,11 @@ fn workspace_request_admit(
               expires_at: expires_at, policy: workspace_policy_ref(),
             } }
           } }
-        other => WorkspaceRequestAdmissionRefused { decision: other }
+        Deny { refusal: r } => WorkspaceRequestAdmissionRefused { decision: Deny { refusal: r } }
       }
     }
-    _ => WorkspaceRequestAdmissionRefused { decision: human_authentication_decision(route_path: "/allocations", action: ServeActionCreateAllocation, security: security, observed_at: observed_at) }
+    FabricServiceEvidence { kind: _, authenticated_at: _ } => WorkspaceRequestAdmissionRefused { decision: human_authentication_decision(route_path: "/allocations", action: ServeActionCreateAllocation, security: security, observed_at: observed_at) }
+    SessionStandingInvalid { standing: _ } => WorkspaceRequestAdmissionRefused { decision: human_authentication_decision(route_path: "/allocations", action: ServeActionCreateAllocation, security: security, observed_at: observed_at) }
+    AuthAbsent => WorkspaceRequestAdmissionRefused { decision: human_authentication_decision(route_path: "/allocations", action: ServeActionCreateAllocation, security: security, observed_at: observed_at) }
   }
 }

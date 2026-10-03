@@ -754,6 +754,7 @@ fn fleet_openssh_known_host_line(policy: FleetOpenSshTrustPolicy, host: NonEmpty
       if matching.count() != 1 { none }
       else { match matching.first() { Present { value: enrolled_line } => Present { value: enrolled_line as NonEmptyStr } Absent => none } }
     }
-    _ => none
+    ContentHashDifferent => none
+    ContentHashCrossFamilyIncomparable => none
   } }
 }
