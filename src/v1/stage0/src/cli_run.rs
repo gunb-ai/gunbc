@@ -47315,6 +47315,17 @@ mod warm_route_bytes_probe {
     //! (`typed_graph_byte_attribution`, which splits TypeEnv into its maps first). Run with --ignored.
     use super::*;
 
+    mod erased_ser {
+        pub trait Ser {
+            fn ser(&self, w: &mut dyn std::io::Write) -> serde_json::Result<()>;
+        }
+        impl<T: serde::Serialize> Ser for &T {
+            fn ser(&self, w: &mut dyn std::io::Write) -> serde_json::Result<()> {
+                serde_json::to_writer(w, *self)
+            }
+        }
+    }
+
     #[test]
     #[ignore]
     fn warm_route_byte_attribution() {
@@ -47379,6 +47390,36 @@ mod warm_route_bytes_probe {
                 let _ = serde_json::to_writer(&mut env_only, &*m.type_env);
                 let mut whole = Count(0);
                 let _ = serde_json::to_writer(&mut whole, &**m);
+                if mi < 3 {
+                    let e = &*m.type_env;
+                    let mut fb = |field: &str, v: &dyn erased_ser::Ser| {
+                        let mut c = Count(0);
+                        let _ = v.ser(&mut c);
+                        eprintln!(
+                            "[m7] label={label} module_index={mi} field={field} bytes={}",
+                            c.0
+                        );
+                    };
+                    fb("bindings", &&*e.bindings);
+                    fb("str_bindings", &&*e.str_bindings);
+                    fb("ancestry_str_bindings", &&*e.ancestry_str_bindings);
+                    fb("recursive_types", &&*e.recursive_types);
+                    fb("recursive_type_set", &&*e.recursive_type_set);
+                    fb("inductive_fields", &&*e.inductive_fields);
+                    fb("source_indices", &&*e.source_indices);
+                    fb("intern_table", &&*e.intern_table);
+                    fb("source_visible_names", &&*e.source_visible_names);
+                    fb("authored_import_names", &&*e.authored_import_names);
+                    fb("symbol_index", &&*e.symbol_index);
+                    fb("unit_variant_index", &&*e.unit_variant_index);
+                    fb("type_env_cache", &&*m.type_env_cache);
+                    fb("interface_summary", &&*m.interface.summary);
+                    fb("interface_cache", &&*m.interface.cache);
+                    fb("func_env", &&*m.func_env);
+                    fb("item_registry", &&*m.item_registry);
+                    fb("items", &&*m.items);
+                    fb("module_node", &&*m.module);
+                }
                 eprintln!(
                     "[m6] label={label} module_index={} items={} reachable_envs={} direct_parents={} type_env_bytes={} typed_module_bytes={}",
                     mi,
