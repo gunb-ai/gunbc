@@ -1,8 +1,11 @@
 module gunbc.spark.pair_serving_d0_door
 
-import gunbc.auth.standing_operator_grant { standing_grant_authorization }
+import gunbc.auth.standing_operator_grant { standing_grant_authorization, StandingOperatorGrant }
+import extdeps.git
+import gunbc.output_policy { ExpectSuccess }
 
-import std.types { String, Bool, Int, NonEmptyStr, List, Timestamp, EpochSecs }
+import std.types { String, Bool, Int, NonEmptyStr, List, Timestamp, EpochSecs, GitRef }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.measure { Second, second, second_count, Minute, minute }
 import v2.std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -181,17 +184,59 @@ fn d0_absent_claim_step(read: ApprovalStandingRead, request: AuthorizationReques
 // THE STANDING-GRANT ROSTER AND ITS COVERAGE LIVE IN gunbc.spark.pair_serving_d0 (d0_standing_grants,
 // d0_standing_grant_for), because the authorization binding there must name the grant's lifecycle.
 
-fn d0_gate(store: FabricStorageBinding, kind: D0RunKind, transaction: NonEmptyStr, expires: Timestamp, issued: Timestamp) -> D0DoorGate
+// THE STANDING GRANT IS HONORED ONLY AS THE OPERATOR MERGED IT (review 74677; ruling of valiant-crab-775,
+// 2026-10-03). DESIGN §5: approval is external to the diff. The external act is the operator's merge of the
+// grant row to main, so the door reads the grant's carrier file twice -- the bytes this run executes, and the
+// bytes origin/main holds (git show, the checkout fetches every ref) -- and honors a covering grant only when
+// they are byte-identical. Before main has the row, or when a branch has edited it, the grant is not honored
+// and the request takes the broker path, which refuses unless the broker answers. Any read that fails is
+// "not on main", never a pass.
+// THE ACCEPTED RESIDUAL RISK, stated plainly: branch code still INTERPRETS the operator-merged row (the
+// coverage fold and this gate run from the dispatched revision). In this dev environment, under the
+// operator's blanket Group A permission, that is accepted; the row's content is what the operator approved.
+type StandingGrantRowStanding
+  = StandingGrantRowOnMain
+  | StandingGrantRowNotOnMain { cause: String }
+
+data standing_grant_row_path: String = "dag/gunbc/auth/standing_operator_grant.dag"
+data standing_grant_main_ref: String = "origin/main"
+
+fn standing_grant_row_judged(executed: String, executed_read: Bool, on_main: String, main_read: Bool, main_stderr: String) -> StandingGrantRowStanding {
+  if !executed_read {
+    StandingGrantRowNotOnMain { cause: join(["the grant row this run executes could not be read at ", standing_grant_row_path], "") }
+  } else if !main_read {
+    StandingGrantRowNotOnMain { cause: join([standing_grant_main_ref, " holds no ", standing_grant_row_path, " (", main_stderr, "): the operator has not merged the grant, so it is not honored"], "") }
+  } else if executed != on_main {
+    StandingGrantRowNotOnMain { cause: join(["the grant row this run executes differs from ", standing_grant_main_ref, "'s: only the operator-merged row is honored"], "") }
+  } else {
+    StandingGrantRowOnMain
+  }
+}
+
+fn standing_grant_row_standing() -> StandingGrantRowStanding {
+  let mine = Filesystem.Read(path: standing_grant_row_path)
+  let main = git.Core.Show(ref: standing_grant_main_ref as GitRef, path: standing_grant_row_path, expect: ExpectSuccess)
+  standing_grant_row_judged(executed: mine.content, executed_read: mine.success, on_main: main.content, main_read: main.success, main_stderr: main.stderr)
+}
+
+fn d0_honored_standing_grant(request: AuthorizationRequest<D0Subject>, row: StandingGrantRowStanding) -> StandingOperatorGrant? {
+  match row {
+    StandingGrantRowNotOnMain { cause: _ } => none
+    StandingGrantRowOnMain => d0_standing_grant_for(request: request)
+  }
+}
+
+fn d0_gate(store: FabricStorageBinding, kind: D0RunKind, transaction: NonEmptyStr, expires: Timestamp, issued: Timestamp, row: StandingGrantRowStanding) -> D0DoorGate
 {
   match kind {
     D0RunRefused { reason: r } => D0DoorRefused { reason: r }
     D0FirstRun { request: request } =>
-      match d0_standing_grant_for(request: request) {
+      match d0_honored_standing_grant(request: request, row: row) {
         Present { value: g } => D0DoorAdmitted { authorization: standing_grant_authorization(g: g, request: request, issued: issued, expires: expires) }
         Absent => d0_file_and_poll(request: request, issued: issued, expires: expires)
       }
     D0Rerun { request: request } =>
-      match d0_standing_grant_for(request: request) {
+      match d0_honored_standing_grant(request: request, row: row) {
         Present { value: g } => D0DoorAdmitted { authorization: standing_grant_authorization(g: g, request: request, issued: issued, expires: expires) }
         Absent => d0_gate_rerun_by_broker(store: store, request: request, transaction: transaction, expires: expires, issued: issued)
       }
@@ -259,7 +304,7 @@ fn pair_serving_d0_wet(group: String, transaction: String, authorization: String
       match approval_instant_now() {
         Absent => refuse(reason: "clock unreadable; cannot mint an approval window")
         Present { value: issued } =>
-          match d0_gate(store: store, kind: d0_run_kind(store: store, g: g, escalation_id: authorization as NonEmptyStr, transaction: transaction as NonEmptyStr, execution_revision: execution_revision as NonEmptyStr), transaction: transaction as NonEmptyStr, expires: approval_expires_at(issued: issued, window: d0_approval_window()), issued: issued) {
+          match d0_gate(store: store, kind: d0_run_kind(store: store, g: g, escalation_id: authorization as NonEmptyStr, transaction: transaction as NonEmptyStr, execution_revision: execution_revision as NonEmptyStr), transaction: transaction as NonEmptyStr, expires: approval_expires_at(issued: issued, window: d0_approval_window()), issued: issued, row: standing_grant_row_standing()) {
             D0DoorRefused { reason: r } => refuse(reason: r)
             D0DoorAdmitted { authorization: scoped } =>
               match approval_instant_now() {

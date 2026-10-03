@@ -23,6 +23,7 @@ import gunbc.spark.pair_serving_authority {
 }
 import std.scoped_authorization { OperatorGrant, AttemptIdentity, ClaimedBy, authorization_scope_eq, parse_intent_scopes, AuthorizationRequest, authorize, AuthorizationPermitted, AuthorizationRefused }
 import gunbc.spark.pair_serving_d0 { d0_standing_grant_for, d0_binding_text }
+import gunbc.spark.pair_serving_d0_door { standing_grant_row_judged, d0_honored_standing_grant, StandingGrantRowOnMain, StandingGrantRowNotOnMain }
 import gunbc.auth.standing_operator_grant { group_a_dev_standing_grant, standing_grant_covers, standing_grant_authorization, StandingArmLaunch }
 import gunbc.spark.pair_serving_d0 {
   D0Subject, D0SuspendForSuccessor, D0ReleaseToFleet, RankVacancyReading, RankOccupancyReading, D0Observation,
@@ -383,5 +384,25 @@ test fn rw_a_settled_release_is_completed_by_a_later_rerun() -> Bool {
         _ => false
       }
     })
+  })
+}
+
+// ── THE GRANT IS HONORED ONLY AS THE OPERATOR MERGED IT (review 74677) ─────────────────────────────
+//
+// The judgement over the two reads, supplied at its interface: identical bytes honor; a main with no row,
+// a branch-edited row, or an unreadable executed row do not. Then the door's coverage under each standing:
+// the same covered Group A release is honored on main and NOT honored off it, so it takes the broker path.
+test fn rw_the_grant_row_is_honored_only_when_byte_identical_to_main() -> Bool {
+  (match standing_grant_row_judged(executed: "row", executed_read: true, on_main: "row", main_read: true, main_stderr: "") { StandingGrantRowOnMain => true  StandingGrantRowNotOnMain { cause: _ } => false })
+    && (match standing_grant_row_judged(executed: "row", executed_read: true, on_main: "", main_read: false, main_stderr: "fatal: path does not exist in origin/main") { StandingGrantRowOnMain => false  StandingGrantRowNotOnMain { cause: c } => string_contains(s: c, pattern: "has not merged") })
+    && (match standing_grant_row_judged(executed: "row edited", executed_read: true, on_main: "row", main_read: true, main_stderr: "") { StandingGrantRowOnMain => false  StandingGrantRowNotOnMain { cause: c } => string_contains(s: c, pattern: "differs") })
+    && (match standing_grant_row_judged(executed: "", executed_read: false, on_main: "row", main_read: true, main_stderr: "") { StandingGrantRowOnMain => false  StandingGrantRowNotOnMain { cause: _ } => true })
+}
+
+test fn rw_a_covered_release_is_not_honored_off_main() -> Bool {
+  rw_with(scenario: fn(h) {
+    let req = rw_release_request(group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), h: h)
+    (match d0_honored_standing_grant(request: req, row: StandingGrantRowOnMain) { Present { value: _ } => true  Absent => false })
+      && (match d0_honored_standing_grant(request: req, row: StandingGrantRowNotOnMain { cause: "witness" }) { Present { value: _ } => false  Absent => true })
   })
 }
