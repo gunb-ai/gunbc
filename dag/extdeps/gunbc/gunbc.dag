@@ -94,6 +94,7 @@ data packages: List<WorkspacePackage> = [
 
 service gunbc.WitnessBin {
   operation Run {
+    requires opaque
     input {
       workdir: FilePath
       bin_path: FilePath

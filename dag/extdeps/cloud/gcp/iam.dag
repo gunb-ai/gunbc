@@ -9,6 +9,7 @@ import std.types { Bool, Int, Json, List, NonEmptyStr, Secret, String }
 import v2.std.algebra { filter, fold_list }
 import v2.std.optional { Absent, Present }
 import extdeps.ietf.http_semantics { GET, POST }
+import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -376,6 +377,7 @@ service gcp.IAM {
   }
 
   operation GenerateAccessToken {
+    requires Network
     input {
       access_token: Secret
       target_sa: ServiceAccountEmail
@@ -419,6 +421,7 @@ service gcp.IamRoles {
   config { endpoint: "https://iam.googleapis.com", auth: Bearer, auth_input: access_token }
 
   operation GetRole {
+    requires Network
     input { access_token: Secret, role_name: NonEmptyStr }
     output {
       name: String
@@ -506,6 +509,7 @@ service gcp.ResourceManager {
   config { endpoint: "https://cloudresourcemanager.googleapis.com", auth: Bearer, auth_input: access_token }
 
   operation GetProject {
+    requires Network
     input { access_token: Secret, project_id: GcpProjectId }
     output { project_id: GcpProjectId from "projectId", state: String, resource_name: String from "name", outcome: RestOutcome }
     readonly
@@ -521,6 +525,7 @@ service gcp.ResourceManager {
   }
 
   operation CreateProject {
+    requires Network
     input {
       access_token: Secret
       project_id: GcpProjectId
@@ -545,6 +550,7 @@ service gcp.ResourceManager {
   }
 
   operation GetIamPolicy {
+    requires Network
     input { access_token: Secret, project_id: GcpProjectId }
     output { bindings: Json, etag: String }
     readonly
@@ -559,6 +565,7 @@ service gcp.ResourceManager {
   }
 
   operation SetIamPolicy {
+    requires Network
     input {
       access_token: Secret
       project_id: GcpProjectId

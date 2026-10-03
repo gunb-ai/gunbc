@@ -6,7 +6,7 @@ import v2.compiler.refinement_discharge { infer_and_discharge }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Disj, Named, Node, Positional, Symbol, TypeNode, node_subtree_nodes }
+import v2.std.node { Atom, Conj, Disj, Authored, Node, Positional, Symbol, TypeNode, node_subtree_nodes, StructuralLabel }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.witness { Holds, Violates }
 import v2.std.type_binder { node_inferred_subtree_nodes }
@@ -53,7 +53,8 @@ fn formation_declared_target(root: Node, name: Symbol) -> Optional<Node> {
             Present { value: _ } => a
             Absent =>
               match e.label {
-                Named { name: l } => if l == name { optional_present(value: e.target) } else { a }
+                StructuralLabel { label: _ } => a
+                Authored { name: l } => if l == name { optional_present(value: e.target) } else { a }
                 Positional => a
               }
           }

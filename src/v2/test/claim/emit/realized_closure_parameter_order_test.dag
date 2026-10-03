@@ -2,7 +2,7 @@ module v2.test.claim.emit.realized_closure_parameter_order
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.collection { List }
-import v2.std.arrow_signature { declared_signature }
+import v2.std.arrow_signature { ArrowParameterOrderMalformed, arrow_declared_parameter_order, declared_signature }
 import v2.std.compilers.target_model { arrow_domain_binder_names, realized_closure_ordered_params }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -12,13 +12,18 @@ import v2.std.node {
   Arrow,
   Atom,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
   TypeNode,
   canonicalize_node_for_content_hash,
-  node_synthetic
+  node_synthetic,
+  ArrowBodyEdge,
+  core_edge_label,
+  ArrowSignatureOrderEdge,
+  edge_is_core,
+  StructuralLabel,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -54,7 +59,7 @@ fn rcp_closure() -> Node {
       Edge { label: Positional, target: rcp_atom(id: ^rcp_int) },
       Edge { label: Positional, target: rcp_atom(id: ^rcp_int) },
       sig.order,
-      Edge { label: Named { name: ^arrow_body_edge }, target: rcp_atom(id: ^rcp_z) }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: rcp_atom(id: ^rcp_z) }
     ]
   )
 }
@@ -67,13 +72,14 @@ type RcpDomainWalk {
 fn rcp_canonical_domain(arrow: Node) -> Node {
   let seen = fold(arrow.children, init: RcpDomainWalk { done: false, edges: [] }, f: fn(acc, e) {
     match e.label {
+      StructuralLabel { label: _ } => RcpDomainWalk { done: acc.done, edges: concat(acc.edges, [e]) }
       Positional =>
         if acc.done {
           RcpDomainWalk { done: true, edges: concat(acc.edges, [e]) }
         } else {
           RcpDomainWalk { done: true, edges: concat(acc.edges, [Edge { label: Positional, target: canonicalize_node_for_content_hash(n: e.target) }]) }
         }
-      Named { name: _ } => RcpDomainWalk { done: acc.done, edges: concat(acc.edges, [e]) }
+      Authored { name: _ } => RcpDomainWalk { done: acc.done, edges: concat(acc.edges, [e]) }
     }
   })
   Node { kind: arrow.kind, children: seen.edges, occurrence_id: arrow.occurrence_id }
@@ -83,10 +89,7 @@ fn rcp_without_order(arrow: Node) -> Node {
   Node {
     kind: arrow.kind,
     children: fold(arrow.children, init: [], f: fn(acc, e) {
-      match e.label {
-        Named { name: sym } => if sym == ^arrow_signature_order_edge { acc } else { concat(acc, [e]) }
-        Positional => concat(acc, [e])
-      }
+      if edge_is_core(e: e, marker: ArrowSignatureOrderEdge) { acc } else { concat(acc, [e]) }
     }),
     occurrence_id: arrow.occurrence_id
   }
@@ -117,9 +120,19 @@ test fn the_canonical_domain_stored_order_is_not_the_declared_order() -> Bool {
   !rcp_is_z_then_a(xs: arrow_domain_binder_names(arrow: rcp_canonical_domain(arrow: rcp_closure())))
 }
 
+// A CLOSURE WHOSE DOMAIN BINDS NAMES BUT CARRIES NO ORDER EDGE IS ILL FORMED (A4, gunbc#12770): the
+// declared-order read answers Malformed at the admission wall (v2.std.node
+// arrow_signature_edges_conform), and the closure realization refuses with the malformed reason --
+// earlier than the order-ABSENT refusal it reached before A4. The claim pins the wall's answer and
+// the typed refusal, and still reds if the order-less closure is ever realized.
 test fn a_closure_with_named_parameters_and_no_order_refuses_typed() -> Bool {
-  match realized_closure_ordered_params(closure: rcp_without_order(arrow: rcp_closure())) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^target_value_expr_reason_closure_parameter_order_absent
+  let stripped = rcp_without_order(arrow: rcp_closure())
+  match arrow_declared_parameter_order(arrow: stripped) {
+    ArrowParameterOrderMalformed =>
+      match realized_closure_ordered_params(closure: stripped) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^target_value_expr_reason_closure_parameter_order_malformed
+      }
+    _ => false
   }
 }

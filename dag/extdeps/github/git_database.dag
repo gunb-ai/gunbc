@@ -8,6 +8,7 @@ import extdeps.github.github { default_api_base }
 import extdeps.github.errors { GitHubErrorShape }
 import extdeps.transports.rest { RestOutcome }
 import std.credentials { EnvVar }
+import std.resources { Network }
 
 // GitHub's Git Database API: the object-level surface (blobs, trees, commits, references) that lets
 // a client write a commit without a working tree. Cited per resource page; the shapes below are what
@@ -118,6 +119,7 @@ service github.GitDatabase {
   }
 
   operation GetRef {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -143,6 +145,7 @@ service github.GitDatabase {
   }
 
   operation GetCommit {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -168,6 +171,7 @@ service github.GitDatabase {
   }
 
   operation GetTreeRecursive {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -195,6 +199,7 @@ service github.GitDatabase {
   }
 
   operation CreateBlob {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -223,6 +228,7 @@ service github.GitDatabase {
   }
 
   operation CreateTree {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -251,6 +257,7 @@ service github.GitDatabase {
   }
 
   operation CreateCommit {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -279,6 +286,7 @@ service github.GitDatabase {
   }
 
   operation UpdateRefFastForward {
+    requires Network
     input {
       auth_token: Secret
       owner: String
