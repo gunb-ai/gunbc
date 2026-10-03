@@ -771,6 +771,9 @@ import v2.std.collection { List }
 // PreparedGrammar is one nullary producer, and the refusal-arm counts over the live grammar are
 // another. A PreparedGrammar is the value dag_prepared_grammar already serves; the census is a record
 // of two Ints. Both WARM: one grammar preparation is more than one claim's budget.
+// THE algebra_operator_derivation PROGRAMS ARE ASSEMBLED AND INFERRED ONCE EACH: six one-function sources,
+// each a whole tpb_assemble + infer, each claim reading one Symbol (the fatal reason, or ^accepted). WARM: one
+// assembly is more than one claim's budget.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.parameter_reference.pr_program_parameter_paths",
   "v2.test.claim.parameter_reference.pr_program_grounding",
@@ -1347,7 +1350,13 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.declaration_graft_assemble.declaration_graft_record_type_only_assembled",
   "v2.test.claim.declaration_graft_assemble.declaration_graft_flag_and_rec_assembled",
   "v2.test.claim.declaration_graft_assemble.declaration_graft_where_alias_undeclared_carrier_assembled",
-  "v2.test.claim.body_cast_node.bcn_refinement_of_refinement_as_its_carrier"
+  "v2.test.claim.body_cast_node.bcn_refinement_of_refinement_as_its_carrier",
+  "v2.test.claim.algebra_operator_derivation.aod_bool_join_declared_int_reason",
+  "v2.test.claim.algebra_operator_derivation.aod_int_add_declared_bool_reason",
+  "v2.test.claim.algebra_operator_derivation.aod_bool_add_reason",
+  "v2.test.claim.algebra_operator_derivation.aod_int_join_reason",
+  "v2.test.claim.algebra_operator_derivation.aod_bool_join_ok_reason",
+  "v2.test.claim.algebra_operator_derivation.aod_int_add_ok_reason"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.
