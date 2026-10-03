@@ -28,7 +28,7 @@ import gunbc.self_host_behavioral_equivalence_receipt {
   behavioral_equivalence_standing,
   current_behavioral_equivalence_standing,
 }
-import gunbc.compiler_frontend_program_interlock { SelfHostBehavioralEquivalenceReestablished }
+import gunbc.compiler_frontend_program_interlock { SelfHostEmittedContractsHeld }
 import gunbc.compiler_frontend_program_status {
   ClassClear,
   ClassOutstanding,
@@ -163,7 +163,7 @@ fn class_of_series(s: BehavioralEquivalenceStanding) -> String {
 }
 
 test fn the_milestone_derives_from_the_persisted_series() -> Bool {
-  standing_class_label(c: standing_class(s: milestone_status(m: SelfHostBehavioralEquivalenceReestablished)))
+  standing_class_label(c: standing_class(s: milestone_status(m: SelfHostEmittedContractsHeld)))
     == class_of_series(s: current_behavioral_equivalence_standing())
 }
 

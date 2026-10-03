@@ -128,7 +128,7 @@ pub const DISCOVERY_POOL_WIDTH_UNTIL_SHARED_INDEX: usize = 1;
 ///
 /// Per-entry derived-space scans are intentionally NOT run here: resolving every roster
 /// entry to read `function_space_bytes` is O(entries) whole-tree work (tens of minutes on
-/// the floor corpus). Opt-in per-row advisory logging uses `GUNBC_REALIZE_ADVISORY`.
+/// the floor corpus).
 pub fn derive_discovery_schedule_width(
     source_roots: &[String],
     _entry_function_pairs: &[(String, String)],
