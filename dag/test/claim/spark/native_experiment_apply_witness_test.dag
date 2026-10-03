@@ -53,7 +53,7 @@ fn fx_restoration_plan() -> ArmMemoryExperimentPlan? {
     Present { value: executable } =>
       let profile = executable.profile
       match arm_memory_fit_subject_for_launch(
-        checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, profile: profile) {
+        runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, profile: profile) {
         ArmMemorySubjectRefused { cause: _ } => none
         ArmMemorySubjectReady { subject: subject } =>
           match arm_memory_fit_experiment_plan(
@@ -73,7 +73,7 @@ fn fx_unestablished() -> ArmMemoryFitVerdict {
     Present { value: executable } =>
       let profile = executable.profile
       match arm_memory_fit_subject_for_launch(
-        checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
+        runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
         profile: profile) {
         ArmMemorySubjectRefused { cause: _ } => ArmMemoryFitUnestablished { obligations: ["unreachable" as NonEmptyStr] }
         ArmMemorySubjectReady { subject: subject } => arm_memory_fit_verdict(subject: subject)
@@ -117,7 +117,7 @@ test fn w_the_actuation_refuses_a_plan_that_skips_an_open_obligation() -> Bool {
     Present { value: executable } =>
       let profile = executable.profile
       match arm_memory_fit_subject_for_launch(
-        checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, profile: profile) {
+        runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, profile: profile) {
         ArmMemorySubjectRefused { cause: _ } => false
         ArmMemorySubjectReady { subject: subject } =>
           match arm_memory_fit_experiment_plan(
