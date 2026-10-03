@@ -15676,7 +15676,7 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
     RestBound { transport: _ } => true
     _ => false
   }
-  let ret_type = if is_rest { concat(rust_rest_result_path(), "<", output_type, ">") } else { output_type }
+  let ret_type = if is_rest { concat("std::rc::Rc<", rust_rest_result_path(), "<", output_type, ">>") } else { output_type }
   let real_body = emit_transport_call(bound: bound, op_name: op_text, registry: registry, depth: depth + 2, service_item: service_item, op_node: op_node, source_indices: env.source_indices, shared_types: shared_types, env: env)
   let mock_props = op_node.properties |> filter(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_indices: env.source_indices)))
   let mock_body = emit_dry_run_branch_from_props(op_name: op_text, inferred: resolved_type(n: op_node), mock_props: mock_props, registry: registry, source_indices: env.source_indices, op_node: op_node, env: env, shared_types: shared_types, emit_info: emit_info)
@@ -16188,7 +16188,7 @@ fn emit_from_key_extraction(op_node: Node, source_indices: Map<String, NewlineIn
   )
   let field_names = children |> map(ch => emit_ident(name: authored_name_at(source_indices: source_indices, node: ch), target: Rust))
   let tuple_body = if field_names |> count == 1 {
-    concat("(", field_names |> first.value, ",)")
+    field_names |> first.value
   } else {
     concat("(", field_names |> join(separator: ", "), ")")
   }
@@ -16236,11 +16236,17 @@ fn rust_rest_result_path() -> String {
   concat("crate::", module_to_filename(name: "extdeps.transports.rest"), "::RestResult")
 }
 
-// The refusal payload is spelled the way the emitted RestResult declaration holds it: a nominal
-// coproduct field is reference-counted. This spelling is checked by rustc against that emitted
-// declaration, so a change in how the field is held refuses the emitted crate rather than drifting.
+// Both coproducts are spelled the way emitted code holds a nominal coproduct value: reference
+// counted, as a field and as a result. A caller's match derefs the operation's result exactly as
+// it derefs any other coproduct, so the method returns the same holding. This spelling is checked
+// by rustc against the emitted declaration and the emitted callers, so a change in how either is
+// held refuses the emitted crate rather than drifting.
 fn rust_rest_refused(refusal_arm: String) -> String {
-  concat(rust_rest_result_path(), "::RestRefused { refusal: std::rc::Rc::new(crate::", module_to_filename(name: "extdeps.transports.rest"), "::RestRefusal::", refusal_arm, ") }")
+  concat("std::rc::Rc::new(", rust_rest_result_path(), "::RestRefused { refusal: std::rc::Rc::new(crate::", module_to_filename(name: "extdeps.transports.rest"), "::RestRefusal::", refusal_arm, ") })")
+}
+
+fn rust_rest_answered(answer_expr: String) -> String {
+  concat("std::rc::Rc::new(", rust_rest_result_path(), "::RestAnswered { answer: ", answer_expr, " })")
 }
 
 // A REST operation's mock is its decoded-2xx body, so the dry-run branch yields it in the answered
@@ -16251,7 +16257,7 @@ fn emit_rust_rest_answered_mock(mock_body: String, output_type: String) -> Strin
     "let __rest_answer = (|| -> Result<", output_type, ", Box<dyn std::error::Error>> {\n",
     mock_body, "\n",
     "})();\n",
-    "Ok(", rust_rest_result_path(), "::RestAnswered { answer: __rest_answer? })")
+    "Ok(", rust_rest_answered(answer_expr: "__rest_answer?"), ")")
 }
 
 // EVERY OBSERVATION OF THE EXCHANGE LANDS IN ONE ARM OF RestResult, AND NONE LEAVES THROUGH Err.
@@ -16285,7 +16291,7 @@ fn emit_rust_rest_result_lowering(op_node: Node, transport: Node, output_type: S
     decode, "\n",
     "})();\n",
     "match __rest_decoded {\n",
-    "    Ok(answer) => Ok(", rust_rest_result_path(), "::RestAnswered { answer }),\n",
+    "    Ok(answer) => Ok(", rust_rest_answered(answer_expr: "answer"), "),\n",
     "    Err(error) => Ok(", rust_rest_refused(refusal_arm: "RestBodyUndecodable { status: status as i64, cause: format!(\"body did not inhabit the declared output: {}\", error) }"), "),\n",
     "}")
 }

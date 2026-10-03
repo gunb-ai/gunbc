@@ -186,12 +186,9 @@ fn review_pr(
   }
 }
 
-type ReviewAgentStep
-  = ReviewAgentListOpenPulls
-
 type ReviewAgentCycle
   = ReviewAgentCycleCompleted { reviewed_count: Int }
-  | ReviewAgentCycleRefused { step: ReviewAgentStep, refusal: RestRefusal }
+  | ReviewAgentCycleRefused { refusal: RestRefusal }
 
 // THE DEFAULTS PROJECT FROM gunbc.repository RATHER THAN RESPELLING THE SLUG, closing the last of
 // the five nicknames (review 46301). Hazard not visible at this line: a default argument expression
@@ -220,7 +217,7 @@ fn review_cycle(
     state: extdeps.github.pulls.Open
   ) {
     RestRefused { refusal } =>
-      return ReviewAgentCycleRefused { step: ReviewAgentListOpenPulls, refusal: refusal }
+      return ReviewAgentCycleRefused { refusal: refusal }
     RestAnswered { answer: open_prs } => {
       results = for pr in open_prs.pulls {
         review_pr(

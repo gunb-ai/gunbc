@@ -36041,10 +36041,13 @@ pub fn emit_operation_method(
         let ret_type = if is_rest.clone() {
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(rust_rest_result_path(), "<".to_string()),
+                    v1_rt::concat(
+                        v1_rt::concat("std::rc::Rc<".to_string(), rust_rest_result_path()),
+                        "<".to_string(),
+                    ),
                     output_type.clone(),
                 ),
-                ">".to_string(),
+                ">>".to_string(),
             )
         } else {
             output_type.clone()
@@ -37448,13 +37451,7 @@ match ch.inferred.clone().as_deref().cloned() {
                     __result
                 });
                 let tuple_body = if ((field_names.clone().len() as i64) == 1) {
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            "(".to_string(),
-                            field_names.clone().first().cloned().clone().unwrap(),
-                        ),
-                        ",)".to_string(),
-                    )
+                    field_names.clone().first().cloned().clone().unwrap()
                 } else {
                     v1_rt::concat(
                         v1_rt::concat("(".to_string(), field_names.clone().join(&", ".to_string())),
@@ -37528,7 +37525,7 @@ pub fn rust_rest_refused(refusal_arm: String) -> String {
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
-                        rust_rest_result_path(),
+                        v1_rt::concat("std::rc::Rc::new(".to_string(), rust_rest_result_path()),
                         "::RestRefused { refusal: std::rc::Rc::new(crate::".to_string(),
                     ),
                     crate::gunbc_rust_emitted_edge::module_to_filename(
@@ -37539,7 +37536,20 @@ pub fn rust_rest_refused(refusal_arm: String) -> String {
             ),
             refusal_arm.clone(),
         ),
-        ") }".to_string(),
+        ") })".to_string(),
+    )
+}
+
+pub fn rust_rest_answered(answer_expr: String) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat("std::rc::Rc::new(".to_string(), rust_rest_result_path()),
+                "::RestAnswered { answer: ".to_string(),
+            ),
+            answer_expr.clone(),
+        ),
+        " })".to_string(),
     )
 }
 
@@ -37565,9 +37575,9 @@ pub fn emit_rust_rest_answered_mock(mock_body: String, output_type: String) -> S
                 ),
                 "Ok(".to_string(),
             ),
-            rust_rest_result_path(),
+            rust_rest_answered("__rest_answer?".to_string()),
         ),
-        "::RestAnswered { answer: __rest_answer? })".to_string(),
+        ")".to_string(),
     )
 }
 
@@ -37590,7 +37600,7 @@ pub fn emit_rust_rest_result_lowering(
         } else {
             emit_plain_response_body(op_node.clone(), transport.clone(), source_indices.clone())
         };
-        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("let response = match request.send().await {\n".to_string(), "    Ok(response) => response,\n".to_string()), "    Err(error) => return Ok(".to_string()), rust_rest_refused("RestTransportRefused { cause: error.to_string() }".to_string())), "),\n".to_string()), "};\n".to_string()), "let status = response.status().as_u16();\n".to_string()), "let __rest_text = match response.text().await {\n".to_string()), "    Ok(text) => text,\n".to_string()), "    Err(error) => return Ok(".to_string()), rust_rest_refused("RestBodyUndecodable { status: status as i64, cause: error.to_string() }".to_string())), "),\n".to_string()), "};\n".to_string()), "if !(200..300).contains(&status) {\n".to_string()), "    return Ok(".to_string()), rust_rest_refused("RestStatusRefused { status: status as i64, body: __rest_text }".to_string())), ");\n".to_string()), "}\n".to_string()), "let __rest_decoded = (|| -> Result<".to_string()), output_type.clone()), ", Box<dyn std::error::Error>> {\n".to_string()), decode.clone()), "\n".to_string()), "})();\n".to_string()), "match __rest_decoded {\n".to_string()), "    Ok(answer) => Ok(".to_string()), rust_rest_result_path()), "::RestAnswered { answer }),\n".to_string()), "    Err(error) => Ok(".to_string()), rust_rest_refused("RestBodyUndecodable { status: status as i64, cause: format!(\"body did not inhabit the declared output: {}\", error) }".to_string())), "),\n".to_string()), "}".to_string())
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("let response = match request.send().await {\n".to_string(), "    Ok(response) => response,\n".to_string()), "    Err(error) => return Ok(".to_string()), rust_rest_refused("RestTransportRefused { cause: error.to_string() }".to_string())), "),\n".to_string()), "};\n".to_string()), "let status = response.status().as_u16();\n".to_string()), "let __rest_text = match response.text().await {\n".to_string()), "    Ok(text) => text,\n".to_string()), "    Err(error) => return Ok(".to_string()), rust_rest_refused("RestBodyUndecodable { status: status as i64, cause: error.to_string() }".to_string())), "),\n".to_string()), "};\n".to_string()), "if !(200..300).contains(&status) {\n".to_string()), "    return Ok(".to_string()), rust_rest_refused("RestStatusRefused { status: status as i64, body: __rest_text }".to_string())), ");\n".to_string()), "}\n".to_string()), "let __rest_decoded = (|| -> Result<".to_string()), output_type.clone()), ", Box<dyn std::error::Error>> {\n".to_string()), decode.clone()), "\n".to_string()), "})();\n".to_string()), "match __rest_decoded {\n".to_string()), "    Ok(answer) => Ok(".to_string()), rust_rest_answered("answer".to_string())), "),\n".to_string()), "    Err(error) => Ok(".to_string()), rust_rest_refused("RestBodyUndecodable { status: status as i64, cause: format!(\"body did not inhabit the declared output: {}\", error) }".to_string())), "),\n".to_string()), "}".to_string())
     }
 }
 

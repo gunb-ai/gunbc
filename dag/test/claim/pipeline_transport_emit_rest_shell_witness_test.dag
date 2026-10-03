@@ -281,11 +281,11 @@ fn w_rest_result_is_the_declared_coproduct() -> Bool {
     "module re4i\n\nimport extdeps.transports.rest { RestResult }\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation GetItem {\n    output { name: String }\n    transport rest { method: GET, path: \"/item\" }\n    response {\n      200 => String\n      404 => String\n    }\n    mock_response {\n      200 => \"ok\" \"item\"\n    }\n  }\n}\n",
     "src/re4i.rs",
     [
-      "-> Result<crate::extdeps_transports_rest::RestResult<",
+      "-> Result<std::rc::Rc<crate::extdeps_transports_rest::RestResult<",
       "RestTransportRefused \{ cause: error.to_string() \}",
       "RestStatusRefused \{ status: status as i64, body: __rest_text \}",
       "RestBodyUndecodable \{ status: status as i64",
-      "Ok(answer) => Ok(crate::extdeps_transports_rest::RestResult::RestAnswered \{ answer \})"
+      "Ok(answer) => Ok(std::rc::Rc::new(crate::extdeps_transports_rest::RestResult::RestAnswered \{ answer: answer \}))"
     ],
     ["Err(format!(\"HTTP", "unexpected status code", "request.send().await?", "compile_error!"]
   )
