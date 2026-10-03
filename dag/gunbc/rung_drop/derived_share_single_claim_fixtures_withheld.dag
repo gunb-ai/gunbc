@@ -63,6 +63,6 @@ data derived_share_single_claim_fixtures_withheld: RungDrop = RungDrop {
       "v2.test.parse.block_expr_as_binary_operand_parse.a_bare_if_still_lowers_to_the_branch_itself_holds (eval_steps=213264 at planning probe 37121610250)",
       "v2.test.parse.match_arm_statement_body_parse.a_match_arm_statement_body_is_stamped_and_stops_at_the_next_arm_holds (eval_steps=107371 at planning probe 37121610250)"
     ],
-    restoration_trigger: "Per claim: its module supplies the judged subject at the interface the claim inspects (DESIGN section 3 witness rule), with ONE inhabitance claim kept on the real front-end path, so the claim completes under the new-witness eval-step budget and leaves floor_cost_debt_proven_chunk_22 through the debt-removal transaction. Re-enrolling a preparation warm for a single-claim producer does NOT retire this row: that is the externalization the ruling rejected.",
+    restoration_trigger: "Per claim: its module supplies the judged subject at the interface the claim inspects (DESIGN section 3 witness rule), with ONE inhabitance claim kept on the real front-end path, so the claim completes under the new-witness eval-step budget and leaves its v2.workflow.floor_cost_debt chunk (floor_cost_debt_proven_chunk_22 or floor_cost_debt_proven_chunk_23, whichever lists it) through the debt-removal transaction; the row is retired when every claim in the population has left its chunk. Re-enrolling a preparation warm for a single-claim producer does NOT retire this row: that is the externalization the ruling rejected.",
   }
 }
