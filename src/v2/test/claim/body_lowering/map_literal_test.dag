@@ -122,8 +122,8 @@ data ml_mixed_ingest: SourceRootIngest = [
 ]
 
 // THE FRONT END RUNS ONCE, NOT ONCE PER CLAIM. The fixture ingest and each subject's resolve are
-// nullary pure producers, served across witnesses from v2.workflow.floor_pure_producer_share
-// floor_cross_claim_pure_producers_warm (the rows beside #12740's anonymous_record producers); every
+// nullary pure producers, served across witnesses by v2.workflow.floor_pure_producer_share
+// derive_cross_claim_share (as #12740's anonymous_record producers are); every
 // claim below only inspects a produced value (DESIGN section 3: a witness discriminates at one
 // interface, and the front end is not its subject).
 fn ml_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {

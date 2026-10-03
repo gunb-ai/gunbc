@@ -2142,6 +2142,15 @@ thread_local! {
         RefCell::new(std::collections::HashSet::new());
     static CROSS_CLAIM_SHARE_OBSERVER: RefCell<Option<CrossClaimShareObserver>> =
         const { RefCell::new(None) };
+    /// Producers admitted by the DERIVED share (`v2.workflow.floor_pure_producer_share`
+    /// `derive_cross_claim_share`): fn nodes whose admission is not the producer but specific
+    /// call sites of it, so a call from any other site -- whose argument row the derivation never
+    /// judged closed -- stays outside the tier.
+    static CROSS_CLAIM_SITE_GATED: RefCell<std::collections::HashSet<usize>> =
+        RefCell::new(std::collections::HashSet::new());
+    /// The admitted call sites of site-gated producers, as `(file, start, end)` byte spans.
+    static CROSS_CLAIM_ADMITTED_SITES: RefCell<std::collections::HashSet<(String, i64, i64)>> =
+        RefCell::new(std::collections::HashSet::new());
 }
 
 /// Clears stored values, roster and observer together: the tier's lifetime is ONE prepared
@@ -2152,6 +2161,8 @@ pub fn clear_cross_claim_pure_memos() {
     CROSS_CLAIM_PURE_MEMO.with(|m| *m.borrow_mut() = CrossClaimPureMemo::default());
     CROSS_CLAIM_FN_KEEPALIVE.with(|k| k.borrow_mut().clear());
     CROSS_CLAIM_PURE_ROSTER.with(|r| r.borrow_mut().clear());
+    CROSS_CLAIM_SITE_GATED.with(|g| g.borrow_mut().clear());
+    CROSS_CLAIM_ADMITTED_SITES.with(|a| a.borrow_mut().clear());
     CROSS_CLAIM_SHARE_OBSERVER.with(|o| *o.borrow_mut() = None);
     // The prepared effect inputs are tier state too, and for the sharpest reason: a carry that
     // outlived its subject would serve a later, differently-prepared evaluation a value acquired
@@ -2177,6 +2188,44 @@ pub fn install_cross_claim_pure_share_roster<I: IntoIterator<Item = Rc<Node>>>(n
     for node in &nodes {
         keep_cross_claim_fn(node);
     }
+}
+
+/// Install the DERIVED share: each producer node is admitted at the listed call sites only.
+/// Adds to whatever the roster install admitted (carried-input producers keep their own
+/// admission); the site set replaces any previous derivation's.
+pub fn install_cross_claim_derived_share<I: IntoIterator<Item = Rc<Node>>>(
+    nodes: I,
+    sites: std::collections::HashSet<(String, i64, i64)>,
+) {
+    let nodes: Vec<Rc<Node>> = nodes.into_iter().collect();
+    CROSS_CLAIM_PURE_ROSTER.with(|r| {
+        let mut r = r.borrow_mut();
+        for node in &nodes {
+            r.insert(Rc::as_ptr(node) as usize);
+        }
+    });
+    CROSS_CLAIM_SITE_GATED.with(|g| {
+        *g.borrow_mut() = nodes.iter().map(|n| Rc::as_ptr(n) as usize).collect();
+    });
+    CROSS_CLAIM_ADMITTED_SITES.with(|a| *a.borrow_mut() = sites);
+    for node in &nodes {
+        keep_cross_claim_fn(node);
+    }
+}
+
+/// Whether THIS call site may use the cross-claim tier for `fn_node`. True for every producer
+/// admitted without a site gate; for a derived producer, only at a site the derivation admitted.
+fn cross_claim_site_admitted(fn_node: &Rc<Node>, call_node: &Node) -> bool {
+    let gated =
+        CROSS_CLAIM_SITE_GATED.with(|g| g.borrow().contains(&(Rc::as_ptr(fn_node) as usize)));
+    !gated
+        || CROSS_CLAIM_ADMITTED_SITES.with(|a| {
+            a.borrow().contains(&(
+                call_node.span.file.to_string(),
+                call_node.span.start,
+                call_node.span.end,
+            ))
+        })
 }
 
 /// Install the shared-fill observer for the cross-claim tier. `None` uninstalls.
@@ -2582,64 +2631,73 @@ pub fn take_cross_claim_store_digest(func_name: &str) -> Option<String> {
     })
 }
 
-/// Why a plain nullary warm stored nothing. Typed apart so the floor names the cause: a
-/// dispatched effect is a roster defect with its own remedy, not an evaluation failure.
+/// Why a derived call-site warm stored nothing it could serve. Typed apart so the floor counts
+/// each cause: a dispatched effect means the value depends on an input the key cannot see, an
+/// evaluation failure means the call is not computable in isolation (a refusal fixture, say), and
+/// a store the tier declined carries its own outcome.
 #[derive(Debug)]
-pub enum PureProducerWarmRefusal {
+pub enum CallSiteWarmRefusal {
     DispatchedEffect { effects: u64 },
-    Failed(String),
+    EvaluationFailed(String),
+    NotStored(CrossClaimStoreOutcome),
 }
 
-/// Evaluate one rostered NULLARY producer in `ctx` and seed the cross-claim tier, under the
-/// same guard protocol as a claim-forced fill — so a preparation warm lands in the ledger as an
-/// outside-fold fill, not on the first claim. Returns the TYPED outcome: a servable tier
-/// (`Stored`, `AlreadyPresent`) vs each refusal by name, not one boolean.
-pub fn warm_cross_claim_pure_producer(
-    ctx: &InterpContext,
-    qualified_fn: &str,
-) -> Result<CrossClaimStoreOutcome, PureProducerWarmRefusal> {
-    with_active_ctx(ctx, || {
-        let fn_node = ctx
-            .lookup_fn(qualified_fn)
-            .ok_or_else(|| {
-                PureProducerWarmRefusal::Failed(format!(
-                    "no declaration named '{qualified_fn}' in this frame"
-                ))
-            })?
-            .clone();
-        let bare = qualified_fn.rsplit('.').next().unwrap_or(qualified_fn);
-        if !cross_claim_pure_admitted(&fn_node, bare) {
-            return Err(PureProducerWarmRefusal::Failed(format!(
-                "'{qualified_fn}' did not resolve to an installed cross-claim roster identity"
-            )));
+impl CallSiteWarmRefusal {
+    pub fn cause(&self) -> String {
+        match self {
+            CallSiteWarmRefusal::DispatchedEffect { effects } => {
+                format!("DispatchedEffect(effects={effects})")
+            }
+            CallSiteWarmRefusal::EvaluationFailed(_) => "EvaluationFailed".to_string(),
+            CallSiteWarmRefusal::NotStored(outcome) => outcome.cause().to_string(),
         }
-        let guard = CrossClaimFillGuard::enter(bare);
+    }
+}
+
+/// Warm ONE admitted call site of a derived producer in `ctx` (a frame over the site's module):
+/// evaluate the site's closed arguments with no lexical bindings, call the producer, and publish
+/// through the ordinary store under the same fill guard a claim-time fill holds, so the fill lands
+/// in the shared-fill ledger outside the fold. `fn_node` must be the node the frame resolves the
+/// callee to, which is the identity the tier keys on.
+pub fn warm_cross_claim_call_site(
+    ctx: &InterpContext,
+    fn_node: &Rc<Node>,
+    call_node: &Rc<Node>,
+) -> Result<CrossClaimStoreOutcome, CallSiteWarmRefusal> {
+    with_active_ctx(ctx, || {
+        let func_name = fn_node.name.clone();
         let env = Env::empty();
-        // THE SAME GUARD THE FOLD PATH HOLDS. The claim-time store refuses to publish a value
-        // whose evaluation dispatched an effect, because the key `(fn node, argument row)` cannot
-        // see what the effect read. The warm path stored without that guard, so an effectful
-        // nullary row rostered as a plain warm row was stored CONTENT-BLIND under the empty
-        // argument row — the key omitting an input the value depends on. A dispatch here is a
-        // roster defect (the row belongs in the prepared-effect-input rows, where the read is
-        // carried and keyed), so it stops the line rather than declining silently.
         let effects_before = ctx.effect_dispatch_count.get();
-        let value = with_lexical_base_env(&env, || call_function(ctx, &fn_node, &[], &env))
-            .map_err(|e| PureProducerWarmRefusal::Failed(format!("{qualified_fn}: {e}")))?;
+        let args: Vec<(Option<String>, Value)> = call_node
+            .children
+            .iter()
+            .filter(|arg_node| !arg_node.children.is_empty())
+            .map(|arg_node| {
+                let name = arg_name_at(arg_node.clone(), ctx.si());
+                let val = with_lexical_base_env(&env, || {
+                    eval_expr(&arg_value(arg_node.clone()), &env, ctx)
+                })?;
+                Ok((name, val))
+            })
+            .collect::<InterpResult<_>>()
+            .map_err(|e| CallSiteWarmRefusal::EvaluationFailed(format!("{func_name}: {e}")))?;
+        let guard = CrossClaimFillGuard::enter(&func_name);
+        let value = with_lexical_base_env(&env, || call_function(ctx, fn_node, &args, &env))
+            .map_err(|e| CallSiteWarmRefusal::EvaluationFailed(format!("{func_name}: {e}")))?;
         let effects = ctx
             .effect_dispatch_count
             .get()
             .saturating_sub(effects_before);
         if effects != 0 {
-            return Err(PureProducerWarmRefusal::DispatchedEffect { effects });
+            return Err(CallSiteWarmRefusal::DispatchedEffect { effects });
         }
-        Ok(store_cross_claim_pure_memo(
-            ctx,
-            &fn_node,
-            bare,
-            &[],
-            &value,
-            Some(&guard),
-        ))
+        let outcome =
+            store_cross_claim_pure_memo(ctx, fn_node, &func_name, &args, &value, Some(&guard));
+        if outcome.is_servable() {
+            Ok(outcome)
+        } else {
+            Err(CallSiteWarmRefusal::NotStored(outcome))
+        }
     })
 }
 
@@ -3634,6 +3692,58 @@ mod cross_claim_memo_tests {
                 other => panic!("field '{name}' must resolve via fields_get, got {other:?}"),
             }
         }
+    }
+
+    // THE SITE GATE OF THE DERIVED SHARE. A derived producer is admitted at the call sites the
+    // derivation judged closed and nowhere else: the same producer called from another site has an
+    // argument row nobody judged, so it must stay outside the tier. The discriminating pair varies
+    // only the call site; the control is a producer admitted without a gate (a carried-input
+    // producer), which is unaffected by any site set.
+    #[test]
+    fn a_derived_producer_is_admitted_only_at_its_admitted_sites() {
+        use super::{
+            cross_claim_site_admitted, install_cross_claim_derived_share,
+            install_cross_claim_pure_share_roster,
+        };
+        super::clear_cross_claim_pure_memos();
+        let node_at = |start: i64, end: i64| {
+            make_expr_node(
+                Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+                ),
+                Rc::new(ExprData::NoExprData),
+                Rc::new(im_vec![]),
+                None,
+                Rc::new(crate::std_types::SourceSpan {
+                    file: "workspace/src/n7.dag".to_string(),
+                    start,
+                    end,
+                }),
+            )
+        };
+        let derived = node_at(0, 1);
+        let ungated = node_at(2, 3);
+        install_cross_claim_pure_share_roster([ungated.clone()]);
+        let mut sites = std::collections::HashSet::new();
+        sites.insert(("workspace/src/n7.dag".to_string(), 100, 140));
+        install_cross_claim_derived_share([derived.clone()], sites);
+        assert!(
+            cross_claim_site_admitted(&derived, &node_at(100, 140)),
+            "the admitted site uses the tier"
+        );
+        assert!(
+            !cross_claim_site_admitted(&derived, &node_at(200, 240)),
+            "another site of the same derived producer must not"
+        );
+        assert!(
+            cross_claim_site_admitted(&ungated, &node_at(200, 240)),
+            "control: a producer admitted without a site gate is unaffected"
+        );
+        super::clear_cross_claim_pure_memos();
+        assert!(
+            cross_claim_site_admitted(&derived, &node_at(200, 240)),
+            "clearing the tier clears the gate with it"
+        );
     }
 
     // RED (review 57446 F1): admission is by RESOLVED DECLARATION IDENTITY, so a bare-name
@@ -9869,13 +9979,18 @@ fn eval_pure_named_call(
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
 ) -> InterpResult<Value> {
-    if let Some(v) = try_cross_claim_pure_memo(ctx, fn_node, func_name, args) {
-        return Ok(v);
+    // A derived producer is admitted at its admitted call sites only; from any other site the
+    // call neither serves nor stores, exactly as if the producer were not admitted at all.
+    let share_site = cross_claim_site_admitted(fn_node, call_node);
+    if share_site {
+        if let Some(v) = try_cross_claim_pure_memo(ctx, fn_node, func_name, args) {
+            return Ok(v);
+        }
     }
     // Guard runs only for admitted calls: a store that lands must carry what it cost, so the
     // paying claim's receipt can net it and the shared-fill ledger can attribute it. Its
     // `Drop` closes the fill on every path out of this function.
-    let fill_guard = if cross_claim_pure_admitted(fn_node, func_name) {
+    let fill_guard = if share_site && cross_claim_pure_admitted(fn_node, func_name) {
         Some(CrossClaimFillGuard::enter(func_name))
     } else {
         None
@@ -9886,7 +10001,7 @@ fn eval_pure_named_call(
         let effects_before = ctx.effect_dispatch_count.get();
         let result = call_function(ctx, fn_node, args, env);
         if let Ok(v) = &result {
-            if ctx.effect_dispatch_count.get() == effects_before {
+            if share_site && ctx.effect_dispatch_count.get() == effects_before {
                 // The ordinary call path publishes opportunistically: every outcome,
                 // servable or refused, is already counted inside the store, and this
                 // call recomputes on a refusal exactly as if never enrolled.
@@ -9943,7 +10058,7 @@ fn eval_pure_named_call(
     let effects_before = ctx.effect_dispatch_count.get();
     let result = call_function(ctx, fn_node, args, env);
     if let Ok(v) = &result {
-        if ctx.effect_dispatch_count.get() == effects_before {
+        if share_site && ctx.effect_dispatch_count.get() == effects_before {
             let _ =
                 store_cross_claim_pure_memo(ctx, fn_node, func_name, args, v, fill_guard.as_ref());
         }
