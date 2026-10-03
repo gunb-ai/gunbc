@@ -35,13 +35,13 @@ import v2.std.diagnostic {
   node_locus,
   outcome_rejected
 }
-import v2.std.node { Arrow, Atom, Conj, Disj, Edge, Named, Node, node_synthetic, Positional, Symbol, TypeNode }
+import v2.std.node { Arrow, Atom, Conj, Disj, Edge, Authored, StructuralLabel, Node, node_synthetic, Positional, Symbol, TypeNode }
 import v2.std.qualified_name { declaration_reference_path_optional }
 import v2.std.type_binder { GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, type_decl_view }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl, produced_type_binding }
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source, translate_target_atom_realization_for_carrier }
 import v2.std.logic { Bool }
-import v2.compiler.body_lowering_fold { DeclaredRecord, DeclaredRefinement, DeclaredTypeKind }
+import v2.compiler.body_lowering_fold { DeclaredRecord, DeclaredRefinement, DeclaredResource, DeclaredTypeKind }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_arrow_body_child, named_child_lookup }
 import v2.extdeps.languages.dag { namespace_graft_node_is_module_body, parse_production_emitted_identity_optional }
 import v2.std.integer { Int }
@@ -61,7 +61,13 @@ fn emit_produced_decl_inner_arrow(decl: Node) -> Outcome<Node> {
       match list_at_optional(xs: decl.children, index: 0) {
         Present { value: edge } =>
           match edge.label {
-            Named { name: _ } => Accepted { value: edge.target, diagnostics: None }
+            Authored { name: _ } => Accepted { value: edge.target, diagnostics: None }
+            StructuralLabel { label: _ } =>
+              Rejected {
+                diagnostics: diagnostics_singleton(
+                  d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_unnamed, node: decl)
+                )
+              }
             Positional =>
               Rejected {
                 diagnostics: diagnostics_singleton(
@@ -113,11 +119,12 @@ fn emit_produced_decl_inner_arrow(decl: Node) -> Outcome<Node> {
 // variables from a declared parameter type, not from a field-access scrutinee.
 fn produced_decl_edge_is_decl(edge: Edge) -> Bool {
   match edge.label {
-    Named { name: _ } =>
+    Authored { name: _ } =>
       match edge.target.kind {
         TypeNode { connective: Arrow } => true
         _ => false
       }
+    StructuralLabel { label: _ } => false
     Positional => false
   }
 }
@@ -180,8 +187,9 @@ type ModuleMemberClass
 
 fn module_member_class(edge: Edge, kinds: FreeMonoid<DeclaredTypeKind>) -> ModuleMemberClass {
   match edge.label {
+    StructuralLabel { label: _ } => ModuleMemberUnsupported
     Positional => ModuleMemberUnsupported
-    Named { name: n } =>
+    Authored { name: n } =>
       match edge.target.kind {
         TypeNode { connective: Arrow } =>
           match find_arrow_body_child(root: edge.target) {
@@ -205,7 +213,8 @@ fn module_member_class(edge: Edge, kinds: FreeMonoid<DeclaredTypeKind>) -> Modul
   }
 }
 
-// A plain Conj member is a record or a refinement only when its module's captured kind SAYS so.
+// A plain Conj member is a record or a refinement only when its module's captured kind SAYS so. A
+// resource has no target realization, so its member refuses as unsupported at the member.
 fn module_member_conj_class(name: Symbol, member: Node, kinds: FreeMonoid<DeclaredTypeKind>) -> ModuleMemberClass {
   fold_list(
     xs: kinds,
@@ -218,6 +227,8 @@ fn module_member_conj_class(name: Symbol, member: Node, kinds: FreeMonoid<Declar
               if r == name { ModuleMemberRecord { name: name, record: member } } else { acc }
             DeclaredRefinement { name: r } =>
               if r == name { ModuleMemberRefinement { name: name, refinement: member } } else { acc }
+            DeclaredResource { name: r } =>
+              if r == name { ModuleMemberUnsupported } else { acc }
           }
         _ => acc
       }
@@ -367,7 +378,8 @@ fn emit_module_member(edge: Edge, target: TargetModel, realization_host: TargetM
 
 fn produced_module_edge_is_production_marker(edge: Edge) -> Bool {
   match edge.label {
-    Named { name: n } => n == ^grammar_production_identity_node_projection
+    Authored { name: n } => n == ^grammar_production_identity_node_projection
+    StructuralLabel { label: _ } => false
     Positional => false
   }
 }

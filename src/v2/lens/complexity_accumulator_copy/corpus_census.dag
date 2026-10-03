@@ -40,6 +40,8 @@ import v2.lens.cost {
   cost_lens
 }
 import v2.std.node {
+  StructuralLabel,
+  label_sort_key,
   Arrow,
   Atom,
   Bind,
@@ -50,7 +52,7 @@ import v2.std.node {
   Disj,
   Instantiation,
   Loop,
-  Named,
+  Authored,
   Transform,
   TypeNode,
   Value
@@ -403,8 +405,9 @@ fn ingested_root_child_labels(path: String) -> String {
     SourceTreeEstablished { root: r } =>
       fold(r.children, init: "", f: fn(acc, e) {
         match e.label {
-          Named { name: n } => join([acc, "|N:", symbol_lexeme(n)], "")
-          _ => join([acc, "|P"], "")
+          Authored { name: n } => join([acc, "|N:", symbol_lexeme(n)], "")
+          StructuralLabel { label: _ } => join([acc, "|S:", symbol_lexeme(label_sort_key(label: e.label))], "")
+          Positional => join([acc, "|P"], "")
         }
       })
   }

@@ -1,5 +1,7 @@
 module gunbc.spark.pair_serving_d0_door
 
+import gunbc.auth.standing_operator_grant { standing_grant_authorization }
+
 import std.types { String, Bool, Int, NonEmptyStr, List, Timestamp, EpochSecs }
 import std.measure { Second, second, second_count, Minute, minute }
 import v2.std.optional { Present, Absent }
@@ -22,7 +24,8 @@ import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, obse
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, parse_fabric_group, fabric_group_hosts, fabric_group_wire }
 import gunbc.spark.pair_serving_authority_log { current_pair_serving_authority }
 import gunbc.spark.pair_serving_d0 {
-  D0Subject, d0_dispatch, d0_store_write_wall_standing,
+  d0_standing_grant_for,
+  D0Subject, D0SuspendForSuccessor, D0ReleaseToFleet, d0_dispatch, d0_store_write_wall_standing,
   d0_read_filing, D0FilingAbsent, D0FilingAt, D0FilingUnreadable,
   d0_freeze_filing, D0FilingFrozen, D0FilingAlreadyHeld, D0FilingFreezeRefused,
   d0_read_claim, D0ClaimAbsent, D0ClaimAt, D0ClaimUnreadable,
@@ -175,12 +178,28 @@ fn d0_absent_claim_step(read: ApprovalStandingRead, request: AuthorizationReques
   }
 }
 
+// THE STANDING-GRANT ROSTER AND ITS COVERAGE LIVE IN gunbc.spark.pair_serving_d0 (d0_standing_grants,
+// d0_standing_grant_for), because the authorization binding there must name the grant's lifecycle.
+
 fn d0_gate(store: FabricStorageBinding, kind: D0RunKind, transaction: NonEmptyStr, expires: Timestamp, issued: Timestamp) -> D0DoorGate
 {
   match kind {
     D0RunRefused { reason: r } => D0DoorRefused { reason: r }
-    D0FirstRun { request: request } => d0_file_and_poll(request: request, issued: issued, expires: expires)
-    D0Rerun { request: request } => {
+    D0FirstRun { request: request } =>
+      match d0_standing_grant_for(request: request) {
+        Present { value: g } => D0DoorAdmitted { authorization: standing_grant_authorization(g: g, request: request, issued: issued, expires: expires) }
+        Absent => d0_file_and_poll(request: request, issued: issued, expires: expires)
+      }
+    D0Rerun { request: request } =>
+      match d0_standing_grant_for(request: request) {
+        Present { value: g } => D0DoorAdmitted { authorization: standing_grant_authorization(g: g, request: request, issued: issued, expires: expires) }
+        Absent => d0_gate_rerun_by_broker(store: store, request: request, transaction: transaction, expires: expires, issued: issued)
+      }
+  }
+}
+
+fn d0_gate_rerun_by_broker(store: FabricStorageBinding, request: AuthorizationRequest<D0Subject>, transaction: NonEmptyStr, expires: Timestamp, issued: Timestamp) -> D0DoorGate
+{
       let claim = d0_read_claim(store: store, escalation_id: request.escalation_id)
       match claim {
         D0ClaimAbsent =>
@@ -201,8 +220,6 @@ fn d0_gate(store: FabricStorageBinding, kind: D0RunKind, transaction: NonEmptySt
               }
           }
       }
-    }
-  }
 }
 
 fn d0_poll(request: AuthorizationRequest<D0Subject>, expires: Timestamp) -> D0DoorGate

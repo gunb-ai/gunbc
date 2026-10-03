@@ -16,6 +16,7 @@ import std.coercion {
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.literal_elaboration { LiteralElaboration }
 import std.operator_realization { OperandDeclaration }
+import std.target_representation { VariantParentIdentity }
 import std.decl_ref { DeclarationRef }
 import std.induction { SubValueRelation }
 import std.occurrence_identity {
@@ -142,7 +143,7 @@ fn has_inferred(n: Node) -> Bool {
 type VarBindingKind
   = LocalValueBinding
   | FunctionValueBinding
-  | VariantValueBinding { parent_enum: String }
+  | VariantValueBinding { parent_enum: String, parent_identity: VariantParentIdentity }
   | MatchBoundBinding
   | ServiceValueBinding
 
@@ -312,7 +313,7 @@ type ExprData
 type MatchPattern
   = Bind { declaration: Node }
   | LitPattern { value: LiteralValue }
-  | VariantPattern { name: String, parent_enum: String?, field_bindings: List<Node> }
+  | VariantPattern { name: String, parent_enum: String?, field_bindings: List<Node>, parent_identity: VariantParentIdentity }
   | Wildcard
 
 // IRREFUTABILITY IS A FACT ABOUT `MatchPattern`, SO IT LIVES WITH THE TYPE. It was previously
@@ -327,7 +328,7 @@ fn match_pattern_is_irrefutable(pattern: MatchPattern) -> Bool {
   match pattern {
     Wildcard => true
     Bind { declaration: _ } => true
-    VariantPattern { name: _, parent_enum: _, field_bindings: _ } => false
+    VariantPattern { name: _, parent_enum: _, field_bindings: _, parent_identity: _ } => false
     LitPattern { value: _ } => false
   }
 }
@@ -400,6 +401,7 @@ type CompilerDiagnostic
   | MethodExistenceUndecided { method: String, receiver_type: String, span: SourceSpan }
   | MethodExistenceFrontierAdmitted { method: String, receiver_type: String, trigger: String, span: SourceSpan }
   | ReceiverTypeUnestablished { method: String, span: SourceSpan }
+  | TextRepresentationUnidentifiedAtBoundary { position: String, span: SourceSpan }
   | AlgebraApplicationEvidenceUnavailable { receiver_type: String, argument_index: Int, span: SourceSpan }
   | FrontierOccurrenceBudgetExceeded { method: String, receiver_type: String, declared: Int, observed: Int, span: SourceSpan }
   | TestCodeReferenced { referrer: String, target: String, span: SourceSpan }
@@ -629,6 +631,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     MethodExistenceUndecided { method: _, receiver_type: _, span: s } => s
     MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: s } => s
     ReceiverTypeUnestablished { method: _, span: s } => s
+    TextRepresentationUnidentifiedAtBoundary { position: _, span: s } => s
     AlgebraApplicationEvidenceUnavailable { receiver_type: _, argument_index: _, span: s } => s
     FrontierOccurrenceBudgetExceeded { method: _, receiver_type: _, declared: _, observed: _, span: s } => s
     TestCodeReferenced { referrer: _, target: _, span: s } => s
@@ -712,6 +715,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     MethodExistenceUndecided { method: m, receiver_type: t, span: _ } => concat("method '", m, "' cannot be resolved: receiver type '", t, "' establishes no method surface, so the method's existence is not established and no declared frontier row admits it")
     MethodExistenceFrontierAdmitted { method: m, receiver_type: t, trigger: tr, span: _ } => concat("method '", m, "' on receiver type '", t, "' is admitted by a declared unresolved-method frontier row; dissolves on: ", tr)
     AlgebraApplicationEvidenceUnavailable { receiver_type: t, argument_index: i, span: _ } => concat("algebra receiver application evidence unavailable for '", t, "' at argument ", to_string(value: i), ": structural members are not type arguments")
+    TextRepresentationUnidentifiedAtBoundary { position: p, span: _ } => concat(concat("text boundary unjudged at ", p), ": one side is identified text and the other side's type carries no declaration identity the compiler can read, so the text wall makes no verdict here and base type compatibility decides (gunbc.rung_drop text_boundary_identity_wall; trigger: the resolver records declaration identity on every type reference)")
     ReceiverTypeUnestablished { method: _, span: _ } => "the receiver's own type was never established, so nothing is known about the method's existence here; this is an upstream type-propagation deficit, not a fact about the method"
     FrontierOccurrenceBudgetExceeded { method: m, receiver_type: t, declared: d, observed: o, span: _ } =>
       concat(concat(concat("the declared frontier row for '", m), concat("' on receiver type '", t)), concat(concat("' no longer matches what this module contains: the row declares ", to_string(value: d)), concat(" occurrence(s) and ", to_string(value: o))), " were observed here. If MORE were observed, a new unresolved call has appeared and the receiver's type should be established rather than the count raised. If FEWER were observed, the deficit has partly dissolved and the row must be lowered or deleted so the ratchet keeps its new ground. The count is an equality, not a ceiling, in both directions.")
@@ -874,6 +878,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     AlgebraApplicationEvidenceUnavailable { receiver_type: _, argument_index: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     ReceiverTypeUnestablished { method: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
+    TextRepresentationUnidentifiedAtBoundary { position: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     FrontierOccurrenceBudgetExceeded { method: _, receiver_type: _, declared: _, observed: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TestCodeReferenced { referrer: _, target: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TestCodeReferenceAdmitted { referrer: _, target: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }

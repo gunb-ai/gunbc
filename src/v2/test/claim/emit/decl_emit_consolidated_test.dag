@@ -68,7 +68,7 @@ fn dc_variant_block(variants: List<Node>) -> Node {
 }
 
 fn dc_named_edge(name: String, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn dc_coproduct_variant_edge_nullary(name: String) -> Edge {
@@ -205,7 +205,7 @@ fn dc_atom_type(t: String) -> Node {
 }
 
 fn dc_coproduct_field_edge(name: String, t: String) -> Edge {
-  dc_named_edge(name: name, target: dc_atom_type(t: t))
+  binder_edge(name: name, type_node: dc_atom_type(t: t))
 }
 
 fn dc_coproduct_variant_edge_payload(name: String, fields: List<Edge>) -> Edge {

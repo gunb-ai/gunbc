@@ -44,6 +44,7 @@ data ip_binary_path: NonEmptyStr = "/usr/sbin/ip"
 // declared inputs, never assembled from a literal in the caller.
 service iproute2.IpAddress {
   operation ShowDevice {
+    requires none
     input { device: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -57,6 +58,7 @@ service iproute2.IpAddress {
   }
 
   operation AddSecondary {
+    requires none
     input { device: NonEmptyStr, cidr: NonEmptyStr }
     output { body: String from "stdout", transport_stderr: String from "stderr", success: Bool from "exit_success" }
     transport shell {
@@ -69,6 +71,7 @@ service iproute2.IpAddress {
   }
 
   operation DeleteSecondary {
+    requires none
     input { device: NonEmptyStr, cidr: NonEmptyStr }
     output { body: String from "stdout", transport_stderr: String from "stderr", success: Bool from "exit_success" }
     transport shell {

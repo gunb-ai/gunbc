@@ -47,7 +47,7 @@ import std.measure {
 // (resolve + infer) once per unique module, and per universe member Eval the named declaration,
 // reporting one typed verdict row per member. This is the driver the required-v2-native CI lane
 // executes; its contract is that every universe member reaches exactly one terminal observation,
-// never a silent remainder. The process re-derives its own exclusive wall partition on stderr
+// never a silent remainder. The process re-derives its own exclusive thread-CPU partition on stderr
 // as `[native-cost-partition]` (same receipt shape as claim_batch `[cost-partition]`: the rows
 // NativeDriverExclusiveRows carries, over parent_span_nanos) plus one `[native-prepare-split]`
 // line per unique module that partitions prepare into resolve vs infer (the two halves
@@ -167,9 +167,10 @@ type CompilerEntryDriver
 // BOTH ROWS ARE MEASURED AROUND THE WORK, never derived as parent minus the others -- a row defined
 // as the remainder forces the residual to zero and makes the tolerance arm unfireable, which is the
 // defect this partition exists to catch.
-// THE NATIVE DRIVER'S EXCLUSIVE WALL PARTITION. claim_batch prints `[cost-partition]` over
+// THE NATIVE DRIVER'S EXCLUSIVE CPU PARTITION. claim_batch prints `[cost-partition]` over
 // resolve-span work; SourceRootEvalDriver prints `[native-cost-partition]` over its own
-// single-threaded wall. The grains are the driver's own, not a restatement of the resolve-split
+// single thread's CPU time (the wall is printed beside it as an observation, never judged).
+// The grains are the driver's own, not a restatement of the resolve-split
 // rows, and THIS TYPE IS WHERE THEY ARE NAMED: the row set below is the grain, so prose that
 // re-lists the field names would be a second spelling of it that rots the moment a driver gains
 // a phase. The law is the same exclusive-sum law: exclusive rows must not exceed parent_span,
@@ -259,6 +260,21 @@ type CompilerEntryDriver
 // would double-count: the engine already reports its own prepare nanos, and the driver already adds
 // those. The overhead is the scheduling span MINUS what the engine attributed to demands, which is
 // why it needs a key of its own rather than a larger existing one.
+//
+// THE SCHEDULING SPAN IS THE WHOLE ENGINE CALL, AND THAT IS WHAT THE SENTENCE ABOVE ALWAYS SAID. The
+// first realization summed the engine's own bookkeeping spans (lookup, settle, select, plan) instead,
+// which left the engine's work BETWEEN those spans -- each step's transition and run-record rebuild
+// -- timed by no row. On a loaded host, once the clock was thread CPU, that gap was the whole
+// residual and it grew with the demand population. So the driver spans the engine call itself and
+// the row is that measured span minus the demand nanos the engine attributed; an attribution larger
+// than the span refuses rather than clamping. This makes untimed work INSIDE the engine call
+// scheduling by construction, which is what it is. The parent remainder still sees every CPU
+// nanosecond outside a named span, which is what the law judges.
+//
+// ExclusiveDriverCollection IS THE DRIVER'S OWN WORK AFTER THE CALL, NAMED FOR WHAT IT IS: copying the
+// run's rows into the population, collecting the prepare and eval samples and reading the run's
+// counters. It is not scheduling -- the engine has returned -- and folding it into that row would
+// change the row's meaning under the model's name (DESIGN section 3).
 type NativeDriverExclusiveRowKey
   = ExclusiveLoad
   | ExclusiveUniverseDerivation
@@ -270,6 +286,8 @@ type NativeDriverExclusiveRowKey
   | ExclusiveModuleRelease
   | ExclusiveRelayEmit
   | ExclusiveDemandScheduling
+  | ExclusiveDriverCollection
+  | ExclusiveOccurrenceCensus
 
 // THE ROSTER IS THE ONE PLACE A ROW IS ADDED, and it is the residual this reshape does not close.
 // A key absent here is absent from every constructed collection, from the sum and from the
@@ -288,6 +306,8 @@ fn native_driver_exclusive_row_keys() -> List<NativeDriverExclusiveRowKey> {
     ExclusiveModuleRelease,
     ExclusiveRelayEmit,
     ExclusiveDemandScheduling,
+    ExclusiveDriverCollection,
+    ExclusiveOccurrenceCensus,
   ]
 }
 
@@ -306,6 +326,8 @@ fn native_driver_exclusive_row_name(key: NativeDriverExclusiveRowKey) -> String 
     ExclusiveModuleRelease => "module_release"
     ExclusiveRelayEmit => "relay_emit"
     ExclusiveDemandScheduling => "demand_scheduling"
+    ExclusiveDriverCollection => "driver_collection"
+    ExclusiveOccurrenceCensus => "occurrence_census"
   }
 }
 
@@ -337,8 +359,17 @@ type NativeDriverCostAccounting
   | NativeDriverCostOverAttributed { sum_exclusive: Nanosecond, parent_span: Nanosecond }
   | NativeDriverCostRemainderExceedsTolerance { residual: Nanosecond, tolerance: Nanosecond }
 
-// Fifty milliseconds on the host monotonic wall Instant the driver uses. A remainder larger
-// than this is unattributed driver work, not a rounding crumb.
+// Fifty milliseconds of the driver thread's CPU time, the clock every row and the parent span are
+// read on (std.realization_measurement ObserveThreadCpuAtSubject). A remainder larger than this is
+// unattributed driver work, not a rounding crumb.
+//
+// THE CLOCK IS PART OF THE LAW, NOT A DETAIL OF ITS REALIZATION. What this accounting claims is that
+// the rows partition the driver's OWN work. It was once read on the monotonic wall, and a wall span
+// also holds every interval the host descheduled the thread -- work no phase performed and no row
+// could ever name -- so the residual, and therefore the verdict, varied with host contention for one
+// fixed subject (DESIGN section 5: a verdict is determined by its subject). The repair was the
+// measure, not this tolerance: on thread CPU the residual is uninstrumented driver work and only
+// that, so a busy loop outside every span still refuses here while a stall or sleep does not.
 data native_driver_cost_remainder_tolerance_nanos: Nanosecond = millisecond_to_nanosecond(m: millisecond(count: 50))
 
 fn native_driver_exclusive_sum(rows: NativeDriverExclusiveRows) -> Nanosecond {

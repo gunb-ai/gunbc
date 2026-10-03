@@ -21,7 +21,8 @@ import v2.std.algebra {
 import v2.std.bounded_lattice_completeness { bounded_lattice_instance_completeness }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode }
+import v2.std.node_query { binder_edge }
 
 fn anchor_atom_node(s: Symbol) -> Node {
   Node {
@@ -41,15 +42,15 @@ fn anchor_fn_node() -> Node {
 }
 
 fn anchor_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn anchor_complete_lattice_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      anchor_named_edge(name: ^lattice_field_meet, target: anchor_fn_node()),
-      anchor_named_edge(name: ^lattice_field_join, target: anchor_fn_node())
+      binder_edge(name: ^lattice_field_meet, type_node: anchor_fn_node()),
+      binder_edge(name: ^lattice_field_join, type_node: anchor_fn_node())
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -59,7 +60,7 @@ fn anchor_lattice_missing_meet_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      anchor_named_edge(name: ^lattice_field_join, target: anchor_fn_node())
+      binder_edge(name: ^lattice_field_join, type_node: anchor_fn_node())
     ],
     occurrence_id: OccurrenceSynthetic
 }
@@ -68,9 +69,9 @@ fn anchor_lattice_missing_meet_node() -> Node {
 data anchor_complete_bounded_lattice_instance: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    anchor_named_edge(name: ^bounded_lattice_field_lattice, target: anchor_complete_lattice_node()),
-    anchor_named_edge(name: ^bounded_lattice_field_top, target: anchor_atom_node(s: ^anchor_top_sym)),
-    anchor_named_edge(name: ^bounded_lattice_field_bottom, target: anchor_atom_node(s: ^anchor_bottom_sym))
+    binder_edge(name: ^bounded_lattice_field_lattice, type_node: anchor_complete_lattice_node()),
+    binder_edge(name: ^bounded_lattice_field_top, type_node: anchor_atom_node(s: ^anchor_top_sym)),
+    binder_edge(name: ^bounded_lattice_field_bottom, type_node: anchor_atom_node(s: ^anchor_bottom_sym))
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -78,9 +79,9 @@ data anchor_complete_bounded_lattice_instance: Node = Node {
 data anchor_partial_bounded_lattice_instance: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    anchor_named_edge(name: ^bounded_lattice_field_lattice, target: anchor_lattice_missing_meet_node()),
-    anchor_named_edge(name: ^bounded_lattice_field_top, target: anchor_atom_node(s: ^anchor_top_sym)),
-    anchor_named_edge(name: ^bounded_lattice_field_bottom, target: anchor_atom_node(s: ^anchor_bottom_sym))
+    binder_edge(name: ^bounded_lattice_field_lattice, type_node: anchor_lattice_missing_meet_node()),
+    binder_edge(name: ^bounded_lattice_field_top, type_node: anchor_atom_node(s: ^anchor_top_sym)),
+    binder_edge(name: ^bounded_lattice_field_bottom, type_node: anchor_atom_node(s: ^anchor_bottom_sym))
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -88,8 +89,8 @@ data anchor_partial_bounded_lattice_instance: Node = Node {
 data anchor_partial_missing_lattice_field_instance: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    anchor_named_edge(name: ^bounded_lattice_field_top, target: anchor_atom_node(s: ^anchor_top_sym)),
-    anchor_named_edge(name: ^bounded_lattice_field_bottom, target: anchor_atom_node(s: ^anchor_bottom_sym))
+    binder_edge(name: ^bounded_lattice_field_top, type_node: anchor_atom_node(s: ^anchor_top_sym)),
+    binder_edge(name: ^bounded_lattice_field_bottom, type_node: anchor_atom_node(s: ^anchor_bottom_sym))
   ],
   occurrence_id: OccurrenceSynthetic
 }

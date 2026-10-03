@@ -127,6 +127,7 @@ type RequiredFloorDisposition =
   | DeclinedDiscoveryExcluded { matched_substring: String }
   | DeclinedCostDebt
   | DeclinedNoCiWetLane { pattern: String }
+  | DeclinedChangedWitnessOutsideDiscovery { module_path: String }
 
 // THE WIRE NAME OF ONE ARM, HOMED WITH THE COPRODUCT IT NAMES. This spelling is what every
 // receipt, counter and blocking cause downstream prints, so it is a fact about the arm and not
@@ -146,6 +147,7 @@ fn required_floor_disposition_name(d: RequiredFloorDisposition) -> String {
     DeclinedDiscoveryExcluded { matched_substring } => "declined_discovery_excluded",
     DeclinedCostDebt => "declined_cost_debt",
     DeclinedNoCiWetLane { pattern } => "declined_no_ci_wet_lane"
+    DeclinedChangedWitnessOutsideDiscovery { module_path } => "declined_changed_witness_outside_discovery"
   }
 }
 
@@ -173,6 +175,61 @@ fn required_floor_disposition_with_changed_selection(
   } else {
     ordinary
   }
+}
+
+// A CHANGED SELECTION NO DECLARED IDENTITY CAN ANSWER IS DECLINED, NOT DROPPED. The changed-witness
+// selector ranges over the run's whole diff, while the declared population is enumerated from the
+// discovered index, which is scoped to the run's source roots. So a witness homed outside those
+// roots (src/v1/tests/claim is the live population) is selectable and undeclarable by construction.
+// Each such selection gets its own row, carrying the module that declares it, rather than being
+// filtered out: a filter would green the floor by hiding the over-selection, which is the absorbing
+// arm. This handles the mismatch and does not retire it. The next-rung trigger is the capability
+// SELECTION AND DISPOSITION CONSUME ONE RANGE. The seed's `required_floor_runner`
+// `changed_selections_outside_discovery` is the host mirror of THIS function, and
+// `test.claim.discovery_census_witness` joins the two over one shared fixture.
+type ChangedSelectionDispositionRow {
+  identity: String
+  disposition: RequiredFloorDisposition
+}
+
+type IdentityModulePathFold {
+  has_joined: Bool
+  joined: String
+  has_pending: Bool
+  pending: String
+}
+
+// The module that declares a selected identity: everything before its LAST `.`, or the whole
+// identity when it has none. The empty prefix of `.w` is the empty module, not the identity.
+fn changed_selection_identity_module_path(identity: String) -> String {
+  let folded = fold(split(s: identity, delimiter: "."), init: IdentityModulePathFold { has_joined: false, joined: "", has_pending: false, pending: "" }, f: fn(acc, segment) {
+    if !acc.has_pending {
+      IdentityModulePathFold { has_joined: acc.has_joined, joined: acc.joined, has_pending: true, pending: segment }
+    } else {
+      if acc.has_joined {
+        IdentityModulePathFold { has_joined: true, joined: concat(concat(acc.joined, "."), acc.pending), has_pending: true, pending: segment }
+      } else {
+        IdentityModulePathFold { has_joined: true, joined: acc.pending, has_pending: true, pending: segment }
+      }
+    }
+  })
+  if folded.has_joined { folded.joined } else { identity }
+}
+
+fn changed_selections_outside_discovery(
+  changed: List<String>,
+  declared: List<String>,
+) -> List<ChangedSelectionDispositionRow> {
+  reverse(fold(changed, init: [], f: fn(acc, identity) {
+    if contains(xs: declared, item: identity, eq: fn(a, b) { a == b }) {
+      acc
+    } else {
+      concat([ChangedSelectionDispositionRow {
+        identity: identity,
+        disposition: DeclinedChangedWitnessOutsideDiscovery { module_path: changed_selection_identity_module_path(identity: identity) }
+      }], acc)
+    }
+  }))
 }
 
 // THE COST POLICY OF A CHANGED WITNESS: the typed join of two authorities that answer different
@@ -328,6 +385,7 @@ fn cost_debt_roster_standing(reading: CostDebtDispositionReading) -> CostDebtRos
         DeclinedOutsideGateClosure => CostDebtOutsideThisRunsUniverse {}
         DeclinedDiscoveryExcluded { matched_substring: _ } => CostDebtOutsideThisRunsUniverse {}
         DeclinedNoCiWetLane { pattern: _ } => CostDebtOutsideThisRunsUniverse {}
+        DeclinedChangedWitnessOutsideDiscovery { module_path: _ } => CostDebtOutsideThisRunsUniverse {}
         Planned => CostDebtDeclaredButNotWithheld {}
         DeclinedLongModule { matched_prefix: _ } => CostDebtDeclaredButNotWithheld {}
         DeclinedFixtureMember { matched_prefix: _ } => CostDebtDeclaredButNotWithheld {}
@@ -830,6 +888,17 @@ fn required_gate_prefixes() -> List<String> {
 // imports were already in it), with preparation wall and runner peak inside run-to-run noise. The census module declares SubstrateInputsOnly; the join test declares no
 // disposition and supplies its nodes, edges and rows. The instrument is this floor's own
 // gate-closure and floor-cgroup lines.
+//
+// THE TEST-REFERENCE WALL WITNESS (roadmap node test-reference-discipline-remainder). The reds of
+// `test.claim.test_reference_wall_witness` are the ledger's enforcement evidence: unledgered
+// test-to-test references refuse (TestCodeReferenced), observed-versus-declared drift refuses
+// (TestCodeReferenceBudgetMismatch), and a discharged-but-unpaid-down row refuses. They were
+// authored and then executed by NO lane -- the module matches no family prefix, which is the
+// srv1/deep-ferret class again: evidence written, never run, reds reaching main unnoticed. Admitted
+// at exact module grain, not a `test.claim.test_reference_wall_` family, which would sweep nothing
+// in today but would silently widen if a sibling is ever planted. Its claims run through the census
+// probe over planted fixture sources (no live-tree read, SubstrateInputsOnly in spirit -- the
+// fixture sources are supplied strings), priced at NewWitnessTier.
 fn required_gate_authored_modules() -> List<String> {
   [
     "test.claim.runner_capacity_plan_witness",
@@ -846,6 +915,7 @@ fn required_gate_authored_modules() -> List<String> {
     "test.claim.deleted_lanes_countable_witness_test",
     "test.claim.discovery_census_witness",
     "v2.test.claim.effect_demand.effect_demand_floor_join_test",
+    "test.claim.test_reference_wall_witness",
   ]
 }
 

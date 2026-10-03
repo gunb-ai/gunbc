@@ -23,8 +23,9 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // absorb it once), an import of a module the pool does not declare (std.types, which contributes no
 // path), an EXCLUDED importer (excluded/gate, reached as a target but whose own edges are dropped, so
 // behind_gate stays out), and an island that imports into the closure but is never reached from it.
-// The real broker entry is exercised by test.claim.auth.approval_broker_closure_witness through the
-// demand walk alone.
+// The REAL corpus is exercised by test.claim.module_graph.import_closure_live, which runs the same walk
+// (import_closure_live delegates to dependency_closure_live_excluding) from a real entry over real
+// production modules. The broker witness this line used to cite does not exist.
 data fixture_roots: List<String> = ["dag/test/fixture/demand_closure"]
 
 data fixture_exclude: List<String> = ["/excluded/"]

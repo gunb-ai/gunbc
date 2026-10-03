@@ -22,7 +22,7 @@ import v2.std.node {
   Cardinality,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -84,6 +84,7 @@ type DeclaredTypePosition
   | PositionDeclaredReturn
   | PositionRecordField { record: Node }
   | PositionLetAnnotation { bound: Node }
+  | PositionBinderDefault { default: Node }
 
 // type_variables are the declaring Arrow's type parameters (v2.std.type_binder type_param_names):
 // the only atoms in `declared` that name no type, and so the only thing that keeps an
@@ -108,13 +109,14 @@ type InhabitanceUndecidableReason
   | UndecidableOptionalCarrier
   | UndecidableFormalUnresolved
   | UndecidableArgumentTypeNotDerived
+  | UndecidableWherePredicateSubjectUnmodelled
 
 type InhabitanceVerdict
   = Inhabits { homomorphism: HomomorphismWitness }
   | InhabitanceRefused { find_witness_reason: Symbol }
   | InhabitanceUndecidable { reason: InhabitanceUndecidableReason }
 
-// Four producers, one relation: v2.compiler.infer builds PositionDirectCallArgument per argument of
+// Five producers, one relation: v2.compiler.infer builds PositionDirectCallArgument per argument of
 // an application, PositionDeclaredReturn per Arrow body against its declared return, and
 // PositionRecordField per field value of a record construct against the field the record declares,
 // and PositionLetAnnotation per annotated let's bound value against its annotation, and all four
@@ -141,12 +143,24 @@ fn position_let_annotation(bound: Node) -> DeclaredTypePosition {
   PositionLetAnnotation { bound: bound }
 }
 
+// A binder's default (XL-2 PR2c-ii) is a declared position like the others: its value is judged at the
+// binder's declared type, the type an omitted argument or field is declared to have. The obligation is
+// located at the default, and the position names it.
+fn position_binder_default(default: Node) -> DeclaredTypePosition {
+  PositionBinderDefault { default: default }
+}
+
+fn inhabitance_no_candidate_binder_default_reason() -> Symbol {
+  ^infer_reason_default_does_not_inhabit_binder_type
+}
+
 fn inhabitance_position_symbol(position: DeclaredTypePosition) -> Symbol {
   match position {
     PositionDirectCallArgument => ^position_direct_call_argument
     PositionDeclaredReturn => ^position_declared_return
     PositionRecordField { record: _ } => ^position_record_field
     PositionLetAnnotation { bound: _ } => ^position_let_annotation
+    PositionBinderDefault { default: _ } => ^position_binder_default
   }
 }
 
@@ -374,8 +388,9 @@ fn inhabitance_position_context_edges(position: DeclaredTypePosition) -> List<Ed
   match position {
     PositionDirectCallArgument => []
     PositionDeclaredReturn => []
-    PositionRecordField { record: record } => [Edge { label: Named { name: ^inhabitance_record }, target: record }]
-    PositionLetAnnotation { bound: bound } => [Edge { label: Named { name: ^inhabitance_bound_value }, target: bound }]
+    PositionRecordField { record: record } => [Edge { label: Authored { name: ^inhabitance_record }, target: record }]
+    PositionLetAnnotation { bound: bound } => [Edge { label: Authored { name: ^inhabitance_bound_value }, target: bound }]
+    PositionBinderDefault { default: default } => [Edge { label: Authored { name: ^inhabitance_default_value }, target: default }]
   }
 }
 
@@ -385,6 +400,7 @@ fn inhabitance_no_candidate_reason(position: DeclaredTypePosition) -> Symbol {
     PositionDeclaredReturn => inhabitance_no_candidate_return_reason()
     PositionRecordField { record: _ } => inhabitance_no_candidate_record_field_reason()
     PositionLetAnnotation { bound: _ } => inhabitance_no_candidate_let_annotation_reason()
+    PositionBinderDefault { default: _ } => inhabitance_no_candidate_binder_default_reason()
   }
 }
 
@@ -407,6 +423,10 @@ fn undecidable_argument_type_not_derived() -> InhabitanceUndecidableReason {
   UndecidableArgumentTypeNotDerived
 }
 
+fn undecidable_where_predicate_subject_unmodelled() -> InhabitanceUndecidableReason {
+  UndecidableWherePredicateSubjectUnmodelled
+}
+
 
 fn inhabitance_undecidable_reason_symbol(
   reason: InhabitanceUndecidableReason
@@ -416,6 +436,7 @@ fn inhabitance_undecidable_reason_symbol(
     UndecidableOptionalCarrier => ^inhabitance_undecidable_optional_carrier
     UndecidableFormalUnresolved => ^inhabitance_undecidable_formal_unresolved
     UndecidableArgumentTypeNotDerived => ^inhabitance_undecidable_argument_type_not_derived
+    UndecidableWherePredicateSubjectUnmodelled => ^inhabitance_undecidable_where_predicate_subject_unmodelled
   }
 }
 
@@ -497,19 +518,19 @@ fn application_argument_does_not_inhabit_diagnostic(
         kind: TypeNode { connective: Conj },
         children: list_append(left: [
           Edge {
-            label: Named { name: inhabitance_position_symbol(position: obligation.position) },
+            label: Authored { name: inhabitance_position_symbol(position: obligation.position) },
             target: obligation.application
           },
           Edge {
-            label: Named { name: obligation.parameter_identity },
+            label: Authored { name: obligation.parameter_identity },
             target: obligation.declared
           },
           Edge {
-            label: Named { name: ^inhabitance_produced_type },
+            label: Authored { name: ^inhabitance_produced_type },
             target: obligation.produced
           },
           Edge {
-            label: Named { name: find_witness_reason },
+            label: Authored { name: find_witness_reason },
             target: obligation.produced
           }
         ], right: inhabitance_position_context_edges(position: obligation.position)),

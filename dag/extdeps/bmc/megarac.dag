@@ -2,7 +2,6 @@ module extdeps.bmc.megarac
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Bool, Int, NonEmptyStr, List, Unit }
-import std.string_type { String }
 import std.credentials { FactoryLogin }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcProtocol, Ipmi }
 import extdeps.bmc.capability {
@@ -16,6 +15,7 @@ import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.vendor.ami { ami }
 import extdeps.languages.json.emit { JsonValue, json_object, json_array, json_kv, json_int, json_string, serialize_json_array }
+import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -516,6 +516,7 @@ fn megarac_services_kvm_json(viewer_count: Int) -> JsonValue {
 service megarac.Media {
 
   operation OpenSession {
+    requires Network
     input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, cookie_jar: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     transport shell {
@@ -528,6 +529,7 @@ service megarac.Media {
   }
 
   operation ProbeSessionOnMediaRoute {
+    requires Network
     input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -541,6 +543,7 @@ service megarac.Media {
   }
 
   operation GetMediaGeneral {
+    requires Network
     input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -554,6 +557,7 @@ service megarac.Media {
   }
 
   operation GetRemoteImages {
+    requires Network
     input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -567,6 +571,7 @@ service megarac.Media {
   }
 
   operation GetRemoteConfigurations {
+    requires Network
     input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -580,6 +585,7 @@ service megarac.Media {
   }
 
   operation StartMedia {
+    requires Network
     input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, json_body: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", stderr: String from "stderr", exit_code: Int from "exit_code", success: Bool from "exit_success" }
     transport shell {
@@ -592,6 +598,7 @@ service megarac.Media {
   }
 
   operation StopMedia {
+    requires Network
     input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, json_body: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", stderr: String from "stderr", exit_code: Int from "exit_code", success: Bool from "exit_success" }
     transport shell {
@@ -604,6 +611,7 @@ service megarac.Media {
   }
 
   operation CloseSession {
+    requires Network
     input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr, max_time: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     transport shell {
@@ -640,6 +648,7 @@ data megarac_ui_bundle_path: NonEmptyStr = "/source.min.js"
 service megarac.Ui {
 
   operation GetServedBundle {
+    requires Network
     input { bmc_host: NonEmptyStr, bundle_path: NonEmptyStr, dest_file: NonEmptyStr, max_time: NonEmptyStr }
     output { writeout: String from "stdout", stderr: String from "stderr", exit_code: Int from "exit_code", success: Bool from "exit_success" }
     readonly

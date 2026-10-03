@@ -114,7 +114,7 @@ fn claim_empty_lenses_matches_compile_core_outcome(
       r.head.reason != ^compile_lens_gate_rejected
     Accepted { value: v, diagnostics: _ } => match v.value {
       TranslateResult { source: _ } => true
-      _ => false
+      EvalResult { value: _ } => false
     }
   }
 }

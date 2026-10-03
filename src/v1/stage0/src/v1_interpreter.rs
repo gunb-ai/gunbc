@@ -489,6 +489,14 @@ fn variant_arm_is_declared_in_coproduct(
     false
 }
 
+fn kernel_raw_payload_constructor(name: &str, parent: Option<&String>) -> bool {
+    match name.rsplit('.').next().unwrap_or(name) {
+        "Present" | "Absent" | "Some" | "None" => parent_enum_is(parent, "Optional"),
+        "Holds" | "Violates" => parent_enum_is(parent, "Witness"),
+        _ => false,
+    }
+}
+
 fn parent_enum_is(parent: Option<&String>, expected_last: &str) -> bool {
     parent.is_some_and(|p| qualified_last_segment(p.clone()) == expected_last)
 }
@@ -683,8 +691,11 @@ fn value_hash(v: &Value) -> u64 {
                 fields,
             } => {
                 7u8.hash(&mut h);
-                type_name.hash(&mut h);
-                variant_name.hash(&mut h);
+                // By SPELLING, never `Symbol`'s pointer `Hash`: this hash keys recorded-fixture
+                // replay across runs (recorded_fixture content_hash_service_inputs), and an address
+                // is a fact about one process.
+                type_name.0.hash(&mut h);
+                variant_name.0.hash(&mut h);
                 hash_fields_commutative(fields).hash(&mut h);
             }
             Value::Map(m) => {
@@ -1255,6 +1266,14 @@ pub enum InterpError {
         at: String,
         found: String,
     },
+    /// A variant occurrence of a natively realized coproduct (std.types Bool over the host `bool`)
+    /// whose realization could not be decided -- its owning coproduct was not recovered, or the
+    /// row set refused -- so it is refused rather than matched or constructed by its arm NAME.
+    /// The decision is `v1.compiler.coercion` `rust_variant_value_realization`, the same one the
+    /// Rust emitter consumes.
+    VariantRealizationRefused {
+        detail: String,
+    },
     /// A REST response value did not inhabit the coproduct its declared output type names.
     /// Raised by `decode_json_by_declared_type`; see `RestResponseDecodeRefusal`.
     RestResponseUndecodable {
@@ -1493,6 +1512,9 @@ impl fmt::Display for InterpError {
             InterpError::StringRealizationStraddle { detail } => {
                 write!(f, "string realization straddle: {}", detail)
             }
+            InterpError::VariantRealizationRefused { detail } => {
+                write!(f, "{}", detail)
+            }
             InterpError::PoolRootContributesNothing {
                 caller,
                 declared,
@@ -1667,6 +1689,84 @@ enum PortableValue {
     },
 }
 
+/// A TOTAL ORDER over portable values that depends only on their content: variant rank, then
+/// payload; symbols by spelling, floats by IEEE 754-2019 §5.10 totalOrder (`f64::total_cmp`),
+/// sequences lexicographically. Used to put map
+/// entries in one order in every process.
+fn portable_value_cmp(a: &PortableValue, b: &PortableValue) -> std::cmp::Ordering {
+    fn rank(v: &PortableValue) -> u8 {
+        match v {
+            PortableValue::Null => 0,
+            PortableValue::Unit => 1,
+            PortableValue::Bool(_) => 2,
+            PortableValue::Int(_) => 3,
+            PortableValue::Float(_) => 4,
+            PortableValue::Str(_) => 5,
+            PortableValue::List(_) => 6,
+            PortableValue::Map(_) => 7,
+            PortableValue::Set(_) => 8,
+            PortableValue::Record { .. } => 9,
+            PortableValue::Variant { .. } => 10,
+        }
+    }
+    fn seq<T>(
+        xs: &[T],
+        ys: &[T],
+        cmp: impl Fn(&T, &T) -> std::cmp::Ordering,
+    ) -> std::cmp::Ordering {
+        for (x, y) in xs.iter().zip(ys) {
+            let o = cmp(x, y);
+            if o != std::cmp::Ordering::Equal {
+                return o;
+            }
+        }
+        xs.len().cmp(&ys.len())
+    }
+    let fields = |x: &[(Symbol, PortableValue)], y: &[(Symbol, PortableValue)]| {
+        seq(x, y, |(n, v), (m, w)| {
+            n.0.cmp(m.0).then_with(|| portable_value_cmp(v, w))
+        })
+    };
+    match (a, b) {
+        (PortableValue::Bool(x), PortableValue::Bool(y)) => x.cmp(y),
+        (PortableValue::Int(x), PortableValue::Int(y)) => x.cmp(y),
+        (PortableValue::Float(x), PortableValue::Float(y)) => x.total_cmp(y),
+        (PortableValue::Str(x), PortableValue::Str(y)) => x.as_ref().cmp(y.as_ref()),
+        (PortableValue::List(x), PortableValue::List(y)) => seq(x, y, portable_value_cmp),
+        (PortableValue::Map(x), PortableValue::Map(y)) => seq(x, y, |(k, v), (l, w)| {
+            portable_value_cmp(k, l).then_with(|| portable_value_cmp(v, w))
+        }),
+        (PortableValue::Set(x), PortableValue::Set(y)) => x.iter().cmp(y.iter()),
+        (
+            PortableValue::Record {
+                type_name: t,
+                fields: f,
+            },
+            PortableValue::Record {
+                type_name: u,
+                fields: g,
+            },
+        ) => t.0.cmp(u.0).then_with(|| fields(f, g)),
+        (
+            PortableValue::Variant {
+                type_name: t,
+                variant_name: v,
+                fields: f,
+            },
+            PortableValue::Variant {
+                type_name: u,
+                variant_name: w,
+                fields: g,
+            },
+        ) => {
+            t.0.cmp(u.0)
+                .then_with(|| v.0.cmp(w.0))
+                .then_with(|| fields(f, g))
+        }
+        _ => rank(a).cmp(&rank(b)),
+    }
+}
+
 /// Structural equality over portable values — the cross-claim tier's verification relation.
 /// `Fn` compares by shared-graph identity (the same relation the memo key uses); floats by
 /// bits, so a NaN-carrying argument row still verifies against itself.
@@ -1789,6 +1889,10 @@ fn portable_value_from_ctx_at(
                         descend!(".<map-value>".to_string(), v),
                     ));
                 }
+                // CANONICAL ENTRY ORDER. `HamtMap` iterates in its per-process `RandomState` order,
+                // which is a fact about the process and not the value; the portable form is what
+                // crosses a process boundary and is content-keyed, so its order is the keys' own.
+                out.sort_by(|(a, _), (b, _)| portable_value_cmp(a, b));
                 PortableValue::Map(out)
             }
             Value::Set(members) => PortableValue::Set(members.clone()),
@@ -2421,6 +2525,11 @@ fn store_cross_claim_pure_memo(
             return CrossClaimStoreOutcome::RefusedValueNotPortable(refusal);
         }
     };
+    // The evaluated value's content identity, recorded for the caller BEFORE the presence
+    // check, so an `AlreadyPresent` warm still reports what THIS evaluation produced.
+    CROSS_CLAIM_LAST_STORE_DIGEST.with(|d| {
+        *d.borrow_mut() = Some((func_name.to_string(), portable_value_digest(&portable)))
+    });
     let outcome = CROSS_CLAIM_PURE_MEMO.with(|m| {
         let mut m = m.borrow_mut();
         if let Some(bucket) = m.map.get(&memo_key) {
@@ -2465,6 +2574,20 @@ fn store_cross_claim_pure_memo(
         }
     }
     outcome
+}
+
+thread_local! {
+    static CROSS_CLAIM_LAST_STORE_DIGEST: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
+}
+
+/// The portable-form digest of the value the most recent cross-claim store evaluated for
+/// `func_name`, taken (and cleared) so a later caller can never read an earlier producer's
+/// identity. `None` when that store refused before the value was reified.
+pub fn take_cross_claim_store_digest(func_name: &str) -> Option<String> {
+    CROSS_CLAIM_LAST_STORE_DIGEST.with(|d| match d.borrow_mut().take() {
+        Some((name, digest)) if name == func_name => Some(digest),
+        _ => None,
+    })
 }
 
 /// Why a plain nullary warm stored nothing. Typed apart so the floor names the cause: a
@@ -4428,6 +4551,27 @@ impl Default for EvalCallMemo {
 
 const EVAL_CALL_MEMO_ENTRY_CAP: usize = 1_000_000;
 
+// THE EVAL-FRAME MEMO'S PROCESS-WIDE HITS AND MISSES, for the required floor's receipt. The
+// per-context counters (eval_call_memo_counters) die with each context, and the floor runs many;
+// a process total is what a whole-floor before/after comparison reads. Maintained at the same two
+// points as the per-context counters, so the two cannot disagree about what a hit is.
+static EVAL_CALL_MEMO_PROCESS: (std::sync::atomic::AtomicU64, std::sync::atomic::AtomicU64) = (
+    std::sync::atomic::AtomicU64::new(0),
+    std::sync::atomic::AtomicU64::new(0),
+);
+
+/// Process-wide eval-frame memo (hits, misses) since start.
+pub fn eval_call_memo_process_counts() -> (u64, u64) {
+    (
+        EVAL_CALL_MEMO_PROCESS
+            .0
+            .load(std::sync::atomic::Ordering::Relaxed),
+        EVAL_CALL_MEMO_PROCESS
+            .1
+            .load(std::sync::atomic::Ordering::Relaxed),
+    )
+}
+
 fn eval_call_memo_env_default() -> bool {
     std::env::var("GUNBC_EVAL_MEMO")
         .map(|v| v != "0")
@@ -5181,6 +5325,11 @@ pub struct InterpContext {
     // eval goes straight to env.lookup(sym), materializing the String only on the registry slow path.
     var_sym_cache: std::cell::RefCell<HashMap<usize, Symbol>>,
     var_sym_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
+    /// A refusal raised inside `match_pattern` (which answers match / no-match as an `Option`),
+    /// taken by the one caller that owns the match and turned into
+    /// `InterpError::VariantRealizationRefused` -- so an undecidable native arm stops the match
+    /// instead of falling through to the next arm.
+    variant_realization_refusal: std::cell::RefCell<Option<String>>,
     // Same chokepoint, ExprCall callee name: eval_call re-sliced the callee name from its source
     // span (expr_call_func_at -> authored_name_at) on every call. Memoize the decoded name per
     // call node — keyed by node pointer, kept alive via call_func_name_cache_keepalive as above.
@@ -5614,6 +5763,7 @@ impl InterpContext {
             param_name_cache_keepalive: std::cell::RefCell::new(Vec::new()),
             var_sym_cache: std::cell::RefCell::new(HashMap::new()),
             var_sym_cache_keepalive: std::cell::RefCell::new(Vec::new()),
+            variant_realization_refusal: std::cell::RefCell::new(None),
             call_func_name_cache: std::cell::RefCell::new(HashMap::new()),
             call_func_name_cache_keepalive: std::cell::RefCell::new(Vec::new()),
             cast_kernel_cache: std::cell::RefCell::new(HashMap::new()),
@@ -6685,20 +6835,39 @@ mod budgeted_cpu_clock_tests {
     }
 }
 
-pub fn thread_cpu_nanos() -> u128 {
+/// The one read of the calling thread's CPU clock (extdeps.posix.clock_gettime
+/// ClockThreadCputimeId), FALLIBLE: POSIX makes the clock an option, so its absence is an error
+/// the caller must decide about, never a number. `thread_cpu_nanos` below is the budget clock's
+/// lenient view of this read; `observed_thread_cpu_nanos` refuses on the error arm.
+pub fn thread_cpu_nanos_checked() -> std::io::Result<u128> {
     #[cfg(unix)]
     {
         let mut ts = libc::timespec {
             tv_sec: 0,
             tv_nsec: 0,
         };
-        // SAFETY: `ts` is a valid, owned timespec; CLOCK_THREAD_CPUTIME_ID is always supported
-        // on linux/macos. rc != 0 (unreachable there) falls through to 0.
+        // SAFETY: `ts` is a valid, owned timespec written once by clock_gettime.
         let rc = unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut ts) };
         if rc == 0 {
-            return (ts.tv_sec as u128) * 1_000_000_000 + (ts.tv_nsec as u128);
+            return Ok((ts.tv_sec as u128) * 1_000_000_000 + (ts.tv_nsec as u128));
         }
-        0
+        Err(std::io::Error::last_os_error())
+    }
+    #[cfg(not(unix))]
+    {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "CLOCK_THREAD_CPUTIME_ID is a POSIX clock",
+        ))
+    }
+}
+
+pub fn thread_cpu_nanos() -> u128 {
+    #[cfg(unix)]
+    {
+        // CLOCK_THREAD_CPUTIME_ID is supported on linux/macos; the error arm (unreachable
+        // there) falls through to 0 for the budget clock.
+        thread_cpu_nanos_checked().unwrap_or(0)
     }
     #[cfg(not(unix))]
     {
@@ -6794,14 +6963,26 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
     match (*node.expr_data).clone() {
         ExprData::ExprLiteral { value } => eval_literal(&value),
 
-        // An elaborated literal (std.literal_elaboration) evaluates as the kernel value: this
-        // interpreter realizes the structural destinations natively by its own grounding
-        // (Zero/Succ as Int per #5428, v2.std.logic Bool as bool), so the image of the literal
-        // under that grounding IS the literal, and evaluating the constructor tree instead would
-        // route a natively-realized Bool through variant patterns that have no runtime form here.
-        // The structural image is consumed by emission, which is where the destination is
-        // structural; the emitted-bytes witnesses exercise that path.
-        ExprData::ExprElaboratedLiteral { value, .. } => eval_literal(&value),
+        // An elaborated literal (std.literal_elaboration) carries its image under the declared
+        // homomorphism as its one child. A Peano unfolding's destination is STRUCTURAL on every
+        // route -- a carrier that realizes as the kernel integer has a KernelGrounding row instead
+        // and never reaches this arm, because v1.compiler.infer ground_kernel_views folds it to a
+        // plain literal -- so its value here is the constructor image, the same tree emission
+        // renders. The other two unfoldings keep the kernel value: this interpreter realizes
+        // v2.std.logic Bool as bool and text as the host string, so their image under that
+        // grounding IS the literal.
+        ExprData::ExprElaboratedLiteral { value, elaboration } => {
+            match (
+                &*elaboration.homomorphism.producer,
+                node.children.iter().next(),
+            ) {
+                (
+                    crate::std_literal_elaboration::LiteralUnfolding::PeanoUnfold { .. },
+                    Some(image),
+                ) => eval_expr(image, env, ctx),
+                _ => eval_literal(&value),
+            }
+        }
 
         ExprData::ExprVar { binding_kind } => eval_var(node, binding_kind.as_deref(), env, ctx),
 
@@ -6954,7 +7135,25 @@ fn eval_var(
         }
     };
 
-    if let Some(VarBindingKind::VariantValueBinding { parent_enum }) = binding_kind {
+    if let Some(VarBindingKind::VariantValueBinding {
+        parent_enum,
+        parent_identity,
+    }) = binding_kind
+    {
+        let arm_spelling = ctx.resolve(sym);
+        let arm = arm_spelling.rsplit('.').next().unwrap_or(&arm_spelling);
+        match native_variant_reading(parent_identity, arm) {
+            NativeVariantReading::HostBool(b) => return Ok(Value::Bool(b)),
+            NativeVariantReading::Structural => {}
+            NativeVariantReading::Refused(detail) => {
+                // A value construction refuses only for an arm a native row could have claimed;
+                // an unrecovered owner whose arm no row mentions is structural, as in emission.
+                if crate::v1_compiler_coercion::rust_variant_arm_is_bound_somewhere(arm.to_string())
+                {
+                    return Err(InterpError::VariantRealizationRefused { detail });
+                }
+            }
+        }
         // Bounded residual: Nat's intentional native representation is still selected by the
         // arm lexeme because the seed binding carrier lacks exact owner declaration identity.
         // The executable shorthand test and GuaranteeStall keep that silent-wrongness path
@@ -7752,6 +7951,38 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
         None => None,
     };
     let absent_arm_index = crate::v1_compiler_infer::match_unguarded_absent_arm_index(arms.clone());
+    // A host integer has no constructors here. A carrier realized as the kernel integer
+    // (std.literal_elaboration KernelGrounding) has every constructor pattern folded to integer
+    // form by v1.compiler.infer ground_kernel_views before this tree is evaluated, so a
+    // constructor arm over an integer subject means that fold did not run on it. No arm could
+    // match and a later wildcard would take the value silently, so this refuses, located.
+    if let Value::Int(_) = &scrutinee_val {
+        if let Some(name) = arms
+            .iter()
+            .find_map(|arm| match &*arm_pattern(arm.clone()) {
+                // The optional and witness carriers ARE matched against a raw integer payload
+                // (their value-or-Null representation), so their constructors are not this case.
+                // The exemption is keyed on the pattern's PARENT carrier, the same key match_pattern's
+                // raw-unwrap arms use to accept such a payload, so it admits exactly the patterns those
+                // arms answer; a user coproduct with a variant spelled Some or Holds still refuses
+                // (review 73985). A DeclarationRef on the pattern is the next rung; see the seed-growth
+                // row gunbc.kernel_grounding_interpreter_seed_growth.
+                MatchPattern::VariantPattern {
+                    name, parent_enum, ..
+                } if !kernel_raw_payload_constructor(name, parent_enum.as_ref()) => {
+                    Some(name.to_string())
+                }
+                _ => None,
+            })
+        {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "match at {}:{}: the constructor pattern `{}` is matched against a host integer; a kernel-grounded carrier's patterns are folded to integers before evaluation (v1.compiler.infer ground_kernel_views), and this one was not",
+                    node.span.file, node.span.start, name
+                ),
+            });
+        }
+    }
 
     for (arm_index, arm) in arms.iter().enumerate() {
         let pattern = arm_pattern(arm.clone());
@@ -7771,7 +8002,11 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
         } else {
             scrutinee_val.clone()
         };
-        if let Some(bindings) = match_pattern(&pattern, &arm_value, ctx) {
+        let matched = match_pattern(&pattern, &arm_value, ctx);
+        if let Some(detail) = ctx.variant_realization_refusal.borrow_mut().take() {
+            return Err(InterpError::VariantRealizationRefused { detail });
+        }
+        if let Some(bindings) = matched {
             let arm_env = Env::extend(env, bindings);
             // A guard is part of the arm's admission, evaluated in the arm's bindings: a false
             // guard falls through to the next arm, exactly as the emitted `pat if guard =>` does.
@@ -8847,6 +9082,41 @@ fn try_witness_evaluation_dispatch(
     }
 }
 
+/// THE INTERPRETER'S HALF OF THE NATIVE-VARIANT LOWERING. The interpreter is a Rust-hosted
+/// realization whose `Value::Bool` holds a Rust `bool`, so it asks the SAME identity-keyed decision
+/// the Rust emitter asks (`v1.compiler.coercion` `rust_variant_value_realization`, over
+/// `gunbc.rust_source_type_bindings` `rust_source_variant_value_rows`) and reads the row's value
+/// with Rust's own `bool` parse -- the projection of that row onto this host, not a second table.
+enum NativeVariantReading {
+    HostBool(bool),
+    Structural,
+    Refused(String),
+}
+
+fn native_variant_reading(
+    parent: &Rc<crate::std_target_representation::VariantParentIdentity>,
+    arm: &str,
+) -> NativeVariantReading {
+    use crate::std_target_representation::VariantValueRealization as R;
+    let r = crate::v1_compiler_coercion::rust_variant_value_realization(
+        parent.clone(),
+        arm.to_string(),
+    );
+    match &*r {
+        R::VariantRealizesAsTargetValue { value_spelling } => match value_spelling.parse::<bool>() {
+            Ok(b) => NativeVariantReading::HostBool(b),
+            Err(_) => NativeVariantReading::Refused(format!(
+                "variant realization: arm `{arm}` realizes as the target value `{value_spelling}`, which the interpreter's host bool cannot hold"
+            )),
+        },
+        R::VariantRealizesStructurally => NativeVariantReading::Structural,
+        _ => NativeVariantReading::Refused(
+            crate::std_target_representation::variant_value_realization_refusal_message(r.clone())
+                .unwrap_or_else(|| format!("variant realization: arm `{arm}` was refused")),
+        ),
+    }
+}
+
 fn match_pattern(
     pattern: &MatchPattern,
     value: &Value,
@@ -8875,14 +9145,36 @@ fn match_pattern(
                 name,
                 parent_enum,
                 field_bindings,
+                parent_identity,
             } => {
+                // A variant pattern against a HOST bool is a native arm or nothing: the identity
+                // inference carried decides which value it denotes, and an undecidable one refuses.
+                // Variant values (a module-local coproduct whose arms happen to be spelled True/False)
+                // never reach this branch and keep their structural match below.
+                if let Value::Bool(held) = value {
+                    let arm = name.rsplit('.').next().unwrap_or(name);
+                    return match native_variant_reading(parent_identity, arm) {
+                        NativeVariantReading::HostBool(b) => {
+                            if *held == b {
+                                Some(HashMap::new())
+                            } else {
+                                None
+                            }
+                        }
+                        NativeVariantReading::Structural => None,
+                        NativeVariantReading::Refused(detail) => {
+                            *ctx.variant_realization_refusal.borrow_mut() = Some(detail);
+                            None
+                        }
+                    };
+                }
                 // A qualified pattern spelling (`module.Variant`) resolves the arm name to its
                 // containment path, but values are constructed with the bare last segment (the
                 // short-name normalization at value construction). Every name-vs-literal
                 // reconciliation below — native Int/Str/List coproducts, Optional/Witness raw
                 // (value-or-Null) unwraps — compares that short segment, as the `Value::Variant`
-                // arm's fallback does; otherwise a qualified `Zero`/`Succ` (Nat grounded to native
-                // Int), `Empty`/`Cons`, or `Present`/`Absent` pattern misses and the match falls
+                // arm's fallback does; otherwise a qualified `Empty`/`Cons` or
+                // `Present`/`Absent` pattern misses and the match falls
                 // through non-exhaustive.
                 let name_last = name.rsplit('.').next().unwrap_or(name);
                 // Kernel-optional / witness raw representation (value-or-Null): the `_ if
@@ -9042,12 +9334,7 @@ fn match_pattern(
                             if items.is_empty() {
                                 None
                             } else {
-                                record_list_cons_tail_split(items.len());
                                 let head = items[0].clone();
-                                let tail = {
-                                    let mut rest = (**items).clone();
-                                    list_value(rest.split_off(1))
-                                };
                                 let mut bindings = HashMap::new();
                                 for fb in field_bindings.iter() {
                                     let field_name = field_binding_name_at(
@@ -9055,9 +9342,23 @@ fn match_pattern(
                                         ctx.source_indices.clone(),
                                     );
                                     let fb_pat = field_binding_pattern(fb.clone());
+                                    // THE TAIL IS BUILT ONLY FOR A PATTERN THAT CONSUMES IT. A
+                                    // wildcard binds nothing, so skipping it changes no binding;
+                                    // `list_head` and `is_empty`, which the lexer calls once per
+                                    // character, bind `tail: _` and paid for a list they dropped.
+                                    if matches!(*fb_pat, MatchPattern::Wildcard) {
+                                        match field_name.as_str() {
+                                            "head" | "tail" => continue,
+                                            _ => return None,
+                                        }
+                                    }
                                     let field_val = match field_name.as_str() {
                                         "head" => head.clone(),
-                                        "tail" => tail.clone(),
+                                        "tail" => {
+                                            record_list_cons_tail_split(items.len());
+                                            let mut rest = (**items).clone();
+                                            list_value(rest.split_off(1))
+                                        }
                                         _ => return None,
                                     };
                                     let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
@@ -9083,7 +9384,6 @@ fn match_pattern(
                                 None => None,
                                 Some(c) => {
                                     let head = char_value(c);
-                                    let tail = str_value(chars.as_str().to_string());
                                     let mut bindings = HashMap::new();
                                     for fb in field_bindings.iter() {
                                         let field_name = field_binding_name_at(
@@ -9091,9 +9391,18 @@ fn match_pattern(
                                             ctx.source_indices.clone(),
                                         );
                                         let fb_pat = field_binding_pattern(fb.clone());
+                                        // The same laziness as the native-list arm above: the
+                                        // rest of the string is copied only for a pattern that
+                                        // consumes it.
+                                        if matches!(*fb_pat, MatchPattern::Wildcard) {
+                                            match field_name.as_str() {
+                                                "head" | "tail" => continue,
+                                                _ => return None,
+                                            }
+                                        }
                                         let field_val = match field_name.as_str() {
                                             "head" => head.clone(),
-                                            "tail" => tail.clone(),
+                                            "tail" => str_value(chars.as_str().to_string()),
                                             _ => return None,
                                         };
                                         let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
@@ -9109,39 +9418,6 @@ fn match_pattern(
                     // deliberately unhandled (no corpus site exercises it, #5-scoped deferral) — an
                     // unmatched pattern name falls through to `_ => None` below, refusing rather
                     // than fabricating a (pos, neg) pair.
-                    Value::Int(n) if name_last == "Zero" || name_last == "Succ" => {
-                        match name_last {
-                            "Zero" => {
-                                if *n == 0 {
-                                    Some(HashMap::new())
-                                } else {
-                                    None
-                                }
-                            }
-                            "Succ" => {
-                                if *n <= 0 {
-                                    None
-                                } else {
-                                    let mut bindings = HashMap::new();
-                                    for fb in field_bindings.iter() {
-                                        let field_name = field_binding_name_at(
-                                            fb.clone(),
-                                            ctx.source_indices.clone(),
-                                        );
-                                        let fb_pat = field_binding_pattern(fb.clone());
-                                        let field_val = match field_name.as_str() {
-                                            "prev" => Value::Int(n - 1),
-                                            _ => return None,
-                                        };
-                                        let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
-                                        bindings.extend(sub_bindings);
-                                    }
-                                    Some(bindings)
-                                }
-                            }
-                            _ => None,
-                        }
-                    }
                     Value::Null
                         if name_last == "Violates"
                             && parent_enum_is(parent_enum.as_ref(), "Witness") =>
@@ -9312,6 +9588,7 @@ macro_rules! v1_map_grounding_arms {
             arm "map_grounding.empty_map" { "empty_map_primitive_delegate" | "empty_map" } => "empty_map",
             arm "map_grounding.map_insert" { "map_insert_primitive_delegate" | "map_insert" } => "map_insert",
             arm "map_grounding.lookup" { "map_lookup_primitive_delegate" | "map_lookup" } => "lookup",
+            arm "map_grounding.list_at" { "list_at_primitive_delegate" | "list_at_optional" } => "get",
         }
     };
 }
@@ -9368,6 +9645,55 @@ fn is_v2_std_collection_map_grounded_fn(ctx: &InterpContext, fn_node: &Rc<Node>)
         .is_some_and(|info| info.module_name == V2_STD_COLLECTION_MODULE)
 }
 
+/// THE `get` PRIMITIVE'S TOTAL PROJECTION (`v2.std.collection` `list_at_optional`). A native list is
+/// indexed on its persistent carrier, `log n` as `std.primitives` `get_contract` declares; an index
+/// outside the list, negative included, is `Absent`. The raw `get` builtin keeps its `Null` miss for
+/// its v1 callers, which is why this does not route through it: a `Null` element and a miss would be
+/// one value there. A value that is not a free-monoid list refuses typed.
+fn list_at_as_optional(
+    args: &[(Option<String>, Value)],
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let (list, index) = match args {
+        [(_, list), (_, index)] => (list, index),
+        _ => {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "{V2_STD_COLLECTION_MODULE}.list_at_optional expects (xs, index), got {} argument(s)",
+                    args.len()
+                ),
+            })
+        }
+    };
+    let index = expect_int(Some(index), "list_at_optional")?;
+    let found = match list {
+        Value::List(items) => {
+            if index < 0 {
+                None
+            } else {
+                items.get(index as usize).cloned()
+            }
+        }
+        other => {
+            let items = free_monoid_to_vec(other).ok_or_else(|| InterpError::TypeError {
+                msg: format!(
+                    "{V2_STD_COLLECTION_MODULE}.list_at_optional expects a list, got {}",
+                    other.type_label()
+                ),
+            })?;
+            if index < 0 {
+                None
+            } else {
+                items.get(index as usize).cloned()
+            }
+        }
+    };
+    Ok(match found {
+        Some(v) => optional_present(v, ctx),
+        None => optional_absent(ctx),
+    })
+}
+
 fn try_v2_std_collection_map_primitive_grounding(
     ctx: &InterpContext,
     fn_node: &Rc<Node>,
@@ -9378,6 +9704,9 @@ fn try_v2_std_collection_map_primitive_grounding(
     }
     let grounded_name = fn_node.name.as_str();
     let builtin_name = v1_map_grounding_arms!(v1_map_grounding_dispatch, grounded_name);
+    if builtin_name == "get" {
+        return Some(list_at_as_optional(args, ctx));
+    }
     match eval_builtin(builtin_name, args, ctx) {
         Ok(Some(v)) => Some(Ok(v)),
         Ok(None) => Some(Err(InterpError::TypeError {
@@ -11211,6 +11540,9 @@ fn eval_call_memo_get(
         for (stored_args, value) in bucket {
             if eval_call_memo_args_match(stored_args, args) {
                 mm.hits += 1;
+                EVAL_CALL_MEMO_PROCESS
+                    .0
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 return Some(value.clone());
             }
         }
@@ -11230,6 +11562,9 @@ fn eval_call_memo_put(
     // store is still a miss — overflow ⊆ misses, and hits + misses == keyed Ok-resulting calls
     // through the memo path, including under overflow. `misses` is NOT "entries stored".
     m.misses += 1;
+    EVAL_CALL_MEMO_PROCESS
+        .1
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     if m.map.len() >= EVAL_CALL_MEMO_ENTRY_CAP && !m.map.contains_key(&key) {
         m.overflow += 1;
         return;
@@ -11536,13 +11871,6 @@ fn eval_record_lit(
     fields.sort_unstable_by_key(|(k, _)| k.0);
 
     if let Some(pe) = parent_enum {
-        if type_name == "Succ" {
-            if let Some(Value::Int(p)) = fields_get(&fields, ctx.sym("prev")) {
-                if *p >= 0 {
-                    return Ok(Value::Int(p + 1));
-                }
-            }
-        }
         Ok(Value::Variant {
             type_name: ctx.sym(pe),
             variant_name: ctx.sym(type_name.rsplit('.').next().unwrap_or(&type_name)),
@@ -20279,15 +20607,116 @@ fn eval_emit_host_run_transport_builtin(
 /// moves. SINGLE authority for every host op on the native-cache namespace: the cached run
 /// transport AND emit_host_native_cache_evict share this mapping, so eviction targets the
 /// workspace the transport warms (a fork here silently un-evicts).
-fn native_cache_rebase_workspace_dir(workspace_dir: String) -> String {
-    match std::env::var("GUNBC_NATIVE_CACHE_ROOT") {
-        Ok(root) if !root.trim().is_empty() => match workspace_dir.strip_prefix("/tmp/") {
-            Some(rest) if rest.starts_with("gunbc_") => {
-                format!("{}/{}", root.trim_end_matches('/'), rest)
-            }
-            _ => workspace_dir,
-        },
-        _ => workspace_dir,
+///
+/// NO HOST-GLOBAL DEFAULT. With GUNBC_NATIVE_CACHE_ROOT unset the namespace used to land at its
+/// literal /tmp/gunbc_ spelling: one directory shared by every user and every runner instance on
+/// the host, written in place with no owner. On srv1 a directory left by one runner user refused
+/// the next user's write (Permission denied), and concurrent instances raced on the same content-
+/// keyed path -- a wet-witness host premise of the runner-keyed class #12467 fixed for its own
+/// fixed paths. Unset now roots the namespace in the running user's cache directory
+/// (`$XDG_CACHE_HOME/gunbc_native_cache`, else `$HOME/.cache/gunbc_native_cache`), which that user
+/// owns; on the floor runners `$HOME` is the instance's own job temp, so no other instance writes it.
+/// Not under the checkout: a crate inside the repository's Cargo workspace is refused by cargo
+/// ("current package believes it's in a workspace when it's not"), measured. The content-hash
+/// components are untouched, so this moves WHERE and never WHAT. With neither variable set the
+/// namespace refuses rather than falling back to /tmp.
+fn native_cache_rebase_workspace_dir(workspace_dir: String) -> InterpResult<String> {
+    let configured = std::env::var("GUNBC_NATIVE_CACHE_ROOT")
+        .ok()
+        .filter(|root| !root.trim().is_empty());
+    let root = match configured {
+        Some(root) => root,
+        None if native_cache_namespace_rest(&workspace_dir).is_none() => return Ok(workspace_dir),
+        None => native_cache_user_root(
+            std::env::var("XDG_CACHE_HOME").ok().as_deref(),
+            std::env::var("HOME").ok().as_deref(),
+        )
+        .ok_or_else(|| InterpError::TypeError {
+            msg: "native cache: neither XDG_CACHE_HOME nor HOME names a user cache directory, and \
+                  the native cache has no host-global fallback; set GUNBC_NATIVE_CACHE_ROOT"
+                .to_string(),
+        })?,
+    };
+    Ok(native_cache_rebased(&workspace_dir, &root))
+}
+
+/// The part of a native-cache path after its declared `/tmp/` prefix, or None for a path outside
+/// the namespace (which is never moved).
+fn native_cache_namespace_rest(workspace_dir: &str) -> Option<&str> {
+    workspace_dir
+        .strip_prefix("/tmp/")
+        .filter(|rest| rest.starts_with("gunbc_"))
+}
+
+fn native_cache_user_root(xdg_cache_home: Option<&str>, home: Option<&str>) -> Option<String> {
+    let absolute = |v: &str| !v.trim().is_empty() && v.starts_with('/');
+    match (
+        xdg_cache_home.filter(|v| absolute(v)),
+        home.filter(|v| absolute(v)),
+    ) {
+        (Some(xdg), _) => Some(format!("{}/gunbc_native_cache", xdg.trim_end_matches('/'))),
+        (None, Some(home)) => Some(format!(
+            "{}/.cache/gunbc_native_cache",
+            home.trim_end_matches('/')
+        )),
+        (None, None) => None,
+    }
+}
+
+fn native_cache_rebased(workspace_dir: &str, root: &str) -> String {
+    match native_cache_namespace_rest(workspace_dir) {
+        Some(rest) => format!("{}/{}", root.trim_end_matches('/'), rest),
+        None => workspace_dir.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod native_cache_root_tests {
+    use super::*;
+
+    // The srv1 refusal: an unset root must not leave a namespace path at its host-global /tmp
+    // spelling, which another runner user may own.
+    #[test]
+    fn unset_root_moves_the_namespace_to_the_user_cache_never_to_tmp() {
+        let root = native_cache_user_root(None, Some("/runner/_temp")).unwrap();
+        let moved =
+            native_cache_rebased("/tmp/gunbc_emit_on_demand_identity_cast_native/ab12", &root);
+        assert_eq!(
+            moved,
+            "/runner/_temp/.cache/gunbc_native_cache/gunbc_emit_on_demand_identity_cast_native/ab12"
+        );
+        assert!(!moved.starts_with("/tmp/"));
+        assert_eq!(
+            native_cache_user_root(Some("/x/cache"), Some("/home/u")).as_deref(),
+            Some("/x/cache/gunbc_native_cache")
+        );
+    }
+
+    // No user cache directory refuses; it never falls back to the host-global spelling.
+    #[test]
+    fn no_user_cache_directory_has_no_root() {
+        assert_eq!(native_cache_user_root(None, None), None);
+        assert_eq!(native_cache_user_root(Some(""), Some("relative")), None);
+    }
+
+    // WHERE, never WHAT: the content-keyed components survive the move byte for byte.
+    #[test]
+    fn a_configured_root_keeps_the_content_keyed_components() {
+        assert_eq!(
+            native_cache_rebased("/tmp/gunbc_emit_on_demand_kernel/k1/k2", "/cache/"),
+            "/cache/gunbc_emit_on_demand_kernel/k1/k2"
+        );
+    }
+
+    // Outside the namespace nothing moves, under either root.
+    #[test]
+    fn a_path_outside_the_namespace_is_never_moved() {
+        assert_eq!(native_cache_namespace_rest("/tmp/other/x"), None);
+        assert_eq!(native_cache_namespace_rest("/var/gunbc_x"), None);
+        assert_eq!(
+            native_cache_rebased("/tmp/other/x", "/cache"),
+            "/tmp/other/x"
+        );
     }
 }
 
@@ -20315,7 +20744,7 @@ fn eval_emit_host_native_cache_evict_builtin(
         .ok_or_else(|| InterpError::TypeError {
             msg: "emit_host_native_cache_evict: workspace_dir must be String".to_string(),
         })?;
-    let workspace_dir = native_cache_rebase_workspace_dir(workspace_dir);
+    let workspace_dir = native_cache_rebase_workspace_dir(workspace_dir)?;
     match std::fs::remove_dir_all(&workspace_dir) {
         Ok(()) => Ok(Value::Bool(true)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Value::Bool(true)),
@@ -20510,10 +20939,29 @@ fn run_cached_process_spec(
     require_transition_timing: bool,
     admitted_names: &[String],
 ) -> InterpResult<Value> {
-    let workspace_dir = native_cache_rebase_workspace_dir(workspace_dir);
+    let workspace_dir = native_cache_rebase_workspace_dir(workspace_dir)?;
     let realization_workspace = std::path::PathBuf::from(&workspace_dir);
     std::fs::create_dir_all(&realization_workspace).map_err(|e| InterpError::TypeError {
         msg: format!("emit_host_run_transport_cached: workspace create failed: {e}"),
+    })?;
+    // ONE WRITER PER CONTENT-KEYED WORKSPACE. Two runs that share a cache root (two same-user runs
+    // outside CI share ~/.cache) would otherwise materialize, build and mark one directory at once:
+    // a reader can see a file another writer has just truncated. Every step from materialization to
+    // the ready marker happens under an exclusive lock on the realization workspace, so a second run
+    // waits, then finds the first run's `.native_ready` and runs warm, or rebuilds a partial
+    // directory (no marker) in place. A lock rather than build-elsewhere-then-rename: cargo records
+    // absolute paths, and a renamed build recompiles the crate on its first warm run while reporting
+    // compile_skipped (measured), so the publish would not be what the receipt says it is.
+    let publish_lock = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(realization_workspace.join(".native_publish.lock"))
+        .map_err(|e| InterpError::TypeError {
+            msg: format!("emit_host_run_transport_cached: publish lock open failed: {e}"),
+        })?;
+    publish_lock.lock().map_err(|e| InterpError::TypeError {
+        msg: format!("emit_host_run_transport_cached: publish lock failed: {e}"),
     })?;
     emit_host_materialize_workspace_files(&realization_workspace, &workspace_files)?;
     let build_environment = emit_host_constructed_build_environment(admitted_names);
@@ -21585,6 +22033,27 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(Value::Int(s.string_length())))
             },
 
+            // THE NATIVE STRING-SPAN SCAN THE JSON GRAMMAR'S PRODUCTIONS USE (RFC 8259 string
+            // body scan, escapes honored) -- v1_rt::scan_string_end is indexed in CHARS like
+            // every other string carrier here, so the position it returns is the position the
+            // interpreted parser's own indexing speaks.
+            arm "free_call.scan_string_end" { "scan_string_end" } => {
+                let s = expect_value_str($positional.first().copied(), "scan_string_end")?;
+                let start = expect_int($positional.get(1).copied(), "scan_string_end start")?;
+                Ok(Some(Value::Int(v1_rt::scan_string_end(&s, start))))
+            },
+
+            // THE VALIDATED JSON UNESCAPE, NATIVE (RFC 8259 section 7; \u decodes through
+            // from_code_point's own semantics, lone surrogates included). None is the escape-set
+            // refusal: the grammar maps it to its parse failure before any value is built.
+            arm "free_call.json_unescape_checked" { "json_unescape_checked" } => {
+                let s = expect_str($positional.first().copied(), "json_unescape_checked")?;
+                match v1_rt::json_unescape_checked(&s) {
+                    Some(out) => Ok(Some(str_value(out))),
+                    None => Ok(Some(Value::Null)),
+                }
+            },
+
             arm "free_call.substring" { "substring" } => {
                 // `v1_rt::substring` clamps negative start/end to 0, and `RcStr::substring`
                 // clamps identically, so routing through the carrier preserves this arm exactly.
@@ -21876,6 +22345,23 @@ macro_rules! v1_builtin_arms {
                 }
                 _ => Err(InterpError::TypeError {
                     msg: "observed_monotonic_nanos takes exactly one boundary label".to_string(),
+                }),
+            },
+
+            // ObserveThreadCpuAtSubject realization seam: the calling thread's CPU time
+            // (extdeps.posix.clock_gettime ClockThreadCputimeId). An unsupported clock refuses;
+            // the monotonic wall is never substituted for it.
+            arm "free_call.observed_thread_cpu_nanos" { "observed_thread_cpu_nanos" } => match $positional.as_slice() {
+                [Value::Str(_boundary)] => match thread_cpu_nanos_checked() {
+                    Ok(nanos) => Ok(Some(Value::Int(nanos.min(i64::MAX as u128) as i64))),
+                    Err(cause) => Err(InterpError::TypeError {
+                        msg: format!(
+                            "observed_thread_cpu_nanos: clock_gettime(CLOCK_THREAD_CPUTIME_ID) unavailable on this host ({cause}); refusing rather than substituting the wall"
+                        ),
+                    }),
+                },
+                _ => Err(InterpError::TypeError {
+                    msg: "observed_thread_cpu_nanos takes exactly one boundary label".to_string(),
                 }),
             },
 
@@ -22707,6 +23193,18 @@ macro_rules! v1_builtin_arms {
                 )))
             },
 
+            arm "free_call.compile_dag_operation_requires" { "compile_dag_operation_requires" } => {
+                let source = expect_str($positional.first().copied(), $name)?;
+                let service = expect_str($positional.get(1).copied(), $name)?;
+                let operation = expect_str($positional.get(2).copied(), $name)?;
+                match crate::cli_run::compile_dag_operation_requires(&source, &service, &operation) {
+                    Ok(members) => Ok(Some(list_value(
+                        members.into_iter().map(str_value).collect::<Vec<_>>(),
+                    ))),
+                    Err(msg) => Err(InterpError::TypeError { msg }),
+                }
+            },
+
             arm "free_call.compile_dag_primitive_call_edges" { "compile_dag_primitive_call_edges" } => {
                 let exclude_substrings = expect_str_list($positional.first().copied(), $name)?;
                 let pool_roots = expect_str_list($positional.get(1).copied(), $name)?;
@@ -22838,17 +23336,6 @@ macro_rules! v1_builtin_arms {
                 crate::cli_run::inert_carrier_declared_count_live(),
             ))),
 
-            arm "free_call.non_fold_residue_count" { "non_fold_residue_count" } => Ok(Some(Value::Int(crate::cli_run::non_fold_residue_count()))),
-            arm "free_call.non_fold_residue_unrostered_count" { "non_fold_residue_unrostered_count" } => Ok(Some(Value::Int(
-                crate::cli_run::non_fold_residue_unrostered_count(),
-            ))),
-            arm "free_call.non_fold_residue_stale_roster_count" { "non_fold_residue_stale_roster_count" } => Ok(Some(Value::Int(
-                crate::cli_run::non_fold_residue_stale_roster_count(),
-            ))),
-            arm "free_call.non_fold_residue_coproduct_universe_count" { "non_fold_residue_coproduct_universe_count" } => Ok(Some(Value::Int(
-                crate::cli_run::non_fold_residue_coproduct_universe_count(),
-            ))),
-
             arm "free_call.commit_witness_claim_roster_unresolvable_count" { "commit_witness_claim_roster_unresolvable_count" } => Ok(Some(Value::Int(
                 crate::cli_run::commit_witness_claim_roster_unresolvable_count(),
             ))),
@@ -22865,18 +23352,6 @@ macro_rules! v1_builtin_arms {
                     crate::cli_run::commit_witness_claim_pair_resolvable(&entry, &function),
                 )))
             },
-            arm "free_call.non_fold_residue_wildcard_red_fixture_holds" { "non_fold_residue_wildcard_red_fixture_holds" } => Ok(Some(Value::Bool(
-                crate::cli_run::non_fold_residue_wildcard_red_fixture_holds(),
-            ))),
-            arm "free_call.non_fold_residue_total_fold_green_fixture_holds" { "non_fold_residue_total_fold_green_fixture_holds" } => Ok(Some(Value::Bool(
-                crate::cli_run::non_fold_residue_total_fold_green_fixture_holds(),
-            ))),
-            arm "free_call.non_fold_residue_roster_red_fixture_holds" { "non_fold_residue_roster_red_fixture_holds" } => Ok(Some(Value::Bool(
-                crate::cli_run::non_fold_residue_roster_red_fixture_holds(),
-            ))),
-            arm "free_call.non_fold_residue_synthetic_unrostered_red_holds" { "non_fold_residue_synthetic_unrostered_red_holds" } => Ok(Some(Value::Bool(
-                crate::cli_run::non_fold_residue_synthetic_unrostered_red_holds(),
-            ))),
 
             arm "free_call.complexity_linearity_syntactic_finding_count" { "complexity_linearity_syntactic_finding_count" } => Ok(Some(Value::Int(
                 crate::cli_run::complexity_linearity_syntactic_finding_count(),
@@ -28111,5 +28586,102 @@ mod value_depth_walker_tests {
         );
         let deeper = list_value(vec![value]);
         assert!(crate::cli_run::value_to_wire_json(&deeper, &ctx).is_err());
+    }
+}
+
+#[cfg(test)]
+mod portable_canonical_order_tests {
+    use super::*;
+    use im::vector as im_vec;
+
+    /// The value both processes build: a map whose HAMT iteration order follows the process's
+    /// `RandomState`, with variant-bearing values.
+    fn subject_digest() -> String {
+        let mut entries = HamtMap::new();
+        for i in 0..64 {
+            let key = CanonKey::new(str_value(format!("k{i:02}"))).expect("str key");
+            entries = entries.update(
+                key,
+                Value::Variant {
+                    type_name: Symbol("T"),
+                    variant_name: Symbol("V"),
+                    fields: Rc::new(vec![(Symbol("n"), Value::Int(i))]),
+                },
+            );
+        }
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+        };
+        let ctx = InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic);
+        let portable = portable_value_from_ctx(&ctx, &map_value(entries)).expect("portable");
+        portable_value_digest(&portable)
+    }
+
+    const CHILD: &str = "GUNBC_PORTABLE_ORDER_CHILD";
+
+    #[test]
+    fn portable_map_digest_is_equal_across_two_processes() {
+        if std::env::var_os(CHILD).is_some() {
+            println!("DIGEST={}", subject_digest());
+            return;
+        }
+        let run = || {
+            let out = std::process::Command::new(std::env::current_exe().expect("test exe"))
+                .args([
+                    "--exact",
+                    "v1_interpreter::portable_canonical_order_tests::portable_map_digest_is_equal_across_two_processes",
+                    "--nocapture",
+                    "--test-threads=1",
+                ])
+                .env(CHILD, "1")
+                .output()
+                .expect("child process");
+            let text = String::from_utf8_lossy(&out.stdout).to_string();
+            text.lines()
+                .find_map(|l| l.split("DIGEST=").nth(1).map(|d| d.trim().to_string()))
+                .unwrap_or_else(|| panic!("child printed no digest: {text}"))
+        };
+        let (first, second) = (run(), run());
+        assert_eq!(
+            first, second,
+            "two processes digested one map-bearing value differently"
+        );
+    }
+
+    #[test]
+    fn floats_order_by_ieee_total_order() {
+        let ordered = [-2.0f64, -1.0, -0.0, 0.0, 1.0, 2.0];
+        for w in ordered.windows(2) {
+            assert_eq!(
+                portable_value_cmp(&PortableValue::Float(w[0]), &PortableValue::Float(w[1])),
+                std::cmp::Ordering::Less,
+                "{} must order before {}",
+                w[0],
+                w[1]
+            );
+        }
+    }
+
+    #[test]
+    fn value_hash_of_a_variant_depends_on_spelling_not_address() {
+        // Two distinct allocations of one spelling: what two processes' canonical tables are.
+        let t1: &'static str = Box::leak("T".to_string().into_boxed_str());
+        let t2: &'static str = Box::leak("T".to_string().into_boxed_str());
+        assert!(!std::ptr::eq(t1, t2));
+        let v = |t: &'static str| Value::Variant {
+            type_name: Symbol(t),
+            variant_name: Symbol("V"),
+            fields: Rc::new(vec![]),
+        };
+        assert_eq!(value_hash(&v(t1)), value_hash(&v(t2)));
+        let other = Value::Variant {
+            type_name: Symbol("U"),
+            variant_name: Symbol("V"),
+            fields: Rc::new(vec![]),
+        };
+        assert_ne!(value_hash(&v(t1)), value_hash(&other));
     }
 }

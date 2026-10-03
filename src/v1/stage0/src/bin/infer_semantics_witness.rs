@@ -413,6 +413,9 @@ fn variant_arm(name: &str) -> Rc<Node> {
             name: name.to_string(),
             parent_enum: None,
             field_bindings: Rc::new(vec![]),
+            parent_identity: Rc::new(
+                v1_compiler::std_target_representation::VariantParentIdentity::VariantParentBeforeInference,
+            ),
         }),
         None,
         unit_expr(),
@@ -541,11 +544,29 @@ type AccountId = Refined<String>
         .expect("AccountId binding");
 
     assert!(
-        !node_type_compatible(user_id.clone(), account_id, result.source_indices.clone()),
+        !node_type_compatible(
+            user_id.clone(),
+            account_id,
+            result.source_indices.clone(),
+            Rc::new(
+                v1_compiler::v1_compiler_infer_types::TextJudgment::TextJudgedIn {
+                    env: module.type_env.clone()
+                }
+            )
+        ),
         "PD-3: node_type_compatible must reject brand-twin UserId-for-AccountId"
     );
     assert!(
-        node_type_compatible(user_id.clone(), user_id, result.source_indices.clone()),
+        node_type_compatible(
+            user_id.clone(),
+            user_id,
+            result.source_indices.clone(),
+            Rc::new(
+                v1_compiler::v1_compiler_infer_types::TextJudgment::TextJudgedIn {
+                    env: module.type_env.clone()
+                }
+            )
+        ),
         "PD-3: node_type_compatible must accept same-brand UserId-for-UserId"
     );
 }
@@ -627,6 +648,7 @@ fn list_int_index_returns_optional_element_type() {
         zero_span(),
         "test".to_string(),
         empty_source_indices(),
+        Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes }),
     );
 
     assert_eq!(
@@ -647,6 +669,7 @@ fn malformed_map_index_returns_compiler_error_type() {
         zero_span(),
         "test".to_string(),
         empty_source_indices(),
+        Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes }),
     );
 
     assert_eq!(result.diagnostics.len(), 1);
@@ -670,6 +693,7 @@ fn invalid_slice_returns_compiler_error_type() {
         zero_span(),
         "test".to_string(),
         empty_source_indices(),
+        Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes }),
     );
 
     assert_eq!(result.diagnostics.len(), 1);
@@ -688,6 +712,7 @@ fn valid_list_slice_preserves_list_type() {
         zero_span(),
         "test".to_string(),
         empty_source_indices(),
+        Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes }),
     );
 
     assert!(result.diagnostics.is_empty());
@@ -714,6 +739,7 @@ fn valid_map_index_preserves_optional_value_type() {
         zero_span(),
         "test".to_string(),
         empty_source_indices(),
+        Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes }),
     );
 
     assert!(result.diagnostics.is_empty());
@@ -932,6 +958,9 @@ fn optional_present_absent_patterns_keep_canonical_names() {
             name: "Present".to_string(),
             parent_enum: None,
             field_bindings: Rc::new(vec![]),
+            parent_identity: Rc::new(
+                v1_compiler::std_target_representation::VariantParentIdentity::VariantParentBeforeInference,
+            ),
         }),
         subject.clone(),
         zero_span(),
@@ -942,6 +971,9 @@ fn optional_present_absent_patterns_keep_canonical_names() {
             name: "Absent".to_string(),
             parent_enum: None,
             field_bindings: Rc::new(vec![]),
+            parent_identity: Rc::new(
+                v1_compiler::std_target_representation::VariantParentIdentity::VariantParentBeforeInference,
+            ),
         }),
         subject,
         zero_span(),
@@ -1090,6 +1122,9 @@ fn real_optional_coproduct_preserves_present_absent_pattern_names() {
             name: "Present".to_string(),
             parent_enum: None,
             field_bindings: Rc::new(vec![]),
+            parent_identity: Rc::new(
+                v1_compiler::std_target_representation::VariantParentIdentity::VariantParentBeforeInference,
+            ),
         }),
         subject,
         zero_span(),
@@ -1307,6 +1342,7 @@ fn resolve_node_uses_node_name_for_lookup() {
         name: "User".to_string(),
         resolved: leaf_node("User".to_string()),
         provenance: Rc::new(SubValueRelation::SubValueUnknown),
+        alias_rhs: None,
     });
     let env = Rc::new(TypeEnv {
         module_path: "".to_string(),
@@ -1869,6 +1905,7 @@ fn map_index_with_correct_key_type_succeeds() {
         zero_span(),
         "test".to_string(),
         empty_source_indices(),
+        Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes }),
     );
     assert!(
         result.diagnostics.is_empty(),
@@ -1895,6 +1932,7 @@ fn map_index_with_wrong_key_type_reports_error() {
         zero_span(),
         "test".to_string(),
         empty_source_indices(),
+        Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes }),
     );
     assert_eq!(
         result.diagnostics.len(),
@@ -1957,7 +1995,7 @@ fn list_and_freemonoid_compatible_same_element() {
     let list_sym = container_node("List".to_string(), leaf_node("Symbol".to_string()));
     let fm_sym = container_node("FreeMonoid".to_string(), leaf_node("Symbol".to_string()));
     assert!(
-        node_type_compatible(list_sym, fm_sym, empty_source_indices()),
+        node_type_compatible(list_sym, fm_sym, empty_source_indices(), Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes })),
         "List<Symbol> and FreeMonoid<Symbol> are declared aliases — must be compatible at type-comparison"
     );
 }
@@ -1966,7 +2004,7 @@ fn list_and_freemonoid_incompatible_different_element() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
     let fm_string = container_node("FreeMonoid".to_string(), leaf_node("String".to_string()));
     assert!(
-        !node_type_compatible(list_int, fm_string, empty_source_indices()),
+        !node_type_compatible(list_int, fm_string, empty_source_indices(), Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes })),
         "List<Int> vs FreeMonoid<String> differ in element type — must stay incompatible"
     );
 }
@@ -1975,7 +2013,7 @@ fn list_freemonoid_compat_is_symmetric() {
     let fm_sym = container_node("FreeMonoid".to_string(), leaf_node("Symbol".to_string()));
     let list_sym = container_node("List".to_string(), leaf_node("Symbol".to_string()));
     assert!(
-        node_type_compatible(fm_sym, list_sym, empty_source_indices()),
+        node_type_compatible(fm_sym, list_sym, empty_source_indices(), Rc::new(v1_compiler::v1_compiler_infer_types::TextJudgment::TextNotAsked { reason: v1_compiler::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedForSyntheticWitnessNodes })),
         "alias compatibility must hold in both argument orders"
     );
 }
@@ -2047,6 +2085,7 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
         name: "Box".to_string(),
         resolved: box_decl.clone(),
         provenance: Rc::new(SubValueRelation::SubValueUnknown),
+        alias_rhs: None,
     });
     let env = Rc::new(TypeEnv {
         module_path: "".to_string(),
@@ -2143,6 +2182,7 @@ fn call_target_agreeing_scope_maps_are_locally_bound() {
             name: "real_callee".to_string(),
             resolved: leaf_node("Int".to_string()),
             provenance: Rc::new(v1_compiler::std_induction::SubValueRelation::PreservedValue),
+            alias_rhs: None,
         }),
     );
     let scope = Rc::new(InferScope {

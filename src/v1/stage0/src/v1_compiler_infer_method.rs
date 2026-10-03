@@ -7,7 +7,9 @@ use crate::std_algebra::AlgebraTypeTemplate::{
     ReceiverKey, ReceiverSelf, ReceiverValue, TupleOf, WitnessOf,
 };
 use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
-pub use crate::std_algebra::{algebra_templates_for_profile, all_algebra_profiles};
+pub use crate::std_algebra::{
+    algebra_templates_for_profile, all_algebra_profiles, free_monoid_scalar_templates,
+};
 pub use crate::std_algebra::{
     AlgebraFieldTemplate, AlgebraProfile, AlgebraTypeTemplate, ContainerSource,
 };
@@ -457,6 +459,15 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         returns: string_type(),
     }));
                 __m.insert("substring".to_string(), derived_signature(Rc::new(vec!["s".to_string(), "start".to_string(), "end".to_string()]), "substring".to_string(), string_type()));
+                __m.insert("json_unescape_checked".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "s".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    })]),
+        returns: crate::v1_std_core::with_optional_cardinality(string_type()),
+    }));
                 __m.insert("from_code_point".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "cp".to_string(),
@@ -764,6 +775,15 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         returns: int_type(),
     }));
                 __m.insert("observed_monotonic_nanos".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "label".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    })]),
+        returns: int_type(),
+    }));
+                __m.insert("observed_thread_cpu_nanos".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "label".to_string(),
         ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
@@ -1350,6 +1370,25 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         params: Rc::new(vec![]),
         returns: list_of_element(string_type()),
     }));
+                __m.insert("compile_dag_operation_requires".to_string(), Rc::new(BuiltinSignature {
+        params: Rc::new(vec![Rc::new(BuiltinParam {
+        name: "source".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "service".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    }), Rc::new(BuiltinParam {
+        name: "operation".to_string(),
+        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+        name: "String".to_string(),
+    }),
+    })]),
+        returns: list_of_element(string_type()),
+    }));
                 __m.insert("compile_dag_primitive_call_edges".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "exclude_substrings".to_string(),
@@ -1579,22 +1618,6 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         params: Rc::new(vec![]),
         returns: int_type(),
     }));
-                __m.insert("non_fold_residue_count".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
-        returns: int_type(),
-    }));
-                __m.insert("non_fold_residue_unrostered_count".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
-        returns: int_type(),
-    }));
-                __m.insert("non_fold_residue_stale_roster_count".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
-        returns: int_type(),
-    }));
-                __m.insert("non_fold_residue_coproduct_universe_count".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
-        returns: int_type(),
-    }));
                 __m.insert("parse_stage0_cargo_manifest_bins".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
         name: "manifest".to_string(),
@@ -1638,22 +1661,6 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: bool_type(),
-    }));
-                __m.insert("non_fold_residue_wildcard_red_fixture_holds".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
-        returns: bool_type(),
-    }));
-                __m.insert("non_fold_residue_total_fold_green_fixture_holds".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
-        returns: bool_type(),
-    }));
-                __m.insert("non_fold_residue_roster_red_fixture_holds".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
-        returns: bool_type(),
-    }));
-                __m.insert("non_fold_residue_synthetic_unrostered_red_holds".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![]),
         returns: bool_type(),
     }));
                 __m.insert("complexity_linearity_syntactic_finding_count".to_string(), Rc::new(BuiltinSignature {
@@ -2062,6 +2069,64 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
 
 pub fn builtin_signature(name: String) -> Option<Rc<BuiltinSignature>> {
     v1_rt::map_get(&builtin_function_registry(), name.clone())
+}
+
+pub fn builtin_param_names(name: String) -> Rc<Vec<String>> {
+    match builtin_signature(name.clone()) {
+        Some(sig) => Rc::new({
+            let mut __result = Vec::new();
+            for p in sig.params.clone().iter().cloned() {
+                __result.push(p.name.clone());
+            }
+            __result
+        }),
+        std::option::Option::None => Rc::new(vec![]),
+    }
+}
+
+pub fn builtin_host_text_param_names(name: String) -> Rc<Vec<String>> {
+    match builtin_signature(name.clone()) {
+        std::option::Option::None => Rc::new(vec![]),
+        Some(sig) => {
+            let scalar_string_method = {
+                let mut __found = false;
+                for t in crate::std_algebra::free_monoid_scalar_templates()
+                    .iter()
+                    .cloned()
+                {
+                    if (t.name.clone() == name.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            };
+            Rc::new({
+                let mut __result = Vec::new();
+                for p in Rc::new({
+                    let mut __result = Vec::new();
+                    for p in sig.params.clone().iter().cloned() {
+                        if match (*p.ty.clone()).clone() {
+                            AlgebraTypeTemplate::NamedTemplate { name: n, .. } => {
+                                (n.clone() == "String".to_string())
+                            }
+                            AlgebraTypeTemplate::ReceiverSelf => scalar_string_method.clone(),
+                            _ => false,
+                        } {
+                            __result.push(p);
+                        }
+                    }
+                    __result
+                })
+                .iter()
+                .cloned()
+                {
+                    __result.push(p.name.clone());
+                }
+                __result
+            })
+        }
+    }
 }
 
 pub fn infer_builtin_call_type(name: String) -> Option<Rc<Node>> {

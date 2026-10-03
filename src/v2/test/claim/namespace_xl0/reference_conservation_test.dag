@@ -133,11 +133,10 @@ test fn the_clean_control_routes_imports_to_the_import_channel_holds() -> Bool {
   clean_control_report().import_channel > 0
 }
 
-// The `test` marker is consumed into NormalizedTree.test_markers; it is counted there, and the
-// test fn it marks is still found and conserved as an ordinary declaration.
-test fn the_clean_control_routes_the_test_marker_to_its_channel_holds() -> Bool {
-  clean_control_report().test_marker_channel == 1
-}
+// The `test` marker is the grammar's exact word (v2.extdeps.languages.dag dag_grammar_test_fn_decl_expr),
+// class-stamped like `service`, so it is not an authored atom and this population has no channel to
+// count it in; the clean control above, which carries a `test fn`, is admitted with it. The marker's
+// own capture and refusal are held by v2.test.claim.parse.test_marker_channel.
 
 // ---- former drop 1: the second statement of a block (now a located refusal, gunbc#12221) -------
 
@@ -327,22 +326,24 @@ test fn a_repeated_spelling_with_one_copy_dropped_is_exactly_one_row_holds() -> 
   reference_conservation_accepted(report: r) && report_drop_count(report: r, wanted: ^rc_rep) == 1 && length(xs: r.dropped) == 1
 }
 
-// ---- a measured drop found by admission: the where-refinement predicate -----------------------
+// ---- a retired drop: the where-refinement predicates ---------------------------------------
 
 // Found when v2.test.claim.body_lowering.declaration_structure_preserved was routed through
-// v2.compiler.reference_conservation_admission conserved_normalize (MQ-6): normalize ACCEPTS a
-// `where` refinement alias, and the predicate's name reaches no node and no edge of the normalized
-// tree. Stated as today's measurement; it reds when lowering carries the predicate, and the
-// explanation that fixture declares reds with it (conservation_reason_explanation_stale).
-data where_refinement_predicate_source: String = "module v2.test.reference_conservation_where\n\ntype RcTight = String where rc_pred\n"
+// v2.compiler.reference_conservation_admission conserved_normalize (MQ-6): lowering kept one bare
+// atom at the clause's occurrence, so a predicate's name reached no node of the normalized tree.
+// Lowering now carries every predicate of the clause at its own occurrence, with its arguments
+// (v2.compiler.body_lowering_fold body_lower_kept_where_clause), so the same shape -- two predicates,
+// the first with labelled arguments -- conserves every authored atom. This was the drop's pin; it is
+// kept as the regression control that the drop stays retired (DESIGN 4b(4)).
+data where_refinement_predicate_source: String = "module v2.test.reference_conservation_where\n\ntype RcTight = Int where rc_pred(min: 1, max: 5), rc_other\n"
 
 fn where_refinement_predicate_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "where_refinement_predicate", source: where_refinement_predicate_source)
 }
 
-test fn the_where_refinement_predicate_is_reported_dropped_holds() -> Bool {
+test fn the_where_refinement_predicates_are_conserved_holds() -> Bool {
   let r = conservation_report_of(subject: where_refinement_predicate_subject())
-  reference_conservation_accepted(report: r) && report_drop_count(report: r, wanted: ^rc_pred) == 1 && length(xs: r.dropped) == 1
+  reference_conservation_admitted(report: r)
 }
 
 // ---- measured drops found by admission: a later match arm, a statement-let binder -------------
@@ -498,8 +499,15 @@ fn refusal_accounts_for_population(r: ReferenceConservationReport) -> Bool {
   r.authored > 0 && r.refused + length(xs: r.dropped) == r.authored
 }
 
+// The report is computed ONCE as a nullary value, enrolled WARM in v2.workflow.floor_pure_producer_share
+// (the clean_control_report pattern): building the planted admission over the whole grammar inside the
+// claim put it over the new-witness budget once the grammar grew its per-kind productions (XL-2 PR3b-i).
+fn refused_normalization_report() -> ReferenceConservationReport {
+  reference_conservation_of_subject_admitted(subject: normalization_refused_subject(), token_classes: dag_declared_token_classes(), admission: planted_param_list_unread_admission())
+}
+
 test fn a_refused_normalization_still_reports_observed_role_gaps_holds() -> Bool {
-  let r = reference_conservation_of_subject_admitted(subject: normalization_refused_subject(), token_classes: dag_declared_token_classes(), admission: planted_param_list_unread_admission())
+  let r = refused_normalization_report()
   refusal_accounts_for_population(r: r) && r.role_not_yet_read == 1 && r.role_reader_refused == 0 && length(xs: r.unmeasured) == 0
 }
 

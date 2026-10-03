@@ -6,7 +6,7 @@ import v2.compiler.name_resolve {
   Admission,
   ResolutionSubject,
   resolution_context,
-  resolve_with_admission_context_policy
+  resolve_in_context
 }
 import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.std.resolution_policy { default_name_resolution_policy }
@@ -36,7 +36,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // The subject is the map arm of v2.compiler.resolve's one elaboration writer
 // (docs/plans/map-literal-introduction-design.md): lowering writes a headless string-keyed brace
-// with one map_literal_entries edge, and resolve elaborates it to the one introduction
+// with one MapLiteralEntriesEdge edge, and resolve elaborates it to the one introduction
 // v2.std.map_introduction lower_map_introduction builds, or refuses. The oracle is CONTENT EQUALITY
 // WITH THE HEADED SPELLING, `map_from_entries(entries: [MapIntroductionEntry { .. }, ..])`, resolved
 // through the ordinary call route.
@@ -134,16 +134,13 @@ fn ml_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
   match ml_fixture_normalized() {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: roots, diagnostics: _ } =>
-      resolve_with_admission_context_policy(
-        context: resolution_context(lm: dag_language_model(), roots: roots),
+      resolve_in_context(
+        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
         admission: Admission {
           subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
           imports: Empty
-        },
-        index: source_root_index_empty(),
-        active_roots: Empty,
-        policy: default_name_resolution_policy()
-      )
+        }
+      ).resolved
   }
 }
 
@@ -166,13 +163,10 @@ fn ml_int_key_verdict_refused() -> Bool {
   match module_roots_from_source_root_ingest(ingest: ml_int_key_ingest, lm: dag_language_model()) {
     Rejected { diagnostics: _ } => true
     Accepted { value: roots, diagnostics: _ } =>
-      match resolve_with_admission_context_policy(
-        context: resolution_context(lm: dag_language_model(), roots: roots),
-        admission: Admission { subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: "v2.test.ml_int_key") }, imports: Empty },
-        index: source_root_index_empty(),
-        active_roots: Empty,
-        policy: default_name_resolution_policy()
-      ) {
+      match resolve_in_context(
+        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
+        admission: Admission { subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: "v2.test.ml_int_key") }, imports: Empty }
+      ).resolved {
         Accepted { value: _, diagnostics: _ } => false
         Rejected { diagnostics: _ } => true
       }

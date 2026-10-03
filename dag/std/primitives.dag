@@ -221,6 +221,17 @@ data scan_string_end_contract: PrimitiveContract = {
   carrier_cost: CarrierInsensitive
 }
 
+// THE VALIDATED JSON UNESCAPE rides the same native contract shape as the scan it follows: one
+// pass over the body, escape set refused by the same RFC 8259 section 7 production the grammar
+// states.
+data json_unescape_checked_contract: PrimitiveContract = {
+  name: "json_unescape_checked",
+  work: "k",
+  output_size: "n",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
 data map_contract: PrimitiveContract = {
   name: "map",
   work: "n * f_work",
@@ -587,6 +598,7 @@ fn builtin_registry_surface_names() -> List<String> {
     "to_int",
     "scan_while",
     "scan_string_end",
+    "json_unescape_checked",
     "scan_to_eol",
     "skip_horizontal_ws",
     "parse_int",
@@ -629,6 +641,7 @@ fn builtin_registry_surface_names() -> List<String> {
     "trace_mark",
     "observed_peak_resident_bytes",
     "observed_monotonic_nanos",
+    "observed_thread_cpu_nanos",
     "string_contains",
     "length",
     "starts_with",
@@ -669,16 +682,8 @@ fn builtin_registry_surface_names() -> List<String> {
     "test_migration_behavior_discovery_holds",
     "inert_carrier_names_live",
     "inert_carrier_declared_count",
-    "non_fold_residue_count",
-    "non_fold_residue_unrostered_count",
-    "non_fold_residue_stale_roster_count",
-    "non_fold_residue_coproduct_universe_count",
     "commit_witness_claim_roster_unresolvable_count",
     "commit_witness_claim_pair_resolvable",
-    "non_fold_residue_wildcard_red_fixture_holds",
-    "non_fold_residue_total_fold_green_fixture_holds",
-    "non_fold_residue_roster_red_fixture_holds",
-    "non_fold_residue_synthetic_unrostered_red_holds",
     "complexity_linearity_syntactic_finding_count",
     "complexity_linearity_wildcard_facts",
     "complexity_linearity_syntactic_site_fired",
@@ -726,6 +731,7 @@ fn builtin_registry_surface_names() -> List<String> {
     "type_ref_hit_ne_bind_measure_active",
     "builtin_function_registry_keys",
     "compile_dag_primitive_call_edges",
+    "compile_dag_operation_requires",
     "source_root_ingest_module_identities",
     "required_floor_nominal_subject_module_identities",
     "entry_closure_module_identities",
@@ -760,6 +766,7 @@ fn primitive_contract_roster() -> List<PrimitiveContract> {
     skip_horizontal_ws_contract,
     scan_to_eol_contract,
     scan_string_end_contract,
+    json_unescape_checked_contract,
     map_contract,
     filter_contract,
     filter_map_contract,

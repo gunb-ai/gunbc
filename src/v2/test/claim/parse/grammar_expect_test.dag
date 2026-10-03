@@ -17,6 +17,7 @@ import v2.std.diagnostic {
   diagnostics_fatal
 }
 import v2.std.grammar {
+  AfterLineBreak,
   Choice,
   Expect,
   GrammarExpr,
@@ -27,6 +28,7 @@ import v2.std.grammar {
   ModeledGrammar,
   Nonterminal,
   Optional,
+  RefuseOnMatch,
   Repeat,
   Sequence,
   StampClass,
@@ -154,7 +156,10 @@ fn ge_wrap_all(expr: GrammarExpr) -> GrammarExpr {
       choice: fn(l, r) { Expect { element: Choice { left: l, right: r }, reason: FnExpressionBodyMissingAfterEq } },
       optional: fn(e) { Expect { element: Optional { element: e }, reason: FnExpressionBodyMissingAfterEq } },
       repeat: fn(e) { Expect { element: Repeat { element: e }, reason: FnExpressionBodyMissingAfterEq } },
-      expect: fn(e, reason) { Expect { element: Expect { element: e, reason: reason }, reason: FnExpressionBodyMissingAfterEq } }
+      expect: fn(e, reason) { Expect { element: Expect { element: e, reason: reason }, reason: FnExpressionBodyMissingAfterEq } },
+      refuse_on_match: fn(e, reason) { Expect { element: RefuseOnMatch { element: e, reason: reason }, reason: FnExpressionBodyMissingAfterEq } },
+      after_line_break: fn(e) { Expect { element: AfterLineBreak { element: e }, reason: FnExpressionBodyMissingAfterEq } },
+      not_predicate: fn(e) { Expect { element: NotPredicate { element: e }, reason: FnExpressionBodyMissingAfterEq } }
     }
   )
 }

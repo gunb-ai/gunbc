@@ -24,6 +24,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, TypeNode, node_subtree_nodes }
 import v2.std.text { String }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_last_segment }
+import v2.std.optional { Absent, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -352,7 +354,7 @@ fn mab_record_declarations(src: String) -> Outcome<FreeMonoid<Symbol>> {
 // NULLARY AND PURE so the floor prepares it once (v2.workflow.floor_pure_producer_share), for the
 // same reason the mab_resolved_* specimens are.
 fn mab_record_declarations_specimen() -> Outcome<FreeMonoid<Symbol>> {
-  mab_record_declarations(src: "module p\n\ntype R { f: Int }\ntype W = Int where non_empty\ntype C = A { v: Int } | B\ntype U {}\n")
+  mab_record_declarations(src: "module p\n\ntype R { f: Int }\ntype W = Int where string_non_empty\ntype C = A { v: Int } | B\ntype U {}\n")
 }
 
 test fn mab_where_alias_is_not_a_record() -> Bool {
@@ -391,6 +393,28 @@ fn mab_resolved_module_named_binder() -> Outcome<ResolvedTree> {
 test fn mab_binder_spelling_a_sibling_module_binds_the_arm() -> Bool {
   mab_outcome_accepts(o: mab_resolved_module_named_binder())
     && mab_has_atom(o: mab_resolved_module_named_binder(), id: ^node)
+}
+
+// A DECLARED CONSTRUCTOR IN A PATTERN STAYS A DECLARATION REFERENCE. `True` is a declared payload,
+// answered by the symbol index before the canonical set is consulted (v2.compiler.resolve
+// resolve_pattern_atom_names_constructor LexicalHit), so narrowing the canonical set to token
+// classes and kernel bindings (v2.extdeps.languages.dag dag_canonical_symbol_map) leaves it a
+// reference. Red with the LexicalHit arm answering binder: the atom then stays an Atom.
+fn mab_resolved_declared_constructor() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype T = True | False\ntype C = A(T) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(True) => 1\n    A(_) => 0\n    B => 0\n  }\n}\n")
+}
+
+test fn mab_declared_constructor_in_a_pattern_stays_a_declaration_reference() -> Bool {
+  match mab_resolved_declared_constructor() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: n, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: n.root), init: false, f: fn(found, m) {
+        found || (match declaration_reference_path_optional(node: m) {
+          Present { value: path } => qualified_name_last_segment(qn: path) == Present { value: ^True }
+          Absent => false
+        })
+      })
+  }
 }
 
 // AN UNIMPORTED CONSTRUCTOR IN A PATTERN REFUSES RATHER THAN BINDING. `None` is declared only in

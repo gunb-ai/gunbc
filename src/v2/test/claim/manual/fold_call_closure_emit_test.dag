@@ -23,7 +23,7 @@ import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -31,7 +31,9 @@ import v2.std.node {
   TypeNode,
   content_hash,
   node_synthetic,
-  well_formed
+  well_formed,
+  ArrowBodyEdge,
+  core_edge,
 }
 import v2.std.compilers.target_model {
   ProducedDeclUnwired,
@@ -53,6 +55,7 @@ import v2.std.compilers.target_model {
 import v2.std.compilers.lexing { ModeledLexRules }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.std.node_query { binder_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -61,7 +64,7 @@ fn fold_call_atom(id: Symbol) -> Node {
 }
 
 fn fold_call_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn fold_call_positional(target: Node) -> Edge {
@@ -71,8 +74,8 @@ fn fold_call_positional(target: Node) -> Edge {
 fn fold_call_domain_signature() -> DeclaredSignatureEdges {
   declared_signature(
     params: [
-      fold_call_named_edge(name: ^fold_call_param_xs, target: fold_call_atom(id: ^fold_call_type_int)),
-      fold_call_named_edge(name: ^fold_call_param_z, target: fold_call_atom(id: ^fold_call_type_int))
+      binder_edge(name: ^fold_call_param_xs, type_node: fold_call_atom(id: ^fold_call_type_int)),
+      binder_edge(name: ^fold_call_param_z, type_node: fold_call_atom(id: ^fold_call_type_int))
     ],
     source: fold_call_atom(id: ^fold_call_type_int)
   )
@@ -81,13 +84,13 @@ fn fold_call_domain_signature() -> DeclaredSignatureEdges {
 fn fold_call_closure_arrow(left_operand: Symbol, right_operand: Symbol) -> Node {
   let signature = declared_signature(
     params: [
-      fold_call_named_edge(
+      binder_edge(
         name: ^fold_call_closure_acc,
-        target: fold_call_atom(id: ^fold_call_type_int)
+        type_node: fold_call_atom(id: ^fold_call_type_int)
       ),
-      fold_call_named_edge(
+      binder_edge(
         name: ^fold_call_closure_h,
-        target: fold_call_atom(id: ^fold_call_type_int)
+        type_node: fold_call_atom(id: ^fold_call_type_int)
       )
     ],
     source: fold_call_atom(id: ^fold_call_type_int)
@@ -98,8 +101,7 @@ fn fold_call_closure_arrow(left_operand: Symbol, right_operand: Symbol) -> Node 
       signature.domain,
       fold_call_positional(target: fold_call_atom(id: ^fold_call_type_int)),
       signature.order,
-      fold_call_named_edge(
-        name: ^arrow_body_edge,
+      core_edge(marker: ArrowBodyEdge,
         target: node_synthetic(
           kind: ComputationNode { behavior: Transform },
           children: [
@@ -133,8 +135,7 @@ fn fold_call_arrow(closure: Node) -> Node {
       signature.domain,
       fold_call_positional(target: fold_call_atom(id: ^fold_call_type_int)),
       signature.order,
-      fold_call_named_edge(
-        name: ^arrow_body_edge,
+      core_edge(marker: ArrowBodyEdge,
         target: fold_call_body(closure: closure)
       )
     ]

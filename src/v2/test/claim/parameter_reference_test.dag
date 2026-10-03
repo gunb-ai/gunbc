@@ -2,20 +2,23 @@ module v2.test.claim.parameter_reference
 
 import extdeps.communication.medium { Lossless, Medium }
 import std.algebra { Cons, Empty, FreeMonoid, PartialFunction, list_snoc_item }
-import std.occurrence_identity { OccurrenceSynthetic }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.reference_closure { reference_closure_declaring_paths }
 import v2.compiler.resolve {
   NotDeclaring,
   FrameKind,
+  LexicalBinding,
   LexicalFrame,
   Namespace,
   ParameterFrame,
   ResolveContext,
   ResolvedTree,
   ScopeFrame,
+  TypeParameterFrame,
   empty_canonical_symbol_set,
+  resolved_tree_lexical_binding,
   resolve_node,
   scope_from_namespace
 }
@@ -35,7 +38,7 @@ import v2.extdeps.runtimes.v2_evaluator {
 }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cardinality { termination_proof_witness_for_node }
-import v2.std.collection { List, empty_map, map_insert }
+import v2.std.collection { List, Map, empty_map, map_insert }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.declaration_marker { test_code_index_empty }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
@@ -47,6 +50,8 @@ import v2.std.qualified_name {
   QualifiedName,
   declaration_reference_node,
   declaration_reference_path_optional,
+  lexical_reference_label_optional,
+  lexical_reference_node,
   parameter_reference_node,
   parameter_reference_path_optional,
   qualified_name_from_dotted_string
@@ -58,11 +63,12 @@ import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// A NAMED FN'S PARAMETER IS A PATH-KEYED REFERENCE; EVERY OTHER BINDER STAYS LEXICAL.
+// A NAMED FN'S PARAMETER IS A PATH-KEYED REFERENCE; EVERY OTHER VALUE BINDER IS A LEXICAL REFERENCE.
 // v2.compiler.resolve builds a ParameterFrame over the domain of an Arrow the containment walk reaches
 // (resolve_arrow_node_in) and mints each reference it answers as parameter_reference_node over
 // <fn path>.<label>, verified against the symbol index (resolve_frame_bound_reference). A `let`,
-// match-arm or lambda frame is Lexical and its binder stays the bare atom. ROUTE: rows (1)-(3) are
+// match-arm or lambda frame is Lexical: a reference it answers is minted as lexical_reference_node and
+// the binder that answered it is recorded in ResolvedTree.lexical_bindings (rows L1-L5). ROUTE: rows (1)-(3) are
 // source text through assemble_program_from_ingest, lowering and resolve for real, and they assert
 // the ROUTE -- which carrier each reference arrives as -- not only acceptance. Rows (4)-(6) supply the
 // carrier at one interface each (resolve's frame arm, eval, reference_closure); (1) is their
@@ -94,7 +100,7 @@ fn pr_assemble(src: String) -> Outcome<ResolvedTree> {
 // resolved program, so the program is resolved once by a nullary producer the floor serves warm
 // (v2.workflow.floor_pure_producer_share), and each row reads only the portable values it inspects:
 // the parameter-reference paths, and the grounded and declared types at two paths.
-data pr_program_source: String = "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Pos {\n  x\n}\n\nfn g(x: Int) -> Int {\n  x\n}\n\nfn h(x: Int) -> Int {\n  let x = 1\n  x\n}\n\nfn k(a: Int) -> fn(Int) -> Int {\n  fn(y) { y }\n}\n"
+data pr_program_source: String = "module p\n\nfn positive(x: Int) -> Bool { true }\n\ntype Pos = Int where positive\n\nfn f(x: Pos) -> Pos {\n  x\n}\n\nfn g(x: Int) -> Int {\n  x\n}\n\nfn h(x: Int) -> Int {\n  let z = 1\n  z\n}\n\nfn k(a: Int) -> fn(Int) -> Int {\n  fn(y) { y }\n}\n"
 
 // Every parameter-reference path in the resolved program, in walk order; a refused program answers
 // Absent, which no row reads as "no parameter references".
@@ -137,10 +143,25 @@ test fn pr_named_fn_parameter_is_a_parameter_reference_holds() -> Bool {
   })
 }
 
-// (2) A `let` NAMED LIKE A PARAMETER STILL BINDS LEXICALLY. h's body `x` is the let binder, so no
-// p.h.x is minted: had the ParameterFrame answered it, p.h.x would appear.
-test fn pr_let_shadowing_a_parameter_binds_lexically_holds() -> Bool {
-  pr_paths_hold(pred: fn(paths) { !pr_paths_contain(paths: paths, path: pr_qn(dotted: "p.h.x")) })
+// (2) A `let` NAMED LIKE A PARAMETER REFUSES, AT THE BINDER, BY REASON. A value binder may not hide an
+// enclosing binder (v2.compiler.resolve admit_value_binders, the value-shadowing ruling), so the question
+// this row first asked -- which frame answers a let that shadows a parameter -- has no accepted program to
+// ask it of. Its own source keeps that refusal out of the shared program every other row reads; h there
+// binds `z`, and its body reference is the lexical one (L1). Asserted by reason, so a program refused for
+// an unrelated cause cannot satisfy it.
+data pr_let_shadowing_source: String = "module p\n\nfn h(x: Int) -> Int {\n  let x = 1\n  x\n}\n"
+
+// The front end runs once, in a nullary producer the floor serves WARM (v2.workflow.floor_pure_producer_share),
+// and the row reads the decided reason: one front end is more than one claim's budget.
+fn pr_let_shadowing_reason() -> Symbol {
+  match pr_assemble(src: pr_let_shadowing_source) {
+    Accepted { value: _, diagnostics: _ } => ^pr_accepted
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+  }
+}
+
+test fn pr_let_shadowing_a_parameter_refuses_holds() -> Bool {
+  pr_let_shadowing_reason() == ^resolve_reason_binder_hides_visible_value
 }
 
 // (3) A LAMBDA'S PARAMETER STAYS ON THE LEXICAL ROUTE. Its Arrow is met below k's body, so its frame is
@@ -152,10 +173,127 @@ test fn pr_lambda_parameter_binds_lexically_holds() -> Bool {
   })
 }
 
+// THE LEXICAL ROUTE, ON THE SAME PROGRAM. Every lexical reference resolve minted, with the binding it
+// recorded for it, read back through the reference's own occurrence; a refused program answers Absent.
+type PrLexicalRead {
+  label: Symbol
+  binding: Optional<LexicalBinding>
+}
+
+fn pr_program_lexical_reads() -> Optional<FreeMonoid<PrLexicalRead>> {
+  match pr_assemble(src: pr_program_source) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: t, diagnostics: _ } =>
+      optional_present(value: fold(node_subtree_nodes(root: t.root), init: Empty, f: fn(acc, n) {
+        match lexical_reference_label_optional(node: n) {
+          Present { value: label } =>
+            list_snoc_item(xs: acc, item: PrLexicalRead { label: label, binding: resolved_tree_lexical_binding(tree: t, reference: n) })
+          Absent => acc
+        }
+      }))
+  }
+}
+
+fn pr_lexical_read_of(reads: FreeMonoid<PrLexicalRead>, label: Symbol) -> Optional<PrLexicalRead> {
+  fold(reads, init: Absent, f: fn(acc, r) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if r.label == label { optional_present(value: r) } else { Absent }
+    }
+  })
+}
+
+fn pr_site_is_minted(site: NodeOccurrenceIdentity) -> Bool {
+  match site {
+    OccurrenceMinted { id: _ } => true
+    _ => false
+  }
+}
+
+// (L1) h's body `z` IS A LEXICAL REFERENCE ANSWERED BY THE `let`, recorded with the let binder's minted
+// site and no declared type. Before the lexical carrier it was a bare atom and nothing recorded which
+// binder answered it, so this row reads Absent.
+test fn pr_let_reference_is_lexical_with_recorded_binder_holds() -> Bool {
+  match pr_program_lexical_reads() {
+    Absent => false
+    Present { value: reads } =>
+      match pr_lexical_read_of(reads: reads, label: ^z) {
+        Present { value: r } =>
+          match r.binding {
+            Present { value: b } => pr_site_is_minted(site: b.binder_site) && (b.declared == Absent)
+            Absent => false
+          }
+        Absent => false
+      }
+  }
+}
+
+// (L2) k's lambda body `y` IS A LEXICAL REFERENCE WHOSE RECORDED BINDING CARRIES THE DOMAIN'S DECLARED
+// TYPE, sited at the lambda's Arrow.
+test fn pr_lambda_reference_is_lexical_with_declared_type_holds() -> Bool {
+  match pr_program_lexical_reads() {
+    Absent => false
+    Present { value: reads } =>
+      match pr_lexical_read_of(reads: reads, label: ^y) {
+        Present { value: r } =>
+          match r.binding {
+            Present { value: b } =>
+              pr_site_is_minted(site: b.binder_site) && match b.declared {
+                Present { value: _ } => true
+                Absent => false
+              }
+            Absent => false
+          }
+        Absent => false
+      }
+  }
+}
+
+// (L3) INFER GROUNDS THE LAMBDA'S `y` AS EXACTLY THE DECLARED TYPE RESOLVE RECORDED, read through the
+// binding and never through a scope search (the search this replaced is deleted).
+fn pr_lambda_grounding_matches_recorded() -> Bool {
+  match pr_assemble(src: pr_program_source) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer_and_discharge(tree: resolved) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: inferred, diagnostics: _ } =>
+          fold(node_subtree_nodes(root: inferred.root), init: false, f: fn(acc, n) {
+            if acc {
+              true
+            } else if lexical_reference_label_optional(node: n) == optional_present(value: ^y) {
+              match resolved_tree_lexical_binding(tree: resolved, reference: n) {
+                Present { value: b } =>
+                  match inferred_facts_witness_for_node(tree: inferred, node: n) {
+                    Holds { value: facts } =>
+                      match inferred_facts_resolved_type(facts: facts) {
+                        Holds { value: ty } => b.declared == optional_present(value: ty)
+                        Violates { diagnostic: _ } => false
+                      }
+                    Violates { diagnostic: _ } => false
+                  }
+                Absent => false
+              }
+            } else {
+              false
+            }
+          })
+      }
+  }
+}
+
+test fn pr_lambda_reference_grounds_through_recorded_binding_holds() -> Bool {
+  pr_lambda_grounding_matches_recorded()
+}
+
 // (4) A PARAMETER FRAME WHOSE PATH THE INDEX DOES NOT HOLD REFUSES AT RESOLVE, never falls back to the
 // bare atom. The frame is supplied (ParameterFrame over m.f, index empty), which is exactly the
 // disagreement between resolve's containment position and the fill that the refusal guards; the
 // Lexical twin over the same name accepts, so the red is the kind, not the name.
+data pr_binder_site: NodeOccurrenceIdentity = OccurrenceMinted { id: OccurrenceId { value: 41 } }
+
+data pr_lexical_binders: Map<Symbol, LexicalBinding> = map_insert(empty_map(), ^pr_x, LexicalBinding { binder_site: pr_binder_site, declared: Absent })
+
 fn pr_ctx(kind: FrameKind) -> ResolveContext {
   let namespace = Namespace {
     bindings: empty_map(),
@@ -189,11 +327,48 @@ test fn pr_unindexed_parameter_path_refuses_at_resolve_holds() -> Bool {
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_parameter_path_not_indexed
     Accepted { value: _, diagnostics: _ } => false
   }
-  let lexical_accepts = match resolve_node(ctx: pr_ctx(kind: LexicalFrame), n: pr_x_atom) {
-    Accepted { value: v, diagnostics: _ } => v == pr_x_atom
+  let lexical_accepts = match resolve_node(ctx: pr_ctx(kind: LexicalFrame { binders: pr_lexical_binders }), n: pr_x_atom_minted) {
+    Accepted { value: v, diagnostics: _ } => lexical_reference_label_optional(node: v) == optional_present(value: ^pr_x)
     Rejected { diagnostics: _ } => false
   }
   refused && lexical_accepts
+}
+
+data pr_x_atom_minted: Node = Node { kind: TypeNode { connective: Atom { identity: ^pr_x } }, children: [], occurrence_id: OccurrenceMinted { id: OccurrenceId { value: 42 } } }
+
+// (L4) A LEXICAL REFERENCE NEEDS A KEY, AND A TYPE PARAMETER STAYS A BARE ATOM. The same Lexical frame
+// over an atom with NO minted occurrence refuses resolve_reason_lexical_reference_unkeyed, because no
+// consumer could read its binding back; the minted twin above accepts, so the red is the key. A
+// TypeParameterFrame answers the same name with the bare atom (how infer recognizes a type variable).
+test fn pr_unkeyed_lexical_reference_refuses_and_type_parameter_stays_atom_holds() -> Bool {
+  let refused = match resolve_node(ctx: pr_ctx(kind: LexicalFrame { binders: pr_lexical_binders }), n: pr_x_atom) {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_lexical_reference_unkeyed
+    Accepted { value: _, diagnostics: _ } => false
+  }
+  let type_param_atom = match resolve_node(ctx: pr_ctx(kind: TypeParameterFrame), n: pr_x_atom) {
+    Accepted { value: v, diagnostics: _ } => v == pr_x_atom
+    Rejected { diagnostics: _ } => false
+  }
+  refused && type_param_atom
+}
+
+// (L5) EVAL READS A LEXICAL REFERENCE BY LABEL, AND A MISS IS A REFUSAL, NEVER A LITERAL. With an empty
+// environment the bare atom `x` would be allocated as a literal; the lexical reference to it is a name,
+// so it refuses runtime_binding_lookup_miss located at the reference.
+test fn pr_eval_lexical_reference_miss_refuses_holds() -> Bool {
+  let reference = lexical_reference_node(label: ^pr_x, occurrence_id: OccurrenceSynthetic)
+  match eval_with_context(
+    tree: InferredTree { root: reference, facts: PartialFunction { lookup: pr_facts_lookup } },
+    context: eval_context_with_semantics(
+      runtime_identity: ^parameter_reference_runtime_id,
+      interpretation: v2_evaluator_interpretation(),
+      structure_witness: v2_evaluator_interpretation_structure_witness()
+    ),
+    inputs: inputs_root_only(root: reference)
+  ) {
+    Rejected { diagnostics: d } => d.head.reason == ^eval_rejected_runtime_binding_lookup_miss
+    Accepted { value: _, diagnostics: _ } => false
+  }
 }
 
 // (5) EVAL REFUSES A PARAMETER REFERENCE, TYPED AND LOCATED, AND DOES NOT KEY IT BY ITS LEAF. The
@@ -299,4 +474,27 @@ test fn pr_parameter_grounds_through_the_index_holds() -> Bool {
       (g.f_grounded == g.f_declared) && (g.g_grounded == g.g_declared) && (g.f_grounded != g.g_grounded)
     Absent => false
   }
+}
+
+// (C) AN ORDINARY NAMED CALL WITH A POSITIONAL DEFICIT STILL REFUSES. The where-predicate frontier
+// (v2.compiler.infer infer_where_predicate_set_edge) leaves only predicate calls unjudged; this is the
+// discriminating control that the frontier did not widen to every named call. Asserted by reason, so a
+// program refused for an unrelated cause cannot satisfy it.
+data pr_named_call_deficit_source: String = "module p\n\nfn g(x: Int) -> Int {\n  x\n}\n\nfn u() -> Int {\n  g()\n}\n"
+
+// Same shape as row (2): one front end and one infer in a nullary WARM producer, read as the decided reason.
+// A refusal at resolve answers ^pr_resolve_refused, never the infer reason, so it cannot satisfy the row.
+fn pr_named_call_deficit_reason() -> Symbol {
+  match pr_assemble(src: pr_named_call_deficit_source) {
+    Rejected { diagnostics: _ } => ^pr_resolve_refused
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer_and_discharge(tree: resolved) {
+        Accepted { value: _, diagnostics: _ } => ^pr_accepted
+        Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+      }
+  }
+}
+
+test fn pr_ordinary_named_call_deficit_still_refuses_holds() -> Bool {
+  pr_named_call_deficit_reason() == ^application_positional_deficit
 }

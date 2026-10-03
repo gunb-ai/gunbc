@@ -1,6 +1,7 @@
 module test.claim.where_refinement_predicate_vocabulary_witness_test
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.types { String, NonEmptyStr, Bool, Int, List, string_non_empty, gt_zero, range }
+import std.content_hash { lower_hex_16, lower_hex_40, lower_hex_64, lower_hex_128 }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 import gunbc.where_refinement_predicate_vocabulary {
@@ -126,8 +127,8 @@ data where_predicate_probes: List<WherePredicateProbe> = [
     expected_refusal: true
   },
   WherePredicateProbe {
-    spelling: "non_empty",
-    clause: "non_empty",
+    spelling: "string_non_empty",
+    clause: "string_non_empty",
     base_type: "String",
     value_text: "\"\"",
     expected_refusal: true
@@ -452,4 +453,45 @@ test fn w_unenrolled_spellings_are_observable_as_unenrolled() -> Bool {
     && (unenrolled |> all(p =>
          probe_advisory_count_for_reason(p: p, reason: unenrolled_no_table_row_reason) >= 1
            && probe_advisory_count_for_reason(p: p, reason: deferred_at_compile_time_reason) == 0))
+}
+
+// THE DECLARATIONS AGREE WITH THE SEED ON THE SAME PROBES. Each grounded, literal-decidable row's
+// declaration is EXECUTED here on its probe's violating value (the value_text of that row in
+// where_predicate_probes, which the claims above drive through the real v1 compile path and observe
+// refused) and on one admitted value. The seed still decides enforcement from its own tables in
+// v1.compiler.infer, which cannot consult a declaration until compile-time evaluation lands (PR2's
+// seam, feature:where-refinement-predicate-declaration-authority); until then the declaration and
+// the table are two representations, and these claims are what reds when a body drifts from the
+// behaviour the compiler enforces: one claim per predicate, so the red names the one that moved.
+
+test fn w_range_declaration_refuses_the_probe_value() -> Bool {
+  !range(value: 9, min: Present { value: 1 }, max: Present { value: 5 })
+    && range(value: 1, min: Present { value: 1 }, max: Present { value: 5 })
+    && range(value: 5, min: Present { value: 1 }, max: Present { value: 5 })
+    && !range(value: 0, min: Present { value: 1 }, max: Present { value: 5 })
+    && range(value: 7, min: Present { value: 0 }, max: Absent)
+}
+
+test fn w_gt_zero_declaration_refuses_the_probe_value() -> Bool {
+  !gt_zero(value: 0) && gt_zero(value: 1)
+}
+
+test fn w_string_non_empty_declaration_refuses_the_probe_value() -> Bool {
+  !string_non_empty(value: "") && string_non_empty(value: "a")
+}
+
+test fn w_lower_hex_16_declaration_refuses_the_probe_value() -> Bool {
+  !lower_hex_16(value: "zz") && lower_hex_16(value: "0123456789abcdef")
+}
+
+test fn w_lower_hex_40_declaration_refuses_the_probe_value() -> Bool {
+  !lower_hex_40(value: "zz") && lower_hex_40(value: "0123456789abcdef0123456789abcdef01234567")
+}
+
+test fn w_lower_hex_64_declaration_refuses_the_probe_value() -> Bool {
+  !lower_hex_64(value: "zz") && lower_hex_64(value: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+}
+
+test fn w_lower_hex_128_declaration_refuses_the_probe_value() -> Bool {
+  !lower_hex_128(value: "zz") && lower_hex_128(value: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
 }

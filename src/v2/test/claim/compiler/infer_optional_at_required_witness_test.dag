@@ -5,7 +5,7 @@ import v2.compiler.name_resolve {
   Admission,
   ResolutionSubject,
   resolution_context,
-  resolve_with_admission_context_policy
+  resolve_in_context
 }
 import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.std.resolution_policy { default_name_resolution_policy }
@@ -59,10 +59,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // claims run source text through the production front end into infer and read the same verdict
 // where a program reaches it: a declared return and a record field.
 //
-// THE ROUTE CLAIMS NEED OPTIONAL TYPES TO REACH THEIR JUDGMENTS AT ALL. Until gunbc#12777 a program
-// mentioning `T?` was refused for descent before any declared-type judgment was asked (measured on
-// main and on gunbc#12566: infer_descent_not_derived), so this module's route claims execute only on
-// a tree that carries that change.
+// THE ROUTE CLAIMS NEED OPTIONAL TYPES TO REACH THEIR JUDGMENTS AT ALL. Before the descent fix that
+// landed with this witness (gunbc#12806, which carried gunbc#12777: v2.std.cardinality
+// connective_multiplicity answers Bounded for Cardinality) a program mentioning `T?` was refused for
+// descent before any declared-type judgment was asked (infer_descent_not_derived). The route claims
+// are therefore also that fix's real-route evidence.
 //
 // A DIRECT-CALL ARGUMENT IS NOT A ROUTE RED YET: a named call's callee is a declaration reference
 // infer does not type by its declaration (gunbc#12506), so its formals are unresolved whatever is
@@ -88,16 +89,13 @@ fn oar_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
   match oar_fixture_normalized() {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: roots, diagnostics: _ } =>
-      resolve_with_admission_context_policy(
-        context: resolution_context(lm: dag_language_model(), roots: roots),
+      resolve_in_context(
+        context: resolution_context(lm: dag_language_model(), roots: roots, index: source_root_index_empty(), active_roots: Empty, policy: default_name_resolution_policy()),
         admission: Admission {
           subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
           imports: Empty
-        },
-        index: source_root_index_empty(),
-        active_roots: Empty,
-        policy: default_name_resolution_policy()
-      )
+        }
+      ).resolved
   }
 }
 

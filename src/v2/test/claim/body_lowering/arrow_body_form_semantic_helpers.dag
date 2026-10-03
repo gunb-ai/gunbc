@@ -37,10 +37,12 @@ import v2.std.node {
   classify_arrow_body_form,
   DeclarationReferenceBody,
   ParameterReferenceBody,
+  LexicalReferenceBody,
   DeclarationReferenceKind,
   MarkedReference,
   NotMarkedReference,
   ParameterReferenceKind,
+  LexicalReferenceKind,
   resolved_reference_body_kind,
 }
 import v2.std.node_query { find_arrow_body_child }
@@ -68,11 +70,12 @@ fn classify_arrow_body_form_red_no_direct_atom(target: Node) -> ArrowBodyForm {
       match resolved_reference_body_kind(target: target) {
         MarkedReference { kind: DeclarationReferenceKind } => DeclarationReferenceBody
         MarkedReference { kind: ParameterReferenceKind } => ParameterReferenceBody
+        MarkedReference { kind: LexicalReferenceKind } => LexicalReferenceBody
         NotMarkedReference => RecordConstructBody
       }
     TypeNode { connective: Arrow } => FunctionValueBody
     ComputationNode { behavior: b } => ComputationBody { behavior: b }
-    _ => UnsupportedArrowBody
+    TypeNode { connective: _ } => UnsupportedArrowBody
   }
 }
 
@@ -83,11 +86,12 @@ fn classify_arrow_body_form_red_no_computation_body(target: Node) -> ArrowBodyFo
       match resolved_reference_body_kind(target: target) {
         MarkedReference { kind: DeclarationReferenceKind } => DeclarationReferenceBody
         MarkedReference { kind: ParameterReferenceKind } => ParameterReferenceBody
+        MarkedReference { kind: LexicalReferenceKind } => LexicalReferenceBody
         NotMarkedReference => RecordConstructBody
       }
     TypeNode { connective: Arrow } => FunctionValueBody
     ComputationNode { behavior: _ } => UnsupportedArrowBody
-    _ => UnsupportedArrowBody
+    TypeNode { connective: _ } => UnsupportedArrowBody
   }
 }
 
@@ -103,7 +107,7 @@ fn classify_arrow_body_form_red_no_declaration_reference(target: Node) -> ArrowB
       }
     TypeNode { connective: Arrow } => FunctionValueBody
     ComputationNode { behavior: b } => ComputationBody { behavior: b }
-    _ => UnsupportedArrowBody
+    TypeNode { connective: _ } => UnsupportedArrowBody
   }
 }
 
@@ -115,10 +119,11 @@ fn classify_arrow_body_form_red_no_function_value_body(target: Node) -> ArrowBod
       match resolved_reference_body_kind(target: target) {
         MarkedReference { kind: DeclarationReferenceKind } => DeclarationReferenceBody
         MarkedReference { kind: ParameterReferenceKind } => ParameterReferenceBody
+        MarkedReference { kind: LexicalReferenceKind } => LexicalReferenceBody
         NotMarkedReference => RecordConstructBody
       }
     ComputationNode { behavior: b } => ComputationBody { behavior: b }
-    _ => UnsupportedArrowBody
+    TypeNode { connective: _ } => UnsupportedArrowBody
   }
 }
 
@@ -131,6 +136,7 @@ fn arrow_body_form_admits_body_with_mirror(target: Node, mirror: ArrowBodyFormAd
         RecordConstructBody => arrow_body_record_construct_conforms(node: target)
         DeclarationReferenceBody => true
         ParameterReferenceBody => true
+        LexicalReferenceBody => true
         DirectAtomBody => true
         FunctionValueBody => true
         ComputationBody { behavior: _ } => true
@@ -141,6 +147,7 @@ fn arrow_body_form_admits_body_with_mirror(target: Node, mirror: ArrowBodyFormAd
         RecordConstructBody => arrow_body_record_construct_conforms(node: target)
         DeclarationReferenceBody => true
         ParameterReferenceBody => true
+        LexicalReferenceBody => true
         DirectAtomBody => true
         FunctionValueBody => true
         ComputationBody { behavior: _ } => true
@@ -151,6 +158,7 @@ fn arrow_body_form_admits_body_with_mirror(target: Node, mirror: ArrowBodyFormAd
         RecordConstructBody => arrow_body_record_construct_conforms(node: target)
         DeclarationReferenceBody => true
         ParameterReferenceBody => true
+        LexicalReferenceBody => true
         DirectAtomBody => true
         FunctionValueBody => true
         ComputationBody { behavior: _ } => true
@@ -161,6 +169,7 @@ fn arrow_body_form_admits_body_with_mirror(target: Node, mirror: ArrowBodyFormAd
         RecordConstructBody => arrow_body_record_construct_conforms(node: target)
         DeclarationReferenceBody => true
         ParameterReferenceBody => true
+        LexicalReferenceBody => true
         DirectAtomBody => true
         FunctionValueBody => true
         ComputationBody { behavior: _ } => true
@@ -304,7 +313,7 @@ fn arrow_body_form_eval_int_result_equals_for_call(call: Node, expected: Int) ->
   match arrow_body_form_eval_call_outcome_for_call(call: call) {
     Accepted { value: actual, diagnostics: _ } =>
       arrow_body_form_eval_runtime_int_equals(value: actual, n: expected)
-    _ => false
+    Rejected { diagnostics: _ } => false
   }
 }
 

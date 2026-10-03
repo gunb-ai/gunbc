@@ -12,7 +12,7 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node {
   ComputationNode,
   Conj,
-  Named,
+  Authored,
   Node,
   Positional,
   TypeNode,
@@ -76,20 +76,11 @@ fn ng_norm_grafted_tree_has_no_metadata_edges(node: Node) -> Bool {
         if !ok {
           false
         } else {
-          match edge.label {
-            Named { name: sym } =>
-              if namespace_graft_is_metadata_edge(name: sym) {
-                false
-              } else {
-                ng_norm_grafted_tree_has_no_metadata_edges(node: edge.target)
-              }
-            Positional =>
-              ng_norm_grafted_tree_has_no_metadata_edges(node: edge.target)
-          }
+          if namespace_graft_is_metadata_edge(e: edge) { false } else { ng_norm_grafted_tree_has_no_metadata_edges(node: edge.target) }
         }
       })
     ComputationNode { behavior: _ } => true
-    _ => true
+    TypeNode { connective: _ } => true
   }
 }
 

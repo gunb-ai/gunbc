@@ -1,7 +1,6 @@
 module extdeps.rustc
 
 import std.types { Bool, Int, Unit }
-import std.string_type { String }
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -52,6 +51,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 service rustc.Check {
   operation CheckSourceText {
+    requires none
     input { source: String, edition: String = "2021" }
     output {
       success: Bool from "exit_success"
@@ -81,6 +81,7 @@ service rustc.Check {
 // repository-specific identity string: which fields a consumer joins on is the consumer's fact.
 service rustc.Identity {
   operation VersionVerbose {
+    requires none
     input {}
     output {
       success: Bool from "exit_success"

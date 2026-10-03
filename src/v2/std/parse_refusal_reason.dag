@@ -10,14 +10,37 @@ import v2.std.node { Symbol }
 //
 //   FnExpressionBodyMissingAfterEq -- an expression-bodied `fn ... =` with no expression after `=`.
 //   DataValueMissingAfterEq        -- a `data name: Type =` with no value expression after `=`.
+//   LayoutUnknownWithoutSource     -- a layout-conditioned production (v2.std.grammar
+//                                     AfterLineBreak) was reached on a token stream that carries no
+//                                     source, so whether a line break precedes the match has no
+//                                     answer; the parse refuses rather than assume one line.
+//   KeywordAsPathSegment           -- a declared module or import path continues with `.` and a
+//                                     keyword the path-segment rule does not admit
+//                                     (`module rt.match`); located at the keyword.
+//   NewlineBeforeDualRoleOperator  -- a `-` (both prefix and infix) begins a line after a complete
+//                                     operand. It could continue the expression or start a new one,
+//                                     so it refuses, as the seed does (v1.compiler.parse
+//                                     is_ambiguous_prefix_infix_newline_boundary): move the operator
+//                                     before the newline, or parenthesize the unary expression.
+//   DeclarationMarkerNotTest       -- an identifier other than `test` stands where the declaration
+//                                     marker goes, before `fn` or `data` (`probe fn ..`); located at
+//                                     the marker and the keyword after it.
 type ParseRefusalReason =
     FnExpressionBodyMissingAfterEq
   | DataValueMissingAfterEq
+  | LayoutUnknownWithoutSource
+  | KeywordAsPathSegment
+  | NewlineBeforeDualRoleOperator
+  | DeclarationMarkerNotTest
 
 // The diagnostic identity each reason refuses under (`v2.std.diagnostic` `Diagnostic.reason`).
 fn parse_refusal_reason_symbol(reason: ParseRefusalReason) -> Symbol {
   match reason {
     FnExpressionBodyMissingAfterEq => ^parse_fn_expression_body_missing_after_eq
     DataValueMissingAfterEq => ^parse_data_value_missing_after_eq
+    LayoutUnknownWithoutSource => ^parse_layout_unknown_without_source
+    KeywordAsPathSegment => ^parse_keyword_as_path_segment
+    NewlineBeforeDualRoleOperator => ^parse_newline_before_dual_role_operator
+    DeclarationMarkerNotTest => ^parse_declaration_marker_not_test
   }
 }

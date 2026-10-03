@@ -292,6 +292,20 @@ fn native_app_attest_entry() -> String {
   "dag/gunbc/instruments/native_app_attest.dag"
 }
 
+// THE DAG TARGET'S REAL-GRAMMAR ROUND TRIPS: ingest -> emit by reading dag_grammar_root backward ->
+// re-ingest, per construct, executed natively by the NativeClaimDriver program
+// gunbc.instruments.dag_emit_real_grammar_round_trips. Its roster is the population of the declared
+// drop gunbc.rung_drop.dag_emit_real_grammar_round_trips_off_floor, which names this label as the
+// route that still runs them; run by name, not a merge gate.
+// `gunbc test //gunbc/instruments:dag-emit-real-grammar-round-trips`.
+fn dag_emit_real_grammar_round_trips_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "dag-emit-real-grammar-round-trips" } }
+}
+
+fn dag_emit_real_grammar_round_trips_entry() -> String {
+  "dag/gunbc/instruments/dag_emit_real_grammar_round_trips.dag"
+}
+
 // O(corpus) exact-head join of evaluation_store_address callers plus the fail-closed src/v2
 // call-form scan. Not a DiscoverySelection floor witness (enrolment_bound_without_ceiling);
 // not a required CI job. `gunbc test //gunbc/instruments:evaluation-store-address-exact-head`.
@@ -349,7 +363,7 @@ fn bare_reference_channel_outcome_label() -> Label {
 // SELF-HOST BEHAVIORAL EQUIVALENCE, TAKEN ON PURPOSE (operator ruling 2026-09-27): runs every
 // tools.self_host_module_behavioral_transport_roster row for real and prints one receipt of
 // gunbc.self_host_behavioral_equivalence_receipt to persist; the interlock milestone
-// SelfHostBehavioralEquivalenceReestablished derives from the latest persisted receipt. Deliberately
+// SelfHostEmittedContractsHeld derives from the latest persisted receipt. Deliberately
 // not nightly and not per pull request, so this label is on no lane.
 // `gunbc test //gunbc/instruments:self-host-behavioral-equivalence`.
 fn self_host_behavioral_equivalence_label() -> Label {
@@ -450,6 +464,10 @@ fn v2_native_cli_binding() -> TargetBinding {
 
 fn native_app_attest_binding() -> TargetBinding {
   TargetBinding { target: native_app_attest_label() producer: NativeClaimProgramProducer { entry: native_app_attest_entry() } }
+}
+
+fn dag_emit_real_grammar_round_trips_binding() -> TargetBinding {
+  TargetBinding { target: dag_emit_real_grammar_round_trips_label() producer: NativeClaimProgramProducer { entry: dag_emit_real_grammar_round_trips_entry() } }
 }
 
 fn v2_native_frontier_binding() -> TargetBinding {
@@ -599,7 +617,7 @@ fn instrument_targets() -> List<Label> {
     required_lane_resolution_census_label(), bare_reference_channel_outcome_label(),
     self_host_behavioral_equivalence_label(),
     emitted_crate_workspace_label(),
-    native_crypto_vectors_label(), native_app_attest_label()
+    native_crypto_vectors_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label()
   ]
 }
 
@@ -614,7 +632,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
     self_host_behavioral_equivalence_binding(),
     emitted_crate_workspace_binding(),
-    native_crypto_vectors_binding(), native_app_attest_binding()
+    native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding()
   ]
 }
 
