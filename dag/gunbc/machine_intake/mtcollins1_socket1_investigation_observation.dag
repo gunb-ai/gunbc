@@ -504,3 +504,26 @@ data mtcollins1_cpu0_fingerprint_comparison: MtCollins1CpuFingerprintComparison 
   current: mtcollins1_secondary_join_reading_two_cpus,
   current_fingerprint: MtCollins1SocketFingerprint { socket: 0, core_voltage: millivolt(count: 1065), avs_voltage: millivolt(count: 1027), warranty: 0 },
 }
+
+// SOCKET 1 PIN DAMAGE, REPORTED BY THE OPERATOR, 2026-10-03. While removing the socket-1 CPU for the
+// one-socket test, thermal paste fell onto socket 1's pins; cleaning it with a microfiber cloth
+// snagged the pins and probably bent some. From this date a socket-1 failure cannot be told apart
+// from this damage, so any later socket-1 diagnosis must start by inspecting the socket under
+// magnification. Socket 1 has been EMPTY since this removal.
+type MtCollins1SocketDamageReport {
+  socket: Nat
+  report: MtCollins1PhysicalFactStanding
+  account: NonEmptyStr
+  consequence: NonEmptyStr
+}
+
+data mtcollins1_socket1_pin_damage_report: MtCollins1SocketDamageReport = MtCollins1SocketDamageReport {
+  socket: 1,
+  report: OperatorByEyeReport {
+    observed_on: SpecificationDocumentDate { year: 2026, month: 10, day: 3 },
+    relay: "operator to session eager-gull-22, chat, 2026-10-03",
+    method: "Operator's own account of the CPU removal; no magnified inspection has been made.",
+  },
+  account: "Thermal paste dropped onto the socket-1 pins during CPU removal; a microfiber cloth used to clean it snagged on the pins and probably bent some. The operator judged it not too bad.",
+  consequence: "Socket-1 pins possibly bent from 2026-10-03: any later socket-1 test must inspect the socket first, and a socket-1 failure after this date is not evidence about the pre-damage fault.",
+}

@@ -437,6 +437,7 @@ test fn w_slot_map_carries_cpu_facts_and_hypothesis_standing() -> Bool {
       && string_contains(s: t, pattern: "\nOpen hypothesis (not established): UEFI enumeration: ")
       && string_contains(s: t, pattern: "\nWeakened hypothesis (not refuted): The engineering-sample CPU0 with the production CPU1")
       && string_contains(s: t, pattern: "matching characteristics, not a unique CPU identity.")
+      && string_contains(s: t, pattern: "\nSocket 1 pin damage (operator report, 2026-10-03): ")
       && string_contains(s: t, pattern: "SecondaryJoinTimeout { secondary_last_stage: inconsistent SMpro pair (current: PMpro firmware booting; reported: DDR initialization, reported stage ahead of current), socket 0 continued alone, inter_socket_links_reported: false, secondary_host_checkpoints: none }")
       && string_contains(s: t, pattern: "SecondaryJoined { inter_socket_links_reported: true }")
       && string_contains(s: t, pattern: "\nRefuted hypothesis: The DIMM is at fault: a stick placed in J17 is bad. By the operator's swap report: stick B was silent in J17 (run 35810323032) and trained in J1 (run 35871654468). The J17 slot is not cleared.")
