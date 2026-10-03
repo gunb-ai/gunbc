@@ -1,7 +1,8 @@
 module extdeps.ampere.nvparam
 
 import v2.std.algebra { filter }
-import std.types { Int, List, NonEmptyStr, String }
+import v2.std.collection { empty_map, map_insert, map_lookup }
+import std.types { Int, List, Map, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.optional { Present }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -53,7 +54,21 @@ type NvParamKey {
   region: NvParamRegion
 }
 
+// NVPARAM_SIZE (Silicon/Ampere/AmpereAltraPkg/Include/Library/NVParamLib.h): the stride between keys.
 data nvparam_bytes_per_parameter: Int = 8
+
+// Each region's first and last key, as the header defines them: NV_PREBOOT_PARAM_START 0x0000 and
+// NV_PREBOOT_PARAM_MAX (86 * 8) + start; NV_MANU_PARAM_START 0x4000 and NV_MANU_PARAM_MAX (66 * 8) +
+// start; NV_USER_PARAM_START 0x8000 and NV_USER_PARAM_MAX = NV_SI_PCIE_S1_RC7_AER_CE_INTERVAL;
+// NV_BOARD_PARAM_START 0xC000 and NV_BOARD_PARAM_MAX (255 * 8) + start. PrintNVRAM walks each region
+// from START to MAX inclusive in NVPARAM_SIZE steps, so these bound every key a dump can print.
+fn nvparam_region_start(r: NvParamRegion) -> Int {
+  match r { NvPreboot => 0 NvManufacturing => 16384 NvUser => 32768 NvBoard => 49152 }
+}
+
+fn nvparam_region_max(r: NvParamRegion) -> Int {
+  match r { NvPreboot => 688 NvManufacturing => 16912 NvUser => 33584 NvBoard => 51192 }
+}
 
 data nvparam_keys: List<NvParamKey> = [
   NvParamKey { key: 8, name: "NV_SI_PCP_VDMC", region: NvPreboot },
@@ -587,5 +602,18 @@ fn nvparam_key_text(r: NvParamKeyReading) -> String {
   match r {
     NvParamKeyDefined { key: k } => k.name as String
     NvParamKeyUndefined { key: n } => concat("key ", to_string(n), " (not defined in NVParamDef.h)")
+  }
+}
+
+// The key table as an index, for a reader that names many keys at once: built once per caller and
+// queried per key, rather than scanning all rows for every key.
+fn nvparam_key_index() -> Map<Int, NvParamKey> {
+  fold(nvparam_keys, init: empty_map(), f: (acc, k) => map_insert(m: acc, key: k.key, value: k))
+}
+
+fn nvparam_key_in(index: Map<Int, NvParamKey>, key: Int) -> NvParamKeyReading {
+  match map_lookup(m: index, key: key) {
+    Present { value: k } => NvParamKeyDefined { key: k }
+    Absent => NvParamKeyUndefined { key: key }
   }
 }
