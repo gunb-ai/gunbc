@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.a_worktree_delta_against_one_base_applied_onto_another
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_worktree_delta_against_one_base_applied_onto_another: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_worktree_delta_against_one_base_applied_onto_another" as NonEmptyStr,
+
+  receipts: [
+    "**a change set computed against one base is applied onto a different base's tree, and the result is recorded as the worker's candidate** (THE INVALID STATE: gunbc.roadmap_belt_actuate belt_scm_delta_capture took the worktree's change population from `git diff <attempt base_sha>` plus untracked files, and re-bound exactly those paths on the project repository's BASE MANIFEST -- the tree the repository was seeded from. Nothing compared the attempt's base with the repository's. When an attempt branched from a later base than the seed, every upstream path the worker did not touch kept the SEED's bytes, so the recorded candidate was neither the attempt's base plus the work nor any tree that ever existed.)",
+
+    "HARM: silent. The capture minted, the commit carried a plausible message, verification ran against the git edge (which held the REAL tree), and integration merged the SCM candidate -- so the verified tree and the integrated tree were different trees under one name. RECEIPT (srv2, audited 2026-10-03): project shell-typed-invocation was seeded at d012e00; candidates 1, 3 and 4 were captured from attempts on b7f9070, d7005ab and d7005ab. Candidate 1 was integrated as commit 2 (through a capture record naming ordinal 1 with no root locator, accepted by a belt that predated the binding check), so the integration head carried a tree with 26 upstream paths at risk of the wrong bytes. Nothing was published from it only because the publish step had not run.",
+
+    "DISTINGUISHING FACTS: the two bases are each recorded -- the attempt's in its spawn-destination.json base_sha, the repository's in its root commit -- so the defect is a missing JOIN of two recorded facts, not a missing fact. A delta is meaningful only relative to the base it was computed against; applying it elsewhere is the stale-base condition docs/plans/scm-demo-cli-rebuild.md already names ('a moved target is a named stale-base condition, never permission to apply an old stage to a different base'), unmodeled at the belt.",
+
+    "RUNG FOUND AT: below the floor (silent wrongness). RAISED TO 1 by gunbc#13111: the capture refuses typed when the attempt's base_sha is not the base the repository's base commit records, the integrate refuses (durably, as an integration-blocked receipt) a capture recorded from an attempt on another base, and the publish refuses when the integration worktree's base is not the recorded one. The base is still recorded in the root commit's MESSAGE, an untyped carrier compared by string.",
+
+    "CEILING: 4 (structurally impossible) for the capture: a candidate whose ancestry names a base commit carrying a TYPED base record cannot be minted against a different base if the mint consumes the attempt's base as that record. NEXT-RUNG TRIGGER: the typed base record and the BaseAdvance transition (the stacked follow-up to this PR): every base commit carries its intake sha as a typed member, candidates descend from the base commit recording their attempt's base, and an advance of the intake base is a commit re-binding exactly git diff old..new -- after which 'which base did this candidate's delta assume' is the candidate's parent, not a string comparison.",
+  ],
+
+  evidence: [],
+}

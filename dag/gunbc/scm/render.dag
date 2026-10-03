@@ -58,6 +58,7 @@ import gunbc.scm.repository_envelope {
   RepositoryProtocolRetiredFormat,
   RepositoryProtocolUnrecognizedFormat,
   RepositoryProtocolUnrecognizedIdentityRule,
+  RepositoryProtocolIndexHasNoObjectRoster,
   RepositoryProtocolNotAProtocolRefusal,
 }
 import gunbc.scm.init {
@@ -293,6 +294,8 @@ fn unsupported_document_line(protocol: RepositoryDocumentProtocol) -> String {
       concat("the document declares unrecognized repository format ", f)
     RepositoryProtocolUnrecognizedIdentityRule { found: f } =>
       concat("the document declares unrecognized object identity rule ", f)
+    RepositoryProtocolIndexHasNoObjectRoster { found: f } =>
+      concat("the document declares repository format with no object roster, which an indexed read needs: ", f)
     RepositoryProtocolNotAProtocolRefusal => "the document could not be read as a repository"
   }
 }
