@@ -120,6 +120,7 @@ import gunbc.derived_row_roster_seed_growth { derived_row_roster_seed_growth_jus
 import gunbc.live_tree_stamp_detector_seed_growth { live_tree_stamp_detector_seed_growth_justification }
 import gunbc.floor_cost_debt_standing_seed_growth { floor_cost_debt_standing_seed_growth_justification }
 import gunbc.floor_population_projection_seed_growth { floor_population_projection_seed_growth_justification }
+import gunbc.filesystem_link_create_new_seed_growth { filesystem_link_create_new_seed_growth_justification }
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_seed_growth_justification }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
 import std.disposition { Disposition }
@@ -302,6 +303,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     floor_memory_instrumentation_seed_growth_justification,
     portable_value_canonical_order_seed_growth_justification,
     namespace_structural_observation_bridge_seed_growth_justification,
+    filesystem_link_create_new_seed_growth_justification,
     emit_rust_reference_derived_rows_bridge_seed_growth_justification,
     namespace_baseline_seed_growth_justification,
     parsed_import_statement_bridge_seed_growth_justification,
