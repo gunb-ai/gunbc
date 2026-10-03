@@ -26,7 +26,9 @@ import gunbc.codex_supervised_turn {
   codex_supervised_turn_client_command_id,
   codex_supervised_turn_session_policy,
   codex_supervised_turn_start_line_template,
-  codex_supervised_generation_read_from_store,
+  codex_supervised_turn_generation_file_name,
+  codex_supervised_generation_read_from_observation,
+  codex_supervised_turn_generation_store_path,
   codex_supervised_turn_generation_admission,
   codex_turn_start_admission,
   codex_runner_turn_terminal_receipt,
@@ -52,6 +54,17 @@ import std.temporal_effect {
   HeldSessionLease,
   LeaseAbsent,
   LeaseRunningExpected,
+}
+
+import extdeps.filesystem.filesystem_io {
+  FilesystemFileAbsent,
+  FilesystemFileRead,
+  FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree,
+  FilesystemFileSubjectRefused,
+  filesystem_listing_observation,
+  filesystem_file_observation,
+  filesystem_read_outcome,
 }
 
 data witness_note: String = "Hermetic witnesses for the supervised-runner slice: std.temporal_effect HeldLease fences one WorkerTurn attempt; thread idle without a runner terminal receipt refuses turn/start (continuity receipt trap); busy thread refuses until the runner writes a receipt; parse_supervised_turn_stdout correlates thread/start and turn/start ids and turn/completed notifications into a terminal receipt with client_command_id."
@@ -302,22 +315,156 @@ test fn witness_nonzero_exit_without_turn_start_is_not_observed() -> Bool {
   }
 }
 
+// THE GENERATION STORE WITNESSES RUN AT THE OBSERVATION FOLD, not through the wet reader: the fold
+// is total over FilesystemFileObservation, so each transport shape is a constructed value and the
+// claim suite holds the policy without touching a host filesystem. Three of these are REDS against
+// the former site, which answered `test -f` false with GenerationAbsent and ADMITTED the turn: an
+// unlistable evidence directory, an inadmissible store name, and a listing/read disagreement are
+// could-not-look shapes that now refuse with their cause. Established absence -- a listing that
+// succeeded and did not name the store -- is the only Absent route, and it still admits.
+// The established absence is MINTED, never written: FilesystemEstablishedAbsence is
+// sole_constructor and constructible only inside the interface module, so the fixture derives
+// the observation from a listed directory whose entries omit the store name -- the same
+// modeled route the wet reader takes.
 test fn witness_missing_generation_store_reads_as_zero() -> Bool {
-  match codex_supervised_generation_read_from_store(
-    store_present: false,
-    read_success: true,
-    content: "",
+  let listing = filesystem_listing_observation(
+    directory: "/tmp/gunbc-supervised-evidence",
+    success: true,
+    entries: "",
+    error: "",
+  )
+  match filesystem_file_observation(
+    listing: listing,
+    name: codex_supervised_turn_generation_file_name,
+    path: codex_supervised_turn_generation_store_path(
+      evidence_root: "/tmp/gunbc-supervised-evidence" as FilePath,
+    ),
+    read: filesystem_read_outcome(
+      content: "",
+      success: false,
+      error: "not read: the listing did not name the entry",
+    ),
   ) {
-    GenerationAbsent => true
+    FilesystemFileAbsent(a) =>
+      match codex_supervised_generation_read_from_observation(o: FilesystemFileAbsent(a)) {
+        GenerationAbsent => true
+        _ => false
+      }
     _ => false
   }
 }
 
+// MINTED, never written: the absence comes from a listed directory whose entries omit the
+// store name, the only route the sole_constructor carrier authorizes.
+test fn witness_established_generation_absence_admits_supervised_turn_start() -> Bool {
+  let listing = filesystem_listing_observation(
+    directory: "/tmp/gunbc-supervised-evidence",
+    success: true,
+    entries: "",
+    error: "",
+  )
+  match filesystem_file_observation(
+    listing: listing,
+    name: codex_supervised_turn_generation_file_name,
+    path: codex_supervised_turn_generation_store_path(
+      evidence_root: "/tmp/gunbc-supervised-evidence" as FilePath,
+    ),
+    read: filesystem_read_outcome(
+      content: "",
+      success: false,
+      error: "not read: the listing did not name the entry",
+    ),
+  ) {
+    FilesystemFileAbsent(a) => {
+      let read = codex_supervised_generation_read_from_observation(o: FilesystemFileAbsent(a))
+      match codex_supervised_turn_generation_admission(read: read) {
+        CodexTurnStartAdmitted => true
+        _ => false
+      }
+    }
+    _ => false
+  }
+}
+
+test fn witness_unlistable_evidence_directory_refuses_supervised_turn_start() -> Bool {
+  let read = codex_supervised_generation_read_from_observation(
+    o: FilesystemFileIndeterminate {
+      cause: "the directory /tmp/gunbc-supervised-evidence could not be listed, so the absence of codex_supervised_turn_generation is not established -- permission denied",
+    },
+  )
+  match read {
+    GenerationStoreUnreadable { reason: _ } =>
+      match codex_supervised_turn_generation_admission(read: read) {
+        CodexTurnStartRefusedDuplicateExecution { reason: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn witness_listed_but_unreadable_generation_store_refuses_supervised_turn_start() -> Bool {
+  let read = codex_supervised_generation_read_from_observation(
+    o: FilesystemFileIndeterminate {
+      cause: "/tmp/gunbc-supervised-evidence/codex_supervised_turn_generation is listed and could not be read, so it exists and its content is unavailable -- permission denied",
+    },
+  )
+  match read {
+    GenerationStoreUnreadable { reason: _ } =>
+      match codex_supervised_turn_generation_admission(read: read) {
+        CodexTurnStartRefusedDuplicateExecution { reason: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn witness_inadmissible_generation_store_name_refuses_supervised_turn_start() -> Bool {
+  let read = codex_supervised_generation_read_from_observation(
+    o: FilesystemFileSubjectRefused {
+      directory: "/tmp/gunbc-supervised-evidence",
+      name: "",
+      cause: "the entry name \"\" is not admissible",
+    },
+  )
+  match read {
+    GenerationStoreUnreadable { reason: _ } =>
+      match codex_supervised_turn_generation_admission(read: read) {
+        CodexTurnStartRefusedDuplicateExecution { reason: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn witness_generation_store_observation_disagreement_refuses_supervised_turn_start() -> Bool {
+  let read = codex_supervised_generation_read_from_observation(
+    o: FilesystemFileObservationsDisagree {
+      path: "/tmp/gunbc-supervised-evidence/codex_supervised_turn_generation",
+      cause: "no codex_supervised_turn_generation is listed in /tmp/gunbc-supervised-evidence, and a read of that path then succeeded -- the two observations describe different instants",
+    },
+  )
+  match read {
+    GenerationStoreUnreadable { reason: _ } =>
+      match codex_supervised_turn_generation_admission(read: read) {
+        CodexTurnStartRefusedDuplicateExecution { reason: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn witness_generation_store_path_is_root_slash_bare_name() -> Bool {
+  codex_supervised_turn_generation_store_path(
+    evidence_root: "/tmp/gunbc-supervised-evidence" as FilePath,
+  ) == "/tmp/gunbc-supervised-evidence/codex_supervised_turn_generation"
+}
+
 test fn witness_corrupt_generation_store_refuses_prior_read() -> Bool {
-  let read = codex_supervised_generation_read_from_store(
-    store_present: true,
-    read_success: true,
-    content: "garbage",
+  let read = codex_supervised_generation_read_from_observation(
+    o: FilesystemFileRead {
+      path: "/tmp/gunbc-supervised-evidence/codex_supervised_turn_generation",
+      content: "garbage",
+    },
   )
   match read {
     GenerationStoreMalformed { content: _ } =>
@@ -330,10 +477,11 @@ test fn witness_corrupt_generation_store_refuses_prior_read() -> Bool {
 }
 
 test fn witness_negative_generation_store_refuses_prior_read() -> Bool {
-  let read = codex_supervised_generation_read_from_store(
-    store_present: true,
-    read_success: true,
-    content: "-3",
+  let read = codex_supervised_generation_read_from_observation(
+    o: FilesystemFileRead {
+      path: "/tmp/gunbc-supervised-evidence/codex_supervised_turn_generation",
+      content: "-3",
+    },
   )
   match read {
     GenerationStoreNegative { value: v } =>
@@ -347,29 +495,14 @@ test fn witness_negative_generation_store_refuses_prior_read() -> Bool {
 }
 
 test fn witness_whitespace_generation_store_is_malformed_not_absent() -> Bool {
-  match codex_supervised_generation_read_from_store(
-    store_present: true,
-    read_success: true,
-    content: "   ",
+  match codex_supervised_generation_read_from_observation(
+    o: FilesystemFileRead {
+      path: "/tmp/gunbc-supervised-evidence/codex_supervised_turn_generation",
+      content: "   ",
+    },
   ) {
     GenerationStoreMalformed { content: _ } => true
     GenerationAbsent => false
-    _ => false
-  }
-}
-
-test fn witness_unreadable_generation_store_refuses_prior_read() -> Bool {
-  let read = codex_supervised_generation_read_from_store(
-    store_present: true,
-    read_success: false,
-    content: "",
-  )
-  match read {
-    GenerationStoreUnreadable { reason: _ } =>
-      match codex_supervised_turn_generation_admission(read: read) {
-        CodexTurnStartRefusedDuplicateExecution { reason: _ } => true
-        _ => false
-      }
     _ => false
   }
 }

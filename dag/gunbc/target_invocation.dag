@@ -266,3 +266,101 @@ fn invocation_refusal_rendered(cause: TargetInvocationRefusal) -> String {
       concat("gunbc test: target has no bound producer: ", render_label(l: t))
   }
 }
+
+// IS THE BINARY ANSWERING FOR THE TREE IT IS ABOUT TO READ?
+//
+// Every instrument behind `gunbc test` is compiled into the binary that runs it, and reads a live
+// tree beside it. A binary whose inputs have changed since it was built answers for code that is
+// no longer there, and its reading is reported under the current tree's name -- a silent wrong
+// answer, four incidents in one day before this check existed. So the invocation's first act is
+// to ask whether the binary still answers for its inputs, and refuse when it does not or when
+// nothing can say.
+//
+// THE INPUT SET IS THE ONE RUSTC RECORDED, NOT A LIST WE AUTHOR. Cargo's dep-info beside the
+// binary (`<bin>.d`) lists every file the compile read, `include_str!` files included, so the
+// set is exact, not a path heuristic. Keying on HEAD equality instead would refuse a correct binary
+// after every unrelated commit, which teaches people to route around the check
+// (calm-boar-904's ruling on #13007).
+//
+// The comparison is cargo's own rule: an input newer than the BUILD START, read from the unit's
+// fingerprint dep-info, which cargo rewinds to when compilation began. The binary's own mtime is
+// the wrong anchor: an input edited after rustc read it but before the link finished is older
+// than the binary and was never compiled. So a refusal here means exactly "cargo build would
+// rebuild". It is NOT content-exact: an input whose mtime moved
+// without its bytes changing refuses too, as cargo would rebuild. A content-exact check needs a
+// digest recorded AFTER the compile that writes dep-info, which no in-tree build hook can do.
+//
+// An input outside this worktree is the shared-target hazard: `/cargo-target` serves a binary
+// another worktree built, and its dep-info names that worktree's files. Nothing here can say
+// whether those files match ours, so that is undecided, not fresh.
+//
+// The host classifies each input (the effectful mtime and path reads); this function decides
+// the precedence: undecided beats stale beats fresh, so an unjudgeable input is never masked by a
+// staleness verdict and a stale input never by a fresh one.
+type BinaryInput
+  = InputNotNewer { path: String }
+  | InputNewer { path: String }
+  | InputMissing { path: String }
+  | InputOutsideWorktree { path: String }
+
+type BinaryInputObservation
+  = InputsObserved { binary: String, inputs: List<BinaryInput> }
+  | DepInfoUnreadable { binary: String, reason: String }
+
+type BinaryFreshness
+  = BinaryFresh { binary: String, inputs: Int }
+  | BinaryStale { binary: String, input: String, why: String }
+  | BinaryFreshnessUndecided { binary: String, reason: String }
+
+// One input's step. An undecided verdict absorbs every later input; a stale one absorbs every
+// later input except an outside one, which outranks it.
+fn binary_freshness_step(acc: BinaryFreshness, input: BinaryInput) -> BinaryFreshness {
+  match acc {
+    BinaryFreshnessUndecided { binary: _, reason: _ } => acc
+    BinaryStale { binary: b, input: _, why: _ } =>
+      match input {
+        InputOutsideWorktree { path: p } => binary_built_elsewhere(binary: b, path: p)
+        InputNewer { path: _ } => acc
+        InputMissing { path: _ } => acc
+        InputNotNewer { path: _ } => acc
+      }
+    BinaryFresh { binary: b, inputs: n } =>
+      match input {
+        InputOutsideWorktree { path: p } => binary_built_elsewhere(binary: b, path: p)
+        InputNewer { path: p } => BinaryStale { binary: b, input: p, why: "changed after the binary was built" }
+        InputMissing { path: p } => BinaryStale { binary: b, input: p, why: "no longer exists" }
+        InputNotNewer { path: _ } => BinaryFresh { binary: b, inputs: n + 1 }
+      }
+  }
+}
+
+fn binary_built_elsewhere(binary: String, path: String) -> BinaryFreshness {
+  BinaryFreshnessUndecided {
+    binary: binary,
+    reason: concat(concat("its dep-info names an input outside this worktree (", path),
+      "); it was built from another checkout, so nothing here says whether it answers for this one")
+  }
+}
+
+fn assess_binary_freshness(observed: BinaryInputObservation) -> BinaryFreshness {
+  match observed {
+    DepInfoUnreadable { binary: b, reason: r } => BinaryFreshnessUndecided { binary: b, reason: r }
+    InputsObserved { binary: b, inputs: is } =>
+      fold(is, init: BinaryFresh { binary: b, inputs: 0 }, f: fn(acc, i) {
+        binary_freshness_step(acc: acc, input: i)
+      })
+  }
+}
+
+// Only `BinaryFresh` admits the invocation; both other arms terminate `InvocationRefused` (exit
+// 2, no observation) with their line, never a warning printed beside a reading.
+fn binary_freshness_rendered(f: BinaryFreshness) -> String {
+  match f {
+    BinaryFresh { binary: b, inputs: _ } => concat("gunbc test: binary fresh against its dep-info: ", b)
+    BinaryStale { binary: b, input: p, why: w } =>
+      concat(concat(concat(concat(concat(concat(
+        "gunbc test: REFUSED cause=StaleBinary — ", b), ": input "), p), " "), w), "; rebuild before measuring")
+    BinaryFreshnessUndecided { binary: b, reason: r } =>
+      concat(concat(concat("gunbc test: REFUSED cause=BinaryFreshnessUndecided — ", b), ": "), r)
+  }
+}
