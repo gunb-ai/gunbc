@@ -16,7 +16,9 @@ import gunbc.fleet_release_bins_key { compiler_pair_candidate_artifact_name, rel
 // WHERE fleet-desired FINDS THE CANDIDATE THE MERGE QUEUE BUILT FOR THE REVISION THAT JUST LANDED.
 //
 // The merge queue moves main to exactly the composed revision its required run judged
-// (gunbc.fleet_desired_admission's own premise), so the push's sha IS the merge_group run's head sha.
+// (gunbc.fleet_desired_admission's own premise), so the checked-out commit IS the merge_group run's
+// head sha. It is read from the checkout (git rev-parse HEAD), never from the event: the workflow names
+// no revision of its own, and the bytes it will verify are the bytes it holds.
 // This step asks the Actions API for the successful merge_group runs of the required workflow on that
 // sha, takes the newest one that still holds the candidate artifact, and downloads that artifact's
 // pack object. It decides only WHETHER a candidate exists: whether the candidate is the product it
@@ -67,7 +69,7 @@ fn append_output(line: String) -> Node {
 
 fn api_get(url: Node, out: Node) -> Node {
   cmd(ws: [
-    lit(t: "curl"), lit(t: "-fsSL"),
+    lit(t: "curl"), lit(t: "-fsSL"), lit(t: "--max-time"), lit(t: "300"),
     lit(t: "-H"), words(ws: [lit(t: "Authorization: Bearer "), var(n: "GITHUB_TOKEN")]),
     lit(t: "-H"), lit(t: "Accept: application/vnd.github+json"),
     lit(t: "-o"), out, url,
@@ -86,9 +88,10 @@ fn fleet_desired_candidate_fetch_statements() -> List<Node> {
   [
     cmd(ws: [lit(t: "rm"), lit(t: "-rf"), dir(file: "")]),
     cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), dir(file: "")]),
+    assign_sub(name: "CHECKED_OUT", body: bash_build_command_from_lits(lits: ["git", "rev-parse", "HEAD"])),
     or_refuse(
       check: api_get(
-        url: words(ws: [var(n: "GITHUB_API_URL"), lit(t: "/repos/"), var(n: "GITHUB_REPOSITORY"), lit(t: "/actions/runs?event=merge_group&status=success&per_page=100&head_sha="), var(n: "GITHUB_SHA")]),
+        url: words(ws: [var(n: "GITHUB_API_URL"), lit(t: "/repos/"), var(n: "GITHUB_REPOSITORY"), lit(t: "/actions/runs?event=merge_group&status=success&per_page=100&head_sha="), var(n: "CHECKED_OUT")]),
         out: dir(file: "runs.json"),
       ),
       name: "RunsUnreadable", message: "the Actions API did not answer the merge_group run query; that is not absence",
