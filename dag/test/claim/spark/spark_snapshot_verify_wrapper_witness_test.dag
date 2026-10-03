@@ -2,6 +2,7 @@ module test.claim.spark_snapshot_verify_wrapper
 
 import std.logic { Bool }
 import std.types { String }
+import gunbc.spark.model_snapshot_materialize { spark_transfer_restart_properties }
 import gunbc.spark.model_snapshot_materialize {
   sentinel_command_line, read_instrument,
   InstrumentReading, InstrumentDidNotRun, InstrumentVerified, InstrumentRejectedTheSubject,
@@ -128,4 +129,14 @@ test fn wrapper_still_emits_both_sentinels() -> Bool {
 // quoting is evidence, not decoration.
 test fn wrapper_quotes_an_argument_containing_a_space() -> Bool {
   sentinel_command_line(argv: ["hf", "--local-dir", "/home/briansrls/models/a b"]).contains("'/home/briansrls/models/a b'")
+}
+
+// THE TRANSFER RESTARTS ON FAILURE, BOUNDED (valiant-crab-775's radio diagnosis, 2026-10-03): the unit is
+// started with Restart=on-failure and a finite StartLimitBurst over a finite interval, so a DNS or transport
+// drop costs one retry and a run of drops ends failed rather than looping.
+test fn the_transfer_unit_restarts_on_failure_within_a_bound() -> Bool {
+  any(spark_transfer_restart_properties, p => p == "--property=Restart=on-failure")
+    && any(spark_transfer_restart_properties, p => string_contains(s: p, pattern: "--property=StartLimitBurst="))
+    && any(spark_transfer_restart_properties, p => string_contains(s: p, pattern: "--property=StartLimitIntervalSec="))
+    && !any(spark_transfer_restart_properties, p => string_contains(s: p, pattern: "Restart=always"))
 }

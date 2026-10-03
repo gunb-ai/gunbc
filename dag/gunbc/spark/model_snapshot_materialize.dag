@@ -564,14 +564,31 @@ fn spark_transfer_start(ctx: SparkMaterializeContext, subject: AcquisitionSubjec
   }
 }
 
+// THE TRANSFER OUTLIVES A RADIO DROP (valiant-crab-775's diagnosis, 2026-10-03). The Sparks reach the
+// internet only over a WIRELESS management link that drops for minutes to hours (srv7: DNS to the router
+// failed from 05:40 to ~06:53 and the Hub fetch died on "Temporary failure in name resolution"; srv8: a
+// band-steer left wlP9s9 disconnected), while the host itself stays up. So the transfer unit restarts on
+// failure, and the Hub CLI resumes the files it has: a DNS or transport failure costs a retry, not the run.
+// It is BOUNDED, never a loop: at most spark_transfer_restart_burst starts within the interval, then the
+// unit stays failed and the supervision reads TransferExitedFailed, exactly as one failure did before.
+data spark_transfer_restart_delay_seconds: Nat = 120
+data spark_transfer_restart_burst: Nat = 30
+data spark_transfer_restart_interval_seconds: Nat = 21600
+
+data spark_transfer_restart_properties: List<String> = [
+  "--property=Restart=on-failure",
+  join(["--property=RestartSec=", to_string(spark_transfer_restart_delay_seconds)], ""),
+  join(["--property=StartLimitIntervalSec=", to_string(spark_transfer_restart_interval_seconds)], ""),
+  join(["--property=StartLimitBurst=", to_string(spark_transfer_restart_burst)], ""),
+]
+
 fn spark_transfer_start_argv(ctx: SparkMaterializeContext, subject: AcquisitionSubject, argv: List<String>) -> TransferStartOutcome {
   match spark_remote_run(ctx: ctx, argv: concat(
-    [
+    concat([
       "systemd-run",
       join(["--unit=", spark_transfer_unit_for(subject: subject) as String], ""),
       join(["--description=", spark_transfer_unit_description(subject: subject)], ""),
-      "--",
-    ],
+    ], concat(spark_transfer_restart_properties, ["--"])),
     executor_wrap(executor: ctx.executor, argv: argv),
   )) {
     RemoteUnreachable { cause: c } => TransferStartUnreachable { cause: c as NonEmptyStr }

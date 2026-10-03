@@ -1,11 +1,13 @@
 module gunbc.spark.group_arm_launch
 
+import gunbc.fleet_wireless_link { observe_wireless_link, spark_wireless_link_desired, wireless_link_observation_line, kernel_disconnect_line_count, dgx_spark_wireless_interface }
+import extdeps.systemd.journalctl { journalctl_kernel_current_boot_argv }
 import gunbc.auth.standing_operator_grant { standing_grant_covers, StandingArmLaunch }
 import gunbc.spark.pair_serving_d0 { d0_standing_grants }
 import gunbc.spark.pair_serving_d0_door { StandingGrantRowStanding, StandingGrantRowOnMain, StandingGrantRowNotOnMain, standing_grant_row_judged, executed_grant_row, ExecutedGrantRowRead, ExecutedGrantRowUnread, standing_grant_main_ref, standing_grant_row_path }
 import extdeps.git
 import gunbc.output_policy { ExpectSuccess }
-import std.types { String, Bool, List, NonEmptyStr, GitRef }
+import std.types { String, Bool, List, NonEmptyStr, GitRef, Int }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { zip_map }
 import std.measure { Kibibyte, kibibyte, basis_point_count, BasisPoint }
@@ -22,7 +24,7 @@ import std.algebra { trim }
 import gunbc.spark.host_effect_quiescence { ArgvRun }
 import extdeps.systemd { Active }
 import gunbc.fabric_event_log_host { now_epoch_seconds, HostStoreResolved, HostStoreRefused, event_log_store_for_host }
-import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
+import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach, ReachFabricRail, spark_reach_endpoint }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_hosts, fabric_group_wire }
 import gunbc.spark.fabric_serving_assignment { FabricServingAssignment }
 import gunbc.spark.serving_subject { PairServingUnitOn }
@@ -767,6 +769,60 @@ fn group_arm_host_observation(ctx: SparkMaterializeContext, h: HostIdentity) -> 
     running_unit_lines(ctx: c),
     observe_leg(ctx: c, what: "running containers", argv: argv_words(command: docker_ps_running_all_command())),
     gpu_process_lines(ctx: ctx, h: h),
+    group_host_link_health(ctx: c, h: h),
+  ], "")
+}
+
+// ── LINK HEALTH, READ-ONLY (valiant-crab-775, 2026-10-03) ─────────────────────────────────────────
+//
+// Two Sparks went dark over SSH mid-transfer. The question is whether the HOST wedged or its WIRELESS
+// management link dropped while the host stayed up, and every reading here discriminates between the two:
+// the boot id and uptime (a reboot says host), the kernel ring of this boot counted for OOM kills, hung
+// tasks and wireless disconnects (gunbc.fleet_wireless_link's own disconnect count), the wireless link and
+// power save (observe_wireless_link), the boots journald knows (an earlier boot ending in the dark window
+// says host), and whether every group peer answers a ping on its RAIL address from this host -- a host dark
+// on the LAN but answering on the rail is up. Nothing here changes any host.
+data link_health_oom_markers: List<String> = ["Out of memory", "oom-kill", "invoked oom-killer"]
+data link_health_hung_markers: List<String> = ["blocked for more than", "hung_task"]
+
+fn kernel_marker_count(kernel_log: String, markers: List<String>) -> Int {
+  length(filter(split(s: kernel_log, delimiter: "\n"), l => any(markers, m => string_contains(s: l, pattern: m))))
+}
+
+fn ping_word(code: Int) -> String {
+  if code == 0 { "answers" } else { "NO ANSWER" }
+}
+
+fn rail_ping_line(ctx: SparkMaterializeContext, peer: HostIdentity) -> String {
+  match spark_reach_endpoint(host: peer, path: ReachFabricRail) {
+    Absent => join(["    rail ", peer as String, ": no rail address\n"], "")
+    Present { value: addr } =>
+      match spark_remote_run(ctx: ctx, argv: ["ping", "-c", "2", "-W", "1", addr as String]) {
+        RemoteUnreachable { cause: c } => join(["    rail ", peer as String, " (", addr as String, "): NOT READ (", c, ")\n"], "")
+        RemoteRan { exit_code: code, stdout: _, stderr: _ } => join(["    rail ", peer as String, " (", addr as String, "): ", ping_word(code: code), "\n"], "")
+      }
+  }
+}
+
+fn group_host_link_health(ctx: SparkMaterializeContext, h: HostIdentity) -> String {
+  let run = spark_ctx_argv_run(ctx: ctx)
+  let kernel = spark_remote_run(ctx: ctx, argv: journalctl_kernel_current_boot_argv())
+  let kernel_line = match kernel {
+    RemoteUnreachable { cause: c } => join(["  kernel ring: NOT READ (", c, ")\n"], "")
+    RemoteRan { exit_code: code, stdout: out, stderr: err } =>
+      if code != 0 { join(["  kernel ring: NOT READ (exit ", to_string(code), ": ", trim(s: err), ")\n"], "") } else {
+        join(["  kernel ring this boot: oom=", to_string(kernel_marker_count(kernel_log: out, markers: link_health_oom_markers)),
+          " hung=", to_string(kernel_marker_count(kernel_log: out, markers: link_health_hung_markers)),
+          " wireless_disconnects=", to_string(kernel_disconnect_line_count(interface: dgx_spark_wireless_interface, kernel_log: out)), "\n"], "")
+      }
+  }
+  join([
+    observe_leg(ctx: ctx, what: "boot id and uptime", argv: ["sh", "-c", "cat /proc/sys/kernel/random/boot_id /proc/uptime"]),
+    observe_leg(ctx: ctx, what: "boots journald knows", argv: ["journalctl", "--list-boots", "--no-pager"]),
+    kernel_line,
+    wireless_link_observation_line(label: "  wireless", o: observe_wireless_link(desired: spark_wireless_link_desired(host: h), run: run)),
+    "  rail reachability of group peers from this host:\n",
+    join(map(filter(fabric_group_hosts(g: FabricGroupA), p => !host_identity_eq(a: p, b: h)), p => rail_ping_line(ctx: ctx, peer: p)), ""),
   ], "")
 }
 
