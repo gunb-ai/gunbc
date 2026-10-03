@@ -3,16 +3,22 @@ module extdeps.realization.materialization_store_local
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   FilesystemFailureKind, FilesystemNotFound, FilesystemAlreadyExists, FilesystemPermissionDenied,
-  FilesystemOtherFailure, FilesystemNotDirectory,
+  FilesystemOtherFailure, FilesystemNotDirectory, FilesystemCrossDevice,
   FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent,
   FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
   FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused,
   FilesystemCreateKindUnrecognized,
   filesystem_exact_read, filesystem_create_new, filesystem_failure_kind_name,
+  FilesystemLinkCreateNew, FilesystemLinked, FilesystemLinkTargetOccupied, FilesystemLinkCrossDevice,
+  FilesystemLinkRefused, FilesystemLinkKindUnrecognized, filesystem_link_create_new,
   filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused,
   FilesystemDirectorySubjectRefused, filesystem_listing_entry_names,
 }
 import std.decimal { decimal_digits_only }
+import std.fabric_blob {
+  FabricBlobReading, FabricBlobReadingOutcome, FabricBlobRead, FabricBlobReadRefused,
+  read_staged_fabric_blob, fabric_blob_reading_digest, fabric_blob_reading_size, fabric_blob_fault_text,
+}
 import std.checked_arithmetic { int_inclusive_max }
 import v2.std.algebra { skip }
 import extdeps.external_authority { ExternalAuthority }
@@ -91,6 +97,8 @@ import std.materialization_object {
   StoreLookupStoreFamilyRefused,
   StoreCommit, StoreCommitRefused, StoreCommitPublishRefused,
   StoreCommitRefusal, StoreCommitBudgetUndeclared, StoreCommitDidNotFit, StoreCommitOccupancyUnavailable,
+  StoreCommitResultIdentityUnverifiable, StoreLookupObjectMalformed, StoreLookupHit, StoreLookupMiss,
+  ArtifactBlobPart, store_lookup_blob_parts,
   StoreCommitPreparation, StoreCommitPrepared, StoreCommitNotPrepared,
   store_object_name, store_lookup_from_address, store_commit_prepare, store_commit_settle,
 }
@@ -168,6 +176,7 @@ fn filesystem_fault(kind: FilesystemFailureKind, error: String) -> StoreFault {
     FilesystemNotFound => StoreFault { class: StoreFaultUnreachable, detail: detail }
     FilesystemAlreadyExists => StoreFault { class: StoreFaultUnreachable, detail: detail }
     FilesystemNotDirectory => StoreFault { class: StoreFaultUnreachable, detail: detail }
+    FilesystemCrossDevice => StoreFault { class: StoreFaultUnreachable, detail: detail }
     FilesystemOtherFailure => StoreFault { class: StoreFaultUnreachable, detail: detail }
   }
 }
@@ -407,7 +416,7 @@ fn local_store_index_key(family: ArtifactKindId) -> NonEmptyStr {
 
 type LocalStoreIndexRow {
   name: String
-  bytes: Int
+  bytes: ByteSize
   ordinal: Int
 }
 
@@ -423,7 +432,7 @@ type LocalStoreIndexDecode
 data local_store_empty_index: LocalStoreIndex = LocalStoreIndex { next_ordinal: 1, rows: [] }
 
 fn local_store_index_row_line(r: LocalStoreIndexRow) -> String {
-  join([r.name, r.bytes as String, r.ordinal as String], " ")
+  join([r.name, measure_count(m: r.bytes) as String, r.ordinal as String], " ")
 }
 
 fn local_store_index_encode(index: LocalStoreIndex) -> String {
@@ -450,7 +459,7 @@ fn local_store_index_row_decode(line: String) -> LocalStoreIndexRow? {
       Absent => none
       Present { value: b } => match local_store_digits_int(s: ordinal_text) {
         Absent => none
-        Present { value: o } => if name == "" { none } else { Present { value: LocalStoreIndexRow { name: name, bytes: b, ordinal: o } } }
+        Present { value: o } => if name == "" { none } else { Present { value: LocalStoreIndexRow { name: name, bytes: byte_size(count: b), ordinal: o } } }
       }
     }
   }
@@ -494,7 +503,7 @@ fn local_store_artifact_store(budget: ByteSize, index: LocalStoreIndex) -> Artif
   ArtifactStore {
     budget: budget,
     next_ordinal: index.next_ordinal,
-    rows: index.rows |> map(r => ArtifactRow { key: local_store_row_key(name: r.name), artifact_bytes: byte_size(count: r.bytes), last_use_ordinal: r.ordinal })
+    rows: index.rows |> map(r => ArtifactRow { key: local_store_row_key(name: r.name), artifact_bytes: r.bytes, last_use_ordinal: r.ordinal })
   }
 }
 
@@ -504,7 +513,7 @@ fn local_store_index_of(store: ArtifactStore, names: List<String>) -> LocalStore
     next_ordinal: store.next_ordinal,
     rows: store.rows |> fold(init: [], f: (acc, row) => match names |> filter(n => local_store_row_key(name: n) == row.key) |> first {
       Absent => acc
-      Present { value: n } => acc |> list_push(LocalStoreIndexRow { name: n, bytes: measure_count(m: row.artifact_bytes), ordinal: row.last_use_ordinal })
+      Present { value: n } => acc |> list_push(LocalStoreIndexRow { name: n, bytes: row.artifact_bytes, ordinal: row.last_use_ordinal })
     })
   }
 }
@@ -622,6 +631,29 @@ fn local_store_delete_names(root_path: String, names: List<String>) -> List<Stri
   names |> filter(n => !Filesystem.Delete(path: store_path(root_path: root_path, name: n)).success)
 }
 
+// A record's byte parts are files named <record>.part.<output id> beside it, and they leave WITH it:
+// the record first (so no reader can serve a record whose parts are going), then every part the root
+// lists under its name. A refused delete is reported like any other and swept on the next open.
+fn local_store_part_name(record: String, id: ArtifactOutputId) -> String {
+  concat(concat(record, ".part."), id as String)
+}
+
+fn local_store_is_part_of(name: String, record: String) -> Bool {
+  starts_with(s: name, prefix: concat(record, ".part."))
+}
+
+fn local_store_delete_records(root_path: String, records: List<String>) -> List<String> {
+  let refused_records = local_store_delete_names(root_path: root_path, names: records)
+  let listing = Filesystem.List(path: root_path)
+  let parts = match filesystem_listing_observation(directory: root_path, success: listing.success, entries: listing.entries, error: listing.error) {
+    FilesystemDirectoryListed(listed) =>
+      filesystem_listing_entry_names(listing: listed) |> filter(n => records |> any(r => local_store_is_part_of(name: n, record: r)))
+    FilesystemDirectoryListingRefused { directory: _, error: _ } => []
+    FilesystemDirectorySubjectRefused { directory: _, cause: _ } => []
+  }
+  concat(refused_records, local_store_delete_names(root_path: root_path, names: parts))
+}
+
 // ---------------------------------------------------------------------------------------------
 // SELF-CLEAN ON OPEN. The listing is taken FIRST and the family indexes are read AFTER it: an object
 // in the listing was published after its reservation, so an index read after the listing names it
@@ -630,11 +662,11 @@ fn local_store_delete_names(root_path: String, names: List<String>) -> List<Stri
 // other file are never touched, nothing is recursed into, and an index that cannot be read stops the
 // sweep (nothing is deleted on a guess).
 
+// LocalStoreSweepNotRun: the pure open decision never touches the filesystem, so it reports the
+// sweep as not run; the effectful local_store_open runs it once the marker has opened the store.
 type LocalStoreSweep
   = LocalStoreSwept { removed: List<String>, delete_refused: List<String> }
   | LocalStoreSweepUnavailable { cause: String }
-  // The pure open decision never touches the filesystem, so it reports the sweep as not run; the
-  // effectful local_store_open runs it once the marker has opened the store.
   | LocalStoreSweepNotRun
 
 fn local_store_is_object_name(name: String) -> Bool {
@@ -663,7 +695,7 @@ fn local_store_sweep(root: MaterializationStoreRoot) -> LocalStoreSweep {
         Absent => LocalStoreSweepUnavailable { cause: "a family's occupancy index could not be read, so no object is swept" }
         Present { value: indexed } => {
           let orphans = filesystem_listing_entry_names(listing: listed)
-            |> filter(n => local_store_is_object_name(name: n) && !(indexed |> any(i => i == n)))
+            |> filter(n => local_store_is_object_name(name: n) && !(indexed |> any(i => i == n || local_store_is_part_of(name: n, record: i))))
           let refused = local_store_delete_names(root_path: root_path, names: orphans)
           LocalStoreSwept { removed: orphans |> filter(n => !(refused |> any(r => r == n))), delete_refused: refused }
         }
@@ -707,7 +739,7 @@ fn local_store_record_recency(root: MaterializationStoreRoot, family: ArtifactKi
 // ---------------------------------------------------------------------------------------------
 // Lookup and commit over an opened store.
 
-fn local_store_lookup(root: MaterializationStoreRoot, store: OpenedMaterializationStore, req: ArtifactRequest) -> StoreLookup {
+fn local_store_record_lookup(root: MaterializationStoreRoot, store: OpenedMaterializationStore, req: ArtifactRequest) -> StoreLookup {
   let root_path = materialization_store_root_path(root: root)
   match materialization_store_admissible(root: root, verb: Read) {
     Deny { refusal: _ } =>
@@ -735,6 +767,69 @@ fn local_store_lookup(root: MaterializationStoreRoot, store: OpenedMaterializati
   }
 }
 
+// A HIT IS SERVED ONLY WITH ITS BYTE PARTS VERIFIED. Each part the record names is read afresh from
+// the store root through std.fabric_blob read_staged_fabric_blob -- the one sealed SHA-256 + size
+// reading -- and must agree with the record's (sha256, size). A part that is missing, unreadable or
+// different REFUSES the lookup as malformed: it is never a miss, so nothing recomputes past a store
+// that holds a record whose bytes have gone. The verified readings travel with the hit, and their
+// paths are what a consumer executes: only bytes this read verified.
+type LocalStorePartsLookup {
+  lookup: StoreLookup
+  parts: List<FabricBlobReading>
+}
+
+type LocalStorePartCheck
+  = LocalStorePartVerified { reading: FabricBlobReading }
+  | LocalStorePartRefused { cause: String }
+
+fn local_store_check_part(root_path: String, record: String, part: ArtifactBlobPart) -> LocalStorePartCheck {
+  let path = store_path(root_path: root_path, name: local_store_part_name(record: record, id: part.id))
+  match read_staged_fabric_blob(path: path as NonEmptyStr) {
+    FabricBlobReadRefused { fault: f } => LocalStorePartRefused { cause: concat(concat("byte part ", part.id as String), concat(" could not be read: ", fabric_blob_fault_text(fault: f))) }
+    FabricBlobRead { reading: r } =>
+      if (fabric_blob_reading_digest(reading: r).hex as String) == (part.digest.hex as String)
+        && measure_count(m: fabric_blob_reading_size(reading: r)) == measure_count(m: part.size) {
+        LocalStorePartVerified { reading: r }
+      } else {
+        LocalStorePartRefused { cause: concat(concat("byte part ", part.id as String), " does not hold the bytes its record names") }
+      }
+  }
+}
+
+fn local_store_lookup_parts(root: MaterializationStoreRoot, store: OpenedMaterializationStore, req: ArtifactRequest) -> LocalStorePartsLookup {
+  let root_path = materialization_store_root_path(root: root)
+  let lookup = local_store_record_lookup(root: root, store: store, req: req)
+  let blobs = store_lookup_blob_parts(l: lookup)
+  if count(blobs) == 0 { LocalStorePartsLookup { lookup: lookup, parts: [] } } else {
+    match evaluation_store_address(req: req) {
+      FamilyRefused { family: _, scope: _ } => LocalStorePartsLookup { lookup: lookup, parts: [] }
+      Admitted { address: addr } => {
+        let record = store_object_name(address: addr)
+        let checks = blobs |> map(b => local_store_check_part(root_path: root_path, record: record, part: b))
+        let refusal = checks |> fold(init: none, f: (acc, c) => match acc {
+          Present { value: _ } => acc
+          Absent => match c { LocalStorePartRefused { cause: why } => Present { value: why } LocalStorePartVerified { reading: _ } => none }
+        })
+        match refusal {
+          Present { value: why } =>
+            LocalStorePartsLookup { lookup: StoreLookupRefused { key: request_key(req: req), refusal: StoreLookupObjectMalformed { cause: why } }, parts: [] }
+          Absent =>
+            LocalStorePartsLookup {
+              lookup: lookup,
+              parts: checks |> flat_map(c => match c { LocalStorePartVerified { reading: r } => [r] LocalStorePartRefused { cause: _ } => [] })
+            }
+        }
+      }
+    }
+  }
+}
+
+// The record lookup with its byte parts verified: a record whose parts do not hold their bytes is
+// refused here too, so every caller -- including a commit's read-back -- judges the whole artifact.
+fn local_store_lookup(root: MaterializationStoreRoot, store: OpenedMaterializationStore, req: ArtifactRequest) -> StoreLookup {
+  local_store_lookup_parts(root: root, store: store, req: req).lookup
+}
+
 // THE COMMIT RECEIPT carries what the bound did beside the store-level commit: the names this commit
 // evicted, the evicted names whose delete the host refused (swept on the next open), and the index
 // slot's own generation reclamation. None of these changes the commit's verdict.
@@ -749,44 +844,135 @@ fn local_store_commit_refused(commit: StoreCommit) -> LocalStoreCommit {
   LocalStoreCommit { commit: commit, evicted: [], eviction_delete_refused: [], index_reclamation: CasReclamationNotCommitted }
 }
 
+// A BYTE PART TO COMMIT: an output id and a file the producer staged ON THE STORE ROOT'S FILESYSTEM.
+// It is linked into the root create-only (a link across filesystems is not a copy, so a staged file
+// elsewhere refuses), and the reading the record carries is minted from the LINKED path.
+type LocalStoreStagedPart {
+  id: ArtifactOutputId
+  staged: NonEmptyStr
+}
+
+type LocalStoreStagedReading
+  = LocalStoreStagedRead { part: ArtifactBlobPart }
+  | LocalStoreStagedUnreadable { cause: String }
+
+fn local_store_blob_part_of(id: ArtifactOutputId, r: FabricBlobReading) -> ArtifactBlobPart {
+  ArtifactBlobPart { id: id, digest: fabric_blob_reading_digest(reading: r), size: fabric_blob_reading_size(reading: r) }
+}
+
+fn local_store_read_part(id: ArtifactOutputId, path: NonEmptyStr) -> LocalStoreStagedReading {
+  match read_staged_fabric_blob(path: path) {
+    FabricBlobRead { reading: r } => LocalStoreStagedRead { part: local_store_blob_part_of(id: id, r: r) }
+    FabricBlobReadRefused { fault: f } => LocalStoreStagedUnreadable { cause: concat(concat("byte part ", id as String), concat(" could not be read: ", fabric_blob_fault_text(fault: f))) }
+  }
+}
+
+fn local_store_first_unreadable(readings: List<LocalStoreStagedReading>) -> String? {
+  readings |> fold(init: none, f: (acc, r) => match acc {
+    Present { value: _ } => acc
+    Absent => match r { LocalStoreStagedUnreadable { cause: c } => Present { value: c } LocalStoreStagedRead { part: _ } => none }
+  })
+}
+
+fn local_store_any_unreadable(readings: List<LocalStoreStagedReading>) -> Bool {
+  readings |> any(r => match r { LocalStoreStagedUnreadable { cause: _ } => true LocalStoreStagedRead { part: _ } => false })
+}
+
+fn local_store_read_parts(readings: List<LocalStoreStagedReading>) -> List<ArtifactBlobPart> {
+  readings |> flat_map(r => match r { LocalStoreStagedRead { part: p } => [p] LocalStoreStagedUnreadable { cause: _ } => [] })
+}
+
+// One part linked into the root: linked now, or already there from an earlier identical commit
+// (create-only answers occupied; the reading below decides whether it holds the same bytes).
+fn local_store_link_part(root_path: String, record: String, part: LocalStoreStagedPart) -> String? {
+  let target = store_path(root_path: root_path, name: local_store_part_name(record: record, id: part.id))
+  let l = Filesystem.LinkCreateNew(source: part.staged as String, path: target)
+  match filesystem_link_create_new(source: part.staged as String, path: target, success: l.success, error: l.error, error_kind: l.error_kind) {
+    FilesystemLinked { path: _ } => none
+    FilesystemLinkTargetOccupied { path: _ } => none
+    FilesystemLinkCrossDevice { source: src, path: _ } => Present { value: concat(concat("byte part ", part.id as String), concat(" is staged on another filesystem than the store root: ", src)) }
+    FilesystemLinkRefused { path: _, kind: _, error: e } => Present { value: concat(concat("byte part ", part.id as String), concat(" could not be linked: ", e)) }
+    FilesystemLinkKindUnrecognized { path: _, observed: o, error: _ } => Present { value: concat(concat("byte part ", part.id as String), concat(" link failed with an unrecognized kind: ", o)) }
+  }
+}
+
+fn local_store_blob_parts_agree(a: List<ArtifactBlobPart>, b: List<ArtifactBlobPart>) -> Bool {
+  count(a) == count(b) && a |> all(x => b |> any(y => y.id == x.id && (y.digest.hex as String) == (x.digest.hex as String) && measure_count(m: y.size) == measure_count(m: x.size)))
+}
+
+fn local_store_parts_bytes(parts: List<ArtifactBlobPart>) -> Int {
+  fold(parts, init: 0, f: (acc, p) => acc + measure_count(m: p.size))
+}
+
+// THE COMMIT ORDER, and why: (1) read every staged part (its SHA-256 and size shape the record and
+// its budget); (2) prepare the record over those parts; (3) RESERVE record + parts in the family's
+// index, evicting (record first, then its parts) -- so every file the next steps publish is already
+// named by an index and the open-time sweep cannot take it; (4) link each part into the root
+// create-only and re-read it from the LINKED path, which must agree with step (1); (5) publish the
+// record create-only and read the whole artifact back, parts included. Any part refusal refuses the
+// commit; a reserved row whose publish then fails occupies budget until evicted, bounded and named.
 fn local_store_commit(
   root: MaterializationStoreRoot,
   store: OpenedMaterializationStore,
   req: ArtifactRequest,
-  payloads: List<ArtifactPayload>
+  payloads: List<ArtifactPayload>,
+  parts: List<LocalStoreStagedPart>
 ) -> LocalStoreCommit {
   let root_path = materialization_store_root_path(root: root)
-  match store_commit_prepare(req: req, payloads: payloads) {
-    StoreCommitNotPrepared { commit: c } => local_store_commit_refused(commit: c)
-    StoreCommitPrepared { key: k, object_name: name, object: object, offered_digest: offered, offered_result: offered_result } =>
-      match materialization_store_admissible(root: root, verb: Write) {
-        Deny { refusal: _ } =>
-          local_store_commit_refused(commit: StoreCommitRefused {
-            key: k,
-            refusal: StoreCommitPublishRefused { fault: StoreFault { class: StoreFaultUnauthorized, detail: concat("write grant refused for ", root_path) } }
-          })
-        Permit =>
-          match local_store_reserve(root: root, family: request_kind(req: req), name: name, bytes: local_store_object_bytes(object: object), attempt: 1) {
-            LocalStoreReservationRefused { refusal: r } => local_store_commit_refused(commit: StoreCommitRefused { key: k, refusal: r })
-            LocalStoreReserved { evicted: evicted, reclamation: rc } => {
-              let refused = local_store_delete_names(root_path: root_path, names: evicted)
-              let publish = store_publish_observation(create: local_store_create_new(path: store_path(root_path: root_path, name: name), content: object))
-              LocalStoreCommit {
-                commit: store_commit_settle(
-                  store: store,
-                  prepared_key: k,
-                  offered_digest: offered,
-                  offered_result: offered_result,
-                  publish: publish,
-                  read_back: local_store_lookup(root: root, store: store, req: req)
-                ),
-                evicted: evicted,
-                eviction_delete_refused: refused,
-                index_reclamation: rc
+  let staged = parts |> map(p => local_store_read_part(id: p.id, path: p.staged))
+  match local_store_first_unreadable(readings: staged) {
+    Present { value: why } =>
+      local_store_commit_refused(commit: StoreCommitRefused { key: request_key(req: req), refusal: StoreCommitResultIdentityUnverifiable { cause: why } })
+    Absent => {
+      let blobs = local_store_read_parts(readings: staged)
+      match store_commit_prepare(req: req, payloads: payloads, blobs: blobs) {
+        StoreCommitNotPrepared { commit: c } => local_store_commit_refused(commit: c)
+        StoreCommitPrepared { key: k, object_name: name, object: object, offered_digest: offered, offered_result: offered_result } =>
+          match materialization_store_admissible(root: root, verb: Write) {
+            Deny { refusal: _ } =>
+              local_store_commit_refused(commit: StoreCommitRefused {
+                key: k,
+                refusal: StoreCommitPublishRefused { fault: StoreFault { class: StoreFaultUnauthorized, detail: concat("write grant refused for ", root_path) } }
+              })
+            Permit =>
+              match local_store_reserve(root: root, family: request_kind(req: req), name: name, bytes: byte_size(count: measure_count(m: local_store_object_bytes(object: object)) + local_store_parts_bytes(parts: blobs)), attempt: 1) {
+                LocalStoreReservationRefused { refusal: r } => local_store_commit_refused(commit: StoreCommitRefused { key: k, refusal: r })
+                LocalStoreReserved { evicted: evicted, reclamation: rc } => {
+                  let refused = local_store_delete_records(root_path: root_path, records: evicted)
+                  let link_refusal = parts |> fold(init: none, f: (acc, p) => match acc {
+                    Present { value: _ } => acc
+                    Absent => local_store_link_part(root_path: root_path, record: name, part: p)
+                  })
+                  match link_refusal {
+                    Present { value: why } =>
+                      LocalStoreCommit { commit: StoreCommitRefused { key: k, refusal: StoreCommitPublishRefused { fault: StoreFault { class: StoreFaultUnreachable, detail: why } } }, evicted: evicted, eviction_delete_refused: refused, index_reclamation: rc }
+                    Absent => {
+                      let linked = parts |> map(p => local_store_read_part(id: p.id, path: store_path(root_path: root_path, name: local_store_part_name(record: name, id: p.id)) as NonEmptyStr))
+                      if local_store_any_unreadable(readings: linked) || !local_store_blob_parts_agree(a: blobs, b: local_store_read_parts(readings: linked)) {
+                        LocalStoreCommit { commit: StoreCommitRefused { key: k, refusal: StoreCommitResultIdentityUnverifiable { cause: "a linked byte part does not hold the bytes that were staged" } }, evicted: evicted, eviction_delete_refused: refused, index_reclamation: rc }
+                      } else {
+                        let publish = store_publish_observation(create: local_store_create_new(path: store_path(root_path: root_path, name: name), content: object))
+                        LocalStoreCommit {
+                          commit: store_commit_settle(
+                            store: store,
+                            prepared_key: k,
+                            offered_digest: offered,
+                            offered_result: offered_result,
+                            publish: publish,
+                            read_back: local_store_lookup(root: root, store: store, req: req)
+                          ),
+                          evicted: evicted,
+                          eviction_delete_refused: refused,
+                          index_reclamation: rc
+                        }
+                      }
+                    }
+                  }
+                }
               }
-            }
           }
       }
+    }
   }
 }
 

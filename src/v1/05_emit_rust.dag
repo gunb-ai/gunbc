@@ -264,7 +264,7 @@ import v1.compiler.emit {
   ShellChanStderrTruncated, ShellChanStderrTotalBytes, ShellChanStderrRetainedBytes,
   ShellChannelNotRealizedByTarget, shell_emission_refusal_fact, shell_result_channel_key,
   bind_operation_transport, transport_binding_refusal_fact,
-  FileVerb, FileRead, FileWrite, FileWriteOwnerOnly, FileWriteCreateNew, FileWriteCreateNewWithMode, FileDelete, FileList,
+  FileVerb, FileRead, FileWrite, FileWriteOwnerOnly, FileWriteCreateNew, FileWriteCreateNewWithMode, FileLinkCreateNew, FileDelete, FileList,
   FileResultField, FileResultChannel, FileChanSuccess, FileChanByteCount,
   FileChanPath, FileChanError, FileChanErrorKind, FileChanContent
 }
@@ -943,6 +943,12 @@ fn rust_host_text_carrier_elem_name(n: Node, source_indices: Map<String, Newline
 // An arrow is never a text carrier, whatever its authored name resolves to: `fn(String) -> String`
 // answered true here (its name reads as its return leaf) ahead of every Arrow arm, so the type
 // argument rendered `String` (E0277 x2 at v2.std.compilers.target_model).
+//
+// NOT YET THE CHECKER'S AUTHORITY, AND DECLARED AS SUCH (gunbc.rung_drop text_boundary_identity_wall):
+// the checker decides text representation by declaration identity (v1.compiler.infer_env
+// text_representation_by_identity), which needs the TypeEnv census; these renderers hold no env, so
+// this arm keeps its provenance-keyed answer, measured to render the self-host crate byte-identically
+// to the pre-change emitter. The trigger that unifies them is the render paths carrying the env.
 //
 // The String arm is keyed on the resolved declaration's PROVENANCE, never on the spelling alone
 // (DESIGN section 3, and gunbc.recurring_failure_mode
@@ -16576,6 +16582,7 @@ fn file_verb_action_expr(verb: FileVerb) -> String {
     FileWriteOwnerOnly => file_write_owner_only_expr
     FileWriteCreateNew => file_write_create_new_expr
     FileWriteCreateNewWithMode => file_write_create_new_with_mode_expr
+    FileLinkCreateNew  => file_link_create_new_expr
     FileDelete         => file_delete_match_expr
     FileList           => file_list_match_expr
   }
@@ -16630,7 +16637,7 @@ data file_empty_path_guard: String = "if file_path.is_empty() { return Err(\"fil
 // emitted image of v1_interpreter io_error_kind_name, and its closed names are the ones
 // extdeps.filesystem.filesystem_io admit_filesystem_failure_kind admits -- a name outside that
 // roster reaches the consumer as FilesystemFailureKindUnrecognized, never as a guessed kind.
-data file_io_error_kind_fn: String = "let file_io_error_kind = |host_err: &std::io::Error| -> String {\n    match host_err.kind() {\n        std::io::ErrorKind::NotFound => \"not_found\",\n        std::io::ErrorKind::AlreadyExists => \"already_exists\",\n        std::io::ErrorKind::PermissionDenied => \"permission_denied\",\n        std::io::ErrorKind::NotADirectory => \"not_a_directory\",\n        _ => \"other\",\n    }\n    .to_string()\n};"
+data file_io_error_kind_fn: String = "let file_io_error_kind = |host_err: &std::io::Error| -> String {\n    match host_err.kind() {\n        std::io::ErrorKind::NotFound => \"not_found\",\n        std::io::ErrorKind::AlreadyExists => \"already_exists\",\n        std::io::ErrorKind::PermissionDenied => \"permission_denied\",\n        std::io::ErrorKind::NotADirectory => \"not_a_directory\",\n        std::io::ErrorKind::CrossesDevices => \"cross_device\",\n        _ => \"other\",\n    }\n    .to_string()\n};"
 
 data file_channel_binding_prefix: String = "#[allow(unused_variables)]\nlet (file_success, file_content, file_error, file_byte_count, file_error_kind): (bool, String, String, i64, String) = "
 
@@ -16672,6 +16679,9 @@ data file_write_expr: String = "{\n    let payload_bytes = content.len() as i64;
 // return it, because doing so would stringify std::io::Error inside the realization and discard
 // the host's structured failure before any consumer asked for that loss.
 data file_write_create_new_expr: String = "{\n    let payload_bytes = content.len() as i64;\n    match v1_rt::gunbc_file_write_create_new(&file_path, content.as_bytes(), None) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes, String::new()),\n        Err(create_new_err) => (false, String::new(), format!(\"{}\", create_new_err), 0i64, file_io_error_kind(&create_new_err)),\n    }\n};"
+
+// The create-only link reads its `source` input by name, as the writes read `content`.
+data file_link_create_new_expr: String = "match v1_rt::gunbc_file_link_create_new(&source, &file_path) {\n    Ok(()) => (true, String::new(), String::new(), 0i64, String::new()),\n    Err(link_err) => (false, String::new(), format!(\"{}\", link_err), 0i64, file_io_error_kind(&link_err)),\n};"
 
 // `mode` is the declared permission-bit value (extdeps.access.posix file_mode_bits). A value that is
 // not a mode REFUSES as InvalidInput before anything is created; it is never truncated into one.

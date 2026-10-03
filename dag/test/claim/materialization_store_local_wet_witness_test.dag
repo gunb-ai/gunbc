@@ -36,7 +36,9 @@ import extdeps.realization.materialization_store_local {
   LocalStoreRecency, LocalStoreRecencyRecorded, LocalStoreRecencyNothingToRecord, LocalStoreRecencyLost,
   local_store_record_recency, local_store_is_object_name, local_store_object_bytes, local_store_family_budget,
   local_store_host_ceiling_bytes, local_store_typed_module_budget_policy, local_store_compute_work_budget_policy,
+  LocalStoreStagedPart, LocalStorePartsLookup, local_store_lookup_parts, local_store_part_name,
 }
+import std.fabric_blob { fabric_blob_reading_path }
 import std.cache_identity { native_module_verdict_bundle_artifact_kind }
 import std.measure { measure_count }
 import std.render_repeat_string_bootstrap { repeat_string }
@@ -98,7 +100,7 @@ fn universe_payloads() -> List<ArtifactPayload> {
 }
 
 fn prepared_object(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> String {
-  match store_commit_prepare(req: req, payloads: payloads) {
+  match store_commit_prepare(req: req, payloads: payloads, blobs: []) {
     StoreCommitPrepared { key: _, object_name: _, object: o, offered_digest: _, offered_result: _ } => o
     StoreCommitNotPrepared { commit: _ } => ""
   }
@@ -143,7 +145,7 @@ test fn commit_then_read_back_by_real_execution() -> Bool {
   let verdict = match opened(root: root) {
     Absent => false
     Present { value: store } => {
-      let committed = commit_tag(c: local_store_commit(root: root, store: store, req: bundle_req(module: "a"), payloads: verdicts(text: "a.t1 pass\na.t2 fail")).commit)
+      let committed = commit_tag(c: local_store_commit(root: root, store: store, req: bundle_req(module: "a"), payloads: verdicts(text: "a.t1 pass\na.t2 fail"), parts: []).commit)
       let read = local_store_lookup(root: root, store: store, req: bundle_req(module: "a"))
       let bytes_ok = match store_lookup_payload(l: read, id: output_module_test_verdicts) {
         Present { value: v } => v == "a.t1 pass\na.t2 fail"
@@ -163,7 +165,7 @@ test fn corruption_is_an_integrity_refusal_by_real_execution() -> Bool {
   let verdict = match opened(root: root) {
     Absent => false
     Present { value: store } => {
-      let committed = commit_tag(c: local_store_commit(root: root, store: store, req: bundle_req(module: "a"), payloads: verdicts(text: "a.t1 pass")).commit)
+      let committed = commit_tag(c: local_store_commit(root: root, store: store, req: bundle_req(module: "a"), payloads: verdicts(text: "a.t1 pass"), parts: []).commit)
       let good = Filesystem.Read(path: object_path(root_path: root_path, req: bundle_req(module: "a")))
       let corrupt = Filesystem.Write(path: object_path(root_path: root_path, req: bundle_req(module: "a")), content: replace(good.content, "a.t1%20pass", "a.t1%20PASS"))
       let read = local_store_lookup(root: root, store: store, req: bundle_req(module: "a"))
@@ -216,6 +218,7 @@ test fn incomplete_refuses_by_real_execution() -> Bool {
           parts: [payload_part(payload: verdicts_only)]
         },
         payloads: [verdicts_only],
+        blobs: [],
         evaluation_preimage: match evaluation_store_admitted_address(admission: evaluation_store_address(req: req)) {
           Absent => "unreachable" as NonEmptyStr
           Present { value: a } => evaluation_store_address_preimage(address: a)
@@ -242,8 +245,8 @@ test fn a_second_writer_converges_on_the_committed_artifact_by_real_execution() 
   let verdict = match opened(root: root) {
     Absent => false
     Present { value: store } => {
-      let first = local_store_commit(root: root, store: store, req: bundle_req(module: "a"), payloads: verdicts(text: "a.t1 pass")).commit
-      let second = local_store_commit(root: root, store: store, req: bundle_req(module: "a"), payloads: verdicts(text: "a.t1 pass")).commit
+      let first = local_store_commit(root: root, store: store, req: bundle_req(module: "a"), payloads: verdicts(text: "a.t1 pass"), parts: []).commit
+      let second = local_store_commit(root: root, store: store, req: bundle_req(module: "a"), payloads: verdicts(text: "a.t1 pass"), parts: []).commit
       let same_content = match first {
         StoreCommitSettled { receipt: r1 } => match second {
           StoreCommitSettled { receipt: r2 } => r1.content_digest == r2.content_digest && r1.request_key == r2.request_key
@@ -267,8 +270,8 @@ test fn a_divergent_second_writer_conflicts_and_changes_nothing_by_real_executio
   let verdict = match opened(root: root) {
     Absent => false
     Present { value: store } => {
-      let first = local_store_commit(root: root, store: store, req: bundle_req(module: "a"), payloads: verdicts(text: "a.t1 pass")).commit
-      let second = local_store_commit(root: root, store: store, req: bundle_req(module: "a"), payloads: verdicts(text: "a.t1 fail")).commit
+      let first = local_store_commit(root: root, store: store, req: bundle_req(module: "a"), payloads: verdicts(text: "a.t1 pass"), parts: []).commit
+      let second = local_store_commit(root: root, store: store, req: bundle_req(module: "a"), payloads: verdicts(text: "a.t1 fail"), parts: []).commit
       let read = local_store_lookup(root: root, store: store, req: bundle_req(module: "a"))
       let still_first = match store_lookup_payload(l: read, id: output_module_test_verdicts) {
         Present { value: v } => v == "a.t1 pass"
@@ -317,7 +320,7 @@ test fn a_batch_answers_each_request_by_real_execution() -> Bool {
   let verdict = match opened(root: root) {
     Absent => false
     Present { value: store } => {
-      let committed = commit_tag(c: local_store_commit(root: root, store: store, req: bundle_req(module: "a"), payloads: verdicts(text: "a.t1 pass")).commit)
+      let committed = commit_tag(c: local_store_commit(root: root, store: store, req: bundle_req(module: "a"), payloads: verdicts(text: "a.t1 pass"), parts: []).commit)
       match local_store_lookup_batch(root: root, reqs: [bundle_req(module: "a"), bundle_req(module: "b")]) {
         LocalStoreBatchUnavailable { root_path: _, cause: _ } => false
         LocalStoreBatchLooked { store: _, lookups: ls } =>
@@ -387,7 +390,7 @@ test fn the_family_budget_holds_on_disk_across_overrun_by_real_execution() -> Bo
     Present { value: store } => {
       let before = root_object_bytes(root_path: root_path)
       let steps = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] |> map(i => {
-        let c = local_store_commit(root: root, store: store, req: bundle_req(module: concat("m", i as String)), payloads: padded_verdicts(module: concat("m", i as String)))
+        let c = local_store_commit(root: root, store: store, req: bundle_req(module: concat("m", i as String)), payloads: padded_verdicts(module: concat("m", i as String)), parts: [])
         BoundStep { within: commit_tag(c: c.commit) == "committed" && root_object_bytes(root_path: root_path) <= budget, evicted: count(c.evicted) }
       })
       let after = root_object_bytes(root_path: root_path)
@@ -408,8 +411,8 @@ test fn an_artifact_over_its_family_budget_refuses_and_evicts_nothing_by_real_ex
   let verdict = match opened(root: root) {
     Absent => false
     Present { value: store } => {
-      let small = local_store_commit(root: root, store: store, req: bundle_req(module: "kept"), payloads: verdicts(text: "kept pass"))
-      let huge = local_store_commit(root: root, store: store, req: bundle_req(module: "huge"), payloads: verdicts(text: repeat_string(s: "x", n: 5000)))
+      let small = local_store_commit(root: root, store: store, req: bundle_req(module: "kept"), payloads: verdicts(text: "kept pass"), parts: [])
+      let huge = local_store_commit(root: root, store: store, req: bundle_req(module: "huge"), payloads: verdicts(text: repeat_string(s: "x", n: 5000)), parts: [])
       commit_tag(c: small.commit) == "committed"
         && commit_tag(c: huge.commit) == "did_not_fit"
         && count(huge.evicted) == 0
@@ -428,7 +431,7 @@ test fn a_family_without_a_declared_budget_refuses_by_real_execution() -> Bool {
   let verdict = match opened(root: root) {
     Absent => false
     Present { value: store } =>
-      commit_tag(c: local_store_commit(root: root, store: store, req: universe_req(), payloads: universe_payloads()).commit) == "budget_undeclared"
+      commit_tag(c: local_store_commit(root: root, store: store, req: universe_req(), payloads: universe_payloads(), parts: []).commit) == "budget_undeclared"
   }
   let removed = shell.Remove.RecursiveForce(path: root_path)
   verdict && removed.success
@@ -442,10 +445,10 @@ test fn a_corrupt_occupancy_index_refuses_and_never_reads_as_empty_by_real_execu
   let verdict = match opened(root: root) {
     Absent => false
     Present { value: store } => {
-      let first = local_store_commit(root: root, store: store, req: bundle_req(module: "a"), payloads: verdicts(text: "a pass"))
+      let first = local_store_commit(root: root, store: store, req: bundle_req(module: "a"), payloads: verdicts(text: "a pass"), parts: [])
       let slot = store_path(root_path: root_path, name: concat(local_store_index_key(family: native_module_verdict_bundle_artifact_kind) as String, ".1"))
       let planted = Filesystem.Write(path: slot, content: "not an occupancy index")
-      let second = local_store_commit(root: root, store: store, req: bundle_req(module: "b"), payloads: verdicts(text: "b pass"))
+      let second = local_store_commit(root: root, store: store, req: bundle_req(module: "b"), payloads: verdicts(text: "b pass"), parts: [])
       commit_tag(c: first.commit) == "committed" && planted.success
         && commit_tag(c: second.commit) == "occupancy_unavailable"
         && store_lookup_is_miss(l: local_store_lookup(root: root, store: store, req: bundle_req(module: "b")))
@@ -463,7 +466,7 @@ test fn an_open_sweeps_an_object_no_index_names_by_real_execution() -> Bool {
   let verdict = match opened(root: root) {
     Absent => false
     Present { value: store } => {
-      let kept = local_store_commit(root: root, store: store, req: bundle_req(module: "kept"), payloads: verdicts(text: "kept pass"))
+      let kept = local_store_commit(root: root, store: store, req: bundle_req(module: "kept"), payloads: verdicts(text: "kept pass"), parts: [])
       let orphan = "00000000000000000000orphan.materialization.v1"
       let planted = Filesystem.WriteCreateNew(path: store_path(root_path: root_path, name: orphan), content: "residue")
       let swept = match local_store_open(root: root) {
@@ -493,7 +496,7 @@ test fn the_occupancy_index_slot_stays_within_its_window_by_real_execution() -> 
     Absent => false
     Present { value: store } => {
       let all_committed = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-        |> all(i => commit_tag(c: local_store_commit(root: root, store: store, req: bundle_req(module: concat("w", i as String)), payloads: verdicts(text: "w pass")).commit) == "committed")
+        |> all(i => commit_tag(c: local_store_commit(root: root, store: store, req: bundle_req(module: concat("w", i as String)), payloads: verdicts(text: "w pass"), parts: []).commit) == "committed")
       let slot_files = root_names_with_prefix(root_path: root_path, prefix: concat(local_store_index_key(family: native_module_verdict_bundle_artifact_kind) as String, "."))
       all_committed && slot_files >= 1 && slot_files <= 3
     }
@@ -510,7 +513,7 @@ test fn recency_is_recorded_once_and_never_fails_by_real_execution() -> Bool {
   let verdict = match opened(root: root) {
     Absent => false
     Present { value: store } => {
-      let c = local_store_commit(root: root, store: store, req: bundle_req(module: "r"), payloads: verdicts(text: "r pass"))
+      let c = local_store_commit(root: root, store: store, req: bundle_req(module: "r"), payloads: verdicts(text: "r pass"), parts: [])
       let name = match evaluation_store_admitted_address(admission: evaluation_store_address(req: bundle_req(module: "r"))) {
         Absent => ""
         Present { value: addr } => store_object_name(address: addr)
@@ -537,4 +540,121 @@ test fn recency_is_recorded_once_and_never_fails_by_real_execution() -> Bool {
 test fn the_host_ceiling_is_the_declared_sum_of_family_budgets() -> Bool {
   measure_count(m: local_store_host_ceiling_bytes)
     == measure_count(m: local_store_typed_module_budget_policy) + measure_count(m: local_store_compute_work_budget_policy)
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// BYTE PARTS, BY REAL EXECUTION. A part is a file staged in the store root (the link that places it
+// is create-only and refuses across filesystems), carried in the record as (id, sha256, size), and
+// verified on every read. The bundle family's verdicts output is committed as a part here.
+
+fn diagnostics_only() -> List<ArtifactPayload> {
+  [ArtifactPayload { id: output_module_preparation_diagnostics, content: "" }]
+}
+
+fn stage(root_path: String, name: String, bytes: String) -> NonEmptyStr {
+  let path = store_path(root_path: root_path, name: name)
+  let w = Filesystem.WriteCreateNew(path: path, content: bytes)
+  path as NonEmptyStr
+}
+
+fn verdict_part(root_path: String, name: String, bytes: String) -> List<LocalStoreStagedPart> {
+  [LocalStoreStagedPart { id: output_module_test_verdicts, staged: stage(root_path: root_path, name: name, bytes: bytes) }]
+}
+
+fn part_path(root_path: String, req: ArtifactRequest) -> String {
+  concat(object_path(root_path: root_path, req: req), concat(".part.", output_module_test_verdicts as String))
+}
+
+test fn a_byte_part_commits_and_is_served_verified_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let verdict = match opened(root: root) {
+    Absent => false
+    Present { value: store } => {
+      let c = local_store_commit(root: root, store: store, req: bundle_req(module: "p"), payloads: diagnostics_only(), parts: verdict_part(root_path: root_path, name: "staging-p", bytes: "exe-bytes-p"))
+      let served = local_store_lookup_parts(root: root, store: store, req: bundle_req(module: "p"))
+      commit_tag(c: c.commit) == "committed"
+        && store_lookup_is_hit(l: served.lookup)
+        && count(served.parts) == 1
+        && served.parts |> all(r => Filesystem.Read(path: fabric_blob_reading_path(reading: r) as String).content == "exe-bytes-p")
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}
+
+test fn a_tampered_byte_part_refuses_the_lookup_and_is_not_a_miss_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let verdict = match opened(root: root) {
+    Absent => false
+    Present { value: store } => {
+      let c = local_store_commit(root: root, store: store, req: bundle_req(module: "t"), payloads: diagnostics_only(), parts: verdict_part(root_path: root_path, name: "staging-t", bytes: "exe-bytes-t"))
+      let tampered = Filesystem.Write(path: part_path(root_path: root_path, req: bundle_req(module: "t")), content: "exe-bytes-T")
+      let read = local_store_lookup(root: root, store: store, req: bundle_req(module: "t"))
+      commit_tag(c: c.commit) == "committed" && tampered.success
+        && store_lookup_refusal_tag(l: read) == "malformed" && store_lookup_is_miss(l: read) == false
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}
+
+test fn a_missing_byte_part_refuses_the_lookup_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let verdict = match opened(root: root) {
+    Absent => false
+    Present { value: store } => {
+      let c = local_store_commit(root: root, store: store, req: bundle_req(module: "m"), payloads: diagnostics_only(), parts: verdict_part(root_path: root_path, name: "staging-m", bytes: "exe-bytes-m"))
+      let gone = Filesystem.Delete(path: part_path(root_path: root_path, req: bundle_req(module: "m")))
+      let read = local_store_lookup(root: root, store: store, req: bundle_req(module: "m"))
+      commit_tag(c: c.commit) == "committed" && gone.success && store_lookup_refusal_tag(l: read) == "malformed"
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}
+
+// Parts are charged to the family budget and leave with their record: after 12 commits of ~1 KiB
+// parts into a 4096-byte family, every record and part file on disk together stays within budget.
+test fn byte_parts_count_against_the_budget_and_leave_with_their_record_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let budget = bundle_family_budget_bytes(root: root)
+  let verdict = match opened(root: root) {
+    Absent => false
+    Present { value: store } => {
+      let all_committed = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] |> all(i => {
+        let m = concat("bp", i as String)
+        let c = local_store_commit(root: root, store: store, req: bundle_req(module: m), payloads: diagnostics_only(), parts: verdict_part(root_path: root_path, name: concat("staging-", m), bytes: repeat_string(s: m, n: 300)))
+        let staging_gone = Filesystem.Delete(path: store_path(root_path: root_path, name: concat("staging-", m)))
+        commit_tag(c: c.commit) == "committed" && staging_gone.success && root_object_bytes(root_path: root_path) <= budget
+      })
+      all_committed && root_object_bytes(root_path: root_path) > 0
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}
+
+test fn an_open_sweeps_an_orphan_part_and_keeps_an_indexed_records_part_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let verdict = match opened(root: root) {
+    Absent => false
+    Present { value: store } => {
+      let c = local_store_commit(root: root, store: store, req: bundle_req(module: "k"), payloads: diagnostics_only(), parts: verdict_part(root_path: root_path, name: "staging-k", bytes: "exe-bytes-k"))
+      let orphan = "00000000000000000000orphan.materialization.v3.part.module_test_verdicts"
+      let planted = Filesystem.WriteCreateNew(path: store_path(root_path: root_path, name: orphan), content: "residue")
+      let reopened = local_store_open(root: root)
+      commit_tag(c: c.commit) == "committed" && planted.success
+        && !Filesystem.Read(path: store_path(root_path: root_path, name: orphan)).success
+        && Filesystem.Read(path: part_path(root_path: root_path, req: bundle_req(module: "k"))).success
+        && store_lookup_is_hit(l: local_store_lookup(root: root, store: store, req: bundle_req(module: "k")))
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
 }
