@@ -3,7 +3,13 @@ module gunbc.auth.ci_app_key_rotation
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.shell
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemReadOutcome,
+  FilesystemReadRefused,
+  FilesystemReadSucceeded,
+  filesystem_read_outcome,
+}
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_number }
 import extdeps.cloud.gcp.secret_ref {
   SecretRef, secret_ref_version_resource,
@@ -145,6 +151,7 @@ type AppKeyVersionRefusal
   | AppKeyVersionSelectorIsAlias
   | AppKeyVersionSelectorNotANumber { supplied: String }
   | AppKeyMintObservationAbsent { cause: NonEmptyStr }
+  | AppKeyMintObservationUnreadable { cause: NonEmptyStr }
   | AppKeyVersionUnreadable { http_status: String }
   | AppKeyResolvedVersionUndecodable { cause: SmResolvedVersionIdentityRefusal }
   | AppKeyResolvedVersionDiffers { requested: String, resolved: String }
@@ -306,6 +313,8 @@ fn app_key_refusal_text(cause: AppKeyVersionRefusal) -> String {
       join(["AppKeyVersionSelectorNotANumber: '", s, "' is not a Secret Manager version number"], "")
     AppKeyMintObservationAbsent { cause: c } =>
       concat("AppKeyMintObservationAbsent: ", c as String)
+    AppKeyMintObservationUnreadable { cause: c } =>
+      concat("AppKeyMintObservationUnreadable: ", concat(c as String, ": the mint step's observation record exists but could not be read, which is a different failure from there being no record; inspect the record path and its permissions"))
     AppKeyVersionUnreadable { http_status: s } =>
       join([
         "AppKeyVersionUnreadable: Secret Manager answered HTTP ", s,
@@ -381,16 +390,30 @@ fn env_or_empty(name: NonEmptyStr) -> String {
   }
 }
 
-fn observe_app_key_mint_record() -> AppKeyMintObservation? {
+// The record read is a typed outcome, never a silently defaulted value (DESIGN §5): a refused read
+// of the observation record is a different fact from there being no record, so it carries its own
+// arm instead of collapsing into the absent one the old Optional shape forced.
+type AppKeyMintRecordRead
+  = AppKeyMintRecordDecoded { observation: AppKeyMintObservation }
+  | AppKeyMintRecordUnread { cause: NonEmptyStr }
+
+fn app_key_mint_record_from_read(read: FilesystemReadOutcome) -> AppKeyMintRecordRead {
+  match read {
+    FilesystemReadSucceeded { content: content } =>
+      AppKeyMintRecordDecoded { observation: decode_app_key_mint_record(record: content) }
+    FilesystemReadRefused { error: error } =>
+      AppKeyMintRecordUnread { cause: error as NonEmptyStr }
+  }
+}
+
+fn observe_app_key_mint_record() -> AppKeyMintRecordRead? {
   let path = env_or_empty(name: app_key_verify_record_env_name)
   if path == "" {
     none
   } else {
     let read = Filesystem.Read(path: path)
-    if !read.success {
-      none
-    } else {
-      Present { value: decode_app_key_mint_record(record: read.content) }
+    Present {
+      value: app_key_mint_record_from_read(read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error)),
     }
   }
 }
@@ -405,9 +428,12 @@ fn ci_app_key_version_verify_wet() -> ProcessExit {
       match observe_app_key_mint_record() {
         Absent =>
           AppKeyVersionRefused {
-            cause: AppKeyMintObservationAbsent { cause: "the mint step's observation record is absent or unreadable" as NonEmptyStr },
+            cause: AppKeyMintObservationAbsent { cause: concat("the mint step recorded no observation record for this run: ", concat(app_key_verify_record_env_name as String, " is unset")) as NonEmptyStr },
           }
-        Present { value: obs } => verify_app_key_version(secret: ci_app_key_contract.subject, version: n, observation: obs)
+        Present { value: AppKeyMintRecordUnread { cause: c } } =>
+          AppKeyVersionRefused { cause: AppKeyMintObservationUnreadable { cause: c } }
+        Present { value: AppKeyMintRecordDecoded { observation: obs } } =>
+          verify_app_key_version(secret: ci_app_key_contract.subject, version: n, observation: obs)
       }
   }
   let wrote = Filesystem.Write(

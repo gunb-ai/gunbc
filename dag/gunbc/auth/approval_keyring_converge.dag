@@ -244,13 +244,30 @@ fn approval_keyring_converge_on_host() -> ProcessExit
     let cap = Filesystem.Read(path: cap_path)
     let sub = Filesystem.Read(path: sub_path)
     let rcpt = Filesystem.Read(path: rcpt_path)
-    if !rcpt.success {
-      exit_failure(reason: concat("approval keyring: staged store receipt MAC key unreadable: ", rcpt.error))
-    } else if !cap.success {
-      exit_failure(reason: concat("approval keyring: staged capability MAC key unreadable: ", cap.error))
-    } else if !sub.success {
-      exit_failure(reason: concat("approval keyring: staged submission MAC key unreadable: ", sub.error))
-    } else {
+    match filesystem_read_outcome(content: rcpt.content, success: rcpt.success, error: rcpt.error) {
+      FilesystemReadRefused { error } =>
+        exit_failure(reason: concat("approval keyring: staged store receipt MAC key unreadable: ", error))
+      FilesystemReadSucceeded { content: rcpt_content } =>
+      match filesystem_read_outcome(content: cap.content, success: cap.success, error: cap.error) {
+        FilesystemReadRefused { error } =>
+          exit_failure(reason: concat("approval keyring: staged capability MAC key unreadable: ", error))
+        FilesystemReadSucceeded { content: cap_content } =>
+        match filesystem_read_outcome(content: sub.content, success: sub.success, error: sub.error) {
+          FilesystemReadRefused { error } =>
+            exit_failure(reason: concat("approval keyring: staged submission MAC key unreadable: ", error))
+          FilesystemReadSucceeded { content: sub_content } =>
+            approval_keyring_converge_with_staged_keys(
+              cap_path: cap_path, sub_path: sub_path, rcpt_path: rcpt_path,
+              cap_content: cap_content, sub_content: sub_content, rcpt_content: rcpt_content,
+            )
+        }
+      }
+    }
+}
+}
+
+fn approval_keyring_converge_with_staged_keys(cap_path: String, sub_path: String, rcpt_path: String, cap_content: String, sub_content: String, rcpt_content: String) -> ProcessExit
+{
       match approval_keyring_staged_digest_ok(path: cap_path as NonEmptyStr, expected_prefix: approval_mac_key_payload_sha256_prefix, role: "capability") {
         ExitSuccess =>
           match approval_keyring_staged_digest_ok(path: sub_path as NonEmptyStr, expected_prefix: approval_submission_mac_key_payload_sha256_prefix, role: "submission") {
@@ -298,9 +315,6 @@ fn approval_keyring_converge_on_host() -> ProcessExit
         other => other
       }
     }
-  }
-}
-
 fn approval_keyring_converge_wet() -> ProcessExit
 {
   match actions_variable_read(name: fleet_converge_expected_host_env_name) {
