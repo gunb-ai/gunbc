@@ -1,0 +1,5 @@
+module gunbc.roadmap_allocation_location
+
+import std.types { String }
+
+data allocation_page_path: String = "/allocations"

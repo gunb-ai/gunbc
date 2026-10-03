@@ -11,7 +11,7 @@ import extdeps.systemd {
   ActiveEnterTimestampMonotonic, ActiveState, MainPID,
   EnvironmentProperty, EnvironmentFilesProperty, PassEnvironmentProperty, AfterProperty, WantsProperty,
   InvocationIDProperty, FragmentPathProperty,
-  systemd_unit_property_wire, PartOf }
+  systemd_unit_property_wire, PartOf, Unit }
 
 data systemd_property_directive_overlap_scope: ConstructionMechanism = SingleAuthority
 

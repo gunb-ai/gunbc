@@ -1,0 +1,171 @@
+module test.claim.harness_conversation_fork_test
+
+import std.types { Bool, String }
+import gunbc.harness.harness_conversation_fork {
+  ConversationForkPoint, ConversationForkAdmittance, ForkAdmitted, ForkInvalid, conversation_fork_admit,
+  KvPrefixResidency, Resident, NotResident, Unobserved, Evicted, Incompatible,
+  KvPrefixResidencyObservation, KvPlacementPreference, PreferWarmLocation, ExecuteColdFromDurableState,
+  kv_prefix_residency_placement,
+}
+
+// WITNESSES FOR THE PURE HALF of the conversation-fork model (review 5358022153, lane D): the
+// fork admittance law and the KV-residency observation. The harness IO half -- the durable wire
+// log itself -- is deliberately not wet-tested here; these claims are about the typed decisions,
+// not the filesystem.
+
+fn fork_point_fixture() -> ConversationForkPoint {
+  ConversationForkPoint {
+    attempt_lineage: "lineage-abc",
+    epoch: 2,
+    round: 7,
+    request_digest: "fnv1a64:req7",
+    response_digest: "fnv1a64:resp7",
+    model_identity: "deepseek-v4@serving-a",
+    wire_shape: "anthropic-messages",
+  }
+}
+
+// A FORK IS ADMITTED WHEN EVERY IDENTITY HOLDS, and the admission carries the point itself -- the
+// lineage, epoch, round and both wire digests all survive the admit, so a consumer of the
+// admittance has the fork address without re-deriving it.
+test fn a_fork_point_with_exact_identity_match_is_admitted() -> Bool {
+  match conversation_fork_admit(
+    point: fork_point_fixture(),
+    model_identity: "deepseek-v4@serving-a",
+    wire_shape: "anthropic-messages",
+    chain_fingerprint_at_point: "fnv1a64:chain1",
+    chain_fingerprint_now: "fnv1a64:chain1",
+  ) {
+    ForkAdmitted { point } =>
+      point.attempt_lineage == "lineage-abc"
+        && point.epoch == 2
+        && point.round == 7
+        && point.request_digest == "fnv1a64:req7"
+        && point.response_digest == "fnv1a64:resp7"
+    ForkInvalid { cause: _ } => false
+  }
+}
+
+// EACH INVALIDATION REFUSES WITH ITS OWN SENTENCE, naming both the identity that moved and its two
+// spellings. The model-change cause is the law's exact words -- a fork across a model change
+// replays context the engine never computed.
+test fn a_fork_across_a_model_change_is_invalid_with_its_named_cause() -> Bool {
+  match conversation_fork_admit(
+    point: fork_point_fixture(),
+    model_identity: "glm-5.3@serving-b",
+    wire_shape: "anthropic-messages",
+    chain_fingerprint_at_point: "fnv1a64:chain1",
+    chain_fingerprint_now: "fnv1a64:chain1",
+  ) {
+    ForkAdmitted { point: _ } => false
+    ForkInvalid { cause } =>
+      string_contains(s: cause, pattern: "a fork across a model change replays context the engine never computed")
+        && string_contains(s: cause, pattern: "deepseek-v4@serving-a")
+        && string_contains(s: cause, pattern: "glm-5.3@serving-b")
+  }
+}
+
+test fn a_fork_across_a_wire_shape_change_is_invalid_with_its_named_cause() -> Bool {
+  match conversation_fork_admit(
+    point: fork_point_fixture(),
+    model_identity: "deepseek-v4@serving-a",
+    wire_shape: "openai-chat-completions",
+    chain_fingerprint_at_point: "fnv1a64:chain1",
+    chain_fingerprint_now: "fnv1a64:chain1",
+  ) {
+    ForkAdmitted { point: _ } => false
+    ForkInvalid { cause } =>
+      string_contains(s: cause, pattern: "wire-shape change")
+        && string_contains(s: cause, pattern: "anthropic-messages")
+        && string_contains(s: cause, pattern: "openai-chat-completions")
+  }
+}
+
+test fn a_fork_after_the_chain_moved_is_invalid_with_its_named_cause() -> Bool {
+  match conversation_fork_admit(
+    point: fork_point_fixture(),
+    model_identity: "deepseek-v4@serving-a",
+    wire_shape: "anthropic-messages",
+    chain_fingerprint_at_point: "fnv1a64:chain1",
+    chain_fingerprint_now: "fnv1a64:chain2",
+  ) {
+    ForkAdmitted { point: _ } => false
+    ForkInvalid { cause } =>
+      string_contains(s: cause, pattern: "the alignment chain the context was built against changed")
+        && string_contains(s: cause, pattern: "fnv1a64:chain1")
+        && string_contains(s: cause, pattern: "fnv1a64:chain2")
+  }
+}
+
+fn residency_label(standing: KvPrefixResidency) -> String {
+  match standing {
+    Resident => "resident"
+    NotResident => "not-resident"
+    Unobserved => "unobserved"
+    Evicted => "evicted"
+    Incompatible => "incompatible"
+  }
+}
+
+// THE FIVE STANDINGS ARE DISTINCT VARIANTS, not degrees of one Bool: every pairing answers
+// differently, so a consumer cannot smuggle "evicted means not resident means unknown" through a
+// shared label.
+test fn residency_standings_are_five_distinct_variants() -> Bool {
+  let a = residency_label(standing: Resident)
+  let b = residency_label(standing: NotResident)
+  let c = residency_label(standing: Unobserved)
+  let d = residency_label(standing: Evicted)
+  let e = residency_label(standing: Incompatible)
+  a != b && a != c && a != d && a != e
+    && b != c && b != d && b != e
+    && c != d && c != e
+    && d != e
+}
+
+fn prefers_warm(preference: KvPlacementPreference) -> Bool {
+  match preference {
+    PreferWarmLocation => true
+    ExecuteColdFromDurableState => false
+  }
+}
+
+// PLACEMENT FOLLOWS OBSERVATION, AND THE DEFAULT IS HONEST: only an observed Resident prefix
+// earns the warm preference; Unobserved -- the question never asked -- lands on cold exactly like
+// NotResident, Evicted and Incompatible. Cold is always available because the durable wire log,
+// not any cache, is the correctness authority.
+test fn only_resident_prefers_warm_and_unobserved_defaults_to_cold() -> Bool {
+  prefers_warm(kv_prefix_residency_placement(standing: Resident))
+    && !prefers_warm(kv_prefix_residency_placement(standing: NotResident))
+    && !prefers_warm(kv_prefix_residency_placement(standing: Unobserved))
+    && !prefers_warm(kv_prefix_residency_placement(standing: Evicted))
+    && !prefers_warm(kv_prefix_residency_placement(standing: Incompatible))
+}
+
+// THE OBSERVATION CARRIES EVERY IDENTITY A WARM LOCATION MUST MATCH -- model, checkpoint's
+// serving unit, tokenizer, chat template, and both prompt digests -- because two serving units
+// only share a KV prefix when all of them do; a shared chain fingerprint alone never establishes
+// the same KV prefix.
+test fn a_residency_observation_binds_the_identities_a_warm_location_must_match() -> Bool {
+  let observed = KvPrefixResidencyObservation {
+    serving_unit: "serving-a",
+    model_identity: "deepseek-v4",
+    tokenizer_identity: "tokenizer-v4",
+    chat_template_identity: "template-v4",
+    semantic_prompt_digest: "fnv1a64:sem",
+    wire_digest: "fnv1a64:wire",
+    standing: Unobserved,
+    observed_at: "2026-09-30T00:00:00Z",
+  }
+  match observed.standing {
+    Unobserved =>
+      observed.serving_unit == "serving-a"
+        && observed.model_identity == "deepseek-v4"
+        && observed.tokenizer_identity == "tokenizer-v4"
+        && observed.chat_template_identity == "template-v4"
+        && observed.semantic_prompt_digest == "fnv1a64:sem"
+        && observed.wire_digest == "fnv1a64:wire"
+        && !prefers_warm(kv_prefix_residency_placement(standing: observed.standing))
+    _ => false
+  }
+}
+
