@@ -213,10 +213,12 @@ So the BMC and silicon leaves it needs move first.
 - **Frontier:** the remaining password-path wrappers (media attach, KVM, SOL, fan, UI bundle) cut over in cuts 3, 4a, 4d and 5 as each becomes host-generic. `mtcollins1_managed_secret_fetch_frontier` is retired when the last one refuses a caller-supplied path, and not before.
 - **Workflow surface:** a new fleet-converge mode for the wet run is a new mode, so it needs operator sign-off like cut 7. Until then the wet realization has no workflow entry.
 
-**Decisions I need before dispatch.**
-- (i) The module name (`gunbc.machine_intake_arrival_converge`, avoiding the quarantined "onboarding" spelling). Mine to take unless you object.
-- (ii) Whether a read-only FRU read of mtjade1 with the factory credential is covered by the standing "do not touch hardware" constraint. The unit-identity step needs it and it writes nothing. I'd treat it as needing the same operator sign-off as the rotation, and land the step dry.
-- (iii) Whether finding 3 changes the order. If mtcollins1 is in fact back on factory credentials, its own re-securing is the first wet subject, and it is a unit the operator has already authorized this route on.
+**Decisions (eager-gull-22 for the operator, 2026-10-03).**
+- **(i) Module name:** `gunbc.machine_intake_arrival_converge`. Approved.
+- **(ii) Read-only reads of mtjade1 with the factory credential:** no separate sign-off. The operator approved hands-on access to the unit on 2026-10-03. **The rotation and any account write do need sign-off.**
+- **(iii) First wet subject:** mtcollins1 goes first, and its unsecured state is to be treated as likely real. After the 2026-10-02 reflash the `gunbc` user and IPMI admin were restored by hand, but the factory `admin` was **not** disabled. So the conjunction's second half (the published credential is refused) is expected to fail on readback, which is the case it exists to catch. Finding 3 stands as written: the readback decides.
+- **(iv) Workflow mode:** no workflow entry for the wet run until the operator signs off the new mode (asked 2026-10-03).
+- Findings 1, 2 and 4 are confirmed. The route authority is corrected first, keyed on executed evidence.
 
 ### Terminal receipt owed by every cut (review item 5)
 
