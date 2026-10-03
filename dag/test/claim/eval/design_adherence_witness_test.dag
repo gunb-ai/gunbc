@@ -1,0 +1,105 @@
+module test.claim.eval.design_adherence_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String, NonEmptyStr, FilePath, List }
+import extdeps.git.object_store { git_object_id_wire_hex }
+import gunbc.eval.design_adherence {
+  EvalCase, MechanicalCheck, ClaimHolds, PatternAbsent, PatternPresent, FromReferenceFix, FromEvalStore,
+  DesignCheck, MechanicallyGraded, JudgmentOnly,
+  HardGraderFailed, HiddenDiscriminator, DesignCheckFailed,
+  CaseVerdict, CasePassed, CaseFailed, CaseAwaitingJudgment, CaseNotGraded,
+  case_verdict, case_unresolved_criteria, criterion_tallies,
+  PairedOutcome, paired_summary, case_discriminates,
+  eval_prompt, eval_prompt_render,
+}
+import gunbc.eval.design_adherence_cases { design_adherence_cases }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SET'S ROWS ARE WELL-FORMED: every criterion a row names is a criterion the review roster
+// carries, every identity is distinct, and no row's frozen base is its own fix.
+test fn every_case_names_only_rostered_criteria() -> Bool {
+  count(design_adherence_cases) > 0
+    && count(filter(design_adherence_cases, c => count(case_unresolved_criteria(c: c)) > 0)) == 0
+}
+
+test fn case_identities_are_distinct_and_bases_differ_from_fixes() -> Bool {
+  count(filter(design_adherence_cases, c =>
+    count(filter(design_adherence_cases, d => (d.identity as String) == (c.identity as String))) != 1
+      || (git_object_id_wire_hex(oid: c.frozen_base) as String) == (git_object_id_wire_hex(oid: c.reference_fix) as String)
+  )) == 0
+}
+
+// THE PROMPT CARRIES NOTHING THE GRADER HIDES. Read off the rendered prompt the model receives:
+// it names the frozen base and the brief, and no rendering of it contains the reference fix, the
+// discriminator's statement or pattern, or any design check's statement.
+fn mechanical_text(m: MechanicalCheck) -> List<String> {
+  match m {
+    ClaimHolds { witness, functions } => concat(map(functions, f => f as String), match witness {
+      FromReferenceFix { path } => [path as String]
+      FromEvalStore { stored_at, placed_at: _ } => [stored_at as String]
+    })
+    PatternAbsent { pattern, paths: _ } => [pattern as String]
+    PatternPresent { pattern, paths: _ } => [pattern as String]
+  }
+}
+
+fn hidden_text(c: EvalCase) -> List<String> {
+  concat(
+    concat([git_object_id_wire_hex(oid: c.reference_fix) as String, c.discriminator.statement as String], mechanical_text(m: c.discriminator.check)),
+    map(c.design_checks, d => d.statement as String),
+  )
+}
+
+test fn the_prompt_withholds_every_graded_fact() -> Bool {
+  count(filter(design_adherence_cases, c =>
+    count(filter(hidden_text(c: c), h => string_contains(s: eval_prompt_render(p: eval_prompt(c: c)), pattern: h))) > 0
+      || !string_contains(s: eval_prompt_render(p: eval_prompt(c: c)), pattern: git_object_id_wire_hex(oid: c.frozen_base) as String)
+  )) == 0
+}
+
+// THE VERDICT FOLD, at its own interface: supplied failures and supplied checks, no grading run.
+fn first_case() -> EvalCase? { first(design_adherence_cases) }
+
+test fn a_failed_check_fails_the_case_and_judgment_alone_only_defers_it() -> Bool {
+  match first_case() {
+    Absent => false
+    Present { value: c } =>
+      match case_verdict(c: c, failures: [HardGraderFailed { grader: HiddenDiscriminator, criterion: "fail-closed" as NonEmptyStr, detail: "x" }]) {
+        CaseFailed { failures: _ } => true
+        CasePassed => false
+        CaseAwaitingJudgment { pending: _ } => false
+        CaseNotGraded { cause: _ } => false
+      }
+      && match case_verdict(c: EvalCase {
+          identity: c.identity, fetch: c.fetch, finding: c.finding, frozen_base: c.frozen_base,
+          reference_fix: c.reference_fix, task: c.task, touched_entries: c.touched_entries, discriminator: c.discriminator,
+          design_checks: [DesignCheck { criterion: "fail-closed" as NonEmptyStr, statement: "s" as NonEmptyStr, method: JudgmentOnly { rubric: "r" as NonEmptyStr } }],
+        }, failures: []) {
+        CaseAwaitingJudgment { pending: _ } => true
+        CasePassed => false
+        CaseFailed { failures: _ } => false
+        CaseNotGraded { cause: _ } => false
+      }
+  }
+}
+
+// THE PAIRING: an ungraded side is not paired and not scored, and a case discriminates only when the
+// incumbent fails and the candidate passes. The per-criterion tally counts a case once per key.
+test fn the_pairing_scores_only_graded_pairs_and_discriminates_one_way() -> Bool {
+  let failed = CaseFailed { failures: [
+    HardGraderFailed { grader: HiddenDiscriminator, criterion: "fail-closed" as NonEmptyStr, detail: "a" },
+    DesignCheckFailed { criterion: "fail-closed" as NonEmptyStr, statement: "s" as NonEmptyStr, detail: "b" },
+  ] }
+  let pairs = [
+    PairedOutcome { case_identity: "a" as NonEmptyStr, incumbent: failed, candidate: CasePassed },
+    PairedOutcome { case_identity: "b" as NonEmptyStr, incumbent: CasePassed, candidate: failed },
+    PairedOutcome { case_identity: "c" as NonEmptyStr, incumbent: CaseNotGraded { cause: "no fetch" as NonEmptyStr }, candidate: CasePassed },
+  ]
+  let s = paired_summary(pairs: pairs)
+  let tallies = criterion_tallies(verdicts: [failed, CasePassed])
+  s.only_candidate_passed == 1 && s.only_incumbent_passed == 1 && s.not_paired == 1 && s.both_passed == 0
+    && count(filter(pairs, p => case_discriminates(p: p))) == 1
+    && count(tallies) == 1
+    && count(filter(tallies, t => (t.criterion as String) == "fail-closed" && t.cases_failed == 1)) == 1
+}

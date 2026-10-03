@@ -1,0 +1,484 @@
+module gunbc.eval.design_adherence_grader
+
+import std.types { Bool, Int, String, NonEmptyStr, FilePath, GitRef, List }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.shell_stream_capture { Complete }
+import std.algebra { trim }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.gunbc
+import extdeps.git
+import extdeps.git.inspect
+import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex, git_object_id_from_untagged_hex }
+import gunbc.output_policy { OutcomeIsData }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.eval.design_adherence {
+  EvalCase, MechanicalCheck, ClaimHolds, PatternAbsent, PatternPresent,
+  WitnessPlacement, FromReferenceFix, FromEvalStore,
+  DesignCheck, MechanicallyGraded, JudgmentOnly,
+  HardGrader, TouchedEntriesResolve, FloorGates, HiddenDiscriminator, hard_grader_name,
+  GraderFailure, HardGraderFailed, DesignCheckFailed,
+  CaseVerdict, CasePassed, CaseFailed, CaseAwaitingJudgment, CaseNotGraded,
+  case_verdict, case_unresolved_criteria, criterion_tallies, CriterionTally,
+  PairedOutcome, PairedSummary, paired_summary, case_discriminates,
+  eval_prompt, eval_prompt_render,
+}
+import gunbc.eval.design_adherence_cases { design_adherence_cases }
+
+// THE GRADER: ONE CASE, ONE COMMIT, EVERY CHECK EXECUTED ON THE REAL ROUTE.
+//
+// Realized over effects this repository already models and nothing else (operator ruling
+// 2026-10-03: no seed host arm): git through extdeps.git, the seed's own binaries through
+// gunbc.WitnessBin.Run, files through extdeps.filesystem. The three hard graders are the routes the
+// project itself gates on: claim_batch for resolution and claims, `claim_executor --required-floor`
+// for the diff-scoped floor gates, `git grep -E` at the graded commit for pattern checks.
+//
+// THE SEED IS BUILT FROM THE GRADED TREE, never from main: a gate's meaning is the meaning it had
+// at that commit, and an old tree read by a newer seed can refuse for reasons that postdate it.
+
+type GradeAt
+  = AtFrozenBase
+  | AtReferenceFix
+  | AtCandidate { commit: GitObjectId }
+
+fn grade_at_commit(c: EvalCase, at: GradeAt) -> GitObjectId {
+  match at {
+    AtFrozenBase => c.frozen_base
+    AtReferenceFix => c.reference_fix
+    AtCandidate { commit } => commit
+  }
+}
+
+fn grade_at_name(at: GradeAt) -> String {
+  match at {
+    AtFrozenBase => "frozen-base"
+    AtReferenceFix => "reference-fix"
+    AtCandidate { commit: _ } => "candidate"
+  }
+}
+
+// WHERE THE GRADER WORKS: the repository whose object store holds the commits, and a scratch
+// directory for the linked checkouts and the shared cargo target. Both are invocation facts.
+type EvalWorkspace {
+  repo: String
+  scratch: String
+}
+
+fn hex(oid: GitObjectId) -> String {
+  git_object_id_wire_hex(oid: oid) as String
+}
+
+type ProcessReading {
+  exit_code: Int
+  stdout: String
+  stderr: String
+}
+
+fn run_in(workdir: String, program: String, args: List<String>) -> ProcessReading {
+  let r = gunbc.WitnessBin.Run(workdir: workdir as FilePath, bin_path: program as FilePath, args: args, stderr_capture: Complete, expect: OutcomeIsData)
+  ProcessReading { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
+}
+
+// The end of a stream, so a failure detail locates the cause without carrying a whole log. The bound
+// is in lines' worth of characters: a detail is read by a person, not parsed.
+fn tail_lines(text: String, n: Int) -> String {
+  let t = trim(text)
+  let keep = n * 160
+  if string_length(s: t) > keep { substring(s: t, start: string_length(s: t) - keep, end: string_length(s: t)) } else { t }
+}
+
+// PREPARATION. Every arm that is not Prepared says why, and none of them is a judgment about the
+// candidate except a seed that does not build at a candidate commit -- that is the candidate's own
+// breakage and is graded, below, rather than excused.
+type Preparation
+  = Prepared { tree: String, bins: String }
+  | PreparationRefused { cause: String }
+  | CandidateSeedBroken { detail: String }
+
+fn commit_present(ws: EvalWorkspace, oid: GitObjectId) -> Bool {
+  git.Core.RevParseInRepo(repo: ws.repo as FilePath, target: concat(hex(oid: oid), "^{commit}") as GitRef).exit_code == 0
+}
+
+fn ensure_commit(ws: EvalWorkspace, c: EvalCase, oid: GitObjectId) -> Bool {
+  if commit_present(ws: ws, oid: oid) {
+    true
+  } else {
+    let refspec = join(["+", c.fetch.ref_name as String, ":refs/eval/pr-", to_string(c.fetch.pull_request)], "")
+    let fetched = git.Core.FetchForcedRefInRepo(repo: ws.repo as FilePath, remote: "origin", refspec: refspec)
+    fetched.exit_code == 0 && commit_present(ws: ws, oid: oid)
+  }
+}
+
+fn tree_path(ws: EvalWorkspace, c: EvalCase, at: GradeAt) -> String {
+  join([ws.scratch, "/", c.identity as String, "-", grade_at_name(at: at)], "")
+}
+
+fn prepare(ws: EvalWorkspace, c: EvalCase, at: GradeAt) -> Preparation {
+  let oid = grade_at_commit(c: c, at: at)
+  let tree = tree_path(ws: ws, c: c, at: at)
+  if !ensure_commit(ws: ws, c: c, oid: oid) {
+    PreparationRefused { cause: join([hex(oid: oid), " is not in the object store and fetching ", c.fetch.ref_name as String, " did not bring it"], "") }
+  } else {
+    let added = git.Worktree.AddDetachedInRepo(repo: ws.repo as FilePath, path: tree as FilePath, commit: hex(oid: oid) as GitRef)
+    if added.exit_code != 0 {
+      PreparationRefused { cause: join(["git worktree add --detach ", tree, " exited ", to_string(added.exit_code), ": ", tail_lines(text: added.stderr, n: 3)], "") }
+    } else {
+      let target = join([ws.scratch, "/target"], "")
+      let built = run_in(workdir: tree, program: "env", args: [
+        concat("CARGO_TARGET_DIR=", target), "cargo", "build", "--release",
+        "-p", "v1-compiler", "--bin", "claim_batch", "--bin", "claim_executor",
+      ])
+      if built.exit_code == 0 {
+        Prepared { tree: tree, bins: concat(target, "/release") }
+      } else {
+        let detail = join(["the seed did not build at ", hex(oid: oid), ": ", tail_lines(text: built.stderr, n: 8)], "")
+        match at {
+          AtCandidate { commit: _ } => CandidateSeedBroken { detail: detail }
+          AtFrozenBase => PreparationRefused { cause: detail }
+          AtReferenceFix => PreparationRefused { cause: detail }
+        }
+      }
+    }
+  }
+}
+
+// THE CHANGE UNDER GRADE: the paths the graded commit changes against the frozen base.
+fn changed_paths(ws: EvalWorkspace, c: EvalCase, at: GradeAt) -> List<FilePath> {
+  git.Core.DiffNameOnly(base: hex(oid: c.frozen_base) as GitRef, head: hex(oid: grade_at_commit(c: c, at: at)) as GitRef).paths
+}
+
+fn is_source_dag(p: FilePath) -> Bool {
+  ends_with(s: p as String, suffix: ".dag") && (starts_with(s: p as String, prefix: "dag/") || starts_with(s: p as String, prefix: "src/v2/"))
+}
+
+// HARD GRADER 2: THE FLOOR GATES, read off the required floor's own phase lines.
+//
+// The floor is run diff-scoped against the frozen base (GUNBC_CI_DIFF_BASE), exactly as CI scopes a
+// pull request against its base. An unchanged tree has no diff, so it has introduced nothing for a
+// diff-scoped gate to refuse: the gates hold vacuously and the floor is not run -- which is also why
+// the frozen-base side of a calibration run costs no floor. A gate whose phase line never printed
+// did not hold: the floor stopped before reaching it, and an unobserved gate is not a passed one.
+fn line_with(text: String, marker: String) -> String? {
+  fold(split(s: text, delimiter: "\n"), init: Absent, f: fn(acc, l) {
+    if string_contains(s: l, pattern: marker) { Present { value: l } } else { acc }
+  })
+}
+
+fn floor_gate_failures(ws: EvalWorkspace, c: EvalCase, at: GradeAt, prep_tree: String, bins: String) -> List<GraderFailure> {
+  if count(changed_paths(ws: ws, c: c, at: at)) == 0 {
+    []
+  } else {
+    let floor = run_in(workdir: prep_tree, program: "env", args: [
+      concat("GUNBC_CI_DIFF_BASE=", hex(oid: c.frozen_base)),
+      concat(bins, "/claim_executor"), "--required-floor", "--source-root", "dag", "--source-root", "src/v2",
+    ])
+    let err = floor.stderr
+    let refusal = match line_with(text: err, marker: "REQUIRED-FLOOR REFUSAL") { Present { value } => value  Absent => "no refusal line" }
+    let nfr = match line_with(text: err, marker: "phase=non-fold-residue-diff state=completed") {
+      Absent => [HardGraderFailed { grader: FloorGates, criterion: "fail-closed" as NonEmptyStr, detail: concat("non-fold-residue gate not reached: ", refusal) }]
+      Present { value: _ } =>
+        if string_contains(s: err, pattern: "cause=NonFoldResidue") {
+          [HardGraderFailed { grader: FloorGates, criterion: "fail-closed" as NonEmptyStr, detail: refusal }]
+        } else { [] }
+    }
+    let provider = match line_with(text: err, marker: "phase=unimported-bare-provider-gate") {
+      Absent => [HardGraderFailed { grader: FloorGates, criterion: "single-authority" as NonEmptyStr, detail: concat("unimported-bare-provider gate not reached: ", refusal) }]
+      Present { value: line } =>
+        if ends_with(s: trim(line), suffix: "refusals=0") { [] } else {
+          [HardGraderFailed { grader: FloorGates, criterion: "single-authority" as NonEmptyStr, detail: concat(line, concat(" ", tail_lines(text: err, n: 4))) }]
+        }
+    }
+    let duplicate = if string_contains(s: err, pattern: "DuplicateDeclaration") {
+      [HardGraderFailed { grader: FloorGates, criterion: "single-authority" as NonEmptyStr, detail: "a duplicate declaration was refused on the floor" }]
+    } else { [] }
+    concat(concat(nfr, provider), duplicate)
+  }
+}
+
+// HARD GRADER 1: EVERY TOUCHED ENTRY RESOLVES. One probe module imports each touched module and is
+// resolved by claim_batch, so the whole touched set resolves through the same index a claim does.
+// The touched set is the case's own entries plus every source .dag the graded commit changed; an
+// entry the commit deleted is not an entry.
+fn module_name_of(source: String) -> String? {
+  match first(filter(split(s: source, delimiter: "\n"), l => starts_with(s: l, prefix: "module "))) {
+    Absent => Absent
+    Present { value: head } => Present { value: trim(substring(s: head, start: 7, end: string_length(s: head))) }
+  }
+}
+
+data eval_resolve_probe_entry: String = "dag/eval_resolve_probe.dag"
+
+fn resolve_failures(ws: EvalWorkspace, c: EvalCase, at: GradeAt, tree: String, bins: String) -> List<GraderFailure> {
+  let entries = distinct_paths(paths: concat(c.touched_entries, filter(changed_paths(ws: ws, c: c, at: at), p => is_source_dag(p: p))))
+  let reads = map(entries, p => Filesystem.Read(path: join([tree, "/", p as String], "")))
+  let present = filter(reads, r => r.success)
+  let names = map(present, r => module_name_of(source: r.content))
+  let unnamed = filter(names, n => match n { Absent => true  Present { value: _ } => false })
+  if count(unnamed) > 0 {
+    [HardGraderFailed { grader: TouchedEntriesResolve, criterion: "closed-grounded-substrate" as NonEmptyStr, detail: "a touched .dag file declares no module" }]
+  } else {
+    let imports = map(names, n => match n { Present { value } => concat("import ", value)  Absent => "" })
+    let probe = join(concat(concat(["module eval_resolve_probe", ""], imports), ["", "fn eval_resolve_probe() -> Bool { true }", ""]), "\n")
+    let wrote = Filesystem.Write(path: join([tree, "/", eval_resolve_probe_entry], ""), content: probe)
+    if !wrote.success {
+      [HardGraderFailed { grader: TouchedEntriesResolve, criterion: "closed-grounded-substrate" as NonEmptyStr, detail: concat("resolve probe not written: ", wrote.error) }]
+    } else {
+      let r = run_in(workdir: tree, program: concat(bins, "/claim_batch"), args: [
+        "--source-root", "dag", "--source-root", "src/v2", "--entry", eval_resolve_probe_entry, "--function", "eval_resolve_probe",
+      ])
+      if r.exit_code == 0 && string_contains(s: r.stdout, pattern: "PASS eval_resolve_probe") {
+        []
+      } else if string_contains(s: concat(r.stdout, r.stderr), pattern: "DuplicateDeclaration") {
+        [HardGraderFailed { grader: FloorGates, criterion: "single-authority" as NonEmptyStr, detail: tail_lines(text: r.stderr, n: 6) }]
+      } else {
+        [HardGraderFailed { grader: TouchedEntriesResolve, criterion: "closed-grounded-substrate" as NonEmptyStr, detail: tail_lines(text: concat(r.stdout, r.stderr), n: 8) }]
+      }
+    }
+  }
+}
+
+fn distinct_paths(paths: List<FilePath>) -> List<FilePath> {
+  fold(paths, init: [], f: fn(acc, p) {
+    if count(filter(acc, a => (a as String) == (p as String))) > 0 { acc } else { concat(acc, [p]) }
+  })
+}
+
+// ONE MECHANICAL CHECK. Absent of any failure detail is held; a check the grader could not execute
+// (a refused grep, a witness it could not place) is a failure of that check, never a hold.
+fn place_witness(ws: EvalWorkspace, c: EvalCase, tree: String, w: WitnessPlacement) -> String? {
+  match w {
+    FromReferenceFix { path } =>
+      if git.Core.RestoreBlobTo(ref: hex(oid: c.reference_fix) as GitRef, path: path, work_tree: tree as FilePath).success { Present { value: path as String } } else { Absent }
+    FromEvalStore { stored_at, placed_at } => place_stored_witness(ws: ws, tree: tree, stored_at: stored_at, placed_at: placed_at)
+  }
+}
+
+fn place_stored_witness(ws: EvalWorkspace, tree: String, stored_at: FilePath, placed_at: FilePath) -> String? {
+  let r = Filesystem.Read(path: join([ws.repo, "/", stored_at as String], ""))
+  if !r.success {
+    Absent
+  } else if Filesystem.Write(path: join([tree, "/", placed_at as String], ""), content: r.content).success {
+    Present { value: placed_at as String }
+  } else {
+    Absent
+  }
+}
+
+// git grep exits 0 on a match, 1 on none, and anything else when it could not search.
+type GrepReading {
+  exit_code: Int
+  matches: String
+  stderr: String
+}
+
+fn grep_at(oid: GitObjectId, pattern: NonEmptyStr, paths: List<FilePath>) -> List<GrepReading> {
+  map(paths, p => grep_one(oid: oid, pattern: pattern, path: p))
+}
+
+fn grep_one(oid: GitObjectId, pattern: NonEmptyStr, path: FilePath) -> GrepReading {
+  let g = git.Inspect.GrepMatchesAtRevision(pattern: pattern as String, ref: hex(oid: oid) as GitRef, pathspec: path as String)
+  GrepReading { exit_code: g.exit_code, matches: g.matches, stderr: g.stderr }
+}
+
+fn grep_verdict_absent(reads: List<GrepReading>) -> String? {
+  if count(filter(reads, g => g.exit_code != 0 && g.exit_code != 1)) > 0 {
+    Present { value: concat("git grep refused: ", join(map(reads, g => g.stderr), " ")) }
+  } else if count(filter(reads, g => g.exit_code == 0)) > 0 {
+    Present { value: concat("pattern present: ", tail_lines(text: join(map(reads, g => g.matches), "\n"), n: 4)) }
+  } else {
+    Absent
+  }
+}
+
+fn grep_verdict_present(pattern: NonEmptyStr, reads: List<GrepReading>) -> String? {
+  if count(filter(reads, g => g.exit_code != 0 && g.exit_code != 1)) > 0 {
+    Present { value: concat("git grep refused: ", join(map(reads, g => g.stderr), " ")) }
+  } else if count(filter(reads, g => g.exit_code == 0)) == 0 {
+    Present { value: concat("pattern absent: ", pattern as String) }
+  } else {
+    Absent
+  }
+}
+
+fn claim_failure(tree: String, bins: String, entry: String, functions: List<NonEmptyStr>) -> String? {
+  let r = run_in(workdir: tree, program: concat(bins, "/claim_batch"), args: [
+    "--source-root", "dag", "--source-root", "src/v2", "--entry", entry,
+    "--functions", join(map(functions, f => f as String), ","),
+  ])
+  if r.exit_code == 0 && count(filter(functions, f => !string_contains(s: r.stdout, pattern: concat("PASS ", f as String)))) == 0 {
+    Absent
+  } else {
+    Present { value: tail_lines(text: concat(r.stdout, r.stderr), n: 8) }
+  }
+}
+
+fn check_failure(ws: EvalWorkspace, c: EvalCase, at: GradeAt, tree: String, bins: String, check: MechanicalCheck) -> String? {
+  let oid = grade_at_commit(c: c, at: at)
+  match check {
+    ClaimHolds { witness, functions } =>
+      match place_witness(ws: ws, c: c, tree: tree, w: witness) {
+        Absent => Present { value: "the witness could not be placed into the graded tree" }
+        Present { value: entry } => claim_failure(tree: tree, bins: bins, entry: entry, functions: functions)
+      }
+    PatternAbsent { pattern, paths } => grep_verdict_absent(reads: grep_at(oid: oid, pattern: pattern, paths: paths))
+    PatternPresent { pattern, paths } => grep_verdict_present(pattern: pattern, reads: grep_at(oid: oid, pattern: pattern, paths: paths))
+  }
+}
+
+fn discriminator_failures(ws: EvalWorkspace, c: EvalCase, at: GradeAt, tree: String, bins: String) -> List<GraderFailure> {
+  match check_failure(ws: ws, c: c, at: at, tree: tree, bins: bins, check: c.discriminator.check) {
+    Absent => []
+    Present { value } => [HardGraderFailed { grader: HiddenDiscriminator, criterion: c.discriminator.criterion, detail: concat(concat(c.discriminator.statement as String, " -- "), value) }]
+  }
+}
+
+fn design_check_failures(ws: EvalWorkspace, c: EvalCase, at: GradeAt, tree: String, bins: String) -> List<GraderFailure> {
+  flat_map(c.design_checks, d => match d.method {
+    JudgmentOnly { rubric: _ } => []
+    MechanicallyGraded { check } =>
+      match check_failure(ws: ws, c: c, at: at, tree: tree, bins: bins, check: check) {
+        Absent => []
+        Present { value } => [DesignCheckFailed { criterion: d.criterion, statement: d.statement, detail: value }]
+      }
+  })
+}
+
+// ONE CASE AT ONE COMMIT. The floor runs on the clean checkout first; the resolve probe and placed
+// witnesses are written into the tree only after it, so no grading artifact is part of the change
+// the floor judges.
+fn grade_case(ws: EvalWorkspace, c: EvalCase, at: GradeAt) -> CaseVerdict {
+  if count(case_unresolved_criteria(c: c)) > 0 {
+    CaseNotGraded { cause: join(["the case names criteria the review roster does not carry: ", join(map(case_unresolved_criteria(c: c), k => k as String), ", ")], "") as NonEmptyStr }
+  } else {
+    let verdict = match prepare(ws: ws, c: c, at: at) {
+      PreparationRefused { cause } => CaseNotGraded { cause: cause as NonEmptyStr }
+      CandidateSeedBroken { detail } => case_verdict(c: c, failures: [HardGraderFailed { grader: TouchedEntriesResolve, criterion: "closed-grounded-substrate" as NonEmptyStr, detail: detail }])
+      Prepared { tree, bins } => graded_in_tree(ws: ws, c: c, at: at, tree: tree, bins: bins)
+    }
+    let removed = git.Worktree.RemoveForceInRepo(repo: ws.repo as FilePath, path: tree_path(ws: ws, c: c, at: at) as FilePath)
+    verdict
+  }
+}
+
+fn graded_in_tree(ws: EvalWorkspace, c: EvalCase, at: GradeAt, tree: String, bins: String) -> CaseVerdict {
+  let floor = floor_gate_failures(ws: ws, c: c, at: at, prep_tree: tree, bins: bins)
+  let resolved = resolve_failures(ws: ws, c: c, at: at, tree: tree, bins: bins)
+  let discriminated = discriminator_failures(ws: ws, c: c, at: at, tree: tree, bins: bins)
+  let designed = design_check_failures(ws: ws, c: c, at: at, tree: tree, bins: bins)
+  case_verdict(c: c, failures: concat(concat(concat(floor, resolved), discriminated), designed))
+}
+
+// RENDERING.
+fn failure_line(f: GraderFailure) -> String {
+  match f {
+    HardGraderFailed { grader, criterion, detail } => join(["    hard ", hard_grader_name(g: grader), " [", criterion as String, "] ", detail], "")
+    DesignCheckFailed { criterion, statement, detail } => join(["    design [", criterion as String, "] ", statement as String, " -- ", detail], "")
+  }
+}
+
+fn verdict_lines(v: CaseVerdict) -> String {
+  match v {
+    CasePassed => "PASSED"
+    CaseFailed { failures } => join(concat(["FAILED"], map(failures, f => failure_line(f: f))), "\n")
+    CaseAwaitingJudgment { pending } => join(concat(["AWAITING-JUDGMENT"], map(pending, d => join(["    judge [", d.criterion as String, "] ", d.statement as String], ""))), "\n")
+    CaseNotGraded { cause } => concat("NOT-GRADED ", cause as String)
+  }
+}
+
+fn tally_lines(tallies: List<CriterionTally>) -> String {
+  join(map(tallies, t => join(["  ", t.criterion as String, ": ", to_string(t.cases_failed)], "")), "\n")
+}
+
+// CASE SELECTION. "all" is every row; otherwise a comma list of identities, and an identity the set
+// does not carry refuses rather than quietly grading fewer cases.
+type CaseSelection
+  = CasesSelected { cases: List<EvalCase> }
+  | CaseSelectionRefused { unknown: List<String> }
+
+fn select_cases(spec: String) -> CaseSelection {
+  if trim(spec) == "all" {
+    CasesSelected { cases: design_adherence_cases }
+  } else {
+    let wanted = filter(map(split(s: spec, delimiter: ","), s => trim(s)), s => s != "")
+    let unknown = filter(wanted, w => count(filter(design_adherence_cases, c => (c.identity as String) == w)) == 0)
+    if count(wanted) == 0 || count(unknown) > 0 {
+      CaseSelectionRefused { unknown: if count(wanted) == 0 { ["(empty selection)"] } else { unknown } }
+    } else {
+      CasesSelected { cases: filter(design_adherence_cases, c => count(filter(wanted, w => w == (c.identity as String))) > 0) }
+    }
+  }
+}
+
+// ENTRY: CALIBRATE THE SET AGAINST ITS OWN SOURCES. Every selected case is graded at its frozen base
+// (the incumbent) and at its reference fix (the candidate). The run holds only when every case
+// discriminates: fails on the frozen base, passes on the fix. The per-criterion counts printed are
+// the failures at the frozen base, i.e. the rule each case's defect is graded under.
+//
+//   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/eval/design_adherence_grader.dag
+//     --function validate_reference --arg repo=<abs repo> --arg scratch=<abs dir> --arg cases=all
+fn validate_reference(repo: String, scratch: String, cases: String) -> CliWireResponse {
+  match select_cases(spec: cases) {
+    CaseSelectionRefused { unknown } => CliWirePrintable { bytes: "", exit: exit_failure(reason: concat("unknown case identities: ", join(unknown, ", "))) }
+    CasesSelected { cases: selected } =>
+      validate_selected(ws: EvalWorkspace { repo: repo, scratch: scratch }, selected: selected)
+  }
+}
+
+fn validate_selected(ws: EvalWorkspace, selected: List<EvalCase>) -> CliWireResponse {
+  let pairs = map(selected, c => PairedOutcome {
+    case_identity: c.identity,
+    incumbent: grade_case(ws: ws, c: c, at: AtFrozenBase),
+    candidate: grade_case(ws: ws, c: c, at: AtReferenceFix),
+  })
+  let summary = paired_summary(pairs: pairs)
+  let undiscriminating = filter(pairs, p => !case_discriminates(p: p))
+  let body = join([
+    join(map(pairs, p => join([
+      "case ", p.case_identity as String, "\n",
+      "  frozen-base:   ", verdict_lines(v: p.incumbent), "\n",
+      "  reference-fix: ", verdict_lines(v: p.candidate), "\n",
+      "  discriminates: ", if case_discriminates(p: p) { "yes" } else { "NO" },
+    ], "")), "\n"),
+    "",
+    join(["paired: only-fix-passed=", to_string(summary.only_candidate_passed),
+      " both-passed=", to_string(summary.both_passed),
+      " only-base-passed=", to_string(summary.only_incumbent_passed),
+      " both-failed=", to_string(summary.both_failed),
+      " not-paired=", to_string(summary.not_paired)], ""),
+    "failures at the frozen base, cases per criterion:",
+    tally_lines(tallies: criterion_tallies(verdicts: map(pairs, p => p.incumbent))),
+    "failures at the reference fix, cases per criterion:",
+    tally_lines(tallies: criterion_tallies(verdicts: map(pairs, p => p.candidate))),
+    "",
+  ], "\n")
+  CliWirePrintable {
+    bytes: body,
+    exit: if count(undiscriminating) == 0 { ExitSuccess } else {
+      exit_failure(reason: concat("cases that do not discriminate their defect: ", join(map(undiscriminating, p => p.case_identity as String), ", ")))
+    },
+  }
+}
+
+// ENTRY: GRADE ONE CASE AT A CANDIDATE COMMIT (a model's result committed on top of the frozen base).
+fn grade(repo: String, scratch: String, selection: String, commit: String) -> CliWireResponse {
+  match select_cases(spec: selection) {
+    CaseSelectionRefused { unknown } => CliWirePrintable { bytes: "", exit: exit_failure(reason: concat("unknown case identities: ", join(unknown, ", "))) }
+    CasesSelected { cases: selected } =>
+      match git_object_id_from_untagged_hex(hex: commit) {
+        Absent => CliWirePrintable { bytes: "", exit: exit_failure(reason: concat("not a full lowercase commit id: ", commit)) }
+        Present { value: oid } =>
+          CliWirePrintable {
+            bytes: concat(join(map(selected, c => verdict_lines(v: grade_case(ws: EvalWorkspace { repo: repo, scratch: scratch }, c: c, at: AtCandidate { commit: oid }))), "\n"), "\n"),
+            exit: ExitSuccess,
+          }
+      }
+  }
+}
+
+// ENTRY: THE PROMPT THE EVALUATED MODEL RECEIVES, and nothing else of the case.
+fn prompt(selection: String) -> CliWireResponse {
+  match select_cases(spec: selection) {
+    CaseSelectionRefused { unknown } => CliWirePrintable { bytes: "", exit: exit_failure(reason: concat("unknown case identities: ", join(unknown, ", "))) }
+    CasesSelected { cases: selected } =>
+      CliWirePrintable { bytes: join(map(selected, c => eval_prompt_render(p: eval_prompt(c: c))), "\n---\n"), exit: ExitSuccess }
+  }
+}

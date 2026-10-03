@@ -1,0 +1,77 @@
+module gunbc.eval.design_adherence_cases
+
+import std.types { NonEmptyStr, FilePath }
+import std.content_hash { Sha1Digest }
+import extdeps.git.object_store { GitObjectId, GitSha1ObjectId }
+import gunbc.eval.design_adherence {
+  EvalCase, DashboardReview, SideChatReview, pull_request_head_ref,
+  DiscriminatingCheck, DesignCheck, MechanicallyGraded, JudgmentOnly,
+  ClaimHolds, PatternAbsent, PatternPresent, FromReferenceFix, FromEvalStore,
+}
+
+// ONE ROW PER CASE. Each row is one review finding and the commit that fixed it; the frozen base is
+// that commit's first parent, and the task is the brief its author was working to -- never the
+// finding. Rows are verified in both directions by gunbc.eval.design_adherence_grader
+// `validate_reference`: the frozen base must fail the case and the reference fix must pass it.
+
+fn sha1(hex: String) -> GitObjectId {
+  GitSha1ObjectId { digest: Sha1Digest { hex: hex } }
+}
+
+data spark_deforking_cut4_task: NonEmptyStr = "Deforking cut 4 of the GLM/V4.1 calibration program. Put the V4.1 arm behind the same memory wall GLM uses (plan_arm_launch_under_memory_fit) instead of its own path, and derive each bounded experiment's runtime bound from that launch's own facts -- its VLLM_ENGINE_READY_TIMEOUT_S (unset means vLLM's upstream default, cited; set twice or not an integer is refused) and its sequence ceiling -- rather than from GLM's engine-ready figure. Render each bounded-experiment unit's RuntimeMaxSec from that derivation." as NonEmptyStr
+
+data design_adherence_cases: List<EvalCase> = [
+
+  EvalCase {
+    identity: "spark-ready-timeout-default-unit" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12979),
+    finding: DashboardReview { review_id: 74213 },
+    frozen_base: sha1(hex: "72610823af4133d2ea53649ab3dfe1c460ad64f0"),
+    reference_fix: sha1(hex: "568ec0b96c4d8894f27a4719eb29cf1fef3068f1"),
+    task: spark_deforking_cut4_task,
+    touched_entries: [
+      "dag/extdeps/vllm/environment.dag" as FilePath,
+      "dag/extdeps/zhipu/glm_5_3_flash.dag" as FilePath,
+      "dag/gunbc/spark/arm_memory_fit.dag" as FilePath,
+      "dag/gunbc/spark/glm_group_b_launch.dag" as FilePath,
+    ],
+    discriminator: DiscriminatingCheck {
+      criterion: "minimize-redundancy" as NonEmptyStr,
+      statement: "an engine-ready timeout default is declared as a std.measure Second, not a bare Nat that its consumer wraps in second(count:)" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "^data [a-z0-9_]*ready_timeout[a-z0-9_]*: Nat" as NonEmptyStr,
+        paths: ["dag/extdeps/vllm/environment.dag" as FilePath, "dag/extdeps/zhipu/glm_5_3_flash.dag" as FilePath],
+      },
+    },
+    design_checks: [
+      DesignCheck {
+        criterion: "single-authority" as NonEmptyStr,
+        statement: "the unit is fixed at the authority: no consumer re-applies second(count:) to a ready-timeout default" as NonEmptyStr,
+        method: MechanicallyGraded { check: PatternAbsent {
+          pattern: "second\\(count: [a-z0-9_]*ready_timeout[a-z0-9_]*\\)" as NonEmptyStr,
+          paths: ["dag/gunbc/spark" as FilePath],
+        } },
+      },
+    ],
+  },
+
+  EvalCase {
+    identity: "spark-persistent-unit-fabricated-zero-bound" as NonEmptyStr,
+    fetch: pull_request_head_ref(pull_request: 12979),
+    finding: DashboardReview { review_id: 74213 },
+    frozen_base: sha1(hex: "72610823af4133d2ea53649ab3dfe1c460ad64f0"),
+    reference_fix: sha1(hex: "568ec0b96c4d8894f27a4719eb29cf1fef3068f1"),
+    task: spark_deforking_cut4_task,
+    touched_entries: ["dag/gunbc/spark/native_serving_realization.dag" as FilePath],
+    discriminator: DiscriminatingCheck {
+      criterion: "fail-closed" as NonEmptyStr,
+      statement: "a normal-serving (persistent) unit is not given a fabricated 0-second runtime bound; 'no bound' is its own arm" as NonEmptyStr,
+      check: PatternAbsent {
+        pattern: "second\\(count: 0\\)" as NonEmptyStr,
+        paths: ["dag/gunbc/spark/native_serving_realization.dag" as FilePath],
+      },
+    },
+    design_checks: [],
+  },
+
+]

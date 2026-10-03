@@ -1,0 +1,288 @@
+module gunbc.eval.design_adherence
+
+import std.types { Bool, Int, String, NonEmptyStr, FilePath, List }
+import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
+import gunbc.roadmap.roadmap_review_criteria { review_criterion_by_key }
+
+// AN EVAL CASE IS A REVIEW FINDING THAT A LATER COMMIT FIXED, REPLAYED AS A TASK.
+//
+// The set rates a coding model on this repository's own standards (.dag modeling and DESIGN.md
+// adherence) and nothing else. Every case is one real defect: a dashboard review (or a recorded
+// side-chat review) found it on a pull request, and a later commit on the same pull request fixed
+// it. The candidate is handed the tree at the fix's PARENT and the brief its author was working
+// to, never the finding; it passes only when every hard grader and every design check holds on
+// what it leaves behind.
+//
+// WHY THE TAG IS A REVIEW CRITERION KEY AND NOT A NEW ENUM. The DESIGN rules a check enforces
+// already have one authority: gunbc.roadmap.roadmap_review_criteria derives one criterion per
+// review part of every design row, keyed by the part's own name ("minimize-redundancy",
+// "single-authority", "conformance-identity", "consumption", "fail-closed", ...). A closed
+// S2/S3/S5 coproduct here would be a second name for each of those (DESIGN section 3), and would
+// drift the first time a design row is split or renamed. The key is checked against that roster
+// by the grader before anything runs (an unresolved key refuses the case, it does not tally) and
+// by test.claim.eval.design_adherence_witness_test for every row.
+
+// WHERE BOTH COMMITS STAY REACHABLE. A pull request's head ref survives its squash merge and its
+// branch deletion, and both the fix and its parent are ancestors of that head, so the grader
+// fetches this ref rather than trusting a branch that may be gone.
+type EvalCaseFetchRef {
+  pull_request: Int
+  ref_name: NonEmptyStr
+}
+
+fn pull_request_head_ref(pull_request: Int) -> EvalCaseFetchRef {
+  EvalCaseFetchRef {
+    pull_request: pull_request,
+    ref_name: join(["refs/pull/", to_string(pull_request), "/head"], "") as NonEmptyStr,
+  }
+}
+
+type EvalFindingSource
+  = DashboardReview { review_id: Int }
+  | SideChatReview { citation: NonEmptyStr }
+
+// A MECHANICAL CHECK IS ONE THE GRADER EXECUTES; there is no third way to hold.
+//
+// ClaimHolds runs named claim functions through claim_batch against the candidate tree, after the
+// witness file is placed into it from where the eval keeps it (see WitnessPlacement). PatternAbsent
+// and PatternPresent are `git grep -E` over named paths of the candidate tree: they are how a
+// TYPE-shaped finding is graded, because a type defect (a unit on a bare Nat, a fabricated literal)
+// is invisible to behaviour -- the pre-fix and fixed trees answer every call alike -- so no claim
+// can tell them apart without naming a declaration the candidate is free to name differently.
+type WitnessPlacement
+  = FromReferenceFix { path: FilePath }
+  | FromEvalStore { stored_at: FilePath, placed_at: FilePath }
+
+type MechanicalCheck
+  = ClaimHolds { witness: WitnessPlacement, functions: List<NonEmptyStr> }
+  | PatternAbsent { pattern: NonEmptyStr, paths: List<FilePath> }
+  | PatternPresent { pattern: NonEmptyStr, paths: List<FilePath> }
+
+// THE HIDDEN DISCRIMINATOR IS MECHANICAL BY CONSTRUCTION: it has no judgment arm, so a case cannot
+// be authored whose discriminating grader is a reviewer's opinion. Its criterion is the rule the
+// finding broke.
+type DiscriminatingCheck {
+  criterion: NonEmptyStr
+  statement: NonEmptyStr
+  check: MechanicalCheck
+}
+
+// A DESIGN CHECK MAY BE JUDGMENT-ONLY, AND SAYS SO. A judgment-only check is never graded as held:
+// the case it belongs to is reported awaiting judgment, which is not a pass (DESIGN section 5).
+type DesignCheckMethod
+  = MechanicallyGraded { check: MechanicalCheck }
+  | JudgmentOnly { rubric: NonEmptyStr }
+
+type DesignCheck {
+  criterion: NonEmptyStr
+  statement: NonEmptyStr
+  method: DesignCheckMethod
+}
+
+type EvalCase {
+  identity: NonEmptyStr
+  fetch: EvalCaseFetchRef
+  finding: EvalFindingSource
+  frozen_base: GitObjectId
+  reference_fix: GitObjectId
+  task: NonEmptyStr
+  touched_entries: List<FilePath>
+  discriminator: DiscriminatingCheck
+  design_checks: List<DesignCheck>
+}
+
+// THE PROMPT PROJECTION: THE ONLY VIEW OF A CASE THE EVALUATED MODEL RECEIVES.
+//
+// It reads the brief and the frozen base and nothing else; the finding, the reference fix, the
+// discriminator and the design checks are not fields of it, so no rendering of a prompt can carry
+// them. The withheld paths are what the checkout handed to the model must not contain: the eval
+// lives on main, so any case whose frozen base postdates this module would otherwise hand the model
+// its own answers.
+data eval_withheld_paths: List<FilePath> = [
+  "dag/gunbc/eval" as FilePath,
+  "dag/test/claim/eval" as FilePath,
+  "evals" as FilePath,
+]
+
+type EvalPrompt {
+  case_identity: NonEmptyStr
+  checkout_at: GitObjectId
+  withheld_paths: List<FilePath>
+  text: NonEmptyStr
+}
+
+data eval_prompt_preamble: String = "You are working in the gunbc repository on a branch that already carries work toward the task below. DESIGN.md is the authority for how work here is done. Bring the branch to the state you would hand to review as finished, and commit it."
+
+fn eval_prompt(c: EvalCase) -> EvalPrompt {
+  EvalPrompt {
+    case_identity: c.identity,
+    checkout_at: c.frozen_base,
+    withheld_paths: eval_withheld_paths,
+    text: join([eval_prompt_preamble, "\n\nTask:\n", c.task as String, "\n"], "") as NonEmptyStr,
+  }
+}
+
+fn eval_prompt_render(p: EvalPrompt) -> String {
+  join([
+    "case: ", p.case_identity as String, "\n",
+    "checkout: ", git_object_id_wire_hex(oid: p.checkout_at) as String, "\n",
+    "withhold: ", join(map(p.withheld_paths, w => w as String), " "), "\n",
+    "\n", p.text as String,
+  ], "")
+}
+
+// THE GRADERS AND THEIR OUTCOMES.
+type HardGrader
+  = TouchedEntriesResolve
+  | FloorGates
+  | HiddenDiscriminator
+
+fn hard_grader_name(g: HardGrader) -> String {
+  match g {
+    TouchedEntriesResolve => "touched-entries-resolve"
+    FloorGates => "floor-gates"
+    HiddenDiscriminator => "hidden-discriminator"
+  }
+}
+
+type GraderFailure
+  = HardGraderFailed { grader: HardGrader, criterion: NonEmptyStr, detail: String }
+  | DesignCheckFailed { criterion: NonEmptyStr, statement: NonEmptyStr, detail: String }
+
+// A case that could not be GRADED is not a case that FAILED: a fetch, checkout or build that did
+// not complete says nothing about the candidate, so it is its own arm and never counts against it.
+type CaseVerdict
+  = CasePassed
+  | CaseFailed { failures: List<GraderFailure> }
+  | CaseAwaitingJudgment { pending: List<DesignCheck> }
+  | CaseNotGraded { cause: NonEmptyStr }
+
+fn case_criteria(c: EvalCase) -> List<NonEmptyStr> {
+  concat([c.discriminator.criterion], map(c.design_checks, d => d.criterion))
+}
+
+fn case_unresolved_criteria(c: EvalCase) -> List<NonEmptyStr> {
+  filter(case_criteria(c: c), k => match review_criterion_by_key(key: k as String) {
+    Present { value: _ } => false
+    Absent => true
+  })
+}
+
+fn judgment_only_checks(c: EvalCase) -> List<DesignCheck> {
+  filter(c.design_checks, d => match d.method {
+    JudgmentOnly { rubric: _ } => true
+    MechanicallyGraded { check: _ } => false
+  })
+}
+
+// THE VERDICT FOLD. Failures dominate (a failed mechanical check is a failure whatever judgment
+// later says); with no failure, any judgment-only check leaves the case awaiting judgment.
+fn case_verdict(c: EvalCase, failures: List<GraderFailure>) -> CaseVerdict {
+  if count(failures) > 0 {
+    CaseFailed { failures: failures }
+  } else if count(judgment_only_checks(c: c)) > 0 {
+    CaseAwaitingJudgment { pending: judgment_only_checks(c: c) }
+  } else {
+    CasePassed
+  }
+}
+
+fn verdict_passed(v: CaseVerdict) -> Bool {
+  match v {
+    CasePassed => true
+    CaseFailed { failures: _ } => false
+    CaseAwaitingJudgment { pending: _ } => false
+    CaseNotGraded { cause: _ } => false
+  }
+}
+
+fn verdict_failed(v: CaseVerdict) -> Bool {
+  match v {
+    CasePassed => false
+    CaseFailed { failures: _ } => true
+    CaseAwaitingJudgment { pending: _ } => false
+    CaseNotGraded { cause: _ } => false
+  }
+}
+
+fn failure_criterion(f: GraderFailure) -> NonEmptyStr {
+  match f {
+    HardGraderFailed { grader: _, criterion, detail: _ } => criterion
+    DesignCheckFailed { criterion, statement: _, detail: _ } => criterion
+  }
+}
+
+fn verdict_failed_criteria(v: CaseVerdict) -> List<NonEmptyStr> {
+  match v {
+    CaseFailed { failures } => map(failures, f => failure_criterion(f: f))
+    CasePassed => []
+    CaseAwaitingJudgment { pending: _ } => []
+    CaseNotGraded { cause: _ } => []
+  }
+}
+
+// PER-RULE TALLY: for each criterion key, how many graded cases failed at least one check carrying
+// it. A case counts once per criterion however many of its checks carry that key.
+type CriterionTally {
+  criterion: NonEmptyStr
+  cases_failed: Int
+}
+
+fn distinct_keys(keys: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  fold(keys, init: [], f: fn(acc, k) {
+    if count(filter(acc, a => (a as String) == (k as String))) > 0 { acc } else { concat(acc, [k]) }
+  })
+}
+
+fn criterion_tallies(verdicts: List<CaseVerdict>) -> List<CriterionTally> {
+  let failed_sets = map(verdicts, v => distinct_keys(keys: verdict_failed_criteria(v: v)))
+  map(distinct_keys(keys: flat_map(failed_sets, s => s)), k => CriterionTally {
+    criterion: k,
+    cases_failed: count(filter(failed_sets, s => count(filter(s, x => (x as String) == (k as String))) > 0)),
+  })
+}
+
+// THE PAIRED COMPARISON. Two runs over the SAME cases, binary per case. Only a case graded under
+// both runs enters the pairing: a case either run could not grade is reported, never scored as a
+// loss for that run.
+type PairedOutcome {
+  case_identity: NonEmptyStr
+  incumbent: CaseVerdict
+  candidate: CaseVerdict
+}
+
+type PairedSummary {
+  both_passed: Int
+  only_incumbent_passed: Int
+  only_candidate_passed: Int
+  both_failed: Int
+  not_paired: Int
+}
+
+fn verdict_graded(v: CaseVerdict) -> Bool {
+  match v {
+    CaseNotGraded { cause: _ } => false
+    CasePassed => true
+    CaseFailed { failures: _ } => true
+    CaseAwaitingJudgment { pending: _ } => true
+  }
+}
+
+fn paired_summary(pairs: List<PairedOutcome>) -> PairedSummary {
+  let graded = filter(pairs, p => verdict_graded(v: p.incumbent) && verdict_graded(v: p.candidate))
+  PairedSummary {
+    both_passed: count(filter(graded, p => verdict_passed(v: p.incumbent) && verdict_passed(v: p.candidate))),
+    only_incumbent_passed: count(filter(graded, p => verdict_passed(v: p.incumbent) && !verdict_passed(v: p.candidate))),
+    only_candidate_passed: count(filter(graded, p => !verdict_passed(v: p.incumbent) && verdict_passed(v: p.candidate))),
+    both_failed: count(filter(graded, p => !verdict_passed(v: p.incumbent) && !verdict_passed(v: p.candidate))),
+    not_paired: count(pairs) - count(graded),
+  }
+}
+
+// THE SET'S OWN CALIBRATION, AS A PAIRING. With the frozen base as the incumbent and the reference
+// fix as the candidate, a sound case is exactly one where only the candidate passes: the pre-fix
+// tree fails it and the fix passes it. Any other cell names a case whose graders do not
+// discriminate the defect it was built from.
+fn case_discriminates(p: PairedOutcome) -> Bool {
+  verdict_failed(v: p.incumbent) && verdict_passed(v: p.candidate)
+}

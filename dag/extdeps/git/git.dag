@@ -1871,6 +1871,32 @@ service git.Worktree {
       nonzero => String "Worktree add failed"
     }
   }
+
+  // git-worktree(1) `add --detach`: a linked worktree at a commit with no branch, the form a reader
+  // of a frozen revision wants -- naming a branch would create one the caller then has to remove.
+  // The repository is a parameter for the same reason RevParseInRepo's is: which repository a
+  // caller means is the caller's fact, never the process's working directory.
+  operation AddDetachedInRepo {
+    requires opaque
+    input { repo: FilePath, path: FilePath, commit: GitRef }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-C", "{repo}", "worktree", "add", "--detach", "{path}", "{commit}"] }
+  }
+
+  // git-worktree(1) `remove --force`: the linked worktree is discarded with any modification in it,
+  // which is what its creator intends for a scratch checkout and nothing else.
+  operation RemoveForceInRepo {
+    requires opaque
+    input { repo: FilePath, path: FilePath }
+    output {
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-C", "{repo}", "worktree", "remove", "--force", "{path}"] }
+  }
 }
 
 // THE URL OF ONE REMOTE, WHICH IS DELIBERATELY LESS THAN A REMOTE.
