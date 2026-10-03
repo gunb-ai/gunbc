@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.measure { byte_size, measure_count }
-import std.content_hash { sha256_hex_digest, Sha256Digest }
+import std.content_hash { sha256_hex_digest }
 import std.fabric_blob {
   FabricBlobAddress, FabricBlobRead, FabricBlobReadRefused, read_staged_fabric_blob,
   fabric_blob_reading_size, fabric_blob_reading_digest, fabric_blob_object_name,
@@ -22,15 +22,13 @@ data fixture_blob_path: NonEmptyStr = "dag/test/fixture/fabric_blob/empty.bin"
 data empty_sha256_hex: String = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 data key_hex: String = "89427e487454c1b5b3cafc50013e056c2d496587b9922f4e8600a3b3c7e3be4f"
 
-fn digest_of(hex: String) -> Sha256Digest {
-  match sha256_hex_digest(hex: hex) {
-    Present { value: d } => d
-    Absent => digest_of(hex: empty_sha256_hex)
+// A MISTYPED FIXTURE DIGEST FAILS THE CLAIM, never substitutes another digest: the address is
+// optional, and every claim that uses it answers false on Absent.
+fn witness_address() -> FabricBlobAddress? {
+  match sha256_hex_digest(hex: key_hex) {
+    Present { value: d } => Present { value: FabricBlobAddress { key: d } }
+    Absent => none
   }
-}
-
-fn witness_address() -> FabricBlobAddress {
-  FabricBlobAddress { key: digest_of(hex: key_hex) }
 }
 
 test fn reading_carries_the_handlers_digest_and_size() -> Bool {
@@ -46,9 +44,13 @@ test fn the_put_plan_admits_within_the_bound_and_refuses_beyond_it() -> Bool {
   match read_staged_fabric_blob(path: fixture_blob_path) {
     FabricBlobReadRefused { fault: _ } => false
     FabricBlobRead { reading: r } => {
-      let within = match fabric_blob_put_plan(address: witness_address(), reading: r, bound: byte_size(count: 1)) {
-        FabricBlobPutAdmitted { address: a, reading: _ } => fabric_blob_address_eq(a: a, b: witness_address())
-        FabricBlobPutTooLarge { address: _, size: _, bound: _ } => false
+      let within = match witness_address() {
+        Absent => false
+        Present { value: addr } =>
+          match fabric_blob_put_plan(address: addr, reading: r, bound: byte_size(count: 1)) {
+            FabricBlobPutAdmitted { address: a, reading: _ } => fabric_blob_address_eq(a: a, b: addr)
+            FabricBlobPutTooLarge { address: _, size: _, bound: _ } => false
+          }
       }
       within && fabric_blob_fits(size: byte_size(count: 0), bound: byte_size(count: 0))
         && !fabric_blob_fits(size: byte_size(count: 1), bound: byte_size(count: 0))
@@ -57,5 +59,8 @@ test fn the_put_plan_admits_within_the_bound_and_refuses_beyond_it() -> Bool {
 }
 
 test fn the_object_name_is_the_key_hex() -> Bool {
-  (fabric_blob_object_name(address: witness_address()) as String) == key_hex
+  match witness_address() {
+    Present { value: addr } => (fabric_blob_object_name(address: addr) as String) == key_hex
+    Absent => false
+  }
 }

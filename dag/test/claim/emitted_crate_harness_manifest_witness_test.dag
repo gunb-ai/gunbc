@@ -1,0 +1,93 @@
+module test.claim.emitted_crate_harness_manifest_witness
+
+import std.logic { Bool }
+import tools.emitted_crate_harness_manifest {
+  HarnessCrateTarget,
+  WitnessBinTarget,
+  ProbeLibTarget,
+  HarnessSeedLinkage,
+  SeedLinked,
+  SeedAbsent,
+  HarnessManifestPlanned,
+  EmittedManifestNotUsable,
+  harness_manifest_over_emitted,
+  plan_harness_manifest
+}
+
+// THE EMITTED MANIFEST IS SUPPLIED, NOT PRODUCED. These claims are about one boundary -- what a
+// harness manifest is, given the manifest an emission wrote -- so the emitted text is a designed
+// value carrying a dependency no harness has ever named. The real emitter's manifest reaching this
+// function is the behavioral transport roster's fact (its rows build through the derived
+// manifest), not something a claim here re-executes.
+data supplied_emitted_manifest: String = "[package]\nname = \"v1_compiled\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[workspace]\n\n[features]\ndefault = []\n\n[dependencies]\nim = \"15.1\"\nzz-harness-never-named-this = \"9.9\"\n"
+
+data supplied_dependency_line: String = "zz-harness-never-named-this = \"9.9\"\n"
+
+fn derived_over_supplied(target: HarnessCrateTarget, linkage: HarnessSeedLinkage) -> String {
+  harness_manifest_over_emitted(emitted: supplied_emitted_manifest, target: target, linkage: linkage)
+}
+
+// The discriminating control for the class: a dependency present only in the emitted manifest is
+// present in every harness manifest. A harness that wrote its own roster over the emitted one
+// fails this for whichever dependency its roster omits.
+test fn a_dependency_only_the_emission_declared_reaches_every_harness_manifest() -> Bool {
+  string_contains(s: derived_over_supplied(target: WitnessBinTarget, linkage: SeedLinked { root: "/r" }), pattern: supplied_dependency_line)
+    && string_contains(s: derived_over_supplied(target: WitnessBinTarget, linkage: SeedAbsent), pattern: supplied_dependency_line)
+    && string_contains(s: derived_over_supplied(target: ProbeLibTarget, linkage: SeedLinked { root: "/r" }), pattern: supplied_dependency_line)
+    && string_contains(s: derived_over_supplied(target: ProbeLibTarget, linkage: SeedAbsent), pattern: supplied_dependency_line)
+}
+
+// What the harness adds over an EMPTY emitted manifest is the whole of what it authors. It may
+// carry target tables and the seed path; a registry requirement in it is the second dependency
+// authority returning.
+test fn the_harness_overlay_declares_no_registry_dependency() -> Bool {
+  let seed_linked = harness_manifest_over_emitted(emitted: "", target: WitnessBinTarget, linkage: SeedLinked { root: "/r" })
+  let seed_absent = harness_manifest_over_emitted(emitted: "", target: ProbeLibTarget, linkage: SeedAbsent)
+  !string_contains(s: seed_linked, pattern: "version")
+    && !string_contains(s: seed_absent, pattern: "version")
+    && !string_contains(s: seed_linked, pattern: "\n[dependencies]\n")
+    && !string_contains(s: seed_absent, pattern: "[dependencies")
+}
+
+test fn the_seed_dependency_table_exists_exactly_when_the_build_is_seed_linked() -> Bool {
+  let seed_table = "\n[dependencies.v1-compiler]\npath = \"/r/src/v1/stage0\"\n"
+  string_contains(s: derived_over_supplied(target: WitnessBinTarget, linkage: SeedLinked { root: "/r" }), pattern: seed_table)
+    && string_contains(s: derived_over_supplied(target: ProbeLibTarget, linkage: SeedLinked { root: "/r" }), pattern: seed_table)
+    && !string_contains(s: derived_over_supplied(target: WitnessBinTarget, linkage: SeedAbsent), pattern: "v1-compiler")
+    && !string_contains(s: derived_over_supplied(target: ProbeLibTarget, linkage: SeedAbsent), pattern: "v1-compiler")
+}
+
+test fn only_the_witness_target_declares_the_witness_binary() -> Bool {
+  let bin_table = "\n[[bin]]\nname = \"witness\"\npath = \"src/main.rs\"\n"
+  string_contains(s: derived_over_supplied(target: WitnessBinTarget, linkage: SeedAbsent), pattern: bin_table)
+    && !string_contains(s: derived_over_supplied(target: ProbeLibTarget, linkage: SeedAbsent), pattern: "[[bin]]")
+}
+
+fn plan_refuses(read_succeeded: Bool, emitted: String) -> Bool {
+  match plan_harness_manifest(read_succeeded: read_succeeded, emitted: emitted, target: WitnessBinTarget, linkage: SeedLinked { root: "/r" }) {
+    EmittedManifestNotUsable => true
+    HarnessManifestPlanned { content: _ } => false
+  }
+}
+
+// The reading is supplied: a read that failed, and a read that returned nothing, both refuse, and
+// neither yields a manifest made of the overlay alone. The effectful wrapper that performs the
+// real read is exercised by the transports that build through it.
+test fn an_unread_or_empty_emitted_manifest_refuses_instead_of_planning_the_overlay_alone() -> Bool {
+  plan_refuses(read_succeeded: false, emitted: supplied_emitted_manifest)
+    && plan_refuses(read_succeeded: false, emitted: "")
+    && plan_refuses(read_succeeded: true, emitted: "")
+}
+
+fn planned_content(read_succeeded: Bool, emitted: String) -> String {
+  match plan_harness_manifest(read_succeeded: read_succeeded, emitted: emitted, target: WitnessBinTarget, linkage: SeedLinked { root: "/r" }) {
+    EmittedManifestNotUsable => ""
+    HarnessManifestPlanned { content: c } => c
+  }
+}
+
+test fn a_read_emitted_manifest_plans_the_emitted_text_plus_the_overlay() -> Bool {
+  let planned = planned_content(read_succeeded: true, emitted: supplied_emitted_manifest)
+  planned == derived_over_supplied(target: WitnessBinTarget, linkage: SeedLinked { root: "/r" })
+    && string_contains(s: planned, pattern: supplied_dependency_line)
+}
