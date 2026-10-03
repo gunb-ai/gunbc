@@ -1,0 +1,617 @@
+module test.claim.google_oidc_verdict_witness_test
+
+import std.types { Bool, NonEmptyStr, String, Email, List }
+import std.integer { UInt8 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.auth.jwt {
+  NumericDate, NumericDateWholeSeconds, NumericDateFractionalSeconds,
+  JwtStringOrUri, JwtBareString, JwtUriString, JwtAudience, JwtAudienceSingle, JwtAudienceMultiple,
+  JwtCompactSerialization,
+  jwt_string_or_uri_wire,
+}
+import extdeps.auth.jwks {
+  JwkRsaPublicKey, JwksSignatureAlgorithm, JwksAlgRs256, JwksKeySelected, JwksKeyNotFound,
+  jwks_select_key,
+}
+import gunbc.auth.oidc_id_token_verification {
+  OidcIdTokenWire, OidcIdTokenWireDecoded, OidcIdTokenWireRefused, OidcIdTokenHeader,
+  oidc_id_token_wire_decode, rsa_spki_of_jwk, DerRefused, DerOctets,
+  JwksResolve, JwksResolveRefused, JwksResolved, JwksServedFrom, JwksServedFromOrigin,
+  Rs256Verification, Rs256SignatureValid, Rs256SignatureInvalid, Rs256VerificationUnrealizable,
+  oidc_id_token_signature_of_parts, oidc_id_token_signature_of_verification,
+}
+import extdeps.auth.oidc {
+  OidcIdTokenClaims, OidcStandardClaims, OidcHostedDomain,
+  OidcLoginScope, OidcScopeOpenId, OidcScopeEmail, OidcScopeProfile, oidc_login_scope_label,
+  RelativeReturnPath, ReturnPathAdmitted, ReturnPathRefused, admit_login_return_path,
+  OidcLoginTransaction, OidcPkceCodeVerifier, login_transaction_expired,
+  JsonWebKeyRef, OidcIdTokenSignature, OidcIdTokenSignatureVerified, OidcIdTokenSignatureRefused,
+  OidcIdTokenVerdictPolicy, OidcIdTokenVerdict,
+  OidcIdTokenVerified, OidcIdTokenRefused,
+  OidcIdTokenSignatureRefusal, OidcIdTokenIssuerMismatch, OidcIdTokenAudienceNotAdmitted,
+  OidcIdTokenExpired, OidcIdTokenExpiryNotWholeSeconds, OidcIdTokenNonceMismatch,
+  OidcIdTokenEmailUnverified, OidcIdTokenHostedDomainMismatch,
+  verify_oidc_id_token,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE WITNESS for the ID-token verdict (lane A2): every check the gunb.ai login places on a
+// Google ID token is a typed refusal arm, and each arm here is driven RED by changing exactly one
+// term of the verified positive control. The signature arm's verified input is a supplied value
+// (DESIGN 3): the production producer is the JWKS realization frontier, not this witness.
+
+// THE CLAIMS BUILDER: every test names exactly the knobs it changes; everything else stays at
+// the control value.
+fn claims_with(
+  issuer: JwtStringOrUri,
+  audience: JwtAudience,
+  expires_at: NumericDate,
+  nonce: NonEmptyStr?,
+  hosted_domain: OidcHostedDomain?,
+  email_verified: Bool?,
+) -> OidcIdTokenClaims {
+  OidcIdTokenClaims {
+    issuer: issuer,
+    subject: JwtBareString { value: "sub-123" as NonEmptyStr },
+    audience: audience,
+    expires_at: expires_at,
+    issued_at: NumericDateWholeSeconds { seconds: 1000 },
+    auth_time: none, nonce: nonce, acr: none, amr: none, azp: none, session_id: none,
+    hosted_domain: hosted_domain,
+    standard: OidcStandardClaims {
+      email: Present { value: "person@gunb.ai" },
+      email_verified: email_verified,
+      name: Present { value: "A Person" },
+      picture: none,
+    },
+  }
+}
+
+fn control_issuer() -> JwtStringOrUri {
+  JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr }
+}
+
+fn control_audience() -> JwtAudience {
+  JwtAudienceSingle { value: JwtBareString { value: "tracker-web-prod" as NonEmptyStr } }
+}
+
+fn control_claims() -> OidcIdTokenClaims {
+  claims_with(
+    issuer: control_issuer(),
+    audience: control_audience(),
+    expires_at: NumericDateWholeSeconds { seconds: 2000 },
+    nonce: Present { value: "nonce-abc" as NonEmptyStr },
+    hosted_domain: Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } },
+    email_verified: Present { value: true },
+  )
+}
+
+fn policy_with(
+  admitted_audiences: List<JwtStringOrUri>,
+  observed_at: NumericDate,
+) -> OidcIdTokenVerdictPolicy {
+  OidcIdTokenVerdictPolicy {
+    expected_issuer: control_issuer(),
+    admitted_audiences: admitted_audiences,
+    expected_hosted_domain: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr },
+    expected_nonce: Present { value: "nonce-abc" as NonEmptyStr },
+    observed_at: observed_at,
+  }
+}
+
+fn control_policy() -> OidcIdTokenVerdictPolicy {
+  policy_with(
+    admitted_audiences: [JwtBareString { value: "tracker-web-prod" as NonEmptyStr }],
+    observed_at: NumericDateWholeSeconds { seconds: 1500 },
+  )
+}
+
+fn verified_signature() -> OidcIdTokenSignature {
+  OidcIdTokenSignatureVerified {
+    key: JsonWebKeyRef {
+      issuer: control_issuer(),
+      key_id: "witness-key" as NonEmptyStr,
+    },
+  }
+}
+
+fn verdict_for(claims: OidcIdTokenClaims, policy: OidcIdTokenVerdictPolicy) -> OidcIdTokenVerdict {
+  verify_oidc_id_token(claims: claims, signature: verified_signature(), policy: policy)
+}
+
+// THE POSITIVE CONTROL: every check passes, the verdict is Verified carrying the claims.
+test fn a_fully_conforming_token_verifies() -> Bool {
+  match verdict_for(claims: control_claims(), policy: control_policy()) {
+    OidcIdTokenVerified { claims: c } => c.subject == control_claims().subject
+    OidcIdTokenRefused { cause: _ } => false
+  }
+}
+
+// THE SIGNATURE ARM: a refused signature input is the verdict's first refusal, before any claim
+// is read — an unverified token never reaches iss/aud/exp.
+test fn a_refused_signature_refuses_before_any_claim_check() -> Bool {
+  match verify_oidc_id_token(
+    claims: control_claims(),
+    signature: OidcIdTokenSignatureRefused { reason: "no JWKS key matched the token header" },
+    policy: control_policy(),
+  ) {
+    OidcIdTokenVerified { claims: _ } => false
+    OidcIdTokenRefused { cause: OidcIdTokenSignatureRefusal { reason: r } } =>
+      r == "no JWKS key matched the token header"
+    OidcIdTokenRefused { cause: _ } => false
+  }
+}
+
+// THE ISSUER ARM: a token from another issuer — even one that passes every other check —
+// refuses, naming both sides.
+test fn a_wrong_issuer_refuses_with_both_sides_named() -> Bool {
+  let claims = claims_with(
+    issuer: JwtUriString { value: "https://issuer.evil.example" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+    audience: control_audience(),
+    expires_at: NumericDateWholeSeconds { seconds: 2000 },
+    nonce: Present { value: "nonce-abc" as NonEmptyStr },
+    hosted_domain: Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } },
+    email_verified: Present { value: true },
+  )
+  match verdict_for(claims: claims, policy: control_policy()) {
+    OidcIdTokenVerified { claims: _ } => false
+    OidcIdTokenRefused {
+      cause: OidcIdTokenIssuerMismatch { presented: p, expected: e },
+    } =>
+      jwt_string_or_uri_wire(value: p) == "https://issuer.evil.example"
+        && jwt_string_or_uri_wire(value: e) == "https://accounts.google.com"
+    OidcIdTokenRefused { cause: _ } => false
+  }
+}
+
+// THE AUDIENCE ARM: a token minted for another client refuses, and one admitted audience among
+// several presented verifies.
+test fn a_token_for_another_client_refuses_at_the_audience_arm() -> Bool {
+  let claims = claims_with(
+    issuer: control_issuer(),
+    audience: JwtAudienceSingle { value: JwtBareString { value: "approvals-web-prod" as NonEmptyStr } },
+    expires_at: NumericDateWholeSeconds { seconds: 2000 },
+    nonce: Present { value: "nonce-abc" as NonEmptyStr },
+    hosted_domain: Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } },
+    email_verified: Present { value: true },
+  )
+  match verdict_for(claims: claims, policy: control_policy()) {
+    OidcIdTokenVerified { claims: _ } => false
+    OidcIdTokenRefused { cause: OidcIdTokenAudienceNotAdmitted { presented: _, admitted: _ } } => true
+    OidcIdTokenRefused { cause: _ } => false
+  }
+}
+
+test fn one_admitted_audience_among_several_presented_verifies() -> Bool {
+  let claims = claims_with(
+    issuer: control_issuer(),
+    audience: JwtAudienceMultiple {
+      values: [
+        JwtBareString { value: "other-client" as NonEmptyStr },
+        JwtBareString { value: "tracker-web-prod" as NonEmptyStr },
+      ],
+    },
+    expires_at: NumericDateWholeSeconds { seconds: 2000 },
+    nonce: Present { value: "nonce-abc" as NonEmptyStr },
+    hosted_domain: Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } },
+    email_verified: Present { value: true },
+  )
+  match verdict_for(claims: claims, policy: control_policy()) {
+    OidcIdTokenVerified { claims: _ } => true
+    OidcIdTokenRefused { cause: _ } => false
+  }
+}
+
+// THE EXPIRY ARM: a token one second past the observed instant refuses; a fractional component
+// on either side refuses rather than rounding.
+test fn an_expired_token_refuses_at_the_expiry_arm() -> Bool {
+  let claims = claims_with(
+    issuer: control_issuer(),
+    audience: control_audience(),
+    expires_at: NumericDateWholeSeconds { seconds: 1499 },
+    nonce: Present { value: "nonce-abc" as NonEmptyStr },
+    hosted_domain: Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } },
+    email_verified: Present { value: true },
+  )
+  let policy = policy_with(
+    admitted_audiences: [JwtBareString { value: "tracker-web-prod" as NonEmptyStr }],
+    observed_at: NumericDateWholeSeconds { seconds: 1500 },
+  )
+  match verdict_for(claims: claims, policy: policy) {
+    OidcIdTokenVerified { claims: _ } => false
+    OidcIdTokenRefused { cause: OidcIdTokenExpired { expires_at: _, observed_at: _ } } => true
+    OidcIdTokenRefused { cause: _ } => false
+  }
+}
+
+test fn a_fractional_expiry_refuses_rather_than_rounding() -> Bool {
+  let claims = claims_with(
+    issuer: control_issuer(),
+    audience: control_audience(),
+    expires_at: NumericDateFractionalSeconds { whole_seconds: 2000, fractional_digits: "5" as NonEmptyStr },
+    nonce: Present { value: "nonce-abc" as NonEmptyStr },
+    hosted_domain: Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } },
+    email_verified: Present { value: true },
+  )
+  match verdict_for(claims: claims, policy: control_policy()) {
+    OidcIdTokenVerified { claims: _ } => false
+    OidcIdTokenRefused { cause: OidcIdTokenExpiryNotWholeSeconds { reason: r } } =>
+      string_contains(s: r, pattern: "expiry carries a fractional-seconds component")
+    OidcIdTokenRefused { cause: _ } => false
+  }
+}
+
+// THE NONCE ARM: a token answering a different transaction refuses.
+test fn a_wrong_nonce_refuses_at_the_nonce_arm() -> Bool {
+  let claims = claims_with(
+    issuer: control_issuer(),
+    audience: control_audience(),
+    expires_at: NumericDateWholeSeconds { seconds: 2000 },
+    nonce: Present { value: "nonce-other" as NonEmptyStr },
+    hosted_domain: Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } },
+    email_verified: Present { value: true },
+  )
+  match verdict_for(claims: claims, policy: control_policy()) {
+    OidcIdTokenVerified { claims: _ } => false
+    OidcIdTokenRefused { cause: OidcIdTokenNonceMismatch { presented: p, expected: e } } =>
+      p == Present { value: "nonce-other" as NonEmptyStr } && e == "nonce-abc" as NonEmptyStr
+    OidcIdTokenRefused { cause: _ } => false
+  }
+}
+
+// THE EMAIL ARM: unverified AND absent email_verified are the same refusal — "the provider did
+// not say" is not "the provider said true".
+test fn an_unverified_email_refuses() -> Bool {
+  let claims = claims_with(
+    issuer: control_issuer(),
+    audience: control_audience(),
+    expires_at: NumericDateWholeSeconds { seconds: 2000 },
+    nonce: Present { value: "nonce-abc" as NonEmptyStr },
+    hosted_domain: Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } },
+    email_verified: Present { value: false },
+  )
+  match verdict_for(claims: claims, policy: control_policy()) {
+    OidcIdTokenVerified { claims: _ } => false
+    OidcIdTokenRefused { cause: OidcIdTokenEmailUnverified { email_verified: v } } =>
+      v == Present { value: false }
+    OidcIdTokenRefused { cause: _ } => false
+  }
+}
+
+test fn an_absent_email_verified_refuses() -> Bool {
+  let claims = claims_with(
+    issuer: control_issuer(),
+    audience: control_audience(),
+    expires_at: NumericDateWholeSeconds { seconds: 2000 },
+    nonce: Present { value: "nonce-abc" as NonEmptyStr },
+    hosted_domain: Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } },
+    email_verified: none,
+  )
+  match verdict_for(claims: claims, policy: control_policy()) {
+    OidcIdTokenVerified { claims: _ } => false
+    OidcIdTokenRefused { cause: OidcIdTokenEmailUnverified { email_verified: v } } =>
+      match v {
+        Present { value: _ } => false
+        Absent => true
+      }
+    OidcIdTokenRefused { cause: _ } => false
+  }
+}
+
+// THE HOSTED-DOMAIN ARM: hd == gunb.ai is the Workspace gate. A different hd refuses; a MISSING
+// hd is a mismatch, not a pass — consumer accounts simply do not carry the claim.
+test fn a_wrong_hosted_domain_refuses() -> Bool {
+  let claims = claims_with(
+    issuer: control_issuer(),
+    audience: control_audience(),
+    expires_at: NumericDateWholeSeconds { seconds: 2000 },
+    nonce: Present { value: "nonce-abc" as NonEmptyStr },
+    hosted_domain: Present { value: OidcHostedDomain { domain: "other-corp.example" as NonEmptyStr } },
+    email_verified: Present { value: true },
+  )
+  match verdict_for(claims: claims, policy: control_policy()) {
+    OidcIdTokenVerified { claims: _ } => false
+    OidcIdTokenRefused { cause: OidcIdTokenHostedDomainMismatch { presented: p, expected: _ } } =>
+      p == Present { value: OidcHostedDomain { domain: "other-corp.example" as NonEmptyStr } }
+    OidcIdTokenRefused { cause: _ } => false
+  }
+}
+
+test fn an_absent_hosted_domain_refuses() -> Bool {
+  let claims = claims_with(
+    issuer: control_issuer(),
+    audience: control_audience(),
+    expires_at: NumericDateWholeSeconds { seconds: 2000 },
+    nonce: Present { value: "nonce-abc" as NonEmptyStr },
+    hosted_domain: none,
+    email_verified: Present { value: true },
+  )
+  match verdict_for(claims: claims, policy: control_policy()) {
+    OidcIdTokenVerified { claims: _ } => false
+    OidcIdTokenRefused { cause: OidcIdTokenHostedDomainMismatch { presented: p, expected: _ } } =>
+      match p {
+        Present { value: _ } => false
+        Absent => true
+      }
+    OidcIdTokenRefused { cause: _ } => false
+  }
+}
+
+// THE hd VOCABULARY rides the claims record as Google's hosted-domain claim, and picture as the
+// OIDF standard claim — both optional, both wire-decoded by the realization, neither
+// load-bearing at any other check.
+test fn the_hd_and_picture_claim_vocabulary_is_representable() -> Bool {
+  let claims = control_claims()
+  claims.hosted_domain == Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } }
+    && match claims.standard.picture {
+      Present { value: _ } => false
+      Absent => true
+    }
+}
+
+// LOGIN SCOPES ARE ONLY openid/email/profile: the closed coproduct labels the three, and no API
+// scope constructor exists to request Gmail/Contacts/Directory/Drive at login.
+test fn login_scopes_are_restricted_to_openid_email_profile() -> Bool {
+  oidc_login_scope_label(scope: OidcScopeOpenId) == "openid"
+    && oidc_login_scope_label(scope: OidcScopeEmail) == "email"
+    && oidc_login_scope_label(scope: OidcScopeProfile) == "profile"
+}
+
+// RELATIVE-RETURN-PATH ADMISSION: a same-origin path admits; a protocol-relative spelling and an
+// absolute URL refuse — the redirect target can never leave the origin.
+test fn return_path_admission_keeps_the_redirect_on_the_origin() -> Bool {
+  match admit_login_return_path(raw: "/issue/abc") {
+    ReturnPathAdmitted { path: p } => (p.path as String) == "/issue/abc"
+    ReturnPathRefused { raw: _, reason: _ } => false
+  }
+  && match admit_login_return_path(raw: "//evil.example/x") {
+    ReturnPathAdmitted { path: _ } => false
+    ReturnPathRefused { raw: _, reason: r } => string_contains(s: r, pattern: "protocol-relative")
+  }
+  && match admit_login_return_path(raw: "https://evil.example/x") {
+    ReturnPathAdmitted { path: _ } => false
+    ReturnPathRefused { raw: _, reason: r } => string_contains(s: r, pattern: "must be relative")
+  }
+}
+
+// THE TRANSACTION LIFETIME is a total fold over the model's clock string.
+test fn a_login_transaction_expires_at_its_bound() -> Bool {
+  let t = OidcLoginTransaction {
+    state: "state-1" as NonEmptyStr,
+    nonce: "nonce-abc" as NonEmptyStr,
+    created_at: "2026-09-25T00:00:00Z",
+    expires_at: "2026-09-25T00:10:00Z",
+    verifier: OidcPkceCodeVerifier { verifier: "verifier-xyz" as NonEmptyStr },
+    return_path: RelativeReturnPath { path: "/" as NonEmptyStr },
+  }
+  !login_transaction_expired(t: t, observed_at: "2026-09-25T00:05:00Z")
+    && login_transaction_expired(t: t, observed_at: "2026-09-25T00:10:01Z")
+}
+data witness_fixture_header_segment: String = "eyJhbGciOiJSUzI1NiIsImtpZCI6ImZpeHR1cmUta2V5LTEiLCJ0eXAiOiJKV1QifQ"
+
+data witness_fixture_payload_segment: String = "eyJpc3MiOiJodHRwczovL2FjY291bnRzLmdvb2dsZS5jb20iLCJzdWIiOiJmaXh0dXJlLXN1Yi0xIiwiYXVkIjoiZml4dHVyZS1jbGllbnQiLCJleHAiOjIwMDAwMDAwMDAsImlhdCI6MTYwMDAwMDAwMCwibm9uY2UiOiJmaXh0dXJlLW5vbmNlIiwiaGQiOiJndW5iLmFpIiwiZW1haWwiOiJwZXJzb25AZ3VuYi5haSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJuYW1lIjoiRml4dHVyZSBQZXJzb24iLCJwaWN0dXJlIjoiaHR0cHM6Ly9leGFtcGxlLnRlc3QvcC5qcGcifQ"
+
+data witness_fixture_fractional_payload_segment: String = "eyJpc3MiOiJodHRwczovL2FjY291bnRzLmdvb2dsZS5jb20iLCJzdWIiOiJmaXh0dXJlLXN1Yi0xIiwiYXVkIjoiZml4dHVyZS1jbGllbnQiLCJleHAiOjIwMDAwMDAwMDAuNSwiaWF0IjoxNjAwMDAwMDAwfQ"
+
+data witness_fixture_noexp_payload_segment: String = "eyJpc3MiOiJodHRwczovL2FjY291bnRzLmdvb2dsZS5jb20iLCJzdWIiOiJmaXh0dXJlLXN1Yi0xIiwiYXVkIjoiZml4dHVyZS1jbGllbnQiLCJpYXQiOjE2MDAwMDAwMDB9"
+
+data witness_fixture_badalg_header_segment: String = "eyJhbGciOiJIUzI1NiIsImtpZCI6ImZpeHR1cmUta2V5LTEifQ"
+
+fn witness_fixture_wire() -> String {
+  join([witness_fixture_header_segment, ".", witness_fixture_payload_segment, ".", "c2ln"], "")
+}
+
+fn witness_fixture_spki_octets() -> List<UInt8> {
+  [48, 60, 48, 13, 6, 9, 42, 134, 72, 134, 247, 13, 1, 1, 1, 5, 0, 3, 43, 0, 48, 40, 2, 33, 0, 169,
+   210, 127, 242, 61, 113, 165, 56, 27, 211, 38, 103, 79, 52, 0, 63, 63, 191, 180, 239, 235, 104,
+   144, 210, 88, 56, 180, 75, 67, 74, 239, 7, 2, 3, 1, 0, 1]
+}
+
+// ── The JWKS realization (frontier 2) ──────────────────────────────────────────────────────────
+// These controls drive the REALIZATION's pure folds — the wire decode, the JWKS vocabulary and
+// selection, the SPKI assembly — against fixtures computed independently on the host. The IO arms
+// (fetch, cache, the openssl invocation itself) are substrate: the refusal ARMS below never
+// reach an effect, which is what makes never-fail-open witnessed rather than asserted.
+// THE FIXTURE KEY IS A 256-BIT RSA MODULUS, because the SPKI assembly costs ~1k eval steps per
+// modulus character and a 2048-bit key put the claim at 320k against the 72,300 new-witness budget
+// (at 256 bits: ~48k). The assembler has no key-size floor; key strength is not the subject, the
+// DER encoding is. OpenSSL 3 refuses to GENERATE below 512 bits, so the modulus is the product of
+// two 128-bit primes (Python Miller-Rabin, random.seed(12787), e=65537 coprime to p-1 and q-1) and
+// the SPKI document is OPENSSL'S OWN ENCODING of that key:
+//   openssl asn1parse -genconf k256.genconf -out k256.spki.der -noout
+//   with k256.genconf: asn1=SEQUENCE:spki / [spki] alg=SEQUENCE:alg, key=BITWRAP,SEQUENCE:rsakey /
+//   [alg] oid=OID:rsaEncryption, null=NULL / [rsakey] n=INTEGER:0x<modulus>, e=INTEGER:65537
+//   openssl pkey -pubin -inform DER -in k256.spki.der -text -noout  -> "Public-Key: (256 bit)"
+// (OpenSSL 3.0.13), and n below is that output's modulus octets, sign byte included, base64url.
+
+data witness_fixture_key_id: NonEmptyStr = "fixture-key-1" as NonEmptyStr
+
+data witness_fixture_key_n: NonEmptyStr = "AKnSf_I9caU4G9MmZ080AD8_v7Tv62iQ0lg4tEtDSu8H" as NonEmptyStr
+
+data witness_fixture_key_e: NonEmptyStr = "AQAB" as NonEmptyStr
+
+fn witness_fixture_key() -> JwkRsaPublicKey {
+  JwkRsaPublicKey {
+    key_id: witness_fixture_key_id,
+    modulus_b64url: witness_fixture_key_n,
+    exponent_b64url: witness_fixture_key_e,
+  }
+}
+
+// THE WIRE DECODE reads a real compact serialization end to end: the header's alg and kid, the
+// required core, the standard claims, and the signing input — the exact bytes the signature
+// must cover.
+test fn the_wire_decode_reads_header_claims_and_signing_input() -> Bool {
+  match oidc_id_token_wire_decode(token: witness_fixture_wire() as JwtCompactSerialization) {
+    OidcIdTokenWireRefused { reason: _ } => false
+    OidcIdTokenWireDecoded { claims: c, header: h, signing_input: si } =>
+      match h.algorithm {
+        JwksAlgRs256 => true
+      }
+        && (h.key_id as String) == "fixture-key-1"
+        && jwt_string_or_uri_wire(value: c.issuer) == "https://accounts.google.com"
+        && jwt_string_or_uri_wire(value: c.subject) == "fixture-sub-1"
+        && match c.audience {
+          JwtAudienceSingle { value: a } => jwt_string_or_uri_wire(value: a) == "fixture-client"
+          JwtAudienceMultiple { values: _ } => false
+        }
+        && match c.expires_at {
+          NumericDateWholeSeconds { seconds: s } => s == 2000000000
+          NumericDateFractionalSeconds { whole_seconds: _, fractional_digits: _ } => false
+        }
+        && match c.nonce {
+          Present { value: n } => (n as String) == "fixture-nonce"
+          Absent => false
+        }
+        && match c.hosted_domain {
+          Present { value: hd } => (hd.domain as String) == "gunb.ai"
+          Absent => false
+        }
+        && match c.standard.email_verified {
+          Present { value: v } => v
+          Absent => false
+        }
+        && si == concat(concat(witness_fixture_header_segment(), "."), witness_fixture_payload_segment())
+  }
+}
+
+// A FRACTIONAL NUMERICDATE KEEPS ITS DIGITS, and a missing required-core member refuses with
+// the member named: the decode describes the RFC without rounding or normalizing anything away.
+test fn the_wire_decode_keeps_fractional_digits_and_refuses_missing_core() -> Bool {
+  match oidc_id_token_wire_decode(token: join([witness_fixture_header_segment(), ".", witness_fixture_fractional_payload_segment(), ".c2ln"], "") as JwtCompactSerialization) {
+    OidcIdTokenWireRefused { reason: _ } => false
+    OidcIdTokenWireDecoded { claims: c, header: _, signing_input: _ } =>
+      match c.expires_at {
+        NumericDateFractionalSeconds { whole_seconds: w, fractional_digits: f } =>
+          w == 2000000000 && (f as String) == "5"
+        NumericDateWholeSeconds { seconds: _ } => false
+      }
+  }
+    && match oidc_id_token_wire_decode(token: join([witness_fixture_header_segment(), ".", witness_fixture_noexp_payload_segment(), ".c2ln"], "") as JwtCompactSerialization) {
+      OidcIdTokenWireRefused { reason: r } => string_contains(s: r, pattern: "exp")
+      OidcIdTokenWireDecoded { claims: _, header: _, signing_input: _ } => false
+    }
+    && match oidc_id_token_wire_decode(token: join([witness_fixture_badalg_header_segment(), ".", witness_fixture_payload_segment(), ".c2ln"], "") as JwtCompactSerialization) {
+      OidcIdTokenWireRefused { reason: r } => string_contains(s: r, pattern: "RS256")
+      OidcIdTokenWireDecoded { claims: _, header: _, signing_input: _ } => false
+    }
+    && match oidc_id_token_wire_decode(token: "two.segments" as JwtCompactSerialization) {
+      OidcIdTokenWireRefused { reason: _ } => true
+      OidcIdTokenWireDecoded { claims: _, header: _, signing_input: _ } => false
+    }
+}
+
+// THE SPKI ASSEMBLY reproduces, byte for byte, the SPKI document openssl itself publishes for
+// the fixture key — the in-model DER assembler (length encodings, the sign guard on the
+// modulus, the algorithm identifier) is exactly right against an independent computation.
+test fn the_spki_assembly_matches_openssl_s_own_document() -> Bool {
+  match rsa_spki_of_jwk(key: witness_fixture_key()) {
+    DerRefused { reason: _ } => false
+    DerOctets { octets: assembled } => assembled == witness_fixture_spki_octets()
+  }
+}
+
+// JWKS SELECTION IS BY KID AND REFUSES A KEY OUTSIDE THE SET: the fold returns the announced
+// key, and a kid the set does not hold is JwksKeyNotFound carrying WHICH key was asked for —
+// never a fallback to some key in the set.
+test fn jwks_selection_answers_the_announced_kid_and_refuses_the_unknown() -> Bool {
+  match jwks_select_key(keys: [witness_fixture_key()], key_id: witness_fixture_key_id) {
+    JwksKeySelected { key: k } => (k.key_id as String) == "fixture-key-1"
+    JwksKeyNotFound { key_id: _ } => false
+  }
+    && match jwks_select_key(keys: [witness_fixture_key()], key_id: "no-such-key" as NonEmptyStr) {
+      JwksKeySelected { key: _ } => false
+      JwksKeyNotFound { key_id: k } => (k as String) == "no-such-key"
+    }
+}
+
+// THE FETCH FAILURE IS TYPED AND NEVER FAILS OPEN: a refused JWKS resolve maps to
+// OidcIdTokenSignatureRefused naming the fetch step, and the parts fold is never reached past
+// it — the verified arm has no input to stand on, and none is fabricated.
+// The decoded wire is SUPPLIED: the claim is about the signature fold's refusal arms, and the
+// decode that produces this shape has its own claim over the real wire
+// (the_wire_decode_reads_header_claims_and_signing_input).
+fn supplied_decoded_wire() -> OidcIdTokenWire {
+  OidcIdTokenWireDecoded {
+    claims: control_claims(),
+    header: OidcIdTokenHeader { algorithm: JwksAlgRs256, key_id: witness_fixture_key_id },
+    signing_input: concat(concat(witness_fixture_header_segment(), "."), witness_fixture_payload_segment()),
+  }
+}
+
+test fn a_jwks_fetch_failure_refuses_the_signature_and_never_verifies() -> Bool {
+  match oidc_id_token_signature_of_parts(
+    wire: supplied_decoded_wire(),
+    resolved: JwksResolveRefused { step: "fetch", reason: "the origin did not answer" },
+    signature_segment: "c2ln",
+    scratch_dir: "witness-unused",
+    verify_id: "witness" as NonEmptyStr,
+  ) {
+    OidcIdTokenSignatureRefused { reason: r } =>
+      string_contains(s: r, pattern: "fetch")
+        && string_contains(s: r, pattern: "the origin did not answer")
+        && match oidc_id_token_signature_of_parts(
+          wire: supplied_decoded_wire(),
+          resolved: JwksResolved { body: "{\"keys\":[]}", served_from: JwksServedFromOrigin },
+          signature_segment: "c2ln",
+          scratch_dir: "witness-unused",
+          verify_id: "witness" as NonEmptyStr,
+        ) {
+          OidcIdTokenSignatureRefused { reason: r2 } => string_contains(s: r2, pattern: "no JWKS key answers")
+          OidcIdTokenSignatureVerified { key: _ } => false
+        }
+    OidcIdTokenSignatureVerified { key: _ } => false
+  }
+}
+
+// THE VERIFIED ARM HAS EXACTLY ONE SOURCE: openssl's affirmative answer. The pure tail maps a
+// valid verification to OidcIdTokenSignatureVerified naming the key, and every other
+// verification outcome to a located refusal — so no consumer can reach the verified arm from a
+// refused realization, and the verdict fold above it refuses at the signature check.
+test fn only_an_affirmative_realization_mints_the_verified_arm() -> Bool {
+  match oidc_id_token_signature_of_verification(key: witness_fixture_key(), verification: Rs256SignatureValid) {
+    OidcIdTokenSignatureVerified { key: ref } =>
+      (ref.key_id as String) == "fixture-key-1"
+        && jwt_string_or_uri_wire(value: ref.issuer) == "https://accounts.google.com"
+    OidcIdTokenSignatureRefused { reason: _ } => false
+  }
+    && match oidc_id_token_signature_of_verification(key: witness_fixture_key(), verification: Rs256SignatureInvalid { detail: "bad signature" }) {
+      OidcIdTokenSignatureRefused { reason: r } => string_contains(s: r, pattern: "bad signature")
+      OidcIdTokenSignatureVerified { key: _ } => false
+    }
+    && match oidc_id_token_signature_of_verification(key: witness_fixture_key(), verification: Rs256VerificationUnrealizable { detail: "openssl absent" }) {
+      OidcIdTokenSignatureRefused { reason: r } => string_contains(s: r, pattern: "openssl absent")
+      OidcIdTokenSignatureVerified { key: _ } => false
+    }
+}
+
+// THE FULL VERDICT CHAIN over the realization's decode: the fixture wire's claims pass the
+// landed verdict policy exactly when the fixture key stands behind the signature, and the
+// refusal arms the decode produced upstream still refuse downstream. This is the seam the
+// serve route binds: verify_oidc_id_token receives the producer's outcome, not a claim set.
+test fn the_realized_signature_feeds_the_landed_verdict_fold() -> Bool {
+  match oidc_id_token_wire_decode(token: witness_fixture_wire() as JwtCompactSerialization) {
+    OidcIdTokenWireRefused { reason: _ } => false
+    OidcIdTokenWireDecoded { claims: c, header: _, signing_input: _ } =>
+      match verify_oidc_id_token(
+        claims: c,
+        signature: OidcIdTokenSignatureVerified {
+          key: JsonWebKeyRef {
+            issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+            key_id: witness_fixture_key_id,
+          },
+        },
+        policy: OidcIdTokenVerdictPolicy {
+          expected_issuer: JwtUriString { value: "https://accounts.google.com" as NonEmptyStr, scheme: "https" as NonEmptyStr },
+          admitted_audiences: [JwtBareString { value: "fixture-client" as NonEmptyStr }],
+          expected_hosted_domain: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr },
+          expected_nonce: Present { value: "fixture-nonce" as NonEmptyStr },
+          observed_at: NumericDateWholeSeconds { seconds: 1700000000 },
+        },
+      ) {
+        OidcIdTokenVerified { claims: v } => jwt_string_or_uri_wire(value: v.subject) == "fixture-sub-1"
+        OidcIdTokenRefused { cause: _ } => false
+      }
+  }
+}
