@@ -1,6 +1,6 @@
 module test.claim.process_lifecycle_wet_witness
 
-import std.types { Bool, String, NonEmptyStr }
+import std.types { Bool, String, List, NonEmptyStr }
 import extdeps.posix.process
 import extdeps.posix.signal
 import extdeps.http.client
@@ -47,7 +47,7 @@ data process_lifecycle_witness_server_source: String = "const http=require('http
 test fn start_refused_missing_binary_witness() -> Bool {
   let refused = posix.Process.StartDetached(
     program: "gunbc-no-such-binary-for-start-refusal-witness" as NonEmptyStr,
-    arguments: [],
+    arguments: [] as List<String>,
     stdout_file: "/dev/null" as NonEmptyStr,
     stderr_file: "/dev/null" as NonEmptyStr
   )

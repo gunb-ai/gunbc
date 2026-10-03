@@ -191,19 +191,28 @@ fn run_ts_smoke() -> Bool {
 // 64 structural digest (12 bits) are a stable seed per run and distinct across runs, mapping into
 // [19000, 23096) -- the same budget the heredoc had, with a citable entropy source instead of a
 // side effect of the harness.
+// One lower-hex code point of the digest, as its numeric value. The index is Optional (the digest
+// is always 16 code points, but the type does not know that) and the digit may be absent (a
+// non-hex code point); both absences answer none here: no seed.
+fn node_http_hex_digit_at(cps: List<Int>, index: Int) -> Int? {
+  match list_at_optional(xs: cps, index: index) {
+    Absent => none
+    Present { value: cp } => base16_digit_value_at(cp: cp)
+  }
+}
+
 fn node_http_serve_port_seed(workdir: NonEmptyStr) -> Int? {
-  let digest = content_hash_atom(value: workdir)
-  let cps = digest.hex |> chars
+  let cps = content_hash_atom(value: workdir).digest |> chars
   let n = length(xs: cps)
-  if n < 3 { Absent } else {
-    match base16_digit_value_at(cp: list_at_optional(xs: cps, index: n - 3)) {
-      Absent => Absent
+  if n < 3 { none } else {
+    match node_http_hex_digit_at(cps: cps, index: n - 3) {
+      Absent => none
       Present { value: h2 } =>
-        match base16_digit_value_at(cp: list_at_optional(xs: cps, index: n - 2)) {
-          Absent => Absent
+        match node_http_hex_digit_at(cps: cps, index: n - 2) {
+          Absent => none
           Present { value: h1 } =>
-            match base16_digit_value_at(cp: list_at_optional(xs: cps, index: n - 1)) {
-              Absent => Absent
+            match node_http_hex_digit_at(cps: cps, index: n - 1) {
+              Absent => none
               Present { value: h0 } => Present { value: 19000 + h2 * 256 + h1 * 16 + h0 }
             }
         }
@@ -239,9 +248,14 @@ fn node_http_await_ready(url: NonEmptyStr, attempts_left: Int, attempts_used: In
 // is red. Reap is parent-only (waitpid ECHILD otherwise), which is exactly the confirmation the
 // trap could never give.
 fn node_http_await_reaped(pid: Int, attempts_left: Int) -> Int? {
-  if attempts_left <= 0 { Absent } else {
+  if attempts_left <= 0 { none } else {
     let reaped = posix.Process.Reap(pid: pid)
-    if reaped.exited { reaped.exit_code } else {
+    if reaped.exited {
+      match reaped.exit_code {
+        Present { value: code } => Present { value: code }
+        Absent => none
+      }
+    } else {
       let _pause = sleep.Delay.Seconds(seconds: "0.1" as NonEmptyStr)
       node_http_await_reaped(pid: pid, attempts_left: attempts_left - 1)
     }
