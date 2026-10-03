@@ -2,6 +2,7 @@ module gunbc.serving.serving_front_door
 
 import std.types { String, Bool, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat }
+import std.measure { Second, second, second_count }
 import v2.std.optional { Present, Absent }
 import extdeps.crypto.mac {
   MacKey, MacKeyId, MacSuite, HmacSha256, MacVerification, MacVerified, MacTagMismatch, MacKeyUnknown,
@@ -244,7 +245,7 @@ fn front_door_pool_for(door: FrontDoorIdentity, class: ServingCoTenancyClass) ->
 // does not fold under the pool's own root and ceiling, which means the entry is not a harness seat of
 // this pool at all.
 type SeatGrantCurrency
-  = SeatGrantHeld { actor: NonEmptyStr, recorded_at: EpochSecs, term_seconds: Nat }
+  = SeatGrantHeld { actor: NonEmptyStr, recorded_at: EpochSecs, term: Second }
   | SeatGrantReleased { reason: NonEmptyStr }
   | SeatGrantNeverAdmitted
   | SeatGrantAdmittedByAnother { admitted_by: EventId }
@@ -254,6 +255,10 @@ type SeatGrantCurrency
   | SeatGrantNotInterpretedUnderPool { detail: String }
   | SeatGrantUnread { detail: String }
 
+// THE TERM IS A DURATION, typed as std.measure Second at the one place it leaves the wire record:
+// PoolAcquired.term_seconds is a serialization whose unit the pool fixes, and this is where it is
+// read back into a carrier.
+//
 // THE ACQUISITION AS THE LEDGER RECORDED IT: which event admitted the reference, its position in the
 // chain (the fence generation that admission produced: the pool fold's generation before it, plus
 // one), who appended it, when, for what term and for what amount. These -- not the permit's claims --
@@ -263,7 +268,7 @@ type SeatLedgerAcquisition {
   generation: Nat
   actor: NonEmptyStr
   recorded_at: EpochSecs
-  term_seconds: Nat
+  term: Second
   amount: Nat
 }
 
@@ -287,7 +292,7 @@ fn seat_grant_currency_of(pool: HarnessSeatPoolIdentity, walk: ChainWalk<PoolEve
             if (r as String) == (reference as String) {
               SeatLedgerScan {
                 position: here,
-                acquisitions: concat(acc.acquisitions, [SeatLedgerAcquisition { id: env.id, generation: here, actor: env.event.actor, recorded_at: env.event.recorded_at, term_seconds: term, amount: n }]),
+                acquisitions: concat(acc.acquisitions, [SeatLedgerAcquisition { id: env.id, generation: here, actor: env.event.actor, recorded_at: env.event.recorded_at, term: second(count: term), amount: n }]),
                 released: acc.released,
               }
             } else { SeatLedgerScan { position: here, acquisitions: acc.acquisitions, released: acc.released } }
@@ -319,7 +324,7 @@ fn seat_grant_currency_of(pool: HarnessSeatPoolIdentity, walk: ChainWalk<PoolEve
                 PoolFolded { pool: _, generation: _ } =>
                   match scan.released {
                     Present { value: why } => SeatGrantReleased { reason: why }
-                    Absent => SeatGrantHeld { actor: a.actor, recorded_at: a.recorded_at, term_seconds: a.term_seconds }
+                    Absent => SeatGrantHeld { actor: a.actor, recorded_at: a.recorded_at, term: a.term }
                   }
               }
             }
@@ -572,8 +577,8 @@ fn front_door_admit_authenticated(
         } else {
           let reference = harness_seat_reference_wire(r: c.seat)
           match ledger(pool, reference, c.grant, c.generation) {
-            SeatGrantHeld { actor: a, recorded_at: at, term_seconds: term } =>
-              front_door_admit_held(caller: caller, claims: c, pool: pool, reference: reference, ledger_actor: a, recorded_at: at, term_seconds: term, observed_at: observed_at, request: request, redeem: redeem)
+            SeatGrantHeld { actor: a, recorded_at: at, term: term } =>
+              front_door_admit_held(caller: caller, claims: c, pool: pool, reference: reference, ledger_actor: a, recorded_at: at, term: term, observed_at: observed_at, request: request, redeem: redeem)
             SeatGrantReleased { reason: why } => door_refuse(cause: DoorSeatReleased { reason: why })
             SeatGrantNeverAdmitted => door_refuse(cause: DoorSeatNeverAdmitted)
             SeatGrantAdmittedByAnother { admitted_by: e } => door_refuse(cause: DoorSeatAdmittedByAnother { admitted_by: e })
@@ -607,12 +612,12 @@ fn front_door_admit_held(
   reference: NonEmptyStr,
   ledger_actor: NonEmptyStr,
   recorded_at: EpochSecs,
-  term_seconds: Nat,
+  term: Second,
   observed_at: EpochSecs,
   request: NonEmptyStr,
   redeem: fn(HarnessSeatPoolIdentity, NonEmptyStr, NonEmptyStr) -> FrontDoorRedemption,
 ) -> FrontDoorVerdict {
-  let ledger_expires_at = recorded_at + term_seconds
+  let ledger_expires_at = recorded_at + second_count(s: term)
   if (ledger_actor as String) != principal_ref_label(p: caller) {
     door_refuse(cause: DoorSeatHeldByAnotherCaller { ledger_actor: ledger_actor, caller: caller })
   } else if ledger_expires_at <= observed_at {
