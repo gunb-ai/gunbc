@@ -1,8 +1,6 @@
 module test.claim.emitted_crate_harness_manifest_witness
 
 import std.logic { Bool }
-import extdeps.shell
-import extdeps.filesystem.filesystem_io { Filesystem }
 import tools.emitted_crate_harness_manifest {
   HarnessCrateTarget,
   WitnessBinTarget,
@@ -10,11 +8,10 @@ import tools.emitted_crate_harness_manifest {
   HarnessSeedLinkage,
   SeedLinked,
   SeedAbsent,
-  HarnessManifestDerived,
-  EmittedManifestUnreadable,
-  HarnessManifestWriteFailed,
+  HarnessManifestPlanned,
+  EmittedManifestNotUsable,
   harness_manifest_over_emitted,
-  derive_harness_manifest_in_place
+  plan_harness_manifest
 }
 
 // THE EMITTED MANIFEST IS SUPPLIED, NOT PRODUCED. These claims are about one boundary -- what a
@@ -66,42 +63,31 @@ test fn only_the_witness_target_declares_the_witness_binary() -> Bool {
     && !string_contains(s: derived_over_supplied(target: ProbeLibTarget, linkage: SeedAbsent), pattern: "[[bin]]")
 }
 
-fn refused_as_unreadable(crate_dir: String) -> Bool {
-  match derive_harness_manifest_in_place(crate_dir: crate_dir, target: WitnessBinTarget, linkage: SeedAbsent) {
-    EmittedManifestUnreadable { path: p } => p == concat(crate_dir, "/Cargo.toml")
-    HarnessManifestDerived { content: _ } => false
-    HarnessManifestWriteFailed { path: _ } => false
+fn plan_refuses(read_succeeded: Bool, emitted: String) -> Bool {
+  match plan_harness_manifest(read_succeeded: read_succeeded, emitted: emitted, target: WitnessBinTarget, linkage: SeedLinked { root: "/r" }) {
+    EmittedManifestNotUsable => true
+    HarnessManifestPlanned { content: _ } => false
   }
 }
 
-// A crate directory the emitter did not describe is refused, and nothing is written in its place:
-// the refusal names the manifest it could not read, and the directory still holds no Cargo.toml.
-test fn a_crate_directory_without_an_emitted_manifest_refuses_and_writes_nothing() -> Bool {
-  let dir = shell.Mktemp.Dir()
-  let refused = refused_as_unreadable(crate_dir: dir.path)
-  let after = Filesystem.Read(path: concat(dir.path, "/Cargo.toml"))
-  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
-  dir.success && refused && !after.success && cleaned.success
+// The reading is supplied: a read that failed, and a read that returned nothing, both refuse, and
+// neither yields a manifest made of the overlay alone. The effectful wrapper that performs the
+// real read is exercised by the transports that build through it.
+test fn an_unread_or_empty_emitted_manifest_refuses_instead_of_planning_the_overlay_alone() -> Bool {
+  plan_refuses(read_succeeded: false, emitted: supplied_emitted_manifest)
+    && plan_refuses(read_succeeded: false, emitted: "")
+    && plan_refuses(read_succeeded: true, emitted: "")
 }
 
-fn derived_content(crate_dir: String) -> String {
-  match derive_harness_manifest_in_place(crate_dir: crate_dir, target: WitnessBinTarget, linkage: SeedLinked { root: "/r" }) {
-    HarnessManifestDerived { content: c } => c
-    EmittedManifestUnreadable { path: _ } => ""
-    HarnessManifestWriteFailed { path: _ } => ""
+fn planned_content(read_succeeded: Bool, emitted: String) -> String {
+  match plan_harness_manifest(read_succeeded: read_succeeded, emitted: emitted, target: WitnessBinTarget, linkage: SeedLinked { root: "/r" }) {
+    EmittedManifestNotUsable => ""
+    HarnessManifestPlanned { content: c } => c
   }
 }
 
-// The effectful route end to end over a supplied emitted file: what is on disk afterwards is the
-// derived manifest, and it still carries the dependency only the emission declared.
-test fn the_manifest_on_disk_after_derivation_is_the_emitted_one_plus_the_overlay() -> Bool {
-  let dir = shell.Mktemp.Dir()
-  let emitted = Filesystem.Write(path: concat(dir.path, "/Cargo.toml"), content: supplied_emitted_manifest)
-  let content = derived_content(crate_dir: dir.path)
-  let after = Filesystem.Read(path: concat(dir.path, "/Cargo.toml"))
-  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
-  dir.success && emitted.success && after.success && cleaned.success
-    && content == derived_over_supplied(target: WitnessBinTarget, linkage: SeedLinked { root: "/r" })
-    && after.content == content
-    && string_contains(s: after.content, pattern: supplied_dependency_line)
+test fn a_read_emitted_manifest_plans_the_emitted_text_plus_the_overlay() -> Bool {
+  let planned = planned_content(read_succeeded: true, emitted: supplied_emitted_manifest)
+  planned == derived_over_supplied(target: WitnessBinTarget, linkage: SeedLinked { root: "/r" })
+    && string_contains(s: planned, pattern: supplied_dependency_line)
 }

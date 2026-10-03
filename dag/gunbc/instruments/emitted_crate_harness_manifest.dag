@@ -67,9 +67,31 @@ fn harness_manifest_over_emitted(emitted: String, target: HarnessCrateTarget, li
   )
 }
 
-// Reads the manifest the emission wrote into crate_dir and replaces it with the derived one. An
-// absent or empty emitted manifest REFUSES: there is no fallback roster to write in its place, so
+// THE DECISION, SEPARATE FROM THE READ THAT FEEDS IT. Whether a harness manifest exists is decided
+// from what the read returned, so a claim can supply that reading instead of performing it. An
+// unread or empty emitted manifest REFUSES: there is no fallback roster to write in its place, so
 // a crate the emitter did not describe is not built under a description the harness made up.
+type HarnessManifestPlan
+  = HarnessManifestPlanned { content: String }
+  | EmittedManifestNotUsable
+
+fn plan_harness_manifest(
+  read_succeeded: Bool,
+  emitted: String,
+  target: HarnessCrateTarget,
+  linkage: HarnessSeedLinkage
+) -> HarnessManifestPlan {
+  if !read_succeeded || emitted == "" {
+    EmittedManifestNotUsable
+  } else {
+    HarnessManifestPlanned {
+      content: harness_manifest_over_emitted(emitted: emitted, target: target, linkage: linkage)
+    }
+  }
+}
+
+// Reads the manifest the emission wrote into crate_dir and replaces it with the planned one. The
+// write exists only on the planned arm, so a refusal leaves the directory as the emission left it.
 fn derive_harness_manifest_in_place(
   crate_dir: String,
   target: HarnessCrateTarget,
@@ -77,15 +99,15 @@ fn derive_harness_manifest_in_place(
 ) -> HarnessManifestDerivation {
   let path = concat(crate_dir, "/Cargo.toml")
   let emitted = Filesystem.Read(path: path)
-  if !emitted.success || emitted.content == "" {
-    EmittedManifestUnreadable { path: path }
-  } else {
-    let content = harness_manifest_over_emitted(emitted: emitted.content, target: target, linkage: linkage)
-    let written = Filesystem.Write(path: path, content: content)
-    if written.success {
-      HarnessManifestDerived { content: content }
-    } else {
-      HarnessManifestWriteFailed { path: path }
+  match plan_harness_manifest(read_succeeded: emitted.success, emitted: emitted.content, target: target, linkage: linkage) {
+    EmittedManifestNotUsable => EmittedManifestUnreadable { path: path }
+    HarnessManifestPlanned { content: content } => {
+      let written = Filesystem.Write(path: path, content: content)
+      if written.success {
+        HarnessManifestDerived { content: content }
+      } else {
+        HarnessManifestWriteFailed { path: path }
+      }
     }
   }
 }
