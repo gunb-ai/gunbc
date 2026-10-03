@@ -1,7 +1,8 @@
 module gunbc.auth.session
 
 import std.types { NonEmptyStr, String, Bool, Timestamp, Email, List }
-import std.nat { Nat }
+import std.nat { Nat, Zero }
+import extdeps.http.server { SetCookie, CookieSameSiteLax }
 import std.algebra { trim }
 import std.decl_ref { decl_ref }
 import extdeps.uri { Uri }
@@ -319,41 +320,30 @@ fn session_cookie_id_of_value(value: String) -> SessionCookieIdParse {
 // and cannot drift from the rows the witness checks. Max-Age is the bounded lifetime in whole
 // seconds; the caller supplies it because the lifetime bound is the login policy's fact
 // (gunbc.auth.oidc_deployment_config), not this module's.
-fn session_cookie_set_cookie_line(session_id: NonEmptyStr, max_age_seconds: Nat) -> String {
-  join(
-    [
-      "Set-Cookie: ",
-      session_cookie_name as String,
-      "=",
-      session_id as String,
-      if session_cookie_secure { "; Secure" } else { "" },
-      if session_cookie_http_only { "; HttpOnly" } else { "" },
-      if session_cookie_same_site_lax { "; SameSite=Lax" } else { "" },
-      "; Path=",
-      session_cookie_path as String,
-      "; Max-Age=",
-      to_string(value: max_age_seconds),
-    ],
-    "",
-  )
+fn session_cookie_set_cookie(session_id: NonEmptyStr, max_age_seconds: Nat) -> SetCookie {
+  SetCookie {
+    name: session_cookie_name,
+    value: session_id as String,
+    path: session_cookie_path,
+    secure: session_cookie_secure,
+    http_only: session_cookie_http_only,
+    same_site: if session_cookie_same_site_lax { Present { value: CookieSameSiteLax } } else { none },
+    max_age_seconds: max_age_seconds,
+  }
 }
 
-// THE LOGOUT CLEARING LINE: same attributes, empty value, zero lifetime, so the browser drops
+// THE LOGOUT CLEARING COOKIE: same attributes, empty value, zero lifetime, so the browser drops
 // the cookie whether or not the server-side session could be deleted.
-fn session_cookie_clear_line() -> String {
-  join(
-    [
-      "Set-Cookie: ",
-      session_cookie_name as String,
-      "=; Path=",
-      session_cookie_path as String,
-      if session_cookie_secure { "; Secure" } else { "" },
-      if session_cookie_http_only { "; HttpOnly" } else { "" },
-      if session_cookie_same_site_lax { "; SameSite=Lax" } else { "" },
-      "; Max-Age=0",
-    ],
-    "",
-  )
+fn session_cookie_clear() -> SetCookie {
+  SetCookie {
+    name: session_cookie_name,
+    value: "",
+    path: session_cookie_path,
+    secure: session_cookie_secure,
+    http_only: session_cookie_http_only,
+    same_site: if session_cookie_same_site_lax { Present { value: CookieSameSiteLax } } else { none },
+    max_age_seconds: Zero,
+  }
 }
 
 // ONE REFUSAL, ONE RENDERED REASON over the non-valid arms, for routes that answer a standing

@@ -4,7 +4,8 @@ import extdeps.tailscale.identity { TailnetIdentity }
 import extdeps.tailscale.serve { TailscaleServeRouteKey }
 import std.content_hash { ContentHash }
 import extdeps.uri_path { PathTemplate, PathParamBinding }
-import std.types { HttpStatus, Port, List }
+import std.types { HttpStatus, Port, List, NonEmptyStr, Bool, String }
+import std.nat { Nat }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.uri_path {
@@ -326,13 +327,62 @@ type ServeWireResponse {
 // never an unadmitted line.
 type ServeResponseHeader
   = ServeResponseHeaderLocation { location: NonEmptyStr }
-  | ServeResponseHeaderSetCookie { set_cookie: NonEmptyStr }
+  | ServeResponseHeaderSetCookie { cookie: SetCookie }
   | ServeResponseHeaderNoStore
+
+// RFC 6265 section 4.1 Set-Cookie, as its named parts rather than a pre-spelled line: the
+// cookie-pair and the attributes a deployment sets (Path, Secure, HttpOnly, Max-Age, and
+// SameSite from RFC 6265bis section 4.1.2.7). A handler constructs the value; the one rendering
+// below spells the header, so an attribute cannot be misspelled or dropped by a caller.
+type CookieSameSite
+  = CookieSameSiteLax
+  | CookieSameSiteStrict
+  | CookieSameSiteNone
+
+type SetCookie {
+  name: NonEmptyStr
+  value: String
+  path: NonEmptyStr
+  secure: Bool
+  http_only: Bool
+  same_site: CookieSameSite?
+  max_age_seconds: Nat
+}
+
+fn cookie_same_site_wire(s: CookieSameSite) -> String {
+  match s {
+    CookieSameSiteLax => "Lax"
+    CookieSameSiteStrict => "Strict"
+    CookieSameSiteNone => "None"
+  }
+}
+
+fn set_cookie_header_line(cookie: SetCookie) -> String {
+  join(
+    [
+      "Set-Cookie: ",
+      cookie.name as String,
+      "=",
+      cookie.value,
+      if cookie.secure { "; Secure" } else { "" },
+      if cookie.http_only { "; HttpOnly" } else { "" },
+      match cookie.same_site {
+        Present { value: s } => concat("; SameSite=", cookie_same_site_wire(s: s))
+        Absent => ""
+      },
+      "; Path=",
+      cookie.path as String,
+      "; Max-Age=",
+      to_string(value: cookie.max_age_seconds),
+    ],
+    "",
+  )
+}
 
 fn serve_response_header_wire(header: ServeResponseHeader) -> String {
   match header {
     ServeResponseHeaderLocation { location: l } => join(["Location: ", l as String], "")
-    ServeResponseHeaderSetCookie { set_cookie: c } => c as String
+    ServeResponseHeaderSetCookie { cookie: c } => set_cookie_header_line(cookie: c)
     ServeResponseHeaderNoStore => "Cache-Control: no-store"
   }
 }
