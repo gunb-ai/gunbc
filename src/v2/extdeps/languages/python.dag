@@ -26,6 +26,7 @@ import v2.std.grammar {
   FormalTerminal,
   FormalTerminalOccurrence,
   Nonterminal,
+  Repeat,
   Sequence,
   Terminal,
   grammar_carries_symbol,
@@ -1266,7 +1267,8 @@ fn python_lex_rules() -> LexRuleSet {
       python_lex_rule(token_class: ^python_token_comma, text: ", "),
       python_lex_rule(token_class: ^python_token_rparen, text: ")"),
       python_lex_rule(token_class: ^python_token_colon, text: ": ")
-    ]
+    ],
+    modes: []
   }
 }
 
@@ -1276,6 +1278,20 @@ fn python_lex() -> LexRules {
 
 fn python_grammar_atom(id: Symbol) -> Node {
   python_inhabitant_atom(id: id)
+}
+
+// A suite is one or more statements. Authored as `stmt suite | stmt` it was an ordered choice
+// whose two arms share every FIRST terminal (the grammar's one choice-overlap row); as a
+// statement followed by a repetition of statements there is no choice to resolve at all.
+fn python_grammar_production_suite() -> GrammarProduction {
+  GrammarProduction {
+    name: ^python_production_suite,
+    expression: Sequence {
+      left: Nonterminal { production: ^python_production_stmt },
+      right: Repeat { element: Nonterminal { production: ^python_production_stmt } }
+    },
+    emitted: python_grammar_atom(id: ^python_surface_suite)
+  }
 }
 
 fn python_grammar_root() -> GrammarRoot {
@@ -1299,22 +1315,7 @@ fn python_grammar_root() -> GrammarRoot {
         emitted: ^python_surface_fn_item
       ),
 
-      python_formal_productions_to_grammar_production(
-        head: grammar_formal_production(
-          lhs: ^python_production_suite,
-          rhs: [
-            grammar_formal_nonterminal_occurrence(identity: ^python_production_stmt),
-            grammar_formal_nonterminal_occurrence(identity: ^python_production_suite)
-          ]
-        ),
-        alts: [
-          grammar_formal_production(
-            lhs: ^python_production_suite,
-            rhs: [grammar_formal_nonterminal_occurrence(identity: ^python_production_stmt)]
-          )
-        ],
-        emitted: ^python_surface_suite
-      ),
+      python_grammar_production_suite(),
       python_formal_productions_to_grammar_production(
         head: grammar_formal_production(
           lhs: ^python_production_stmt,

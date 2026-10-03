@@ -207,5 +207,5 @@ fn sql_lex_rule(token_class: Symbol, text: String) -> LexRule {
 }
 
 fn sql_lex_rules_for_tokens(rules: List<LexRule>) -> LexRules {
-  ModeledLexRules { root: LexRuleSet { rules: rules } }
+  ModeledLexRules { root: LexRuleSet { rules: rules, modes: [] } }
 }

@@ -1643,7 +1643,8 @@ fn ts_sg2_type_expr_lex_rules() -> LexRuleSet {
         ts_lex_rule(token_class: ^ts_token_pipe, text: " | "),
         ts_lex_rule(token_class: ^ts_token_fat_arrow, text: " => ")
       ]
-    )
+    ),
+    modes: []
   }
 }
 
@@ -2016,7 +2017,8 @@ fn ts_fn_add_lex_rules() -> LexRuleSet {
       ts_lex_rule(token_class: ^ts_token_ternary_nop, text: ""),
       ts_lex_rule(token_class: ^ts_token_ternary_question, text: " ? "),
       ts_lex_rule(token_class: ^ts_token_ternary_colon, text: " : ")
-    ]
+    ],
+    modes: []
   }
 }
 
@@ -2371,7 +2373,8 @@ fn ts_lex_rules() -> LexRuleSet {
       ts_lex_rule(token_class: ^ts_token_import_rbrace, text: " } "),
       ts_lex_rule(token_class: ^ts_token_module_quote, text: "\""),
       ts_lex_rule(token_class: ^ts_token_module_path_sep, text: "/")
-    ]
+    ],
+    modes: []
   }
 }
 

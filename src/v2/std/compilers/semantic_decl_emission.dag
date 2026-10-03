@@ -1,6 +1,7 @@
 module v2.std.compilers.semantic_decl_emission
 
 import std.types { List }
+import v2.std.optional { Present, Absent }
 import v2.std.qualified_name { declaration_reference_path_optional }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -382,7 +383,7 @@ fn semantic_decl_lex_rules_from_rows(rows: List<Node>) -> Outcome<LexRules> {
     ),
     f: fn(rules) {
       outcome_accepted(
-        value: ModeledLexRules { root: LexRuleSet { rules: rules } }
+        value: ModeledLexRules { root: LexRuleSet { rules: rules, modes: [] } }
       )
     }
   )

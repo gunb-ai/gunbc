@@ -1214,7 +1214,7 @@ fn c_lex_rules() -> List<LexRule> {
 }
 
 fn c_lex() -> LexRules {
-  ModeledLexRules { root: LexRuleSet { rules: c_lex_rules() } }
+  ModeledLexRules { root: LexRuleSet { rules: c_lex_rules(), modes: [] } }
 }
 
 fn c_emit_host_runtime_primitive_type_node() -> Node {

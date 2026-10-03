@@ -52,6 +52,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  content_hash,
   is_empty_conj_root,
   node_synthetic,
   symbol_intern_lexeme,
@@ -61,6 +62,7 @@ import v2.std.node {
   LoopRealizedDeclarationEdge,
   core_edge_label,
 }
+import v2.std.anonymous_binder { fresh_fold_carrier }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.node_query { find_named_child, node_positional_child_targets }
 
@@ -407,6 +409,45 @@ fn fv_after_fat_arrow_optional(node: Node) -> Optional<Node> {
   }
 }
 
+// A LAMBDA WHOSE BODY IS A BLOCK HAS A BLOCK BODY, NOT AN EXPRESSION BODY. The grammar says so:
+// dag_grammar_block_expr_expr IS the fn_body nonterminal, so `(acc, e) => { let c = ..; R { .. } }`
+// carries the same fn_body production a fn literal does. Reading it as FunctionLiteralExprBody handed
+// the block to every consumer as an opaque expression, and neither consumer reads statements out of
+// one: body_lower_function_value_body refused it as function_value_body_unread, and fold_step_body
+// answered the shell instead of its statement sequence. So the body kind is decided here, once, from
+// the production the expr resolved to -- expr, then block_expr, then fn_body, and no other route --
+// and every consumer takes the fn_body arm it already takes for a fn literal.
+fn fv_block_body_optional(expr: Node) -> Optional<Node> {
+  match fv_production_captured_optional(node: expr, emitted: ^dag_surface_expr) {
+    Absent => optional_absent()
+    Present { value: alternative } =>
+      match fv_production_captured_optional(node: alternative, emitted: ^dag_surface_block_expr) {
+        Absent => optional_absent()
+        Present { value: fn_body } =>
+          if fv_production_is(node: fn_body, emitted: ^dag_surface_fn_body) {
+            optional_present(value: fn_body)
+          } else {
+            optional_absent()
+          }
+      }
+  }
+}
+
+fn fv_production_is(node: Node, emitted: Symbol) -> Bool {
+  match parse_production_emitted_identity_optional(node: fv_unwrap(node: node)) {
+    Present { value: id } => id == emitted
+    Absent => false
+  }
+}
+
+fn fv_production_captured_optional(node: Node, emitted: Symbol) -> Optional<Node> {
+  if fv_production_is(node: node, emitted: emitted) {
+    parse_production_captured_child_optional(node: fv_unwrap(node: node))
+  } else {
+    optional_absent()
+  }
+}
+
 fn fv_expr_parts(binders: List<FunctionValueBinder>, after_binders: Node) -> Optional<FunctionValueParts> {
   match fv_after_fat_arrow_optional(node: after_binders) {
     Absent => optional_absent()
@@ -415,7 +456,10 @@ fn fv_expr_parts(binders: List<FunctionValueBinder>, after_binders: Node) -> Opt
         value: FunctionValueParts {
           binders: binders,
           return_clause: fv_empty_return_clause(),
-          body: FunctionLiteralExprBody { expr: expr }
+          body: match fv_block_body_optional(expr: expr) {
+            Present { value: fn_body } => FunctionLiteralBlockBody { fn_body: fn_body }
+            Absent => FunctionLiteralExprBody { expr: expr }
+          }
         }
       }
   }
@@ -740,16 +784,34 @@ type FoldCallOperands {
 // child is the step as a function value, the member template of §2.2. ONE constructor, whatever the
 // grain of its operands: the raw call (read by the accumulator-copy lens) and the lowered operands
 // (built by v2.compiler.body_lowering_fold) meet here, so there is one encoding and not two.
+// THE SLOT IS A GENERATED BINDER, NOT THE AUTHORED FORMAL. This constructor used to spell the Bind's
+// binder and the carrier edge with operands.carrier -- the step's own first binder -- so the lowered tree
+// held two visible binders with one name: the persistent slot and the step Arrow's freshly-bound formal.
+// v2.compiler.resolve's value-binder admission refused the inner one, correctly, and the native eight
+// refused at prepare with resolve_reason_binder_hides_visible_value at a synthetic "found".
+//
+// The slot now comes from v2.std.anonymous_binder fresh_fold_carrier, keyed by the STEP's content hash, so
+// it is unauthorable, deterministic, derived from structure rather than occurrence or traversal order, and
+// distinct wherever two folds' scopes can overlap. The step is still carried WHOLE, with both of its
+// binders: a fold step is an ordinary callable, and dropping its first formal to let it read the slot
+// instead would make fold lambdas a second kind of function value (DESIGN section 3).
+//
+// THE CARRIER REACHES THE STEP BY ROLE. The slot's current value is the step callable's actual 0 and the
+// domain member is actual 1; that relation is positional and semantic. No consumer may recover one from
+// the other by equal spelling, and after this mint none can: `<` is not an identifier character.
+// operands.carrier remains the AUTHORED first binder and is what a consumer wanting the accumulator formal
+// reads (fold_call_step_carrier) -- it is no longer the slot's identity.
 fn fold_recurrence_encoding(operands: FoldCallOperands) -> Node {
+  let slot = fresh_fold_carrier(step_digest: content_hash(n: operands.step).digest as String)
   lower_bind(
-    key_binding: fold_carrier_binder_atom(binder: operands.carrier),
+    key_binding: fold_carrier_binder_atom(binder: slot),
     value: operands.init,
     body_binding: node_synthetic(
       kind: ComputationNode { behavior: Loop },
       children: [
         Edge { label: Positional, target: operands.step },
         Edge { label: core_edge_label(marker: LoopDomainEdge), target: operands.collection },
-        Edge { label: core_edge_label(marker: LoopCarrierEdge), target: fold_carrier_binder_atom(binder: operands.carrier) },
+        Edge { label: core_edge_label(marker: LoopCarrierEdge), target: fold_carrier_binder_atom(binder: slot) },
         Edge { label: core_edge_label(marker: LoopBoundEdge), target: fold_iteration_measure_atom() },
         Edge { label: core_edge_label(marker: LoopRealizedDeclarationEdge), target: operands.head }
       ]

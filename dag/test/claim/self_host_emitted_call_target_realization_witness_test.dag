@@ -200,30 +200,42 @@ test fn w_alias_rhs_leaf_declared_locally_shadows_foreign_declarer() -> Bool {
 // it -- but the qualified use-line route asked the leaf index, saw LeafAmbiguous, and declined to
 // synthesize any line, leaving the bare leaf unimported in the emitted file. Measured on the
 // native 00_compile closure build as eight E0425/E0433 `Nat` sites in v2_lens_fact_density.rs,
-// which references v2.std.nat.Nat qualified while the std.nat alias co-resides in the closure.
+// which referenced v2.std.nat.Nat qualified while the std.nat alias co-resided in the closure (before the Nat de-fork).
 //
 // HOW THE DOTTED SPELLING REACHES THE ROUTE constrained the probe shape, because a signature
-// annotation alone does NOT produce it: the resolver binds `n: v2.std.nat.Nat` to the declaration
+// annotation alone does NOT produce it: the resolver binds a qualified `n: <module>.<Type>` annotation to the declaration
 // node and the surface walk collects the bare leaf (measured: a signature-only probe delivered no
 // dotted name). The dotted spelling enters through the VALUE surface -- a qualified value
-// projection (`v2.std.nat.Zero` as match scrutinee) takes its inferred type from
+// projection (`test.fixture.structural_peano_nat.StructuralZero` as match scrutinee) takes its inferred type from
 // qualify_borrowed_type_names, whose borrowed view carries the qualified name, and
 // annotate_pattern_parent_enums stamps that spelling as the patterns' parent_enum, which
 // collect_pattern_ref_names emits. That is the fact_density chain in miniature. The record-lit
-// head contributes the dotted VARIANT `v2.std.nat.Succ` to the same route, so the exclude half
+// head contributes the dotted VARIANT `test.fixture.structural_peano_nat.StructuralSucc` to the same route, so the exclude half
 // pins the E0603 boundary: the variant must still be declined (it is not a type the qualifier
 // declares), or the route re-opens the sixteen-site false-import class its comment records.
 // The pool admits a module only through an import edge, so
-// test.fixture.nat_qualified_provider holds the v2.std.nat edge while std.nat is imported
-// directly; both Nat declarers co-reside and the leaf is globally ambiguous, exactly the closure
+// test.fixture.nat_qualified_provider holds the test.fixture.structural_peano_nat edge while std.nat is imported
+// directly; before the de-fork both Nat declarers co-resided and the leaf is globally ambiguous, exactly the closure
 // condition the fix answers. It reds if the qualifier stops resolving the ambiguity, and if the
 // variant leaf starts being imported.
+//
+// WHAT THIS ROW NO LONGER REACHES, stated because the Nat de-fork (operator ruling A, 2026-09-30)
+// removed its specimen rather than its bug. The leaf was ambiguous only because two corpus
+// declarations were spelled Nat; there is one now, and the fixture that replaces v2.std.nat
+// deliberately does not share a spelling with std.nat (a second Nat would re-create the fork). So
+// the qualified reference here resolves UNAMBIGUOUSLY and its use line arrives by the ordinary
+// specific-import rendering (the braced form below), not by the ambiguity-resolving qualified
+// route. The exclude half -- the variant leaf is never imported -- still pins the E0603 boundary.
+// The AMBIGUOUS arm is currently unreached by any corpus homonym of this shape: a Bool re-subject
+// (std.types Bool against v2.std.logic Bool) was measured and resolves to the kernel Bool, so it
+// does not reach the arm either. The arm's next specimen is whichever std/v2.std homonym survives
+// the integer-family de-forks; until then this row is a control for the unambiguous route only.
 test fn w_qualified_type_reference_qualifier_disambiguates_the_leaf() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.qualified_leaf_disambiguation_probe\nimport test.fixture.nat_qualified_provider { nat_qualified_provider_touch }\nimport std.nat { nat_max }\nfn probe() -> v2.std.nat.Nat {\n  match v2.std.nat.Zero {\n    v2.std.nat.Zero => v2.std.nat.Zero\n    v2.std.nat.Succ { prev: p } => v2.std.nat.Succ { prev: p }\n  }\n}\n",
+    "module test.claim.qualified_leaf_disambiguation_probe\nimport test.fixture.nat_qualified_provider { nat_qualified_provider_touch }\nimport std.nat { nat_max }\nfn probe() -> test.fixture.structural_peano_nat.StructuralNat {\n  match test.fixture.structural_peano_nat.StructuralZero {\n    test.fixture.structural_peano_nat.StructuralZero => test.fixture.structural_peano_nat.StructuralZero\n    test.fixture.structural_peano_nat.StructuralSucc { prev: p } => test.fixture.structural_peano_nat.StructuralSucc { prev: p }\n  }\n}\n",
     "src/test_claim_qualified_leaf_disambiguation_probe.rs",
-    ["pub use crate::v2_std_nat::Nat;", "pub fn probe() -> Rc<Nat>"],
-    ["pub use crate::v2_std_nat::Succ;"]
+    ["pub use crate::test_fixture_structural_peano_nat::\{StructuralNat};", "pub fn probe() -> Rc<StructuralNat>"],
+    ["pub use crate::test_fixture_structural_peano_nat::StructuralSucc;", "StructuralSucc};", "StructuralSucc, "]
   )
 }
 
@@ -613,15 +625,15 @@ test fn w_symbol_reference_renders_the_exact_qualified_spelling() -> Bool {
   )
 }
 
-// QUALIFIED VALUE HEAD, THE OTHER DIRECTION. `v2.std.nat.Succ { prev: .. }` is a variant record
+// QUALIFIED VALUE HEAD, THE OTHER DIRECTION. `test.fixture.structural_peano_nat.StructuralSucc { prev: .. }` is a variant record
 // literal; the value route imports it through its parent enum, and this route must synthesize
 // nothing for it (E0603 `variant import is private`, sixteen sites on the first regeneration).
 test fn w_qualified_variant_head_earns_no_type_use_line() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.qualified_variant_head_probe\nimport v2.std.nat { Nat, Zero }\nfn probe() -> Nat { v2.std.nat.Succ { prev: Zero } }\n",
+    "module test.claim.qualified_variant_head_probe\nimport test.fixture.structural_peano_nat { StructuralNat, StructuralZero }\nfn probe() -> StructuralNat { test.fixture.structural_peano_nat.StructuralSucc { prev: StructuralZero } }\n",
     "src/test_claim_qualified_variant_head_probe.rs",
-    ["Succ"],
-    ["use crate::v2_std_nat::Succ;"]
+    ["StructuralSucc"],
+    ["use crate::test_fixture_structural_peano_nat::StructuralSucc;"]
   )
 }
 

@@ -104,16 +104,6 @@ data ambiguity_ban_seed_growth_justification: SeedGrowthJustification = SeedGrow
     },
     DeclarationRef {
       module_path: "v1_compiler.cli_run.bare_reference_scanner_tests",
-      decl_name: "a_bare_assignment_target_is_bound_not_referenced",
-      field: WholeDeclaration
-    },
-    DeclarationRef {
-      module_path: "v1_compiler.cli_run.bare_reference_scanner_tests",
-      decl_name: "a_comparison_and_a_lambda_arrow_are_not_the_binding_form",
-      field: WholeDeclaration
-    },
-    DeclarationRef {
-      module_path: "v1_compiler.cli_run.bare_reference_scanner_tests",
       decl_name: "explicit_import_members_are_read_including_the_alias_binder",
       field: WholeDeclaration
     },

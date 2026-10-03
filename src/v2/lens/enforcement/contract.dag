@@ -56,7 +56,7 @@ import v2.lens.registry {
 }
 import v2.lens.enforcement.vocab {
   SubjectRoster, ScopeRoster,
-  EnforcementMode, Blocking, AuditOnly, Advisory,
+  EnforcementMode, Blocking, AuditOnly,
   ConsumerKind, EnrolledInFloorRoster, WitnessOnly, NoConsumer,
   ConsumerWitnessBinding, BoundConsumerWitness, NoConsumerWitness,
   ScopeSatisfaction, ScopeCovers, ScopeNarrowed, ScopeMissing,

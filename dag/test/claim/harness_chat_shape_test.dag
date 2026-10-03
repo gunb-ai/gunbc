@@ -92,6 +92,7 @@ test fn chat_tool_results_are_tool_messages_then_the_notice() -> Bool {
     shape: OpenAiChatCompletionsShape,
     results: [HarnessToolResult { tool_use_id: "chatcmpl-tool-1", text: "a b c\n[exit 0]", is_error: false }],
     steps_remaining: 7,
+    checkpointed: false,
   )
   list_length(items: msgs) == 2
     && (match msgs.first() { Present { value: m } => serialize_json(v: m).contains("\"role\": \"tool\"") && serialize_json(v: m).contains("chatcmpl-tool-1")  Absent => false })
@@ -103,6 +104,7 @@ test fn the_messages_shape_still_sends_one_user_message_of_results() -> Bool {
     shape: AnthropicMessagesShape,
     results: [HarnessToolResult { tool_use_id: "t1", text: "x", is_error: false }],
     steps_remaining: 7,
+    checkpointed: false,
   )) == 1
 }
 

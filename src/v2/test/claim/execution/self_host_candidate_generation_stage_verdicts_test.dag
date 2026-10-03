@@ -16,7 +16,7 @@ import std.algebra { list_snoc_item }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol, symbol_lexeme }
-import v2.std.text { String, string_join }
+import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -52,13 +52,13 @@ fn add_slice_stage_verdicts() -> CandidateGenerationStageVerdicts {
 }
 
 fn symbol_list_text(xs: List<Symbol>) -> String {
-  string_join(
-    fields: fold_list(
+  join(
+    fold_list(
       xs: xs,
       empty: Empty,
       cons: fn(acc, sym) { list_snoc_item(xs: acc, item: symbol_lexeme(sym: sym)) }
     ),
-    separator: ", "
+    ", "
   )
 }
 

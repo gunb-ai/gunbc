@@ -58,7 +58,8 @@ fn probe_lex() -> ModeledLexRules {
       rules: [
         TokenRule { token_class: ^raw_output_opt, pattern: LiteralPattern { text: "--raw-output" } },
         TokenRule { token_class: ^dot_filter, pattern: LiteralPattern { text: "." } }
-      ]
+      ],
+      modes: []
     }
   }
 }

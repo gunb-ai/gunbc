@@ -1,0 +1,34 @@
+module gunbc.roadmap_allocation_style
+
+import std.types { String }
+import gunbc.design.material { css_block, decl }
+import extdeps.languages.css.properties { AlignItems, Background, Border, BorderLeft, BorderRadius, BoxSizing, Color, Cursor, Display, Flex, FlexDirection, FlexWrap, FontFamily, FontSize, FontWeight, Gap, GridTemplateColumns, LetterSpacing, LineHeight, Margin, MarginTop, MaxWidth, MinWidth, Outline, Padding, Width }
+
+fn allocation_css() -> String {
+  join([
+    css_block(selector: ".header-inner", decls: [decl(prop: FlexWrap, value: "wrap")]),
+    css_block(selector: ".allocation-page", decls: [decl(prop: MaxWidth, value: "1040px"), decl(prop: Margin, value: "0 auto"), decl(prop: Padding, value: "32px 20px 64px"), decl(prop: FontFamily, value: "var(--issue-font)"), decl(prop: Color, value: "var(--issue-text)")]),
+    css_block(selector: ".allocation-page h2", decls: [decl(prop: FontSize, value: "30px"), decl(prop: Margin, value: "8px 0 12px"), decl(prop: LineHeight, value: "1.2")]),
+    css_block(selector: ".allocation-eyebrow", decls: [decl(prop: FontSize, value: "11px"), decl(prop: LetterSpacing, value: "0.12em"), decl(prop: Color, value: "var(--issue-text-dim)")]),
+    css_block(selector: ".allocation-intro", decls: [decl(prop: FontSize, value: "16px"), decl(prop: LineHeight, value: "1.6"), decl(prop: MaxWidth, value: "65ch")]),
+    css_block(selector: ".allocation-notice", decls: [decl(prop: Padding, value: "16px 20px"), decl(prop: Margin, value: "24px 0"), decl(prop: Border, value: "1px solid var(--issue-border)"), decl(prop: BorderLeft, value: "3px solid var(--issue-action)"), decl(prop: Background, value: "var(--issue-bg-subtle)"), decl(prop: BorderRadius, value: "6px")]),
+    css_block(selector: ".allocation-page p", decls: [decl(prop: LineHeight, value: "1.6")]),
+    css_block(selector: ".allocation-layout", decls: [decl(prop: Display, value: "flex"), decl(prop: FlexWrap, value: "wrap"), decl(prop: Gap, value: "24px"), decl(prop: AlignItems, value: "flex-start")]),
+    css_block(selector: ".allocation-layout form", decls: [decl(prop: Flex, value: "2 1 400px"), decl(prop: MinWidth, value: "0")]),
+    css_block(selector: ".allocation-card", decls: [decl(prop: Flex, value: "1 1 260px"), decl(prop: MinWidth, value: "0"), decl(prop: Padding, value: "24px"), decl(prop: Border, value: "1px solid var(--issue-border)"), decl(prop: BorderRadius, value: "8px"), decl(prop: Background, value: "var(--issue-bg-subtle)")]),
+    css_block(selector: ".allocation-page fieldset", decls: [decl(prop: Margin, value: "0"), decl(prop: Padding, value: "24px"), decl(prop: MinWidth, value: "0"), decl(prop: Border, value: "1px solid var(--issue-border)"), decl(prop: BorderRadius, value: "8px")]),
+    css_block(selector: ".allocation-page legend", decls: [decl(prop: FontSize, value: "18px"), decl(prop: FontWeight, value: "600"), decl(prop: Padding, value: "0 8px")]),
+    css_block(selector: ".allocation-fields", decls: [decl(prop: Display, value: "grid"), decl(prop: GridTemplateColumns, value: "repeat(auto-fit, minmax(min(180px, 100%), 1fr))"), decl(prop: Gap, value: "24px")]),
+    css_block(selector: ".allocation-field", decls: [decl(prop: Display, value: "flex"), decl(prop: FlexDirection, value: "column"), decl(prop: Gap, value: "8px"), decl(prop: MinWidth, value: "0")]),
+    css_block(selector: ".allocation-field label", decls: [decl(prop: FontWeight, value: "600"), decl(prop: FontSize, value: "14px")]),
+    css_block(selector: ".allocation-field input", decls: [decl(prop: Width, value: "100%"), decl(prop: BoxSizing, value: "border-box"), decl(prop: Padding, value: "10px 12px"), decl(prop: Border, value: "1px solid var(--issue-border)"), decl(prop: BorderRadius, value: "4px"), decl(prop: Background, value: "var(--issue-bg)"), decl(prop: Color, value: "var(--issue-text)"), decl(prop: FontSize, value: "16px")]),
+    css_block(selector: ".allocation-field small, .allocation-muted", decls: [decl(prop: Color, value: "var(--issue-text-dim)"), decl(prop: FontSize, value: "13px")]),
+    css_block(selector: ".allocation-page button", decls: [decl(prop: Padding, value: "10px 16px"), decl(prop: BorderRadius, value: "4px"), decl(prop: Border, value: "1px solid var(--issue-border)"), decl(prop: Background, value: "var(--issue-action)"), decl(prop: Color, value: "white"), decl(prop: FontSize, value: "14px"), decl(prop: Cursor, value: "pointer")]),
+    css_block(selector: ".allocation-page button:disabled", decls: [decl(prop: Background, value: "var(--issue-bg-hover)"), decl(prop: Color, value: "var(--issue-text-dim)"), decl(prop: Cursor, value: "not-allowed")]),
+    css_block(selector: ".allocation-page input:focus-visible, .allocation-page button:focus-visible", decls: [decl(prop: Outline, value: "2px solid var(--issue-action)")]),
+    css_block(selector: ".allocation-page dt", decls: [decl(prop: Color, value: "var(--issue-text-dim)"), decl(prop: FontSize, value: "12px"), decl(prop: MarginTop, value: "16px")]),
+    css_block(selector: ".allocation-page dd", decls: [decl(prop: Margin, value: "4px 0 16px")]),
+    css_block(selector: ".allocation-connection", decls: [decl(prop: MarginTop, value: "24px")]),
+    css_block(selector: ".allocation-card h3", decls: [decl(prop: MarginTop, value: "0")]),
+  ], "\n")
+}

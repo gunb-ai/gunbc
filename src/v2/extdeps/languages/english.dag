@@ -144,7 +144,8 @@ fn english_lex() -> LexRules {
         english_lex_token(token_class: ^english_token_indefinite_article, pattern: KeywordPattern { text: "an" }),
         english_lex_token(token_class: ^english_token_definite_article, pattern: KeywordPattern { text: "the" }),
         english_lex_token(token_class: ^english_token_copula, pattern: KeywordPattern { text: "is" })
-      ]
+      ],
+      modes: []
     }
   }
 }

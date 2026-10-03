@@ -1194,7 +1194,7 @@ fn cpp_lex_rules() -> List<LexRule> {
 }
 
 fn cpp_lex() -> LexRules {
-  ModeledLexRules { root: LexRuleSet { rules: cpp_lex_rules() } }
+  ModeledLexRules { root: LexRuleSet { rules: cpp_lex_rules(), modes: [] } }
 }
 
 data cpp_bool_grounding: BooleanAlgebra<v2.std.logic.Bool> = bool_boolean_algebra

@@ -785,7 +785,8 @@ fn bash_fold_lex_rules() -> LexRuleSet {
       bash_fold_lex_rule(token_class: ^bash_fold_redir_stdout_null, text: " >/dev/null"),
       bash_fold_lex_rule(token_class: ^bash_fold_redir_stdout_to_stderr, text: " >&2"),
       bash_fold_lex_rule(token_class: ^bash_fold_redir_to_file, text: " > ")
-    ]
+    ],
+    modes: []
   }
 }
 
@@ -816,7 +817,8 @@ fn bash_ingest_only_lex_rules() -> LexRuleSet {
       bash_fold_lex_rule(token_class: ^bash_ingest_brace_open, text: "{ "),
       bash_fold_lex_rule(token_class: ^bash_ingest_brace_close, text: "; }"),
       bash_fold_lex_rule(token_class: ^bash_token_orch_seq_newline, text: "\n")
-    ]
+    ],
+    modes: []
   }
 }
 
@@ -825,7 +827,8 @@ fn bash_ingest_lex_rules() -> LexRuleSet {
     rules: list_append(
       left: bash_fold_lex_rules().rules,
       right: bash_ingest_only_lex_rules().rules
-    )
+    ),
+    modes: []
   }
 }
 

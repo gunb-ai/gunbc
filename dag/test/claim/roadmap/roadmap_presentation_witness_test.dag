@@ -1,15 +1,35 @@
 module test.claim.roadmap_presentation_witness
 
+import gunbc.roadmap.roadmap_project { membership_index }
+import gunbc.roadmap.roadmap_readiness { ReadinessGap, GapDependencies, GapCentering }
+import test.claim.roadmap.roadmap_node_fixture { fx_authored, fx_authored_wi, fx_derivable_wi, fx_ticket_row, fx_ticket_wi, fx_superseded, fx_signed, fx_sign }
+
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.harness.harness_throughput {
-  HarnessRoundLedger, RoundsUnobserved, HarnessThroughput, ThroughputUnobserved }
+  HarnessRoundLedger, RoundsObserved, RoundsUnobserved, HarnessThroughput, ThroughputUnobserved,
+  RoundSegmentKind, ReadRound, WriteRound, ReasonRound, UnmeasuredRound,
+  RoundObservation }
+import extdeps.languages.json.emit { serialize_json }
 
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge,
+  RoadmapNodeId, RoadmapNodeIdentity, Pointer, NotDispatchable,
 }
 import gunbc.roadmap_status {
   AuthoredLine,
   RedControlExecuted, HandbackDelivered,
+  TicketLine, TicketFields, Unsigned,
+}
+import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
+import gunbc.roadmap.roadmap_alignment {
+  AlignmentResolution,
+  alignment_chain, alignment_resolve_chain, alignment_base_cadence_state,
+}
+import gunbc.roadmap_page {
+  IssueBreadcrumbPath, IssueBreadcrumbRefused,
+  IssueBreadcrumbProject, IssueBreadcrumbTask,
+  issue_breadcrumb_of, issue_alignment_breadcrumb_node,
+  project_suite_headline, project_suite_rows, project_suite_row_node,
 }
 import gunbc.roadmap_workflow_stage {
   WorkflowSegment, WorkflowSegmentState,
@@ -18,6 +38,7 @@ import gunbc.roadmap_workflow_stage {
   EnvironmentWorkflowSegment, WorkspaceWorkflowSegment, AgentWorkflowSegment,
   VerificationWorkflowSegment, PublicationWorkflowSegment, ReviewWorkflowSegment,
   GoalAuditWorkflowSegment,
+  workflow_segment_detail_bounded,
 }
 import gunbc.worker_lifecycle {
   WorkerProcessEvidence, WorkerProcessExited, WorkerProcessRunning,
@@ -25,7 +46,7 @@ import gunbc.worker_lifecycle {
 import gunbc.roadmap_belt { ManualReady }
 import gunbc.roadmap_launch_admission {
   LaunchAdmission, LaunchAdmitted, LaunchRefused, LaunchIdentity, Operator,
-  LaunchDependenciesBlocked, launch_graph_of_document,
+  LaunchNotReady, launch_graph_of_document,
 }
 import test.claim.roadmap.roadmap_launch_admission_fixture {
   launch_fixture_standing_clear, launch_fixture_doc, launch_fixture_identity,
@@ -43,11 +64,14 @@ import gunbc.roadmap_presentation {
   WorkAction, ActionView,
   WorkLifecycle, OpenLifecycle, ReviewLifecycle, DoneLifecycle, SupersededLifecycle,
   work_lifecycle, work_lifecycle_key,
-  WorkScheduling, SchedulingReady, SchedulingUpcoming, SchedulingDone, SchedulingSuperseded, SchedulingUnplanned,
-  work_scheduling, work_scheduling_key, scheduling_dependency_line,
+  WorkScheduling, SchedulingReady, SchedulingNotReady, SchedulingDone, SchedulingSuperseded, row_is_shown,
+  work_scheduling, work_scheduling_key,
+  TaskBarView, TaskBarFill, BarFillNone, BarFillStages, BarFillProject, BarFillClosed,
+  task_bar_view_of, stage_count_label,
   row_headline, row_summary, legacy_lead,
   dispatch_action, action_view,
   activity_view_from_parts, activity_summary_line,
+  activity_view_json_value,
   WorkRowView, work_row_view, row_supporting_facts,
   DisclosureView, NoDisclosure, TicketDisclosure, LegacyBodyDisclosure,
   SessionActionView, NoSessionAction, SessionAction,
@@ -57,8 +81,22 @@ import gunbc.roadmap_presentation {
   observation_impact_view, workspace_covers_row_activity,
   lifecycle_chip_renders,
   WorkFamilyDecl, WorkFamilyMemberFact, WorkFamilyView,
-  WorkBandEntry, BandRow, BandFamily,
+  WorkBandEntry, BandRow, BandFamily, BandProject,
+  ProjectTreeEntry, ProjectTreeView, ProjectLeaf, ProjectNested,
+  project_tree_view, project_tree_row_ids, project_task_rows,
+  ActivityLineClass, ActivityLineExec,
+  activity_line_class_key, activity_line_class_of_round, activity_line_class_of_activity,
+  row_activity_erred,
+  row_is_project, row_is_nested, row_display_parent_id, row_pulses,
+  AttemptRevisionObservation, stale_attempt_nodes,
+  activity_uniform_lane_summary,
+  IssueLinkView, IssueLinkPanel, issue_link_panel, issue_work_history_rounds,
+  issue_explanation, issue_first_open_kind, issue_wait_state_label,
 }
+import gunbc.roadmap.roadmap_event_log {
+  RoadmapNodeStanding, NodeOpen, NodeInProgress, EventPrincipalAuthenticated,
+}
+import gunbc.principal_projection { fabric_workflow_principal }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -106,9 +144,9 @@ test fn witness_specimen_summary_states_consequence_and_next_obligation() -> Boo
         && remaining == 4
         && match attention { ActivityRoutine => true ActivityAnomalous => false }
     NoActiveWork => false
-    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations: _ } => false
     LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
-    CompletedWork { outcome: _, evidence: _ } => false
+    CompletedWork { outcome: _, evidence: _, obligations: _ } => false
     ActivityUnobservable { reason: _ } => false
   }
 }
@@ -122,9 +160,9 @@ test fn witness_specimen_evidence_rows_carry_raw_facts_as_evidence() -> Bool {
         && fold(evidence, init: false, f: (acc, row) => acc || (row.label == "throughput" && row.value == "unmeasured"))
         && count(obligations) == 7
     NoActiveWork => false
-    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations: _ } => false
     LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
-    CompletedWork { outcome: _, evidence: _ } => false
+    CompletedWork { outcome: _, evidence: _, obligations: _ } => false
     ActivityUnobservable { reason: _ } => false
   }
 }
@@ -146,19 +184,19 @@ test fn witness_agent_running_reads_as_working_not_completed() -> Bool {
     ActiveWork { summary, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } =>
       summary == "Agent working"
     NoActiveWork => false
-    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations: _ } => false
     LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
-    CompletedWork { outcome: _, evidence: _ } => false
+    CompletedWork { outcome: _, evidence: _, obligations: _ } => false
     ActivityUnobservable { reason: _ } => false
   }
 }
 
 // A refusal is a first-class presentation state with its LOCATED reason, never a styling variant of
-// progress (DESIGN 5: typed, located; the attention rule auto-expands it). The discriminating
-// fixture puts the refusal mid-ledger; the view must surface the refusing obligation's own detail
-// string, and a failed segment must rank as anomalous ActiveWork — distinct states with distinct
-// remedies, and a refused ledger outranks a failed one because the refusal names an evidence gap
-// the failure count cannot explain.
+// progress (DESIGN 5: typed, located). The discriminating fixture puts the refusal mid-ledger; the
+// view must surface a LABEL — the state word plus the short reason — as the summary, keep the full
+// (here short) reason as the located reason behind the disclosure, and rank a failed segment as
+// anomalous ActiveWork — distinct states with distinct remedies, and a refused ledger outranks a
+// failed one because the refusal names an evidence gap the failure count cannot explain.
 test fn witness_refused_segment_projects_located_reason() -> Bool {
   let segments = [
     WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
@@ -171,13 +209,13 @@ test fn witness_refused_segment_projects_located_reason() -> Bool {
     throughput: ThroughputUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
     current_activity: "",
   ) {
-    ActiveWorkRefused { summary, located_reason, evidence: _ } =>
-      summary == "Agent evidence refused"
+    ActiveWorkRefused { summary, located_reason, evidence: _, obligations: _ } =>
+      summary == "Agent · refused — turn.completed with process unobserved: no exit was established"
         && located_reason == "turn.completed with process unobserved: no exit was established"
     ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
     NoActiveWork => false
     LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
-    CompletedWork { outcome: _, evidence: _ } => false
+    CompletedWork { outcome: _, evidence: _, obligations: _ } => false
     ActivityUnobservable { reason: _ } => false
   }
 }
@@ -197,9 +235,9 @@ test fn witness_failed_segment_is_anomalous_active_work() -> Bool {
       summary == "Agent failed"
         && match attention { ActivityAnomalous => true ActivityRoutine => false }
     NoActiveWork => false
-    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations: _ } => false
     LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
-    CompletedWork { outcome: _, evidence: _ } => false
+    CompletedWork { outcome: _, evidence: _, obligations: _ } => false
     ActivityUnobservable { reason: _ } => false
   }
 }
@@ -218,7 +256,7 @@ test fn witness_ticket_headline_survives_own_punctuation() -> Bool {
     red_control: "",
     out_of_scope: "",
     handback: "")
-  let rn = gunbc.roadmap_authority.ticket_row(identity: "rnfx_A2PRES0000000000000001", id: "a2-headline", done: false, t: t)
+  let rn = fx_ticket_row(identity: "rnfx_A2PRES0000000000000001", id: "a2-headline", done: false, t: t)
   row_headline(line: rn.line) == "Close the wall — phase 2. Cleanly"
 }
 
@@ -229,7 +267,7 @@ test fn witness_legacy_line_keeps_lead_residue() -> Bool {
 }
 
 test fn witness_summary_is_absent_until_typed_source_exists() -> Bool {
-  let rn = gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000002", id: "a2-sum", done: false, content: "content — with dash")
+  let rn = fx_authored(identity: "rnfx_A2PRES0000000000000002", id: "a2-sum", done: false, content: "content — with dash")
   match row_summary(line: rn.line) {
     Absent => true
     Present { value: _ } => false
@@ -249,9 +287,9 @@ test fn witness_no_attempt_projects_zero_furniture() -> Bool {
   match activity_view_of(facts: NoActiveAttempt) {
     NoActiveWork => true
     ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
-    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations: _ } => false
     LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
-    CompletedWork { outcome: _, evidence: _ } => false
+    CompletedWork { outcome: _, evidence: _, obligations: _ } => false
     ActivityUnobservable { reason: _ } => false
   }
 }
@@ -261,9 +299,9 @@ test fn witness_unobservable_preserves_located_reason() -> Bool {
     ActivityUnobservable { reason } => reason == "attempt state file unreadable: permission denied"
     NoActiveWork => false
     ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
-    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations: _ } => false
     LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
-    CompletedWork { outcome: _, evidence: _ } => false
+    CompletedWork { outcome: _, evidence: _, obligations: _ } => false
   }
 }
 
@@ -284,10 +322,10 @@ test fn witness_all_complete_ledger_is_terminal_not_active() -> Bool {
     throughput: ThroughputUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
     current_activity: "",
   ) {
-    CompletedWork { outcome, evidence: _ } => outcome == "All obligations complete"
+    CompletedWork { outcome, evidence: _, obligations: _ } => outcome == "All obligations complete"
     ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
     NoActiveWork => false
-    ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations: _ } => false
     LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
     ActivityUnobservable { reason: _ } => false
   }
@@ -298,7 +336,7 @@ fn fx_admitted(node_id: String) -> LaunchAdmission {
 }
 
 fn fx_blocked() -> LaunchAdmission {
-  LaunchRefused { refusal: LaunchDependenciesBlocked { blockers: ["a2-parent-1"] } }
+  LaunchRefused { refusal: LaunchNotReady { missing: [GapDependencies { blockers: ["a2-parent-1"] }] } }
 }
 
 // RLM-1: the dispatch action is the launch admission's projection. An admitted row's dispatch is
@@ -323,7 +361,7 @@ test fn witness_admitted_dispatch_is_primary_refused_is_unavailable() -> Bool {
     acc || (match a.kind { DispatchAction => true ClearSessionAction => false }
       && match a.availability { ActionUnavailable => true ActionAvailable => false }
       && match a.priority { SecondaryAction => true PrimaryAction => false DiagnosticAction => false }
-      && a.label == "dependencies_blocked"
+      && a.label == "not_ready"
       && string_contains(s: a.detail, pattern: "a2-parent-1")))
   ready_ok && blocked_primary_empty && blocked_unavailable
 }
@@ -421,14 +459,14 @@ test fn witness_session_facts_line_and_detail_are_decided() -> Bool {
 // superseded line outranks everything and carries its forwarding pointer.
 
 test fn witness_lifecycle_axes_discriminate() -> Bool {
-  let open_node = gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000003", id: "a2-open", done: false, content: "open work")
-  let done_line_node = gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000004", id: "a2-review", done: true, content: "review work")
-  let signed_node = gunbc.roadmap_authority.sign(rn: open_node, s: gunbc.roadmap_authority.signed(
+  let open_node = fx_authored(identity: "rnfx_A2PRES0000000000000003", id: "a2-open", done: false, content: "open work")
+  let done_line_node = fx_authored(identity: "rnfx_A2PRES0000000000000004", id: "a2-review", done: true, content: "review work")
+  let signed_node = fx_sign(rn: open_node, s: fx_signed(
     by: "operator",
     works: RedControlExecuted { witness_module: "test.claim.roadmap_presentation_witness", witness_fn: "witness_lifecycle_axes_discriminate", executed_on: "2026-08-01" },
     scope_equivalent: HandbackDelivered { first_artifact: "receipt", further_artifacts: [] },
     as_expected: true))
-  let superseded_node = gunbc.roadmap_authority.superseded(identity: "rnfx_A2PRES0000000000000005", id: "a2-sup", by: "a2-open", content: "old shape")
+  let superseded_node = fx_superseded(identity: "rnfx_A2PRES0000000000000005", id: "a2-sup", by: "a2-open", content: "old shape")
   work_lifecycle_key(l: work_lifecycle(rn: open_node, merged: [])) == "open"
     && work_lifecycle_key(l: work_lifecycle(rn: done_line_node, merged: [])) == "review"
     && work_lifecycle_key(l: work_lifecycle(rn: signed_node, merged: [])) == "done"
@@ -446,10 +484,10 @@ test fn witness_lifecycle_axes_discriminate() -> Bool {
 
 fn fx_row_nodes() -> List<RoadmapNode> {
   [
-    gunbc.roadmap_authority.authored_wi(identity: "rnfx_A2PRES0000000000000006", id: "a2-row",
+    fx_authored_wi(identity: "rnfx_A2PRES0000000000000006", id: "a2-row",
       done: false, content: "row headline — row brief", repo: "gunbc"),
-    gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000007", id: "a2-parent-1", done: false, content: "parent one"),
-    gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000008", id: "a2-parent-2", done: false, content: "parent two"),
+    fx_authored(identity: "rnfx_A2PRES0000000000000007", id: "a2-parent-1", done: false, content: "parent one"),
+    fx_authored(identity: "rnfx_A2PRES0000000000000008", id: "a2-parent-2", done: false, content: "parent two"),
   ]
 }
 
@@ -474,14 +512,16 @@ fn fx_row(activity: ActivityView) -> WorkRowView {
     Present { value: rn } =>
       work_row_view(rn: rn, nodes: nodes, edges: fx_row_edges(), merged: [], activity: activity,
         rounds: RoundsUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
-        worker_alive: false, standing: none,
-        launch: fx_row_launch(nodes: nodes, edges: fx_row_edges()))
+        worker_alive: false, standing: none, attempt_stale: false,
+        launch: fx_row_launch(nodes: nodes, edges: fx_row_edges()),
+        profiles: [])
     Absent => work_row_view(
-      rn: gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000009", id: "a2-unreachable", done: false, content: "unreachable"),
+      rn: fx_authored(identity: "rnfx_A2PRES0000000000000009", id: "a2-unreachable", done: false, content: "unreachable"),
       nodes: [], edges: [], merged: [], activity: activity,
       rounds: RoundsUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
-      worker_alive: false, standing: none,
-      launch: fx_row_launch(nodes: [], edges: []))
+      worker_alive: false, standing: none, attempt_stale: false,
+      launch: fx_row_launch(nodes: [], edges: []),
+      profiles: [])
   }
 }
 
@@ -490,13 +530,17 @@ test fn witness_work_row_view_composes_from_fixture() -> Bool {
   row.headline == "row headline"
     && row.node_id == "a2-row"
     && (match row.scheduling {
-      SchedulingUpcoming { blockers } =>
-        count(blockers) == 2
-          && fold(blockers, init: true, f: (acc, b) => acc && (b == "a2-parent-1" || b == "a2-parent-2"))
+      SchedulingNotReady { missing } =>
+        count(missing) == 1
+          && all(missing, g => match g {
+            GapDependencies { blockers } =>
+              count(blockers) == 2
+                && fold(blockers, init: true, f: (acc, b) => acc && (b == "a2-parent-1" || b == "a2-parent-2"))
+            _ => false
+          })
       SchedulingReady => false
       SchedulingDone => false
       SchedulingSuperseded => false
-      SchedulingUnplanned => false
     })
     && work_lifecycle_key(l: row.lifecycle) == "open"
     && row.superseded_by == ""
@@ -504,36 +548,54 @@ test fn witness_work_row_view_composes_from_fixture() -> Bool {
     && fold(row.supporting_facts, init: false, f: (acc, fact) => acc || fact.label == "repo")
     && !fold(row.supporting_facts, init: false, f: (acc, fact) => acc || fact.label == "sizing")
     && !fold(row.supporting_facts, init: false, f: (acc, fact) => acc || fact.label == "owner")
-    && match row.activity { NoActiveWork => true ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false CompletedWork { outcome: _, evidence: _ } => false ActivityUnobservable { reason: _ } => false }
+    && match row.activity { NoActiveWork => true ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations: _ } => false LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false CompletedWork { outcome: _, evidence: _, obligations: _ } => false ActivityUnobservable { reason: _ } => false }
 }
 
-// The scheduling axis discriminates by the SAME predicates spawn_frontier filters (operator blocker
-// 2: ready was a caller-assertable Bool; now the position is projected, not asserted). The fixtures
-// cover the five arms: a sized dependency-met node is Ready; a sized node under an open parent is
-// Upcoming CARRYING that blocker; an unsized node is Unplanned (never conflated with Upcoming — it
-// has no blockers to fabricate); a superseded line is Superseded whatever else holds; and the
-// dependency line renders only for an Upcoming row with more than one blocker.
+// The scheduling axis is the dispatcher's readiness (gunbc.roadmap.roadmap_readiness): a complete
+// node whose prerequisites are closed is Ready; a complete node under an open parent is NotReady
+// CARRYING that blocker as its one missing fact; an unsized row that supplies no dispatch facts is
+// NotReady on each of them (never conflated with a blocked one -- it has no blocker to fabricate);
+// a superseded line is Superseded whatever else holds.
 test fn witness_scheduling_projects_typed_positions() -> Bool {
   let nodes = fx_row_nodes()
   let edges = fx_row_edges()
-  let child = match nodes.first() { Present { value: rn } => rn Absent => gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000010", id: "a2-x", done: false, content: "x") }
-  let ready_node = gunbc.roadmap_authority.authored_wi(identity: "rnfx_A2PRES0000000000000011", id: "a2-ready",
+  let child = match nodes.first() { Present { value: rn } => rn Absent => fx_authored(identity: "rnfx_A2PRES0000000000000010", id: "a2-x", done: false, content: "x") }
+  let ready_node = fx_authored_wi(identity: "rnfx_A2PRES0000000000000011", id: "a2-ready",
     done: false, content: "ready row", repo: "gunbc")
-  let unsized_node = gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000012", id: "a2-unsized", done: false, content: "unsized row")
-  let superseded_node = gunbc.roadmap_authority.superseded(identity: "rnfx_A2PRES0000000000000013", id: "a2-sup2", by: "a2-ready", content: "old")
-  work_scheduling_key(s: work_scheduling(rn: child, nodes: nodes, edges: edges)) == "upcoming"
+  let unsized_node = fx_authored(identity: "rnfx_A2PRES0000000000000012", id: "a2-unsized", done: false, content: "unsized row")
+  let superseded_node = fx_superseded(identity: "rnfx_A2PRES0000000000000013", id: "a2-sup2", by: "a2-ready", content: "old")
+  work_scheduling_key(s: work_scheduling(rn: child, nodes: nodes, edges: edges)) == "not-ready"
     && work_scheduling_key(s: work_scheduling(rn: ready_node, nodes: [ready_node], edges: [])) == "ready"
-    && work_scheduling_key(s: work_scheduling(rn: unsized_node, nodes: [unsized_node], edges: [])) == "unplanned"
+    && work_scheduling_key(s: work_scheduling(rn: unsized_node, nodes: [unsized_node], edges: [])) == "not-ready"
+    && (match work_scheduling(rn: unsized_node, nodes: [unsized_node], edges: []) {
+      SchedulingNotReady { missing } => count(missing) > 1 && !any(missing, g => match g { GapDependencies { blockers: _ } => true  _ => false })
+      _ => false
+    })
     && work_scheduling_key(s: work_scheduling(rn: superseded_node, nodes: [superseded_node], edges: [])) == "superseded"
 }
 
-test fn witness_dependency_line_only_for_multi_blocker_upcoming() -> Bool {
-  let two = scheduling_dependency_line(s: SchedulingUpcoming { blockers: ["a2-parent-1", "a2-parent-2"] })
-  let one = scheduling_dependency_line(s: SchedulingUpcoming { blockers: ["a2-parent-1"] })
-  let ready = scheduling_dependency_line(s: SchedulingReady)
-  (match two { Present { value: line } => line == "requires all: a2-parent-1, a2-parent-2" Absent => false })
-    && (match one { Absent => true Present { value: _ } => false })
-    && (match ready { Absent => true Present { value: _ } => false })
+// The blocker is visible IN THE BAR (2026-09-21 redesign): every upcoming row's signal names its
+// specific blockers — including the single-blocker case the retired title-adjacent line used to
+// leave to the tree's nesting. A ready row's signal is its next action instead.
+test fn witness_bar_signal_names_blockers_for_upcoming_rows() -> Bool {
+  let bar_two = task_bar_view_of(view: fx_row(activity: NoActiveWork), observation: ObservationsNominal)
+  let single_nodes = [
+    fx_sized(id: "hier-single-child", content: "single blocked row"),
+    fx_sized(id: "hier-single-parent", content: "single blocker"),
+  ]
+  let single_edges = [ gunbc.roadmap_authority.edge(child: "hier-single-child", parent: "hier-single-parent") ]
+  let bar_one = task_bar_view_of(
+    view: fx_hier_view(rn: first(single_nodes).value, nodes: single_nodes, edges: single_edges, merged: [], activity: NoActiveWork, standing: none),
+    observation: ObservationsNominal)
+  let ready_nodes = [ fx_sized(id: "hier-ready-row", content: "ready row") ]
+  let bar_ready = task_bar_view_of(
+    view: fx_hier_view(rn: first(ready_nodes).value, nodes: ready_nodes, edges: [], merged: [], activity: NoActiveWork, standing: none),
+    observation: ObservationsNominal)
+  bar_two.signal == "not ready: missing dependencies (a2-parent-1, a2-parent-2)"
+    && bar_one.signal == "not ready: missing dependencies (hier-single-parent)"
+    && bar_ready.signal == "ready to dispatch"
+    && (match bar_two.fill { BarFillNone => true BarFillStages => false BarFillProject => false BarFillClosed => false })
+    && (match bar_ready.fill { BarFillNone => true BarFillStages => false BarFillProject => false BarFillClosed => false })
 }
 
 // The workspace grouping (operator blocker 6): a row with active or refused work belongs to the
@@ -545,6 +607,7 @@ fn band_entry_row_count(entries: List<WorkBandEntry>) -> Int {
   fold(entries, init: 0, f: (acc, e) => match e {
     BandRow { row: _ } => acc + 1
     BandFamily { family } => acc + count(family.rows)
+    BandProject { project } => acc + count(project_tree_row_ids(view: project))
   })
 }
 
@@ -552,18 +615,19 @@ fn band_entry_has_active(entries: List<WorkBandEntry>) -> Bool {
   fold(entries, init: false, f: (acc, e) => acc || (match e {
     BandRow { row } => row_is_active_work(row: row)
     BandFamily { family } => fold(family.rows, init: false, f: (a, r) => a || row_is_active_work(row: r))
+    BandProject { project: _ } => false
   }))
 }
 
 test fn witness_daily_workspace_surfaces_active_above_ready() -> Bool {
   let active_row = fx_row(activity: fx_specimen_activity())
   let idle_row = fx_row(activity: NoActiveWork)
-  let ws = daily_workspace_view(rows: [idle_row, active_row], program: none, observation: ObservationsNominal, families: [], members: [])
+  let ws = daily_workspace_view(rows: [idle_row, active_row], edges: [], program: none, observation: ObservationsNominal, families: [], members: [], memberships: fixture_nesting_relation(edges: []))
   count(ws.active) == 1
-    && fold(ws.active, init: true, f: (acc, r) => acc && row_is_active_work(row: r))
-    && band_entry_row_count(entries: ws.upcoming) == 1
+    && band_entry_has_active(entries: ws.active)
+    && band_entry_row_count(entries: ws.not_ready) == 1
     && band_entry_row_count(entries: ws.ready) == 0
-    && !band_entry_has_active(entries: ws.upcoming)
+    && !band_entry_has_active(entries: ws.not_ready)
 }
 
 // The family-once receipts, all against constructed facts. Stated-once: two listed members plus one
@@ -590,7 +654,10 @@ fn fx_family_member_row(node_id: String, headline: String, activity: ActivityVie
     disclosure: base.disclosure,
     rounds: RoundsUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
     worker_alive: false,
+    assignment: none,
     standing: none,
+    attempt_stale: false,
+    profiles: base.profiles,
   }
 }
 
@@ -611,10 +678,10 @@ test fn witness_family_claim_stated_once_rows_carry_subject() -> Bool {
   let m1 = fx_family_member_row(node_id: "cc-a", headline: "Write the closing check for: Alpha subject", activity: NoActiveWork)
   let lookalike = fx_family_member_row(node_id: "solo", headline: join([fx_family_claim(), " for: Unlisted"], ""), activity: NoActiveWork)
   let m2 = fx_family_member_row(node_id: "cc-b", headline: "Write the closing check for: Beta subject", activity: NoActiveWork)
-  let ws = daily_workspace_view(rows: [m1, lookalike, m2], program: none, observation: ObservationsNominal,
-    families: fx_family_decls(), members: fx_family_members())
-  count(ws.upcoming) == 2
-    && (match ws.upcoming.first() {
+  let ws = daily_workspace_view(rows: [m1, lookalike, m2], edges: [], program: none, observation: ObservationsNominal,
+    families: fx_family_decls(), members: fx_family_members(), memberships: fixture_nesting_relation(edges: []))
+  count(ws.not_ready) == 2
+    && (match ws.not_ready.first() {
       Present { value: e } => match e {
         BandFamily { family } =>
           family.claim == fx_family_claim()
@@ -624,48 +691,60 @@ test fn witness_family_claim_stated_once_rows_carry_subject() -> Bool {
               Absent => false
             })
         BandRow { row: _ } => false
+        BandProject { project: _ } => false
       }
       Absent => false
     })
-    && fold(ws.upcoming, init: false, f: (acc, e) => acc || (match e {
+    && fold(ws.not_ready, init: false, f: (acc, e) => acc || (match e {
       BandRow { row } => row.node_id == "solo" && row.headline == join([fx_family_claim(), " for: Unlisted"], "")
       BandFamily { family: _ } => false
+      BandProject { project: _ } => false
     }))
 }
 
 test fn witness_family_membership_is_typed_not_parsed() -> Bool {
   let m2 = fx_family_member_row(node_id: "cc-b", headline: "Write the closing check for: Beta subject", activity: NoActiveWork)
-  let ws = daily_workspace_view(rows: [m2], program: none, observation: ObservationsNominal,
-    families: fx_family_decls(), members: fx_family_members())
-  fold(ws.upcoming, init: false, f: (acc, e) => acc || (match e {
+  let ws = daily_workspace_view(rows: [m2], edges: [], program: none, observation: ObservationsNominal,
+    families: fx_family_decls(), members: fx_family_members(), memberships: fixture_nesting_relation(edges: []))
+  fold(ws.not_ready, init: false, f: (acc, e) => acc || (match e {
     BandFamily { family } => fold(family.rows, init: false, f: (a, r) =>
       a || r.headline == join([fx_family_claim(), " nested in a subject"], ""))
     BandRow { row: _ } => false
+    BandProject { project: _ } => false
   }))
 }
 
 test fn witness_active_family_member_leaves_group() -> Bool {
   let m1 = fx_family_member_row(node_id: "cc-a", headline: "Write the closing check for: Alpha subject", activity: fx_specimen_activity())
   let m2 = fx_family_member_row(node_id: "cc-b", headline: "Write the closing check for: Beta subject", activity: NoActiveWork)
-  let ws = daily_workspace_view(rows: [m1, m2], program: none, observation: ObservationsNominal,
-    families: fx_family_decls(), members: fx_family_members())
+  let ws = daily_workspace_view(rows: [m1, m2], edges: [], program: none, observation: ObservationsNominal,
+    families: fx_family_decls(), members: fx_family_members(), memberships: fixture_nesting_relation(edges: []))
   count(ws.active) == 1
-    && (match ws.active.first() { Present { value: r } => r.node_id == "cc-a" Absent => false })
-    && fold(ws.upcoming, init: false, f: (acc, e) => acc || (match e {
+    && (match ws.active.first() {
+      Present { value: e } => match e {
+        BandRow { row } => row.node_id == "cc-a"
+        BandFamily { family: _ } => false
+        BandProject { project: _ } => false
+      }
+      Absent => false
+    })
+    && fold(ws.not_ready, init: false, f: (acc, e) => acc || (match e {
       BandFamily { family } => count(family.rows) == 1
       BandRow { row: _ } => false
+      BandProject { project: _ } => false
     }))
 }
 
 test fn witness_undeclared_family_member_stays_ungrouped_row() -> Bool {
   let m1 = fx_family_member_row(node_id: "cc-a", headline: "Write the closing check for: Alpha subject", activity: NoActiveWork)
-  let ws = daily_workspace_view(rows: [m1], program: none, observation: ObservationsNominal,
-    families: [], members: fx_family_members())
-  count(ws.upcoming) == 1
-    && (match ws.upcoming.first() {
+  let ws = daily_workspace_view(rows: [m1], edges: [], program: none, observation: ObservationsNominal,
+    families: [], members: fx_family_members(), memberships: fixture_nesting_relation(edges: []))
+  count(ws.not_ready) == 1
+    && (match ws.not_ready.first() {
       Present { value: e } => match e {
         BandRow { row } => row.headline == "Write the closing check for: Alpha subject"
         BandFamily { family: _ } => false
+        BandProject { project: _ } => false
       }
       Absent => false
     })
@@ -704,3 +783,1218 @@ test fn witness_workspace_impact_narrates_once() -> Bool {
     && !workspace_covers_row_activity(observation: impact, a: fx_specimen_activity())
     && !workspace_covers_row_activity(observation: nominal, a: unobs)
 }
+
+// ── The status-surface ruling (operator, 2026-09-20) ────────────────────────────────────────────
+//
+// Four receipts, all over constructed payloads: an enumerated dump never renders inline (count +
+// bounded excerpt + the receipt pointer, even behind the disclosure); identical lane failures
+// aggregate in the label while the per-lane clauses stay reachable but bounded; a refused lane's
+// surface text is the state word plus a short reason, never the raw payload; and staleness is a
+// revision comparison with two honest empty arms.
+
+fn fx_dump_lines(n: Int) -> List<String> {
+  if n <= 0 {
+    []
+  } else {
+    concat(fx_dump_lines(n: n - 1), [
+      join(["unparseable .dag source src/lane-", to_string(value: n), ".dag"], ""),
+    ])
+  }
+}
+
+fn fx_lane_keys() -> List<String> {
+  [
+    "minimize-redundancy", "single-authority", "conformance", "consumption",
+    "goal", "fail-closed", "selection-precedes-convergence", "evidence",
+    "scope", "simplicity", "external-facts", "realization", "decision", "keys",
+  ]
+}
+
+fn fx_uniform_review_detail() -> String {
+  join(map(fx_lane_keys(), k => join([k, ": reviewer exited 1 without a verdict"], "")), " · ")
+}
+
+// The 98-file dump: bounded to count + first excerpt-budget entries + the pointer; the 4th entry
+// and the tail never reach the surface. RED: a renderer passing the payload through keeps
+// lane-4/lane-98 present and the first assertion fails.
+test fn witness_bounded_dump_renders_count_excerpt_and_pointer() -> Bool {
+  let bounded = workflow_segment_detail_bounded(detail: join(fx_dump_lines(n: 98), "\n"))
+  string_contains(s: bounded, pattern: "95 more of 98")
+    && string_contains(s: bounded, pattern: "full list in the attempt receipt artifact")
+    && string_contains(s: bounded, pattern: "src/lane-1.dag")
+    && string_contains(s: bounded, pattern: "src/lane-3.dag")
+    && !string_contains(s: bounded, pattern: "src/lane-4.dag")
+    && !string_contains(s: bounded, pattern: "src/lane-98.dag")
+}
+
+// The passthrough arm is the control for the bound's discriminating direction: an ordinary
+// one-sentence reason renders untouched, so the bound cannot be satisfied by truncating everything.
+test fn witness_short_detail_passes_the_bound_untouched() -> Bool {
+  workflow_segment_detail_bounded(detail: "turn.completed with process unobserved: no exit was established")
+    == "turn.completed with process unobserved: no exit was established"
+}
+
+// Fourteen identical lane failures aggregate to one uniform claim; mixed messages do not —
+// non-uniformity is information the label may not erase.
+test fn witness_uniform_lane_failures_aggregate() -> Bool {
+  match activity_uniform_lane_summary(detail: fx_uniform_review_detail()) {
+    Present { value: aggregate } =>
+      aggregate == "14/14 lanes — reviewer exited 1 without a verdict"
+    Absent => false
+  }
+}
+
+test fn witness_mixed_lane_failures_do_not_aggregate() -> Bool {
+  match activity_uniform_lane_summary(detail: join([
+    "minimize-redundancy: reviewer exited 1 without a verdict",
+    "single-authority: changes requested — drop the second authority",
+    "conformance: reviewer exited 1 without a verdict",
+    "consumption: reviewer exited 2 without a verdict",
+  ], " · ")) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// The refused Review lane end to end: the surface label is the state word plus the aggregate — no
+// criterion key, no raw enumeration — and the located reason behind the disclosure is itself
+// bounded (first three lanes + the count + the pointer).
+test fn witness_refused_review_lane_labels_and_bounds() -> Bool {
+  match activity_view_from_parts(
+    segments: [
+      WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentRefused, detail: fx_uniform_review_detail() },
+    ],
+    remaining: 6,
+    process: WorkerProcessExited { exit_code: 0, last_command: "" },
+    throughput: ThroughputUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
+    current_activity: "",
+  ) {
+    ActiveWorkRefused { summary, located_reason, evidence: _, obligations: _ } =>
+      summary == "Review · refused — 14/14 lanes — reviewer exited 1 without a verdict"
+        && !string_contains(s: summary, pattern: "minimize-redundancy")
+        && string_contains(s: located_reason, pattern: "minimize-redundancy: reviewer exited 1 without a verdict")
+        && string_contains(s: located_reason, pattern: "11 more of 14")
+        && string_contains(s: located_reason, pattern: "full list in the attempt receipt artifact")
+        && !string_contains(s: located_reason, pattern: "consumption: reviewer exited 1 without a verdict")
+    ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
+    NoActiveWork => false
+    LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
+    CompletedWork { outcome: _, evidence: _, obligations: _ } => false
+    ActivityUnobservable { reason: _ } => false
+  }
+}
+
+// Staleness is a revision comparison, both honest arms included: a readable launch revision that
+// differs from the deployed head is stale; the same revision is not; an unreadable launch record
+// (empty observation) dims nothing; and an unobservable current revision dims nothing at all.
+test fn witness_stale_attempt_nodes_compares_revisions() -> Bool {
+  let observations = [
+    AttemptRevisionObservation { node_id: "n-stale", launch_revision_hex: "aaaa" },
+    AttemptRevisionObservation { node_id: "n-current", launch_revision_hex: "bbbb" },
+    AttemptRevisionObservation { node_id: "n-unreadable", launch_revision_hex: "" },
+  ]
+  let stale = stale_attempt_nodes(observations: observations, current_revision_hex: "bbbb")
+  count(stale) == 1
+    && (match stale.first() { Present { value: s } => s == "n-stale" Absent => false })
+    && count(stale_attempt_nodes(observations: observations, current_revision_hex: "")) == 0
+}
+
+// ── Project hierarchy (operator request 2026-09-20) ────────────────────────────────────────────
+//
+// The derivation direction, pinned first because it has been inverted twice: edge(child: X,
+// parent: Y) means X depends on Y, so a project's TASKS are its PREREQUISITES — the rows named in
+// the parent position of its edges. The exemplar is the arc shell-typed-invocation, which the
+// authority points at its ten shell-dag-* tasks with edge(child: "shell-typed-invocation",
+// parent: "shell-dag-X"). Every fixture here is constructed; no live roadmap population is read.
+
+fn fx_sized(id: String, content: String) -> RoadmapNode {
+  fx_authored_wi(
+    identity: join(["rnfx-", id], ""),
+    id: id,
+    done: false,
+    content: content,
+    repo: "gunbc")
+}
+
+fn fx_hier_view(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, activity: ActivityView, standing: RoadmapNodeStanding?) -> WorkRowView {
+  work_row_view(
+    rn: rn, nodes: nodes, edges: edges, merged: merged, activity: activity,
+    rounds: RoundsUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
+    worker_alive: false, standing: standing, attempt_stale: false,
+    launch: fx_row_launch(nodes: nodes, edges: edges),
+    profiles: [])
+}
+
+fn fx_hier_nodes() -> List<RoadmapNode> {
+  [
+    fx_sized(id: "hier-project", content: "project headline — project brief"),
+    fx_sign(
+      rn: fx_sized(id: "hier-task-done", content: "done task"),
+      s: fx_signed(
+        by: "op",
+        works: RedControlExecuted { witness_module: "test.claim.roadmap_presentation_witness", witness_fn: "witness_project_progress_counts_accepted_or_superseded_only", executed_on: "2026-09-20" },
+        scope_equivalent: HandbackDelivered { first_artifact: "receipt", further_artifacts: [] },
+        as_expected: true)),
+    fx_superseded(identity: "rnfx-hier-task-superseded", id: "hier-task-superseded", by: "hier-task-done", content: "old shape"),
+    fx_derivable_wi(
+      identity: "rnfx-hier-task-review", id: "hier-task-review",
+      prs: [7301], title: "review task", description: "",
+      repo: "gunbc"),
+    fx_sized(id: "hier-task-open", content: "open task"),
+  ]
+}
+
+fn fx_hier_edges() -> List<RoadmapEdge> {
+  [
+    gunbc.roadmap_authority.edge(child: "hier-project", parent: "hier-task-done"),
+    gunbc.roadmap_authority.edge(child: "hier-project", parent: "hier-task-superseded"),
+    gunbc.roadmap_authority.edge(child: "hier-project", parent: "hier-task-review"),
+    gunbc.roadmap_authority.edge(child: "hier-project", parent: "hier-task-open"),
+  ]
+}
+
+fn fx_hier_rows(activity_for_open: ActivityView, standing_for_open: RoadmapNodeStanding?) -> List<WorkRowView> {
+  let nodes = fx_hier_nodes()
+  let edges = fx_hier_edges()
+  map(nodes, rn => fx_hier_view(
+    rn: rn, nodes: nodes, edges: edges, merged: [7301],
+    activity: if (rn.node as String) == "hier-task-open" { activity_for_open } else { NoActiveWork },
+    standing: if (rn.node as String) == "hier-task-open" { standing_for_open } else { none }))
+}
+
+fn fx_row_of(rows: List<WorkRowView>, node_id: String) -> WorkRowView {
+  match rows |> filter(r => r.node_id == node_id) |> first {
+    Present { value: r } => r
+    Absent => fx_row(activity: NoActiveWork)
+  }
+}
+
+fn fx_entry_id(entry: ProjectTreeEntry) -> String {
+  match entry {
+    ProjectLeaf { row } => row.node_id
+    ProjectNested { project } => project.row.node_id
+  }
+}
+
+fn band_entry_ids(entry: WorkBandEntry) -> List<String> {
+  match entry {
+    BandRow { row } => [ row.node_id ]
+    BandFamily { family } => map(family.rows, r => r.node_id)
+    BandProject { project } => project_tree_row_ids(view: project)
+  }
+}
+
+fn fx_ws_rendered_ids(ws: DailyWorkspaceView) -> List<String> {
+  concat(
+    flat_map(ws.active, e => band_entry_ids(entry: e)),
+    concat(
+      flat_map(ws.ready, e => band_entry_ids(entry: e)),
+      concat(
+        flat_map(ws.not_ready, e => band_entry_ids(entry: e)),
+        concat(
+          flat_map(ws.done, e => band_entry_ids(entry: e)),
+          flat_map(ws.superseded, e => band_entry_ids(entry: e))))))
+}
+
+fn fx_project_tree(rows: List<WorkRowView>, edges: List<RoadmapEdge>, node_id: String) -> ProjectTreeView {
+  project_tree_view(
+    row: fx_row_of(rows: rows, node_id: node_id),
+    rows: rows, edges: edges, members: [], depth: 1, fuel: count(rows), memberships: membership_index(memberships: fixture_nesting_relation(edges: edges)))
+}
+
+// THE DIRECTION WALL: the project's display children are the rows in the PARENT position of its
+// edges (its prerequisites), in edge declaration order; the prerequisite rows own no tree of their
+// own. An inversion of this derivation reds every conjunct.
+test fn witness_project_tasks_are_prerequisites() -> Bool {
+  let rows = fx_hier_rows(activity_for_open: NoActiveWork, standing_for_open: none)
+  let edges = fx_hier_edges()
+  map(project_task_rows(rows: rows, edges: edges, members: [], node_id: "hier-project", memberships: membership_index(memberships: fixture_nesting_relation(edges: edges))), r => r.node_id)
+    == ["hier-task-done", "hier-task-superseded", "hier-task-review", "hier-task-open"]
+    && count(project_task_rows(rows: rows, edges: edges, members: [], node_id: "hier-task-open", memberships: membership_index(memberships: fixture_nesting_relation(edges: edges)))) == 0
+    && row_is_project(rows: rows, edges: edges, members: [], row: fx_row_of(rows: rows, node_id: "hier-project"), memberships: membership_index(memberships: fixture_nesting_relation(edges: edges)))
+    && !row_is_project(rows: rows, edges: edges, members: [], row: fx_row_of(rows: rows, node_id: "hier-task-open"), memberships: membership_index(memberships: fixture_nesting_relation(edges: edges)))
+}
+
+// PROGRESS COUNTS CLOSURE, NEVER IMPLEMENTATION EVIDENCE: closed = accepted or superseded
+// (node_closes_dependency), so the done and superseded tasks close and the review task — a merged
+// PR without an accepting signoff — does not. A derivation that counted "has a PR" as closed
+// would report 3 of 4 here; the correct answer is 2 of 4. The project itself is upcoming (two
+// unmet prerequisites) and carries its four tasks nested in edge declaration order; the bands the
+// tasks left behind are empty because every one of them renders exactly once, inside the tree.
+test fn witness_project_progress_counts_accepted_or_superseded_only() -> Bool {
+  let rows = fx_hier_rows(activity_for_open: NoActiveWork, standing_for_open: none)
+  let edges = fx_hier_edges()
+  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [], memberships: fixture_nesting_relation(edges: edges))
+  count(ws.active) == 0
+    && count(ws.not_ready) == 1
+    && (match ws.not_ready.first() {
+      Present { value: e } => match e {
+        BandProject { project } =>
+          project.row.node_id == "hier-project"
+            && project.total_count == 4
+            && project.closed_count == 2
+            && map(project.entries, ent => fx_entry_id(entry: ent))
+              == ["hier-task-done", "hier-task-superseded", "hier-task-review", "hier-task-open"]
+            && !project.auto_open
+        BandRow { row: _ } => false
+        BandFamily { family: _ } => false
+      }
+      Absent => false
+    })
+    && band_entry_row_count(entries: ws.ready) == 0
+    && band_entry_row_count(entries: ws.done) == 0
+    && band_entry_row_count(entries: ws.superseded) == 0
+}
+
+// NOTHING VANISHES, NOTHING DUPLICATES, and GROUP-EVERYWHERE (operator feedback 2026-09-21,
+// amending ACTIVE-SURFACES): the open task with a live attempt NESTS under its project like every
+// other task — the project root joins the Active band because its subtree carries live work,
+// renders there as ONE grouped project row (auto-open by the live-subtree pulse), and every
+// rendered input row appears in the composed workspace exactly once, in its nested position.
+test fn witness_workspace_nesting_loses_no_node_and_duplicates_none() -> Bool {
+  let rows = fx_hier_rows(activity_for_open: fx_specimen_activity(), standing_for_open: none)
+  let edges = fx_hier_edges()
+  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [], memberships: fixture_nesting_relation(edges: edges))
+  let ids = fx_ws_rendered_ids(ws: ws)
+  count(ids) == 5
+    && all(rows, r => count(ids |> filter(i => i == r.node_id)) == 1)
+    && count(ws.active) == 1
+    && (match ws.active.first() {
+      Present { value: e } => match e {
+        BandProject { project } =>
+          project.row.node_id == "hier-project"
+            && project.total_count == 4
+            && map(project.entries, ent => fx_entry_id(entry: ent))
+              == ["hier-task-done", "hier-task-superseded", "hier-task-review", "hier-task-open"]
+            && project.auto_open
+        BandRow { row: _ } => false
+        BandFamily { family: _ } => false
+      }
+      Absent => false
+    })
+    && band_entry_row_count(entries: ws.not_ready) == 0
+    && band_entry_row_count(entries: ws.ready) == 0
+    && band_entry_row_count(entries: ws.done) == 0
+    && band_entry_row_count(entries: ws.superseded) == 0
+}
+
+// A projectless row with a live attempt renders FLAT in the Active band (the band's other top-level
+// shape), while an idle sibling stays in its scheduling band — the band's membership is root-grain:
+// the active row's own position is top-level because nothing nests it, not because it was pulled
+// out of a tree.
+test fn witness_projectless_active_row_renders_flat_in_active() -> Bool {
+  let nodes = [
+    fx_sized(id: "hier-solo-active", content: "solo live row"),
+    fx_sized(id: "hier-solo-idle", content: "solo idle row"),
+  ]
+  let rows = map(nodes, rn => fx_hier_view(
+    rn: rn, nodes: nodes, edges: [], merged: [],
+    activity: if (rn.node as String) == "hier-solo-active" { fx_specimen_activity() } else { NoActiveWork },
+    standing: none))
+  let ws = daily_workspace_view(rows: rows, edges: [], program: none, observation: ObservationsNominal, families: [], members: [], memberships: fixture_nesting_relation(edges: []))
+  let ids = fx_ws_rendered_ids(ws: ws)
+  count(ids) == 2
+    && all(rows, r => count(ids |> filter(i => i == r.node_id)) == 1)
+    && count(ws.active) == 1
+    && (match ws.active.first() {
+      Present { value: e } => match e {
+        BandRow { row } => row.node_id == "hier-solo-active"
+        BandFamily { family: _ } => false
+        BandProject { project: _ } => false
+      }
+      Absent => false
+    })
+    && (match ws.ready.first() {
+      Present { value: e } => match e {
+        BandRow { row } => row.node_id == "hier-solo-idle"
+        BandFamily { family: _ } => false
+        BandProject { project: _ } => false
+      }
+      Absent => false
+    })
+}
+
+// Blocker declaration order cannot choose ownership. Only the independent nesting does.
+test fn witness_shared_prerequisite_uses_only_authored_nesting() -> Bool {
+  let nodes = [fx_sized(id: "hier-p1", content: "project one"), fx_sized(id: "hier-p2", content: "project two"), fx_sized(id: "hier-shared", content: "shared prerequisite")]
+  let edges = [gunbc.roadmap_authority.edge(child: "hier-p2", parent: "hier-shared"), gunbc.roadmap_authority.edge(child: "hier-p1", parent: "hier-shared")]
+  let nesting = [gunbc.roadmap_nesting.RoadmapMembership { member: "hier-shared", project: "hier-p1", contribution: "fixture contribution" }]
+  let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
+  row_display_parent_id(rows: rows, edges: edges, members: [], node_id: "hier-shared", memberships: membership_index(memberships: nesting)) == Present { value: "hier-p1" }
+    && row_display_parent_id(rows: rows, edges: edges, members: [], node_id: "hier-shared", memberships: membership_index(memberships: [])) == none
+    && count(project_task_rows(rows: rows, edges: edges, members: [], node_id: "hier-p2", memberships: membership_index(memberships: nesting))) == 0
+    && map(project_task_rows(rows: rows, edges: edges, members: [], node_id: "hier-p1", memberships: membership_index(memberships: nesting)), r => r.node_id) == ["hier-shared"]
+    && count(fx_ws_rendered_ids(ws: daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [], memberships: nesting)) |> filter(id => id == "hier-shared")) == 1
+}
+
+// THE EXPANSION RULE IS A PURE FUNCTION OF SUBTREE STATE: a project opens when a descendant has a
+// live attempt (whether that descendant renders nested or surfaced to the Active band) or a
+// non-routine event-log standing (the motion states — here in_progress), and stays collapsed when
+// every subtask is quiet. NodeOpen is the routine default and never opens anything.
+test fn witness_project_auto_open_follows_subtree_pulse() -> Bool {
+  let edges = fx_hier_edges()
+  let live = fx_hier_rows(activity_for_open: fx_specimen_activity(), standing_for_open: none)
+  let standing = fx_hier_rows(activity_for_open: NoActiveWork, standing_for_open: Present { value: NodeInProgress { by: EventPrincipalAuthenticated { ref: fabric_workflow_principal }, last_note: "working" as NonEmptyStr } })
+  let open_standing = fx_hier_rows(activity_for_open: NoActiveWork, standing_for_open: Present { value: NodeOpen })
+  let quiet = fx_hier_rows(activity_for_open: NoActiveWork, standing_for_open: none)
+  fx_project_tree(rows: live, edges: edges, node_id: "hier-project").auto_open
+    && fx_project_tree(rows: standing, edges: edges, node_id: "hier-project").auto_open
+    && !fx_project_tree(rows: open_standing, edges: edges, node_id: "hier-project").auto_open
+    && !fx_project_tree(rows: quiet, edges: edges, node_id: "hier-project").auto_open
+    && row_pulses(row: fx_row_of(rows: live, node_id: "hier-task-open"))
+    && !row_pulses(row: fx_row_of(rows: quiet, node_id: "hier-task-open"))
+}
+
+// SINGLE-CHILD CHAIN COLLAPSE (operator ruling 2026-09-21): a project whose ONLY display child is
+// itself a project collapses — the shell-residue-zero → shell-gate-migration →
+// shell-effectplan-to-bash → shell-typed-invocation chain shape — rendering as ONE project row
+// carrying the topmost identity, the swallowed intermediates as its chain, and the chain end's
+// tasks as its entries. The whole chain renders exactly once (chain members are accounted in
+// project_tree_row_ids), and the depth the entries sit at is one below the top row.
+test fn witness_single_child_chain_collapses() -> Bool {
+  let nodes = [
+    fx_sized(id: "hier-chain-a", content: "chain top"),
+    fx_sized(id: "hier-chain-b", content: "chain mid"),
+    fx_sized(id: "hier-chain-c", content: "chain base"),
+  ]
+  let edges = [
+    gunbc.roadmap_authority.edge(child: "hier-chain-a", parent: "hier-chain-b"),
+    gunbc.roadmap_authority.edge(child: "hier-chain-b", parent: "hier-chain-c"),
+  ]
+  let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
+  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [], memberships: fixture_nesting_relation(edges: edges))
+  let ids = fx_ws_rendered_ids(ws: ws)
+  count(ids) == 3
+    && all(rows, r => count(ids |> filter(i => i == r.node_id)) == 1)
+    && count(ws.not_ready) == 1
+    && (match ws.not_ready.first() {
+      Present { value: e } => match e {
+        BandProject { project } =>
+          project.row.node_id == "hier-chain-a"
+            && project.depth == 1
+            && map(project.chain, r => r.node_id) == ["hier-chain-b"]
+            && map(project.entries, x => fx_entry_id(entry: x)) == ["hier-chain-c"]
+            && project.total_count == 1
+            && (match project.entries.first() {
+              Present { value: ent } => match ent {
+                ProjectLeaf { row } => row.node_id == "hier-chain-c"
+                ProjectNested { project: _ } => false
+              }
+              Absent => false
+            })
+        BandRow { row: _ } => false
+        BandFamily { family: _ } => false
+      }
+      Absent => false
+    })
+    && band_entry_row_count(entries: ws.ready) == 0
+}
+
+// MULTI-CHILD PROJECTS NEVER COLLAPSE: with two display children the recursion keeps its nested
+// project arm — the intermediate renders as ProjectNested one level deeper with its own tree, its
+// own (empty) chain, and its own entries.
+test fn witness_multi_child_project_never_collapses() -> Bool {
+  let nodes = [
+    fx_sized(id: "hier-multi-a", content: "top project"),
+    fx_sized(id: "hier-multi-b", content: "mid project"),
+    fx_sized(id: "hier-multi-x", content: "side leaf"),
+    fx_sized(id: "hier-multi-c", content: "base leaf"),
+  ]
+  let edges = [
+    gunbc.roadmap_authority.edge(child: "hier-multi-a", parent: "hier-multi-b"),
+    gunbc.roadmap_authority.edge(child: "hier-multi-a", parent: "hier-multi-x"),
+    gunbc.roadmap_authority.edge(child: "hier-multi-b", parent: "hier-multi-c"),
+  ]
+  let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
+  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [], memberships: fixture_nesting_relation(edges: edges))
+  let ids = fx_ws_rendered_ids(ws: ws)
+  count(ids) == 4
+    && all(rows, r => count(ids |> filter(i => i == r.node_id)) == 1)
+    && (match ws.not_ready.first() {
+      Present { value: e } => match e {
+        BandProject { project } =>
+          project.row.node_id == "hier-multi-a"
+            && count(project.chain) == 0
+            && map(project.entries, x => fx_entry_id(entry: x)) == ["hier-multi-b", "hier-multi-x"]
+            && (match project.entries.first() {
+              Present { value: ent } => match ent {
+                ProjectNested { project: mid } =>
+                  mid.row.node_id == "hier-multi-b"
+                    && mid.depth == 2
+                    && count(mid.chain) == 0
+                    && map(mid.entries, x => fx_entry_id(entry: x)) == ["hier-multi-c"]
+                ProjectLeaf { row: _ } => false
+              }
+              Absent => false
+            })
+        BandRow { row: _ } => false
+        BandFamily { family: _ } => false
+      }
+      Absent => false
+    })
+}
+
+// CHAIN-END COUNTING: the collapsed top row's k of n is the chain END's display children — the
+// shell chain's shape, where the residue-zero row counts the arc's tasks (here one done task and
+// one open task of two), not the intermediates.
+test fn witness_chain_end_tasks_count_in_top_row() -> Bool {
+  let nodes = [
+    fx_sized(id: "hier-cc-r", content: "residue analogue"),
+    fx_sized(id: "hier-cc-g", content: "gate analogue"),
+    fx_sized(id: "hier-cc-e", content: "effectplan analogue"),
+    fx_sized(id: "hier-cc-arc", content: "arc analogue"),
+    fx_sign(
+      rn: fx_sized(id: "hier-cc-t1", content: "done task"),
+      s: fx_signed(
+        by: "op",
+        works: RedControlExecuted { witness_module: "test.claim.roadmap_presentation_witness", witness_fn: "witness_chain_end_tasks_count_in_top_row", executed_on: "2026-09-21" },
+        scope_equivalent: HandbackDelivered { first_artifact: "receipt", further_artifacts: [] },
+        as_expected: true)),
+    fx_sized(id: "hier-cc-t2", content: "open task"),
+  ]
+  let edges = [
+    gunbc.roadmap_authority.edge(child: "hier-cc-r", parent: "hier-cc-g"),
+    gunbc.roadmap_authority.edge(child: "hier-cc-g", parent: "hier-cc-e"),
+    gunbc.roadmap_authority.edge(child: "hier-cc-e", parent: "hier-cc-arc"),
+    gunbc.roadmap_authority.edge(child: "hier-cc-arc", parent: "hier-cc-t1"),
+    gunbc.roadmap_authority.edge(child: "hier-cc-arc", parent: "hier-cc-t2"),
+  ]
+  let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
+  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [], memberships: fixture_nesting_relation(edges: edges))
+  let ids = fx_ws_rendered_ids(ws: ws)
+  count(ids) == 6
+    && all(rows, r => count(ids |> filter(i => i == r.node_id)) == 1)
+    && (match ws.not_ready.first() {
+      Present { value: e } => match e {
+        BandProject { project } =>
+          project.row.node_id == "hier-cc-r"
+            && map(project.chain, r => r.node_id) == ["hier-cc-g", "hier-cc-e", "hier-cc-arc"]
+            && project.total_count == 2
+            && project.closed_count == 1
+            && map(project.entries, x => fx_entry_id(entry: x)) == ["hier-cc-t1", "hier-cc-t2"]
+        BandRow { row: _ } => false
+        BandFamily { family: _ } => false
+      }
+      Absent => false
+    })
+}
+
+// A shared prerequisite nests only under its authored owner. Other dependents retain a
+// blocking link, but neither count it as their child nor claim an empty owned-task denominator.
+test fn witness_shared_project_child_collapses_only_under_owner() -> Bool {
+  let nodes = [
+    fx_sized(id: "hier-sp-p1", content: "project one"),
+    fx_sized(id: "hier-sp-p2", content: "project two"),
+    fx_sized(id: "hier-sp-m", content: "shared project"),
+    fx_sized(id: "hier-sp-t", content: "shared project task"),
+  ]
+  let edges = [
+    gunbc.roadmap_authority.edge(child: "hier-sp-p2", parent: "hier-sp-m"),
+    gunbc.roadmap_authority.edge(child: "hier-sp-p1", parent: "hier-sp-m"),
+    gunbc.roadmap_authority.edge(child: "hier-sp-m", parent: "hier-sp-t"),
+  ]
+  let nesting = [gunbc.roadmap_nesting.RoadmapMembership { member: "hier-sp-m", project: "hier-sp-p2", contribution: "fixture contribution" }, gunbc.roadmap_nesting.RoadmapMembership { member: "hier-sp-t", project: "hier-sp-m", contribution: "fixture contribution" }]
+  let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
+  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [], memberships: nesting)
+  let ids = fx_ws_rendered_ids(ws: ws)
+  count(ids) == 4
+    && all(rows, r => count(ids |> filter(i => i == r.node_id)) == 1)
+    && any(ws.not_ready, e => match e { BandRow { row } => row.node_id == "hier-sp-p1" _ => false })
+    && (match ws.not_ready |> filter(e => match e {
+        BandProject { project } => project.row.node_id == "hier-sp-p2"
+        BandRow { row: _ } => false
+        BandFamily { family: _ } => false
+      }) |> first {
+      Present { value: e } => match e {
+        BandProject { project } =>
+          map(project.chain, r => r.node_id) == ["hier-sp-m"]
+            && project.total_count == 1
+            && map(project.entries, x => fx_entry_id(entry: x)) == ["hier-sp-t"]
+        BandRow { row: _ } => false
+        BandFamily { family: _ } => false
+      }
+      Absent => false
+    })
+}
+
+// FAMILY-FIRST: the closing-contract family is the presentation authority for its generated task
+// rows, so a family member that is also a project's prerequisite stays in its family group —
+// never nested, never counted, never duplicated — and the would-be project renders as an ordinary
+// flat row.
+test fn witness_family_member_never_nests() -> Bool {
+  let nodes = [
+    fx_sized(id: "hier-fam-project", content: "family-adjacent project"),
+    fx_sized(id: "hier-fam-task", content: "family member task"),
+  ]
+  let edges = [
+    gunbc.roadmap_authority.edge(child: "hier-fam-project", parent: "hier-fam-task"),
+  ]
+  let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
+  let families = [ WorkFamilyDecl { id: "fx-fam", claim: "fx family claim" } ]
+  let members = [ WorkFamilyMemberFact { family_id: "fx-fam", task_node: "hier-fam-task", subject: "fx subject" } ]
+  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: families, members: members, memberships: fixture_nesting_relation(edges: edges))
+  let ids = fx_ws_rendered_ids(ws: ws)
+  count(ids) == 2
+    && all(rows, r => count(ids |> filter(i => i == r.node_id)) == 1)
+    && !row_is_project(rows: rows, edges: edges, members: members, row: fx_row_of(rows: rows, node_id: "hier-fam-project"), memberships: membership_index(memberships: fixture_nesting_relation(edges: edges)))
+    && (match ws.not_ready.first() {
+      Present { value: e } => match e {
+        BandRow { row } => row.node_id == "hier-fam-project"
+        BandFamily { family: _ } => false
+        BandProject { project: _ } => false
+      }
+      Absent => false
+    })
+    && (match ws.ready.first() {
+      Present { value: e } => match e {
+        BandFamily { family } => map(family.rows, r => r.node_id) == ["hier-fam-task"]
+        BandRow { row: _ } => false
+        BandProject { project: _ } => false
+      }
+      Absent => false
+    })
+}
+
+// ── Hero rows, red flags, and activity classification (operator request 2026-09-21) ─────────────
+//
+// The semantic activity-line classes derive from TYPED sources only — the round ledger's segment
+// kinds, the decided activity arm and attention — never from the rendered text. Every class has a
+// discriminating fixture below, plus one unclassifiable-stays-neutral control; exec is the
+// declared vocabulary member with no on-page producer today (its trigger is named in the authority
+// comment: ProviderRunning carrying the typed CodexItemActivity).
+
+fn fx_refused_activity() -> ActivityView {
+  activity_view_from_parts(
+    segments: [
+      WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+      WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentRefused, detail: "turn.completed with process unobserved: no exit was established" },
+    ],
+    remaining: 6,
+    process: WorkerProcessExited { exit_code: 0, last_command: "" },
+    throughput: ThroughputUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
+    current_activity: "",
+  )
+}
+
+fn fx_completed_activity() -> ActivityView {
+  activity_view_from_parts(
+    segments: [
+      WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+      WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    ],
+    remaining: 0,
+    process: WorkerProcessExited { exit_code: 0, last_command: "" },
+    throughput: ThroughputUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
+    current_activity: "",
+  )
+}
+
+fn fx_failed_activity() -> ActivityView {
+  activity_view_from_parts(
+    segments: [
+      WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentFailed, detail: "exit 1 before terminal event" },
+    ],
+    remaining: 6,
+    process: WorkerProcessExited { exit_code: 1, last_command: "" },
+    throughput: ThroughputUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
+    current_activity: "",
+  )
+}
+
+test fn witness_activity_line_classification_is_typed() -> Bool {
+  activity_line_class_key(c: activity_line_class_of_round(k: ReadRound)) == "read"
+    && activity_line_class_key(c: activity_line_class_of_round(k: WriteRound)) == "write"
+    && activity_line_class_key(c: activity_line_class_of_round(k: ReasonRound)) == "provider-call"
+    && activity_line_class_key(c: activity_line_class_of_round(k: UnmeasuredRound)) == "neutral"
+    && activity_line_class_key(c: activity_line_class_of_activity(a: fx_specimen_activity())) == "neutral"
+    && activity_line_class_key(c: activity_line_class_of_activity(a: fx_refused_activity())) == "error-refusal"
+    && activity_line_class_key(c: activity_line_class_of_activity(a: fx_failed_activity())) == "error-refusal"
+    && activity_line_class_key(c: activity_line_class_of_activity(a: fx_completed_activity())) == "done"
+    && activity_line_class_key(c: activity_line_class_of_activity(a: NoActiveWork)) == "neutral"
+    && activity_line_class_key(c: activity_line_class_of_activity(a: ActivityUnobservable { reason: "channel unreadable" })) == "neutral"
+    && activity_line_class_key(c: ActivityLineExec) == "exec"
+}
+
+// The refused and completed arms carry their obligation roster (the hero stage strip reads it):
+// the refused strip shows WHICH segment is red, the completed strip reads all-done. Constructed
+// before this increment they had no segments field, and the strip had nothing to paint.
+test fn witness_refused_and_completed_arms_carry_the_roster() -> Bool {
+  match fx_refused_activity() {
+    ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations } =>
+      count(obligations) == 2
+        && (match obligations |> filter(s => workflow_segment_state_key(state: s.state) == "refused") |> first {
+          Present { value: s } => workflow_segment_state_key(state: s.state) == "refused"
+          Absent => false
+        })
+    NoActiveWork => false
+    ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
+    LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
+    CompletedWork { outcome: _, evidence: _, obligations: _ } => false
+    ActivityUnobservable { reason: _ } => false
+  }
+    && match fx_completed_activity() {
+      CompletedWork { outcome: _, evidence: _, obligations } =>
+        count(obligations) == 2
+          && all(obligations, s => workflow_segment_state_key(state: s.state) == "complete")
+      NoActiveWork => false
+      ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
+      ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations: _ } => false
+      LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false
+      ActivityUnobservable { reason: _ } => false
+    }
+}
+
+// THE RED FLAG DERIVES FROM DECIDED STATES: a project whose subtree carries a refused or a failed
+// (anomalous) attempt flags; the same tree quiet or green does not. The erred row itself keeps the
+// attention law and surfaces in the Active band — the flag is derived over display children,
+// whether or not they render nested.
+test fn witness_project_red_flag_derives_from_decided_states() -> Bool {
+  let edges = fx_hier_edges()
+  let rows_ok = fx_hier_rows(activity_for_open: NoActiveWork, standing_for_open: none)
+  let rows_refused = fx_hier_rows(activity_for_open: fx_refused_activity(), standing_for_open: none)
+  let rows_failed = fx_hier_rows(activity_for_open: fx_failed_activity(), standing_for_open: none)
+  let rows_done = fx_hier_rows(activity_for_open: fx_completed_activity(), standing_for_open: none)
+  !fx_project_tree(rows: rows_ok, edges: edges, node_id: "hier-project").subtree_error
+    && fx_project_tree(rows: rows_refused, edges: edges, node_id: "hier-project").subtree_error
+    && fx_project_tree(rows: rows_failed, edges: edges, node_id: "hier-project").subtree_error
+    && !fx_project_tree(rows: rows_done, edges: edges, node_id: "hier-project").subtree_error
+    && row_activity_erred(row: fx_row_of(rows: rows_refused, node_id: "hier-task-open"))
+    && row_activity_erred(row: fx_row_of(rows: rows_failed, node_id: "hier-task-open"))
+    && !row_activity_erred(row: fx_row_of(rows: rows_ok, node_id: "hier-task-open"))
+}
+
+// The wire carries the DECIDED summary class so the client paints it verbatim (the single
+// projection authority's wire half): refused flags error-refusal, completed reads done, a routine
+// active attempt stays neutral.
+test fn witness_wire_carries_decided_summary_class() -> Bool {
+  string_contains(s: serialize_json(v: activity_view_json_value(view: fx_refused_activity())), pattern: "\"summary_class\": \"error-refusal\"")
+    && string_contains(s: serialize_json(v: activity_view_json_value(view: fx_completed_activity())), pattern: "\"summary_class\": \"done\"")
+    && string_contains(s: serialize_json(v: activity_view_json_value(view: fx_specimen_activity())), pattern: "\"summary_class\": \"neutral\"")
+    && string_contains(s: serialize_json(v: activity_view_json_value(view: NoActiveWork)), pattern: "\"summary_class\": \"neutral\"")
+}
+
+// ── The taskbar (owner-endorsed redesign 2026-09-21: "the task IS the bar") ─────────────────────
+//
+// The decided bar content per situation class: each arm below is the discriminating fixture of
+// its class — startable, underway, attention (refused AND failed), result, blocked, closed,
+// stale. The bar is derived from decided row state alone; the renderer only paints it.
+
+fn fx_bar_fill_key(bar: TaskBarView) -> String {
+  match bar.fill {
+    BarFillNone => "none"
+    BarFillStages => "stages"
+    BarFillProject => "project"
+    BarFillClosed => "closed"
+  }
+}
+
+fn fx_hier_view_stale(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, activity: ActivityView) -> WorkRowView {
+  work_row_view(
+    rn: rn, nodes: nodes, edges: edges, merged: [], activity: activity,
+    rounds: RoundsUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
+    worker_alive: false, standing: none, attempt_stale: true,
+    launch: fx_row_launch(nodes: nodes, edges: edges),
+    profiles: [])
+}
+
+test fn witness_bar_content_per_situation_class() -> Bool {
+  let underway_nodes = fx_row_nodes()
+  let underway = fx_hier_view(rn: first(underway_nodes).value, nodes: underway_nodes, edges: fx_row_edges(), merged: [], activity: fx_specimen_activity(), standing: none)
+  let refused = fx_hier_view(rn: first(underway_nodes).value, nodes: underway_nodes, edges: fx_row_edges(), merged: [], activity: fx_refused_activity(), standing: none)
+  let failed = fx_hier_view(rn: first(underway_nodes).value, nodes: underway_nodes, edges: fx_row_edges(), merged: [], activity: fx_failed_activity(), standing: none)
+  let done_nodes = fx_hier_nodes()
+  let completed = fx_hier_view(rn: first(underway_nodes).value, nodes: underway_nodes, edges: fx_row_edges(), merged: [], activity: fx_completed_activity(), standing: none)
+  let accepted_bar = task_bar_view_of(view: fx_hier_view(rn: first(done_nodes |> filter(n => (n.node as String) == "hier-task-done")).value, nodes: done_nodes, edges: fx_hier_edges(), merged: [], activity: NoActiveWork, standing: none), observation: ObservationsNominal)
+  let stale = task_bar_view_of(view: fx_hier_view_stale(rn: first(underway_nodes).value, nodes: underway_nodes, edges: fx_row_edges(), activity: fx_specimen_activity()), observation: ObservationsNominal)
+  let underway_bar = task_bar_view_of(view: underway, observation: ObservationsNominal)
+  let refused_bar = task_bar_view_of(view: refused, observation: ObservationsNominal)
+  let failed_bar = task_bar_view_of(view: failed, observation: ObservationsNominal)
+  let completed_bar = task_bar_view_of(view: completed, observation: ObservationsNominal)
+  underway_bar.signal == "Verification · pending"
+    && underway_bar.count == "3 of 7 stages"
+    && underway_bar.subline == "Agent turn completed; the retained session is no longer running · Verification next · 4 remaining"
+    && !underway_bar.attention
+    && fx_bar_fill_key(bar: underway_bar) == "stages"
+    && refused_bar.signal == "Agent · refused"
+    && refused_bar.signal_class == "error-refusal"
+    && refused_bar.attention
+    && fx_bar_fill_key(bar: refused_bar) == "stages"
+    && failed_bar.attention
+    && failed_bar.signal_class == "error-refusal"
+    && completed_bar.signal == "All obligations complete"
+    && completed_bar.signal_class == "done"
+    && completed_bar.count == "2 of 2 stages"
+    && accepted_bar.signal == "accepted"
+    && fx_bar_fill_key(bar: accepted_bar) == "closed"
+    && stale.signal == "earlier attempt · superseded revision"
+    && fx_bar_fill_key(bar: stale) == "none"
+    && !stale.attention
+}
+
+// THE HONESTY LAWS at the seam: the bar's fill is a named thing or nothing. A row with a rounds
+// LEDGER but no decided attempt fills NOTHING (elapsed time and consumed rounds never fill a bar —
+// they render as raw detail in the inspection). A pending Agent segment beside an EXITED process
+// still reads pending in the signal: worker termination completes nothing (completion is the
+// reconciliation's contract over segment states). No arm computes a percentage — stage_count_label
+// is a named count over decided states, witnessed here in both its shapes.
+test fn witness_bar_never_fills_from_time_or_termination() -> Bool {
+  let nodes = fx_row_nodes()
+  let edges = fx_row_edges()
+  let idle_with_rounds = work_row_view(
+    rn: first(nodes).value, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork,
+    rounds: RoundsUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
+    worker_alive: false, standing: none, attempt_stale: false,
+    launch: fx_row_launch(nodes: nodes, edges: edges),
+    profiles: [])
+  let pending_exited = activity_view_from_parts(
+    segments: [
+      WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+      WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+    ],
+    remaining: 2,
+    process: WorkerProcessExited { exit_code: 0, last_command: "" },
+    throughput: ThroughputUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
+    current_activity: "")
+  let pending_bar = task_bar_view_of(
+    view: fx_hier_view(rn: first(nodes).value, nodes: nodes, edges: edges, merged: [], activity: pending_exited, standing: none),
+    observation: ObservationsNominal)
+  fx_bar_fill_key(bar: task_bar_view_of(view: idle_with_rounds, observation: ObservationsNominal)) == "none"
+    && pending_bar.signal == "Agent · pending"
+    && pending_bar.count == "0 of 2 stages"
+    && fx_bar_fill_key(bar: pending_bar) == "stages"
+    && stage_count_label(obligations: []) == ""
+}
+
+// REQUIRES VS CONTAINS, at the derivation: a display child owned by ANOTHER project is a
+// dependency LINK on this row (never a nested member or part of its progress denominator); the
+// owner's tree keeps the member. fleet-closed-loop-converge's link to shell-gate-migration is the
+// live shape this fixture models.
+test fn witness_non_primary_child_is_a_link_not_a_member() -> Bool {
+  let nodes = [
+    fx_sized(id: "hier-sp-p1", content: "project one"),
+    fx_sized(id: "hier-sp-p2", content: "project two"),
+    fx_sized(id: "hier-sp-m", content: "shared project"),
+    fx_sized(id: "hier-sp-t", content: "shared project task"),
+  ]
+  let edges = [
+    gunbc.roadmap_authority.edge(child: "hier-sp-p2", parent: "hier-sp-m"),
+    gunbc.roadmap_authority.edge(child: "hier-sp-p1", parent: "hier-sp-m"),
+    gunbc.roadmap_authority.edge(child: "hier-sp-m", parent: "hier-sp-t"),
+  ]
+  let nesting = [gunbc.roadmap_nesting.RoadmapMembership { member: "hier-sp-m", project: "hier-sp-p2", contribution: "fixture contribution" }, gunbc.roadmap_nesting.RoadmapMembership { member: "hier-sp-t", project: "hier-sp-m", contribution: "fixture contribution" }]
+  let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
+  let p1 = project_tree_view(row: fx_row_of(rows: rows, node_id: "hier-sp-p1"), rows: rows, edges: edges, members: [], depth: 1, fuel: count(rows), memberships: membership_index(memberships: nesting))
+  let p2 = project_tree_view(row: fx_row_of(rows: rows, node_id: "hier-sp-p2"), rows: rows, edges: edges, members: [], depth: 1, fuel: count(rows), memberships: membership_index(memberships: nesting))
+  map(p1.linked, r => r.node_id) == ["hier-sp-m"]
+    && count(p2.linked) == 0
+    && p1.total_count == 0
+    && count(p1.entries) == 0
+    && map(p2.entries, x => fx_entry_id(entry: x)) == ["hier-sp-t"]
+}
+
+// THE ISSUE TABLE'S FLATTENING LAW (owner ruling 2026-09-22): the default view is one flat
+// searchable table — every rendered issue exactly once, including rows the tree nests and
+// projects the tree collapses. The table is the forest ENUMERATED, not a second derivation:
+// same rows, same order, one place each.
+test fn witness_issue_table_flattens_every_rendered_row_once() -> Bool {
+  let rows = fx_hier_rows(activity_for_open: fx_specimen_activity(), standing_for_open: none)
+  let edges = fx_hier_edges()
+  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [], memberships: fixture_nesting_relation(edges: edges))
+  let forest = fx_ws_rendered_ids(ws: ws)
+  let table = map(ws.table, r => r.view.node_id)
+  count(table) == count(forest)
+    && all(rows, r => count(table |> filter(i => i == r.node_id)) == 1)
+    && all(forest, id => count(table |> filter(i => i == id)) == 1)
+}
+
+// Collapsed chain members are issues too: swallowed in the tree, flat in the table — each
+// exactly once in each view's enumeration.
+test fn witness_issue_table_carries_collapsed_chain_members_flat() -> Bool {
+  let nodes = [
+    fx_sized(id: "hier-chain-a", content: "chain top"),
+    fx_sized(id: "hier-chain-b", content: "chain mid"),
+    fx_sized(id: "hier-chain-c", content: "chain base"),
+  ]
+  let edges = [
+    gunbc.roadmap_authority.edge(child: "hier-chain-a", parent: "hier-chain-b"),
+    gunbc.roadmap_authority.edge(child: "hier-chain-b", parent: "hier-chain-c"),
+  ]
+  let rows = map(nodes, rn => fx_hier_view(rn: rn, nodes: nodes, edges: edges, merged: [], activity: NoActiveWork, standing: none))
+  let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [], memberships: fixture_nesting_relation(edges: edges))
+  let table = map(ws.table, r => r.view.node_id)
+  count(table) == 3
+    && count(table |> filter(i => i == "hier-chain-b")) == 1
+    && count(table |> filter(i => i == "hier-chain-c")) == 1
+    && (match table.first() { Present { value: id } => id == "hier-chain-a" Absent => false })
+}
+
+// THE ISSUE DETAIL'S LINK PANEL (owner ruling 2026-09-22: blocking edges express dependencies):
+// Blocking names the node's children — the dependents it structurally blocks; Blocked-by names
+// ONLY the unmet parents — a done parent has closed its edge and must not read as an obstruction.
+// The met-parent half of the claim is the discriminating red: listing it would contradict the
+// bar's "blocked on" signal, which derives from the same scheduling_blockers seam.
+test fn witness_issue_link_panel_blocks_children_and_unmet_parents() -> Bool {
+  let signed_parent = fx_sign(
+    rn: fx_sized(id: "lnk-done", content: "closed parent"),
+    s: fx_signed(
+      by: "operator",
+      works: RedControlExecuted { witness_module: "test.claim.roadmap_presentation_witness", witness_fn: "witness_issue_link_panel_blocks_children_and_unmet_parents", executed_on: "2026-09-23" },
+      scope_equivalent: HandbackDelivered { first_artifact: "receipt", further_artifacts: [] },
+      as_expected: true))
+  let nodes = [
+    fx_sized(id: "lnk-top", content: "the issue"),
+    fx_sized(id: "lnk-mid", content: "open parent"),
+    fx_sized(id: "lnk-child", content: "dependent"),
+    signed_parent,
+  ]
+  let edges = [
+    gunbc.roadmap_authority.edge(child: "lnk-top", parent: "lnk-mid"),
+    gunbc.roadmap_authority.edge(child: "lnk-top", parent: "lnk-done"),
+    gunbc.roadmap_authority.edge(child: "lnk-child", parent: "lnk-top"),
+  ]
+  let top = (filter(nodes, n => (n.node as String) == "lnk-top")).first()
+  match top {
+    Absent => false
+    Present { value: rn } =>
+      let panel = issue_link_panel(rn: rn, nodes: nodes, edges: edges)
+      map(panel.blocking, l => l.node_id) == ["lnk-child"]
+        && map(panel.blocked_by, l => l.node_id) == ["lnk-mid"]
+  }
+}
+
+// THE WORK TAB'S HISTORY ORDER (owner ruling 2026-09-22: execution history as taskbar rows,
+// newest first): the ledger's clocked rounds reverse so the freshest turn heads the list; a
+// refused ledger renders no rows at all — absence earns no furniture. The first round has no
+// predecessor epoch, so the clocked segments carry steps 2..4; newest first reads 4,3,2 — the
+// strip's own segment authority, reversed.
+test fn witness_issue_work_history_is_newest_first() -> Bool {
+  let ledger = RoundsObserved { rounds: [
+    RoundObservation { step: 1, input_tokens: 0, output_tokens: 10, epoch_ms: 0, files_changed: none, tool_calls: none },
+    RoundObservation { step: 2, input_tokens: 0, output_tokens: 20, epoch_ms: 5000, files_changed: Present { value: 1 }, tool_calls: Present { value: 0 } },
+    RoundObservation { step: 3, input_tokens: 0, output_tokens: 30, epoch_ms: 9000, files_changed: none, tool_calls: none },
+    RoundObservation { step: 4, input_tokens: 0, output_tokens: 40, epoch_ms: 12000, files_changed: Present { value: 2 }, tool_calls: Present { value: 1 } },
+  ] }
+  let segs = issue_work_history_rounds(ledger: ledger)
+  map(segs, s => s.step) == [4, 3, 2]
+    && count(issue_work_history_rounds(ledger: RoundsUnobserved { reason: "refused" as NonEmptyStr })) == 0
+}
+
+// THE FOUR-FACT PRESENT-TENSE EXPLANATION (owner ruling 2026-09-22): one concise present-tense
+// sentence per state, derived from the four facts that stay separate on the row — planning
+// status (lifecycle × scheduling), the current obligation, the attempt outcome, the delivery
+// evidence. The discriminating reds: an upcoming row NAMES its blockers ("blocked on a, b",
+// never "pending"); a done row says its evidence is under review (never a bare "done"); an
+// unobservable attempt says so in the sentence, not by absence.
+fn fx_explanation_view(scheduling: WorkScheduling, activity: ActivityView) -> WorkRowView {
+  WorkRowView {
+    node_id: "fx-explain",
+    headline: "explanation fixture",
+    summary: none,
+    lifecycle: OpenLifecycle,
+    scheduling: scheduling,
+    superseded_by: "",
+    activity: activity,
+    action: ActionView { primary_action: none, secondary_actions: [] },
+    supporting_facts: [],
+    disclosure: NoDisclosure,
+    rounds: RoundsUnobserved { reason: "fixture models no provider event stream" as NonEmptyStr },
+    worker_alive: false,
+    assignment: none,
+    standing: none,
+    attempt_stale: false,
+    profiles: [],
+  }
+}
+
+test fn witness_issue_explanation_present_tense_cases() -> Bool {
+  issue_explanation(view: fx_explanation_view(scheduling: SchedulingReady, activity: NoActiveWork)) == "open — ready to dispatch"
+    && issue_explanation(view: fx_explanation_view(scheduling: SchedulingNotReady { missing: [GapDependencies { blockers: ["a", "b"] }] }, activity: NoActiveWork)) == "open — not ready: missing dependencies (a, b) (prerequisites not closed: a, b)"
+    && issue_explanation(view: fx_explanation_view(scheduling: SchedulingNotReady { missing: [GapCentering] }, activity: NoActiveWork)) == "open — not ready: missing centering (no centering plan: the row supplies no plan for a worker)"
+    && issue_explanation(view: fx_explanation_view(scheduling: SchedulingDone, activity: NoActiveWork)) == "delivered — its evidence is under review"
+    && issue_explanation(view: fx_explanation_view(scheduling: SchedulingReady, activity: ActivityUnobservable { reason: "attempts ledger refused" })) == "attempt unobservable: attempts ledger refused"
+    && issue_explanation(view: fx_explanation_view(scheduling: SchedulingReady, activity: CompletedWork { outcome: "All obligations complete", evidence: [], obligations: [] })) == "All obligations complete"
+    && issue_explanation(view: fx_explanation_view(scheduling: SchedulingReady, activity: ActiveWork {
+         summary: "Agent working",
+         obligations: [],
+         remaining_obligation_count: 0,
+         current_activity: "",
+         attention: ActivityRoutine,
+         evidence: [],
+       })) == "Agent working"
+}
+
+// A pending stage NAMES what it waits on (never a bare "pending"), and settled states keep their
+// own key; with no unsettled position ahead, the pending label stays honest as "pending".
+test fn witness_pending_stage_names_what_it_waits_on() -> Bool {
+  let roster = [
+    WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    WorkflowSegment { kind: WorkspaceWorkflowSegment, state: WorkflowSegmentActive, detail: "" },
+    WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+  ]
+  issue_first_open_kind(segments: roster) == "Workspace"
+    && issue_wait_state_label(state_key: "pending", wait_target: "Workspace") == "waiting on Workspace"
+    && issue_wait_state_label(state_key: "pending", wait_target: "") == "pending"
+    && issue_wait_state_label(state_key: "complete", wait_target: "workspace") == "complete"
+    && issue_wait_state_label(state_key: "refused", wait_target: "workspace") == "refused"
+}
+
+// ── Project path breadcrumb and project suite (operator request 2026-09-29) ───────────────────
+//
+// The breadcrumb's ONLY derivation is the alignment resolution the dispatch gate consumes --
+// fixtures build that resolution through the same alignment_chain + alignment_resolve_chain
+// crossing production names, over ticket rows (the chain projects ONLY from ticket rows). The
+// chain must end at the admitted root "gunbc-project-root": roadmap_roots is the one
+// live read the walk makes. Every fixture is constructed; no live roadmap population is read.
+
+fn fx_aln_fields(headline: String, brief: String) -> TicketFields {
+  TicketFields {
+    headline: headline,
+    brief: brief,
+    displaced_cost: "fixture displaced cost",
+    current_state: "fixture current state",
+    first_slice: "fixture first slice",
+    red_control: "fixture red control",
+    out_of_scope: "fixture out of scope",
+    handback: "fixture handback",
+    updates: [],
+    authored_on: "",
+    last_verified_on: "",
+  }
+}
+
+fn fx_aln_ticket(id: String, headline: String, brief: String) -> RoadmapNode {
+  RoadmapNode {
+    identity: join(["rnfx-", id], "") as RoadmapNodeIdentity,
+    node: id as RoadmapNodeId,
+    line: TicketLine { done: false, ticket: fx_aln_fields(headline: headline, brief: brief) },
+    carriers: [] as List<Pointer>,
+    dispatch: NotDispatchable,
+    execution: ExecutionContractUnspecified,
+    owner: "presentation-fixture",
+    signoff: Unsigned,
+    parent: none,
+    centering: none,
+  }
+}
+
+// The fixture rows take their parents from the planted memberships (the membership list is a
+// projection of the rows' parents, so the planted rows carry what the planted list says); the one
+// node named gunbc-project-root is the admitted root.
+fn fx_aln_with_parent(n: RoadmapNode, memberships: List<gunbc.roadmap_nesting.RoadmapMembership>) -> RoadmapNode {
+  let mine = memberships |> filter(m => m.member == (n.node as String))
+  RoadmapNode {
+    identity: n.identity,
+    node: n.node,
+    line: n.line,
+    carriers: n.carriers,
+    dispatch: n.dispatch,
+    execution: n.execution,
+    owner: n.owner,
+    signoff: n.signoff,
+    parent: match mine.first() {
+      Present { value: m } => Present { value: gunbc.roadmap_model.MemberOf { project: m.project, contribution: m.contribution as NonEmptyStr } }
+      Absent => if (n.node as String) == "gunbc-project-root" { Present { value: gunbc.roadmap_model.AdmittedRoot } } else { none }
+    },
+    centering: n.centering,
+  }
+}
+
+fn fx_aln_resolution(task: String, memberships: List<gunbc.roadmap_nesting.RoadmapMembership>, nodes: List<RoadmapNode>) -> AlignmentResolution {
+  alignment_resolve_chain(
+    chain: alignment_chain(node_id: task, nodes: nodes |> map(n => fx_aln_with_parent(n: n, memberships: memberships))),
+    turns_elapsed: 1,
+    state: alignment_base_cadence_state(),
+  )
+}
+
+fn fx_aln_rooted_nodes() -> List<RoadmapNode> {
+  [
+    fx_aln_ticket(id: "hier-aln-task", headline: "Task headline", brief: "Task boundary"),
+    fx_aln_ticket(id: "hier-aln-mid", headline: "Mid headline", brief: "Mid boundary"),
+    fx_aln_ticket(id: "gunbc-project-root", headline: "Root headline", brief: "Root boundary"),
+  ]
+}
+
+fn fx_aln_rooted_memberships() -> List<gunbc.roadmap_nesting.RoadmapMembership> {
+  [
+    gunbc.roadmap_nesting.RoadmapMembership { member: "hier-aln-task", project: "hier-aln-mid", contribution: "task to mid" },
+    gunbc.roadmap_nesting.RoadmapMembership { member: "hier-aln-mid", project: "gunbc-project-root", contribution: "mid to root" },
+  ]
+}
+
+// THE READY ARM, ROOT-TO-LEAF: a rooted node's breadcrumb lists the root project first and the
+// task last; the project crumbs carry /project/ links and their boundary rides the title
+// attribute; the task crumb is the current page and renders as PLAIN TEXT (no /issue/ self-link
+// anywhere in the nav); the root-principles pointer contributes no crumb at all. A crumb folded
+// out of the raw memberships, a leaf-first order, or a partial path reds every conjunct.
+test fn witness_issue_breadcrumb_renders_root_to_leaf_with_suite_links() -> Bool {
+  let resolution = fx_aln_resolution(task: "hier-aln-task", memberships: fx_aln_rooted_memberships(), nodes: fx_aln_rooted_nodes())
+  let structural = match issue_breadcrumb_of(resolution: resolution) {
+    IssueBreadcrumbPath { crumbs } =>
+      map(crumbs, c => match c {
+        IssueBreadcrumbProject { node_id, purpose: _, boundary: _ } => node_id
+        IssueBreadcrumbTask { node_id, purpose: _, boundary: _ } => node_id
+      }) == ["gunbc-project-root", "hier-aln-mid", "hier-aln-task"]
+        && (match crumbs.first() {
+          Present { value: c } => match c {
+            IssueBreadcrumbProject { node_id: _, purpose: _, boundary: _ } => true
+            IssueBreadcrumbTask { node_id: _, purpose: _, boundary: _ } => false
+          }
+          Absent => false
+        })
+        && (match crumbs.last() {
+          Present { value: c } => match c {
+            IssueBreadcrumbTask { node_id: _, purpose: _, boundary: _ } => true
+            IssueBreadcrumbProject { node_id: _, purpose: _, boundary: _ } => false
+          }
+          Absent => false
+        })
+    IssueBreadcrumbRefused { reason: _ } => false
+  }
+  let rendered = match try_serialize_html_source(node: issue_alignment_breadcrumb_node(resolution: resolution)) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      string_contains(s: h, pattern: "href=\"/project/gunbc-project-root\"")
+        && string_contains(s: h, pattern: "href=\"/project/hier-aln-mid\"")
+        && string_contains(s: h, pattern: "Root headline")
+        && string_contains(s: h, pattern: "Mid headline")
+        && string_contains(s: h, pattern: "Task headline")
+        && string_contains(s: h, pattern: " › ")
+        && string_contains(s: h, pattern: "title=\"Root boundary\"")
+        && !string_contains(s: h, pattern: "href=\"/issue/")
+        && !string_contains(s: h, pattern: "principles")
+  }
+  structural && rendered
+}
+
+// THE REFUSAL ARM, NO PARTIAL PATH: an unrooted node's breadcrumb renders "project path
+// unavailable: " plus the typed reason, and NOT ONE crumb of the walked prefix -- no /project/
+// link, no headline text. Rendering the prefix as if it were a path is the red this control pins.
+test fn witness_issue_breadcrumb_refusal_renders_no_partial_path() -> Bool {
+  let nodes = [fx_aln_ticket(id: "hier-aln-lone", headline: "Lone headline", brief: "Lone boundary")]
+  let resolution = fx_aln_resolution(task: "hier-aln-lone", memberships: [], nodes: nodes)
+  match issue_breadcrumb_of(resolution: resolution) {
+    IssueBreadcrumbRefused { reason } =>
+      string_contains(s: reason, pattern: "hier-aln-lone")
+        && (match try_serialize_html_source(node: issue_alignment_breadcrumb_node(resolution: resolution)) {
+          EmitRejected { reason: _ } => false
+          EmitOk { html: h } =>
+            string_contains(s: h, pattern: "project path unavailable: ")
+              && string_contains(s: h, pattern: "issue-breadcrumb-refused")
+              && !string_contains(s: h, pattern: "href=\"/project/")
+              && !string_contains(s: h, pattern: "Lone headline")
+        })
+    IssueBreadcrumbPath { crumbs: _ } => false
+  }
+}
+
+// THE SUITE LISTING'S MEMBERSHIP: exactly the DIRECT descendants -- the memberships authored
+// under THIS project, nothing from another project -- one row each, the row titled from its node
+// row when one exists and spelling the raw id when none does, and the row links to the member's
+// /issue/ page. The heading projection reads ticket rows only: the authored (non-ticket) member
+// row has no headline, while the ticket project row does.
+test fn witness_project_suite_lists_exactly_the_direct_members() -> Bool {
+  let memberships = [
+    gunbc.roadmap_nesting.RoadmapMembership { member: "hier-suite-m1", project: "hier-suite-proj", contribution: "c1" },
+    gunbc.roadmap_nesting.RoadmapMembership { member: "hier-suite-m2", project: "hier-suite-proj", contribution: "c2" },
+    gunbc.roadmap_nesting.RoadmapMembership { member: "hier-suite-elsewhere", project: "hier-suite-other", contribution: "c3" },
+  ]
+  let nodes = [
+    fx_aln_ticket(id: "hier-suite-proj", headline: "suite project headline", brief: "project boundary"),
+    fx_sized(id: "hier-suite-m1", content: "member one title"),
+  ]
+  let rows = project_suite_rows(memberships: memberships, edges: [], nodes: nodes, project: "hier-suite-proj")
+  map(rows, r => r.node_id) == ["hier-suite-m1", "hier-suite-m2"]
+    && count(rows |> filter(r => r.node_id == "hier-suite-elsewhere")) == 0
+    && (match rows.first() {
+      Present { value: r } =>
+        r.title == "member one title"
+          && (match try_serialize_html_source(node: project_suite_row_node(row: r)) {
+            EmitOk { html: row_html } => string_contains(s: row_html, pattern: "href=\"/issue/hier-suite-m1\"")
+            EmitRejected { reason: _ } => false
+          })
+      Absent => false
+    })
+    && (match rows |> filter(r => r.node_id == "hier-suite-m2") |> first() {
+      Present { value: r } => r.title == "hier-suite-m2"
+      Absent => false
+    })
+    && project_suite_headline(nodes: nodes, node_id: "hier-suite-proj") == Present { value: "suite project headline" }
+    && project_suite_headline(nodes: nodes, node_id: "hier-suite-m1") == none
+}
+
+// THE SUITE LISTING'S TOPOLOGICAL LAYERING: a member whose in-set prerequisite is another member
+// sorts AFTER that member even when authored BEFORE it -- authored order [m2, m1] with the edge
+// making m1 a prerequisite of m2 renders m1 first; with no in-set edges at all the authored order
+// stands. A declaration-order listing reds the first conjunct.
+test fn witness_project_suite_topological_layering_orders_prereq_first() -> Bool {
+  let memberships = [
+    gunbc.roadmap_nesting.RoadmapMembership { member: "hier-suite-m2", project: "hier-suite-proj", contribution: "c2" },
+    gunbc.roadmap_nesting.RoadmapMembership { member: "hier-suite-m1", project: "hier-suite-proj", contribution: "c1" },
+  ]
+  let edges = [gunbc.roadmap_authority.edge(child: "hier-suite-m2", parent: "hier-suite-m1")]
+  map(project_suite_rows(memberships: memberships, edges: edges, nodes: [], project: "hier-suite-proj"), r => r.node_id) == ["hier-suite-m1", "hier-suite-m2"]
+    && map(project_suite_rows(memberships: memberships, edges: [], nodes: [], project: "hier-suite-proj"), r => r.node_id) == ["hier-suite-m2", "hier-suite-m1"]
+}
+
+// These older fixtures explicitly declare both relations with the same endpoints. Production
+// never derives ownership this way; the independent-relation control uses different endpoints.
+fn fixture_nesting_relation(edges: List<gunbc.roadmap_model.RoadmapEdge>) -> List<gunbc.roadmap_nesting.RoadmapMembership> {
+  map(edges, e => gunbc.roadmap_nesting.RoadmapMembership { member: e.parent as String, project: e.child as String, contribution: "fixture contribution" })
+}
+
+// A MEMBERSHIP WHOSE PROJECT IS NOT AMONG THE PLAN ROWS STILL NAMES ITS PARENT. The live issue page
+// rendered "top-level" for shell-typed-invocation, a member of gunbc-project-root, because the root
+// program is not one of the plan rows and the lookup read Absent as "no parent" while the
+// breadcrumb (over every declared node) showed the root. The declared membership decides the
+// relation: the parent is titled from member_titles when the plan omits it, spelled by its id when
+// no title exists anywhere, and absent only for a node that is a member of nothing.
+test fn witness_issue_link_panel_parent_follows_membership_not_the_plan_rows() -> Bool {
+  let member = fx_sized(id: "pm-member", content: "the member")
+  let root = fx_sized(id: "pm-root", content: "the root program")
+  let nesting = [gunbc.roadmap_nesting.RoadmapMembership { member: "pm-member", project: "pm-root", contribution: "fixture contribution" }]
+  let titled = issue_link_panel(rn: member, nodes: [member], edges: [], memberships: nesting, member_titles: [member, root])
+  let untitled = issue_link_panel(rn: member, nodes: [member], edges: [], memberships: nesting)
+  let standalone = issue_link_panel(rn: root, nodes: [member], edges: [], memberships: nesting, member_titles: [member, root])
+  (match titled.parent { Present { value: p } => p.node_id == "pm-root" && p.headline == "the root program"  Absent => false })
+    && (match untitled.parent { Present { value: p } => p.node_id == "pm-root" && p.headline == "pm-root"  Absent => false })
+    && (match standalone.parent { Present { value: _ } => false  Absent => true })
+    && map(standalone.children, c => c.node_id) == ["pm-member"]
+}
+
+// THE PAGE HIDES A NOT-READY LEAF (operator ruling, 2026-09-30), decided by row_is_shown from the
+// same readiness value the dispatcher refuses with. A Dispatchable leaf is shown (the positive
+// control first); a NotReady leaf with nothing in flight is hidden; the same NotReady row is shown
+// when it has members (a project stays visible), when it has a live attempt, and when it has a
+// current assignment -- so nothing in progress silently vanishes.
+fn fx_visibility_row(scheduling: WorkScheduling, activity: ActivityView, node_id: String) -> WorkRowView {
+  let base = fx_explanation_view(scheduling: scheduling, activity: activity)
+  WorkRowView {
+    node_id: node_id,
+    headline: base.headline,
+    summary: base.summary,
+    lifecycle: base.lifecycle,
+    scheduling: base.scheduling,
+    superseded_by: base.superseded_by,
+    activity: base.activity,
+    action: base.action,
+    supporting_facts: base.supporting_facts,
+    disclosure: base.disclosure,
+    rounds: base.rounds,
+    worker_alive: base.worker_alive,
+    assignment: base.assignment,
+    standing: base.standing,
+    attempt_stale: base.attempt_stale,
+    profiles: base.profiles,
+  }
+}
+
+test fn witness_page_hides_a_not_ready_leaf_and_nothing_in_progress() -> Bool {
+  let not_ready = SchedulingNotReady { missing: [GapCentering] }
+  let memberships = [gunbc.roadmap_nesting.RoadmapMembership { member: "vis-member", project: "vis-project", contribution: "fixture contribution" }]
+  row_is_shown(row: fx_visibility_row(scheduling: SchedulingReady, activity: NoActiveWork, node_id: "vis-ready-leaf"), memberships: memberships)
+    && !row_is_shown(row: fx_visibility_row(scheduling: not_ready, activity: NoActiveWork, node_id: "vis-idle-leaf"), memberships: memberships)
+    && row_is_shown(row: fx_visibility_row(scheduling: not_ready, activity: NoActiveWork, node_id: "vis-project"), memberships: memberships)
+    && row_is_shown(row: fx_visibility_row(scheduling: not_ready, activity: fx_specimen_activity(), node_id: "vis-live-leaf"), memberships: memberships)
+}
+
