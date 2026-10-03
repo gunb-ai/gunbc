@@ -8,8 +8,7 @@ import std.roster_frontier { FrontierRow, DeclSubject }
 import std.dissolution { UnboundDissolution }
 import extdeps.publication { SpecificationDocumentDate }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited }
-import extdeps.ampere.smpro_register { SmproStageDefined, SmproStageUndefined, smpro_stage_text }
-import extdeps.ampere.scp_diagnostic { Smpro, Pmpro, AtfBl1, DdrInitialization, DdrTraining, AtfBl2, AtfBl31, AtfBl32, Uefi, OperatingSystem }
+import extdeps.ampere.smpro_register { smpro_stage_text, smpro_status_text, smpro_cur_bootstage_of, smpro_bootstage_of }
 import extdeps.ampere.mt_collins_product_brief.memory_population {
   MtCollinsChannelConnectorPair, MtCollinsDimmPopulationRow,
   mt_collins_channel_connector_pairs, mt_collins_population_rows,
@@ -39,7 +38,7 @@ import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
   MtCollins1ChassisEnd, FrontEnd, RearEnd, MtCollins1Viewpoint, ViewpointReported, ViewpointNotYetReported,
   mtcollins1_operator_front_report,
   MtCollins1DiagnosisHypothesis, MtCollins1HypothesisStanding, HypothesisOpen, HypothesisRefutedByStickSwap,
-  HypothesisRefutedBySameCpuInTwoSocketBoot, HypothesisRefutedByJoinOutcome, MtCollins1JoinRefutation, StoppedBeforeDdr, StoppedBeforeUefi,
+  HypothesisWeakenedByMatchingCpu0Characteristics, MtCollins1SecondaryStage, SecondaryStageConsistent, SecondaryStageInconsistent,
   MtCollins1CpuFingerprintComparison, MtCollins1SecondaryJoinReading, MtCollins1SecondaryJoinOutcome, SecondaryJoined, SecondaryJoinTimeout,
   SecondaryJoinUnclassified, MtCollins1SocketTopology, SingleSocket, TwoSocket, secondary_join_outcome, mtcollins1_secondary_join_readings,
   MtCollins1StickSwapReport, MtCollins1StickPlacement, MtCollins1FirmwareSocketSummary, mtcollins1_firmware_socket_summary,
@@ -776,37 +775,22 @@ fn hypothesis_text(h: MtCollins1DiagnosisHypothesis, history: List<MtCollins1Soc
         concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat("Refuted hypothesis: ", h.hypothesis), " By the operator's swap report: "), k), " was silent in J"), to_string(sc)), " (run "), to_string(sr)), ") and trained in J"), to_string(tc)), " (run "), to_string(tr)), "). The J17 slot is not cleared.")
       StickNotCleared => concat("Stick refutation not derivable from the swap report and receipts (unverified): ", h.hypothesis)
     }
-    HypothesisRefutedBySameCpuInTwoSocketBoot { comparison: c } => if same_cpu_in_two_socket_boot(c: c) {
-        concat(concat(concat(concat(concat(concat("Refuted hypothesis: ", h.hypothesis), " By the firmware summaries: socket 0 reads core "), to_string(c.current_fingerprint.core_voltage_mv)), concat(concat(" mV, AVS ", to_string(c.current_fingerprint.avs_voltage_mv)), concat(" mV, warranty ", to_string(c.current_fingerprint.warranty)))), " in both "), concat(concat(c.current.run, " and the two-socket boot "), c.reference.run))
-      } else { concat("Pairing refutation not derivable from the two summaries (unverified): ", h.hypothesis) }
-    HypothesisRefutedByJoinOutcome { reading: r, refutes: what } => if join_outcome_refutes(outcome: secondary_join_outcome(reading: r), refutes: what) {
-        concat(concat(concat(concat("Refuted hypothesis: ", h.hypothesis), " By the join outcome of "), r.run), concat(": ", join_outcome_text(outcome: secondary_join_outcome(reading: r))))
-      } else { concat("Join-outcome refutation not derivable from the reading (unverified): ", h.hypothesis) }
+    HypothesisWeakenedByMatchingCpu0Characteristics { comparison: c } => if matching_cpu0_characteristics(c: c) {
+        concat(concat(concat(concat(concat(concat("Weakened hypothesis (not refuted): ", h.hypothesis), " Socket 0 reads core "), to_string(c.current_fingerprint.core_voltage_mv)), concat(concat(" mV, AVS ", to_string(c.current_fingerprint.avs_voltage_mv)), concat(" mV, warranty ", to_string(c.current_fingerprint.warranty)))), " in both "), concat(concat(c.current.run, " and the two-socket boot "), concat(c.reference.run, ": matching characteristics, not a unique CPU identity.")))
+      } else { concat("Weakening not derivable from the two summaries (unverified): ", h.hypothesis) }
   }
 }
 
-fn same_cpu_in_two_socket_boot(c: MtCollins1CpuFingerprintComparison) -> Bool {
+fn matching_cpu0_characteristics(c: MtCollins1CpuFingerprintComparison) -> Bool {
   let a = c.reference_fingerprint
   let b = c.current_fingerprint
   c.reference.active_sockets >= 2 && a.socket == b.socket && a.core_voltage_mv == b.core_voltage_mv && a.avs_voltage_mv == b.avs_voltage_mv && a.warranty == b.warranty
 }
 
-// Before DDR means socket 1's SMpro never left the SMpro, PMpro or BL1 stage; an undefined stage
-// code refutes nothing. Before UEFI holds for any timeout: SCP itself reported one socket.
-fn join_outcome_refutes(outcome: MtCollins1SecondaryJoinOutcome, refutes: MtCollins1JoinRefutation) -> Bool {
-  match outcome {
-    SecondaryJoined { inter_socket_links_reported: _ } => false
-    SecondaryJoinUnclassified { reason: _ } => false
-    SecondaryJoinTimeout { secondary_last_stage: st, primary_continued_as: _, inter_socket_links_reported: _, secondary_host_checkpoints: _ } => match refutes {
-      StoppedBeforeUefi => true
-      StoppedBeforeDdr => match st {
-        SmproStageUndefined { code: _ } => false
-        SmproStageDefined { stage: s } => match s {
-          Smpro => true  Pmpro => true  AtfBl1 => true
-          DdrInitialization => false  DdrTraining => false  AtfBl2 => false  AtfBl31 => false  AtfBl32 => false  Uefi => false  OperatingSystem => false
-        }
-      }
-    }
+fn secondary_stage_text(st: MtCollins1SecondaryStage) -> String {
+  match st {
+    SecondaryStageConsistent { current: c, reported: r } => concat(concat(smpro_stage_text(r: c), " (reported: "), concat(concat(smpro_stage_text(r: r.stage), concat(", ", smpro_status_text(r: r.status))), ")"))
+    SecondaryStageInconsistent { current_word: c, reported_word: r } => concat(concat(concat("inconsistent SMpro pair (current: ", smpro_stage_text(r: smpro_cur_bootstage_of(word: c))), concat("; reported: ", smpro_stage_text(r: smpro_bootstage_of(word: r).stage))), ", reported stage ahead of current)")
   }
 }
 
@@ -821,7 +805,7 @@ fn join_outcome_text(outcome: MtCollins1SecondaryJoinOutcome) -> String {
     SecondaryJoined { inter_socket_links_reported: l } => concat("SecondaryJoined { inter_socket_links_reported: ", bool_text(b: l), " }")
     SecondaryJoinUnclassified { reason: why } => concat("SecondaryJoinUnclassified: ", why)
     SecondaryJoinTimeout { secondary_last_stage: st, primary_continued_as: t, inter_socket_links_reported: l, secondary_host_checkpoints: cps } =>
-      concat(concat(concat("SecondaryJoinTimeout { secondary_last_stage: ", smpro_stage_text(r: st)), concat(", primary_continued_as: ", topology_text(t: t))),
+      concat(concat(concat("SecondaryJoinTimeout { secondary_last_stage: ", secondary_stage_text(st: st)), concat(", primary_continued_as: ", topology_text(t: t))),
         concat(concat(", inter_socket_links_reported: ", bool_text(b: l)), concat(", secondary_host_checkpoints: ", if list_length(items: cps) == 0 { "none }" } else { concat(join(cps, ", "), " }") })))
   }
 }
