@@ -941,6 +941,64 @@ fn fold_roster_row_is_at(path: String) -> Bool {
   any(xs: collection_roster_rows, predicate: fn(r) { r.row.module_path + "." + r.row.decl_name == path })
 }
 
+// THE ORDER A FOLD-REALIZED LOOP VISITS ITS DOMAIN IS A FACT OF ITS REALIZATION, and the realization says
+// it. The Loop's encoding (fold_recurrence_encoding) is one shape for every realized operation, so the
+// order cannot be read off the encoding's structure; it is read off the realized declaration the Loop
+// already carries (^loop_realized_declaration_edge), through this one derivation, and an executor of a
+// fold-realized Loop must ask it. An authored fold step is a left fold, and fold_list is too;
+// fold_list_right is the right fold. A synthesized step's order is owned by the synthesis that built it:
+// map conses each result onto the carrier, which is order-preserving ONLY when the members are visited
+// right to left, so its row says so; all joins with &&, whose result is the same in either order, and is
+// declared left to right with the fold it is written beside.
+type FoldIterationDirection
+  = IteratesLeftToRight
+  | IteratesRightToLeft
+
+fn callback_realization_iteration_direction(r: CallbackRealization) -> FoldIterationDirection {
+  match r {
+    CallbackMapsToCons => IteratesRightToLeft
+    CallbackAllByAnd => IteratesLeftToRight
+  }
+}
+
+fn fold_roster_form_iteration_direction(f: FoldRosterForm) -> FoldIterationDirection {
+  match f {
+    RosterAuthoredStep => IteratesLeftToRight
+    RosterCallbackStep { realization: r } => callback_realization_iteration_direction(r: r)
+  }
+}
+
+fn collection_roster_row_at(path: String) -> Optional<CollectionRosterRow> {
+  fold_list(xs: collection_roster_rows, empty: optional_absent(), cons: fn(acc, r) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if r.row.module_path + "." + r.row.decl_name == path { optional_present(value: r) } else { acc }
+    }
+  })
+}
+
+// Absent: the path names no collection fold realization (fold_node walks a tree, not a sequence).
+fn fold_realized_path_iteration_direction(path: String) -> Optional<FoldIterationDirection> {
+  match collection_roster_row_at(path: path) {
+    Present { value: r } => optional_present(value: fold_roster_form_iteration_direction(f: r.form))
+    Absent =>
+      if fold_realization_is_at(head: ^fold_list, path: path) {
+        optional_present(value: IteratesLeftToRight)
+      } else if fold_realization_is_at(head: ^fold_list_right, path: path) {
+        optional_present(value: IteratesRightToLeft)
+      } else {
+        optional_absent()
+      }
+  }
+}
+
+fn fold_realized_iteration_direction(realized: Node) -> Optional<FoldIterationDirection> {
+  match declaration_reference_path_optional(node: realized) {
+    Absent => optional_absent()
+    Present { value: path } => fold_realized_path_iteration_direction(path: qualified_name_to_dotted_string(qn: path))
+  }
+}
+
 // Absent: the realized edge names no fold family declaration, so this Loop is not a fold realization.
 fn fold_realized_member_role(realized: Node) -> Optional<FoldMemberRole> {
   match declaration_reference_path_optional(node: realized) {
