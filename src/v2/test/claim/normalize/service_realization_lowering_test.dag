@@ -2,7 +2,7 @@ module v2.test.claim.normalize.service_realization_lowering
 
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
 import v2.compiler.normalize { normalize_census }
-import v2.compiler.normalized_tree { CensusTree }
+import v2.compiler.normalized_tree { CensusTree, NormalizedTree }
 import v2.compiler.namespace_graft { namespace_graft_module_body_optional }
 import v2.std.service_realization_labels {
   realization_config_label,
@@ -129,4 +129,28 @@ test fn an_unrealizable_realization_refuses_located_holds() -> Bool {
   srl_refused_as(o: srl_local(), reason: ^service_realization_transport_unmodeled)
     && srl_refused_as(o: srl_repeated_exit(), reason: ^body_lowering_reason_realization_block_repeated)
     && srl_refused_as(o: srl_class_on_shell(), reason: ^service_realization_status_pattern_not_of_transport)
+}
+
+// A CONFIG-ONLY REALIZATION IS HELD OFF THE FULL ROUTE TOO (side-chat P1). A service whose only realization
+// fact is its config sets nothing aside, so the full route is held by the realization leaf itself
+// (v2.compiler.body_lowering_fold body_lower_service_held): census normalization carries the sibling with
+// the config, and ordinary normalization of the same source refuses as service_realization_unreachable.
+data srl_config_only_source: String = "module m\n\nservice S {\n  config { endpoint: \"http://x\" }\n  operation Run {}\n}\n"
+
+fn srl_config_only_census() -> Outcome<CensusTree> { srl_census(text: srl_config_only_source) }
+
+fn srl_config_only_full() -> Outcome<NormalizedTree> {
+  conservation_subject_of_text(path: "probe_service_realization_lowering.dag", text: srl_config_only_source).normalized
+}
+
+test fn a_config_only_realization_is_held_off_the_full_route_holds() -> Bool {
+  srl_has(n: srl_body(o: srl_config_only_census()), names: [realization_root_label(), ^S, realization_config_label()])
+    && srl_full_refused_as(o: srl_config_only_full(), reason: ^body_lowering_reason_service_realization_unreachable)
+}
+
+fn srl_full_refused_as(o: Outcome<NormalizedTree>, reason: Symbol) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+  }
 }

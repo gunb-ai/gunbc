@@ -10690,26 +10690,43 @@ fn body_lower_service_decl(shell: Node, admit_set_aside: Bool) -> Outcome<BodyLo
                 Present { value: refused } => Rejected { diagnostics: diagnostics_singleton(d: refused) }
                 Absent =>
               match a.set_aside {
-                Empty => body_lowering_lowered(o: outcome_accepted(value: body_lower_service_node(shell: shell, service_path: service_name, operations: a.operations, realization: body_lower_service_realization_leaf_optional(a: a))))
-                Cons { head: _, tail: _ } =>
-                  if admit_set_aside {
-                    Accepted {
-                      value: BodyLowered { node: body_lower_service_node(shell: shell, service_path: service_name, operations: a.operations, realization: body_lower_service_realization_leaf_optional(a: a)) },
-                      diagnostics: service_set_aside_diagnostics(xs: a.set_aside)
-                    }
-                  } else {
-                    Rejected {
-                      diagnostics: rejected_with_pending(
-                        pending: service_set_aside_diagnostics(xs: a.set_aside),
-                        rejected: diagnostics_singleton(d: body_lower_diagnostic(reason: ^body_lowering_reason_service_realization_unreachable, n: shell))
-                      )
-                    }
+                Empty =>
+                  match body_lower_service_realization_leaf_optional(a: a) {
+                    Absent => body_lowering_lowered(o: outcome_accepted(value: body_lower_service_node(shell: shell, service_path: service_name, operations: a.operations, realization: optional_absent())))
+                    Present { value: _ } => body_lower_service_held(shell: shell, service_path: service_name, a: a, admit_set_aside: admit_set_aside)
                   }
+                Cons { head: _, tail: _ } => body_lower_service_held(shell: shell, service_path: service_name, a: a, admit_set_aside: admit_set_aside)
               }
               }
               }
           }
       }
+  }
+}
+
+// A SERVICE THAT CARRIES A REALIZATION IS HELD OFF THE FULL ROUTE UNTIL XL-2 PR3c gives each stage that
+// cannot yet consume the sibling its own located cause: held whenever ANY member is set aside OR a
+// realization leaf is present -- a config-only service sets nothing aside, so the leaf alone must keep
+// the full route closed. At census grade the service is admitted with its sibling and its set-aside
+// members as advisories; on every other route it refuses as service_realization_unreachable, with each
+// set-aside member's own diagnostic pending.
+fn body_lower_service_held(shell: Node, service_path: List<Symbol>, a: BodyLowerServiceAcc, admit_set_aside: Bool) -> Outcome<BodyLowering> {
+  if admit_set_aside {
+    Accepted {
+      value: BodyLowered { node: body_lower_service_node(shell: shell, service_path: service_path, operations: a.operations, realization: body_lower_service_realization_leaf_optional(a: a)) },
+      diagnostics: service_set_aside_diagnostics(xs: a.set_aside)
+    }
+  } else {
+    match a.set_aside {
+      Empty => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_service_realization_unreachable, n: shell))
+      Cons { head: _, tail: _ } =>
+        Rejected {
+          diagnostics: rejected_with_pending(
+            pending: service_set_aside_diagnostics(xs: a.set_aside),
+            rejected: diagnostics_singleton(d: body_lower_diagnostic(reason: ^body_lowering_reason_service_realization_unreachable, n: shell))
+          )
+        }
+    }
   }
 }
 

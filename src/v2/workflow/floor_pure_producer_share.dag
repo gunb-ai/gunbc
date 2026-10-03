@@ -1145,6 +1145,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.normalize.service_realization_lowering.srl_repeated_exit",
   "v2.test.claim.normalize.service_realization_lowering.srl_class_on_shell",
   "v2.test.claim.normalize.service_realization_lowering.srl_shared_prefix",
+  "v2.test.claim.normalize.service_realization_lowering.srl_config_only_census",
+  "v2.test.claim.normalize.service_realization_lowering.srl_config_only_full",
   "v2.test.claim.normalize.service_spine.ss_route_bare_prefix",
   "v2.test.claim.normalize.service_spine.ss_route_bare_sibling",
   "v2.test.claim.normalize.service_spine.ss_route_module_name",
