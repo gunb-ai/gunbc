@@ -100,10 +100,11 @@ pub mod scope_rank_view;
 mod serve_budget_refusal;
 pub use emitted_crate_workspace_host::{run_emitted_crate_workspace, EmittedCrateWorkspaceHeld};
 pub use native_lane_runner::{
-    emitted_build_not_clean_cause, run_native_claim_program, run_required_v2_native, run_self_host,
-    run_v2_demand_census, run_v2_native_census, run_v2_native_cli, run_v2_native_frontier,
-    NativeCensusRun, NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination,
-    NativeRouteOutcome, SelfHostHeld, V2NativeCliHeld,
+    emitted_build_not_clean_cause, run_native_claim_program, run_native_serve_program,
+    run_required_v2_native, run_self_host, run_v2_demand_census, run_v2_native_census,
+    run_v2_native_cli, run_v2_native_frontier, NativeCensusRun, NativeClaimProgramRun,
+    NativeFrontierRun, NativeMemberTermination, NativeRouteOutcome, NativeServeProgramRun,
+    SelfHostHeld, V2NativeCliHeld,
 };
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{

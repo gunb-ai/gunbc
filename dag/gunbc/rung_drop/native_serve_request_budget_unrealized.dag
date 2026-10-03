@@ -1,0 +1,43 @@
+module gunbc.rung_drop.native_serve_request_budget_unrealized
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
+
+// THE NATIVE SERVE DOOR HAS NO PER-REQUEST BUDGET, AND THE SEED'S DOES (DESIGN 4b(3)).
+//
+// `gunbc serve` arms a CPU and wall deadline around every handler evaluation
+// (cli_run handle_serve, ctx.enter_evaluation_budget) and answers a crossing with a typed 500
+// naming the armed contract, so a request whose evaluation does not return cannot hold the serial
+// accept loop for every later request. A NativeServeDriver service runs its handler as compiled
+// code: there is no evaluator to interrupt, so a handler that does not return blocks the loop and
+// every later request -- /livez included -- waits behind it. That is a mitigation the seed route
+// has and the native route does not, on the same served program, so it is declared here rather
+// than left to be discovered by an approval that hangs.
+//
+// WHY THE TEMPORARY RUNG IS OUTSIDE THE LADDER: nothing refuses the stuck request and nothing
+// reports it; the process is alive and answers nobody. That is not a wrong answer, but it is not a
+// contained one either, and it is stated at the rung it actually sits at.
+//
+// THE TRIGGER NAMES THE CAPABILITY (ruling relayed by gentle-dove-36, 2026-10-03): a worker thread
+// or a pool is not the trigger; the restored wall is. And the approval broker's move off `gunbc
+// serve` is GATED on this row's retirement, because the interpreted broker has the mitigation today.
+data native_serve_request_budget_unrealized: RungDrop = RungDrop {
+  identity: "native_serve_request_budget_unrealized" as NonEmptyStr,
+
+  subject: "the per-request evaluation budget on a NativeServeDriver service (std.compiler_entry NativeServeDriver, gunbc.native_serve): a compiled handler that does not return holds the serial loop",
+
+  declared: "2026-10-03",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: Mitigatable,
+    temporary: OutsideTheLadder,
+    reason: ReplacementStaged { replacement: "a NativeServeDriver budget wall: the native door refuses a non-returning or over-budget compiled request with a typed 500 and keeps serving later requests" },
+    population: [
+      "every NativeServeDriver service; at declaration gunbc.instruments.native_serve_fixture, the only one"
+    ],
+    restoration_trigger: "a non-returning or over-budget compiled request is refused with a typed 500 and cannot block later requests on the native door. SUFFICIENT FOR: the native-serve instrument carries a case whose handler does not return within the declared budget, observes the typed 500 for it, and observes a later request on the same process answered. A thread pool, a timeout knob, or a supervisor restart that drops the request without a typed answer does not retire this row"
+  }
+}
