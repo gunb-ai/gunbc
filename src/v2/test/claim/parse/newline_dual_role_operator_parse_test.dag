@@ -1,4 +1,4 @@
-module v2.test.parse.newline_dual_role_operator_parse
+module test.claim.parse_test_newline_dual_role_operator
 
 import v2.compiler.parse { parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }

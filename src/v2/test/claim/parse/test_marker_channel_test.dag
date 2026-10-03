@@ -1,4 +1,4 @@
-module v2.test.claim.parse.test_marker_channel
+module test.claim.parse_test_marker_channel
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

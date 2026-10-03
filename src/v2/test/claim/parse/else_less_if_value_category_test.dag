@@ -1,4 +1,4 @@
-module v2.test.parse.else_less_if_value_category
+module test.claim.parse_test_else_less_if_value_category
 
 import v2.compiler.body_lowering_fold {
   body_lower_admitted_guard_optional,
