@@ -310,12 +310,9 @@ type ServeHttpResponse {
 
 // The WIRE projection of ServeHttpResponse — the shape the host accept-loop seam reads back from the one .dag entry it calls (gunbc serve). Status is the bare Int and content type the wire label String so the seam never touches a modeled enum; the modeled ServeHttpResponse stays the authority and this record is its one-way projection (serve_wire_response), never authored directly by handlers.
 //
-// RESPONSE HEADERS RIDE THE WIRE AS RENDERED LINES, the redirect and cookie channels the auth
-// routes need: ServeHttpResponse stays header-free (a handler's body/status/type authority),
-// and the header carrier is built at the projection — a redirect IS a Location header plus a
-// status, and a session cookie IS a Set-Cookie header, so the headers are data the routes
-// construct honestly while the socket's willingness to write them is the realization's
-// contract. The list is in WRITE ORDER and each entry is one complete header line.
+// RESPONSE HEADERS RIDE THE WIRE AS RENDERED LINES: the handler's typed ServeResponseHeader list
+// (on ServeHttpResponse above) is rendered here, one complete header line per entry in WRITE
+// ORDER, and the socket's willingness to write them is the realization's contract.
 type ServeWireResponse {
   status: Int
   content_type_label: String

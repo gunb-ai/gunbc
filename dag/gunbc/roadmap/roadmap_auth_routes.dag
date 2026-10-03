@@ -2,11 +2,7 @@ module gunbc.roadmap_auth_routes
 
 import gunbc.auth.login_browser_binding { auth_login_browser_binding, auth_login_browser_admitted }
 
-import extdeps.tailscale.serve { ServeStatusUnreadable, ServeStatusProxies }
-import extdeps.tailscale.serve
-import gunbc.auth.serve_route_readback { serve_backend_route_readback }
-import extdeps.tailscale.acl { operator_tailscale_acl_policy }
-import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid, request_access_path_of, authenticated_viewer_label, request_authentication_evidence_of_standing }
+import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid, request_authentication_evidence_of_standing }
 import gunbc.auth.session { SessionCookieAbsent, SessionCookieUnread, SessionCookieMalformed, SessionCookieIdParsed, SessionCookieIdNotPresent, SessionCookieIdMalformed, session_cookie_id_of_header, AuthenticatedSession, SessionMinted, SessionRefused, SessionRefusalCause, SessionVerdictRefused, SessionTransactionExpired, SessionTransactionNonceMismatch, SessionClientTrackerWeb, mint_authenticated_session, session_cookie_set_cookie_line, session_cookie_clear_line, session_cookie_standing_reason }
 import gunbc.auth.session_store { session_store_layout_for_instance, session_cookie_standing_of_lookup, session_store_save, session_store_delete, session_store_purge_principal, SessionStoreSaved, SessionStoreSaveRefused, SessionStoreDeleted, SessionStoreNothingToDelete, SessionStoreDeleteRefused, SessionStorePurged, SessionStorePurgeRefused }
 import gunbc.auth.oidc_deployment_config { OidcDeploymentConfig, OidcDeploymentConfigLoaded, OidcDeploymentConfigUnavailable, oidc_deployment_config_read }
@@ -41,28 +37,6 @@ fn serve_text_response_with_headers(status: HttpStatus, content_type: MediaType,
   ServeHttpResponse { status: status, content_type: content_type, body: body, headers: headers }
 }
 
-fn roadmap_serve_request_security(
-  instance: HostDashboardInstance,
-  tailscale_identity: String,
-  cookie_header: String = "",
-) -> RequestSecurityContext<RequestAuthenticationEvidence> {
-  let observed_route = if tailscale_identity == "" { none } else {
-    serve_backend_route_readback(status_json: tailscale.Serve.StatusJson().stdout, listen_host: instance.listen_host, listen_port: instance.listen_port)
-  }
-  RequestSecurityContext {
-    access_path: request_access_path_of(
-      listen_host: instance.listen_host,
-      tailscale_header: tailscale_identity,
-      serve_status: match observed_route { Present { value: _ } => ServeStatusProxies { targets: [join(["http://", instance.listen_host as String, ":", to_string(instance.listen_port)], "")] } Absent => ServeStatusUnreadable },
-      serve_route: observed_route,
-      acl_policy: operator_tailscale_acl_policy,
-    ),
-    authentication: roadmap_serve_authentication_evidence(
-      instance: instance,
-      cookie_header: cookie_header,
-    ),
-  }
-}
 
 fn roadmap_serve_authentication_evidence(
   instance: HostDashboardInstance,
@@ -665,38 +639,4 @@ fn auth_logout_response(instance: HostDashboardInstance, request: ServeHttpReque
   }
 }
 
-fn auth_session_response(request: ServeHttpRequest<RequestAuthenticationEvidence>) -> ServeHttpResponse {
-  serve_text_response_with_headers(
-    status: 200,
-    content_type: application_json_utf8,
-    body: auth_session_body(evidence: request.security.authentication),
-    headers: [ServeResponseHeaderNoStore],
-  )
-}
 
-fn auth_session_body(evidence: RequestAuthenticationEvidence) -> String {
-  serialize_json(v: json_object(members: match evidence {
-    GoogleOidcSession { session } => [
-      json_kv(key: "authenticated", value: json_bool(b: true)),
-      json_kv(key: "csrf_token", value: json_string(s: session.csrf.token as String)),
-      json_kv(key: "principal", value: json_string(s: principal_ref_label(p: session.principal))),
-      json_kv(key: "expires_at", value: json_string(s: session.expires_at)),
-      json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
-    ]
-    SessionStandingInvalid { standing } => [
-      json_kv(key: "authenticated", value: json_bool(b: false)),
-      json_kv(key: "standing", value: json_string(s: session_cookie_standing_reason(standing: standing))),
-      json_kv(key: "viewer", value: json_string(s: "")),
-    ]
-    FabricServiceEvidence { kind: _, authenticated_at: _ } => [
-      json_kv(key: "authenticated", value: json_bool(b: false)),
-      json_kv(key: "standing", value: json_string(s: "service evidence is not a human session")),
-      json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
-    ]
-    AuthAbsent => [
-      json_kv(key: "authenticated", value: json_bool(b: false)),
-      json_kv(key: "standing", value: json_string(s: session_cookie_standing_reason(standing: SessionCookieAbsent))),
-      json_kv(key: "viewer", value: json_string(s: "")),
-    ]
-  }))
-}
