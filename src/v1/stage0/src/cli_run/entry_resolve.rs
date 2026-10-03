@@ -693,10 +693,6 @@ thread_local! {
     // the end of the floor and of a regen round as the positive control.
     pub(crate) static PROCESS_RESOLVE_INDEX: RefCell<[BTreeMap<String, Rc<MultiEntryIndex>>; 2]> =
         const { RefCell::new([BTreeMap::new(), BTreeMap::new()]) };
-
-    // While loading the materialization-provider authority, cross-process disk hits
-    // must not re-enter provider routing (review 44268: bootstrap recursion).
-    pub(crate) static CROSS_PROCESS_PROVIDER_ROUTING_SUPPRESSED: Cell<usize> = const { Cell::new(0) };
 }
 
 /// Canonical spelling for the shared-index roots — both the key AND the build
@@ -1164,7 +1160,6 @@ pub(crate) fn new_multi_entry_index_shell(
         normalize_diag_cache: RefCell::new(std::collections::HashMap::new()),
         ownership_diag_cache: RefCell::new(std::collections::HashMap::new()),
         resolved_graph_memo: RefCell::new(HashMap::new()),
-        resolved_graph_memo_cross_process_subjects: RefCell::new(std::collections::HashSet::new()),
         schedule_retention: RefCell::new(None),
         source_roots: source_roots.to_vec(),
         pool_parse: RefCell::new(None),
@@ -1662,74 +1657,6 @@ pub(crate) fn via_index_parse_one_source(
     entry
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum ResolvedGraphCacheDegradation {
-    JsonRepresentationCannotServe,
-}
-
-impl ResolvedGraphCacheDegradation {
-    fn stable_tag(self) -> &'static str {
-        match self {
-            Self::JsonRepresentationCannotServe => "json-representation-cannot-serve",
-        }
-    }
-
-    fn reason(self) -> &'static str {
-        match self {
-            Self::JsonRepresentationCannotServe => {
-                "canonical JSON cold write exceeded 31 GiB; bounded experiment remained \
-                 incomplete after 28 minutes at 1.2 GiB compressed, so production payoff is \
-                 negative"
-            }
-        }
-    }
-}
-
-static RESOLVED_GRAPH_CACHE_DEGRADATION_COUNT: AtomicUsize = AtomicUsize::new(0);
-
-fn format_resolved_graph_cache_degradation(
-    diagnostic: ResolvedGraphCacheDegradation,
-    subject: &str,
-    count: usize,
-) -> String {
-    format!(
-        "[resolved-graph-cache] degradation tag={} count={count} subject={subject} \
-         disposition=cold-recompute reason={}",
-        diagnostic.stable_tag(),
-        diagnostic.reason(),
-    )
-}
-
-fn report_resolved_graph_cache_degradation(
-    diagnostic: ResolvedGraphCacheDegradation,
-    subject: &str,
-) {
-    let count = RESOLVED_GRAPH_CACHE_DEGRADATION_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
-    eprintln!(
-        "{}",
-        format_resolved_graph_cache_degradation(diagnostic, subject, count)
-    );
-}
-
-#[cfg(test)]
-mod resolved_graph_cache_degradation_tests {
-    use super::{format_resolved_graph_cache_degradation, ResolvedGraphCacheDegradation};
-
-    #[test]
-    fn unavailable_optional_tier_is_typed_located_counted_cold_recompute() {
-        let diagnostic = format_resolved_graph_cache_degradation(
-            ResolvedGraphCacheDegradation::JsonRepresentationCannotServe,
-            "subject-abc",
-            7,
-        );
-        assert!(diagnostic.contains("tag=json-representation-cannot-serve"));
-        assert!(diagnostic.contains("count=7"));
-        assert!(diagnostic.contains("subject=subject-abc"));
-        assert!(diagnostic.contains("disposition=cold-recompute"));
-        assert!(!diagnostic.contains("refus"));
-    }
-}
-
 /// The sources-taking core of `resolve_entry_with_parse_cache`: parse → resolve →
 /// normalize → `reconcile_with_typed_cache` → ownership, every stage through the
 /// index's per-module memo tiers (parse/normalize/typed/ownership caches + the
@@ -1769,37 +1696,14 @@ pub(crate) fn resolved_graph_from_sources_with_index(
         .selection
         .admit_pool_names(|| reference_pool_names_for_index(index))?;
     let subject = subject_digest_for_closure(&sources);
-    // In-process share tier (resolved_graph_memo): always on — the ReferenceTier in front of the
-    // opt-in cross-process store. `install_cross_process_materialization_hit` can populate this
-    // otherwise process-local map from disk, so its companion provenance set is load-bearing:
-    // an in-run judgment and a content-addressed prior judgment remain separate observations.
+    // In-process share tier (resolved_graph_memo): always on. Every value in it was computed by
+    // this process, so a hit is an in-run judgment.
     if let Some((graph, si, compile_clean_diags)) = index.resolved_graph_memo.borrow().get(&subject)
     {
         if typecheck_gate == ResolveTypecheckGate::Strict {
-            if index
-                .resolved_graph_memo_cross_process_subjects
-                .borrow()
-                .contains(&subject)
-            {
-                record_required_lane_cross_process_content_judged_sources(&sources);
-            } else {
-                record_required_lane_judged_sources(&sources);
-            }
+            record_required_lane_judged_sources(&sources);
         }
         return Ok((graph.clone(), si.clone(), compile_clean_diags.clone()));
-    }
-    // Arming the optional tier while its JSON representation cannot serve is a
-    // deliberate, bounded degradation to the authoritative cold computation. It
-    // never changes the compiler answer or enters the OOMing encoder. Keep the
-    // degradation typed, subject-located, and process-counted until the
-    // `real-production-invocation` clause lands a representation with positive
-    // measured cold/write and warm/hit payoff, at which point this arm dissolves.
-    let cross_process_cache_degraded = resolved_graph_cache_root_from_env().is_some();
-    if cross_process_cache_degraded {
-        report_resolved_graph_cache_degradation(
-            ResolvedGraphCacheDegradation::JsonRepresentationCannotServe,
-            &subject,
-        );
     }
 
     let mut modules: Vec<Rc<Node>> = Vec::new();
@@ -2020,10 +1924,6 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     // leak D0.1 removes (ci-two-tier §5). Per-module typed-cache warming already happened
     // above, in reconcile, and is unaffected.
     if memo_share == ResolvedGraphMemoShare::Memoize {
-        index
-            .resolved_graph_memo_cross_process_subjects
-            .borrow_mut()
-            .remove(&subject);
         index.resolved_graph_memo.borrow_mut().insert(
             subject.clone(),
             (
@@ -2032,18 +1932,6 @@ pub(crate) fn resolved_graph_from_sources_with_index(
                 compile_clean_diags.clone(),
             ),
         );
-    }
-    // The store direction of the seam obeys the SAME bootstrap suppression as the
-    // read direction. The flag names a window in which provider routing may not be
-    // re-entered at all; honouring it on the probe alone left the store calling
-    // `resolve_closure_request_key_from_digests` while the provider ctx was still
-    // mid-construction, so `materialization_provider_ctx` saw an empty memo slot and
-    // rebuilt the whole provider closure — a nested resolve that re-entered this same
-    // store, unbounded, ~1GB per level (repeat-resolve OOM, root-caused 2026-08-03).
-    // Counted, never silent: a suppressed store is a bounded bootstrap-window skip
-    // whose frequency stays observable (§5 — a failure arm must refuse, never widen).
-    if cross_process_provider_routing_suppressed() && !cross_process_cache_degraded {
-        record_provider_bootstrap_store_skip();
     }
 
     Ok((typed, source_indices, compile_clean_diags))
@@ -2192,12 +2080,6 @@ fn required_lane_judged_module_identities_store() -> &'static Mutex<BTreeSet<Str
     STORE.get_or_init(|| Mutex::new(BTreeSet::new()))
 }
 
-fn required_lane_cross_process_content_judged_module_identities_store(
-) -> &'static Mutex<BTreeSet<String>> {
-    static STORE: OnceLock<Mutex<BTreeSet<String>>> = OnceLock::new();
-    STORE.get_or_init(|| Mutex::new(BTreeSet::new()))
-}
-
 fn record_required_lane_judged_sources(sources: &[Rc<v1_compiler_compile::SourceFile>]) {
     let mut identities = required_lane_judged_module_identities_store()
         .lock()
@@ -2209,32 +2091,10 @@ fn record_required_lane_judged_sources(sources: &[Rc<v1_compiler_compile::Source
     }
 }
 
-fn record_required_lane_cross_process_content_judged_sources(
-    sources: &[Rc<v1_compiler_compile::SourceFile>],
-) {
-    let mut identities = required_lane_cross_process_content_judged_module_identities_store()
-        .lock()
-        .expect("required-lane cross-process-content judgment identity store poisoned");
-    for source in sources {
-        if let Some(module_path) = extract_module_path(&source.content) {
-            identities.insert(module_path);
-        }
-    }
-}
-
 pub fn required_lane_judged_module_identities() -> Vec<String> {
     required_lane_judged_module_identities_store()
         .lock()
         .expect("required-lane resolved-module identity store poisoned")
-        .iter()
-        .cloned()
-        .collect()
-}
-
-pub fn required_lane_cross_process_content_judged_module_identities() -> Vec<String> {
-    required_lane_cross_process_content_judged_module_identities_store()
-        .lock()
-        .expect("required-lane cross-process-content judgment identity store poisoned")
         .iter()
         .cloned()
         .collect()
