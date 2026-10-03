@@ -58,7 +58,7 @@ data fn_member_coproduct_eq_red_source: String = "module eq_probe_fn_coproduct\n
 
 data partial_function_eq_red_source: String = "module eq_probe_partial_function\nimport std.algebra { PartialFunction }\nfn same(a: PartialFunction<Int, Int>, b: PartialFunction<Int, Int>) -> Bool { a == b }\n"
 
-data peano_nat_eq_green_source: String = "module eq_probe_peano_nat\nimport v2.std.nat { Nat }\nfn same(a: Nat, b: Nat) -> Bool { a == b }\n"
+data peano_nat_eq_green_source: String = "module eq_probe_peano_nat\nimport test.fixture.structural_peano_nat { StructuralNat }\nfn same(a: StructuralNat, b: StructuralNat) -> Bool { a == b }\n"
 
 data local_recursive_coproduct_eq_green_source: String = "module eq_probe_local_peano\ntype PNat\n  = PZero\n  | PSucc { prev: PNat }\nfn same(a: PNat, b: PNat) -> Bool { a == b }\n"
 

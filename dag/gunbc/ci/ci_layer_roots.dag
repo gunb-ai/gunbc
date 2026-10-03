@@ -524,17 +524,7 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: unbound_dissolution(description: "manual suites migrate under test/claim with declared consumers; row deletes")
   },
   WitnessExclusionRow {
-    pattern: "glob_discovery.dag",
-    classification: OfflineLocalRecipe,
-    reason: excl_probe_universe_carrier_reason,
-    dissolution: excl_probe_universe_carrier_dissolve},
-  WitnessExclusionRow {
     pattern: "glob_discovery_law.dag",
-    classification: OfflineLocalRecipe,
-    reason: excl_probe_universe_carrier_reason,
-    dissolution: excl_probe_universe_carrier_dissolve},
-  WitnessExclusionRow {
-    pattern: "host_discovered_owned_data_manifest.dag",
     classification: OfflineLocalRecipe,
     reason: excl_probe_universe_carrier_reason,
     dissolution: excl_probe_universe_carrier_dissolve},
@@ -567,11 +557,6 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: "transport-run witness: hermetic runs read host_module_bindings = Empty and REFUSE; do NOT give it bin_witness_wet_entries rows (see crate_layout_transport_exclusion_note)",
     dissolution: unbound_dissolution(description: "the crate-layout artifact moves to host-driven generation with the index supplied at the boundary; the hand rows, the parity witness, and this row delete together")
   },
-  WitnessExclusionRow {
-    pattern: "unified_test_claim_substrate_equivalence.dag",
-    classification: OfflineLocalRecipe,
-    reason: excl_probe_universe_carrier_reason,
-    dissolution: excl_probe_universe_carrier_dissolve},
   WitnessExclusionRow {
     pattern: "ci_exclusion_proof_test.dag",
     classification: OfflineLocalRecipe,

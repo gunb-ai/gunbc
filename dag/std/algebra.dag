@@ -309,6 +309,7 @@ fn ordering_is_less(o: Ordering) -> Bool {
 
 type AlgebraProfile
   = OrderedRingProfile
+  | OrderedSemiringProfile
   | ApproximateFieldProfile
   | BooleanAlgebraProfile
   | FinitePowerSetProfile
@@ -606,6 +607,11 @@ fn algebra_carriers() -> List<AlgebraCarrier> {
       spellings: [scalar_carrier_spelling(text: "Int")],
     },
     AlgebraCarrier {
+      name: "Nat",
+      profile: OrderedSemiringProfile,
+      spellings: [scalar_carrier_spelling(text: "Nat")],
+    },
+    AlgebraCarrier {
       name: "Float",
       profile: ApproximateFieldProfile,
       spellings: [scalar_carrier_spelling(text: "Float")],
@@ -790,6 +796,7 @@ type AlgebraSupportAxis
 fn algebra_profile_support(profile: AlgebraProfile) -> AlgebraSupportAxis {
   match profile {
     OrderedRingProfile => FiniteSupport
+    OrderedSemiringProfile => FiniteSupport
     ApproximateFieldProfile => FiniteSupport
     BooleanAlgebraProfile => FiniteSupport
     FinitePowerSetProfile => FiniteSupport
@@ -803,7 +810,9 @@ fn algebra_profile_support(profile: AlgebraProfile) -> AlgebraSupportAxis {
 
 // WHICH CARRIERS A NUMERAL DENOTES AN ELEMENT OF. A numeral names the image of an integer under the
 // unique ring homomorphism out of the integers, so it has a denotation exactly in a profile that
-// carries ring structure: the ordered ring and the (approximate) field. A Boolean algebra, a free
+// carries ring structure: the ordered ring and the (approximate) field. The ordered semiring is the
+// same reading one step down: a non-negative numeral names the image of a natural under the unique
+// semiring homomorphism out of the naturals, so it too has a denotation there. A Boolean algebra, a free
 // monoid and every collection or function profile carry no such map, so a numeral at one of them
 // is a different value, never a spelling of one of theirs (DESIGN section 4: a Bool literal is not
 // an Int literal, and no implicit route exists). Every arm is spelled, so a new profile is a
@@ -811,6 +820,7 @@ fn algebra_profile_support(profile: AlgebraProfile) -> AlgebraSupportAxis {
 fn algebra_profile_admits_numeral(profile: AlgebraProfile) -> Bool {
   match profile {
     OrderedRingProfile => true
+    OrderedSemiringProfile => true
     ApproximateFieldProfile => true
     BooleanAlgebraProfile => false
     FinitePowerSetProfile => false
@@ -855,6 +865,29 @@ fn ordered_ring_templates() -> List<AlgebraFieldTemplate> {
     { name: "add", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "zero", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "negate", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "mul", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "one", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "compare", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Ordering" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "clamp", param_types: [ReceiverSelf, ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: Present { value: ShapeConstant }, callback_element_position: none }
+  ]
+}
+
+// THE NATURALS INHABIT AN ORDERED COMMUTATIVE SEMIRING, AND THIS IS WHERE THAT IS SAID (operator
+// ruling A, 2026-09-30). std.nat Nat used to carry its algebra in its BODY -- `type Nat =
+// CommutativeSemiring<Magnitude>` -- so the structure was the carrier and an opaque Magnitude stood
+// where the naturals' definition should have been. The carrier is now the inductive definition and
+// the algebra is something it inhabits: this row set, reached through the Nat carrier row in
+// algebra_carriers exactly as Int reaches the ordered ring.
+//
+// IT IS THE ORDERED RING'S SURFACE WITHOUT `negate`, and the omission is the content. A semiring
+// has no additive inverse: the naturals are closed under add and mul and not under subtraction
+// (std.coercion dag_subtraction_refinement types a difference of naturals as an Int). So `negate`
+// derives for Int and does not derive for Nat, from the two profiles rather than from a special
+// case -- which is what makes the inhabitance a claim that can be wrong.
+fn ordered_semiring_templates() -> List<AlgebraFieldTemplate> {
+  [
+    { name: "add", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "zero", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "mul", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "one", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "compare", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Ordering" }, size_effect: none, cost_shape: none, callback_element_position: none },
@@ -1001,6 +1034,7 @@ fn algebra_method_template_name(name: String) -> Bool {
 fn algebra_templates_for_profile(profile: AlgebraProfile) -> List<AlgebraFieldTemplate> {
   match profile {
     OrderedRingProfile => ordered_ring_templates()
+    OrderedSemiringProfile => ordered_semiring_templates()
     ApproximateFieldProfile => approximate_field_templates()
     BooleanAlgebraProfile => boolean_algebra_templates()
     FinitePowerSetProfile => finite_power_set_templates()
@@ -1015,6 +1049,7 @@ fn algebra_templates_for_profile(profile: AlgebraProfile) -> List<AlgebraFieldTe
 fn algebra_type_param_names(profile: AlgebraProfile) -> List<String> {
   match profile {
     OrderedRingProfile => []
+    OrderedSemiringProfile => []
     ApproximateFieldProfile => []
     BooleanAlgebraProfile => []
     FinitePowerSetProfile => ["T"]
@@ -1029,6 +1064,7 @@ fn algebra_type_param_names(profile: AlgebraProfile) -> List<String> {
 fn all_algebra_profiles() -> List<AlgebraProfile> {
   [
     OrderedRingProfile,
+    OrderedSemiringProfile,
     ApproximateFieldProfile,
     BooleanAlgebraProfile,
     FinitePowerSetProfile,
