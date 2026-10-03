@@ -323,7 +323,7 @@ fn copy_stage0_support_modules(stage1_dir: &std::path::Path, ws: &std::path::Pat
         "cli_run.rs",
         "main.rs",
         "coproduct_reflection.rs",
-        "resolved_graph_cache.rs",
+        "closure_identity.rs",
         "recorded_fixture.rs",
     ] {
         let src = stage0_src.join(name);
@@ -383,7 +383,7 @@ fn diff_excluding_hand_maintained(
         .arg("--exclude=cli_run.rs")
         .arg("--exclude=main.rs")
         .arg("--exclude=coproduct_reflection.rs")
-        .arg("--exclude=resolved_graph_cache.rs")
+        .arg("--exclude=closure_identity.rs")
         .arg("--exclude=recorded_fixture.rs")
         .arg("--exclude=module_path_index")
         .arg(dir_a)
