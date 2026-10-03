@@ -8,7 +8,9 @@ import extdeps.shell
 import extdeps.shell.exec { ProcessObservation }
 import extdeps.exec.command { LocalExec }
 import extdeps.transports.rest { mutation_status_is_commit_ambiguous }
-import extdeps.tools.curl { curl_sigv4_s3_upload_command, curl_sigv4_s3_download_command, curl_aws_sigv4_cli_tool }
+import extdeps.tools.curl { curl_sigv4_s3_upload_command, curl_sigv4_s3_download_command, curl_aws_sigv4_cli_tool, curl_s3_entity_tag_cli_tool, S3TransferReport, ReportStatus, ReportStatusAndEntityTag }
+import extdeps.object_storage { ObjectEntityTag, ObjectPutPrecondition, PutUnconditional, PutIfAbsent, PutIfMatch }
+import v2.std.optional { Present, Absent }
 import gunbc.host_cli_dependency {
   observe_host_cli_dependency,
   HostCliDependencyPresent,
@@ -45,12 +47,28 @@ import gunbc.cloudflare.r2_s3_netrc {
 // 404 or 403. Three digits on stdout do. "000" is curl's word for "no status was received", and a
 // stdout that is not three digits at all is a transport that did not run as modeled. The parsed Int
 // is admitted through std.types http_status_of, and 2xx is std.citation http_status_is_success.
+//
+// THE ENTITY TAG RIDES ON A SECOND LINE when the transfer was asked to report it
+// (extdeps.tools.curl ReportStatusAndEntityTag); a status-only stdout has no second line, and an
+// empty one is a response with no ETag header. Either reads as no tag, never as an empty tag.
 type S3TransferAnswer
-  = S3Answered { status: HttpStatus }
+  = S3Answered { status: HttpStatus, tag: ObjectEntityTag? }
   | S3NotAnswered { cause: NonEmptyStr }
 
+fn s3_stdout_line(stdout: String, index: Int) -> String {
+  match split(s: stdout, delimiter: "\n").skip(index).first() {
+    Present { value: l } => trim(s: l)
+    Absent => ""
+  }
+}
+
+fn s3_entity_tag_of(stdout: String) -> ObjectEntityTag? {
+  let raw = s3_stdout_line(stdout: stdout, index: 1)
+  if raw == "" { none } else { Present { value: ObjectEntityTag { value: raw as NonEmptyStr } } }
+}
+
 fn classify_s3_transfer(observation: ProcessObservation) -> S3TransferAnswer {
-  let code = trim(s: observation.stdout)
+  let code = s3_stdout_line(stdout: observation.stdout, index: 0)
   if code == "000" {
     S3NotAnswered {
       cause: concat("no HTTP status was received from the store: ", trim(s: observation.stderr)) as NonEmptyStr,
@@ -67,7 +85,7 @@ fn classify_s3_transfer(observation: ProcessObservation) -> S3TransferAnswer {
             S3NotAnswered {
               cause: join(["the transport printed a status outside HTTP's range: ", code], "") as NonEmptyStr,
             }
-          Present { value: status } => S3Answered { status: status }
+          Present { value: status } => S3Answered { status: status, tag: s3_entity_tag_of(stdout: observation.stdout) }
         }
     }
   }
@@ -77,28 +95,35 @@ data s3_status_not_found: HttpStatus = 404
 
 data s3_status_precondition_failed: HttpStatus = 412
 
-// WHAT A PUT ANSWERS IS FOUR THINGS AND NOT THREE. A 2xx stored it; a 412 found it present (the PUT
-// carried If-None-Match: *); a 4xx the store decided BEFORE committing anything; and a 5xx or a
+// WHAT A PUT ANSWERS IS FOUR THINGS AND NOT THREE. A 2xx stored it; a 412 is the precondition not
+// holding, and WHICH precondition decides what it means: under If-None-Match: * an object is already
+// present, and under If-Match the object has moved past the tag the writer read -- the lost race of
+// a compare-and-set, an outcome and not a fault (std.fabric_storage FabricHeadMoved); a 4xx the store decided BEFORE committing anything; and a 5xx or a
 // transfer that never received a status may have committed -- extdeps.transports.rest
 // mutation_status_is_commit_ambiguous owns that boundary -- so those are OUTCOME UNKNOWN, which a
 // caller reconciles by fetching, never by putting again.
 type R2PutVerdict
-  = R2ObjectStored
+  = R2ObjectStored { tag: ObjectEntityTag? }
   | R2ObjectAlreadyPresent
+  | R2ObjectTagMoved
   | R2PutRefused { cause: NonEmptyStr }
   | R2PutOutcomeUnknown { cause: NonEmptyStr }
 
-fn classify_r2_put(answer: S3TransferAnswer, stderr: String) -> R2PutVerdict {
+fn classify_r2_put(precondition: ObjectPutPrecondition, answer: S3TransferAnswer, stderr: String) -> R2PutVerdict {
   match answer {
     S3NotAnswered { cause: cause } =>
       R2PutOutcomeUnknown {
         cause: concat("the PUT may have committed, no verdict was received; reconcile by fetching the key: ", cause as String) as NonEmptyStr,
       }
-    S3Answered { status: status } =>
+    S3Answered { status: status, tag: tag } =>
       if http_status_is_success(status: status) {
-        R2ObjectStored
+        R2ObjectStored { tag: tag }
       } else if status == s3_status_precondition_failed {
-        R2ObjectAlreadyPresent
+        match precondition {
+          PutIfAbsent => R2ObjectAlreadyPresent
+          PutIfMatch { tag: _ } => R2ObjectTagMoved
+          PutUnconditional => R2PutRefused { cause: "the store answered 412 to a PUT that carried no precondition; that is not this protocol" }
+        }
       } else if mutation_status_is_commit_ambiguous(status: status) {
         R2PutOutcomeUnknown {
           cause: join(["the store answered ", to_string(status), ", which does not establish that the PUT did not commit: ", trim(s: stderr)], "") as NonEmptyStr,
@@ -115,16 +140,16 @@ fn classify_r2_put(answer: S3TransferAnswer, stderr: String) -> R2PutVerdict {
 // fixture. -f makes a non-2xx write NOTHING to the destination (extdeps.tools.curl), so a staged
 // path either holds the object's bytes or does not exist.
 type R2FetchVerdict
-  = R2FetchStagedAt { staged_path: NonEmptyStr }
+  = R2FetchStagedAt { staged_path: NonEmptyStr, tag: ObjectEntityTag? }
   | R2FetchAbsent
   | R2FetchRefused { cause: NonEmptyStr }
 
 fn classify_r2_fetch(answer: S3TransferAnswer, staged_path: NonEmptyStr, stderr: String) -> R2FetchVerdict {
   match answer {
     S3NotAnswered { cause: cause } => R2FetchRefused { cause: cause }
-    S3Answered { status: status } =>
+    S3Answered { status: status, tag: tag } =>
       if http_status_is_success(status: status) {
-        R2FetchStagedAt { staged_path: staged_path }
+        R2FetchStagedAt { staged_path: staged_path, tag: tag }
       } else if status == s3_status_not_found {
         R2FetchAbsent
       } else {
@@ -137,12 +162,15 @@ fn classify_r2_fetch(answer: S3TransferAnswer, staged_path: NonEmptyStr, stderr:
 
 // WHERE ONE TRANSFER GOES AND WITH WHAT IT IS SIGNED. Resolved by the purpose's owner (the origin,
 // the blob placement) from its own declarations; this module never chooses a bucket or a credential.
-// create_only is that owner's STORE POLICY, derived from what the purpose admits, never a default.
+// The precondition is that owner's STORE POLICY, derived from what the purpose admits (create-only
+// for an admitted immutable object) or from the tag the owner last read (a compare-and-set head),
+// never a default. report says whether the owner reads the entity tag back.
 type R2TransferTarget {
   locator: R2ObjectLocator
   access_key_id: NonEmptyStr
   token_value: SecretRef
-  create_only: Bool
+  precondition: ObjectPutPrecondition
+  report: S3TransferReport
 }
 
 // WHAT BECAME OF THE CREDENTIAL, CARRIED BESIDE THE STORE'S ANSWER AND NEVER FOLDED INTO IT. A stored
@@ -167,8 +195,8 @@ type R2TransportStanding
 // THE TRANSPORT'S HOST DEPENDENCY IS OBSERVED BEFORE ANY CREDENTIAL IS FETCHED, against the SigV4 row
 // (extdeps.tools.curl curl_aws_sigv4_cli_tool carries the >= 7.75 pin --aws-sigv4 needs). What this
 // observes is PRESENCE on PATH; the version pin is carried, not checked.
-fn r2_transport_present() -> R2TransportStanding {
-  match observe_host_cli_dependency(tool: curl_aws_sigv4_cli_tool) {
+fn r2_transport_present(report: S3TransferReport) -> R2TransportStanding {
+  match observe_host_cli_dependency(tool: match report { ReportStatus => curl_aws_sigv4_cli_tool  ReportStatusAndEntityTag => curl_s3_entity_tag_cli_tool }) {
     HostCliDependencyAbsent { absence: absence } =>
       R2TransportAbsent {
         cause: join(["THE TRANSPORT IS NOT ON THIS HOST: ", absence.tool as String, " (", absence.hint, ")"], "") as NonEmptyStr,
@@ -183,7 +211,7 @@ fn put_refused_before_transfer(cause: NonEmptyStr) -> R2Put {
 
 // THE WRITE. local_path is the bytes to store; the target names where and with which credential.
 fn r2_put_staged_file(target: R2TransferTarget, local_path: FilePath, token_source: AccessTokenSource) -> R2Put {
-  match r2_transport_present() {
+  match r2_transport_present(report: target.report) {
     R2TransportAbsent { cause: cause } => put_refused_before_transfer(cause: cause)
     R2TransportPresent =>
       match place_r2_s3_netrc(
@@ -202,13 +230,14 @@ fn r2_put_staged_file(target: R2TransferTarget, local_path: FilePath, token_sour
               local_path: local_path as String,
               netrc_path: netrc_binding_path(binding: binding),
               sigv4_region: r2_s3_sigv4_region,
-              create_only: target.create_only,
+              precondition: target.precondition,
+              report: target.report,
             ),
             transport: LocalExec,
           )
           let shredded = shred_r2_s3_netrc(workspace: workspace)
           R2Put {
-            verdict: classify_r2_put(answer: classify_s3_transfer(observation: observed), stderr: observed.stderr),
+            verdict: classify_r2_put(precondition: target.precondition, answer: classify_s3_transfer(observation: observed), stderr: observed.stderr),
             credential: if shredded { WriteCredentialShredded } else { WriteCredentialResidueRemains { cause: credential_residue_cause } },
           }
         }
@@ -228,14 +257,14 @@ fn r2_put_is_clean(put: R2Put) -> Bool {
 // file a later digest is taken over is the file this transfer wrote. A credential that could not be
 // shredded refuses the fetch rather than reporting it as staged.
 type R2Fetch
-  = R2FetchStaged { staged_path: NonEmptyStr }
+  = R2FetchStaged { staged_path: NonEmptyStr, tag: ObjectEntityTag? }
   | R2FetchObjectAbsent
   | R2FetchUnavailable { cause: NonEmptyStr }
 
 data r2_staged_object_basename: String = "object"
 
 fn r2_fetch_into_staging(target: R2TransferTarget, token_source: AccessTokenSource) -> R2Fetch {
-  match r2_transport_present() {
+  match r2_transport_present(report: target.report) {
     R2TransportAbsent { cause: cause } => R2FetchUnavailable { cause: cause }
     R2TransportPresent => {
       let staging = shell.Mktemp.Dir()
@@ -258,6 +287,7 @@ fn r2_fetch_into_staging(target: R2TransferTarget, token_source: AccessTokenSour
                 destination: staged_path as String,
                 netrc_path: netrc_binding_path(binding: binding),
                 sigv4_region: r2_s3_sigv4_region,
+                report: target.report,
               ),
               transport: LocalExec,
             )
@@ -268,7 +298,7 @@ fn r2_fetch_into_staging(target: R2TransferTarget, token_source: AccessTokenSour
               match classify_r2_fetch(answer: classify_s3_transfer(observation: observed), staged_path: staged_path, stderr: observed.stderr) {
                 R2FetchAbsent => R2FetchObjectAbsent
                 R2FetchRefused { cause: cause } => R2FetchUnavailable { cause: cause }
-                R2FetchStagedAt { staged_path: p } => R2FetchStaged { staged_path: p }
+                R2FetchStagedAt { staged_path: p, tag: t } => R2FetchStaged { staged_path: p, tag: t }
               }
             }
           }
