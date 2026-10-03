@@ -1,0 +1,256 @@
+module test.claim.product.node_platform_selection_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { byte_size_count, gibibyte, gibibyte_to_byte_size, watt }
+import std.pareto { ParetoEntry, PairDominates, PairNoDominance, compare_pair }
+import std.decision {
+  SelectionNeedsEvidence,
+  SubjectClosureIncomplete,
+  UnfundedAxis,
+  SelectionEvidenceNeed,
+  ConstraintViolated,
+}
+import extdeps.external_authority { TranscribedUncited }
+import extdeps.systems.types { CoherentSuperchipCatalogRow, coherent_superchip_coherent_capacity }
+import extdeps.systems.nvidia { nvidia_dgx_spark_4tb_catalog }
+import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog }
+import product.build_selection { BuildAxisReading, MagnitudeWatts }
+import product.node_platform_selection {
+  node_platform_selection,
+  node_platform_axes,
+  spark_node_entry,
+  gh200_node_entry,
+  node_power_ceiling_axis,
+  gpu_local_capacity_axis,
+  coherent_capacity_axis,
+  gh200_dv5_unit,
+  gh200_dv2_80gb_listing,
+  p4261_k1_carrier,
+  unit_catalog_match,
+  UnitMatchesCatalogRow,
+  UnitClaimOutsideCatalog,
+  dv5_carrier_pairing,
+  carrier_pairing,
+  unit_pairing_across,
+  CarrierUnitObservation,
+  MezzanineFacePhotographed,
+  OneAtEachEndOfLongAxis,
+  CarrierBootObserved,
+  PairingUnestablished,
+  PairingObserved,
+  PairingRefuted,
+  pairing_disposition,
+}
+
+// THE REAL PATH, executed: the live selection over the cited catalog rows and the operator's
+// observed units. It must not settle -- the carrier pairing is unestablished -- and the pairing
+// obligation must be among its needs, naming the exact module and both offered carrier revisions. This is the
+// inhabitance claim for the supplied-value comparisons below.
+fn need_mentions(need: SelectionEvidenceNeed, fragment: String) -> Bool {
+  match need {
+    SubjectClosureIncomplete { subject: _, obligation: o } => contains(o as String, fragment)
+    UnfundedAxis { gap: g } => contains(g.cause as String, fragment)
+    _ => false
+  }
+}
+
+test fn live_selection_needs_the_carrier_pairing_before_it_can_choose() -> Bool {
+  match node_platform_selection() {
+    SelectionNeedsEvidence { needs: ns } =>
+      any(ns, n => need_mentions(need: n, fragment: "699-2G530-0215-DV5"))
+        && any(ns, n => need_mentions(need: n, fragment: "carrier P4261 rev K1"))
+        && any(ns, n => need_mentions(need: n, fragment: "carrier P4261 rev H1"))
+        && any(ns, n => need_mentions(need: n, fragment: "node power ceiling is unobserved"))
+    _ => false
+  }
+}
+
+// The 480GB product's coherent memory is derived, not read off the name: 96 GiB HBM + 480 GiB LPDDR5X.
+test fn gh200_coherent_capacity_is_both_tiers() -> Bool {
+  byte_size_count(b: coherent_superchip_coherent_capacity(row: nvidia_gh200_480gb_catalog))
+    == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 576)))
+}
+
+test fn the_96gb_unit_matches_the_catalog_row() -> Bool {
+  match unit_catalog_match(unit: gh200_dv5_unit, row: nvidia_gh200_480gb_catalog) {
+    UnitMatchesCatalogRow { row: _ } => true
+    _ => false
+  }
+}
+
+// The DISCRIMINATING RED for the catalog match: same PG530 designation, same die marking, a capacity
+// no PG530 configuration has.
+test fn the_80gb_listing_is_outside_the_catalog() -> Bool {
+  match unit_catalog_match(unit: gh200_dv2_80gb_listing, row: nvidia_gh200_480gb_catalog) {
+    UnitClaimOutsideCatalog { as_listed: l, discriminator: _ } => l == "80GB HBM2"
+    _ => false
+  }
+}
+
+// The live pairing over BOTH offered carriers: K1 is photographed and reads consistent at photo grain
+// with the next grain named; H1 is unphotographed and says so. Neither is a boot, so it stays open.
+test fn live_pairing_is_unestablished_and_a_refutation_becomes_a_violation() -> Bool {
+  let live = match dv5_carrier_pairing() {
+    PairingUnestablished { obligation: o } =>
+      contains(o as String, "rev K1 is mechanically consistent at photo grain")
+        && contains(o as String, "mating plug/receptacle pair")
+        && contains(o as String, "photograph the module-side face of the P4261 rev H1 carrier")
+    _ => false
+  }
+  let refuted = match pairing_disposition(standing: PairingRefuted { reason: "connector mismatch" as NonEmptyStr }) {
+    ConstraintViolated { constraint: _, evidence: _ } => true
+    _ => false
+  }
+  live && refuted
+}
+
+// SUPPLIED VALUES at the comparison interface. With a node power ceiling supplied, a GH200 node and a
+// Spark node trade off: the GH200 wins GPU-local bandwidth and coherent capacity, the Spark wins
+// GPU-local capacity (128 vs 96 GiB) and power. Neither dominates.
+fn gh200_with_power(watts: Int) -> ParetoEntry {
+  gh200_node_entry(
+    row: nvidia_gh200_480gb_catalog,
+    node_power_ceiling: Present {
+      value: BuildAxisReading { axis: node_power_ceiling_axis, magnitude: MagnitudeWatts { watts: watt(count: watts) } },
+    },
+  )
+}
+
+test fn spark_and_gh200_trade_off_rather_than_dominate() -> Bool {
+  match compare_pair(
+    a: gh200_with_power(watts: 1200),
+    b: spark_node_entry(row: nvidia_spark_row()),
+    axes: node_platform_axes(),
+  ) {
+    PairNoDominance => true
+    _ => false
+  }
+}
+
+fn nvidia_spark_row() -> IntegratedSparkRow { nvidia_dgx_spark_4tb_catalog }
+
+type IntegratedSparkRow = extdeps.systems.types.IntegratedComputeSystemCatalogRow
+
+// The comparison DISCRIMINATES: a supplied GH200 row with Spark-sized HBM and a lower power ceiling
+// dominates outright. Without this control the trade-off claim above could be a comparison that never
+// returns anything else.
+test fn a_gh200_better_on_every_axis_dominates() -> Bool {
+  let bigger = CoherentSuperchipCatalogRow {
+    vendor: nvidia_gh200_480gb_catalog.vendor,
+    model: nvidia_gh200_480gb_catalog.model,
+    board_designation: nvidia_gh200_480gb_catalog.board_designation,
+    cpu_architecture: nvidia_gh200_480gb_catalog.cpu_architecture,
+    cpu_core_clusters: nvidia_gh200_480gb_catalog.cpu_core_clusters,
+    gpu: extdeps.gpu.types.GpuModelCatalogRow {
+      vendor: nvidia_gh200_480gb_catalog.gpu.vendor,
+      model: nvidia_gh200_480gb_catalog.gpu.model,
+      microarchitecture: nvidia_gh200_480gb_catalog.gpu.microarchitecture,
+      execution_lane_count: nvidia_gh200_480gb_catalog.gpu.execution_lane_count,
+      memory: extdeps.memory.types.MemoryFacts {
+        capacity: gibibyte_to_byte_size(g: gibibyte(count: 144)),
+        memory_kind: nvidia_gh200_480gb_catalog.gpu.memory.memory_kind,
+      },
+      memory_bandwidth: nvidia_gh200_480gb_catalog.gpu.memory_bandwidth,
+      boost_clock: nvidia_gh200_480gb_catalog.gpu.boost_clock,
+      tdp_watts: nvidia_gh200_480gb_catalog.gpu.tdp_watts,
+      compute_capability: nvidia_gh200_480gb_catalog.gpu.compute_capability,
+      supported_runtimes: nvidia_gh200_480gb_catalog.gpu.supported_runtimes,
+      interconnect: nvidia_gh200_480gb_catalog.gpu.interconnect,
+      sm_cache: nvidia_gh200_480gb_catalog.gpu.sm_cache,
+      sm_cache_citations: nvidia_gh200_480gb_catalog.gpu.sm_cache_citations,
+    },
+    cpu_memory: nvidia_gh200_480gb_catalog.cpu_memory,
+    chip_to_chip_bandwidth: nvidia_gh200_480gb_catalog.chip_to_chip_bandwidth,
+    module_power_floor: nvidia_gh200_480gb_catalog.module_power_floor,
+    module_power_ceiling: nvidia_gh200_480gb_catalog.module_power_ceiling,
+    figure_standing: nvidia_gh200_480gb_catalog.figure_standing,
+  }
+  match compare_pair(
+    a: gh200_node_entry(
+      row: bigger,
+      node_power_ceiling: Present {
+        value: BuildAxisReading { axis: node_power_ceiling_axis, magnitude: MagnitudeWatts { watts: watt(count: 200) } },
+      },
+    ),
+    b: spark_node_entry(row: nvidia_dgx_spark_4tb_catalog),
+    axes: node_platform_axes(),
+  ) {
+    PairDominates { winning_axes: _ } => true
+    _ => false
+  }
+}
+
+// An UNCITED row may not rank: the same row typed as a bet declares its memory axes missing, so the
+// comparison cannot conclude even with power supplied (DESIGN §4d).
+test fn an_uncited_gh200_row_cannot_rank() -> Bool {
+  let uncited = CoherentSuperchipCatalogRow {
+    vendor: nvidia_gh200_480gb_catalog.vendor,
+    model: nvidia_gh200_480gb_catalog.model,
+    board_designation: nvidia_gh200_480gb_catalog.board_designation,
+    cpu_architecture: nvidia_gh200_480gb_catalog.cpu_architecture,
+    cpu_core_clusters: nvidia_gh200_480gb_catalog.cpu_core_clusters,
+    gpu: nvidia_gh200_480gb_catalog.gpu,
+    cpu_memory: nvidia_gh200_480gb_catalog.cpu_memory,
+    chip_to_chip_bandwidth: nvidia_gh200_480gb_catalog.chip_to_chip_bandwidth,
+    module_power_floor: nvidia_gh200_480gb_catalog.module_power_floor,
+    module_power_ceiling: nvidia_gh200_480gb_catalog.module_power_ceiling,
+    figure_standing: TranscribedUncited { read_obligation: "datasheet unread" as NonEmptyStr },
+  }
+  let entry = gh200_node_entry(
+    row: uncited,
+    node_power_ceiling: Present {
+      value: BuildAxisReading { axis: node_power_ceiling_axis, magnitude: MagnitudeWatts { watts: watt(count: 200) } },
+    },
+  )
+  count(entry.missing_inputs) == 3
+}
+
+fn k1_with(face_connectors: Nat, boot_module: NonEmptyStr?) -> CarrierUnitObservation {
+  CarrierUnitObservation {
+    carrier_designation: p4261_k1_carrier.carrier_designation,
+    carrier_part_number: p4261_k1_carrier.carrier_part_number,
+    revision: p4261_k1_carrier.revision,
+    module_face: MezzanineFacePhotographed {
+      connector_count: face_connectors,
+      contact_rows_per_connector: 6,
+      arrangement: OneAtEachEndOfLongAxis,
+      source: "supplied",
+    },
+    provenance: p4261_k1_carrier.provenance,
+    boot: match boot_module {
+      Present { value: m } => CarrierBootObserved { module_part_number: m, evidence: "supplied boot receipt" as NonEmptyStr }
+      Absent => p4261_k1_carrier.boot
+    },
+    source: "supplied",
+  }
+}
+
+// The mechanical comparison DISCRIMINATES: a carrier face with a different connector count refutes.
+test fn a_mismatched_connector_face_refutes_the_pairing() -> Bool {
+  match carrier_pairing(unit: gh200_dv5_unit, carrier: k1_with(face_connectors: 3, boot_module: Absent)) {
+    PairingRefuted { reason: r } => contains(r as String, "carrier shows 3")
+    _ => false
+  }
+}
+
+// Only a boot of THIS module settles the pairing, and one working carrier is enough for the decision
+// even when another offered carrier is refuted.
+test fn a_boot_of_this_module_settles_it_and_one_working_carrier_suffices() -> Bool {
+  let booted = k1_with(face_connectors: 2, boot_module: Present { value: "699-2G530-0215-DV5" as NonEmptyStr })
+  let other_module = k1_with(face_connectors: 2, boot_module: Present { value: "699-2G530-0206-QS1" as NonEmptyStr })
+  let mismatched = k1_with(face_connectors: 3, boot_module: Absent)
+  let settles = match carrier_pairing(unit: gh200_dv5_unit, carrier: booted) {
+    PairingObserved { evidence: _ } => true
+    _ => false
+  }
+  let different_module_does_not = match carrier_pairing(unit: gh200_dv5_unit, carrier: other_module) {
+    PairingUnestablished { obligation: o } => contains(o as String, "was observed running 699-2G530-0206-QS1")
+    _ => false
+  }
+  let one_suffices = match unit_pairing_across(unit: gh200_dv5_unit, carriers: [mismatched, booted]) {
+    PairingObserved { evidence: _ } => true
+    _ => false
+  }
+  settles && different_module_does_not && one_suffices
+}

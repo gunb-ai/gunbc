@@ -1,0 +1,669 @@
+module product.node_platform_selection
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.measure { ByteSize, byte_size_count, gibibyte, gibibyte_to_byte_size }
+import std.pareto { AxisGap, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
+import std.decision {
+  DecisionVariable,
+  ContextParameter,
+  DecisionConstraint,
+  ObjectiveTerm,
+  ObjectiveMeasure,
+  ChoiceDomain,
+  DecisionSubject,
+  DecisionRegion,
+  ObjectiveTermSensitivity,
+  VariesAlong,
+  RelationOtherwiseEstablished,
+  ConstraintDisposition,
+  ConstraintSatisfied,
+  ConstraintViolated,
+  ConstraintUnestablished,
+  ParameterDisposition,
+  ParameterUnestablished,
+  DecisionAssessment,
+  PhysicalModelEstablished,
+  CausalModelUnestablished,
+  RealizationSelectionResult,
+  SelectedWithin,
+  SelectionNeedsEvidence,
+  SelectionNeedsPolicy,
+  NoFeasibleRealization,
+  CandidateFieldUnestablished,
+  RealizationSelectionRefused,
+  UniqueSurvivorRequired,
+  select_realization,
+  selection_evidence_need_cause,
+}
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.external_authority {
+  CitedFigureStanding,
+  CitedToAuthority,
+  TranscribedUncited,
+  cited_figure_read_obligation,
+}
+import extdeps.memory.types { MemoryKind, Hbm }
+import extdeps.systems.types {
+  IntegratedComputeSystemCatalogRow,
+  CoherentSuperchipCatalogRow,
+  coherent_superchip_coherent_capacity,
+}
+import extdeps.systems.nvidia { nvidia_dgx_spark_4tb_catalog }
+import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog, extdeps_external_authority_anchor }
+import product.build_selection {
+  BuildAxisReading,
+  MagnitudeBytes,
+  MagnitudeBandwidth,
+  MagnitudeWatts,
+  to_axis_reading,
+}
+
+// GH200-0 (2026-10-03). THE QUESTION: should the serving fleet's node platform move from DGX Spark
+// to GH200 superchips on NVIDIA's P4261 dev carrier. The operator's stated intent is to sell the
+// Sparks and move, "assuming I can actually get it working" -- and that clause is the whole shape of
+// this module: the platform comparison is computable from cited catalog rows today, while getting it
+// working is a set of open constraints that std.decision refuses to settle past.
+//
+// WHY THIS IS NOT product.build_selection, which is the existing buy-side Pareto projector. Its
+// candidates are NodeRecipes resolved through product.build_fulfillment, whose memory lines are
+// DIMM populations graded by gunbc.memory_change_evaluation. A GH200's memory is soldered on the
+// module, so there is no population to propose and no DIMM line to resolve; forcing it through would
+// fabricate an empty memory proposal that the qualification seam then grades. The divergence is
+// stated, and the one piece that does transfer is reused rather than restated: build_selection's
+// unit-carrying magnitude collapse (BuildAxisReading / to_axis_reading), so a byte count, a
+// bandwidth and a wattage still reach std.pareto through the one total function that names them.
+
+// ── WHAT WAS OBSERVED, NOT WHAT NVIDIA PUBLISHES ──────────────────────────────────────────────
+//
+// Listing transcriptions the operator supplied. These are receipts in this layer (DESIGN §3,
+// external upstream decomposition): NVIDIA publishes the PG530 family and the 480GB product, and
+// nothing about any particular unit, revision suffix or carrier board. listed_gpu_memory is the
+// SELLER'S claim, kept as a claim so it can be checked against the catalog rather than believed.
+type ListedGpuMemoryClaim
+  = GpuMemoryClaimed { capacity: ByteSize, memory_kind: MemoryKind, as_listed: NonEmptyStr }
+  | GpuMemoryNotClaimed
+
+// THE FACE A MODULE AND ITS CARRIER MEET ON, as far as a photograph shows it. A GH200 module mates to
+// its carrier through high-density mezzanine connectors on its underside (ServeTheHome, below); what a
+// photograph can establish is how many there are, how many contact rows each shows, and where they
+// sit. It cannot establish pin count, pinout or keying, so a face read from a photograph is recorded at
+// that grain and no finer.
+type ConnectorArrangement
+  = OneAtEachEndOfLongAxis
+  | ArrangementOther { described: NonEmptyStr }
+
+type MezzanineFaceObservation
+  = MezzanineFacePhotographed {
+      connector_count: Nat
+      contact_rows_per_connector: Nat
+      arrangement: ConnectorArrangement
+      source: NonEmptyStr
+    }
+  | MezzanineFaceUnobserved { obligation: NonEmptyStr }
+
+type SuperchipUnitObservation {
+  board_designation: NonEmptyStr
+  board_part_number: NonEmptyStr
+  die_marking: NonEmptyStr
+  listed_gpu_memory: ListedGpuMemoryClaim
+  mezzanine_face: MezzanineFaceObservation
+  source: NonEmptyStr
+}
+
+// Whether the carrier was ever SEEN running a module, and which one. A seller's "it came out of a
+// working machine" is provenance, not this: it names no module and no boot, so it is carried as
+// provenance and leaves the boot unobserved.
+type CarrierBootObservation
+  = CarrierBootUnobserved
+  | CarrierBootObserved { module_part_number: NonEmptyStr, evidence: NonEmptyStr }
+
+type CarrierUnitObservation {
+  carrier_designation: NonEmptyStr
+  carrier_part_number: NonEmptyStr
+  revision: NonEmptyStr
+  module_face: MezzanineFaceObservation
+  provenance: NonEmptyStr
+  boot: CarrierBootObservation
+  source: NonEmptyStr
+}
+
+// The unit the operator is buying: listing title "NVIDIA GH200 699-2G530-0215-DV5 Grace Hopper Dev
+// Superchip 96GB H100 SXM5", item specifics Memory Size 96GB / Memory Type HBM3; the die photograph
+// reads "GH100-888K-A1 QUAL SAMPLE".
+data gh200_dv5_unit: SuperchipUnitObservation = SuperchipUnitObservation {
+  board_designation: "PG530",
+  board_part_number: "699-2G530-0215-DV5",
+  die_marking: "GH100-888K-A1 QUAL SAMPLE",
+  listed_gpu_memory: GpuMemoryClaimed {
+    capacity: gibibyte_to_byte_size(g: gibibyte(count: 96)),
+    memory_kind: Hbm,
+    as_listed: "96GB HBM3",
+  },
+  mezzanine_face: MezzanineFacePhotographed {
+    connector_count: 2,
+    contact_rows_per_connector: 6,
+    arrangement: OneAtEachEndOfLongAxis,
+    source: "listing photograph of the module underside, label '699-2G530-0215-DV5 C1 Made in USA', model PG530",
+  },
+  source: "eBay item 298619132349, transcribed by the operator 2026-10-03",
+}
+
+// A second listing the operator asked about: "Nvidia GH100 PG530 80GB HBM2 Graphics Accelerator Qual
+// Sample GH100-888K-A1 699-2G530-0204-DV2 B". extdeps.memory.types carries one Hbm kind and does not
+// split HBM generations, so "HBM2" lands as Hbm and the claim is decided by its capacity alone: 80GB is
+// neither of the datasheet's PG530 configurations. as_listed keeps the generation the seller wrote.
+data gh200_dv2_80gb_listing: SuperchipUnitObservation = SuperchipUnitObservation {
+  board_designation: "PG530",
+  board_part_number: "699-2G530-0204-DV2",
+  die_marking: "GH100-888K-A1 QUAL SAMPLE",
+  listed_gpu_memory: GpuMemoryClaimed {
+    capacity: gibibyte_to_byte_size(g: gibibyte(count: 80)),
+    memory_kind: Hbm,
+    as_listed: "80GB HBM2",
+  },
+  mezzanine_face: MezzanineFaceUnobserved {
+    obligation: "photograph the underside of the 699-2G530-0204-DV2 unit" as NonEmptyStr,
+  },
+  source: "eBay listing title transcribed by the operator 2026-10-03; item number not supplied",
+}
+
+// Read off the seller's photographs: the sticker says "S/N 1582023110038 Model: P4261
+// 694-24261-0000-100 K1 Made In USA" beside a "Rework 180-14261-DAAF-A01" silkscreen. The sticker's
+// "0000-100" and the listing title's "000-100" differ by a digit; the sticker is what was read, and no
+// consumer keys on the carrier part number. The module face is the two connectors silkscreened J3 and
+// J4, one toward each short edge, each flanked by mounting holes.
+data p4261_k1_carrier: CarrierUnitObservation = CarrierUnitObservation {
+  carrier_designation: "P4261",
+  carrier_part_number: "694-24261-0000-100",
+  revision: "K1",
+  module_face: MezzanineFacePhotographed {
+    connector_count: 2,
+    contact_rows_per_connector: 6,
+    arrangement: OneAtEachEndOfLongAxis,
+    source: "seller photographs of the carrier: receptacles J3 and J4",
+  },
+  provenance: "seller: 'told when I purchased this board was out of a working machine'; untested, no visible damage",
+  boot: CarrierBootUnobserved,
+  source: "eBay listing 'Nvidia GH200 P4261 694-24261-000-100 K1 Grace Hopper Superchip Dev BaseBoard' (item 157373033242) and its photographs; no NVIDIA document names P4261",
+}
+
+// The second offer: same designation and part number, revision H1. No photographs were supplied, so
+// its face is unobserved rather than assumed equal to K1's -- a revision letter is exactly where a
+// connector or pinout change would hide.
+data p4261_h1_carrier: CarrierUnitObservation = CarrierUnitObservation {
+  carrier_designation: "P4261",
+  carrier_part_number: "694-24261-000-100",
+  revision: "H1",
+  module_face: MezzanineFaceUnobserved {
+    obligation: "photograph the module-side face of the P4261 rev H1 carrier" as NonEmptyStr,
+  },
+  provenance: "listing title only",
+  boot: CarrierBootUnobserved,
+  source: "eBay listing title 'Nvidia GH200 P4261 694-24261-000-100 H1 Grace Hopper Superchip Dev BaseBoard' (item 146879310053)",
+}
+
+data offered_carriers: List<CarrierUnitObservation> = [p4261_k1_carrier, p4261_h1_carrier]
+
+// ── DOES A LISTED UNIT MATCH THE CATALOG ROW ─────────────────────────────────────────────────
+//
+// A designation match is necessary and not sufficient: PG530 names the board family, and the
+// datasheet admits only 96GB HBM3 or 144GB HBM3e for it. A seller claim outside that is not a cheaper
+// variant, it is either a mis-titled listing or a pre-production configuration, and the remedy is the
+// same -- read the unit -- so both land in one refusing arm that names the discriminator.
+type UnitCatalogMatch
+  = UnitMatchesCatalogRow { row: CoherentSuperchipCatalogRow }
+  | UnitDesignationOutsideRow { observed: NonEmptyStr, row_designation: NonEmptyStr }
+  | UnitClaimOutsideCatalog { as_listed: NonEmptyStr, discriminator: NonEmptyStr }
+  | UnitMemoryUnclaimed { discriminator: NonEmptyStr }
+
+data unit_memory_discriminator: NonEmptyStr = "read the unit: nvidia-smi total memory on a working carrier, or the HBM stack count and markings in a die photograph" as NonEmptyStr
+
+fn unit_catalog_match(unit: SuperchipUnitObservation, row: CoherentSuperchipCatalogRow) -> UnitCatalogMatch {
+  if unit.board_designation != row.board_designation {
+    UnitDesignationOutsideRow { observed: unit.board_designation, row_designation: row.board_designation }
+  } else {
+    match unit.listed_gpu_memory {
+      GpuMemoryNotClaimed => UnitMemoryUnclaimed { discriminator: unit_memory_discriminator }
+      GpuMemoryClaimed { capacity: c, memory_kind: k, as_listed: l } =>
+        if byte_size_count(b: c) == byte_size_count(b: row.gpu.memory.capacity) && k == row.gpu.memory.memory_kind {
+          UnitMatchesCatalogRow { row: row }
+        } else {
+          UnitClaimOutsideCatalog { as_listed: l, discriminator: unit_memory_discriminator }
+        }
+    }
+  }
+}
+
+// ── WILL THIS MODULE RUN ON THAT CARRIER ─────────────────────────────────────────────────────
+//
+// ServeTheHome's GH200 teardown (servethehome.com, 2023-11-06) establishes that a GH200 and a Grace
+// CPU Superchip use different module connectors and that "the base carrier board and the NVIDIA module
+// must be matched". It establishes nothing about revisions within the GH200 family, and nothing public
+// names P4261 at all. So the pairing of THIS module revision with THIS carrier revision is a bet, typed
+// as one, and only an observation of the pair running (or a seller's statement of what it ran with)
+// moves it.
+type CarrierPairingStanding
+  = PairingUnestablished { obligation: NonEmptyStr }
+  | PairingObserved { evidence: NonEmptyStr }
+  | PairingRefuted { reason: NonEmptyStr }
+
+// THE MECHANICAL HALF, decidable from two photographs. Agreement here is necessary and nowhere near
+// sufficient: two faces with the same connector count, row count and placement can still differ in
+// pin count, pinout, keying or the power and sideband signals behind them. So agreement is reported
+// at the grain it was read at, with the next grain named, and only DISAGREEMENT is final.
+type MechanicalInterfaceStanding
+  = InterfaceConsistentAtPhotoGrain { basis: NonEmptyStr, next_grain: NonEmptyStr }
+  | InterfaceMismatch { reason: NonEmptyStr }
+  | InterfaceUnobserved { obligations: List<NonEmptyStr> }
+
+data connector_part_grain_obligation: NonEmptyStr = "read the housing markings of one module connector and one carrier receptacle and confirm in the connector vendor's catalog that they are a mating plug/receptacle pair" as NonEmptyStr
+
+fn arrangement_eq(a: ConnectorArrangement, b: ConnectorArrangement) -> Bool {
+  match a {
+    OneAtEachEndOfLongAxis => match b {
+      OneAtEachEndOfLongAxis => true
+      ArrangementOther { described: _ } => false
+    }
+    ArrangementOther { described: da } => match b {
+      OneAtEachEndOfLongAxis => false
+      ArrangementOther { described: db } => da == db
+    }
+  }
+}
+
+fn face_obligations(face: MezzanineFaceObservation) -> List<NonEmptyStr> {
+  match face {
+    MezzanineFaceUnobserved { obligation: o } => [o]
+    MezzanineFacePhotographed { connector_count: _, contact_rows_per_connector: _, arrangement: _, source: _ } => []
+  }
+}
+
+fn mechanical_interface(module_face: MezzanineFaceObservation, carrier_face: MezzanineFaceObservation) -> MechanicalInterfaceStanding {
+  match module_face {
+    MezzanineFaceUnobserved { obligation: _ } =>
+      InterfaceUnobserved { obligations: concat(face_obligations(face: module_face), face_obligations(face: carrier_face)) }
+    MezzanineFacePhotographed { connector_count: mc, contact_rows_per_connector: mr, arrangement: ma, source: ms } =>
+      match carrier_face {
+        MezzanineFaceUnobserved { obligation: o } => InterfaceUnobserved { obligations: [o] }
+        MezzanineFacePhotographed { connector_count: cc, contact_rows_per_connector: cr, arrangement: ca, source: cs } =>
+          if mc != cc {
+            InterfaceMismatch { reason: join(["module shows ", to_string(mc), " connectors, carrier shows ", to_string(cc)], "") as NonEmptyStr }
+          } else if mr != cr {
+            InterfaceMismatch { reason: join(["module connectors show ", to_string(mr), " contact rows, carrier receptacles ", to_string(cr)], "") as NonEmptyStr }
+          } else if !arrangement_eq(a: ma, b: ca) {
+            InterfaceMismatch { reason: "module and carrier connectors are placed differently" as NonEmptyStr }
+          } else {
+            InterfaceConsistentAtPhotoGrain {
+              basis: join([to_string(mc), " connectors of ", to_string(mr), " contact rows, one at each end, on both faces (", ms as String, "; ", cs as String, ")"], "") as NonEmptyStr,
+              next_grain: connector_part_grain_obligation,
+            }
+          }
+      }
+  }
+}
+
+// THE ELECTRICAL HALF, which no photograph reaches: power-up sequencing, the carrier's firmware and
+// BMC, and whether this carrier revision drives this module revision. Only a boot settles it.
+fn electrical_obligation(unit: SuperchipUnitObservation, carrier: CarrierUnitObservation) -> NonEmptyStr {
+  join([
+    "observe module ", unit.board_part_number as String,
+    " booting to BMC and OS on carrier ", carrier.carrier_designation as String, " rev ", carrier.revision as String,
+    ", or a statement naming the 699-2G530 module this carrier ran with (provenance so far: ", carrier.provenance as String, ")",
+  ], "") as NonEmptyStr
+}
+
+fn carrier_pairing(unit: SuperchipUnitObservation, carrier: CarrierUnitObservation) -> CarrierPairingStanding {
+  match mechanical_interface(module_face: unit.mezzanine_face, carrier_face: carrier.module_face) {
+    InterfaceMismatch { reason: r } => PairingRefuted { reason: r }
+    InterfaceUnobserved { obligations: os } =>
+      PairingUnestablished {
+        obligation: join(concat(map(os, o => o as String), [electrical_obligation(unit: unit, carrier: carrier) as String]), "; ") as NonEmptyStr,
+      }
+    InterfaceConsistentAtPhotoGrain { basis: b, next_grain: n } =>
+      match carrier.boot {
+        CarrierBootObserved { module_part_number: m, evidence: e } =>
+          if m == unit.board_part_number {
+            PairingObserved { evidence: e }
+          } else {
+            PairingUnestablished {
+              obligation: join(["carrier rev ", carrier.revision as String, " was observed running ", m as String, ", not ", unit.board_part_number as String, "; ", electrical_obligation(unit: unit, carrier: carrier) as String], "") as NonEmptyStr,
+            }
+          }
+        CarrierBootUnobserved =>
+          PairingUnestablished {
+            obligation: join(["carrier rev ", carrier.revision as String, " is mechanically consistent at photo grain (", b as String, "); still owed: ", n as String, "; ", electrical_obligation(unit: unit, carrier: carrier) as String], "") as NonEmptyStr,
+          }
+      }
+  }
+}
+
+// THE DECISION NEEDS ONE CARRIER THAT WORKS, NOT EVERY OFFERED ONE. So a single observed pairing
+// satisfies the constraint; it is refuted only when every offered carrier is refuted; otherwise it is
+// unestablished and carries every open carrier's obligation, so the shopping list names them all.
+fn unit_pairing_across(unit: SuperchipUnitObservation, carriers: List<CarrierUnitObservation>) -> CarrierPairingStanding {
+  let standings = map(carriers, c => carrier_pairing(unit: unit, carrier: c))
+  let observed = flat_map(standings, st => match st {
+    PairingObserved { evidence: e } => [e]
+    _ => []
+  })
+  let open = flat_map(standings, st => match st {
+    PairingUnestablished { obligation: o } => [o as String]
+    _ => []
+  })
+  let refuted = flat_map(standings, st => match st {
+    PairingRefuted { reason: r } => [r as String]
+    _ => []
+  })
+  match observed.first() {
+    Present { value: e } => PairingObserved { evidence: e }
+    Absent =>
+  if count(open) > 0 {
+    PairingUnestablished { obligation: join(open, " | ") as NonEmptyStr }
+  } else if count(refuted) > 0 {
+    PairingRefuted { reason: join(refuted, " | ") as NonEmptyStr }
+  } else {
+    PairingUnestablished { obligation: "no carrier has been offered for this module" as NonEmptyStr }
+  }
+  }
+}
+
+fn dv5_carrier_pairing() -> CarrierPairingStanding {
+  unit_pairing_across(unit: gh200_dv5_unit, carriers: offered_carriers)
+}
+
+// ── THE DECISION SUBJECT ─────────────────────────────────────────────────────────────────────
+
+data var_node_platform: DecisionVariable = DecisionVariable {
+  identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "var_node_platform"),
+}
+
+data param_platform_prices: ContextParameter = ContextParameter {
+  identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "param_platform_prices"),
+}
+
+data param_served_model: ContextParameter = ContextParameter {
+  identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "param_served_model"),
+}
+
+data constraint_carrier_pairing: DecisionConstraint = DecisionConstraint {
+  identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "constraint_carrier_pairing"),
+}
+
+data constraint_module_cooling: DecisionConstraint = DecisionConstraint {
+  identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "constraint_module_cooling"),
+}
+
+data constraint_carrier_power_delivery: DecisionConstraint = DecisionConstraint {
+  identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "constraint_carrier_power_delivery"),
+}
+
+data gh200_datasheet_ground: CitedFigureStanding = CitedToAuthority { authority: extdeps_external_authority_anchor }
+
+data node_power_ground: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "node power ceiling for a GH200 on P4261 is the module's cited 450-1000 W range plus a carrier draw no document publishes; observe it at the wall, or read the carrier's power-input rating" as NonEmptyStr,
+}
+
+data term_gpu_local_capacity: ObjectiveTerm = ObjectiveTerm {
+  identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "term_gpu_local_capacity"),
+  ground: gh200_datasheet_ground,
+}
+
+data term_gpu_local_bandwidth: ObjectiveTerm = ObjectiveTerm {
+  identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "term_gpu_local_bandwidth"),
+  ground: gh200_datasheet_ground,
+}
+
+data term_coherent_capacity: ObjectiveTerm = ObjectiveTerm {
+  identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "term_coherent_capacity"),
+  ground: gh200_datasheet_ground,
+}
+
+data term_node_power_ceiling: ObjectiveTerm = ObjectiveTerm {
+  identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "term_node_power_ceiling"),
+  ground: node_power_ground,
+}
+
+data node_platform_objective: ObjectiveMeasure = ObjectiveMeasure {
+  identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "node_platform_objective"),
+  goal: HigherIsBetter,
+  terms: [term_gpu_local_capacity, term_gpu_local_bandwidth, term_coherent_capacity, term_node_power_ceiling],
+}
+
+data node_platform_choice_domain: ChoiceDomain = ChoiceDomain {
+  identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "node_platform_choice_domain"),
+  variables: [var_node_platform],
+}
+
+data node_platform_subject: DecisionSubject = DecisionSubject {
+  identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "node_platform_subject"),
+  question: "should the serving fleet's node platform move from DGX Spark to GH200 Grace Hopper superchips on P4261 carriers" as NonEmptyStr,
+  parameters: [param_platform_prices, param_served_model],
+  constraints: [constraint_carrier_pairing, constraint_module_cooling, constraint_carrier_power_delivery],
+  objective: node_platform_objective,
+  choice_domain: node_platform_choice_domain,
+}
+
+data node_platform_region: DecisionRegion = DecisionRegion {
+  identity: decl_ref(module_path: "product.node_platform_selection", decl_name: "node_platform_region"),
+}
+
+// The variable is categorical: each platform arm reads its own catalog row, so every term "varies"
+// only in the sense that the two rows differ. That is stated as such rather than dressed as a monotone
+// relation the platform choice does not have.
+fn categorical_sensitivity(term: ObjectiveTerm) -> ObjectiveTermSensitivity {
+  VariesAlong {
+    term: term.identity,
+    variable: var_node_platform.identity,
+    region: node_platform_region,
+    relation: RelationOtherwiseEstablished {
+      note: "categorical variable: each platform arm reads its own cited catalog row" as NonEmptyStr,
+    },
+    coupling: term.ground,
+  }
+}
+
+fn pairing_disposition(standing: CarrierPairingStanding) -> ConstraintDisposition {
+  match standing {
+    PairingUnestablished { obligation: o } =>
+      ConstraintUnestablished { constraint: constraint_carrier_pairing.identity, obligation: o }
+    PairingObserved { evidence: e } =>
+      ConstraintSatisfied { constraint: constraint_carrier_pairing.identity, evidence: e }
+    PairingRefuted { reason: r } =>
+      ConstraintViolated { constraint: constraint_carrier_pairing.identity, evidence: r }
+  }
+}
+
+fn node_platform_assessment(pairing: CarrierPairingStanding) -> DecisionAssessment {
+  DecisionAssessment {
+    subject: node_platform_subject,
+    sensitivities: map(node_platform_objective.terms, t => categorical_sensitivity(term: t)),
+    constraints: [
+      pairing_disposition(standing: pairing),
+      ConstraintUnestablished {
+        constraint: constraint_module_cooling.identity,
+        obligation: "a thermal solution for this module: the Hopper die is lidless and sits at a different height from the lidded Grace package; the datasheet admits air or liquid cooling up to the 1000 W module ceiling" as NonEmptyStr,
+      },
+      ConstraintUnestablished {
+        constraint: constraint_carrier_power_delivery.identity,
+        obligation: "the P4261 carrier's power-input requirement and BMC firmware state, read from the unit or its seller" as NonEmptyStr,
+      },
+    ],
+    parameters: [
+      ParameterUnestablished {
+        parameter: param_platform_prices.identity,
+        obligation: "Spark resale value against GH200 module, carrier, cooling and power-supply cost; prices are held privately and bind from the private procurement tree" as NonEmptyStr,
+      },
+      ParameterUnestablished {
+        parameter: param_served_model.identity,
+        obligation: "the model the fleet will serve: whether its weights fit the 96 GB HBM tier or spill into the slower LPDDR5X tier decides which memory term dominates" as NonEmptyStr,
+      },
+    ],
+    selected_candidate: Absent,
+    term_drops: [],
+    physical_model: PhysicalModelEstablished {
+      terms: [
+        term_gpu_local_capacity.identity,
+        term_gpu_local_bandwidth.identity,
+        term_coherent_capacity.identity,
+        term_node_power_ceiling.identity,
+      ],
+    },
+    causal_model: CausalModelUnestablished {
+      subject: node_platform_subject.identity,
+      read_obligation: "the memory terms are datasheet-documented for both platforms; node power for a GH200 on P4261 has neither a vendor document nor a fleet receipt" as NonEmptyStr,
+    },
+  }
+}
+
+// ── THE CANDIDATE FIELD ──────────────────────────────────────────────────────────────────────
+//
+// Per node. "GPU-local" is the memory the GPU reads at its full rated bandwidth: on a Spark that is the
+// whole unified pool, on a GH200 it is only the HBM tier. Coherent capacity is everything the GPU can
+// address coherently. Splitting them is what makes the real trade-off visible -- a GH200 has LESS
+// GPU-local memory than a Spark at fifteen times the bandwidth, and four and a half times the coherent
+// memory behind a slower link.
+
+data gpu_local_capacity_axis: DeclarationRef = term_gpu_local_capacity.identity
+data gpu_local_bandwidth_axis: DeclarationRef = term_gpu_local_bandwidth.identity
+data coherent_capacity_axis: DeclarationRef = term_coherent_capacity.identity
+data node_power_ceiling_axis: DeclarationRef = term_node_power_ceiling.identity
+
+fn node_platform_axes() -> List<SelectionAxis> {
+  [
+    SelectionAxis { identity: gpu_local_capacity_axis, goal: HigherIsBetter },
+    SelectionAxis { identity: gpu_local_bandwidth_axis, goal: HigherIsBetter },
+    SelectionAxis { identity: coherent_capacity_axis, goal: HigherIsBetter },
+    SelectionAxis { identity: node_power_ceiling_axis, goal: LowerIsBetter },
+  ]
+}
+
+data candidate_dgx_spark_node: DeclarationRef = decl_ref(
+  module_path: "product.node_platform_selection",
+  decl_name: "candidate_dgx_spark_node",
+)
+
+data candidate_gh200_p4261_node: DeclarationRef = decl_ref(
+  module_path: "product.node_platform_selection",
+  decl_name: "candidate_gh200_p4261_node",
+)
+
+// The Spark's ceiling is its 240 W external supply: the node cannot draw more than its PSU delivers,
+// so the cited rating IS a ceiling, not an estimate of draw.
+fn spark_node_entry(row: IntegratedComputeSystemCatalogRow) -> ParetoEntry {
+  ParetoEntry {
+    identity: candidate_dgx_spark_node,
+    display_label: "DGX Spark node" as NonEmptyStr,
+    readings: map([
+      BuildAxisReading { axis: gpu_local_capacity_axis, magnitude: MagnitudeBytes { bytes: row.gpu.memory.capacity } },
+      BuildAxisReading { axis: gpu_local_bandwidth_axis, magnitude: MagnitudeBandwidth { bandwidth: row.memory_bandwidth } },
+      BuildAxisReading { axis: coherent_capacity_axis, magnitude: MagnitudeBytes { bytes: row.memory.capacity } },
+      BuildAxisReading { axis: node_power_ceiling_axis, magnitude: MagnitudeWatts { watts: row.external_power_supply } },
+    ], r => to_axis_reading(r: r)),
+    missing_inputs: [],
+  }
+}
+
+// A GH200 node's memory readings come from the catalog row and carry its standing: an uncited row
+// declares every memory axis missing, naming the read obligation, rather than ranking on a typed bet
+// (DESIGN §4d). Its power reading is supplied by the caller because no document publishes it; Absent
+// is the honest live answer and becomes a declared gap.
+fn gh200_memory_gaps(row: CoherentSuperchipCatalogRow) -> List<AxisGap> {
+  match cited_figure_read_obligation(standing: row.figure_standing) {
+    Absent => []
+    Present { value: o } => [
+      AxisGap { axis: gpu_local_capacity_axis, cause: o },
+      AxisGap { axis: gpu_local_bandwidth_axis, cause: o },
+      AxisGap { axis: coherent_capacity_axis, cause: o },
+    ]
+  }
+}
+
+fn gh200_node_entry(row: CoherentSuperchipCatalogRow, node_power_ceiling: BuildAxisReading?) -> ParetoEntry {
+  let memory_readings = map([
+    BuildAxisReading { axis: gpu_local_capacity_axis, magnitude: MagnitudeBytes { bytes: row.gpu.memory.capacity } },
+    BuildAxisReading { axis: gpu_local_bandwidth_axis, magnitude: MagnitudeBandwidth { bandwidth: row.gpu.memory_bandwidth } },
+    BuildAxisReading { axis: coherent_capacity_axis, magnitude: MagnitudeBytes { bytes: coherent_superchip_coherent_capacity(row: row) } },
+  ], r => to_axis_reading(r: r))
+  match node_power_ceiling {
+    Present { value: p } => ParetoEntry {
+      identity: candidate_gh200_p4261_node,
+      display_label: "GH200 480GB on P4261" as NonEmptyStr,
+      readings: concat(memory_readings, [to_axis_reading(r: p)]),
+      missing_inputs: gh200_memory_gaps(row: row),
+    }
+    Absent => ParetoEntry {
+      identity: candidate_gh200_p4261_node,
+      display_label: "GH200 480GB on P4261" as NonEmptyStr,
+      readings: memory_readings,
+      missing_inputs: concat(gh200_memory_gaps(row: row), [
+        AxisGap {
+          axis: node_power_ceiling_axis,
+          cause: "GH200-on-P4261 node power ceiling is unobserved; the module's 450-1000 W range excludes the carrier" as NonEmptyStr,
+        },
+      ]),
+    }
+  }
+}
+
+fn node_platform_field() -> List<ParetoEntry> {
+  [
+    spark_node_entry(row: nvidia_dgx_spark_4tb_catalog),
+    gh200_node_entry(row: nvidia_gh200_480gb_catalog, node_power_ceiling: Absent),
+  ]
+}
+
+data node_platform_field_identity: DeclarationRef = decl_ref(
+  module_path: "product.node_platform_selection",
+  decl_name: "node_platform_field",
+)
+data node_platform_constraint_authority: DeclarationRef = decl_ref(
+  module_path: "product.node_platform_selection",
+  decl_name: "node_platform_assessment",
+)
+data node_platform_policy: DeclarationRef = decl_ref(
+  module_path: "product.node_platform_selection",
+  decl_name: "node_platform_policy",
+)
+data node_platform_evidence: DeclarationRef = decl_ref(
+  module_path: "product.node_platform_selection",
+  decl_name: "gh200_dv5_unit",
+)
+
+// THE LIVE STANDING. Today it is SelectionNeedsEvidence, and the needs it lists are the shopping
+// list: the carrier pairing, cooling, carrier power, prices, the served model and the GH200 node's
+// power ceiling. node_platform_readiness below is its runnable rendering.
+fn node_platform_selection() -> RealizationSelectionResult<ParetoEntry> {
+  select_realization(
+    assessment: node_platform_assessment(pairing: dv5_carrier_pairing()),
+    candidate_field_identity: node_platform_field_identity,
+    field: node_platform_field(),
+    axes: node_platform_axes(),
+    constraints: [],
+    constraint_authority: node_platform_constraint_authority,
+    policy: UniqueSurvivorRequired { identity: node_platform_policy },
+    evidence_snapshot: node_platform_evidence,
+  )
+}
+
+// THE RUNNABLE FORM, for the operator:
+//   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/product/node_platform_selection.dag --function node_platform_readiness
+// The question it answers is "may the platform be chosen yet": exit 0 only when std.decision selected
+// within a settled closure, and otherwise exit 1 with every open need, one per line. An unsettled
+// decision is not a run that succeeded.
+fn node_platform_readiness() -> ProcessExit {
+  match node_platform_selection() {
+    SelectedWithin { candidate: c, receipt: _ } => ExitSuccess
+    SelectionNeedsEvidence { needs: ns } =>
+      exit_failure(reason: join(concat(["node platform selection needs evidence:"], map(ns, n => join(["- ", selection_evidence_need_cause(n: n) as String], ""))), "\n"))
+    SelectionNeedsPolicy { survivors: sv } =>
+      exit_failure(reason: join(["node platform selection needs a policy over ", to_string(count(sv)), " survivors"], ""))
+    NoFeasibleRealization { causes: cs, scope: _ } =>
+      exit_failure(reason: join(concat(["no feasible node platform:"], map(cs, c => c as String)), "\n"))
+    CandidateFieldUnestablished { causes: cs } =>
+      exit_failure(reason: join(concat(["candidate field unestablished:"], map(cs, c => c as String)), "\n"))
+    RealizationSelectionRefused { defects: ds } =>
+      exit_failure(reason: join(concat(["node platform selection refused:"], map(ds, d => d as String)), "\n"))
+  }
+}

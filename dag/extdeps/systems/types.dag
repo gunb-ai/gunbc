@@ -1,14 +1,14 @@
 module extdeps.systems.types
 
 import std.types { NonEmptyStr, List, Int, Bool }
-import std.measure { ByteSize, Bandwidth, Watt, BitWidth, Hertz, HardwareThreadCount, hardware_thread_count_value }
+import std.measure { ByteSize, Bandwidth, Watt, BitWidth, Hertz, HardwareThreadCount, hardware_thread_count_value, byte_size, byte_size_count }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.gpu.types { GpuModelCatalogRow }
 import extdeps.memory.types { MemoryFacts }
 import extdeps.toolchain.types { Architecture }
 
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 
@@ -64,4 +64,42 @@ type IntegratedComputeSystemCatalogRow {
 
 fn integrated_compute_system_cpu_core_count(row: IntegratedComputeSystemCatalogRow) -> Int {
   fold(row.cpu_core_clusters, init: 0, f: (acc, cluster) => acc + hardware_thread_count_value(cluster.core_count))
+}
+
+// A COHERENT SUPERCHIP IS NOT AN INTEGRATED SYSTEM, and forcing it into the row above would erase
+// the two facts that decide what it is worth. IntegratedComputeSystemCatalogRow is a sealed
+// enclosure with ONE memory pool, its own NIC, storage and PSU. A superchip module is neither: it
+// ships with no enclosure, NIC, storage or power supply (those belong to whatever carrier board it
+// mounts on, which is a separately governed product), and its memory is TWO tiers -- the GPU's own
+// memory, read at the GPU's full bandwidth, and the CPU's memory, which the GPU reaches coherently
+// over a chip-to-chip link at a different bandwidth. Collapsing them into one MemoryFacts would either
+// report the small fast tier as the whole pool or the whole pool as fast; both are wrong answers to
+// "will this model's weights decode at HBM speed".
+//
+// The GPU tier is the nested GpuModelCatalogRow (memory + memory_bandwidth), so it is not restated.
+// figure_standing is ON the row rather than beside it so no consumer can read a figure without also
+// reading whether it was cited -- the extdeps.external_authority CitedFigureStanding coproduct.
+type CoherentMemoryTier {
+  memory: MemoryFacts
+  bandwidth: Bandwidth
+}
+
+type CoherentSuperchipCatalogRow {
+  vendor: Vendor<Hardware>
+  model: NonEmptyStr
+  board_designation: NonEmptyStr
+  cpu_architecture: Architecture
+  cpu_core_clusters: List<CpuCoreCluster>
+  gpu: GpuModelCatalogRow
+  cpu_memory: CoherentMemoryTier
+  chip_to_chip_bandwidth: Bandwidth
+  module_power_floor: Watt
+  module_power_ceiling: Watt
+  figure_standing: CitedFigureStanding
+}
+
+// EVERY BYTE THE GPU CAN ADDRESS COHERENTLY: its own tier plus the CPU tier behind the chip-to-chip
+// link. Derived, never authored, so the two tiers cannot disagree with their sum.
+fn coherent_superchip_coherent_capacity(row: CoherentSuperchipCatalogRow) -> ByteSize {
+  byte_size(count: byte_size_count(b: row.gpu.memory.capacity) + byte_size_count(b: row.cpu_memory.memory.capacity))
 }
