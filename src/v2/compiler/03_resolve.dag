@@ -3296,7 +3296,7 @@ fn resolve_declared_binders_or_none(ctx: ResolveContext, path: QualifiedName, at
 
 fn resolve_type_application_verdict(n: Node, verdict: TypeApplicationConformance) -> Optional<Diagnostic> {
   match verdict {
-    TypeApplicationConforms { literals_unjudged: _, type_parameters_unjudged: _ } => optional_absent()
+    TypeApplicationConforms => optional_absent()
     TypeApplicationArityMismatch { declared: _, supplied: _ } =>
       optional_present(value: resolve_type_application_diagnostic(reason: ^resolve_reason_type_application_arity_mismatch, at: n))
     TypeApplicationKindNotInhabited { argument: a, kind: _ } =>

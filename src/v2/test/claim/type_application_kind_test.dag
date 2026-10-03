@@ -100,9 +100,9 @@ test fn tak_application_of_a_non_generic_declaration_refuses() -> Bool {
 
 // THE VERDICT AT ITS OWN INTERFACE, over supplied binders and a supplied judgment (DESIGN section 3: a
 // witness discriminates at one interface; the specimens above are this boundary's inhabitance claims on
-// the real route). A literal is counted as unjudged rather than credited as inhabiting the kind -- the
-// honesty std.machine_constraints machine_width_literal_roster_frontier records -- and an arity mismatch
-// is decided before any kind is judged.
+// the real route). A literal the judgment leaves unjudged is admitted, never refused -- the frontier
+// std.machine_constraints machine_width_literal_roster_frontier declares -- and an arity mismatch is
+// decided before any kind is judged.
 fn tak_atom(id: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: id } }, children: [], occurrence_id: OccurrenceSynthetic }
 }
@@ -119,9 +119,9 @@ fn tak_kinded_binders() -> Node {
 }
 
 
-test fn tak_literal_argument_is_counted_unjudged() -> Bool {
+test fn tak_unjudged_literal_argument_is_admitted() -> Bool {
   match type_application_conformance(binders: tak_kinded_binders(), arguments: [tak_atom(id: ^eight)], inhabits: fn(a, k) { ArgumentLiteralUnjudged }) {
-    TypeApplicationConforms { literals_unjudged: n, type_parameters_unjudged: p } => (n == 1) && (p == 0)
+    TypeApplicationConforms => true
     _ => false
   }
 }

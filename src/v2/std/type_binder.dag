@@ -265,11 +265,12 @@ fn type_param_kind_optional(binder: Node) -> Optional<Node> {
 // judgment needs the declarations the kind and argument resolve to, which only resolve holds, so it
 // is supplied; the PAIRING it is applied over is decided here and nowhere else. ArgumentLiteralUnjudged
 // is the language-level Nat literal rule: a literal is admitted in any kinded position and is NOT
-// judged against the kind's roster (std.machine_constraints machine_width_literal_roster_frontier),
-// so it is counted rather than credited as inhabitance. ArgumentTypeParameterUnjudged is an argument
-// that is itself a type parameter of an enclosing declaration (`MachineWidth<bits>` inside a generic
-// over bits): its instances are judged where that declaration is applied, not here, so it too is
-// counted rather than credited.
+// judged against the kind's roster. ArgumentTypeParameterUnjudged is an argument that is itself a type
+// parameter of an enclosing declaration (`MachineWidth<bits>` inside a generic over bits): its
+// instances are judged where that declaration is applied, not here. Both ADMIT without crediting
+// inhabitance, and this module records no count of them: nothing would consume one. The honest
+// record of what stays unjudged is the declared frontier std.machine_constraints
+// machine_width_literal_roster_frontier, which states the rung this position sits at.
 type KindInhabitance
   = ArgumentInhabitsKind
   | ArgumentLiteralUnjudged
@@ -282,7 +283,7 @@ type KindInhabitance
 // arity error has shifted. Then each kinded binder's argument is judged in order and the first that
 // is not inhabited refuses AT THAT ARGUMENT. An unkinded binder admits any argument, as before.
 type TypeApplicationConformance
-  = TypeApplicationConforms { literals_unjudged: Int, type_parameters_unjudged: Int }
+  = TypeApplicationConforms
   | TypeApplicationArityMismatch { declared: Int, supplied: Int }
   | TypeApplicationKindNotInhabited { argument: Node, kind: Node }
   | TypeApplicationKindUnresolved { argument: Node, kind: Node }
@@ -303,7 +304,7 @@ fn type_application_conformance(
   } else {
     let binder_targets = fold(binders.children, init: Empty, f: fn(acc, e) { list_snoc_item(xs: acc, item: e.target) })
     fold(zip_map(a: binder_targets, b: arguments, f: fn(b, arg) { TypeParamArgument { binder: b, argument: arg } }),
-      init: TypeApplicationConforms { literals_unjudged: 0, type_parameters_unjudged: 0 },
+      init: TypeApplicationConforms,
       f: fn(acc, pa) { type_application_step(acc: acc, pa: pa, inhabits: inhabits) })
   }
 }
@@ -315,14 +316,14 @@ type TypeParamArgument {
 
 fn type_application_step(acc: TypeApplicationConformance, pa: TypeParamArgument, inhabits: fn(Node, Node) -> KindInhabitance) -> TypeApplicationConformance {
   match acc {
-    TypeApplicationConforms { literals_unjudged: n, type_parameters_unjudged: p } =>
+    TypeApplicationConforms =>
       match type_param_kind_optional(binder: pa.binder) {
         Absent => acc
         Present { value: kind } =>
           match inhabits(pa.argument, kind) {
             ArgumentInhabitsKind => acc
-            ArgumentLiteralUnjudged => TypeApplicationConforms { literals_unjudged: n + 1, type_parameters_unjudged: p }
-            ArgumentTypeParameterUnjudged => TypeApplicationConforms { literals_unjudged: n, type_parameters_unjudged: p + 1 }
+            ArgumentLiteralUnjudged => acc
+            ArgumentTypeParameterUnjudged => acc
             ArgumentOutsideKind => TypeApplicationKindNotInhabited { argument: pa.argument, kind: kind }
             KindUnresolved => TypeApplicationKindUnresolved { argument: pa.argument, kind: kind }
           }
