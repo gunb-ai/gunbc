@@ -1,5 +1,6 @@
 module v2.std.data_initializer_identity
 
+import std.types { List }
 import v2.std.node { symbol_lexeme }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.decl_index { DeclFact }

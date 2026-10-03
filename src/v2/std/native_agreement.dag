@@ -1,5 +1,6 @@
 module v2.std.native_agreement
 
+import std.types { List }
 import v2.std.algebra { Cons, Empty }
 import v2.std.collection {
   List,
