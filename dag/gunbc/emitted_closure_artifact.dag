@@ -1,0 +1,84 @@
+module gunbc.emitted_closure_artifact
+
+import std.types { NonEmptyStr }
+import v2.std.text { String }
+
+// ONE ARTIFACT, FIVE PROJECTIONS, AND THEY ARE SEPARATELY TYPED BECAUSE THEY ARE SEPARATELY
+// CHOSEN. An emitted closure is one artifact, but the names around it answer different questions to
+// different readers: Cargo resolves a PACKAGE, rustc and every `use` line resolve a LIBRARY
+// IDENTIFIER, a build produces a BINARY TARGET, the route addresses a content SLUG, and authored
+// Rust spells an IMPORT ALIAS. Collapsing them into one `String` is what let two sites author the
+// same fact independently while each looked locally reasonable, and it is why a census over textual
+// mentions could not tell a package name from a library name. Distinct types make the confusion
+// unrepresentable rather than merely discouraged.
+type CargoPackageName { name: NonEmptyStr }
+
+type RustLibraryIdentifier { identifier: NonEmptyStr }
+
+type BinaryTargetName { name: NonEmptyStr }
+
+type EmittedArtifactSlug { slug: NonEmptyStr }
+
+type SourceVisibleImportAlias { alias: NonEmptyStr }
+
+type EmittedClosureArtifact {
+  slug: EmittedArtifactSlug
+  cargo_package: CargoPackageName
+  rust_library: RustLibraryIdentifier
+  binary_target: BinaryTargetName
+  import_alias: SourceVisibleImportAlias
+}
+
+// THE LIBRARY IDENTIFIER IS THE LOAD-BEARING ONE, AND IT IS THE ONLY ONE AUTHORED RUST DEPENDS ON.
+// Every `use <name>::…` in a hand-authored shim resolves this and nothing else, so it is the fact a
+// rename must move and the fact a drift check must compare against. The other four are derived,
+// addressed or chosen per artifact: the route's own package is `gunbc-emitted-closure-<slug>` while
+// the curated probe's package is chosen differently, and neither of those choices changes what a
+// `use` line resolves.
+data emitted_closure_rust_library: RustLibraryIdentifier = RustLibraryIdentifier {
+  identifier: "v1_compiled" as NonEmptyStr
+}
+
+fn emitted_closure_rust_library_text() -> String {
+  emitted_closure_rust_library.identifier
+}
+
+// THE SOURCE-VISIBLE ALIAS EQUALS THE LIBRARY IDENTIFIER TODAY, AND THAT COINCIDENCE IS THE WHOLE
+// REASON THE RENAME IS NOT CHEAP YET. Authored Rust names the physical library directly rather than
+// an alias the build could redirect, so the physical name appears in every shim body and a rename
+// has to edit them all. When the artifact owner lands a generated stable alias -- through Cargo, a
+// shared adapter or a generated prelude -- this projection stops equalling the one below it, the
+// shim bodies name the alias, and renaming the physical library becomes one authority edit plus
+// regenerated projections.
+fn emitted_closure_import_alias() -> SourceVisibleImportAlias {
+  SourceVisibleImportAlias { alias: emitted_closure_rust_library.identifier }
+}
+
+// THE CURATED PROBE'S PACKAGE NAME IS DERIVED FROM THE LIBRARY IDENTIFIER, NOT CHOSEN BESIDE IT, and
+// stating the direction is the point. Cargo derives a package's default library name from the
+// package name, and the curated probe's shims `use` the library -- so that probe's package name is
+// a MEANS of fixing the library identifier the shims resolve. Authoring it as its own literal made
+// it look like an independent choice, which is exactly how it drifted out of reach of the emitter's
+// own home for the same fact.
+fn curated_probe_cargo_package() -> CargoPackageName {
+  CargoPackageName { name: emitted_closure_rust_library.identifier }
+}
+
+fn curated_probe_cargo_package_text() -> String {
+  curated_probe_cargo_package().name
+}
+
+// THE ROUTE'S PACKAGE AND BINARY TARGET ARE SLUG-DERIVED, and they are modeled here so that a reader
+// asking "what is this artifact called" finds one place carrying all five answers rather than
+// discovering a second naming scheme in host Rust. The slug itself is produced by the emitting host
+// from the entry path; this projection states the SHAPE the host renders, and a future consolidation
+// of that host site consumes it rather than respelling the prefix.
+data emitted_closure_package_prefix: String = "gunbc-emitted-closure-"
+
+fn emitted_closure_cargo_package(slug: EmittedArtifactSlug) -> CargoPackageName {
+  CargoPackageName { name: concat(emitted_closure_package_prefix, slug.slug) as NonEmptyStr }
+}
+
+fn emitted_closure_binary_target(slug: EmittedArtifactSlug) -> BinaryTargetName {
+  BinaryTargetName { name: concat(emitted_closure_package_prefix, slug.slug) as NonEmptyStr }
+}
