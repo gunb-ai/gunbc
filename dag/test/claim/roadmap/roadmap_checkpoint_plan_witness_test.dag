@@ -1,0 +1,264 @@
+module test.claim.roadmap.roadmap_checkpoint_plan_witness_test
+
+import std.types { Bool, String, List }
+import std.decl_ref { decl_ref }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.roadmap.roadmap_alignment {
+  AlignmentChainLink,
+  AlignmentResolvedChain,
+  AlignmentCadenceState,
+  AlignmentCheckpointIdentity,
+  alignment_checkpoint_identity_digest,
+  alignment_chain_fingerprint,
+  alignment_base_cadence_state,
+  Aligned,
+  Misaligned,
+  ExtremelyMisaligned,
+  CatastrophicallyMisaligned,
+  RoutedConflict,
+}
+import gunbc.roadmap.roadmap_checkpoint_plan {
+  AlignmentProbeLevel,
+  ProbePrinciples,
+  ProbeProject,
+  ProbeTask,
+  AlignmentProbeObligation,
+  ProbePlanDerived,
+  ProbePlanRefused,
+  checkpoint_probe_obligations,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ------------------------------------------------------------------------------------------------
+// The checkpoint-probe planner, witnessed (review 5358022153, lane C). The claims discriminate
+// one interface: checkpoint_probe_obligations' derivation over (checkpoint identity, resolved
+// chain, cadence state) -- the obligation population's shape and root-to-leaf order, the
+// idempotency of the obligation keys, the fingerprint gate, and the outstanding-guidance read of
+// the cadence state's recorded verdicts. The fixture chains are supplied at the module boundary
+// like the alignment witness's: the planner's domain is the RESOLVED chain, so the claims pass
+// resolved records directly and never re-derive a walk.
+// ------------------------------------------------------------------------------------------------
+
+fn witness_link(node_id: String, purpose: String) -> AlignmentChainLink {
+  AlignmentChainLink {
+    node_id: node_id,
+    purpose: purpose,
+    boundary: join([purpose, " boundary"], ""),
+    current_approach: "fixture current approach",
+    red_control: "fixture red control",
+    handback: "fixture handback",
+    displaced_cost: "fixture displaced cost",
+    contribution_to_parent: join([node_id, " contribution"], ""),
+  }
+}
+
+// THE THREE-LEVEL FIXTURE CHAIN: one task under one project under the root principles -- the
+// smallest ladder that still exercises every probe kind (principles, project, task).
+fn three_level_chain() -> AlignmentResolvedChain {
+  AlignmentResolvedChain {
+    task: witness_link(node_id: "task-a", purpose: "Task A headline"),
+    projects: [witness_link(node_id: "arc-one", purpose: "Arc One headline")],
+    root: decl_ref(module_path: "gunbc.design_document", decl_name: "design_document"),
+  }
+}
+
+// THE MOVED CHAIN: same ids, one retitled purpose. Every carried field moves the chain
+// fingerprint (the alignment witness pins that per field), so this is a genuinely moved chain
+// under the same node ids -- the fingerprint gate's negative control.
+fn moved_three_level_chain() -> AlignmentResolvedChain {
+  AlignmentResolvedChain {
+    task: witness_link(node_id: "task-a", purpose: "Task A headline"),
+    projects: [witness_link(node_id: "arc-one", purpose: "Arc One headline, retitled")],
+    root: decl_ref(module_path: "gunbc.design_document", decl_name: "design_document"),
+  }
+}
+
+// THE FIXTURE CHECKPOINT, minted under the chain it is asked to plan for: the fingerprint gate
+// passes by construction, so the derivation claims isolate the population itself.
+fn fixture_checkpoint(chain: AlignmentResolvedChain) -> AlignmentCheckpointIdentity {
+  AlignmentCheckpointIdentity {
+    attempt_lineage: "worker:task-a-lineage",
+    epoch: 3,
+    checkpoint_ordinal: 2,
+    chain_fingerprint: alignment_chain_fingerprint(chain: chain),
+    conversation_tip: "conversation-tip-0001",
+    candidate_subject: "task-a",
+  }
+}
+
+fn plan_level_kind(level: AlignmentProbeLevel) -> String {
+  match level {
+    ProbePrinciples => "principles"
+    ProbeProject { link: _ } => "project"
+    ProbeTask { link: _ } => "task"
+  }
+}
+
+fn plan_level_subject(level: AlignmentProbeLevel) -> String {
+  match level {
+    ProbePrinciples => ""
+    ProbeProject { link } => link.node_id
+    ProbeTask { link } => link.node_id
+  }
+}
+
+fn obligation_keys(obligations: List<AlignmentProbeObligation>) -> List<String> {
+  map(obligations, o => o.obligation_key)
+}
+
+// THE GUIDANCE AS ONE COMPARABLE TEXT per obligation: joined so the claims read the population's
+// guidance as a list of strings without nesting list equality through the match.
+fn obligation_guidance_texts(obligations: List<AlignmentProbeObligation>) -> List<String> {
+  map(obligations, o => join(o.outstanding_guidance, "|"))
+}
+
+// ALL DISTINCT, the population-key claim's helper: every key appears exactly once, so no two
+// obligations of one checkpoint share a key.
+fn all_distinct(items: List<String>) -> Bool {
+  fold(items, init: true, f: fn(ok, item) {
+    ok && count(filter(items, other => other == item)) == 1
+  })
+}
+
+// ONE CHECKPOINT OVER THE THREE-LEVEL CHAIN derives exactly three obligations, ROOT TO LEAF --
+// principles, project, task -- each obligation carrying the checkpoint it was minted under, each
+// key distinct, and the plan's checkpoint_digest is the checkpoint identity's own digest, the
+// idempotency root the scheduler keys its durable records on.
+test fn a_checkpoint_over_a_three_level_chain_derives_three_obligations_root_to_leaf() -> Bool {
+  let chain = three_level_chain()
+  let checkpoint = fixture_checkpoint(chain: chain)
+  let fingerprint = alignment_chain_fingerprint(chain: chain)
+  match checkpoint_probe_obligations(checkpoint: checkpoint, chain: chain, state: alignment_base_cadence_state()) {
+    ProbePlanRefused { detail: _ } => false
+    ProbePlanDerived { checkpoint_digest, obligations } =>
+      checkpoint_digest == alignment_checkpoint_identity_digest(id: checkpoint)
+        && count(obligations) == 3
+        && map(obligations, o => plan_level_kind(level: o.level)) == ["principles", "project", "task"]
+        && map(obligations, o => plan_level_subject(level: o.level)) == ["", "arc-one", "task-a"]
+        && map(obligations, o => o.checkpoint.chain_fingerprint) == [fingerprint, fingerprint, fingerprint]
+        && all_distinct(items: obligation_keys(obligations: obligations))
+  }
+}
+
+// IDEMPOTENT RE-DERIVATION, the red control: the same checkpoint identity over the same chain and
+// state yields the identical obligation keys and guidance -- a crash after the plan derived but
+// before the scheduler recorded it re-derives exactly the same population, so the durable records
+// key on the same obligations and no duplicate verdicts can be minted for one checkpoint.
+test fn re_deriving_under_the_same_checkpoint_identity_yields_identical_obligation_keys() -> Bool {
+  let chain = three_level_chain()
+  let checkpoint = fixture_checkpoint(chain: chain)
+  let state = AlignmentCadenceState {
+    level_intervals: [20, 200, 2000],
+    last_verdicts: [Misaligned { direction: "task drift" }, Aligned, Aligned],
+  }
+  match checkpoint_probe_obligations(checkpoint: checkpoint, chain: chain, state: state) {
+    ProbePlanRefused { detail: _ } => false
+    ProbePlanDerived { checkpoint_digest: _, obligations: first } =>
+      match checkpoint_probe_obligations(checkpoint: checkpoint, chain: chain, state: state) {
+        ProbePlanRefused { detail: _ } => false
+        ProbePlanDerived { checkpoint_digest: _, obligations: second } =>
+          obligation_keys(obligations: first) == obligation_keys(obligations: second)
+            && obligation_guidance_texts(obligations: first) == obligation_guidance_texts(obligations: second)
+            && map(first, o => plan_level_kind(level: o.level)) == map(second, o => plan_level_kind(level: o.level))
+      }
+  }
+}
+
+// THE FINGERPRINT GATE, negative control: a checkpoint whose recorded chain_fingerprint is not
+// the resolved chain's current fingerprint refuses -- a typed refusal naming both fingerprints,
+// never a derived population under a stale checkpoint.
+test fn a_checkpoint_whose_fingerprint_does_not_match_the_chain_refuses() -> Bool {
+  let chain = three_level_chain()
+  let stale = AlignmentCheckpointIdentity {
+    attempt_lineage: "worker:task-a-lineage",
+    epoch: 3,
+    checkpoint_ordinal: 2,
+    chain_fingerprint: "fingerprint-from-a-moved-chain",
+    conversation_tip: "conversation-tip-0001",
+    candidate_subject: "task-a",
+  }
+  match checkpoint_probe_obligations(checkpoint: stale, chain: chain, state: alignment_base_cadence_state()) {
+    ProbePlanRefused { detail } =>
+      string_contains(s: detail, pattern: "fingerprint-from-a-moved-chain")
+        && string_contains(s: detail, pattern: alignment_chain_fingerprint(chain: chain))
+    ProbePlanDerived { checkpoint_digest: _, obligations: _ } => false
+  }
+}
+
+// OUTSTANDING GUIDANCE IS THE RECORDED VERDICT PAYLOAD, read at the level's leaf distance: for
+// the three-level chain the task contract sits at leaf distance 0, the project at 1, the
+// principles at 2 -- the same index alignment_levels_due reads -- so the state's last_verdicts
+// apply task-first. A MISALIGNED direction and an EXTREMELY MISALIGNED direction surface as
+// their levels' guidance; ALIGNED surfaces as none.
+test fn outstanding_guidance_carries_the_recorded_verdict_payload_and_none_for_aligned() -> Bool {
+  let chain = three_level_chain()
+  let checkpoint = fixture_checkpoint(chain: chain)
+  let state = AlignmentCadenceState {
+    level_intervals: [20, 200, 2000],
+    last_verdicts: [
+      Misaligned { direction: "the task contract drifted" },
+      ExtremelyMisaligned { direction: "the project intent drifted" },
+      Aligned,
+    ],
+  }
+  match checkpoint_probe_obligations(checkpoint: checkpoint, chain: chain, state: state) {
+    ProbePlanRefused { detail: _ } => false
+    ProbePlanDerived { checkpoint_digest: _, obligations } =>
+      obligation_guidance_texts(obligations: obligations) == ["", "the project intent drifted", "the task contract drifted"]
+  }
+}
+
+// THE PAYLOAD EXTRACTION COVERS EVERY NON-ALIGNED ARM: CATASTROPHICALLY MISALIGNED surfaces its
+// reason and a RoutedConflict its conflict -- the guidance is the verdict's own recorded detail,
+// never a re-interpretation of it.
+test fn guidance_extracts_the_reason_and_conflict_arms_too() -> Bool {
+  let chain = three_level_chain()
+  let checkpoint = fixture_checkpoint(chain: chain)
+  let state = AlignmentCadenceState {
+    level_intervals: [20, 200, 2000],
+    last_verdicts: [
+      CatastrophicallyMisaligned { reason: "the diff violates a root principle" },
+      RoutedConflict { conflict: "the brief contradicts the contract" },
+      Aligned,
+    ],
+  }
+  match checkpoint_probe_obligations(checkpoint: checkpoint, chain: chain, state: state) {
+    ProbePlanRefused { detail: _ } => false
+    ProbePlanDerived { checkpoint_digest: _, obligations } =>
+      obligation_guidance_texts(obligations: obligations) == ["", "the brief contradicts the contract", "the diff violates a root principle"]
+  }
+}
+
+// A STATE THAT PREDATES A LEVEL leaves that level's guidance empty: one recorded verdict (the
+// task's, at leaf distance 0) reads for the task alone; the project and principles levels were
+// never judged, and an unrecorded level carries no fabricated guidance.
+test fn a_level_the_state_has_not_reached_carries_no_guidance() -> Bool {
+  let chain = three_level_chain()
+  let checkpoint = fixture_checkpoint(chain: chain)
+  let partial = AlignmentCadenceState {
+    level_intervals: [20],
+    last_verdicts: [Misaligned { direction: "early task drift" }],
+  }
+  match checkpoint_probe_obligations(checkpoint: checkpoint, chain: chain, state: partial) {
+    ProbePlanRefused { detail: _ } => false
+    ProbePlanDerived { checkpoint_digest: _, obligations } =>
+      obligation_guidance_texts(obligations: obligations) == ["", "", "early task drift"]
+  }
+}
+
+// THE SAME CHECKPOINT IDENTITY OVER A MOVED CHAIN refuses, never derives: the checkpoint was
+// minted under the original chain's fingerprint; the retitled chain derives a different
+// fingerprint, and the plan refuses rather than minting obligations the stale checkpoint would
+// execute against links it never saw.
+test fn the_same_checkpoint_identity_over_a_moved_chain_refuses_never_derives() -> Bool {
+  let chain = three_level_chain()
+  let checkpoint = fixture_checkpoint(chain: chain)
+  let moved = moved_three_level_chain()
+  alignment_chain_fingerprint(chain: moved) != checkpoint.chain_fingerprint
+    && match checkpoint_probe_obligations(checkpoint: checkpoint, chain: moved, state: alignment_base_cadence_state()) {
+      ProbePlanRefused { detail } => detail != ""
+      ProbePlanDerived { checkpoint_digest: _, obligations: _ } => false
+    }
+}
+

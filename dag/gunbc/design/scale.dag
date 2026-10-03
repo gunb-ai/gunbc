@@ -146,6 +146,12 @@ data height_control: ScaleToken = named_length_token(name: "h-control", px: 40)
 data height_row: ScaleToken = named_length_token(name: "h-row", px: 24)
 data width_status: ScaleToken = named_length_token(name: "w-status", px: 52)
 
+// The taskbar's height (the 2026-09-21 title-in-bar redesign, owner-endorsed: "~56-64px tall task
+// rows, title rendered INSIDE the bar"). 56 is the low end of the owner's band: the bar carries a
+// title and at most one short second line over a subdued fill, and anything taller starts reading
+// as a card rather than a row. One token, consumed by the .taskbar rule alone.
+data height_taskbar: ScaleToken = named_length_token(name: "h-taskbar", px: 56)
+
 // A control's TRAVEL is a dimension, so it belongs on the dimension axis with every other length
 // rather than as a literal inside a transform value — otherwise the first raw pixel in the register
 // arrives through the one property nobody thought to look at, and the untokened-length census
@@ -161,7 +167,7 @@ data travel_press: ScaleToken = named_length_token(name: "travel-press", px: 1)
 
 data dimension_scale: List<ScaleToken> = [
   radius_3, radius_999, border_1, border_2, measure_page,
-  height_control, height_row, width_status,
+  height_control, height_row, width_status, height_taskbar,
   travel_lift, travel_press,
 ]
 

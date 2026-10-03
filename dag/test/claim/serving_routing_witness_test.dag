@@ -8,6 +8,8 @@ import gunbc.serving.serving_enrollment {
   serving_route_turn_ceiling_count, ServingRouteResolved, ServingRouteUnresolved,
   CeilingByDeclaredPolicy, CeilingFromRouteLaunch, ServingRouteEndpoint,
 }
+import gunbc.spark.group_b_serving_capacity { group_b_restoration_intent }
+import gunbc.spark.serving_capacity_intent { intent_max_active_sequences }
 import gunbc.serving.admitted_model {
   serving_admits_id, serving_admit_advertised, ServingModelAdmitted, ServingModelNotAdmitted,
 }
@@ -78,16 +80,19 @@ fn w_ceiling(group: FabricGroup) -> Nat {
 
 test fn each_route_declares_its_own_turn_ceiling_and_none_of_them_is_a_measurement() -> Bool {
   w_ceiling(group: FabricGroupA) == 4
-    && w_ceiling(group: FabricGroupB) == 4
+    && w_ceiling(group: FabricGroupB) == match group_b_restoration_intent() {
+          Present { value: i } => intent_max_active_sequences(i: i)
+          Absent => 1
+        }
     && (match serving_route_ceiling(group: FabricGroupA) {
           CeilingByDeclaredPolicy { count: _, decider: d, decided_on: on, basis: _ } =>
             (d as String) != "" && (on as String) == "2026-09-11"
           CeilingFromRouteLaunch { count: _, basis: _ } => false
         })
     && (match serving_route_ceiling(group: FabricGroupB) {
-          CeilingByDeclaredPolicy { count: _, decider: d, decided_on: on, basis: _ } =>
-            (d as String) != "" && (on as String) == "2026-09-18"
-          CeilingFromRouteLaunch { count: _, basis: _ } => false
+          CeilingByDeclaredPolicy { count: _, decider: _, decided_on: _, basis: _ } => false
+          CeilingFromRouteLaunch { count: c, basis: b } =>
+            c == 8 && string_contains(s: b, pattern: "2026-09-28")
         })
 }
 
