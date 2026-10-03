@@ -85,7 +85,8 @@ import std.measure {
   token_count_value,
 }
 import std.decl_ref { decl_ref }
-import extdeps.vllm.engine_args { vllm_prefix_caching_argv, vllm_basis_point_fraction_wire, vllm_kv_cache_dtype_wire, vllm_engram_config_argv, vllm_modality_argv }
+import extdeps.vllm.runtime_defaults { resolve_vllm_scheduler_admission, VllmDefaultsKnown, SchedulerAdmissionResolved, SchedulerAdmissionUnresolvable }
+import extdeps.vllm.engine_args { vllm_prefix_caching_argv, vllm_basis_point_fraction_wire, vllm_kv_cache_dtype_wire, vllm_engram_config_argv, vllm_modality_argv, vllm_scheduler_admission_argv }
 
 import gunbc.spark.model_snapshot_acquisition {
   SnapshotPlacement,
@@ -495,7 +496,7 @@ fn arm_engine_argv(node: ArmNode, master: Ipv4Address, crow: ServingCheckpointRo
   ], concat(
     vllm_prefix_caching_argv(r: profile.prefix_caching),
     concat(checkpoint_quantization_argv(row: crow), concat(arm_headless_argv(node: node),
-      concat(arm_tokenizer_mode_argv(crow: crow), concat(vllm_engram_config_argv(r: profile.engram), vllm_modality_argv(r: profile.modality)))))))
+      concat(arm_tokenizer_mode_argv(crow: crow), concat(vllm_engram_config_argv(r: profile.engram), concat(vllm_modality_argv(r: profile.modality), vllm_scheduler_admission_argv(r: profile.scheduler_admission))))))))
 }
 
 // ── ONLY RANK ZERO HOSTS AN API SERVER, AND THE OTHER THREE MUST BE TOLD SO ────────────────────
@@ -627,6 +628,28 @@ fn intent_refusal(admission: CompatibilityAdmission, intent: ArmIntent) -> NonEm
   }
 }
 
+// THE ADMISSION CONTROLS ARE CHECKED AGAINST THE RUNTIME THAT WILL RUN THEM (review on #12975): the
+// envelope already refused a malformed control (vllm_scheduler_admission_defect); here a control the
+// launch states, or any above-floor envelope, must also RESOLVE at the selected runtime's own vLLM
+// revision (extdeps.vllm.runtime_defaults resolve_vllm_scheduler_admission) -- a watermark on a revision
+// with no such field, or a runtime whose revision is not modelled, refuses here rather than at engine
+// init. A floor launch that states no control requests nothing and is priced fully cold, so it needs no
+// runtime resolution; that keeps the converged 8/8 launch unchanged.
+fn scheduler_admission_runtime_refusal(profile: ServingLaunchProfile, rrow: ServingRuntimeRow) -> NonEmptyStr? {
+  if vllm_scheduler_admission_argv(r: profile.scheduler_admission) == [] && profile.guaranteed_cold_seqs == profile.max_num_seqs {
+    none
+  } else {
+    match rrow.claimed_defaults_revision {
+      Absent => Present { value: "the launch states scheduler admission controls but its runtime claims no modelled vLLM revision, so whether the engine accepts them is unestablished" as NonEmptyStr }
+      Present { value: rev } =>
+        match resolve_vllm_scheduler_admission(request: profile.scheduler_admission, defaults: VllmDefaultsKnown { revision: rev }) {
+          SchedulerAdmissionUnresolvable { cause: c } => Present { value: c }
+          SchedulerAdmissionResolved { full_input_admission: _, full_input_origin: _, watermark: _, watermark_origin: _ } => none
+        }
+    }
+  }
+}
+
 fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, topology: ServingTopology, group: FabricGroup, intent: ArmIntent, profile: ServingLaunchProfile, deployment_env: List<DockerEnvAssignment>, container: ArmContainerIdentity) -> ArmLaunchPlan {
   let subject = launch_compatibility_subject(checkpoint: checkpoint, runtime: runtime, topology: topology, group: group, profile: profile)
   if measured_subject_refuses(subject: subject) {
@@ -644,12 +667,16 @@ fn plan_arm_launch_for(checkpoint: ServingCheckpoint, runtime: ServingRuntime, t
           match serving_runtime_row(r: runtime) {
             Absent => ArmLaunchRefused { cause: "no runtime row: unreachable behind serving_arm_admits, which refuses first" as NonEmptyStr }
             Present { value: rrow } =>
+              match scheduler_admission_runtime_refusal(profile: profile, rrow: rrow) {
+               Present { value: c } => ArmLaunchRefused { cause: c }
+               Absent =>
               match arm_node_roster(group: group, expected_ranks: serving_topology_rank_count(t: topology)) {
                 ArmNodeRosterRefused { cause: c } => ArmLaunchRefused { cause: c }
                 ArmNodesResolved { nodes: ns, master: m } => ArmLaunchPlanned {
                   lines: map(ns, n => arm_node_launch(node: n, master: m, crow: crow, rrow: rrow, ranks: serving_topology_rank_count(t: topology), profile: profile, deployment_env: deployment_env, container: container)),
                   master: m,
                 },
+              }
               }
           }
       }
