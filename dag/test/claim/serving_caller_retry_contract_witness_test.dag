@@ -1,11 +1,13 @@
 module test.claim.serving_caller_retry_contract_witness_test
 
 import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import v2.std.algebra { length }
+import v2.std.algebra { length, filter }
 import gunbc.serving.caller_retry_contract {
-  DurableRetryPropertyRow, RetryPropertyEstablished, RetryPropertyUnestablished,
-  PersistBeforeOffer, RetriableRefusal, NoDoubleExecution, durable_retry_properties,
+  DurableRetryProperty, DurableRetryPropertyRow, RetryPropertyEstablished, RetryPropertyUnestablished,
+  PersistBeforeOffer, RetriableRefusal, StableTurnIdentity, IdempotentRetryDuplicateSuppression,
+  NoExpiryOnLongWait, DurableCancellation, NoDoubleExecution, durable_retry_properties,
   CallerBacklogStanding, DurableCallerBacklog, ExternalRetryObligation, CallerBacklogRosterMalformed, caller_backlog_standing, serving_route_caller_backlog,
 }
 import gunbc.harness.harness_cli { harness_placement_pending_exit }
