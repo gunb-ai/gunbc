@@ -49,7 +49,7 @@ import v2.std.node {
   Disj,
   Value,
   Symbol,
-  Named,
+  Authored,
 }
 import v2.std.witness { Holds, Violates }
 import std.types { Bool, NonEmptyStr, String, List }
@@ -126,7 +126,7 @@ fn wall_malformed_bool_with_payload() -> Node {
     kind: TypeNode { connective: Atom { identity: ^dag_token_kw_true } },
     children: [
       Edge {
-        label: Named { name: ^wall_malformed_bool_payload_field },
+        label: Authored { name: ^wall_malformed_bool_payload_field },
         target: wall_value_node()
       }
     ],
@@ -141,7 +141,7 @@ fn wall_malformed_int_with_extra_payload() -> Node {
     children: list_snoc_item(
       xs: literal.children,
       item: Edge {
-        label: Named { name: ^wall_malformed_int_payload_field },
+        label: Authored { name: ^wall_malformed_int_payload_field },
         target: wall_value_node()
       }
     ),

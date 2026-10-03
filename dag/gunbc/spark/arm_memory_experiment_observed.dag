@@ -1250,6 +1250,18 @@ fn arm_checkpoint_placement_kind_wire(k: ArmCheckpointPlacementKind) -> String {
   }
 }
 
+// Every rank holds a full copy of a replicated tensor; every other placement divides the tensor
+// across the ranks. The per-rank figure and the conservation check both read this partition.
+fn arm_placement_is_replicated(k: ArmCheckpointPlacementKind) -> Bool {
+  match k {
+    ArmPlacementVocabSharded => false
+    ArmPlacementColumnSharded => false
+    ArmPlacementRowSharded => false
+    ArmPlacementExpertSplit => false
+    ArmPlacementReplicated => true
+  }
+}
+
 // ONE PROJECTED TENSOR ROW: the tensor's checkpoint name, its placement kind, and its byte size.
 // `bytes` is OPTIONAL because the index does not carry shapes or dtypes: Absent names the
 // shard-header fetch as the completing read, and the folds below refuse to price an Absent row
@@ -1268,9 +1280,10 @@ fn arm_checkpoint_row_per_rank_bytes(row: ArmCheckpointTensorRow, rank_count: Na
   match row.bytes {
     Absent => none
     Present { value: b } =>
-      match row.kind {
-        ArmPlacementReplicated => Present { value: b }
-        _ => Present { value: byte_size(count: byte_size_count(b: b) / rank_count) }
+      if arm_placement_is_replicated(k: row.kind) {
+        Present { value: b }
+      } else {
+        Present { value: byte_size(count: byte_size_count(b: b) / rank_count) }
       }
   }
 }
@@ -1303,18 +1316,20 @@ fn arm_checkpoint_placement_conserved(rows: List<ArmCheckpointTensorRow>, rank_c
     match row.bytes {
       Absent => acc
       Present { value: b } =>
-        match row.kind {
-          ArmPlacementReplicated => acc
-          _ => byte_size(count: byte_size_count(b: acc) + byte_size_count(b: b))
+        if arm_placement_is_replicated(k: row.kind) {
+          acc
+        } else {
+          byte_size(count: byte_size_count(b: acc) + byte_size_count(b: b))
         }
     })
   let replicated = fold(rows, init: byte_size(count: 0), f: (acc, row) =>
     match row.bytes {
       Absent => acc
       Present { value: b } =>
-        match row.kind {
-          ArmPlacementReplicated => byte_size(count: byte_size_count(b: acc) + byte_size_count(b: b))
-          _ => acc
+        if arm_placement_is_replicated(k: row.kind) {
+          byte_size(count: byte_size_count(b: acc) + byte_size_count(b: b))
+        } else {
+          acc
         }
     })
   let figures = arm_checkpoint_placement_rank_figures(rows: rows, rank_count: rank_count)

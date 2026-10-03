@@ -29,6 +29,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // consumer must not read the presence of a process as weightless because its figure was withheld.
 service nvidia_smi.Smi {
   operation QueryComputeApps {
+    requires none
     input {}
     output {
       value: String from "stdout"

@@ -1,8 +1,10 @@
 module v2.test.claim.body_lowering.wave1_gate1_b1_bare_call_helpers
 
+import v2.std.node { Authored, StructuralLabel, ArrowBodyEdge, edge_is_core }
+
 import v2.compiler.reference_conservation_admission { conserved_normalize_of_text, no_explained_drops }
 import v2.extdeps.languages.dag { qualified_name_from_module_node }
-import v2.std.optional { Absent, Optional, Present }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 
 
 data wave1_gate1_b1_bare_call_module_source: String = "module wave1_gate1_b1_bare_call\n\nfn helper(x: Int) -> Int { x + x }\n\nfn caller(x: Int) -> Int { helper(x) }\n"
@@ -45,10 +47,7 @@ fn wave1_gate1_b1_arrow_named_body_optional(arrow: Node) -> Optional<Node> {
     match acc {
       Present { value: _ } => acc
       Absent =>
-        match body_edge.label {
-          Named { name: _ } => Present { value: body_edge.target }
-          Positional => Absent
-        }
+        if edge_is_core(e: body_edge, marker: ArrowBodyEdge) { optional_present(value: body_edge.target) } else { optional_absent() }
     }
   })
 }
@@ -61,7 +60,8 @@ fn wave1_gate1_b1_find_named_fn_arrow_body(root: Node, fn_lexeme: String) -> Opt
           Present { value: _ } => acc
           Absent =>
             match edge.label {
-              Named { name: sym } =>
+              StructuralLabel { label: _ } => wave1_gate1_b1_find_named_fn_arrow_body(root: edge.target, fn_lexeme: fn_lexeme)
+              Authored { name: sym } =>
                 if symbol_lexeme(sym: sym) == fn_lexeme {
                   match edge.target.kind {
                     TypeNode { connective: Arrow } =>

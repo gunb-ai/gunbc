@@ -18,6 +18,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // operation refuses rather than downloading a tarball and continuing).
 service go.Toolchain {
   operation RunFile {
+    requires opaque
     input { workdir: FilePath, script_path: FilePath, args: List<String> = [] }
     output {
       success: Bool from "exit_success"

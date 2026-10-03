@@ -12,7 +12,7 @@ import v2.std.node {
   Conj,
   DirectAtomBody,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -21,6 +21,7 @@ import v2.std.node {
   UnsupportedArrowBody,
   classify_arrow_body_form,
   symbol_lexeme,
+  StructuralLabel,
 }
 import v2.test.claim.body_lowering.arrow_body_form_semantic_helpers {
   classify_arrow_body_form_red_no_computation_body,
@@ -140,7 +141,8 @@ fn atom_body_discriminator_walk_spine_to_body(captured: Node) -> Node {
         match list_at_optional(xs: captured.children, index: 0) {
           Present { value: edge } =>
             match edge.label {
-              Named { name: _ } => atom_body_discriminator_walk_spine_to_body(captured: edge.target)
+              Authored { name: _ } => atom_body_discriminator_walk_spine_to_body(captured: edge.target)
+              StructuralLabel { label: _ } => captured
               Positional => captured
             }
           Absent => captured
@@ -165,7 +167,8 @@ fn atom_body_discriminator_module_scope_body(root: Node) -> Optional<Node> {
 
 fn atom_body_discriminator_top_level_arrow_lexeme_optional(edge: Edge) -> Optional<String> {
   match edge.label {
-    Named { name: sym } =>
+    StructuralLabel { label: _ } => Absent
+    Authored { name: sym } =>
       match edge.target.kind {
         TypeNode { connective: Arrow } =>
           optional_present(value: symbol_lexeme(sym: sym))
@@ -198,7 +201,8 @@ fn atom_body_discriminator_top_level_named_arrow(root: Node, fn_lexeme: String) 
           Present { value: _ } => acc
           Absent =>
             match edge.label {
-              Named { name: sym } =>
+              StructuralLabel { label: _ } => Absent
+              Authored { name: sym } =>
                 match symbol_lexeme(sym: sym) == fn_lexeme {
                   true =>
                     match edge.target.kind {
@@ -302,7 +306,8 @@ fn atom_body_discriminator_named_binding_count(domain: Node) -> Int {
     TypeNode { connective: Conj } =>
       fold(domain.children, init: 0, f: fn(count, edge) {
         match edge.label {
-          Named { name: _ } => count + 1
+          StructuralLabel { label: _ } => count
+          Authored { name: _ } => count + 1
           Positional => count
         }
       })
