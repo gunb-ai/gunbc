@@ -123,3 +123,27 @@ fn mosquitto_publish_command(
     ],
   )
 }
+
+// The upstream synopsis exposes --help, not --version. Its first line identifies
+// the client version; publishing is never used as a tool-availability probe.
+fn mosquitto_pub_help_command() -> ArgvCommand {
+  argv_command(program: mosquitto_pub_program(), arguments: ["--help"])
+}
+
+fn mosquitto_pub_help_supports_private_options(stdout: String) -> Bool {
+  let prefix = "mosquitto_pub version "
+  if !starts_with(s: stdout, prefix: prefix) { false }
+  else {
+    match split(s: stdout, delimiter: " ") |> skip(n: 2) |> first {
+      Absent => false
+      Present { value: version } =>
+        match split(s: version, delimiter: ".") |> first {
+          Absent => false
+          Present { value: major } => match parse_int(s: major) {
+            Absent => false
+            Present { value: n } => n >= 2
+          }
+        }
+    }
+  }
+}

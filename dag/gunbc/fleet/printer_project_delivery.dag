@@ -1,5 +1,6 @@
 module gunbc.fleet.printer_project_delivery
 
+import gunbc.fleet_printer_access { PrinterCredentialAccess, PrinterProvisioningEvidence, resolve_printer_credential_access }
 import std.types { NonEmptyStr, String, Bool, Secret, FilePath }
 import std.nat { Nat }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_version_resource }
@@ -206,6 +207,8 @@ fn identify_project_payload(payload: PrinterProjectPayload) -> PayloadIdentifica
 fn remote_name_for_digest(content: Digest) -> NonEmptyStr {
   concat(concat("gunbc-", content.hex as String), ".3mf") as NonEmptyStr
 }
+
+fn project_payload_digest(payload: IdentifiedProjectPayload) -> Digest { payload.content }
 
 fn project_remote_name(payload: IdentifiedProjectPayload) -> NonEmptyStr {
   remote_name_for_digest(content: payload.content)
@@ -643,6 +646,17 @@ fn deliver_project_to_printer(
   materializations: List<VerifiedVersionForAttempt>,
 ) -> ProjectDelivery
 {
+  deliver_project_to_printer_with_access(printer: printer, payload: payload, token_source: token_source,
+    access: PrinterProvisioningEvidence { materializations: materializations })
+}
+
+fn deliver_project_to_printer_with_access(
+  printer: PhysicalAssetIdentity,
+  payload: IdentifiedProjectPayload,
+  token_source: AccessTokenSource,
+  access: PrinterCredentialAccess,
+) -> ProjectDelivery
+{
   match printer_endpoint_address(printer: printer) {
     PrinterAddressUnknown { printer: p } =>
       refuse_and_drop(printer: p, payload: payload,
@@ -654,7 +668,7 @@ fn deliver_project_to_printer(
       refuse_and_drop(printer: p, payload: payload,
         cause: "an endpoint names this printer but is not a LAN fabrication appliance, so it is not the file channel and delivery refuses rather than authenticating to it")
     PrinterAddressFound { address: lan_address } =>
-  match observe_printer_secret_container(printer: printer, token_source: token_source, materializations: materializations) {
+  match resolve_printer_credential_access(printer: printer, token_source: token_source, access: access) {
     PrinterCredentialObservationRefused { printer: p, cause: cause } =>
       refuse_and_drop(printer: p, payload: payload, cause: cause)
     PrinterCredentialLocusUndeclared { printer: p } =>

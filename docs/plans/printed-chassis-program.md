@@ -15,7 +15,7 @@ This dated status supersedes the pre-arrival implementation narrative below.
   solid-readback acceptance is not established by that fact and remains to be audited.
 - **Physical printing reached.** PRINT-N records printer-02 reporting `RUNNING` on the gauge
   project after FTPS delivery and MQTT start through the modeled path. The operator now confirms
-  the gauge is in hand. No printer has been contacted in this session.
+  the gauge is in hand. No authenticated printer operation has been performed in this session.
 - **Coupon feedback recorded.** `hole_fit_measurement.operator_ladder_reading_2026_09_04`
   records M3 interference / tight / free at 3.00 / 3.10 / 3.20 mm nominal rungs. Printer attribution
   remains absent; this is not universal hole compensation or qualification of both machines.
@@ -127,8 +127,47 @@ hashes are staged under `/home/briansrls/print-prep-2026-10-03/two-printer-batch
 printer. Material/colour reports are now modeled: Creality PLA, white on printer-01 and black on
 printer-02. Physical spool identity and current bed-clear state are not established by those reports.
 Nozzle/plate reconciliation and slicing are pending.
-The routine authenticated print entry point is also outstanding, as recorded above. No printer
-start is implied by staging the files. Label the finished gauges 3–4 and 4–5 before removing them.
+The routine workload-identity entry point is implemented in the migration below; deployment and
+final slicing remain pending. No printer start is implied by staging the files. Label the finished gauges 3–4 and 4–5 before removing them.
+
+### Printer authentication migration to the ntfy workflow
+
+The operator requested migration on 2026-10-03. `gunbc.fleet.printer_federation_provision`
+adds a dedicated `printer-lan` reader to the existing ntfy-approved GCP IAM estate. It requests
+access only to the two rostered printer secrets; the print worker cannot create, rotate or delete
+credentials or change IAM policy. The provider pins the repository, main workflow/ref, dispatch
+and `printer-lan` environment through the shared OIDC claim authority.
+
+`fleet-converge` mode `printer` has two operations:
+
+1. `observe` resolves a printer's existing credential once and writes its exact version identity
+   to a receipt. The receipt contains no access code. It performs no printer action.
+2. `print` requires the selected printer, staged project path on srv1, expected SHA-256, numeric
+   credential version and an explicit clear-bed report. It hashes a private copy before upload,
+   uses the same version for FTPS and MQTT, and refuses a workflow rerun. A successful receipt
+   means **start published**, not a claim that the machine reported RUNNING. Unknown outcomes
+   require observation, never automatic replay.
+
+The dedicated job runs on srv1, checks out the dispatch event SHA even if `expected_revision` is
+supplied, and serializes starts per printer without cancelling an in-flight operation. It uses
+`WorkloadIdentityToken`; no operator-token fallback and no destructive credential migration.
+`gunbc.fleet.printer_host_tools.converge` is administrator preparation for the MQTT tool, using
+the existing apt ensure and the tool's declared package. The worker checks the actual client
+version before any upload. Mosquitto identifies its version through the documented `--help`
+interface ([upstream manual](https://mosquitto.org/man/mosquitto_pub-1.html)).
+
+**Deployment standing:** source changes are not evidence of installed IAM grants or a dispatched
+print. The main-pinned workflow must land before it can federate. The existing IAM bootstrap must
+cover the new target resources so its observer can plan and its approved executor can apply those
+resource-local bindings. Then run the shared `gcp_iam_converge` workflow and approve its concrete
+diff through ntfy, prepare the srv1 MQTT tool, and run credential observation. Final sliced projects
+and live printer-state verification remain required before dispatching these gauges. The operator
+reported both beds clear during this session; do not carry that report to an unrelated later print.
+
+Validation: all seven printer workflow binding, admission, tool-version, OIDC, IAM approval and
+start-replay regression tests passed. The canonical artifact gate regenerated the workflow; YAML
+structure assertions and shell syntax checks passed. These are source checks, not live deployment
+or printer observations.
 
 ### Local preparation environment
 
