@@ -71,6 +71,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data planted_files: Int = 6
 data planted_mass: Int = 300
 data planted_mass_batch: Int = 100
+// The append claim needs only that old rows and shards are carried forward, so one mass shard suffices.
+data planted_mass_for_append: Int = 30
 
 fn planted_mass_hex(i: Int) -> String {
   let digits = join(["0000000000000000", to_string(i + 1)], "")
@@ -301,7 +303,7 @@ test fn a_capture_over_a_partial_store_mints_and_appends_only_the_new_objects() 
       match indexed_of(whole: whole) {
         Absent => false
         Present { value: small } => {
-          let indexed = with_planted_mass(indexed: small, k: planted_mass)
+          let indexed = with_planted_mass(indexed: small, k: planted_mass_for_append)
           match base_root_of(repo: indexed) {
             Absent => false
             Present { value: root } => {
