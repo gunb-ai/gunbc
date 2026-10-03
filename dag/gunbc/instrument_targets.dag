@@ -322,6 +322,25 @@ fn dag_emit_real_grammar_round_trips_entry() -> String {
   "dag/gunbc/instruments/dag_emit_real_grammar_round_trips.dag"
 }
 
+// THE MATERIALIZATION STORE CLOSURE, EMITTED, BUILT UNDER CARGO AND RUN: the NativeClaimDriver
+// program gunbc.instruments.native_materialization_store_closure, whose closure contains
+// extdeps.realization.materialization_store_local. Its cargo compilation discriminates two emitter
+// classes of accepted source that emitted Rust rustc refused -- item bounds missing from
+// hand-written impl and fn headers (class A), and an optional-returning lambda unwrapped inside its
+// own body (class C) -- so for those two the BUILD is a verdict, not only the cases. The cases over
+// the five representation-local simplifications (class B, specimens of gunbc.rung_drop
+// text_boundary_identity_wall) are behavioral controls of the simplified functions: restoring an
+// unnecessary identified crossing may unfold or refuse at source acceptance and is not guaranteed
+// to fail this build. Run by name, not a merge gate.
+// `gunbc test //gunbc/instruments:native-materialization-store-closure`.
+fn native_materialization_store_closure_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "native-materialization-store-closure" } }
+}
+
+fn native_materialization_store_closure_entry() -> String {
+  "dag/gunbc/instruments/native_materialization_store_closure.dag"
+}
+
 // O(corpus) exact-head join of evaluation_store_address callers plus the fail-closed src/v2
 // call-form scan. Not a DiscoverySelection floor witness (enrolment_bound_without_ceiling);
 // not a required CI job. `gunbc test //gunbc/instruments:evaluation-store-address-exact-head`.
@@ -486,6 +505,10 @@ fn dag_emit_real_grammar_round_trips_binding() -> TargetBinding {
   TargetBinding { target: dag_emit_real_grammar_round_trips_label() producer: NativeClaimProgramProducer { entry: dag_emit_real_grammar_round_trips_entry() } }
 }
 
+fn native_materialization_store_closure_binding() -> TargetBinding {
+  TargetBinding { target: native_materialization_store_closure_label() producer: NativeClaimProgramProducer { entry: native_materialization_store_closure_entry() } }
+}
+
 fn v2_native_census_binding() -> TargetBinding {
   TargetBinding { target: v2_native_census_label() producer: V2NativeCensusProducer {} }
 }
@@ -637,7 +660,8 @@ fn instrument_targets() -> List<Label> {
     required_lane_resolution_census_label(), bare_reference_channel_outcome_label(),
     self_host_behavioral_equivalence_label(),
     emitted_crate_workspace_label(),
-    native_crypto_vectors_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label()
+    native_crypto_vectors_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
+    native_materialization_store_closure_label()
   ]
 }
 
@@ -652,7 +676,8 @@ fn instrument_bindings() -> List<TargetBinding> {
     required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
     self_host_behavioral_equivalence_binding(),
     emitted_crate_workspace_binding(),
-    native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding()
+    native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
+    native_materialization_store_closure_binding()
   ]
 }
 
