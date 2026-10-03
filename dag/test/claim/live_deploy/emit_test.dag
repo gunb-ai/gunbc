@@ -368,12 +368,17 @@ fn witness_sudoers_stage_visudo_check_text() -> String {
 // (gunbc.ci_deploy_sudoers deploy_sudoers_post_install_roster_probe_stmts). Their ORDER is the
 // safety fact, and test.claim.deploy_mutation_gate_witness owns it; what this claim keeps is that
 // no embedded preflight block exists, by its markers.
+//
+// THE STAGED-FILE VALIDATION IS NOT RE-ASSERTED HERE. The apply script is built from
+// deploy_apply_preamble_steps, the same steps witness_retract_preamble_acknowledges_shared_sudoers_install
+// reads, and that claim asserts the producer-built needle against them at a fraction of this claim's
+// cost. Repeating it here would be the §3 witness rule's duplicate call: the same assertion over a
+// superset text, paid in full again. This claim's edit is therefore a pure conjunct removal.
 test fn witness_apply_emits_no_embedded_preflight_and_only_sudoers() -> Bool {
   let sh = witness_apply_script()
   !string_contains(s: sh, pattern: "deploy-access-bootstrap-preflight")
     && !string_contains(s: sh, pattern: "whoami")
     && !string_contains(s: sh, pattern: "deploy-access-preflight: PASS")
-    && string_contains(s: sh, pattern: witness_sudoers_stage_visudo_check_text())
     && string_contains(s: sh, pattern: "/etc/sudoers.d/gunbc-deploy")
     && !string_contains(s: sh, pattern: "gunbc-deploy-privileged")
 }
