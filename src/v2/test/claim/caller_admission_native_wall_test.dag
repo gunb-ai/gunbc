@@ -1,0 +1,164 @@
+module v2.test.claim.caller_admission_native_wall
+
+// THE DISCRIMINATING RED AND ITS CONTROLS for gunbc.rung_drop
+// admit_callers_discarded_on_the_native_route. The clause was parsed by the v2 grammar and then
+// discarded at Arrow lowering, so the native route never checked caller admission; the wall now
+// lives in v2.compiler.infer (infer_caller_admission_diags), keyed on the admit_callers edge
+// v2.compiler.body_lowering_fold body_lower_fn_admit_clause_edges carries onto the Arrow. These
+// claims drive a fixture module through the real pipeline (tokenize -> parse -> normalize ->
+// admitted normalized tree -> resolve -> infer) and assert the seed's verdicts, copied symbol for
+// symbol from v1's constructor_call_admission_diags:
+//   - a call from a declaration outside the list refuses (^infer_reason_caller_admission_refused);
+//   - a call from the listed declaration is admitted (the floor's own behavior unchanged);
+//   - an entry that is not a decl_ref(module_path: "...", decl_name: "...") call refuses at the
+//     entry (^infer_reason_admit_callers_entry_not_decl_ref), never shrinking the roster silently.
+// The fixtures are strings, so a refusal here is a verdict ABOUT the fixture, not a refusal of
+// this claim module's own prepare: the floor stays green with the wall live. Each fixture's
+// resolved outcome is computed ONCE as a nullary value, enrolled WARM in
+// v2.workflow.floor_pure_producer_share, and the claims read it -- a claim that drove its own
+// parse inline was over the new-witness eval-step budget, as the trailing-comma claim records.
+
+import v2.compiler.infer { ObligatedInferredTree, infer }
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar, program_assembly_phase_normalize_seeded, program_assembly_normalized_outcome }
+import std.content_hash { Fnv1a64Structural }
+import std.occurrence_identity { OccurrenceIdAllocator }
+import v2.compiler.resolve { ResolvedTree, resolve }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model, dag_lex }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol, symbol_eq }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn aca_normalized(text: String) -> Outcome<NormalizedTree> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(text: text, file: ^aca_fixture, rules: dag_lex()),
+        f: fn(token_stream) {
+          bind_outcome(
+            o: program_assembly_phase_normalize_seeded(
+              parsed: parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue),
+              seed: OccurrenceIdAllocator { next_id: 10 },
+              scope: Fnv1a64Structural { digest: "00000000000000ad" }
+            ),
+            f: fn(phase) {
+              program_assembly_normalized_outcome(phase: phase)
+            }
+          )
+        }
+      )
+  }
+}
+
+fn aca_resolved(text: String) -> Outcome<ResolvedTree> {
+  match aca_normalized(text: text) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: t, diagnostics: _ } =>
+      match admit_normalized_tree(root: t.root, test_markers: t.test_markers, import_bindings: t.import_bindings, type_declaration_kinds: t.type_declaration_kinds, diagnostics: None) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: tree, diagnostics: _ } => resolve(tree: tree, lm: dag_language_model())
+      }
+  }
+}
+
+fn aca_inferred(text: String) -> Outcome<ObligatedInferredTree> {
+  match aca_resolved(text: text) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: rt, diagnostics: _ } => infer(tree: rt)
+  }
+}
+
+// THE RED: the module compiles clean to resolve, and infer refuses it on the call from
+// outside_caller, which the list does not name.
+fn aca_outside_caller_text() -> String {
+  "module aca.t\n\nfn sealed_mint(n: Int) -> Int\n  admit_callers: [decl_ref(module_path: \"aca.t\", decl_name: \"listed_caller\")]\n  = n + 1\n\nfn listed_caller(n: Int) -> Int = sealed_mint(n: n)\n\nfn outside_caller(n: Int) -> Int = sealed_mint(n: n)\n"
+}
+
+// THE CONTROL: the same sealed fn, called only from the listed declaration. The wall admits it,
+// and everything downstream of the wall is unchanged.
+fn aca_listed_caller_text() -> String {
+  "module aca.c\n\nfn sealed_mint(n: Int) -> Int\n  admit_callers: [decl_ref(module_path: \"aca.c\", decl_name: \"listed_caller\")]\n  = n + 1\n\nfn listed_caller(n: Int) -> Int = sealed_mint(n: n)\n"
+}
+
+// THE ENTRY-SHAPE RED: a bare-name entry parses (the clause admits any expression, as the
+// trailing-comma claim records) and the wall refuses it at the entry, as v1 refuses an entry it
+// cannot read as a decl_ref call.
+fn aca_bare_entry_text() -> String {
+  "module aca.u\n\nfn sealed_mint(n: Int) -> Int\n  admit_callers: [listed_caller]\n  = n + 1\n\nfn listed_caller(n: Int) -> Int = sealed_mint(n: n)\n"
+}
+
+fn aca_outside_inferred() -> Outcome<ObligatedInferredTree> { aca_inferred(text: aca_outside_caller_text()) }
+
+fn aca_listed_inferred() -> Outcome<ObligatedInferredTree> { aca_inferred(text: aca_listed_caller_text()) }
+
+fn aca_bare_entry_inferred() -> Outcome<ObligatedInferredTree> { aca_inferred(text: aca_bare_entry_text()) }
+
+fn aca_rejected_with(r: Outcome<ObligatedInferredTree>, reason: Symbol) -> Bool {
+  match r {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: ned } => symbol_eq(a: ned.head.reason, b: reason)
+  }
+}
+
+test fn the_native_wall_refuses_a_call_from_outside_the_list_holds() -> Bool {
+  aca_rejected_with(r: aca_outside_inferred(), reason: ^infer_reason_caller_admission_refused)
+}
+
+test fn the_native_wall_admits_a_call_from_the_listed_caller_holds() -> Bool {
+  match aca_listed_inferred() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn the_native_wall_refuses_an_entry_that_is_not_a_decl_ref_call_holds() -> Bool {
+  aca_rejected_with(r: aca_bare_entry_inferred(), reason: ^infer_reason_admit_callers_entry_not_decl_ref)
+}
+
+// SCRATCH STAGE PROBES (deleted once the wall verdicts are green): they separate a parse refusal
+// from a normalize refusal from a resolve refusal, so a fixture failure names its stage.
+fn aca_fixture_parses() -> Bool {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: prepared, diagnostics: residue } =>
+      match tokenize(text: aca_listed_caller_text(), file: ^aca_fixture, rules: dag_lex()) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: token_stream, diagnostics: _ } =>
+          match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+      }
+  }
+}
+
+test fn aca_probe_fixture_parses_holds() -> Bool { aca_fixture_parses() }
+
+test fn aca_probe_fixture_normalizes_holds() -> Bool {
+  match aca_normalized(text: aca_listed_caller_text()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn aca_probe_red_fixture_normalizes_holds() -> Bool {
+  match aca_normalized(text: aca_outside_caller_text()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn aca_probe_listed_infers_holds() -> Bool {
+  match aca_listed_inferred() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
