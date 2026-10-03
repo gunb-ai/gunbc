@@ -16,6 +16,8 @@ import gunbc.roadmap.roadmap_supervisor {
 }
 import gunbc.roadmap_workflow_stage {
   WorkflowSegment, WorkflowSegmentKind, VerificationWorkflowSegment,
+  EnvironmentWorkflowSegment, WorkspaceWorkflowSegment, AgentWorkflowSegment, SubmissionWorkflowSegment,
+  PublicationWorkflowSegment, ReviewWorkflowSegment, GoalAuditWorkflowSegment,
   WorkflowSegmentState, WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
   WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentStopped,
 }
@@ -117,7 +119,13 @@ fn verification_segment_of(segments: List<WorkflowSegment>) -> WorkflowSegment? 
     Absent =>
       match s.kind {
         VerificationWorkflowSegment => Present { value: s }
-        _ => none
+        EnvironmentWorkflowSegment => none
+        WorkspaceWorkflowSegment => none
+        AgentWorkflowSegment => none
+        SubmissionWorkflowSegment => none
+        PublicationWorkflowSegment => none
+        ReviewWorkflowSegment => none
+        GoalAuditWorkflowSegment => none
       }
   })
 }

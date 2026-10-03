@@ -74,7 +74,7 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -234,7 +234,7 @@ fn ecmascript_inhabitant_atom(id: Symbol) -> Node {
 }
 
 fn ecmascript_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn ecmascript_primitive_facts_node(
@@ -1017,7 +1017,8 @@ fn ecmascript_lex_rules() -> LexRuleSet {
       ecmascript_lex_rule(token_class: ^ecmascript_token_rbrace, text: "}"),
       ecmascript_lex_rule(token_class: ^ecmascript_token_comma, text: ", "),
       ecmascript_lex_rule(token_class: ^ecmascript_token_semicolon, text: ";")
-    ]
+    ],
+    modes: []
   }
 }
 

@@ -384,7 +384,7 @@ fn admit_filesystem_entry_name(name: String) -> FilesystemEntryNameAdmission {
 // path and no arm recasts or re-admits it.
 //
 // THE CARRIER IS `std.types.FilePath` AND NOT A NEW `FilesystemDirectoryPath`. The whole law this
-// part is missing is nonemptiness, which `FilePath = String where non_empty` already owns and which
+// part is missing is nonemptiness, which `FilePath = String where string_non_empty` already owns and which
 // every neighbouring dependency already spells that way for `workdir` and `root`. A second type
 // whose only additional rule was nonemptiness would be section 3 nicknaming, and its name would
 // additionally fuse the lexical path fact with the directory-KIND fact that the surrounding
@@ -685,6 +685,7 @@ data filesystem_absence_establishment_adoption_standing: String = "RUNG: structu
 service Filesystem {
 
   operation Write {
+    requires none
     input { path: String, content: String }
     output {
       success: Bool from "write_success"
@@ -696,6 +697,7 @@ service Filesystem {
   }
 
   operation WriteOwnerOnly {
+    requires none
     input { path: String, content: String }
     output {
       success: Bool from "write_success"
@@ -707,6 +709,7 @@ service Filesystem {
   }
 
   operation WriteCreateNew {
+    requires none
     input { path: String, content: String }
     output {
       success: Bool from "write_success"
@@ -719,6 +722,7 @@ service Filesystem {
   }
 
   operation WriteCreateNewWithMode {
+    requires none
     input { path: String, content: String, mode: Int }
     output {
       success: Bool from "write_success"
@@ -731,6 +735,7 @@ service Filesystem {
   }
 
   operation Read {
+    requires none
     input { path: String }
     output {
       content: String from "content"
@@ -743,6 +748,7 @@ service Filesystem {
   }
 
   operation Delete {
+    requires none
     input { path: String }
     output {
       success: Bool from "delete_success"
@@ -752,6 +758,7 @@ service Filesystem {
   }
 
   operation List {
+    requires none
     input { path: String }
     output {
       entries: String from "entries"

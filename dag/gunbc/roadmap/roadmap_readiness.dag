@@ -147,6 +147,23 @@ fn readiness_only_contract_missing(r: NodeReadiness) -> Bool {
   }
 }
 
+// THE MINTING RULE'S NODE-LOCAL NECESSARY CONDITION. Every gap readiness_only_contract_missing
+// can count is either node-local (state, centering, dispatch, contract) or read from the caller's
+// graph (lineage, dependencies), and a node whose only gap is its contract has, in particular, only
+// its contract among the node-local ones. So a caller asking the minting question over a population
+// may skip the lineage walk and the dependency read for a node this rules out; it does not decide
+// minting, node_readiness still does, for every node it admits.
+fn readiness_node_local_gaps(node: RoadmapNode, merged: List<Int>) -> List<ReadinessGap> {
+  concat(readiness_state_gaps(node: node, merged: merged),
+    concat(readiness_centering_gaps(node: node),
+      concat(readiness_dispatch_gaps(node: node), readiness_contract_gaps(node: node))))
+}
+
+fn readiness_may_be_only_contract_missing(node: RoadmapNode, merged: List<Int>) -> Bool {
+  let gaps = readiness_node_local_gaps(node: node, merged: merged)
+  count(gaps) == 1 && all(gaps, g => readiness_gap_is_contract(g: g))
+}
+
 fn readiness_gap_label(g: ReadinessGap) -> String {
   match g {
     GapSuperseded { by: _ } => "superseded"

@@ -108,9 +108,18 @@ fn prompt_input_is_withdrawn(input: PromptInput) -> Bool {
     EvidenceInput { artifact: _, subject: _, standing, required: _ } =>
       match standing {
         Withdrawn => true
-        _ => false
+        EstablishedObservation => false
+        DerivedConclusion => false
+        OwnerRuling => false
+        InstructionInput => false
+        Hypothesis => false
+        OpenQuestion => false
       }
-    _ => false
+    AuthorityInput { declaration: _, revision: _, required: _ } => false
+    WorkContractInput { node: _, revision: _, required: _ } => false
+    ConversationTurnInput { turn_identity: _, parent_identity: _, required: _ } => false
+    GuidanceInput { receipt_identity: _, resolved: _, required: _ } => false
+    DerivedConclusionInput { conclusion_key: _, grounds: _, required: _ } => false
   }
 }
 

@@ -1,6 +1,6 @@
 module std.materialization_provider
 
-import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.types { Bool, Int, List, String, NonEmptyStr, brand }
 import std.content_hash {
   ContentHash,
   Fnv1a64Structural,

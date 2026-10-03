@@ -28,7 +28,7 @@ import v2.std.node {
   ComputationNode,
   Edge,
   Match,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,

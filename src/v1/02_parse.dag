@@ -1,5 +1,6 @@
 module v1.compiler.parse
 
+import std.target_representation { VariantParentBeforeInference }
 import v1.std.core { Unmarked, TestMarked,
   module_node, import_node,
   Node, InferredNode, Resolved, CompilerError, TypeVariable,
@@ -57,6 +58,7 @@ import std.occurrence_identity {
   AuthoredTokenOrdinalSpace,
   NodeOccurrenceIdentity,
   OccurrenceMinted,
+  OccurrencePending,
   OccurrenceProjected,
   OccurrenceSynthetic,
   OccurrenceId,
@@ -1278,6 +1280,7 @@ fn occurrence_allocator_after_identity(
       } else {
         alloc
       }
+    OccurrencePending { caused_by: _ } => alloc
     OccurrenceSynthetic => alloc
   }
 }
@@ -1318,7 +1321,7 @@ fn occurrence_allocator_after_match_pattern(
 ) -> OccurrenceIdAllocator {
   match pattern {
     Present { value: Bind { declaration: declaration } } => occurrence_allocator_after_node(alloc: alloc, node: declaration)
-    Present { value: VariantPattern { name: _, parent_enum: _, field_bindings: bindings } } => occurrence_allocator_after_node_list(alloc: alloc, nodes: bindings)
+    Present { value: VariantPattern { name: _, parent_enum: _, field_bindings: bindings, parent_identity: _ } } => occurrence_allocator_after_node_list(alloc: alloc, nodes: bindings)
     Present { value: LitPattern { value: _ } } => alloc
     Present { value: Wildcard } => alloc
     Absent => alloc
@@ -1470,6 +1473,7 @@ fn stamp_parsed_pattern(
         name: name,
         parent_enum: parent_enum,
         field_bindings: field_bindings,
+        parent_identity: parent_identity,
       },
     } =>
       let stamped = stamp_parsed_node_list(
@@ -1484,6 +1488,7 @@ fn stamp_parsed_pattern(
             name: name,
             parent_enum: parent_enum,
             field_bindings: stamped.nodes,
+            parent_identity: parent_identity,
           },
         },
         ctx: stamped.ctx,
@@ -1846,6 +1851,11 @@ fn stamp_parsed_node(
       node: node,
       ctx: ctx,
       err: Present { value: parse_error(msg: "projected occurrence identity is invalid at the authored parser boundary", span: node.span) },
+    }
+    OccurrencePending { caused_by: _ } => return ParsedNodeStampResult {
+      node: node,
+      ctx: ctx,
+      err: Present { value: parse_error(msg: "pending occurrence identity is invalid at the authored parser boundary", span: node.span) },
     }
   }
   let effective_role = parsed_occurrence_role_for_node(
@@ -2854,8 +2864,8 @@ fn parse_single_predicate(tokens: TokenStream, ctx: ParseContext) -> PredResult 
     }
   EatUnchanged { tokens: __eu } =>
     match pred_name {
-      "non_empty" =>
-        parsed_predicate_result(tokens: tokens, ctx: ctx, build: (value_identity, predicate_identity) => make_field_init_node(occurrence_identity: predicate_identity, name: "non_empty", value: make_expr_node(occurrence_identity: value_identity, expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span))
+      "string_non_empty" =>
+        parsed_predicate_result(tokens: tokens, ctx: ctx, build: (value_identity, predicate_identity) => make_field_init_node(occurrence_identity: predicate_identity, name: "string_non_empty", value: make_expr_node(occurrence_identity: value_identity, expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span))
       _ =>
         parsed_predicate_result(tokens: tokens, ctx: ctx, build: (value_identity, predicate_identity) => make_field_init_node(occurrence_identity: predicate_identity, name: pred_name, value: make_expr_node(occurrence_identity: value_identity, expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span))
     }
@@ -3988,7 +3998,9 @@ fn parse_op_body_entries(
           if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: r.tokens, ctx: r.ctx, err: r.err } }
           parse_op_body_entries(tokens: r.tokens, ctx: r.ctx, inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: r.responses, mock_props: mock_props)
         } else if id == "requires" {
-          let r = parse_op_requires_members(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, span: span, acc: [])
+          let prior_requires = modifier_props |> filter(p => p.name == "requires") |> count
+          if prior_requires > 0 { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: "an operation declares `requires` once: a second clause would let one declaration say both none and a resource", span: span) } } }
+          let r = parse_op_requires_clause(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, span: span)
           if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, tokens: r.tokens, ctx: r.ctx, err: r.err } }
           parse_op_body_entries(tokens: r.tokens, ctx: r.ctx, inputs: inputs, outputs: outputs, modifier_props: concat(modifier_props, r.properties), transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
         } else if id == "mock_response" {
@@ -4134,6 +4146,36 @@ fn parse_exit_entries_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node
 // properties, and every v1 consumer of an operation's properties selects them by name or prefix
 // (idempotent, readonly, hermetic, response_, exit_, mock_), so no other v1 behaviour reads it. At least
 // one member is required; a member that is not a type expression refuses at parse.
+// THE THREE DECLARED FORMS (D13 ruling B). `requires none` and `requires opaque` are whole clauses:
+// each is carried as the ONE `requires` property its members would use, whose value is the word as a
+// string literal -- a member is always a parsed type expression and never a string literal, so the
+// reader tells the forms apart by the value's shape. (A property's name is read back from the source
+// at its name span (v1.std.core authored_name_at), so a differently named marker spanned on the
+// `requires` token would read back as `requires`; one name, one span, is the honest carrier.) A member
+// after either word refuses, so a clause cannot both declare nothing and name a resource; and a SECOND
+// `requires` clause refuses in parse_op_body_entries, as v2 refuses it at lowering
+// (body_lowering_reason_operation_requires_repeated), so two clauses cannot say it either. Anything else is the member
+// list below. The word is matched by its TEXT, whatever shape the lexer gave it (`none` is a v1 keyword
+// literal, `opaque` an identifier).
+fn parse_op_requires_clause(tokens: TokenStream, ctx: ParseContext, span: SourceSpan) -> ModsResult {
+  let tok = token_stream_first(stream: tokens)
+  let word = match tok { Present { value: t } => t.text  Absent => "" }
+  if word == "none" || word == "opaque" {
+    let value_mint = mint_parsed_node_identity(ctx: ctx)
+    let property_mint = mint_parsed_node_identity(ctx: value_mint.ctx)
+    let word_value = make_expr_node(occurrence_identity: value_mint.identity, expr_data: ExprLiteral { value: LitStr { value: word } }, children: [], inferred: none, span: span)
+    let property = make_field_init_node(occurrence_identity: property_mint.identity, name: "requires", value: word_value, span: span, name_span: span)
+    let rest = token_stream_advance(stream: tokens, n: 1)
+    if tok_is_comma(tok: token_stream_first(stream: rest)) {
+      ModsResult { properties: [], tokens: rest, ctx: property_mint.ctx, err: Present { value: parse_error(msg: concat("`requires ", concat(word, "` is a whole clause and takes no member")), span: span) } }
+    } else {
+      ModsResult { properties: [property], tokens: rest, ctx: property_mint.ctx, err: none }
+    }
+  } else {
+    parse_op_requires_members(tokens: tokens, ctx: ctx, span: span, acc: [])
+  }
+}
+
 fn parse_op_requires_members(tokens: TokenStream, ctx: ParseContext, span: SourceSpan, acc: List<Node>) -> ModsResult {
   let r = parse_type_expr(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return ModsResult { properties: acc, tokens: r.tokens, ctx: r.ctx, err: r.err } }
@@ -4147,16 +4189,42 @@ fn parse_op_requires_members(tokens: TokenStream, ctx: ParseContext, span: Sourc
   }
 }
 
-// THE ONE READER of an operation's parsed `requires` members, in authored order, as the type
-// expressions parse_op_requires_members carried. Its production consumer is D13 step (c): the seed's
-// resource-requirement join reads an opaque operation's declared resources through it, instead of
-// re-scanning the operation's properties at each consumer. compile_dag_operation_requires exposes it to
-// the floor ahead of (c), so the carry is checked against the real parser rather than inferred from
-// acceptance (test.claim.v1_operation_requires_parse_witness_test).
-fn operation_requires_members(op: Node, source_indices: Map<String, NewlineIndex>) -> List<Node> {
-  op.properties
+// WHAT AN OPERATION DECLARES ABOUT ITS RESOURCES, as the seed parser carried it: one closed answer,
+// so a consumer cannot read silence as "none" (D13 ruling B: an undeclared operation's demand is
+// Undecided). Its production consumer is D13 step (c): the seed's resource-requirement join reads an
+// opaque operation's declaration through operation_requires_declaration, instead of re-scanning the
+// operation's properties at each consumer. compile_dag_operation_requires exposes it to the floor ahead
+// of (c), so the carry is checked against the real parser rather than inferred from acceptance
+// (test.claim.v1_operation_requires_parse_witness_test).
+type OperationRequiresDeclaration
+  = RequiresUndeclared
+  | RequiresNone
+  | RequiresOpaque
+  | RequiresResources { members: List<Node> }
+
+fn operation_requires_declaration(op: Node, source_indices: Map<String, NewlineIndex>) -> OperationRequiresDeclaration {
+  let members = op.properties
     |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == "requires")
     |> flat_map(p => p.children)
+  let none_words = members |> filter(m => requires_word_is(member: m, word: "none")) |> count
+  let opaque_words = members |> filter(m => requires_word_is(member: m, word: "opaque")) |> count
+  let member_count = members |> count
+  if none_words > 0 {
+    RequiresNone
+  } else if opaque_words > 0 {
+    RequiresOpaque
+  } else if member_count == 0 {
+    RequiresUndeclared
+  } else {
+    RequiresResources { members: members }
+  }
+}
+
+fn requires_word_is(member: Node, word: String) -> Bool {
+  match member.expr_data {
+    ExprLiteral { value: LitStr { value: s } } => s == word
+    _ => false
+  }
 }
 
 fn parse_operation_modifiers(tokens: TokenStream, ctx: ParseContext) -> ModsResult {
@@ -5976,7 +6044,7 @@ fn parse_variant_pattern(tokens: TokenStream, ctx: ParseContext, name: String) -
     if has_err(err: r.err) { return PatternResult { pattern: Wildcard, tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let r2 = expect(tokens: skip_newlines(tokens: r.tokens), expected: ExpectRBrace)
     if has_err(err: r2.err) { return PatternResult { pattern: Wildcard, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
-    PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: r.field_bindings }, tokens: r2.tokens, ctx: r.ctx, err: none }
+    PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: r.field_bindings, parent_identity: VariantParentBeforeInference }, tokens: r2.tokens, ctx: r.ctx, err: none }
   } else if tok_is_lparen(tok: token_stream_first(stream: tokens)) {
     let r = parse_pattern(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx)
     if has_err(err: r.err) { return PatternResult { pattern: Wildcard, tokens: r.tokens, ctx: r.ctx, err: r.err } }
@@ -5984,9 +6052,9 @@ fn parse_variant_pattern(tokens: TokenStream, ctx: ParseContext, name: String) -
     if has_err(err: r2.err) { return PatternResult { pattern: Wildcard, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
     let minted = mint_parsed_node_identity(ctx: r.ctx)
     let fb = make_field_binding_node(occurrence_identity: minted.identity, field_name: "0", binding: r.pattern, span: span, name_span: kernel_span(name: "0"))
-    PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: [fb] }, tokens: r2.tokens, ctx: minted.ctx, err: none }
+    PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: [fb], parent_identity: VariantParentBeforeInference }, tokens: r2.tokens, ctx: minted.ctx, err: none }
   } else {
-    PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: [] }, tokens: tokens, ctx: ctx, err: none }
+    PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: [], parent_identity: VariantParentBeforeInference }, tokens: tokens, ctx: ctx, err: none }
   }
 }
 

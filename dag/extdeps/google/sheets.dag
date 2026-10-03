@@ -16,6 +16,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.api_rate_limit { UpstreamRateLimit, RateLimitPeriod, PerMinute }
 import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
 import extdeps.ietf.http_semantics { HttpMethod }
+import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -670,6 +671,7 @@ service sheets.Spreadsheets {
   }
 
   operation GetSpreadsheet {
+    requires Network
     input {
       spreadsheet_id: String
       range: String
@@ -697,6 +699,7 @@ service sheets.Spreadsheets {
     }
   }
   operation GetSpreadsheetMetadata {
+    requires Network
     input {
       spreadsheet_id: String
       fields: String
@@ -722,6 +725,7 @@ service sheets.Spreadsheets {
     }
   }
   operation GetValues {
+    requires Network
     input {
       spreadsheet_id: String
       range: String
@@ -752,6 +756,7 @@ service sheets.Spreadsheets {
   }
 
   operation BatchUpdateValues {
+    requires Network
     input {
       spreadsheet_id: String
       value_input_option: SheetsValueInputOption
@@ -784,6 +789,7 @@ service sheets.Spreadsheets {
   }
 
   operation SetFrozenRows {
+    requires Network
     input { spreadsheet_id: String, sheet_id: Int, frozen_row_count: Int }
     output { spreadsheet_id: String from "spreadsheetId", outcome: RestOutcome }
     transport rest {
@@ -811,6 +817,7 @@ service sheets.Spreadsheets {
     }
   }
   operation FormatCellRange {
+    requires Network
     input {
       spreadsheet_id: String
       sheet_id: Int
@@ -860,6 +867,7 @@ service sheets.Spreadsheets {
     }
   }
   operation AddTextColorRule {
+    requires Network
     input {
       spreadsheet_id: String
       sheet_id: Int

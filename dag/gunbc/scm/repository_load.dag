@@ -57,11 +57,12 @@ import extdeps.languages.json.parse {
   JsonDocumentUnreadable,
   JsonDocumentGap,
 }
-import gunbc.scm.json_member { read_string_member, MemberString }
+import gunbc.scm.json_member { read_string_member, MemberString, MemberArray, MemberObject, MemberFailed }
 import gunbc.scm.object_shard_json { decode_object_shard, ObjectShardDecoded, ObjectShardNotDecodable, object_shard_path_for }
 import gunbc.scm.object_store { ScmObject, store_assemble_decoded, StoreAssembled, StoreAssemblyCollision }
 import gunbc.scm.repository_envelope {
-  repository_format_of, RepositoryFormatV7,
+  repository_format_of, RepositoryFormatV7, RepositoryFormatV6, RepositoryFormatV5, RepositoryFormatV4,
+  RepositoryFormatRetiredV3, RepositoryFormatUnknown,
   decode_repository_v7_index, decode_repository_v7_finish,
   ShardedIndexDecoded, ShardedIndexRefused,
   RepositoryShardNotDecodable,
@@ -152,23 +153,26 @@ fn load_repository(path: String) -> RepositoryLoad {
             MemberString { value: format } =>
               match repository_format_of(tag: format) {
                 RepositoryFormatV7 => load_repository_sharded(path: path, v: v, generation: generation)
-                _ =>
-                  match decode_repository(v: v) {
-                    RepositoryDecoded { envelope: envelope } =>
-                      RepositoryLoaded { path: path, envelope: envelope, generation: generation }
-                    RepositoryDecodeRefused { cause: cause } =>
-                      RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: cause } }
-                  }
+                RepositoryFormatV6 => load_repository_whole(path: path, v: v, generation: generation)
+                RepositoryFormatV5 => load_repository_whole(path: path, v: v, generation: generation)
+                RepositoryFormatV4 => load_repository_whole(path: path, v: v, generation: generation)
+                RepositoryFormatRetiredV3 => load_repository_whole(path: path, v: v, generation: generation)
+                RepositoryFormatUnknown { found: _ } => load_repository_whole(path: path, v: v, generation: generation)
               }
-            _ =>
-              match decode_repository(v: v) {
-                RepositoryDecoded { envelope: envelope } =>
-                  RepositoryLoaded { path: path, envelope: envelope, generation: generation }
-                RepositoryDecodeRefused { cause: cause } =>
-                  RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: cause } }
-              }
+            MemberArray { elements: _ } => load_repository_whole(path: path, v: v, generation: generation)
+            MemberObject { value: _ } => load_repository_whole(path: path, v: v, generation: generation)
+            MemberFailed { cause: _ } => load_repository_whole(path: path, v: v, generation: generation)
           }
       }
+  }
+}
+
+fn load_repository_whole(path: String, v: JsonValue, generation: Fnv1a64Structural) -> RepositoryLoad {
+  match decode_repository(v: v) {
+    RepositoryDecoded { envelope: envelope } =>
+      RepositoryLoaded { path: path, envelope: envelope, generation: generation }
+    RepositoryDecodeRefused { cause: cause } =>
+      RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: cause } }
   }
 }
 

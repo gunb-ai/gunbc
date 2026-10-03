@@ -58,7 +58,7 @@ import gunbc.roadmap_component {
 import extdeps.color.srgb { Srgb8 }
 import extdeps.google.issue_tracker { issue_tracker_visual_tokens, issue_tracker_visual_tokens_dark, IssueTrackerVisualTokens, issue_results_row_tracks }
 import std.integer { uint8_channel_inclusive_max_value_derived }
-import extdeps.accessibility.wcag_contrast { srgb8_contrast_ratio_x100_for_max }
+import extdeps.accessibility.wcag_contrast { srgb8_relative_luminance_scaled_for_max, contrast_ratio_x100 }
 import gunbc.design.palette { Swatch, SwatchSet, SwatchSetForUse, swatch_filed, swatch_paint, swatches_of, for_use_combined_set }
 import gunbc.design.catalog {
   island_pastel, island_mint, island_aqua, island_ivory, island_butter, island_loam,
@@ -263,27 +263,40 @@ fn swatch_named(s: SwatchSet, name: String) -> Swatch? {
   swatches_of(s: s) |> filter(sw => sw.name == name) |> first
 }
 
-fn audition_ink_for(s: SwatchSet, fill: Swatch) -> Swatch? {
-  match uint8_channel_inclusive_max_value_derived() {
-    Absent => none
-    Present { value: maxv } => Present {
-      value: fold(swatches_of(s: s), init: fill, f: (best, sw) => {
-        let r_sw = srgb8_contrast_ratio_x100_for_max(a: sw.color, b: fill.color, maxv: maxv)
-        let r_best = srgb8_contrast_ratio_x100_for_max(a: best.color, b: fill.color, maxv: maxv)
-        if r_sw > r_best { sw } else { best }
-      })
-    }
-  }
+// A swatch beside its relative luminance, computed ONCE per audition set: the ink choice compares
+// every swatch against every fill, and the contrast ratio is a function of the two luminances, so
+// deriving a swatch's luminance per comparison re-ran the sRGB linearisation for each pair.
+type AuditionLit {
+  swatch: Swatch
+  luminance: Int
+}
+
+type AuditionInkPick {
+  best: Swatch
+  ratio: Int
+}
+
+fn audition_ink_for(lit: List<AuditionLit>, fill: Swatch, fill_luminance: Int) -> Swatch {
+  let picked = fold(lit,
+    init: AuditionInkPick { best: fill, ratio: contrast_ratio_x100(lum_a_scaled: fill_luminance, lum_b_scaled: fill_luminance) },
+    f: (acc, l) => {
+      let r = contrast_ratio_x100(lum_a_scaled: l.luminance, lum_b_scaled: fill_luminance)
+      if r > acc.ratio { AuditionInkPick { best: l.swatch, ratio: r } } else { acc }
+    })
+  picked.best
 }
 
 fn audition_paints(a: AuditionSet) -> List<BandPaint> {
-  flat_map(a.fills, row => match swatch_named(s: a.set, name: row.swatch_name) {
+  match uint8_channel_inclusive_max_value_derived() {
     Absent => []
-    Present { value: fill } => match audition_ink_for(s: a.set, fill: fill) {
-      Absent => []
-      Present { value: ink } => [BandPaint { key: row.key, fill: fill, ink: ink }]
-    }
-  })
+    Present { value: maxv } =>
+      let lit = map(swatches_of(s: a.set), sw => AuditionLit { swatch: sw, luminance: srgb8_relative_luminance_scaled_for_max(c: sw.color, maxv: maxv) })
+      flat_map(a.fills, row => match swatch_named(s: a.set, name: row.swatch_name) {
+        Absent => []
+        Present { value: fill } =>
+          [BandPaint { key: row.key, fill: fill, ink: audition_ink_for(lit: lit, fill: fill, fill_luminance: srgb8_relative_luminance_scaled_for_max(c: fill.color, maxv: maxv)) }]
+      })
+  }
 }
 
 fn audition_set_resolved(a: AuditionSet) -> Bool {
@@ -305,11 +318,14 @@ fn auditioner_root_css() -> String {
   join(map(audition_sets, a => audition_block_css(a: a)), "\n")
 }
 
+// The band paints do not vary by theme (band_paints_for_theme ignores it), so the declarations are
+// derived once and every theme-scoped block carries the same value.
 fn band_root_css() -> String {
+  let decls = band_var_decls(rows: workspace_band_paints())
   theme_scoped_blocks(
     base: day_theme,
     alternate: night_theme,
-    decls_for: t => band_var_decls(rows: band_paints_for_theme(t: t)),
+    decls_for: t => decls,
   )
 }
 
@@ -1523,33 +1539,11 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Gap, value: scale_var(t: space_4)),
       decl(prop: FontSize, value: scale_var(t: text_13)),
     ] },
-    StaticRule { selector: RawSelector { text: ".header-account-session[hidden], .header-account-signin[hidden]" }, decls: [
+    StaticRule { selector: RawSelector { text: ".header-account-session[hidden]" }, decls: [
       decl(prop: Display, value: "none"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "header-account-signin" }, decls: [
-      decl(prop: Color, value: "var(--issue-action)"),
-      decl(prop: TextDecoration, value: "none"),
-      decl(prop: FontWeight, value: "500"),
-    ] },
-    StaticRule { selector: RawSelector { text: ".header-account-signin:hover" }, decls: [
-      decl(prop: TextDecoration, value: "underline"),
     ] },
     StaticRule { selector: ClassSelector { name: "header-account-name" }, decls: [
       decl(prop: FontWeight, value: "500"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "header-account-signout" }, decls: [
-      decl(prop: Display, value: "inline"),
-      decl(prop: Margin, value: scale_var(t: space_0)),
-    ] },
-    StaticRule { selector: ClassSelector { name: "header-account-signout-btn" }, decls: [
-      decl(prop: FontFamily, value: "var(--issue-font)"),
-      decl(prop: FontSize, value: scale_var(t: text_11)),
-      decl(prop: Color, value: "var(--issue-text-dim)"),
-      decl(prop: Background, value: "transparent"),
-      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
-      decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
-      decl(prop: Cursor, value: "pointer"),
     ] },
     StaticRule { selector: ClassSelector { name: "header-account-session" }, decls: [
       decl(prop: Position, value: "relative"),
@@ -1568,39 +1562,6 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Cursor, value: "pointer"),
     ] },
     StaticRule { selector: RawSelector { text: ".header-account-trigger:hover" }, decls: [
-      decl(prop: Background, value: "var(--issue-bg-subtle)"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "header-account-menu" }, decls: [
-      decl(prop: Position, value: "absolute"),
-      decl(prop: Inset, value: "100% 0 auto auto"),
-      decl(prop: MarginTop, value: scale_var(t: space_2)),
-      decl(prop: Display, value: "flex"),
-      decl(prop: FlexDirection, value: "column"),
-      decl(prop: MinWidth, value: "11rem"),
-      decl(prop: Background, value: "var(--issue-bg-subtle)"),
-      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
-      decl(prop: BoxShadow, value: "0 4px 16px rgba(0, 0, 0, 0.18)"),
-      decl(prop: Padding, value: scale_var(t: space_2)),
-    ] },
-    StaticRule { selector: RawSelector { text: ".header-account-menu[hidden]" }, decls: [
-      decl(prop: Display, value: "none"),
-    ] },
-    StaticRule { selector: ClassSelector { name: "header-account-menu-item" }, decls: [
-      decl(prop: Display, value: "block"),
-      decl(prop: Width, value: "100%"),
-      decl(prop: FontFamily, value: "var(--issue-font)"),
-      decl(prop: FontSize, value: scale_var(t: text_13)),
-      decl(prop: Color, value: "var(--issue-text)"),
-      decl(prop: Background, value: "transparent"),
-      decl(prop: Border, value: "none"),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
-      decl(prop: Padding, value: scale_pair(a: space_4, b: space_8)),
-      decl(prop: TextAlign, value: "left"),
-      decl(prop: TextDecoration, value: "none"),
-      decl(prop: Cursor, value: "pointer"),
-    ] },
-    StaticRule { selector: RawSelector { text: ".header-account-menu-item:hover" }, decls: [
       decl(prop: Background, value: "var(--issue-bg-subtle)"),
     ] },
     StaticRule { selector: ClassSelector { name: "issue-publication" }, decls: [
@@ -2163,13 +2124,14 @@ fn roadmap_instance_rules_tail() -> List<BuildRule> {
 }
 
 fn roadmap_css() -> String {
+  let rules = roadmap_rules()
   join([
     scale_root_css(),
     theme_root_css(base: day_theme, alternate: night_theme),
     issue_tracker_root_css(),
     band_root_css(),
     auditioner_root_css(),
-    serialize_rules(rules: roadmap_rules()),
-    reduced_motion_block(rules: roadmap_rules()),
+    serialize_rules(rules: rules),
+    reduced_motion_block(rules: rules),
   ], "\n")
 }

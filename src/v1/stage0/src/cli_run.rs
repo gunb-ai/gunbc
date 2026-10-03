@@ -11558,6 +11558,7 @@ pub enum WitnessRuntimeCause {
     TypeError,
     CrossRepresentationEquality,
     StringRealizationStraddle,
+    VariantRealizationRefused,
     PoolRootContributesNothing,
     PatternMatchFailure,
     /// A REST response value did not inhabit its declared coproduct (see
@@ -11596,6 +11597,7 @@ impl WitnessRuntimeCause {
             WitnessRuntimeCause::TypeError => "type-error",
             WitnessRuntimeCause::CrossRepresentationEquality => "cross-representation-equality",
             WitnessRuntimeCause::StringRealizationStraddle => "string-realization-straddle",
+            WitnessRuntimeCause::VariantRealizationRefused => "variant-realization-refused",
             WitnessRuntimeCause::PoolRootContributesNothing => "pool-root-contributes-nothing",
             WitnessRuntimeCause::PatternMatchFailure => "pattern-match-failure",
             WitnessRuntimeCause::RestResponseUndecodable => "rest-response-undecodable",
@@ -11632,6 +11634,7 @@ impl WitnessRuntimeCause {
                 WitnessRuntimeCause::CrossRepresentationEquality
             }
             E::StringRealizationStraddle { .. } => WitnessRuntimeCause::StringRealizationStraddle,
+            E::VariantRealizationRefused { .. } => WitnessRuntimeCause::VariantRealizationRefused,
             E::PoolRootContributesNothing { .. } => WitnessRuntimeCause::PoolRootContributesNothing,
             E::PatternMatchFailure { .. } => WitnessRuntimeCause::PatternMatchFailure,
             // A non-Bool guard is a type error at a located site; the variant carries the location,
@@ -21784,7 +21787,6 @@ pub fn handle_serve(
                     400,
                     "text/plain; charset=utf-8",
                     &format!("bad request: {}\n", reason),
-                    &[],
                 ),
                 // Idle or cleanly-closed connection: no request was made, so the
                 // connection is dropped without a response.
@@ -21809,7 +21811,7 @@ pub fn handle_serve(
                 // NO BUDGET IS ARMED and no `.dag` function is called, deliberately: arming a
                 // deadline around a `format!` would be ceremony, and reaching the evaluator at all
                 // would reintroduce the dependency this endpoint exists to remove.
-                Ok(Some((method, path, _body, _identity, _cookie)))
+                Ok(Some((method, path, _body, _identity)))
                     if method == "GET" && path == SERVE_LIVENESS_PATH =>
                 {
                     serve_write_response(
@@ -21826,10 +21828,9 @@ pub fn handle_serve(
                             serve_json_string(&bound.host),
                             bound.port,
                         ),
-                        &[],
                     )
                 }
-                Ok(Some((method, path, body, tailscale_identity, cookie_header))) => {
+                Ok(Some((method, path, body, tailscale_identity))) => {
                     let args = serve_handler_args(
                         method,
                         path,
@@ -21837,7 +21838,6 @@ pub fn handle_serve(
                         tailscale_identity,
                         release_revision.clone(),
                         if listener_attests_peer { Some(peer_user.clone()) } else { None },
-                        if cookie_header.is_empty() { None } else { Some(cookie_header) },
                     );
                     // THE DEADLINE IS ARMED HERE, AROUND THIS CALL, AND THE SCOPE IS THE POINT.
                     // Before this existed the serve path armed nothing, so a route evaluation
@@ -21888,7 +21888,6 @@ pub fn handle_serve(
                                         500,
                                         "text/plain; charset=utf-8",
                                         "budget refusal did not name the armed contract\n",
-                                        &[],
                                     )
                                 } else {
                                 // Refusal rendering is HOST-SIDE by necessity, not by preference:
@@ -21912,7 +21911,6 @@ pub fn handle_serve(
                                     &serve_budget_refusal::serve_budget_refusal_machine_body(
                                         &refusal,
                                     ),
-                                    &[],
                                 )
                                 }
                             }
@@ -21921,16 +21919,14 @@ pub fn handle_serve(
                                 500,
                                 "text/plain; charset=utf-8",
                                 &format!("handler error: {}\n", e),
-                                &[],
                             ),
                         },
                         Ok(val) => match serve_wire_fields(&val, &ctx) {
-                            Some((status, content_type, resp_body, resp_headers)) => serve_write_response(
+                            Some((status, content_type, resp_body)) => serve_write_response(
                                 &mut *stream,
                                 status,
                                 &content_type,
                                 &resp_body,
-                                &resp_headers,
                             ),
                             None => serve_write_response(
                                 &mut *stream,
@@ -21940,7 +21936,6 @@ pub fn handle_serve(
                                     "handler returned `{}`, not ServeWireResponse {{ status: Int, content_type_label: String, body: String }}\n",
                                     ctx.format_value(&val)
                                 ),
-                                &[],
                             ),
                         },
                     }
@@ -21986,13 +21981,6 @@ pub fn handle_serve(
 /// side treats an absent value as a refusal rather than as "unknown", so the failure mode of a
 /// misconfigured deployment is a closed door rather than an open one.
 const SERVE_TAILSCALE_IDENTITY_HEADER: &str = "tailscale-user-login";
-
-/// THE SECOND NAMED HEADER, on the same discipline as the tailnet identity above: the session
-/// cookie. The login flow's Set-Cookie answers a session mint, and this is the only way the
-/// browser can present it back — the `.dag` side's request-security context builds from this
-/// exact string (absent = AuthAbsent, never anonymous), and every other header stays out of the
-/// handlers exactly as before.
-const SERVE_COOKIE_HEADER: &str = "cookie";
 
 // ONE CONNECTION SHAPE FOR BOTH LISTENERS. The request parse and the response write are the same
 // bytes over TCP and over a unix socket; only binding, accepting and the peer differ.
@@ -22109,7 +22097,6 @@ fn serve_handler_args(
     tailscale_identity: String,
     release_revision: String,
     attested_peer: Option<String>,
-    cookie_header: Option<String>,
 ) -> Vec<(Option<String>, v1_interpreter::Value)> {
     let mut args = vec![
         (Some("method".to_string()), str_value(method)),
@@ -22126,15 +22113,6 @@ fn serve_handler_args(
     ];
     if let Some(peer) = attested_peer {
         args.push((Some("peer_user".to_string()), str_value(peer)));
-    }
-    // THE COOKIE IS AN ARGUMENT ONLY WHEN THE REQUEST CARRIED ONE, for the same call-contract reason
-    // as the peer: a handler that declares no cookie_header (the approval broker's, the fabric
-    // door's) refuses a named argument it does not declare. A handler that reads sessions declares
-    // `cookie_header: String = ""`, so an absent header reaches it as the empty string it builds
-    // AuthAbsent from. A cookie-bearing request to a handler that declares none is a loud 500 from
-    // the call contract, never a silently dropped credential.
-    if let Some(cookie) = cookie_header {
-        args.push((Some("cookie_header".to_string()), str_value(cookie)));
     }
     args
 }
@@ -22172,7 +22150,7 @@ fn serve_peer_user(s: &std::os::unix::net::UnixStream) -> std::io::Result<String
 
 fn serve_read_request(
     stream: &mut dyn ServeConnection,
-) -> Result<Option<(String, String, String, String, String)>, String> {
+) -> Result<Option<(String, String, String, String)>, String> {
     use std::io::{BufRead, Read};
     const MAX_HEAD: usize = 16 << 10;
     const MAX_BODY: usize = 1 << 20;
@@ -22220,7 +22198,6 @@ fn serve_read_request(
     }
     let mut content_length: Option<usize> = None;
     let mut tailscale_identity: Option<String> = None;
-    let mut cookie_header: Option<String> = None;
     loop {
         let mut line = String::new();
         let n = reader
@@ -22261,12 +22238,6 @@ fn serve_read_request(
                 }
                 tailscale_identity = Some(value.trim().to_string());
             }
-            if name.eq_ignore_ascii_case(SERVE_COOKIE_HEADER) {
-                if cookie_header.is_some() {
-                    return Err(format!("duplicate {} header", SERVE_COOKIE_HEADER));
-                }
-                cookie_header = Some(value.trim().to_string());
-            }
         }
     }
     let content_length = content_length.unwrap_or(0);
@@ -22286,7 +22257,6 @@ fn serve_read_request(
         target,
         body,
         tailscale_identity.unwrap_or_default(),
-        cookie_header.unwrap_or_default(),
     )))
 }
 
@@ -22295,12 +22265,10 @@ fn serve_write_response(
     status: u16,
     content_type: &str,
     body: &str,
-    headers: &[String],
 ) {
     use std::io::Write;
     let reason = match status {
         200 => "OK",
-        302 => "Found",
         400 => "Bad Request",
         404 => "Not Found",
         405 => "Method Not Allowed",
@@ -22311,18 +22279,12 @@ fn serve_write_response(
         503 => "Service Unavailable",
         _ => "",
     };
-    let mut extra = String::new();
-    for header in headers {
-        extra.push_str(header);
-        extra.push_str("\r\n");
-    }
     let response = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n{}\r\n{}",
+        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         status,
         reason,
         content_type,
         body.len(),
-        extra,
         body
     );
     if let Err(e) = stream.write_all(response.as_bytes()) {
@@ -22331,13 +22293,11 @@ fn serve_write_response(
 }
 
 /// Read back the .dag handler's ServeWireResponse record. None = wrong shape
-/// (surfaced as a typed 500 by the caller, never a fabricated response). The
-/// headers list carries one complete header line per element, in write order —
-/// a handler that sets no headers produces the same wire shape as before.
+/// (surfaced as a typed 500 by the caller, never a fabricated response).
 fn serve_wire_fields(
     val: &v1_interpreter::Value,
     ctx: &v1_interpreter::InterpContext,
-) -> Option<(u16, String, String, Vec<String>)> {
+) -> Option<(u16, String, String)> {
     if let v1_interpreter::Value::Record { type_name, fields } = val {
         if !ctx.sym_eq(*type_name, "ServeWireResponse") {
             return None;
@@ -22354,23 +22314,7 @@ fn serve_wire_fields(
             Some(Value::Str(s)) => s.to_string(),
             _ => return None,
         };
-        let headers = match ctx.field(fields, "headers") {
-            None => Vec::new(),
-            // The list decode is the interpreter's one authority over every List<T> realization
-            // (host Value::List and the FreeMonoid Cons/Empty spelling).
-            Some(list) => {
-                let items = crate::v1_interpreter::free_monoid_to_vec(list)?;
-                let mut lines = Vec::with_capacity(items.len());
-                for item in items.iter() {
-                    match item {
-                        Value::Str(s) => lines.push(s.to_string()),
-                        _ => return None,
-                    }
-                }
-                lines
-            }
-        };
-        return Some((status, content_type, body, headers));
+        return Some((status, content_type, body));
     }
     None
 }
@@ -28120,142 +28064,6 @@ fn entry_touches_rerun_frontier(
         }
     }
     Ok(!saw_claim)
-}
-
-/// P4 advisory-first (witness-realization plan): marshal an `Option<i64>` into the
-/// `.dag` `Int?` (Optional) `Value` the modeled `realize_advisory` expects.
-fn realize_advisory_optional_int(
-    ctx: &v1_interpreter::InterpContext,
-    v: Option<i64>,
-) -> v1_interpreter::Value {
-    use std::rc::Rc;
-    use v1_interpreter::Value;
-    match v {
-        Some(n) => Value::Variant {
-            type_name: ctx.sym("Optional"),
-            variant_name: ctx.sym("Present"),
-            fields: Rc::new(vec![(ctx.sym("value"), Value::Int(n))]),
-        },
-        None => Value::Variant {
-            type_name: ctx.sym("Optional"),
-            variant_name: ctx.sym("Absent"),
-            fields: Rc::new(vec![]),
-        },
-    }
-}
-
-/// P4 advisory-first: for each discovery witness, DERIVE its space bound
-/// (`ComplexityReport.function_space_bytes` at an empty size-env — a closed
-/// witness has no free size-vars) and log the memory-packed width `std.realize_pack`
-/// would schedule, alongside the live `MemoryGovernor` admission. This changes NO
-/// scheduling — it proves the derived bounds are sound on the real corpus before
-/// the governor is demoted (§5). The packing LAW stays modeled: `realize_advisory`
-/// is interpreted through the bridge, never reimplemented in Rust (§2). Gated by
-/// `GUNBC_REALIZE_ADVISORY`.
-pub fn emit_realize_advisory_for_rows(source_roots: &[String], rows: &[DiscoveryRow]) {
-    use v1_interpreter::Value;
-    // The witness graphs don't import std.realize_pack, so interpret the law in its
-    // own ctx, built once.
-    let realize_ctx = match resolve_entry_graph(source_roots, "dag/std/realize_pack.dag") {
-        Ok((g, idx)) => make_eval_context(&g, idx, v1_interpreter::ExecutionMode::Hermetic),
-        Err(e) => {
-            eprintln!("[realize-advisory] disabled: cannot load std.realize_pack: {e}");
-            return;
-        }
-    };
-    // Host planning ceiling: the SAME single authority the MemoryGovernor schedules against.
-    // It is the minimum of an optional env request and observed cgroup lines; an env-only
-    // declaration is unverified and unreadable to consumers. Unreadable -> the
-    // modeled law refuses (BudgetRefused), never a fabricated width.
-    let (budget_opt, budget_source) = crate::memory_governor::read_host_budget_bytes();
-    let budget_bytes: Option<i64> = budget_opt.map(|b| b as i64);
-    let independence: i64 = std::thread::available_parallelism()
-        .map(|n| n.get() as i64)
-        .unwrap_or(1);
-    // Group by entry so each entry resolves + analyzes once.
-    let mut by_entry: std::collections::BTreeMap<String, Vec<String>> =
-        std::collections::BTreeMap::new();
-    for r in rows {
-        by_entry
-            .entry(r.entry.clone())
-            .or_default()
-            .push(r.function.clone());
-    }
-    let (mut derivable, mut unknown) = (0usize, 0usize);
-    for (entry, functions) in &by_entry {
-        let (graph, source_indices) = match resolve_entry_graph(source_roots, entry) {
-            Ok(p) => p,
-            Err(_) => continue,
-        };
-        let report =
-            v1_compiler_compile::run_complexity_analysis(graph.clone(), source_indices.clone());
-        for function in functions {
-            let derived: Option<i64> = report.function_space_bytes.get(function).copied();
-            if derived.is_some() {
-                derivable += 1;
-            } else {
-                unknown += 1;
-            }
-            let args = vec![
-                (
-                    Some("derived_bytes".to_string()),
-                    realize_advisory_optional_int(&realize_ctx, derived),
-                ),
-                (
-                    Some("budget_bytes".to_string()),
-                    realize_advisory_optional_int(&realize_ctx, budget_bytes),
-                ),
-                (
-                    Some("independence_width".to_string()),
-                    Value::Int(independence),
-                ),
-            ];
-            match v1_interpreter::run_in_context_with_args(
-                &realize_ctx,
-                "realize_advisory",
-                &args,
-                false,
-            ) {
-                Ok(Value::Record { ref fields, .. }) => {
-                    let width = match realize_ctx.field(&fields, "width") {
-                        Some(Value::Int(w)) => *w,
-                        _ => -1,
-                    };
-                    let verdict = match realize_ctx.field(&fields, "verdict") {
-                        Some(Value::Str(s)) => s.to_string(),
-                        _ => String::new(),
-                    };
-                    let db = derived
-                        .map(|d| d.to_string())
-                        .unwrap_or_else(|| "unknown".to_string());
-                    let bb = budget_bytes
-                        .map(|b| b.to_string())
-                        .unwrap_or_else(|| "unreadable".to_string());
-                    eprintln!(
-                        "[realize-advisory] entry={entry} fn={function} derived_bytes={db} \
-                         budget={bb} independence={independence} predicted_width={width} verdict={verdict}"
-                    );
-                }
-                Ok(_) => eprintln!(
-                    "[realize-advisory] entry={entry} fn={function} — bridge returned non-record"
-                ),
-                Err(e) => {
-                    eprintln!("[realize-advisory] entry={entry} fn={function} — bridge error: {e}")
-                }
-            }
-        }
-    }
-    eprintln!(
-        "[realize-advisory] summary: {} function(s), {} with a derived bound, \
-         {} unknown (maturation reserve); budget={} source={}",
-        derivable + unknown,
-        derivable,
-        unknown,
-        budget_bytes
-            .map(|b| b.to_string())
-            .unwrap_or_else(|| "unreadable".to_string()),
-        budget_source,
-    );
 }
 
 /// Discovery per-phase wall totals (CI floor endgame D4 — the lever-1 re-diagnosis
@@ -35581,64 +35389,15 @@ fn nfr_parse_params(s: &str) -> std::collections::BTreeMap<String, String> {
     out
 }
 
-fn nfr_residue_sites(files: &[(String, String)]) -> Vec<String> {
-    let coproducts = nfr_closed_coproduct_names(files);
-    let mut out: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    for (rel, content) in files {
-        if is_test_dag(rel) {
-            continue;
-        }
-        let src = nfr_strip_comments(content);
-        for sig in nfr_parse_fns(&src) {
-            for (mi, _) in sig.body.match_indices("match ") {
-                if mi > 0 && nfr_is_ident_byte(sig.body.as_bytes()[mi - 1]) {
-                    continue;
-                }
-                let after = mi + "match ".len();
-                let Some(brace_rel) = sig.body[after..].find('{') else {
-                    continue;
-                };
-                let scrut = sig.body[after..after + brace_rel].trim();
-                if !nfr_is_ident(scrut) {
-                    continue;
-                }
-                let Some(ty) = sig.params.get(scrut) else {
-                    continue;
-                };
-                if !coproducts.contains(ty) {
-                    continue;
-                }
-                let body_bytes = sig.body.as_bytes();
-                let brace_abs = after + brace_rel;
-                let Some(close) = nfr_matching_brace(body_bytes, brace_abs) else {
-                    continue;
-                };
-                let body = &sig.body[brace_abs + 1..close];
-                if nfr_has_top_level_wildcard_arm(body) {
-                    out.insert(format!("{}::{}", rel, sig.name));
-                }
-            }
-        }
-    }
-    out.into_iter().collect()
-}
-
-struct NonFoldReport {
-    sites: Vec<String>,
-    coproduct_universe: usize,
-    closed_coproduct_names: std::collections::BTreeSet<String>,
-}
-
-fn nfr_build_report() -> &'static NonFoldReport {
-    static REPORT: std::sync::OnceLock<NonFoldReport> = std::sync::OnceLock::new();
-    shared_fill::once(&REPORT, "non_fold_residue", "corpus", || {
-        let files = corpus_dag_files();
-        let closed_coproduct_names = nfr_closed_coproduct_names(&files);
-        NonFoldReport {
-            sites: nfr_residue_sites(&files),
-            coproduct_universe: closed_coproduct_names.len(),
-            closed_coproduct_names,
-        }
+/// The closed-coproduct type names of the corpus, read from `type` declarations' text. The
+/// parameter-keyed site scan that once shared this set was deleted with its census roster
+/// (DESIGN §3 replacement: the typed walk `typed_fallback_arm_walk` is the one site authority);
+/// the complexity-linearity audit and the fallback-arm census still key on these names.
+fn nfr_closed_coproduct_name_set() -> &'static std::collections::BTreeSet<String> {
+    static NAMES: std::sync::OnceLock<std::collections::BTreeSet<String>> =
+        std::sync::OnceLock::new();
+    shared_fill::once(&NAMES, "non_fold_residue", "closed_coproduct_names", || {
+        nfr_closed_coproduct_names(&corpus_dag_files())
     })
 }
 
@@ -35663,130 +35422,6 @@ mod nfr_tests {
         assert!(cps.contains("Mode"));
         assert!(!cps.contains("Rec"));
         assert!(!cps.contains("Alias"));
-    }
-
-    #[test]
-    fn red_control_wildcard_over_closed_coproduct_is_residue() {
-        let f = files(&[(
-            "m.dag",
-            "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    _ => false\n  }\n}\n",
-        )]);
-        let sites = nfr_residue_sites(&f);
-        assert!(
-            sites.contains(&"m.dag::f".to_string()),
-            "a wildcard over a closed-coproduct param must be flagged; got {sites:?}"
-        );
-    }
-
-    #[test]
-    fn green_control_total_fold_is_not_residue() {
-        let f = files(&[(
-            "m.dag",
-            "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    B => false\n    C => false\n  }\n}\n",
-        )]);
-        let sites = nfr_residue_sites(&f);
-        assert!(
-            !sites.contains(&"m.dag::f".to_string()),
-            "an exhaustive match (no wildcard) must NOT be flagged; got {sites:?}"
-        );
-    }
-
-    #[test]
-    fn nfr_roster_receipt() {
-        let live: std::collections::BTreeSet<&str> = nfr_build_report()
-            .sites
-            .iter()
-            .map(|s| s.as_str())
-            .collect();
-        // POPULATION BOUND (rung honesty, DESIGN §4b(1)): the census scans matches whose scrutinee
-        // is a closed-coproduct PARAMETER; a match on a local binding or a field is not scanned, so
-        // this receipt's green covers that population only (bound stated on the roster's
-        // registration in gunbc.roster_registry).
-        eprintln!(
-            "nfr_roster_receipt (scope: parameter-scrutinee matches only): unrostered={} stale={} live={}",
-            non_fold_residue_unrostered_count(),
-            non_fold_residue_stale_roster_count(),
-            live.len()
-        );
-        let unrostered: Vec<&String> = nfr_build_report()
-            .sites
-            .iter()
-            .filter(|site| !non_fold_residue_site_is_rostered(site))
-            .collect();
-        for site in &unrostered {
-            eprintln!("unrostered live site: {site}");
-        }
-        let stale: Vec<&String> = non_fold_residue_roster_entries()
-            .iter()
-            .filter(|entry| !live.contains(entry.as_str()))
-            .collect();
-        for entry in &stale {
-            eprintln!("stale roster entry: {entry}");
-        }
-        assert!(unrostered.is_empty(), "unrostered: {unrostered:?}");
-        assert!(stale.is_empty(), "stale roster: {stale:?}");
-    }
-
-    #[test]
-    fn green_control_wildcard_over_open_domain_is_not_residue() {
-        let f = files(&[(
-            "m.dag",
-            "module m\ntype Mode = A | B\nfn g(s: String) -> Bool {\n  match s {\n    \"y\" => true\n    _ => false\n  }\n}\n",
-        )]);
-        let sites = nfr_residue_sites(&f);
-        assert!(
-            !sites.contains(&"m.dag::g".to_string()),
-            "a wildcard over an open/primitive domain must NOT be flagged; got {sites:?}"
-        );
-    }
-
-    #[test]
-    fn green_control_field_placeholder_underscore_is_not_a_wildcard_arm() {
-        let f = files(&[(
-            "m.dag",
-            "module m\ntype Mode = A { v: Int } | B { v: Int }\nfn f(x: Mode) -> Int {\n  match x {\n    A { v: _ } => 1\n    B { v: _ } => 2\n  }\n}\n",
-        )]);
-        let sites = nfr_residue_sites(&f);
-        assert!(
-            !sites.contains(&"m.dag::f".to_string()),
-            "field-placeholder `_` is not a wildcard arm; got {sites:?}"
-        );
-    }
-
-    #[test]
-    fn nested_match_wildcard_is_attributed_to_its_own_match() {
-        let f = files(&[(
-            "m.dag",
-            "module m\ntype Mode = A | B\nfn eq(a: Mode, b: Mode) -> Bool {\n  match a {\n    A => match b { A => true _ => false }\n    B => match b { B => true _ => false }\n  }\n}\n",
-        )]);
-        let sites = nfr_residue_sites(&f);
-        assert!(sites.contains(&"m.dag::eq".to_string()));
-    }
-
-    #[test]
-    fn green_control_wildcard_and_slashes_inside_string_literal_are_ignored() {
-        let f = files(&[(
-            "m.dag",
-            "module m\ntype Mode = A | B\nfn f(x: Mode) -> String {\n  match x {\n    A => \"see https://x/y and _ => z\"\n    B => \"b\"\n  }\n}\n",
-        )]);
-        let sites = nfr_residue_sites(&f);
-        assert!(
-            !sites.contains(&"m.dag::f".to_string()),
-            "`_ =>`/`//` inside a string literal must not be read as code; got {sites:?}"
-        );
-    }
-
-    #[test]
-    fn red_control_real_wildcard_survives_an_in_string_decoy() {
-        let f = files(&[(
-            "m.dag",
-            "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> String {\n  match x {\n    A => \"see https://x/y and _ => z\"\n    _ => \"rest\"\n  }\n}\n",
-        )]);
-        let sites = nfr_residue_sites(&f);
-        assert!(
-            sites.contains(&"m.dag::f".to_string()),
-            "a real wildcard arm must still be flagged despite an in-string decoy; got {sites:?}"
-        );
     }
 
     #[test]
@@ -36510,29 +36145,32 @@ fn fac_walk_body_marks(
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     marks: &mut FacBodyMarks,
 ) {
-    match node.expr_data.as_ref() {
-        ExprData::ExprCall { .. } => {
-            let fname = expr_call_func_at(node.clone(), si.clone());
-            if fac_name_is_refuse(&fname) {
-                marks.refuses = true;
+    // Explicit worklist: body depth is corpus-shaped (the #10610 class), and the marks are
+    // order-insensitive booleans.
+    let mut pending: Vec<&Rc<Node>> = vec![node];
+    while let Some(node) = pending.pop() {
+        match node.expr_data.as_ref() {
+            ExprData::ExprCall { .. } => {
+                let fname = expr_call_func_at(node.clone(), si.clone());
+                if fac_name_is_refuse(&fname) {
+                    marks.refuses = true;
+                }
+                if fac_name_is_answer(&fname) {
+                    marks.answers = true;
+                }
             }
-            if fac_name_is_answer(&fname) {
-                marks.answers = true;
+            ExprData::ExprVar { binding_kind: _ } => {
+                let name = authored_name_at(si.clone(), node.clone());
+                if fac_name_is_refuse(&name) {
+                    marks.refuses = true;
+                }
+                if fac_name_is_answer(&name) {
+                    marks.answers = true;
+                }
             }
+            _ => {}
         }
-        ExprData::ExprVar { binding_kind: _ } => {
-            let name = authored_name_at(si.clone(), node.clone());
-            if fac_name_is_refuse(&name) {
-                marks.refuses = true;
-            }
-            if fac_name_is_answer(&name) {
-                marks.answers = true;
-            }
-        }
-        _ => {}
-    }
-    for child in node.children.iter() {
-        fac_walk_body_marks(child, si, marks);
+        pending.extend(node.children.iter());
     }
 }
 
@@ -46656,7 +46294,8 @@ pub(crate) use emitted_closure_compile_host::{
     fixture_closure_summary, fixture_discrimination_passed, fixture_discrimination_report,
     run_append_concat_form_discrimination, run_argv_word_list_splice_discrimination,
     run_empty_map_turbofish_discrimination, run_fixture_closure_discrimination,
-    run_function_value_adapter_discrimination, run_nested_refinement_cast_discrimination,
+    run_function_value_adapter_discrimination, run_local_true_false_coproduct_discrimination,
+    run_native_bool_variant_discrimination, run_nested_refinement_cast_discrimination,
     run_phantom_marker_identity_discrimination, run_shell_projection_arity_discrimination,
     FixtureClosureOutcome,
 };
@@ -47215,7 +46854,6 @@ mod serve_unix_socket_door_tests {
             String::new(),
             "r".into(),
             None,
-            None,
         );
         assert_eq!(
             names(&tcp),
@@ -47234,7 +46872,6 @@ mod serve_unix_socket_door_tests {
             String::new(),
             "r".into(),
             Some("ghrunner".into()),
-            None,
         );
         assert_eq!(names(&unix).last().map(|s| s.as_str()), Some("peer_user"));
     }
