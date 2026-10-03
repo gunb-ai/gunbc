@@ -646,6 +646,9 @@ import v2.std.collection { List }
 // modules and stores one verdict arm per module, portable for the same reason cav_outcomes is.
 // v2.test.claim.namespace_xl0.let_match_early_return lme_outcomes is the same ground at nine more, and its
 // lme_shape normalizes one inline module and stores four scalars (the match-arm list row's ground).
+// v2.test.claim.callexec.let_match_early_return_eval lmee_exit_path and lmee_binding_path each run
+// one assemble -> infer -> discharge -> eval and store two typed results (an Int or a stage and
+// reason Symbol), no tree and no closure.
 // THE XL-2 WILDCARD-PATTERN-FORM ROW IS THE MATCH-ARM LIST ROW'S GROUND AT ONE MORE SPECIMEN:
 // v2.test.claim.body_lowering.wildcard_pattern_form wpf_patterns tokenizes and parses one inline
 // module and calls body_lower_match_arms_optional on its match capture; the stored value is the
@@ -911,6 +914,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.return_tail_position.rtp_outcomes",
   "v2.test.claim.namespace_xl0.let_match_early_return.lme_outcomes",
   "v2.test.claim.namespace_xl0.let_match_early_return.lme_shape",
+  "v2.test.claim.callexec.let_match_early_return_eval.lmee_exit_path",
+  "v2.test.claim.callexec.let_match_early_return_eval.lmee_binding_path",
   "v2.test.claim.body_lowering.wildcard_pattern_form.wpf_patterns",
   "v2.test.claim.body_lowering.match_position_structure.mps_normalized",
   "v2.test.claim.namespace_xl0.wildcard_arm_resolve.wc_outcomes",
