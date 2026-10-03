@@ -3995,7 +3995,6 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "egress-encoding-0-bytes-seam", parent: "egress-crypto-0-sha256-landing"),
     edge(child: "egress-content-hash-fnv-kernel", parent: "egress-numeric-bit-kernel-arms"),
     edge(child: "egress-census-quiet-host-and-decomposition", parent: "egress-crypto-0-sha256-landing"),
-    // SCM waits on the fabric (operator ruling 2026-10-03): its only consumer is the daily workspace.
     edge(child: "2-scm-git-upstream-model", parent: "fabric-bringup"),
     edge(child: "2-scm-mercurial-upstream-model", parent: "fabric-bringup"),
     edge(child: "2-scm-pijul-upstream-model", parent: "fabric-bringup"),
