@@ -29,7 +29,7 @@ import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.compiler_gate_workflow { compiler_gate_hosted_build_prelude_bound_steps }
 import gunbc.witness_floor_workflow { witness_toolchain_homes_isolated_guard_step }
 import gunbc.instrument_targets {
-  dag_emit_real_grammar_round_trips_label, self_host_behavioral_equivalence_label, dependency_demand_census_label, instrument_targets,
+  dag_emit_real_grammar_round_trips_label, self_host_behavioral_equivalence_label, dependency_demand_census_label, v2_native_census_label, instrument_targets,
 }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
@@ -89,8 +89,15 @@ data instrument_dispatch_timeout_minutes: Int = 240
 // adding one is a row here. The self-host behavioral-equivalence receipt series is the second: one
 // emitted crate built per roster module exceeds the free remote runner's one-hour cap, and its
 // receipt is taken on purpose (gunbc.self_host_behavioral_equivalence_receipt), never per change.
+// The native resolve census is another: `census-resolve` emits and builds the compiler closure and then
+// resolves every indexed module, which outlives the free remote runner's one-hour cap twice over, and
+// its saved whole-tree receipt is what the resolve-frontier root ranking and the census lane's step D
+// read. A dispatchable label is on-demand only; it adds no job to any per-change workflow.
 fn instrument_dispatch_labels() -> List<Label> {
-  [dag_emit_real_grammar_round_trips_label(), self_host_behavioral_equivalence_label(), dependency_demand_census_label()]
+  [
+    dag_emit_real_grammar_round_trips_label(), self_host_behavioral_equivalence_label(), dependency_demand_census_label(),
+    v2_native_census_label(),
+  ]
 }
 
 fn instrument_dispatch_label_options() -> List<String> {
