@@ -298,22 +298,37 @@ Slice B fills the `AttemptConfigurationReceipt` fields that slice A records as `
 AttemptConfigurationPlan (sole constructor) {
   subject: ManagedHost, attempt: AttemptPlanId,
   expected: ExpectedTopology, requested: StimulusRequest,   // expected and requested are stated ONCE, here
-  fixed_at: ObserverTimestamp,
+  fixed_at: OperatorAttestedTime,
 }
 AttemptInspectionReceipt (sole constructor) {
   plan: AttemptConfigurationPlan,
   applied: StimulusApplication, cpus: PopulationReading<SocketCpuRow>, dimms: PopulationReading<SlotRow>,
-  completed_at: ObserverTimestamp, evidence: ReceiptEvidence, witnessed_by: NonEmptyStr,
+  completed_at: OperatorAttestedTime, evidence: ReceiptEvidence, witnessed_by: NonEmptyStr,
 }
+OperatorAttestedTime { rendering: NonEmptyStr, attested_by: NonEmptyStr }   // a time a person wrote, never an observer clock reading
 ReceiptEvidence { path, digest: Sha256FileDigest, commit }   // the committed file the run read
 ```
+
+**The attempt identity comes from the dispatch, not from the artifact.** The current run's attempt identity is minted outside the receipt: it is the fleet-converge dispatch's existing `transaction_nonce`, which the operator mints and which the run name echoes. Admission runs before any pre-power read or actuation. It joins `receipt.plan.attempt` to that identity, and then consumes the identity once with a compare-and-set on the unit's durable hold store (`std.durable_compare_and_set`, the store the boot run already holds). A second run with the same identity therefore refuses. A valid receipt authored for attempt A cannot be selected by attempt B.
 
 The run mints an `AttemptInspectionReceipt` only after every check passes, and each failed check refuses as its own typed cause:
 - the file's digest matches what was read;
 - the subject is the host this run's `ManagedHostBinding` bound;
-- the attempt is the plan the dispatch input named;
+- the plan's attempt equals this dispatch's attempt identity;
+- the attempt identity was not already consumed;
 - the plan's identity is the one the receipt carries;
-- the ordering holds: `fixed_at` before `completed_at` before the power write.
+- the attested ordering holds: `fixed_at` is at or before `completed_at`, as attested.
+
+**Times.** The plan's and receipt's times are what a person wrote, so they are `OperatorAttestedTime`, never `ObserverTimestamp`. They are ordered only among themselves. "Before the power write" is established STRUCTURALLY: admission is a step this run completes before it actuates. It is never established by comparing an attested time with an observer clock.
+
+**The absent-receipt rule (decided by eager-gull-22).**
+- **No receipt named:** the dispatch input is empty. The boot proceeds with the configuration `NotRecorded` and no topology judgement, as in slice A.
+- **A receipt named but refused:** a missing file, a digest or parse failure, a subject, host, attempt or plan mismatch, a consumed identity, or an attested ordering violation. The boot REFUSES before any pre-power read or actuation, with that typed cause.
+- REDs, one per arm:
+  - an empty input reaches actuation with the configuration `NotRecorded`;
+  - a valid receipt for attempt A dispatched as attempt B refuses before actuation;
+  - a replayed identity refuses;
+  - a malformed file refuses.
 
 The pre-power-on firmware readback is bound to the same plan (`FirmwareReadBeforeActuation { plan, rows }`), so a readback from another attempt cannot fill this one. A receipt that is absent or refused leaves the fields `NotRecorded` or refused with their cause. The boot never proceeds on a guessed configuration.
 
