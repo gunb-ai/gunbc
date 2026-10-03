@@ -62,19 +62,24 @@ fn grammar_choice_ambiguity_row_identity(row: GrammarChoiceAmbiguityRow, ordinal
     + "] right=[" + grammar_choice_terminals_text(xs: row.right_first_terminals) + "]"
 }
 
+// `seen` is a per-production count, one map probe per row (DESIGN section 6: a quadratic fold is
+// fixed regardless of n, so the ordinal is never re-derived by rescanning the rows already seen).
 type AuditRosterFold {
-  seen: FreeMonoid<Symbol>
+  seen: Map<Symbol, Int>
   lines: FreeMonoid<String>
 }
 
 fn witness_dag_overlap_residue_row_identities() -> String {
   let folded = fold_list(
     xs: grammar_choice_ambiguity_roster(root: dag_grammar_root()),
-    empty: AuditRosterFold { seen: [], lines: [] },
+    empty: AuditRosterFold { seen: empty_map(), lines: [] },
     cons: fn(acc, row) {
-      let ordinal = length(xs: filter(xs: acc.seen, predicate: fn(p) { p == row.production }))
+      let ordinal = match map_lookup(m: acc.seen, key: row.production) {
+        Present { value: n } => n
+        Absent => 0
+      }
       AuditRosterFold {
-        seen: list_snoc_item(xs: acc.seen, item: row.production),
+        seen: map_insert(m: acc.seen, key: row.production, value: ordinal + 1),
         lines: list_snoc_item(xs: acc.lines, item: grammar_choice_ambiguity_row_identity(row: row, ordinal: ordinal))
       }
     }
