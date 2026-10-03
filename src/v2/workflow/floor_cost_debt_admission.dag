@@ -130,8 +130,20 @@ data mtcollins1_boot_matrix_typed_admissions: List<FloorCostDebtTypedAdmission> 
   },
 ]
 
+// THE REAL-CORPUS IMPORT-CLOSURE ROW (gunbc#12910, 2026-10-01), granted by deep-ferret-305 with
+// jolly-boar-500's retirement condition. test.claim.module_graph.import_closure_live is the real-corpus
+// inhabitance claim for v2.lens.module_graph import_closure_live: the DESIGN section 3 pairing obligation
+// for test.claim.module_graph.demand_closure_agreement_witness, which supplies its pool as a fixture. It
+// replaces reference_closure_equivalence, an operator-ruled B2 wall that measured 14s on the floor.
+data import_closure_real_corpus_typed_admissions: List<FloorCostDebtTypedAdmission> = [
+  FloorCostDebtTypedAdmission {
+    identity: "test.claim.module_graph.import_closure_live.dag_import_closure_live_witness_bundle_holds",
+    reason: "the real-corpus inhabitance claim for import_closure_live (section 3 pairing obligation for demand_closure_agreement_witness): it walks a real entry's closure over real production modules, so its pool cannot be supplied. Its pool is already narrowed to the closure's own directories, derived from a golden derived from declared import edges; the remaining cost is the exclusive reference_pool_names heads fill over those directories, measured at 843 ms wall by the enrolment-margin lines of PR required floor run 36883586866. Directory-grain scoping below that, without a demand set, is the fail-open shape the compile-cost lane refuses. Retires when the whole-pool heads demand is demand-keyed: gunbc.resolver_cost_frontier, the frontier row on v1.compiler.parse parse_heads_with_table (demand-engine M1), i.e. when the reference pool fill is shared or scoped below the margin." as NonEmptyStr
+  },
+]
+
 fn floor_cost_debt_typed_admissions() -> List<FloorCostDebtTypedAdmission> {
-  concat(app_attest_interpreted_crypto_typed_admissions, mtcollins1_boot_matrix_typed_admissions)
+  concat(concat(app_attest_interpreted_crypto_typed_admissions, mtcollins1_boot_matrix_typed_admissions), import_closure_real_corpus_typed_admissions)
 }
 
 fn floor_cost_debt_typed_admitted_identities() -> List<String> {

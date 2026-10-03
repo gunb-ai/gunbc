@@ -192,6 +192,12 @@ fn x_answer(env: &Rc<v1_compiler::v1_compiler_infer_env::TypeEnv>, name: &str) -
             NodeOccurrenceIdentity::OccurrenceProjected { id, .. } => {
                 XAnswer::Declaration(id.value)
             }
+            // A pending occurrence is a lowering phase state that normalization allocates before
+            // admission, so a resolved declaration can never carry one; mapping it onto any answer
+            // here would misattribute it.
+            NodeOccurrenceIdentity::OccurrencePending { .. } => {
+                unreachable!("a pending occurrence cannot survive normalization")
+            }
             NodeOccurrenceIdentity::OccurrenceSynthetic => {
                 if resolved_node_is_kernel_identity_for_name(node.clone(), name.to_string()) {
                     XAnswer::Kernel
@@ -550,6 +556,9 @@ fn item_occurrence_id(item: &Rc<v1_compiler::v1_std_core::Node>) -> Option<i64> 
             ..
         } => Some(id.value),
         v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic => None,
+        v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrencePending {
+            ..
+        } => None,
     }
 }
 

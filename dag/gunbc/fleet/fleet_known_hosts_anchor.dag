@@ -1,6 +1,6 @@
 module gunbc.fleet_known_hosts_anchor
 
-import std.types { String, Bool, List, NonEmptyStr, PathSegment, path_segment_is_safe }
+import std.types { String, Bool, List, NonEmptyStr, PathSegment, path_segment_is_safe, brand }
 import std.measure { second }
 import std.algebra { trim }
 import std.content_hash {

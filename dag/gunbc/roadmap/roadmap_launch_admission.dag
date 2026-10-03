@@ -4,8 +4,8 @@ import std.types { String, Int, List, Bool, NonEmptyStr }
 import std.content_hash { Fnv1a64Structural, Sha1Digest, Sha1DigestHex, content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural }
 import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapEdge }
 import gunbc.roadmap_document { RoadmapDocument }
-import gunbc.roadmap_spawner { doc_all_nodes, doc_all_edges, node_unmet_parent_ids }
-import gunbc.roadmap.roadmap_lineage { lineage_walk }
+import gunbc.roadmap_spawner { doc_all_nodes, doc_all_edges, ReadinessGraph, readiness_graph, node_readiness_in_graph }
+import gunbc.roadmap.roadmap_lineage { lineage_lookup }
 import gunbc.roadmap.roadmap_readiness {
   ReadinessGap, GapCentering, NodeReadiness, ReadyToDispatch, NotReady,
   node_readiness, readiness_text, readiness_reason_text,
@@ -461,17 +461,20 @@ fn launch_host_unobserved_static_render() -> LaunchHostStanding {
 // the plan's order.
 
 type LaunchGraphStanding
-  = LaunchGraphProjected { nodes: List<RoadmapNode>, edges: List<RoadmapEdge> }
+  = LaunchGraphProjected { nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, readiness: ReadinessGraph }
   | LaunchGraphUnobserved { detail: String }
 
 // The graph is FLATTENED ONCE per standing (launch_graph_of_document), not once per row: a page
 // render asks the decision for every row, and re-walking the document's sections for each would be
-// a quadratic re-derivation of one fact (DESIGN 6 bare-minimum cost, review 57491). The per-row
-// node find and the dependency scan over these lists remain linear scans -- the substrate carries
-// no keyed index here yet -- and that residual is named rather than hidden.
+// a quadratic re-derivation of one fact (DESIGN 6 bare-minimum cost, review 57491). It is INDEXED
+// once too (gunbc.roadmap_spawner readiness_graph): the per-row node find is a lookup in its lineage
+// index, and the readiness gate reads the same indexed graph the page's scheduling reads, so a row's
+// readiness costs lookups rather than a scan of every edge and node.
 
 fn launch_graph_of_document(doc: RoadmapDocument) -> LaunchGraphStanding {
-  LaunchGraphProjected { nodes: doc_all_nodes(doc: doc), edges: doc_all_edges(doc: doc) }
+  let nodes = doc_all_nodes(doc: doc)
+  let edges = doc_all_edges(doc: doc)
+  LaunchGraphProjected { nodes: nodes, edges: edges, readiness: readiness_graph(nodes: nodes, edges: edges) }
 }
 
 fn launch_graph_of_projection(proj: RoadmapAuthorityProjection) -> LaunchGraphStanding {
@@ -698,26 +701,17 @@ fn launch_gate_revision(revision: LocalTreeRevision) -> LaunchGateVerdict {
 }
 
 type LaunchNodeLookup
-  = LaunchNodeFound { node: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge> }
+  = LaunchNodeFound { node: RoadmapNode, readiness: ReadinessGraph }
   | LaunchNodeLookupRefused { refusal: LaunchRefusal }
-
-fn launch_find_node(nodes: List<RoadmapNode>, node_id: String) -> RoadmapNode? {
-  fold(nodes, init: none, f: fn(acc, n) {
-    match acc {
-      Present { value: v } => Present { value: v }
-      Absent => if n.node == node_id { Present { value: n } } else { none }
-    }
-  })
-}
 
 fn launch_lookup_node(graph: LaunchGraphStanding, node_id: String) -> LaunchNodeLookup {
   match graph {
     LaunchGraphUnobserved { detail } =>
       LaunchNodeLookupRefused { refusal: LaunchAuthorityUnobserved { detail: detail } }
-    LaunchGraphProjected { nodes, edges } =>
-      match launch_find_node(nodes: nodes, node_id: node_id) {
+    LaunchGraphProjected { nodes: _, edges: _, readiness } =>
+      match lineage_lookup(index: readiness.lineage, id: node_id) {
         Absent => LaunchNodeLookupRefused { refusal: LaunchNodeUnknown }
-        Present { value: n } => LaunchNodeFound { node: n, nodes: nodes, edges: edges }
+        Present { value: n } => LaunchNodeFound { node: n, readiness: readiness }
       }
   }
 }
@@ -728,17 +722,12 @@ fn launch_lookup_node(graph: LaunchGraphStanding, node_id: String) -> LaunchNode
 // together as LaunchNotReady { missing }, so the dispatcher names every missing fact the page names
 // and neither can admit a node the other calls not ready. The lineage is walked over the graph the
 // admission was handed; the dependencies are its unmet parents over the same graph.
-fn launch_node_readiness(node: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> NodeReadiness {
-  node_readiness(
-    node: node,
-    lineage: lineage_walk(node_id: node.node as String, nodes: nodes),
-    unmet_parents: node_unmet_parent_ids(nodes: nodes, edges: edges, id: node.node) |> map(p => p as String),
-    merged: merged,
-  )
+fn launch_node_readiness(node: RoadmapNode, readiness: ReadinessGraph, merged: List<Int>) -> NodeReadiness {
+  node_readiness_in_graph(node: node, graph: readiness, merged: merged)
 }
 
-fn launch_gate_readiness(node: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> LaunchGateVerdict {
-  match launch_node_readiness(node: node, nodes: nodes, edges: edges, merged: merged) {
+fn launch_gate_readiness(node: RoadmapNode, readiness: ReadinessGraph, merged: List<Int>) -> LaunchGateVerdict {
+  match launch_node_readiness(node: node, readiness: readiness, merged: merged) {
     ReadyToDispatch => GatePassed
     NotReady { missing } => GateRefused { refusal: LaunchNotReady { missing: missing } }
   }
@@ -892,7 +881,7 @@ fn launch_identity_of_observed(
             LaunchRevisionBound { oid } =>
               match lookup {
                 LaunchNodeLookupRefused { refusal } => LaunchIdentityWithheld { refusal: refusal }
-                LaunchNodeFound { node, nodes: _, edges: _ } =>
+                LaunchNodeFound { node, readiness: _ } =>
                   LaunchIdentityBound { identity: LaunchIdentity {
                     node_id: node.node,
                     cause: cause,
@@ -972,14 +961,14 @@ fn launch_decision_facts(
             },
             identity: identity,
           }
-        LaunchNodeFound { node, nodes, edges } =>
+        LaunchNodeFound { node, readiness } =>
           LaunchDecisionFacts {
             ledger: LaunchGateLedger {
               instance: launch_gate_instance(instance_id: instance_id, actuation: actuation),
               transition: launch_gate_transition(transition: transition),
               revision: launch_gate_revision(revision: revision),
               node: GatePassed,
-              readiness: launch_gate_readiness(node: node, nodes: nodes, edges: edges, merged: merged),
+              readiness: launch_gate_readiness(node: node, readiness: readiness, merged: merged),
               live: launch_gate_live(sessions: sessions, node_id: node_id),
               capacity: launch_gate_capacity(sessions: sessions, capacity: capacity, reserved: reserved),
               cause: launch_gate_cause(cause: cause, mode: mode),

@@ -355,7 +355,15 @@ fn submission_capture_decode_tail(doc: JsonValue, root: SubmissionCaptureRoot) -
                             },
                           }
                       }
-                    _ =>
+                    JsonMemberAbsent =>
+                      CaptureNotDecodable {
+                        reason: "capture record submission member is absent or duplicated",
+                      }
+                    JsonMemberDuplicated { count: _ } =>
+                      CaptureNotDecodable {
+                        reason: "capture record submission member is absent or duplicated",
+                      }
+                    JsonMemberNotAnObject =>
                       CaptureNotDecodable {
                         reason: "capture record submission member is absent or duplicated",
                       }

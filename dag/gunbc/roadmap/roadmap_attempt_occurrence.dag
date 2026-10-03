@@ -219,13 +219,17 @@ fn occurrence_population(containers: List<ObservedContainerRow>, records: List<D
   let from_containers = map(containers, row => occurrence_of_container(row: row, records: records))
   let joined = from_containers |> filter(o => match o {
     AttemptOccurrenceObserved { node: _, attempt: _, container: _, process: _, spawn_identity: _ } => true
-    _ => false
+    AttemptOccurrenceUnclassified { observed_container: _, process: _, node_hint: _, cause: _ } => false
+    AttemptOccurrenceForeign { observed_container: _ } => false
+    AttemptOccurrenceMalformed { observed_container: _, process: _, cause: _ } => false
   })
   let records_only = records |> filter(record =>
     !any(joined, o => match o {
       AttemptOccurrenceObserved { node, attempt, container: _, process: _, spawn_identity: _ } =>
         node == record.node && attempt == record.attempt
-      _ => false
+      AttemptOccurrenceUnclassified { observed_container: _, process: _, node_hint: _, cause: _ } => false
+      AttemptOccurrenceForeign { observed_container: _ } => false
+      AttemptOccurrenceMalformed { observed_container: _, process: _, cause: _ } => false
     }))
   concat(
     from_containers,
@@ -250,7 +254,9 @@ fn occurrence_population_conserved(containers: List<ObservedContainerRow>, recor
         Present { value: _ } => true
         Absent => false
       }
-    _ => false
+    AttemptOccurrenceUnclassified { observed_container: _, process: _, node_hint: _, cause: _ } => false
+    AttemptOccurrenceForeign { observed_container: _ } => false
+    AttemptOccurrenceMalformed { observed_container: _, process: _, cause: _ } => false
   })
   count(population) == count(containers) + (count(records) - count(joined))
 }

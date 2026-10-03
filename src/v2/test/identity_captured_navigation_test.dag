@@ -21,7 +21,7 @@ fn synth_atom(id: Symbol) -> Node {
 }
 
 fn synth_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn synth_positional_edge(target: Node) -> Edge {

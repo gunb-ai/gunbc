@@ -306,7 +306,7 @@ data coercions_boundary: RepresentationBoundary = RepresentationBoundary {
       module_path: "v2.test.claim.coercion.two_algebra_fork"
     )
   ],
-  supported_scope: "The cast side decides on a NAME, and the corpus already knows a name is insufficient: std.nat.Nat and v2.std.nat.Nat share a spelling and must realize differently, so v1.compiler.coercion keys REALIZATION on the declaring module (and admits target casts from each target's own CastSyntax cast_rules, not from dag_can_cast) and answers NO realization for an unknown identity rather than guessing. One module therefore carries a name-keyed predicate and an identity-keyed decision side by side, answering adjacent questions at two different grains.",
+  supported_scope: "The cast side decides on a NAME, and the corpus already knows a name is insufficient: two declarations may share a spelling and must realize differently (std.nat.Nat, the kernel-realized naturals, against a user-declared Peano type spelled Nat; until the 2026-09-30 de-fork the second was v2.std.nat.Nat), so v1.compiler.coercion keys REALIZATION on the declaring module (and admits target casts from each target's own CastSyntax cast_rules, not from dag_can_cast) and answers NO realization for an unknown identity rather than guessing. One module therefore carries a name-keyed predicate and an identity-keyed decision side by side, answering adjacent questions at two different grains.",
   preservation_obligation: "A crossing admitted on one route is admitted on the other and spells the same target type; a crossing that must refuse refuses on both; and an unknown declaring identity never silently realizes structurally.",
   crossing_evidence: InterpretedOnly {
     what_goes_red: "the identity-keyed half is a real climb with a receipt: passing the empty string once meant identity-unknown, and eight reference sites doing so rendered dag/std/integer.dag aliases as crate::std_nat::Nat instead of i64. There is now no empty string to pass -- an absent identity is DeclarationIdentityAbsent, and the degraded answer is stamped GroundedByUnidentifiedBareRow so it stays countable rather than silent." as NonEmptyStr,
@@ -664,7 +664,7 @@ fn boundaries_without_an_authority() -> Int {
 // The obvious walls to write over this roster are "every candidate names a DISCRIMINATOR" and
 // "every two-authority row states its ONE QUESTION". Both were written, and both were DELETED after
 // asking DESIGN section 4b's question BEFORE keeping the check: is the forbidden state AUTHORABLE
-// anywhere the check could run? It is not. NonEmptyStr is `String where non_empty`, so an empty
+// anywhere the check could run? It is not. NonEmptyStr is `String where string_non_empty`, so an empty
 // discriminator and an empty shared question are refused by the REFINEMENT at construction --
 // `"" as NonEmptyStr` typechecks and then refuses, so a fixture cannot even build the row a red
 // would need. A fold over those fields would therefore be permanently green BY CONSTRUCTION,

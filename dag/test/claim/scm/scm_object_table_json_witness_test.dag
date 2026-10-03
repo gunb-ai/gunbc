@@ -20,7 +20,7 @@ module test.claim.scm_object_table_json_witness
 // closure document's concern; what is asserted is that the TABLE preserves what it was given.
 
 import std.types { Bool, Int, String, List, list_length, NonEmptyStr }
-import v2.std.node { Node, Edge, Symbol, Named, Conj, Atom, TypeNode, node_synthetic }
+import v2.std.node { Node, Edge, Symbol, Authored, Conj, Atom, TypeNode, node_synthetic }
 import extdeps.languages.json.emit { json_object, json_kv, json_array, json_string, json_null, JsonValue }
 import gunbc.scm.object_store {
   ObjectId,

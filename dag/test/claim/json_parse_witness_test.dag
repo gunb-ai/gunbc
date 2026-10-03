@@ -199,3 +199,25 @@ test fn a_forged_verdict_escape_does_not_survive_into_a_string() -> Bool {
   !parses(text: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"p\\assed\"}")
     && parses(text: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"verdict\": \"passed\"}")
 }
+
+// RFC 8259 section 7 writes a character above U+FFFF as a UTF-16 surrogate pair. The kernel used
+// to decode each \u on its own through from_code_point, which answers "" for any surrogate, so the
+// pair below came back as the empty string and the parse still succeeded: the character was
+// silently gone (reviews 73243/73540/73709/73856, DESIGN 5). The positive control pins the pair
+// decoding to its one scalar; the refusal claim pins every unpaired shape to a refusal rather than
+// a dropped character. Both answer false against the old kernel.
+
+test fn a_surrogate_pair_decodes_to_its_one_scalar() -> Bool {
+  parsed_string_of(text: "\"\\uD83D\\uDE00\"") == from_code_point(cp: 128512)
+    && parsed_string_of(text: "\"a\\ud83d\\ude00b\"") == "a" + from_code_point(cp: 128512) + "b"
+    && parsed_string_of(text: "\"\\uDBFF\\uDFFF\"") == from_code_point(cp: 1114111)
+}
+
+test fn an_unpaired_surrogate_refuses_rather_than_vanishing() -> Bool {
+  !parses(text: "\"\\uD83D\"")
+    && !parses(text: "\"\\uD83Dx\"")
+    && !parses(text: "\"\\uDE00\"")
+    && !parses(text: "\"\\uDE00\\uD83D\"")
+    && !parses(text: "\"\\uD83D\\u0041\"")
+    && !parses(text: "\"\\uD83D\\n\"")
+}
