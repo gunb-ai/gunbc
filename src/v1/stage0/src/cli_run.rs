@@ -9750,7 +9750,28 @@ fn visit_bare_reference_providers(
         .iter()
         .map(String::as_str)
         .filter(|h| !candidates.names.contains(*h))
-        .filter(|h| v1_rt::map_get(&census.services, (*h).to_string()).is_none())
+        .filter(|h| {
+            // A namespace head need not itself be a service key: github.Api.Get
+            // resolves through github.Api. Keep the bare obligation if ANY use of
+            // that head has no service prefix, including a separate member access.
+            let prefix = format!("{h}.");
+            let mut chains = candidates
+                .dotted_chains
+                .iter()
+                .filter(|chain| chain.starts_with(&prefix))
+                .peekable();
+            chains.peek().is_none()
+                || chains.any(|chain| {
+                    let mut key = String::new();
+                    !chain.split('.').any(|segment| {
+                        if !key.is_empty() {
+                            key.push('.');
+                        }
+                        key.push_str(segment);
+                        v1_rt::map_get(&census.services, key.clone()).is_some()
+                    })
+                })
+        })
         .map(|h| h.to_string())
         .collect();
     let all_names: Vec<(String, bool)> = candidates
@@ -10271,6 +10292,52 @@ mod closure_edge_demand_tests {
         );
     }
 
+    #[test]
+    fn qualified_service_prefix_does_not_pull_an_unrelated_bare_helper() {
+        let service = "module svc.api\nservice github.Api {\n operation Get {\n input { id: Int }\n output { id: Int from \"id\" }\n readonly\n transport rest { method: GET, path: \"/x\" }\n }\n}\n";
+        let helper = "module helper\nfn github(value: Int) -> Int { value }\n";
+        for (extra, should_pull_helper) in [
+            ("", false),
+            ("fn bare() -> Int { github(value: 1) }\n", true),
+            ("fn member() -> Int { github.other }\n", true),
+        ] {
+            let consumer = format!(
+                "module svc.consumer\nimport svc.api\nfn run() -> Int {{ github.Api.Get(id: 1) }}\n{extra}"
+            );
+            let fixture = Fixture::new(&[
+                ("api.dag", service),
+                ("helper.dag", helper),
+                ("consumer.dag", &consumer),
+            ]);
+            let index = fixture.index();
+            let found =
+                unimported_bare_providers(&index.source_files["svc.consumer"], &index).unwrap();
+            assert_eq!(
+                found
+                    .iter()
+                    .any(|row| row.name == "github" && row.provider_module == "helper"),
+                should_pull_helper,
+                "extra={extra:?}: {found:?}"
+            );
+        }
+        // Resolving the service prefix must still demand the service's own import.
+        let fixture = Fixture::new(&[
+            ("api.dag", service),
+            ("helper.dag", helper),
+            ("other.dag", "module other\ndata value: Int = 1\n"),
+            ("consumer.dag", "module svc.consumer\nimport other { value }\nfn run() -> Int { github.Api.Get(id: 1) }\n"),
+        ]);
+        let index = fixture.index();
+        let found = unimported_bare_providers(&index.source_files["svc.consumer"], &index).unwrap();
+        assert!(
+            found
+                .iter()
+                .any(|row| row.name == "github.Api" && row.provider_module == "svc.api"),
+            "{found:?}"
+        );
+        assert!(!found.iter().any(|row| row.name == "github"), "{found:?}");
+    }
+
     /// THE ORIGINAL NON-CLOSURE AMBIGUITY SPECIMEN, KEPT, with its entry-local outcome paired with
     /// the mandatory global refusal (#12419 decision 5857893764). An entry whose closure never
     /// reaches the ambiguous consumer is admitted; the whole-pool demand -- the required floor's
@@ -10440,32 +10507,30 @@ mod closure_edge_demand_tests {
             "a refusal is a recorded judgment"
         );
 
-        // The twin is a SECOND pool. The shared index allows one resident pool per thread
-        // (SharedIndexSecondResidentPool, #12831), so the twin's judgment runs on its own thread,
-        // exactly as a separate floor run would.
-        std::thread::spawn(|| {
-            let twin = Fixture::new(&[
-                ("a.dag", "module frontier\nfn duplicated() -> Int { 1 }\n"),
-                (
-                    "c.dag",
-                    "module frontier.child.consumer\nfn read() -> Int { duplicated() }\n",
-                ),
-            ]);
-            let twin_roots = vec![twin.0.to_string_lossy().into_owned()];
-            assert!(
-                required_bare_reference_admission_completion_failure(&twin_roots)
-                    .is_some_and(|f| f.contains("bypassed")),
-                "a judgment of OTHER roots is not a judgment of these"
-            );
-            let ok = run_required_bare_reference_admission(&twin_roots).unwrap();
-            assert!(ok.contains("judged=2 pool=2"), "{ok}");
-            assert_eq!(
-                required_bare_reference_admission_completion_failure(&twin_roots),
-                None
-            );
-        })
-        .join()
-        .expect("the twin's judgment thread");
+        let twin = Fixture::new(&[
+            ("a.dag", "module frontier\nfn duplicated() -> Int { 1 }\n"),
+            (
+                "c.dag",
+                "module frontier.child.consumer\nfn read() -> Int { duplicated() }\n",
+            ),
+        ]);
+        let twin_roots = vec![twin.0.to_string_lossy().into_owned()];
+        assert!(
+            required_bare_reference_admission_completion_failure(&twin_roots)
+                .is_some_and(|f| f.contains("bypassed")),
+            "a judgment of OTHER roots is not a judgment of these"
+        );
+        // The twin is a separate qualification subject, not a second resident
+        // production pool. Preserve the cross-root bypass check above, then end
+        // the bad subject's index lifetime before evaluating the clean subject.
+        drop(index);
+        reset_process_shared_index_for_test();
+        let ok = run_required_bare_reference_admission(&twin_roots).unwrap();
+        assert!(ok.contains("judged=2 pool=2"), "{ok}");
+        assert_eq!(
+            required_bare_reference_admission_completion_failure(&twin_roots),
+            None
+        );
         reset_bare_reference_admission_completion_for_test();
     }
 

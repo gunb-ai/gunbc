@@ -810,21 +810,21 @@ pub(crate) fn floor_git_diff_name_status_range() -> Result<(Vec<String>, HashSet
     }
 }
 
-/// The ceilings the CHANGED cost-debt witnesses of ONE FILE are judged against, read from
+/// The ceiling a CHANGED cost-debt witness is judged against, read from
 /// `v2.workflow.floor_cost_debt_edit` `cost_debt_changed_witness_ceilings_at_base` (operator ruling,
-/// 2026-09-19; one call per file, operator ruling 2026-10-01). The `.dag` shows the base, lexes the
-/// base and head files once each, selects every function's declaration from those two streams, decides whether each edit
+/// 2026-09-19). The `.dag` shows the base, tokenizes both declarations, decides whether the edit
 /// is a pure conjunct removal and selects the tier and its budget. THE HOST'S SHARE ENDS AT TWO
 /// READS the fold cannot perform from here: the head file's bytes, and which comparison base the
 /// floor already resolved -- plus the floor's own discovered test-fn identities, which the model
-/// resolves a removed call against. Returns the model's edit label (for the receipt) and the budget in steps.
+/// resolves a removed call against. Returns an exact identity map of the model's edit labels and budgets.
+/// Tokenization is shared only within this observed file pair, never across revisions.
 pub(crate) fn cost_debt_changed_witness_ceilings(
     base: &str,
     rel_path: &str,
     functions: &[String],
     head_source: &str,
     test_fn_identities: &[String],
-) -> Result<Vec<(String, u64)>, String> {
+) -> Result<HashMap<String, (String, u64)>, String> {
     use v1_interpreter::Value;
     let roots = default_source_roots();
     let entry = "src/v2/workflow/floor_cost_debt_edit.dag";
@@ -851,60 +851,55 @@ pub(crate) fn cost_debt_changed_witness_ceilings(
         false,
     )
     .map_err(|e| format!("cost_debt_changed_witness_ceilings_at_base: {e}"))?;
-    let rows = match &result {
-        Value::List(items) => items.iter().cloned().collect::<Vec<_>>(),
-        other => {
-            return Err(format!(
-                "cost_debt_changed_witness_ceilings_at_base returned `{}`, expected a List of \
-                 CostDebtChangedWitnessCeiling",
-                ctx.format_value(other)
-            ))
-        }
+    let Value::List(rows) = &result else {
+        return Err("cost-debt batch did not return a list".to_string());
     };
-    if rows.len() != functions.len() {
-        return Err(format!(
-            "cost_debt_changed_witness_ceilings_at_base returned {} ceiling(s) for {} function(s); \
-             the result is aligned with its input or it is not a decision",
-            rows.len(),
-            functions.len()
-        ));
+    let expected: HashSet<&str> = functions.iter().map(String::as_str).collect();
+    if expected.len() != functions.len() {
+        return Err("cost-debt batch requested duplicate identities".to_string());
     }
-    rows.iter()
-        .map(|row| {
-            let Value::Record { fields, .. } = row else {
-                return Err(format!(
-                    "ceiling row `{}` is not a CostDebtChangedWitnessCeiling",
-                    ctx.format_value(row)
-                ));
-            };
-            // THE LABEL IS THE MODEL'S (`cost_debt_edit_label`); the host prints it and mints no wording.
-            let edit = match ctx.field(fields, "label") {
-                Some(Value::Str(label)) => label.to_string(),
+    let mut out = HashMap::new();
+    for row in rows.iter() {
+        let Value::Record { fields, .. } = row else {
+            return Err("cost-debt batch row is not a record".to_string());
+        };
+        let name = match ctx.field(fields, "function") {
+            Some(Value::Str(name)) => name.to_string(),
+            _ => return Err("cost-debt batch row has no function".to_string()),
+        };
+        if !expected.contains(name.as_str()) || out.contains_key(&name) {
+            return Err(format!(
+                "cost-debt batch returned unexpected or duplicate identity {name}"
+            ));
+        }
+        let fields = match ctx.field(fields, "ceiling") {
+            Some(Value::Record { fields, .. }) => fields,
+            _ => return Err("cost-debt batch row has no ceiling".to_string()),
+        };
+        // THE LABEL IS THE MODEL'S (`cost_debt_edit_label`); the host prints it and mints no wording.
+        let edit = match ctx.field(fields, "label") {
+            Some(Value::Str(label)) => label.to_string(),
+            _ => return Err("CostDebtChangedWitnessCeiling carries no `label` String".to_string()),
+        };
+        let budget = match ctx.field(fields, "budget") {
+            Some(Value::Record {
+                fields: measure, ..
+            }) => match ctx.field(measure, "count") {
+                Some(Value::Int(n)) if *n > 0 => *n as u64,
                 _ => {
                     return Err(
-                        "CostDebtChangedWitnessCeiling carries no `label` String".to_string()
+                        "CostDebtChangedWitnessCeiling.budget has no positive count".to_string()
                     )
                 }
-            };
-            let budget = match ctx.field(fields, "budget") {
-                Some(Value::Record {
-                    fields: measure, ..
-                }) => match ctx.field(measure, "count") {
-                    Some(Value::Int(n)) if *n > 0 => *n as u64,
-                    _ => {
-                        return Err("CostDebtChangedWitnessCeiling.budget has no positive count"
-                            .to_string())
-                    }
-                },
-                _ => {
-                    return Err(
-                        "CostDebtChangedWitnessCeiling carries no budget Measure".to_string()
-                    )
-                }
-            };
-            Ok((edit, budget))
-        })
-        .collect()
+            },
+            _ => return Err("CostDebtChangedWitnessCeiling carries no budget Measure".to_string()),
+        };
+        out.insert(name, (edit, budget));
+    }
+    if out.len() != expected.len() {
+        return Err("cost-debt batch omitted requested identities".to_string());
+    }
+    Ok(out)
 }
 
 /// One file's content at the resolved diff base (`v2.workflow.floor_diff_observe`
@@ -9298,8 +9293,6 @@ pub fn run_required_floor(
     };
     // The control for the one-judgment-per-file rule: judgments (each lexing base and head once)
     // must equal changed files, not changed identities.
-    let mut cost_debt_edit_files_judged = 0usize;
-    let mut cost_debt_edit_identities_judged = 0usize;
     for file in files {
         let matched_prefix = long_home_prefixes
             .iter()
@@ -9313,57 +9306,7 @@ pub fn run_required_floor(
         let inside_required_gate = required_gate_admits(&file.module_path);
         let path_is_long = is_long_home_path(&file.path);
         let storage_agreement = long_home_storage_agreement(path_is_long, long_home);
-        // ONE JUDGMENT PER CHANGED FILE (operator ruling 2026-10-01). The edit judgment lexes the
-        // base and head files; called once per identity it lexed each file once per changed
-        // cost-debt witness in it, and on a 125 KB witness file two such witnesses held site
-        // projection past the 90-minute cap (run 36856989404). Every changed cost-debt witness of
-        // this file that reaches the budget arm below is judged in one call, against two lexes.
-        let file_cost_debt_functions: Vec<String> =
-            if prepared_module_paths.contains(&file.module_path) {
-                file.functions
-                    .iter()
-                    .filter(|function| {
-                        let identity = format!("{}.{}", file.module_path, function);
-                        changed_witness_set.contains(&identity)
-                            && cost_debt_roster.contains(&identity)
-                            && !corpus_census.contains_key(&identity)
-                            && !grandfathered_roster.contains(&identity)
-                    })
-                    .cloned()
-                    .collect()
-            } else {
-                Vec::new()
-            };
-        let file_cost_debt_ceilings: HashMap<String, (String, u64)> = if file_cost_debt_functions
-            .is_empty()
-        {
-            HashMap::new()
-        } else {
-            let base = floor_diff_comparison_readout()?.base().to_string();
-            let rel_path = normalize_repo_path(&workspace_relative_repo_path(&file.path));
-            let head_source = std::fs::read_to_string(&file.path)
-                .map_err(|e| format!("changed cost-debt witness file {}: read: {e}", file.path))?;
-            let ceilings = cost_debt_changed_witness_ceilings(
-                &base,
-                &rel_path,
-                &file_cost_debt_functions,
-                &head_source,
-                &discovered_test_fn_identities,
-            )
-            .map_err(|e| {
-                format!(
-                    "REQUIRED-FLOOR REFUSAL cause=CostDebtEditUnobserved file={} — {e}",
-                    file.path
-                )
-            })?;
-            cost_debt_edit_files_judged += 1;
-            cost_debt_edit_identities_judged += file_cost_debt_functions.len();
-            file_cost_debt_functions
-                .iter()
-                .cloned()
-                .zip(ceilings)
-                .collect()
-        };
+        let mut file_cost_debt_ceilings: Option<HashMap<String, (String, u64)>> = None;
         for function in &file.functions {
             let identity = format!("{}.{}", file.module_path, function);
             // ONE SITE PER QUALIFIED IDENTITY, REFUSED OVER THE WHOLE OFFERED POPULATION.
@@ -9494,17 +9437,45 @@ pub fn run_required_floor(
                     grandfathered_eval_step_budget
                 } else if cost_debt_roster.contains(&identity) {
                     let base = floor_diff_comparison_readout()?.base().to_string();
-                    let (edit, budget) = file_cost_debt_ceilings
-                        .get(function)
-                        .cloned()
-                        .ok_or_else(|| {
+                    let rel_path = normalize_repo_path(&workspace_relative_repo_path(&file.path));
+                    if file_cost_debt_ceilings.is_none() {
+                        let head_source = std::fs::read_to_string(&file.path).map_err(|e| {
                             format!(
-                                "REQUIRED-FLOOR REFUSAL cause=CostDebtEditUnobserved \
-                                 identity={identity} — the per-file judgment of {} did not \
-                                 cover this changed cost-debt witness",
+                                "changed cost-debt witness {identity}: read {}: {e}",
                                 file.path
                             )
                         })?;
+                        let functions: Vec<String> = file
+                            .functions
+                            .iter()
+                            .filter(|name| {
+                                let id = format!("{}.{}", file.module_path, name);
+                                changed_witness_set.contains(&id)
+                                    && cost_debt_roster.contains(&id)
+                                    && !grandfathered_roster.contains(&id)
+                                    && !corpus_census.contains_key(&id)
+                            })
+                            .cloned()
+                            .collect();
+                        let classification_started = std::time::Instant::now();
+                        eprintln!(
+                            "[floor-cost-debt-file] begin path={rel_path} identities={}",
+                            functions.len()
+                        );
+                        file_cost_debt_ceilings = Some(cost_debt_changed_witness_ceilings(
+                            &base, &rel_path, &functions, &head_source,
+                            &discovered_test_fn_identities,
+                        ).map_err(|e| format!(
+                            "REQUIRED-FLOOR REFUSAL cause=CostDebtEditUnobserved identity={identity} — {e}"
+                        ))?);
+                        eprintln!("[floor-cost-debt-file] complete path={rel_path} identities={} elapsed_ms={}",
+                            functions.len(), classification_started.elapsed().as_millis());
+                    }
+                    let (edit, budget) = file_cost_debt_ceilings
+                        .as_ref()
+                        .and_then(|rows| rows.get(function))
+                        .cloned()
+                        .ok_or_else(|| format!("cost-debt batch missing {identity}"))?;
                     eprintln!(
                         "[floor-cost-debt-edit] identity={identity} base={base} edit={edit} \
                          eval_step_budget={budget}"
@@ -9833,11 +9804,6 @@ pub fn run_required_floor(
             }
         }
     }
-    eprintln!(
-        "[floor-cost-debt-edit] judgments={cost_debt_edit_files_judged} \
-         changed_identities={cost_debt_edit_identities_judged} -- one judgment (two lexes) per \
-         changed file, never per identity"
-    );
     eprintln!(
         "[floor-phase] phase=site-projection state=completed wall_ms={} declared={} sites={} \
          files={} claims={} declined_long={} declined_fixture={} declined_outside_gate={} \
