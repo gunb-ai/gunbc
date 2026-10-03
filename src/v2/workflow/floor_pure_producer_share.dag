@@ -765,6 +765,14 @@ import v2.std.collection { List }
 // arithmetic. The same change's v2.test.claim.parse.expression_bodied_continuation reads each source's
 // parse-then-normalize verdict through one nullary Bool producer per source, WARM because a prepared parse plus
 // normalize is past one claim's budget.
+// v2.test.claim.field_projection.field_projection_stages (gunbc#12506, twenty rows refused
+// enrolment_measured_over_margin on run 37071586760) reads each of its fourteen fixture programs through one
+// nullary `fps_*_reading` producer -- one assemble and one infer answering decided Bools, an Optional<Bool>
+// and an Optional<Node> -- plus the already-nullary Int-parameter comparison basis; rows over the same
+// program share its producer. WARM for the same arithmetic: each producer is one front end.
+// v2.test.claim.match_binder.match_binder_typing (five rows, same run) reads its four source-route programs
+// through one nullary `mbt_*_reading` producer each -- the reason chain, two fact Symbols and one located
+// Bool -- WARM likewise; its supplied-input rows were never over the margin and are untouched.
 // THE NEWLINE-REFUSAL MUTATION'S TWO GRAMMAR FACTS ARE SUPPLIED, NOT RE-DERIVED PER CLAIM.
 // v2.test.parse.newline_dual_role_operator_mutation discriminates the newline-`-` refusal by parsing
 // three one-line sources under the live grammar and under a mutant with every RefuseOnMatch arm
@@ -781,6 +789,24 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.parse.expression_bodied_continuation.cont_braced_survives_normalize",
   "v2.test.claim.parse.expression_bodied_continuation.cont_expression_bodied_survives_normalize",
   "v2.test.claim.parse.expression_bodied_continuation.cont_expression_bodied_literal_survives_normalize",
+  "v2.test.claim.field_projection.field_projection_stages.fps_no_projection_reading",
+  "v2.test.claim.field_projection.field_projection_stages.fps_valid_field_reading",
+  "v2.test.claim.field_projection.field_projection_stages.fps_absent_field_reading",
+  "v2.test.claim.field_projection.field_projection_stages.fps_two_field_tree_reading",
+  "v2.test.claim.field_projection.field_projection_stages.fps_two_field_flag_reading",
+  "v2.test.claim.field_projection.field_projection_stages.fps_int_parameter_type_optional",
+  "v2.test.claim.field_projection.field_projection_stages.fps_match_binder_reading",
+  "v2.test.claim.field_projection.field_projection_stages.fps_root_data_projection_reading",
+  "v2.test.claim.field_projection.field_projection_stages.fps_qualified_declaration_path_reading",
+  "v2.test.claim.field_projection.field_projection_stages.fps_cross_module_projection_reading",
+  "v2.test.claim.field_projection.field_projection_stages.fps_same_module_projection_reading",
+  "v2.test.claim.field_projection.field_projection_stages.fps_unresolvable_provider_reading",
+  "v2.test.claim.field_projection.field_projection_stages.fps_scalar_receiver_reading",
+  "v2.test.claim.field_projection.field_projection_stages.fps_same_module_projection_in_two_root_reading",
+  "v2.test.claim.match_binder.match_binder_typing.mbt_positive_reading",
+  "v2.test.claim.match_binder.match_binder_typing.mbt_hiding_reading",
+  "v2.test.claim.match_binder.match_binder_typing.mbt_seven_reading",
+  "v2.test.claim.match_binder.match_binder_typing.mbt_constructor_body_reading",
   "v2.test.claim.text_string_importer_census.tsic_real_route_outcome",
   "v2.test.claim.text_string_importer_census.tsic_window_coverage_outcome",
   "v2.test.claim.text_string_importer_census.tsil_literal_rows_outcome",

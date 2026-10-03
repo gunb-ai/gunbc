@@ -2,7 +2,7 @@ module v2.test.claim.field_projection.field_projection_stages
 
 import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.infer { infer }
-import v2.compiler.inferred_tree { InferredTree }
+import v2.compiler.inferred_tree { InferredTree, ObligatedInferredTree }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.compiler.source_authority { DagSourceReadWitness }
@@ -76,9 +76,13 @@ import v2.std.optional { Absent, Optional, Present, optional_absent, optional_pr
 // WHAT WOULD ACTUALLY MOVE THEIR COST is not a narrower claim but a provider for the demand: their
 // nullary source producers are pure functions of module-constant text, which is the shape
 // v2.workflow.floor_pure_producer_share already serves across claims for hundreds of peer fixtures,
-// including the per-fixture assembled and resolved trees rostered there. Enrolment is NOT asserted or
-// proposed here, because that roster's own admission criterion is a measured serve-below-recompute on
-// a required-floor receipt, which this file cannot produce; naming the route is the honest half.
+// including the per-fixture assembled and resolved trees rostered there. THAT ROUTE IS NOW TAKEN
+// (gunbc#12506, whose required floor refused twenty of these rows as enrolment_measured_over_margin):
+// each fixture program is read ONCE by a nullary `fps_*_reading` producer, enrolled WARM in
+// v2.workflow.floor_pure_producer_share, and every row over that program reads the decided value. The
+// producer IS the real path -- assemble, resolve and infer on authored text -- so no row stops
+// executing it; what stops is re-executing it once per row. The reading carries decided, portable
+// values only (Bools, an Optional<Bool>, an Optional<Node>), never a tree or a context.
 data fps_artifact: Artifact = Artifact {
   kind: SourceFile,
   id: ^field_projection_stages_artifact,
@@ -121,47 +125,120 @@ fn fps_no_projection_source() -> Outcome<ResolvedTree> {
   fps_assemble(src: "module p\n\ntype Box {\n  tree: Int\n}\n\nfn f(b: Box) -> Int {\n  7\n}\n")
 }
 
-fn fps_resolves(o: Outcome<ResolvedTree>) -> Bool {
+// WHAT ONE FIXTURE PROGRAM ESTABLISHES, decided once over ONE assemble and ONE infer. Each field is
+// what a row used to compute inline, at the same route and with the same failure arms: a program
+// refused at resolve answers false/Absent for everything inference would have said, and a program
+// refused at infer answers Absent for the projection. The two refusal-reason fields are read through
+// v2.std.diagnostic diagnostics_has_reason, the chain's existing reader, over the infer refusal only.
+type FpsReading {
+  resolves: Bool
+  resolve_refused_unbound: Bool
+  resolved_carries_projection: Bool
+  infers: Bool
+  infer_refused_receiver_unavailable: Bool
+  infer_refused_declares_no_fields: Bool
+  projection_grounded: Optional<Bool>
+  projection_type: Optional<Node>
+}
+
+fn fps_reading_of(o: Outcome<ResolvedTree>) -> FpsReading {
   match o {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: r } => FpsReading {
+      resolves: false,
+      resolve_refused_unbound: r.head.reason == ^resolve_reason_unbound_symbol,
+      resolved_carries_projection: false,
+      infers: false,
+      infer_refused_receiver_unavailable: false,
+      infer_refused_declares_no_fields: false,
+      projection_grounded: optional_absent(),
+      projection_type: optional_absent()
+    }
+    Accepted { value: resolved, diagnostics: _ } =>
+      fps_reading_of_inferred(
+        carries: fps_carries_projection(root: resolved.root),
+        inferred: infer(tree: resolved)
+      )
   }
 }
 
-fn fps_infers(o: Outcome<ResolvedTree>) -> Bool {
-  match o {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: resolved, diagnostics: _ } =>
-      match infer(tree: resolved) {
-        Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
+fn fps_reading_of_inferred(carries: Bool, inferred: Outcome<ObligatedInferredTree>) -> FpsReading {
+  match inferred {
+    Rejected { diagnostics: r } => FpsReading {
+      resolves: true,
+      resolve_refused_unbound: false,
+      resolved_carries_projection: carries,
+      infers: false,
+      infer_refused_receiver_unavailable: diagnostics_has_reason(d: Some { diagnostics: r }, reason: ^infer_reason_projection_receiver_declaration_unavailable),
+      infer_refused_declares_no_fields: diagnostics_has_reason(d: Some { diagnostics: r }, reason: ^infer_reason_projection_receiver_declares_no_fields),
+      projection_grounded: optional_absent(),
+      projection_type: optional_absent()
+    }
+    Accepted { value: tree, diagnostics: _ } => FpsReading {
+      resolves: true,
+      resolve_refused_unbound: false,
+      resolved_carries_projection: carries,
+      infers: true,
+      infer_refused_receiver_unavailable: false,
+      infer_refused_declares_no_fields: false,
+      projection_grounded: fps_grounding_of(facts: fps_projection_facts_in(inferred: tree)),
+      projection_type: fps_type_of(facts: fps_projection_facts_in(inferred: tree))
+    }
+  }
+}
+
+fn fps_carries_projection(root: Node) -> Bool {
+  match fps_projection_node_optional(root: root) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn fps_grounding_of(facts: Optional<InferredFacts>) -> Optional<Bool> {
+  match facts {
+    Absent => optional_absent()
+    Present { value: f } => optional_present(value: inferred_facts_grounding_derived(facts: f))
+  }
+}
+
+fn fps_type_of(facts: Optional<InferredFacts>) -> Optional<Node> {
+  match facts {
+    Absent => optional_absent()
+    Present { value: f } =>
+      match inferred_facts_resolved_type(facts: f) {
+        Violates { diagnostic: _ } => optional_absent()
+        Holds { value: ty } => optional_present(value: ty)
       }
   }
 }
 
+// THE WARM PRODUCERS, one per fixture program; each is listed in floor_cross_claim_pure_producers_warm.
+fn fps_no_projection_reading() -> FpsReading { fps_reading_of(o: fps_no_projection_source()) }
+fn fps_valid_field_reading() -> FpsReading { fps_reading_of(o: fps_valid_field_source()) }
+fn fps_absent_field_reading() -> FpsReading { fps_reading_of(o: fps_absent_field_source()) }
+
 // THE FIXTURE'S POSITIVE CONTROL: the receiver alone reaches resolve and infer, so a red below is
 // about the projection and not about the parameter, the record declaration or the assembly.
 test fn fps_the_receiver_without_a_projection_resolves_holds() -> Bool {
-  fps_resolves(o: fps_no_projection_source())
+  fps_no_projection_reading().resolves
 }
 
 test fn fps_the_receiver_without_a_projection_infers_holds() -> Bool {
-  fps_infers(o: fps_no_projection_source())
+  fps_no_projection_reading().infers
 }
 
 test fn fps_a_valid_field_projection_resolves_holds() -> Bool {
-  fps_resolves(o: fps_valid_field_source())
+  fps_valid_field_reading().resolves
 }
 
 test fn fps_a_valid_field_projection_infers_holds() -> Bool {
-  fps_infers(o: fps_valid_field_source())
+  fps_valid_field_reading().infers
 }
 
 // AN ABSENT FIELD MUST NOT BE ADMITTED. Asserted as a refusal at whatever stage currently refuses it,
 // so this claim stays honest before and after the repair: what it forbids is ACCEPTANCE, which is the
 // property that must never hold.
 test fn fps_an_absent_field_does_not_infer_holds() -> Bool {
-  !fps_infers(o: fps_absent_field_source())
+  !fps_absent_field_reading().infers
 }
 
 fn fps_projection_node_optional(root: Node) -> Optional<Node> {
@@ -181,34 +258,26 @@ fn fps_projection_node_optional(root: Node) -> Optional<Node> {
   )
 }
 
-fn fps_projection_facts(o: Outcome<ResolvedTree>) -> Optional<InferredFacts> {
-  match o {
-    Rejected { diagnostics: _ } => optional_absent()
-    Accepted { value: resolved, diagnostics: _ } =>
-      match infer(tree: resolved) {
-        Rejected { diagnostics: _ } => optional_absent()
-        Accepted { value: inferred, diagnostics: _ } =>
-          match fps_projection_node_optional(root: inferred.root) {
-            Absent => optional_absent()
-            Present { value: proj } => inferred.facts.lookup(proj)
-          }
-      }
+fn fps_projection_facts_in(inferred: ObligatedInferredTree) -> Optional<InferredFacts> {
+  match fps_projection_node_optional(root: inferred.root) {
+    Absent => optional_absent()
+    Present { value: proj } => inferred.facts.lookup(proj)
   }
 }
 
 // THE PROJECTION EXISTS IN THE RESOLVED TREE AT ALL. Separate from whether it grounds, because a tree
 // with no projection node would make every grounding claim below vacuous in the other direction.
 test fn fps_the_resolved_tree_carries_a_field_projection_holds() -> Bool {
-  match fps_projection_facts(o: fps_valid_field_source()) {
+  match fps_valid_field_reading().projection_grounded {
     Present { value: _ } => true
     Absent => false
   }
 }
 
 test fn fps_a_valid_field_projection_grounds_holds() -> Bool {
-  match fps_projection_facts(o: fps_valid_field_source()) {
+  match fps_valid_field_reading().projection_grounded {
     Absent => false
-    Present { value: facts } => inferred_facts_grounding_derived(facts: facts)
+    Present { value: derived } => derived
   }
 }
 
@@ -236,6 +305,9 @@ fn fps_two_field_source(field: String) -> Outcome<ResolvedTree> {
 fn fps_field_declared_type(field: String) -> String {
   if field == "flag" { "Bool" } else { "Int" }
 }
+
+fn fps_two_field_tree_reading() -> FpsReading { fps_reading_of(o: fps_two_field_source(field: "tree")) }
+fn fps_two_field_flag_reading() -> FpsReading { fps_reading_of(o: fps_two_field_source(field: "flag")) }
 
 fn fps_inferred_of(o: Outcome<ResolvedTree>) -> Optional<InferredTree> {
   match o {
@@ -308,10 +380,10 @@ fn fps_body_atom_type_optional(inferred: InferredTree) -> Optional<Node> {
 }
 
 test fn fps_two_fields_of_different_types_ground_differently_holds() -> Bool {
-  match fps_grounded_type_optional(o: fps_two_field_source(field: "tree")) {
+  match fps_two_field_tree_reading().projection_type {
     Absent => false
     Present { value: int_ty } =>
-      match fps_grounded_type_optional(o: fps_two_field_source(field: "flag")) {
+      match fps_two_field_flag_reading().projection_type {
         Absent => false
         Present { value: bool_ty } =>
           !infer_type_equal_ignoring_provenance(a: int_ty, b: bool_ty)
@@ -320,24 +392,13 @@ test fn fps_two_fields_of_different_types_ground_differently_holds() -> Bool {
 }
 
 test fn fps_the_int_field_grounds_as_an_int_parameter_does_holds() -> Bool {
-  match fps_grounded_type_optional(o: fps_two_field_source(field: "tree")) {
+  match fps_two_field_tree_reading().projection_type {
     Absent => false
     Present { value: field_ty } =>
       match fps_int_parameter_type_optional() {
         Absent => false
         Present { value: param_ty } =>
           infer_type_equal_ignoring_provenance(a: field_ty, b: param_ty)
-      }
-  }
-}
-
-fn fps_grounded_type_optional(o: Outcome<ResolvedTree>) -> Optional<Node> {
-  match fps_projection_facts(o: o) {
-    Absent => optional_absent()
-    Present { value: facts } =>
-      match inferred_facts_resolved_type(facts: facts) {
-        Violates { diagnostic: _ } => optional_absent()
-        Holds { value: ty } => optional_present(value: ty)
       }
   }
 }
@@ -473,8 +534,10 @@ fn fps_match_binder_source(field: String) -> Outcome<ResolvedTree> {
 
 // RESOLVE REACHES THE MATCH BINDER'S PROJECTION: the head is bound on the chain and the whole path names
 // no declaration, so resolve commits the projection shape exactly as it does for a parameter receiver.
+fn fps_match_binder_reading() -> FpsReading { fps_reading_of(o: fps_match_binder_source(field: "tree")) }
+
 test fn fps_a_match_binder_receiver_resolves_holds() -> Bool {
-  fps_resolves(o: fps_match_binder_source(field: "tree"))
+  fps_match_binder_reading().resolves
 }
 
 // A MATCH-ARM BINDER AS A RECEIVER IS NOT YET TYPED, AND THIS ROW PINS EXACTLY HOW. It is the population of
@@ -495,36 +558,19 @@ test fn fps_a_match_binder_receiver_resolves_holds() -> Bool {
 // Those are the discriminating positive controls. RESTORATION TRIGGER, the drop's: match-arm binder typing
 // through the lexical-binding carrier (N7-3). This row then flips to the projection grounded, and under DESIGN
 // section 4b(4) it stays as the control that the restoration is real.
+// projection_grounded is Present only on exactly that route (resolved, inferred, the projection node found
+// in the inferred tree, its facts present), so Absent -- any refusal, a missing node, missing facts -- reds it.
 test fn fps_a_match_binder_receiver_is_not_yet_typed_holds() -> Bool {
-  match fps_match_binder_source(field: "tree") {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: resolved, diagnostics: _ } =>
-      match infer(tree: resolved) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: inferred, diagnostics: _ } =>
-          match fps_projection_node_optional(root: inferred.root) {
-            Absent => false
-            Present { value: proj } =>
-              match inferred.facts.lookup(proj) {
-                Absent => false
-                Present { value: facts } => !inferred_facts_grounding_derived(facts: facts)
-              }
-          }
-      }
+  match fps_match_binder_reading().projection_grounded {
+    Absent => false
+    Present { value: derived } => !derived
   }
 }
 
 // THE PROJECTION NODE IS THERE, IN THE RESOLVED TREE, so the row above is about a receiver whose projection
 // resolve really built, read independently of infer.
 test fn fps_a_match_binder_projection_is_in_the_resolved_tree_holds() -> Bool {
-  match fps_match_binder_source(field: "tree") {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: resolved, diagnostics: _ } =>
-      match fps_projection_node_optional(root: resolved.root) {
-        Present { value: _ } => true
-        Absent => false
-      }
-  }
+  fps_match_binder_reading().resolved_carries_projection
 }
 
 
@@ -560,11 +606,10 @@ fn fps_root_data_projection_source() -> Outcome<ResolvedTree> {
 // NEXT TRIGGER: a module-level value binding that the scope chain answers for. Until then the 3d repair's
 // scope claim is "a namespace segment may not be projected through", and this row is what keeps it from
 // being read as "only a lexical binder may have fields".
+fn fps_root_data_projection_reading() -> FpsReading { fps_reading_of(o: fps_root_data_projection_source()) }
+
 test fn fps_a_root_bound_data_value_is_not_yet_projectable_holds() -> Bool {
-  match fps_root_data_projection_source() {
-    Rejected { diagnostics: r } => r.head.reason == ^resolve_reason_unbound_symbol
-    Accepted { value: _, diagnostics: _ } => false
-  }
+  fps_root_data_projection_reading().resolve_refused_unbound
 }
 
 // BOTH READINGS OF A DOTTED PATH, QUALIFIED TOGETHER. v2.compiler.resolve resolve_dotted_path_reading
@@ -612,9 +657,7 @@ fn fps_qualified_declaration_path_source() -> Outcome<ResolvedTree> {
   )
 }
 
-fn fps_frame_binder_projection_source() -> Outcome<ResolvedTree> {
-  fps_assemble(src: "module p\n\ntype Box {\n  tree: Int\n}\n\nfn f(b: Box) -> Int {\n  b.tree\n}\n")
-}
+fn fps_qualified_declaration_path_reading() -> FpsReading { fps_reading_of(o: fps_qualified_declaration_path_source()) }
 
 // (1) A QUALIFIED DECLARATION PATH RESOLVES. A four-segment cross-module path names a declaration the
 // corpus carries, so the head segment being bound at root must NOT make the path a projection of a field off
@@ -622,10 +665,7 @@ fn fps_frame_binder_projection_source() -> Outcome<ResolvedTree> {
 // refusal in miniature, and that attribution was falsified -- the eight's actual cause entry anchors a real
 // two-edge projection off a fold-step binder, which resolution never sees. This row stands on the rule.
 test fn fps_a_qualified_declaration_path_resolves_holds() -> Bool {
-  match fps_qualified_declaration_path_source() {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
+  fps_qualified_declaration_path_reading().resolves
 }
 
 // (2) AND A FRAME BINDER IS STILL PROJECTED THROUGH. `b.tree` off a parameter is the form the declaration
@@ -636,16 +676,16 @@ test fn fps_a_qualified_declaration_path_resolves_holds() -> Bool {
 // THE PAIR IS THE EVIDENCE, NOT EITHER ROW. A resolver that read every dotted path as a declaration passes
 // (1) and reds (2); one that read every dotted path as a projection passes (2) and reds (1). Only a real
 // discriminator passes both, which is the discriminating red the single-arm controls could not supply.
+//
+// ITS PROGRAM IS fps_valid_field_source, byte for byte -- a parameter `b: Box` projected as `b.tree` -- so it
+// reads that program's reading rather than assembling a second copy of the same text.
 test fn fps_a_frame_binder_is_still_projected_through_holds() -> Bool {
-  match fps_frame_binder_projection_source() {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
+  fps_valid_field_reading().resolves
 }
 
 // THE RETRIEVAL JOIN, MEASURED THROUGH INFER AND NOT ONLY RESOLVE. The rows above establish that a
 // cross-module declaration path RESOLVES; they say nothing about whether inference can then retrieve that
-// declaration to read a field off it, because fps_resolves stops at the resolved tree. That retrieval is
+// declaration to read a field off it, because a reading's resolves field stops at the resolved tree. That retrieval is
 // v2.compiler.infer infer_projection_receiver asking ResolvedTree.resolved_declarations for the receiver
 // type's declaring path -- and resolved_declarations is filled from the resolved root of the module being
 // inferred, not from a closure-wide index of the providers it imports.
@@ -666,16 +706,19 @@ fn fps_same_module_projection_source() -> Outcome<ResolvedTree> {
   fps_assemble(src: "module p\n\ntype Leg {\n  target: Int\n}\n\nfn read(l: Leg) -> Int {\n  l.target\n}\n")
 }
 
+fn fps_cross_module_projection_reading() -> FpsReading { fps_reading_of(o: fps_cross_module_projection_source()) }
+fn fps_same_module_projection_reading() -> FpsReading { fps_reading_of(o: fps_same_module_projection_source()) }
+
 // (1) POSITIVE CONTROL. Without it a red on (2) proves nothing -- the field reader and the projection rule
 // must work same-module before the cross-module retrieval is the question.
 test fn fps_a_same_module_record_projection_infers_holds() -> Bool {
-  fps_infers(o: fps_same_module_projection_source())
+  fps_same_module_projection_reading().infers
 }
 
 // (2) THE SUBJECT. A red here beside a green (1) locates the defect at the retrieval of an imported record's
 // declaration, and NOT at the projection rule, the field reader or resolution.
 test fn fps_a_cross_module_record_projection_infers_holds() -> Bool {
-  fps_infers(o: fps_cross_module_projection_source())
+  fps_cross_module_projection_reading().infers
 }
 
 // ASSERTED OVER THE WHOLE CHAIN, NOT THE HEAD. An infer refusal's head is infer_grounding_not_derived --
@@ -709,17 +752,13 @@ fn fps_unresolvable_provider_source() -> Outcome<ResolvedTree> {
   )
 }
 
+fn fps_unresolvable_provider_reading() -> FpsReading { fps_reading_of(o: fps_unresolvable_provider_source()) }
+
+// Both reason fields are set only on an infer REFUSAL of a resolved program, so an accepted or
+// resolve-refused program answers false here exactly as the inline route did.
 test fn fps_an_unresolvable_provider_leaves_its_declaration_unavailable_holds() -> Bool {
-  match fps_unresolvable_provider_source() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: resolved, diagnostics: _ } =>
-      match infer(tree: resolved) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: r } =>
-          diagnostics_has_reason(d: Some { diagnostics: r }, reason: ^infer_reason_projection_receiver_declaration_unavailable)
-            && !diagnostics_has_reason(d: Some { diagnostics: r }, reason: ^infer_reason_projection_receiver_declares_no_fields)
-      }
-  }
+  fps_unresolvable_provider_reading().infer_refused_receiver_unavailable
+    && !fps_unresolvable_provider_reading().infer_refused_declares_no_fields
 }
 
 // (4) AND A RECEIVER THAT GENUINELY DECLARES NO FIELDS STILL SAYS SO. The split is only honest if the OTHER
@@ -730,16 +769,10 @@ fn fps_scalar_receiver_source() -> Outcome<ResolvedTree> {
   fps_assemble(src: "module p\n\nfn read(n: Int) -> Int {\n  n.target\n}\n")
 }
 
+fn fps_scalar_receiver_reading() -> FpsReading { fps_reading_of(o: fps_scalar_receiver_source()) }
+
 test fn fps_a_scalar_receiver_still_declares_no_fields_holds() -> Bool {
-  match fps_scalar_receiver_source() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: resolved, diagnostics: _ } =>
-      match infer(tree: resolved) {
-        Accepted { value: _, diagnostics: _ } => false
-        Rejected { diagnostics: r } =>
-          diagnostics_has_reason(d: Some { diagnostics: r }, reason: ^infer_reason_projection_receiver_declares_no_fields)
-      }
-  }
+  fps_scalar_receiver_reading().infer_refused_declares_no_fields
 }
 
 // DISCRIMINATOR: IS THE DEFECT "CROSS-MODULE" OR "MORE THAN ONE ROOT"? Same-module record and projection as
@@ -753,6 +786,10 @@ fn fps_same_module_projection_in_two_root_ingest() -> Outcome<ResolvedTree> {
   )
 }
 
+fn fps_same_module_projection_in_two_root_reading() -> FpsReading {
+  fps_reading_of(o: fps_same_module_projection_in_two_root_ingest())
+}
+
 test fn fps_a_multi_root_ingest_does_not_itself_break_retrieval_holds() -> Bool {
-  fps_infers(o: fps_same_module_projection_in_two_root_ingest())
+  fps_same_module_projection_in_two_root_reading().infers
 }
