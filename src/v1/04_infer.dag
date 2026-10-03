@@ -14,7 +14,7 @@ import std.target_representation { VariantParentIdentity, VariantParentIdentifie
 import std.kernel_type_name { kernel_type_name, KernelTypeNameAdmitted, NotAKernelTypeName }
 import std.operator_realization { OperandDeclaration }
 import std.literal_elaboration {
-  LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold, BooleanUnfold, UnicodeScalarSequenceUnfold,
+  LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold,
   LiteralElaborationOutcome, DirectLiteral, ViaHomomorphism, LiteralElaborationRefused,
   elaborate_literal_at, literal_source_kind_of, literal_elaboration_refusal_message,
   KernelGrounding, KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous
@@ -8011,16 +8011,6 @@ fn unfold_literal_image(lit: LiteralValue, elaboration: LiteralElaboration, dest
             destination_type: destination_type, span: span
           )
         _ => make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: "literal elaboration: a Peano unfolding row was selected for a non-integer literal (gunbc.structural_realization_bindings keys the row on KernelIntLiteral, so this row is malformed)", span: span)
-      }
-    BooleanUnfold { true_variant: t, false_variant: f } =>
-      match lit {
-        LitBool { value: b } =>
-          elaborated_expr_node(
-            name: if b { t.decl_name as String } else { f.decl_name as String },
-            expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: elaboration.destination.decl_name as String, parent_identity: VariantParentIdentified { key: VariantParentDeclaration { declaration: elaboration.destination } } } } },
-            children: [], destination_type: destination_type, span: span
-          )
-        _ => make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: "literal elaboration: a Boolean unfolding row was selected for a non-boolean literal (gunbc.structural_realization_bindings keys the row on KernelBoolLiteral, so this row is malformed)", span: span)
       }
   }
 }

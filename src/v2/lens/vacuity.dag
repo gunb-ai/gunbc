@@ -32,7 +32,6 @@ import v2.std.optional { Absent, optional_absent, optional_present, Present }
 import v2.std.exact_structural_equality_zip_fold_predicate {
   exact_structural_equality_zip_fold
 }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, Symbol, TypeNode, is_empty_conj_root }
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.text { String }
