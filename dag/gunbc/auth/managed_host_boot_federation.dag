@@ -61,11 +61,12 @@ type BootFederationNames {
 // Mt. Collins unit 1 is the one pair provisioned in GCP and GitHub (pool created 2026-09-24). Any
 // other host is unprovisioned and the admission below refuses it; a row here is added only by
 // provisioning the pair, never to make a host bootable.
+// The pool display name is under the 32-character ceiling createWorkloadIdentityPool enforces
+// (measured on the heal pool).
 fn boot_federation_names(host: HostIdentity) -> BootFederationNames? {
   if host_identity_eq(a: host, b: operator_host_mtcollins1) {
     Present { value: BootFederationNames {
       pool_id: "github-mtcollins1-boot",
-      // Under the 32-character ceiling createWorkloadIdentityPool enforces (measured on the heal pool).
       pool_display_name: "Mt. Collins boot (one job)",
       provider_id: "github-mtcollins1-boot-oidc",
       service_account_id: "mtcollins1-boot",
