@@ -99,7 +99,7 @@ import v2.std.node {
   Symbol,
   TypeNode,
 }
-import v2.std.logic { Bool, bool_boolean_algebra }
+import v2.std.logic { bool_boolean_algebra }
 import std.algebra { Cons, Empty, list_append }
 import v2.std.algebra { BooleanAlgebra, fold_list, list_flat_map, list_map }
 import v2.std.algebra_structure_signature { approximate_field_type_node, boolean_algebra_type_node, commutative_semiring_type_node, free_monoid_type_node, ordered_ring_type_node }
@@ -352,7 +352,7 @@ data swift_nonnumeric_facts_catalog: List<SwiftNonNumericPrimitiveFacts> = [
   swift_facts_void
 ]
 
-data swift_bool_grounding: BooleanAlgebra<v2.std.logic.Bool> = bool_boolean_algebra
+data swift_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 fn swift_atom(id: Symbol) -> Node {
   Node {

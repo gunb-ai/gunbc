@@ -1,7 +1,6 @@
 module test.claim.stage0_linked_partition_crates_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.collection { List }
 import v2.std.text { String }
 import v2.std.algebra { any, length }

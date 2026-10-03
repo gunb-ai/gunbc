@@ -9,7 +9,6 @@ import v2.lens.leaf_model_verification {
 }
 import v2.std.algebra { fold_list, is_empty }
 import v2.std.collection { List }
-import v2.std.logic { Bool }
 import v2.std.leaf_model_verification {
   LeafModelFixturePair,
   TargetCompileAccepted,

@@ -315,10 +315,7 @@ import v2.std.node {
   TypeNode,
   Instantiation,
 }
-import v2.std.logic {
-  Bool,
-  bool_node
-}
+import v2.std.logic { bool_node }
 import std.algebra {
   Empty,
   Cons,

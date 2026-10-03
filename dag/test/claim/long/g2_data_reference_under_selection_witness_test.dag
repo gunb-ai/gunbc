@@ -42,7 +42,6 @@ import v2.std.live_read {
   LocalRead,
   RuntimeRead
 }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import test.claim.scaffold_disposition_census_fixture_witness_test {
   scaffold_disposition_census_pool_facts

@@ -3,7 +3,6 @@ module v2.test.manual.sg1b_signature_realization_failclosed
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.extdeps.languages.rust_sg2_mode2_test { rust_sg2_mode2_shared_target_model }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Edge, Node, Positional, Symbol, TypeNode }
 import v2.std.compilers.target_model {
   FunctionBoundaryParam,

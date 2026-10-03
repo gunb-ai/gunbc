@@ -33,7 +33,6 @@ import v2.std.diagnostic {
   outcome_rejected,
   textual_whole_file_diagnostic
 }
-import v2.std.logic { Bool }
 
 // WHY THIS EXISTS, and why it is not a second path beside the emitter.
 //

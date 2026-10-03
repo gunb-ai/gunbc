@@ -32,7 +32,6 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.optional { Absent, Present }
 import v2.std.node { Node, Symbol, node_subtree_nodes }
 import v2.std.qualified_name {
@@ -89,37 +88,37 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // v2.test.claim.namespace_xl0.field_type_tree_presence). That is a declaration-grafting loss with
 // its own trigger and is measured, not repaired, here: the row at the end of this file asserts the
 // refusal so it reds -- and gets re-stated -- when grafting lands.
-data xl0r_provider_source: String = "module v2.test.xl0r_provider\n\nimport v2.std.logic { Bool }\n\nfn xl0r_provided_fn(p: Bool) -> Bool { p }\n\ndata xl0r_provided_value: Bool = true\n"
+data xl0r_provider_source: String = "module v2.test.xl0r_provider\n\nimport std.types { Bool }\n\nfn xl0r_provided_fn(p: Bool) -> Bool { p }\n\ndata xl0r_provided_value: Bool = true\n"
 
-data xl0r_local_consumer_source: String = "module v2.test.xl0r_local_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_same_module(x: Bool) -> Bool { x }\n"
+data xl0r_local_consumer_source: String = "module v2.test.xl0r_local_consumer\n\nimport std.types { Bool }\n\nfn xl0r_same_module(x: Bool) -> Bool { x }\n"
 
-data xl0r_declared_consumer_source: String = "module v2.test.xl0r_declared_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_uses_provided_fn() -> Bool { v2.test.xl0r_provider.xl0r_provided_fn }\n"
+data xl0r_declared_consumer_source: String = "module v2.test.xl0r_declared_consumer\n\nimport std.types { Bool }\n\nfn xl0r_uses_provided_fn() -> Bool { v2.test.xl0r_provider.xl0r_provided_fn }\n"
 
-data xl0r_undeclared_consumer_source: String = "module v2.test.xl0r_undeclared_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_uses_nothing_declared() -> Bool { v2.test.xl0r_provider.xl0r_no_such_declaration }\n"
+data xl0r_undeclared_consumer_source: String = "module v2.test.xl0r_undeclared_consumer\n\nimport std.types { Bool }\n\nfn xl0r_uses_nothing_declared() -> Bool { v2.test.xl0r_provider.xl0r_no_such_declaration }\n"
 
-data xl0r_data_target_consumer_source: String = "module v2.test.xl0r_data_target_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_uses_provided_value() -> Bool { v2.test.xl0r_provider.xl0r_provided_value }\n"
+data xl0r_data_target_consumer_source: String = "module v2.test.xl0r_data_target_consumer\n\nimport std.types { Bool }\n\nfn xl0r_uses_provided_value() -> Bool { v2.test.xl0r_provider.xl0r_provided_value }\n"
 
-data xl0r_provider_a_source: String = "module v2.test.xl0r_provider_a\n\nimport v2.std.logic { Bool }\n\nfn xl0r_same_leaf(p: Bool) -> Bool { p }\n"
+data xl0r_provider_a_source: String = "module v2.test.xl0r_provider_a\n\nimport std.types { Bool }\n\nfn xl0r_same_leaf(p: Bool) -> Bool { p }\n"
 
-data xl0r_provider_b_source: String = "module v2.test.xl0r_provider_b\n\nimport v2.std.logic { Bool }\n\nfn xl0r_same_leaf(p: Bool) -> Bool { p }\n"
+data xl0r_provider_b_source: String = "module v2.test.xl0r_provider_b\n\nimport std.types { Bool }\n\nfn xl0r_same_leaf(p: Bool) -> Bool { p }\n"
 
-data xl0r_consumer_a_source: String = "module v2.test.xl0r_consumer_a\n\nimport v2.std.logic { Bool }\n\nfn xl0r_uses_a() -> Bool { v2.test.xl0r_provider_a.xl0r_same_leaf }\n"
+data xl0r_consumer_a_source: String = "module v2.test.xl0r_consumer_a\n\nimport std.types { Bool }\n\nfn xl0r_uses_a() -> Bool { v2.test.xl0r_provider_a.xl0r_same_leaf }\n"
 
-data xl0r_consumer_b_source: String = "module v2.test.xl0r_consumer_b\n\nimport v2.std.logic { Bool }\n\nfn xl0r_uses_b() -> Bool { v2.test.xl0r_provider_b.xl0r_same_leaf }\n"
+data xl0r_consumer_b_source: String = "module v2.test.xl0r_consumer_b\n\nimport std.types { Bool }\n\nfn xl0r_uses_b() -> Bool { v2.test.xl0r_provider_b.xl0r_same_leaf }\n"
 
-data xl0r_import_consumer_a_source: String = "module v2.test.xl0r_import_consumer_a\n\nimport v2.std.logic { Bool }\nimport v2.test.xl0r_provider_a { xl0r_same_leaf }\n\nfn xl0r_import_uses_a() -> Bool { xl0r_same_leaf }\n"
+data xl0r_import_consumer_a_source: String = "module v2.test.xl0r_import_consumer_a\n\nimport std.types { Bool }\nimport v2.test.xl0r_provider_a { xl0r_same_leaf }\n\nfn xl0r_import_uses_a() -> Bool { xl0r_same_leaf }\n"
 
-data xl0r_import_consumer_b_source: String = "module v2.test.xl0r_import_consumer_b\n\nimport v2.std.logic { Bool }\nimport v2.test.xl0r_provider_b { xl0r_same_leaf }\n\nfn xl0r_import_uses_b() -> Bool { xl0r_same_leaf }\n"
+data xl0r_import_consumer_b_source: String = "module v2.test.xl0r_import_consumer_b\n\nimport std.types { Bool }\nimport v2.test.xl0r_provider_b { xl0r_same_leaf }\n\nfn xl0r_import_uses_b() -> Bool { xl0r_same_leaf }\n"
 
 data xl0r_relay_source: String = "module v2.test.xl0r_relay\n\nimport v2.test.xl0r_provider_a { xl0r_same_leaf }\n"
 
-data xl0r_relay_consumer_source: String = "module v2.test.xl0r_relay_consumer\n\nimport v2.std.logic { Bool }\nimport v2.test.xl0r_relay { xl0r_same_leaf }\n\nfn xl0r_relay_uses() -> Bool { xl0r_same_leaf }\n"
+data xl0r_relay_consumer_source: String = "module v2.test.xl0r_relay_consumer\n\nimport std.types { Bool }\nimport v2.test.xl0r_relay { xl0r_same_leaf }\n\nfn xl0r_relay_uses() -> Bool { xl0r_same_leaf }\n"
 
-data xl0r_field_access_consumer_source: String = "module v2.test.xl0r_field_access_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_projects(r: Bool) -> Bool { r.v }\n"
+data xl0r_field_access_consumer_source: String = "module v2.test.xl0r_field_access_consumer\n\nimport std.types { Bool }\n\nfn xl0r_projects(r: Bool) -> Bool { r.v }\n"
 
-data xl0r_method_call_consumer_source: String = "module v2.test.xl0r_method_call_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_calls_through(r: Bool, p: Bool) -> Bool { r.v(x: p) }\n"
+data xl0r_method_call_consumer_source: String = "module v2.test.xl0r_method_call_consumer\n\nimport std.types { Bool }\n\nfn xl0r_calls_through(r: Bool, p: Bool) -> Bool { r.v(x: p) }\n"
 
-data xl0r_shadowing_consumer_source: String = "module v2.test.xl0r_shadowing_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_shadows(v2: Bool) -> Bool { v2.test.xl0r_provider.xl0r_provided_fn }\n"
+data xl0r_shadowing_consumer_source: String = "module v2.test.xl0r_shadowing_consumer\n\nimport std.types { Bool }\n\nfn xl0r_shadows(v2: Bool) -> Bool { v2.test.xl0r_provider.xl0r_provided_fn }\n"
 
 // A TYPE NAMED BY A SELECTIVE IMPORT, IN PARAMETER POSITION. The provider's type is bodyless, the
 // shape v2.std.node declares Symbol with. The seven-test canary's `Symbol` wall (gunbc#12198) was
@@ -130,9 +129,9 @@ data xl0r_shadowing_consumer_source: String = "module v2.test.xl0r_shadowing_con
 // and the same spelling with no import refuses unbound rather than being found by corpus search.
 data xl0r_type_provider_source: String = "module v2.test.xl0r_type_provider\n\ntype Xl0rOpaque\n"
 
-data xl0r_imported_param_type_consumer_source: String = "module v2.test.xl0r_imported_param_type_consumer\n\nimport v2.std.logic { Bool }\nimport v2.test.xl0r_type_provider { Xl0rOpaque }\n\nfn xl0r_takes_opaque(x: Xl0rOpaque) -> Bool { true }\n"
+data xl0r_imported_param_type_consumer_source: String = "module v2.test.xl0r_imported_param_type_consumer\n\nimport std.types { Bool }\nimport v2.test.xl0r_type_provider { Xl0rOpaque }\n\nfn xl0r_takes_opaque(x: Xl0rOpaque) -> Bool { true }\n"
 
-data xl0r_unimported_param_type_consumer_source: String = "module v2.test.xl0r_unimported_param_type_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_takes_unimported(x: Xl0rOpaque) -> Bool { true }\n"
+data xl0r_unimported_param_type_consumer_source: String = "module v2.test.xl0r_unimported_param_type_consumer\n\nimport std.types { Bool }\n\nfn xl0r_takes_unimported(x: Xl0rOpaque) -> Bool { true }\n"
 
 fn xl0r_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {

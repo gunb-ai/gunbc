@@ -1100,7 +1100,7 @@ pub(crate) mod bare_reference_scanner_tests {
     #[test]
     fn explicit_import_members_are_read_including_the_alias_binder() {
         let names = explicit_import_member_names(
-            "module t\nimport v2.std.logic { Bool, True as Yes }\nimport std.types\n",
+            "module t\nimport std.types { Bool, True as Yes }\nimport v2.std.logic\n",
         );
         assert!(names.contains("Bool"), "a plain member is named");
         assert!(
@@ -1112,7 +1112,7 @@ pub(crate) mod bare_reference_scanner_tests {
             "the aliased-away original is not the local binder"
         );
         assert!(
-            !names.contains("std.types"),
+            !names.contains("v2.std.logic"),
             "a memberless import names no members, and the module path is not a member"
         );
     }
@@ -23895,7 +23895,7 @@ pub fn emit_owned_data_manifest(
     );
     out.push_str("module v2.test.claim.workflow.host_discovered_owned_data_manifest\n\n\n");
     out.push_str("import v2.std.collection { List }\n");
-    out.push_str("import v2.std.logic { Bool }\n");
+    out.push_str("import std.types { Bool }\n");
     out.push_str(
         "import v2.compiler.discovery_enumeration {\n  OwnedBoolWitnessClaimInit,\n  OwnedDataDeclRecord,\n  OwnedDataDiscoveryReceipt,\n  OwnedNodeCorpusInit,\n  OwnedOtherInit,\n  ResolvedDeclRef,\n  unified_claim_arm_bool_witness_claim,\n  unified_claim_arm_node_corpus\n}\n\n\n",
     );

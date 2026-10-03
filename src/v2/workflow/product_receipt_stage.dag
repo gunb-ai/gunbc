@@ -36,7 +36,6 @@ import v2.compiler.source_authority {
 }
 import v2.extdeps.languages.rust { rust_target_model }
 import v2.std.algebra { Empty, fold_list, length }
-import v2.std.logic { Bool }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import v2.std.node { Symbol, symbol_lexeme }
 import v2.std.optional { Absent, Present }

@@ -1,6 +1,5 @@
 module v2.test.lens_inert_carrier.inert_carrier_test
 
-import v2.std.logic { Bool }
 import v2.std.collection { List }
 import v2.std.text { String }
 import v2.lens.inert_carrier {
