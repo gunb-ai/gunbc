@@ -6,12 +6,17 @@ import std.process { ProcessExit, exit_failure }
 import gunbc.fleet_multi_principal_probe { env_var_nonempty }
 import gunbc.spark.group_arm_launch { ArmDryPlan, ArmWetSession, group_arm_dry_plan_write, group_arm_launch_wet, group_arm_occupancy_observe_session }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA }
+import gunbc.spark.serving_arm { Glm53NativeFp8, Glm53FlashNvidiaNvfp4 }
+import gunbc.spark.group_checkpoint_materialize { CheckpointMaterialization, checkpoint_materialize_wet }
+import gunbc.spark.glm53_kvplan_image { glm53_kvplan_hub_cli_executor }
+import gunbc.spark.glm53_staircase_load { glm53_step_load, Glm53StepLoadReady, Glm53StepLoadRefused, glm53_step_load_session }
+import gunbc.spark.vllm_runtime_image_build { with_spark_build_host, SparkBuildHostRefused, SparkBuildHostRan }
+import gunbc.fleet_multi_principal_probe { spark_converge_target_selection, SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.process { ExitSuccess }
 import gunbc.spark.v41_group_a_launch { v41_group_a_dry_plan, v41_group_a_wet_session }
-import gunbc.spark.glm53_arm_staircase {
-  Glm53StaircaseStep, Glm53IncumbentChoice, glm53_staircase_steps, glm53_step_wire, glm53_step_of_wire,
-  glm53_incumbent_choices, glm53_incumbent_choice_wire, glm53_incumbent_choice_of_wire,
-  glm53_step_dry_plan, glm53_step_wet_session,
-}
+import gunbc.spark.glm53_arm_staircase { Glm53StaircaseStep, Glm53IncumbentChoice, glm53_staircase_steps, glm53_step_wire, glm53_step_of_wire, glm53_incumbent_choices, glm53_incumbent_choice_wire, glm53_incumbent_choice_of_wire, glm53_step_dry_plan, glm53_step_wet_session }
 
 // ── WHICH ARM A GROUP-LAUNCH MODE RUNS, FROM CLOSED WORKFLOW INPUTS (deforking cut 8a) ────────────
 //
@@ -142,5 +147,87 @@ fn arm_group_observe_ci() -> ProcessExit {
   match arm_group_of_word(arm: env_word(name: arm_group_launch_arm_env)) {
     ArmGroupWordRefused { cause: c } => exit_failure(reason: c)
     ArmGroupNamed { group: g } => group_arm_launch_wet(arm: group_arm_occupancy_observe_session(group: g), receipt_path: arm_group_observe_receipt_path)
+  }
+}
+
+// ── WHICH CHECKPOINT THE MATERIALIZE MODE ACQUIRES, FOR WHICH ARM ─────────────────────────────────
+//
+// The GLM arm's two staircase checkpoints, by a closed word (mode spark_arm_checkpoint_materialize,
+// dispatch input `checkpoint`). V4.1 materializes through its own mode (spark_v41_checkpoint_materialize,
+// gunbc.spark.v41_checkpoint_materialize), so a V4.1 arm here refuses rather than being routed silently.
+data arm_checkpoint_env: NonEmptyStr = "GUNBC_ARM_CHECKPOINT" as NonEmptyStr
+data arm_checkpoint_glm53_fp8: String = "glm53-native-fp8"
+data arm_checkpoint_glm53_nvfp4: String = "glm53-flash-nvidia-nvfp4"
+
+fn arm_checkpoint_options() -> List<String> {
+  [arm_checkpoint_glm53_fp8, arm_checkpoint_glm53_nvfp4]
+}
+
+data arm_checkpoint_receipt_path: String = "target/arm-checkpoint-materialize-receipt.txt"
+
+fn arm_checkpoint_materialize_ci() -> ProcessExit {
+  let arm = env_word(name: arm_group_launch_arm_env)
+  let word = env_word(name: arm_checkpoint_env)
+  if arm != arm_group_launch_arm_glm53 {
+    exit_failure(reason: join([arm_group_launch_arm_env as String, "=`", arm, "`: only the ", arm_group_launch_arm_glm53, " arm materializes through this mode; V4.1 has its own (spark_v41_checkpoint_materialize)"], ""))
+  } else {
+    match glm53_kvplan_hub_cli_executor() {
+      Absent => exit_failure(reason: "the GLM checkpoints are acquired by the Hub CLI inside the produced GLM image, and no production of that image is recorded yet (mode spark_runtime_image_produce, runtime_image glm53-kvplan-v2-gb10)")
+      Present { value: executor } =>
+        if word == arm_checkpoint_glm53_fp8 {
+          checkpoint_materialize_wet(m: CheckpointMaterialization { title: "glm53 checkpoint materialize" as NonEmptyStr, group: FabricGroupA, checkpoint: Glm53NativeFp8, executor: executor }, receipt_path: arm_checkpoint_receipt_path)
+        } else if word == arm_checkpoint_glm53_nvfp4 {
+          checkpoint_materialize_wet(m: CheckpointMaterialization { title: "glm53 checkpoint materialize" as NonEmptyStr, group: FabricGroupA, checkpoint: Glm53FlashNvidiaNvfp4, executor: executor }, receipt_path: arm_checkpoint_receipt_path)
+        } else {
+          exit_failure(reason: join([arm_checkpoint_env as String, "=`", word, "` is not a checkpoint of this arm; the checkpoints are ", join(arm_checkpoint_options(), ", ")], ""))
+        }
+    }
+  }
+}
+
+// ── THE LOAD ENTRY (mode spark_arm_group_load) ──────────────────────────────────────────────────
+//
+// The GLM staircase step named by the closed inputs, loaded at its floor and its ceiling from its head.
+// SPARK_CONVERGE_TARGET must be that head -- the bench and the scrape address its loopback -- and any
+// other host refuses. Exit zero means every load ran and was judged; the step's verdict and calibration
+// receipt are in the receipt, not the exit. V4.1 loads through its own mode (spark_v41_serving_load),
+// so a V4.1 arm here refuses rather than being routed silently.
+data arm_group_load_receipt_path: String = "target/arm-group-load-receipt.txt"
+
+fn arm_group_load_ci() -> ProcessExit {
+  match arm_group_launch_selection_from_env() {
+    ArmGroupLaunchSelectionRefused { cause: c } => exit_failure(reason: c)
+    ArmGroupLaunchSelected { choice: c } => match c {
+      ArmV41GroupA => exit_failure(reason: "the V4.1 arm loads through its own mode (spark_v41_serving_load), not this one")
+      ArmGlm53GroupAStep { step: s, incumbent: _ } =>
+        match glm53_step_load(s: s) {
+          Glm53StepLoadRefused { cause: why } => exit_failure(reason: why)
+          Glm53StepLoadReady { subject: subject, performance: _, roster: _, inputs: _ } =>
+            match spark_converge_target_selection(execute_apply: true) {
+              SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+              SparkConvergeTargetAllObserveOnly => exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: the load opens its session on the step's head, and it refuses rather than choosing one")
+              SparkConvergeTargetSingle { host: h } =>
+                if (h as String) != (subject.host as String) {
+                  exit_failure(reason: join(["SPARK_CONVERGE_TARGET ", h as String, " is not the step's head ", subject.host as String, "; the bench and the scrape address the head's loopback"], ""))
+                } else {
+                  let run_id = join(["glm53-staircase-load-", probed_at_word(reading: clock_now_probed_at()) as String], "") as NonEmptyStr
+                  match with_spark_build_host(
+                    host: subject.host,
+                    attempt_raw: "arm-group-load",
+                    identity_file_name: "gunbc-arm-group-load-admin-password" as NonEmptyStr,
+                    use: fn(target, context, ctx) { glm53_step_load_session(s: s, run_id: run_id, ctx: ctx) },
+                  ) {
+                    SparkBuildHostRefused { cause: why } => exit_failure(reason: why)
+                    SparkBuildHostRan { work: work, endpoint: _, executor: _, trust_receipt: _ } => {
+                      let w = Filesystem.Write(path: arm_group_load_receipt_path, content: work.receipt)
+                      if !w.success { exit_failure(reason: join(["load receipt write failed: ", w.error, "\n", work.receipt], "")) }
+                      else if work.converged { ExitSuccess }
+                      else { exit_failure(reason: work.receipt) }
+                    }
+                  }
+                }
+            }
+        }
+    }
   }
 }

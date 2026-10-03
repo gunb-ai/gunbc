@@ -1,22 +1,18 @@
 module gunbc.spark.glm53_kvplan_image
 
-import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.types { String, List, NonEmptyStr }
 import extdeps.docker.cli { docker_run_ephemeral_command }
 
 import std.algebra { trim }
 import v2.std.optional { Present, Absent }
-import product.placement_supply { HostIdentity }
+
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { argv_words }
 import extdeps.vllm.source_build { VllmContainerBuildRecipe, vllm_8d09804_sm121_recipe }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
-import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, spark_remote_run, RemoteRan, RemoteUnreachable }
-import gunbc.spark.vllm_runtime_image_build {
-  VllmImageBuild, VllmImageBuilt, VllmImageBuildRefused,
-  converge_vllm_image_for_recipe, vllm_image_receipt_line, SparkBuildHostWork,
-  converge_glm53_kvplan_image, glm53_kvplan_patch_path, glm53_kvplan_package_dir,
-}
-import gunbc.spark.group_image_produce { GroupImageProduction }
+import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, spark_remote_run, RemoteRan, RemoteUnreachable, SnapshotAcquisitionExecutor }
+import gunbc.spark.vllm_runtime_image_build { VllmImageBuilt, VllmImageBuildRefused, converge_vllm_image_for_recipe, vllm_image_receipt_line, SparkBuildHostWork, converge_glm53_kvplan_image, glm53_kvplan_patch_path, glm53_kvplan_package_dir }
+import gunbc.spark.group_image_produce { GroupImageProduction, ProducedImageHeld }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.runtime_architecture_registry_reading { registry_dump_architectures, registry_dump_count }
 
@@ -44,11 +40,12 @@ import gunbc.spark.runtime_architecture_registry_reading { registry_dump_archite
 // ── THE PROBE INSIDE THE PRODUCED DIGEST ──────────────────────────────────────────────────────
 //
 // ONE EPHEMERAL CONTAINER OF THE DIGEST (never the tag), no GPU, no checkpoint: the engine's version,
-// where its package lives, whether the patched core carries the emission marker, and the whole model
+// where its package lives, whether the patched core carries the emission marker, where the Hub CLI is
+// (the runtime row's hub_cli_path, which the checkpoint materialize runs inside this image), and the whole model
 // registry (REGISTRY_COUNT, then one REGISTERED line per architecture -- the dump
 // gunbc.spark.runtime_architecture_registry_reading's fold reads). The registry dump is what a
 // runtime row's registry_reading is recorded from, citing the run.
-data glm53_kvplan_probe_script: String = "import os, vllm\nprint('VLLM_VERSION ' + vllm.__version__)\nprint('VLLM_PACKAGE_DIR ' + os.path.dirname(vllm.__file__))\nimport vllm.v1.engine.core as c\nprint('KVPLAN_MARKER ' + ('present' if getattr(c, 'KV_ALLOCATION_PLAN_LOG_MARKER', None) == 'KV_ALLOCATION_PLAN_JSON ' else 'absent'))\nfrom vllm.model_executor.models.registry import ModelRegistry\na = sorted(ModelRegistry.get_supported_archs())\nprint('REGISTRY_COUNT ' + str(len(a)))\nfor x in a:\n    print('REGISTERED ' + x)\n"
+data glm53_kvplan_probe_script: String = "import os, shutil, vllm\nprint('HF_CLI ' + (shutil.which('hf') or 'absent'))\nprint('VLLM_VERSION ' + vllm.__version__)\nprint('VLLM_PACKAGE_DIR ' + os.path.dirname(vllm.__file__))\nimport vllm.v1.engine.core as c\nprint('KVPLAN_MARKER ' + ('present' if getattr(c, 'KV_ALLOCATION_PLAN_LOG_MARKER', None) == 'KV_ALLOCATION_PLAN_JSON ' else 'absent'))\nfrom vllm.model_executor.models.registry import ModelRegistry\na = sorted(ModelRegistry.get_supported_archs())\nprint('REGISTRY_COUNT ' + str(len(a)))\nfor x in a:\n    print('REGISTERED ' + x)\n"
 
 data glm53_kvplan_engine_version: String = "0.1.dev1+g8d09804c8"
 
@@ -89,6 +86,7 @@ fn glm53_kvplan_probe(ctx: SparkMaterializeContext, digest: NonEmptyStr, r: Vllm
         "probe inside ", digest as String, ": version=", match version { Present { value: v } => v  Absent => "?" },
         " package=", match pkg { Present { value: d } => d  Absent => "?" },
         " marker=", match marker { Present { value: m } => m  Absent => "?" },
+        " hf_cli=", match probe_line_value(stdout: out, prefix: "HF_CLI ") { Present { value: h } => h  Absent => "?" },
         " registry=", to_string(length(archs)), " architectures\n",
       ], "")
       if length(defects) == 0 {
@@ -139,4 +137,18 @@ fn glm53_kvplan_production() -> GroupImageProduction {
     identity_file_name: "gunbc-glm53-kvplan-image-produce-admin-password" as NonEmptyStr,
     produce: fn(target, context, ctx) { glm53_kvplan_produce(target: target, context: context, ctx: ctx) },
   }
+}
+
+// THE PRODUCED IMAGE'S RECEIPT ROW. Absent until a production run through spark_runtime_image_produce
+// has converged and its receipt (tag, configuration digest, host, run) is transcribed here, citing the
+// run -- the same discipline as gunbc.spark.v41_runtime_image_converge v41_production_produced_image.
+// While Absent the distribution refuses, and the staircase's runtime has no single identity.
+fn glm53_kvplan_produced_image_held() -> ProducedImageHeld? {
+  none
+}
+
+// THE HUB CLI EXECUTOR THE CHECKPOINT MATERIALIZE RUNS INSIDE: the produced image (by configuration
+// digest) and the CLI path its probe read. Absent until the production receipt is recorded above.
+fn glm53_kvplan_hub_cli_executor() -> SnapshotAcquisitionExecutor? {
+  none
 }

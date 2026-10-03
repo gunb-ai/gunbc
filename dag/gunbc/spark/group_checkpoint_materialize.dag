@@ -1,0 +1,133 @@
+module gunbc.spark.group_checkpoint_materialize
+
+import std.types { String, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import v2.std.optional { Present, Absent }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.fleet_multi_principal_probe { spark_converge_target_selection, SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused }
+import gunbc.artifact_acquisition { AcquisitionOutcome, AcquisitionAlreadyPresent, AcquisitionFetched, AcquisitionRefused, acquisition_refusal_text }
+import gunbc.spark.fabric_switch_observed { FabricGroup }
+import gunbc.spark.serving_subject { PairServingUnitOn }
+import gunbc.spark.host_commitment { admit_host_held_by_subject }
+import gunbc.spark.serving_arm { ServingCheckpoint, serving_checkpoint_row, serving_checkpoint_wire }
+import gunbc.spark.model_snapshot_acquisition { ModelSnapshotDesired, ModelSnapshotPinned, SnapshotSeed }
+import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, SnapshotAcquisitionExecutor, spark_materialize_member, SparkMaterialized, SparkMaterializeUnpinned, SparkMaterializeRefused }
+import gunbc.spark.vllm_runtime_image_build { SparkBuildHostWork, with_spark_build_host, SparkBuildHostRefused, SparkBuildHostRan }
+
+// ── ONE ENTRY FOR MATERIALIZING A SERVING CHECKPOINT ON A HOST OF ITS GROUP (deforking cut 8c) ──────
+//
+// THE PATH IS THE EXISTING SNAPSHOT ONE, NOT A COPY OF V4.1's. gunbc.spark.model_snapshot_materialize
+// spark_materialize_member already acquires a pinned snapshot -- observe and adopt what verifies, else
+// fetch from the Hub, then verify -- and the GLM canary converges through it. The GLM checkpoints are Hub
+// snapshots in the Hub cache (their rows' placement), so they take that path: the snapshot is derived
+// from the checkpoint's own row, never spelled again. gunbc.spark.v41_checkpoint_materialize stays V4.1's
+// (a per-file population with span reads the snapshot path does not model) and is frozen as a consumer of
+// its own shape: its migration onto this entry is a named follow-up, triggered by the snapshot path
+// carrying per-file populations.
+//
+// EVERY HOST SEEDS. Rail replication is a declared unbuilt transport (spark_materialize_member refuses
+// a replica role by name), so each Group A host acquires from the Hub, or adopts what is already in its
+// cache -- a host that still holds the FP8 snapshot from Group A's old serve verifies it and moves nothing.
+//
+// THE HUB CLI RUNS INSIDE A RUNTIME IMAGE, because no Spark has it on the host (the executor's own
+// record). The image and the CLI's path inside it are the caller's: they are the produced GLM image's,
+// read by its probe, so the materialize cannot start before that image is held on the host.
+type CheckpointMaterialization {
+  title: NonEmptyStr
+  group: FabricGroup
+  checkpoint: ServingCheckpoint
+  executor: SnapshotAcquisitionExecutor
+}
+
+fn checkpoint_snapshot(c: ServingCheckpoint) -> ModelSnapshotDesired? {
+  match serving_checkpoint_row(c: c) {
+    Absent => none
+    Present { value: row } => Present { value: ModelSnapshotPinned {
+      identity: serving_checkpoint_wire(c: c),
+      repo: row.repo,
+      revision: row.revision,
+      placement: row.placement,
+      revision_provenance: row.provenance,
+    } }
+  }
+}
+
+fn with_executor(ctx: SparkMaterializeContext, executor: SnapshotAcquisitionExecutor) -> SparkMaterializeContext {
+  SparkMaterializeContext {
+    host: ctx.host,
+    trust: ctx.trust,
+    path: ctx.path,
+    admin_credential: ctx.admin_credential,
+    admin_credential_file: ctx.admin_credential_file,
+    executor: executor,
+  }
+}
+
+fn acquisition_outcome_line(o: AcquisitionOutcome) -> String {
+  match o {
+    AcquisitionAlreadyPresent { identity: i, install_path: p } => join(["ALREADY PRESENT and verified: ", i as String, " at ", p as String, "\n"], "")
+    AcquisitionFetched { identity: i, install_path: p, source: s } => join(["FETCHED and verified: ", i as String, " at ", p as String, " from ", s.identity as String, "\n"], "")
+    AcquisitionRefused { cause: c } => join(["REFUSED: ", acquisition_refusal_text(cause: c), "\n"], "")
+  }
+}
+
+fn acquisition_converged(o: AcquisitionOutcome) -> Bool {
+  match o {
+    AcquisitionAlreadyPresent { identity: _, install_path: _ } => true
+    AcquisitionFetched { identity: _, install_path: _, source: _ } => true
+    AcquisitionRefused { cause: _ } => false
+  }
+}
+
+fn checkpoint_materialize_work(m: CheckpointMaterialization, ctx: SparkMaterializeContext) -> SparkBuildHostWork {
+  match checkpoint_snapshot(c: m.checkpoint) {
+    Absent => SparkBuildHostWork { receipt: "REFUSED: the checkpoint has no row, so no snapshot subject exists to acquire\n", converged: false }
+    Present { value: snapshot } =>
+      match spark_materialize_member(ctx: with_executor(ctx: ctx, executor: m.executor), role: SnapshotSeed, snapshot: snapshot) {
+        SparkMaterializeRefused { host: _, cause: c } => SparkBuildHostWork { receipt: join(["REFUSED: ", c as String, "\n"], ""), converged: false }
+        SparkMaterializeUnpinned { host: _ } => SparkBuildHostWork { receipt: "REFUSED: the snapshot carries no pinned revision\n", converged: false }
+        SparkMaterialized { host: _, outcome: o } => SparkBuildHostWork { receipt: acquisition_outcome_line(o: o), converged: acquisition_converged(o: o) }
+      }
+  }
+}
+
+// THE ENTRY. SPARK_CONVERGE_TARGET names the host, which must be one the group's serving subject holds;
+// unset refuses rather than fanning out, because this writes up to hundreds of gigabytes to the host.
+fn checkpoint_materialize_wet(m: CheckpointMaterialization, receipt_path: String) -> ProcessExit
+{
+  let now = clock_now_probed_at()
+  match spark_converge_target_selection(execute_apply: true) {
+    SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+    SparkConvergeTargetAllObserveOnly =>
+      exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: materializing a checkpoint writes hundreds of gigabytes to the host it names, so it refuses rather than choosing one")
+    SparkConvergeTargetSingle { host: host } =>
+      match admit_host_held_by_subject(raw: host, subject: PairServingUnitOn { group: m.group }) {
+        Present { value: why } => exit_failure(reason: why)
+        Absent =>
+          match with_spark_build_host(
+            host: host,
+            attempt_raw: "checkpoint-materialize",
+            identity_file_name: "gunbc-checkpoint-materialize-admin-password" as NonEmptyStr,
+            use: fn(target, context, ctx) { checkpoint_materialize_work(m: m, ctx: ctx) },
+          ) {
+            SparkBuildHostRefused { cause: c } => exit_failure(reason: c)
+            SparkBuildHostRan { work: work, endpoint: endpoint, executor: executor, trust_receipt: trust_receipt } => {
+              let body = join([
+                join([m.title as String, " probed_at=", probed_at_word(reading: now) as String, " host=", host as String, " endpoint=", endpoint as String, " executor=", executor, " checkpoint=", serving_checkpoint_wire(c: m.checkpoint) as String, "\n"], ""),
+                trust_receipt,
+                work.receipt,
+              ], "")
+              let w = Filesystem.Write(path: receipt_path, content: body)
+              if !w.success {
+                exit_failure(reason: join([m.title as String, " receipt write failed: ", w.error], ""))
+              } else if work.converged {
+                ExitSuccess
+              } else {
+                exit_failure(reason: join([m.title as String, " did not converge:\n", body], ""))
+              }
+            }
+          }
+      }
+  }
+}

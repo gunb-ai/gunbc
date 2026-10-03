@@ -209,7 +209,7 @@ fn v41_held_obligations(hosts: List<HostIdentity>, reads: List<VllmImageTargetRe
     Absent => [join(["no image readback was taken on ", h as String, ", so whether it holds ", subject.tag as String, " is unknown"], "")]
     Present { value: r } => match r.state {
       VllmImageTargetHolds => [] as List<String>
-      VllmImageTargetNeeds => [join([h as String, " holds nothing under ", subject.tag as String, "; deliver it with the distribution mode (gunbc.spark.v41_runtime_image_converge v41_runtime_image_distribute_ci_wet)"], "")]
+      VllmImageTargetNeeds => [join([h as String, " holds nothing under ", subject.tag as String, "; deliver it with the distribution mode spark_runtime_image_distribute, runtime_image v41-dsv41-gb10 (gunbc.spark.runtime_image_produce_dispatch runtime_image_distribute_ci_wet)"], "")]
       VllmImageTargetRefused { step: _, cause: _ } => [] as List<String>
     }
   })

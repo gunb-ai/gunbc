@@ -506,7 +506,7 @@ test fn w_every_host_holding_the_receipt_digest_is_held() -> Bool {
 test fn w_a_host_holding_nothing_is_an_obligation_to_distribute() -> Bool {
   match w_admit(reads: w_reads(state_of: fn(h) { VllmImageTargetRead { host: h, state: if (h as String) == "srv7" { VllmImageTargetNeeds } else { VllmImageTargetHolds } } })) {
     V41RuntimeHeldUnestablished { obligations: o } =>
-      length(o) == 1 && any(o, x => string_contains(s: x, pattern: "srv7") && string_contains(s: x, pattern: "v41_runtime_image_distribute_ci_wet"))
+      length(o) == 1 && any(o, x => string_contains(s: x, pattern: "srv7") && string_contains(s: x, pattern: "runtime_image_distribute_ci_wet"))
     V41RuntimeHeldOnHosts { specification_runtime_key: _, image: _, subject: _ } => false
     V41RuntimeHeldRefused { defects: _ } => false
   }
