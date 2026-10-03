@@ -56,7 +56,8 @@ pub use crate::v1_compiler_dag_collect::{collect_dag_nodes, dag_node_key, is_mod
 pub use crate::v1_compiler_dag_collect_support::DagCollectAcc;
 pub use crate::v1_compiler_dag_collect_support::{connective_name, json_quote};
 pub use crate::v1_compiler_emit::{
-    unmodeled_file_transport_diagnostics, unmodeled_shell_transport_diagnostics,
+    unmodeled_file_transport_diagnostics, unmodeled_rest_transport_diagnostics,
+    unmodeled_shell_transport_diagnostics,
 };
 pub use crate::v1_compiler_emit_core_support::escape_json_string;
 pub use crate::v1_compiler_emit_core_support::EmitResult;
@@ -1336,11 +1337,17 @@ pub fn compile_bundle_error(message: String) -> Rc<ErrorNode> {
 pub fn emit_artifact(typed: Rc<ResolvedGraph>, artifact: Rc<Artifact>) -> Rc<EmitResult> {
     {
         let unmodeled_transports = v1_rt::concat(
-            crate::v1_compiler_emit::unmodeled_file_transport_diagnostics(
-                typed.clone(),
-                artifact.target.clone(),
+            v1_rt::concat(
+                crate::v1_compiler_emit::unmodeled_file_transport_diagnostics(
+                    typed.clone(),
+                    artifact.target.clone(),
+                ),
+                crate::v1_compiler_emit::unmodeled_shell_transport_diagnostics(
+                    typed.clone(),
+                    artifact.target.clone(),
+                ),
             ),
-            crate::v1_compiler_emit::unmodeled_shell_transport_diagnostics(
+            crate::v1_compiler_emit::unmodeled_rest_transport_diagnostics(
                 typed.clone(),
                 artifact.target.clone(),
             ),

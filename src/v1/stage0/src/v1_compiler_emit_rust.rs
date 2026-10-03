@@ -37529,7 +37529,7 @@ pub fn rust_rest_refused(refusal_arm: String) -> String {
                 v1_rt::concat(
                     v1_rt::concat(
                         rust_rest_result_path(),
-                        "::RestRefused { refusal: crate::".to_string(),
+                        "::RestRefused { refusal: std::rc::Rc::new(crate::".to_string(),
                     ),
                     crate::gunbc_rust_emitted_edge::module_to_filename(
                         "extdeps.transports.rest".to_string(),
@@ -37539,7 +37539,7 @@ pub fn rust_rest_refused(refusal_arm: String) -> String {
             ),
             refusal_arm.clone(),
         ),
-        " }".to_string(),
+        ") }".to_string(),
     )
 }
 
