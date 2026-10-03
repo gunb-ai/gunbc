@@ -2,6 +2,11 @@ module test.claim.spark_snapshot_verify_wrapper
 
 import std.logic { Bool }
 import std.types { String }
+import gunbc.spark.model_snapshot_materialize { spark_transfer_restart_properties, executor_wrap, containerized_hub_cli, containerized_hub_cli_for, containerized_cache_root, ContainerizedHubCliBuilt, ContainerizedHubCliRefused }
+import extdeps.huggingface.hub { HubCacheEnvironment, hub_cache_root_for, hub_cache_environment_unset }
+import gunbc.spark.model_snapshot_acquisition { spark_hub_cache_root, HubCachePlacement }
+import std.types { List, NonEmptyStr }
+import v2.std.optional { Present, Absent }
 import gunbc.spark.model_snapshot_materialize {
   sentinel_command_line, read_instrument,
   InstrumentReading, InstrumentDidNotRun, InstrumentVerified, InstrumentRejectedTheSubject,
@@ -128,4 +133,43 @@ test fn wrapper_still_emits_both_sentinels() -> Bool {
 // quoting is evidence, not decoration.
 test fn wrapper_quotes_an_argument_containing_a_space() -> Bool {
   sentinel_command_line(argv: ["hf", "--local-dir", "/home/briansrls/models/a b"]).contains("'/home/briansrls/models/a b'")
+}
+
+// THE TRANSFER RESTARTS ON FAILURE, BOUNDED (valiant-crab-775's radio diagnosis, 2026-10-03): the unit is
+// started with Restart=on-failure and a finite StartLimitBurst over a finite interval, so a DNS or transport
+// drop costs one retry and a run of drops ends failed rather than looping.
+test fn the_transfer_unit_restarts_on_failure_within_a_bound() -> Bool {
+  any(spark_transfer_restart_properties, p => p == "--property=Restart=on-failure")
+    && any(spark_transfer_restart_properties, p => string_contains(s: p, pattern: "--property=StartLimitBurst="))
+    && any(spark_transfer_restart_properties, p => string_contains(s: p, pattern: "--property=StartLimitIntervalSec="))
+    && !any(spark_transfer_restart_properties, p => string_contains(s: p, pattern: "Restart=always"))
+}
+
+// WHERE THE HUB CLI WRITES IS DERIVED, AND A WRAP THAT DISAGREES WITH ITS PLACEMENT CANNOT BE BUILT (operator
+// ruling, 2026-10-03). Three readings of one resolver (extdeps.huggingface.hub hub_cache_root_for):
+//  - a containerised CLI with NO cache environment resolves to the container's own home cache, and the
+//    checked constructor REFUSES it for a Hub-cache placement mounted at /out;
+//  - the placement's own environment (HF_HUB_CACHE = the mount's container side) builds, and the rendered
+//    docker command passes that variable;
+//  - the host CLI, as the briansrls user, resolves to exactly the placement's cache root on the host.
+test fn the_containerised_hub_cli_writes_where_its_placement_says_or_is_not_built() -> Bool {
+  let placement = HubCachePlacement { cache_root: spark_hub_cache_root }
+  let refused = match containerized_hub_cli(image: "img" as NonEmptyStr, cli_path: "/usr/local/bin/hf" as NonEmptyStr, placement: placement, container_path: "/out" as NonEmptyStr, cache_env: hub_cache_environment_unset) {
+    ContainerizedHubCliRefused { cause: c } => string_contains(s: c as String, pattern: "/root/.cache/huggingface/hub")
+    ContainerizedHubCliBuilt { executor: _ } => false
+  }
+  let built = match containerized_hub_cli_for(image: "img" as NonEmptyStr, cli_path: "/usr/local/bin/hf" as NonEmptyStr, placement: placement, container_path: "/out" as NonEmptyStr) {
+    ContainerizedHubCliBuilt { executor: e } => string_contains(s: join(executor_wrap(executor: e, argv: ["hf", "download", "zai-org/GLM-5.3-Flash"]), " "), pattern: "-e HF_HUB_CACHE=/out")
+    ContainerizedHubCliRefused { cause: _ } => false
+  }
+  refused && built
+    && (containerized_cache_root(cache_env: hub_cache_environment_unset) as String) == "/root/.cache/huggingface/hub"
+    && (hub_cache_root_for(env: hub_cache_environment_unset, executing_home: "/home/briansrls" as NonEmptyStr) as String) == (spark_hub_cache_root as String)
+}
+
+// THE RESOLVER FOLLOWS UPSTREAM'S PRECEDENCE: HF_HUB_CACHE, then HF_HOME/hub, then XDG_CACHE_HOME/huggingface/hub.
+test fn the_hub_cache_resolver_follows_upstream_precedence() -> Bool {
+  (hub_cache_root_for(env: HubCacheEnvironment { hf_hub_cache: Present { value: "/a" as NonEmptyStr }, hf_home: Present { value: "/b" as NonEmptyStr }, xdg_cache_home: none }, executing_home: "/h" as NonEmptyStr) as String) == "/a"
+    && (hub_cache_root_for(env: HubCacheEnvironment { hf_hub_cache: none, hf_home: Present { value: "/b" as NonEmptyStr }, xdg_cache_home: Present { value: "/x" as NonEmptyStr } }, executing_home: "/h" as NonEmptyStr) as String) == "/b/hub"
+    && (hub_cache_root_for(env: HubCacheEnvironment { hf_hub_cache: none, hf_home: none, xdg_cache_home: Present { value: "/x" as NonEmptyStr } }, executing_home: "/h" as NonEmptyStr) as String) == "/x/huggingface/hub"
 }

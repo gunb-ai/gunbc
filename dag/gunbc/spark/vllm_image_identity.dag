@@ -91,3 +91,17 @@ fn vllm_image_tag_for_key(r: VllmContainerBuildRecipe, key: ContentHash) -> NonE
 fn vllm_image_tag(r: VllmContainerBuildRecipe) -> NonEmptyStr {
   vllm_image_tag_for_key(r: r, key: vllm_image_build_key(r: r))
 }
+
+// THE KV-ALLOCATION-PLAN v2 LAYER OVER THE DERIVED IMAGE (gunbc.spark.glm53_kvplan_image): keyed by the
+// derived image's own key and the patch's bytes, so a different base or a different patch is a
+// different tag, and the tag a Group A build writes re-derives from what it was built from.
+fn glm53_kvplan_key(derived_key: ContentHash, patch_sha256_hex: NonEmptyStr) -> ContentHash {
+  artifact_realization_digest(inputs: [
+    ArtifactRealizationInput { identity: "derived_image_build_key" as NonEmptyStr, content_digest: content_hash_atom(value: serialize_content_hash(hash: derived_key)) },
+    ArtifactRealizationInput { identity: "kv_allocation_plan_patch_sha256" as NonEmptyStr, content_digest: content_hash_atom(value: patch_sha256_hex) },
+  ])
+}
+
+fn glm53_kvplan_tag(derived_key: ContentHash, patch_sha256_hex: NonEmptyStr) -> NonEmptyStr {
+  join([glm53_image_repository as String, ":kvplan-v2-", serialize_content_hash(hash: glm53_kvplan_key(derived_key: derived_key, patch_sha256_hex: patch_sha256_hex)) as String], "") as NonEmptyStr
+}
