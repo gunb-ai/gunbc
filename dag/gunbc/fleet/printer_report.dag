@@ -1,0 +1,84 @@
+module gunbc.fleet.printer_report
+
+import std.types { String, NonEmptyStr, Secret }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.shell
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { env_prefixed_command, LocalExec }
+import extdeps.tools.mosquitto_sub { mosquitto_report_command }
+import extdeps.printing.bambu_lab_lan_protocol { bambu_report_topic, bambu_lan_mqtt_endpoint, bambu_lan_mqtt_user }
+import gunbc.command_runner { run_shell_command_capture }
+import gunbc.fleet_asset_identity { PhysicalAssetIdentity }
+import gunbc.fleet.printer_workflow_run { select_printer, PrinterSelected, PrinterSelectionRefused }
+import gunbc.fleet.printer_project_delivery { printer_endpoint_address, PrinterAddressFound }
+import gunbc.fleet.printer_job_start {
+  printer_serial, PrinterSerialFound, acquire_pinned_ca_bundle, CaBundlePinned,
+  CaBundleRefused, CaBundleRefusedResidueRemains, pinned_ca_bundle_path,
+}
+import gunbc.fleet_printer_access { printer_access_code_locus, PrinterAccessCodeDesiredLocusFound }
+import gunbc.secret_provision { secret_ref_pin_version }
+import extdeps.cloud.gcp.secret_manager { sm_version_id_is_number }
+import gunbc.auth.access_token_source { AccessTokenSource, OperatorSuppliedToken, read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable }
+import gunbc.auth.secret_ref_credential { fetch_secret_ref_credential, SecretCredentialReady }
+import gunbc.auth.mosquitto_options_binding {
+  place_mosquitto_sub_options_privately, MosquittoOptionsPlaced,
+  MosquittoOptionsRefused, MosquittoOptionsRefusedResidueRemains,
+  shred_mosquitto_options_binding, mosquitto_options_env,
+}
+
+// Read-only subscriber. Topic/endpoint/credential all join through the same fleet identity.
+// It observes current state, not causality or an acknowledgement of a particular start.
+fn report(printer: PhysicalAssetIdentity, version: NonEmptyStr, token_source: AccessTokenSource) -> ProcessOutcome {
+  if !sm_version_id_is_number(version: version as String) { return ProcessRefused { exit_code: 1, stderr: "Report requires an exact credential version" } }
+  match printer_serial(printer: printer) {
+    PrinterSerialFound { serial: serial } => match printer_endpoint_address(printer: printer) {
+      PrinterAddressFound { address: address } => match printer_access_code_locus(printer: printer) {
+        PrinterAccessCodeDesiredLocusFound { locus: locus } => match fetch_secret_ref_credential(secret_ref: secret_ref_pin_version(ref: locus.secret, version: version), token_source: token_source) {
+          SecretCredentialReady { credential: c, resolved_version: _ } => report_with_credential(serial: serial, address: address, credential: c)
+          _ => ProcessRefused { exit_code: 1, stderr: "Cannot read the requested printer credential" }
+        }
+        _ => ProcessRefused { exit_code: 1, stderr: "Printer credential locus is absent or ambiguous" }
+      }
+      _ => ProcessRefused { exit_code: 1, stderr: "Printer address is absent or ambiguous" }
+    }
+    _ => ProcessRefused { exit_code: 1, stderr: "Printer serial is absent or ambiguous" }
+  }
+}
+
+fn report_with_credential(serial: NonEmptyStr, address: NonEmptyStr, credential: Secret) -> ProcessOutcome {
+  match acquire_pinned_ca_bundle() {
+    CaBundleRefused { cause: c } => ProcessRefused { exit_code: 1, stderr: c as String }
+    CaBundleRefusedResidueRemains { cause: c } => ProcessRefused { exit_code: 1, stderr: c as String }
+    CaBundlePinned { bundle: bundle, workspace: workspace } => {
+      let result = match place_mosquitto_sub_options_privately(login: bambu_lan_mqtt_user, password: credential) {
+        MosquittoOptionsRefused { cause: c } => ProcessRefused { exit_code: 1, stderr: c as String }
+        MosquittoOptionsRefusedResidueRemains { cause: c } => ProcessRefused { exit_code: 1, stderr: c as String }
+        MosquittoOptionsPlaced { binding: b } => {
+          let outcome = run_shell_command_capture(command: env_prefixed_command(bindings: mosquitto_options_env(binding: b), command: mosquitto_report_command(
+            endpoint: bambu_lan_mqtt_endpoint(host: address), topic: bambu_report_topic(serial: serial), ca_bundle: pinned_ca_bundle_path(bundle: bundle))), transport: LocalExec)
+          if shred_mosquitto_options_binding(binding: b) { outcome }
+          else { ProcessRefused { exit_code: 1, stderr: "Printer report credential cleanup failed" } }
+        }
+      }
+      if shell.Remove.RecursiveForce(path: workspace).success { result }
+      else { ProcessRefused { exit_code: 1, stderr: "Printer report CA workspace cleanup failed" } }
+    }
+  }
+}
+
+fn run(printer: String, version: String, output: String) -> ProcessExit {
+  match select_printer(name: printer) {
+    PrinterSelectionRefused => exit_failure(reason: "Unknown printer")
+    PrinterSelected { printer: p } => match read_supplied_access_token() {
+      SuppliedTokenUnavailable { cause: c } => exit_failure(reason: c as String)
+      SuppliedTokenReady { token: t } => match report(printer: p, version: version as NonEmptyStr, token_source: OperatorSuppliedToken { token: t }) {
+        ProcessRefused { exit_code: _, stderr: e } => exit_failure(reason: e)
+        ProcessOutputAbsent => exit_failure(reason: "No printer report received")
+        ProcessOutputPresent { text: text } =>
+          if Filesystem.Write(path: output, content: text).success { ExitSuccess }
+          else { exit_failure(reason: "Cannot retain printer report") }
+      }
+    }
+  }
+}

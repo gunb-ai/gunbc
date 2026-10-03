@@ -55,9 +55,9 @@ import gunbc.fleet_printer_access {
 // DELIVERING A PROJECT TO A PRINTER, AND DELIBERATELY NOTHING ABOUT HOW IT WAS PRODUCED.
 //
 // THE INPUT IS A PAYLOAD, NOT A SLICE PLAN. product.printed_chassis.slicing_toolchain owns whether
-// THIS repository may run OrcaSlicer; that question is currently answered "no" and its positive
-// capability is uninhabited. Coupling delivery to it would make the transport unprovable behind a
-// producer-side blocker, and would also be a category error: the printer does not care who sliced
+// this repository may run OrcaSlicer. The verified-archive bracket now realizes that producer
+// through product.printed_chassis.slice_run. Coupling delivery to a particular producer would
+// still be a category error: the printer does not care who sliced
 // the file. A project that already exists -- sliced elsewhere, by a human, months ago -- is a
 // legitimate input here and says nothing false about this repository's slicing.
 //

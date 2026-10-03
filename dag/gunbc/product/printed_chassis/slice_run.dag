@@ -1,0 +1,56 @@
+module product.printed_chassis.slice_run
+
+import std.types { String, FilePath, List }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.printing.orca_slicer { with_verified_orca, orca_version_probe_command, orca_slice_to_project_command }
+import extdeps.exec.command { LocalExec }
+import extdeps.shell.exec { ProcessRefused }
+import gunbc.command_runner { run_shell_command_capture }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.emit { JsonKeyValue, JsonObject, json_object, json_kv, json_string, serialize_json }
+
+// Selected slicing settings, not a claim of live printer telemetry. The 2 mm brim
+// keeps the 170.94 mm gauge inside the 180 mm envelope without scaling the gauge.
+fn gauge_settings_members() -> List<JsonKeyValue> {
+  [
+    json_kv(key: "type", value: json_string(s: "process")),
+    json_kv(key: "from", value: json_string(s: "user")),
+    json_kv(key: "name", value: json_string(s: "Altra gauge 0.20 mm PLA")),
+    json_kv(key: "curr_bed_type", value: json_string(s: "Textured PEI Plate")),
+    json_kv(key: "brim_type", value: json_string(s: "outer_only")),
+    json_kv(key: "brim_width", value: json_string(s: "2")),
+    json_kv(key: "skirt_loops", value: json_string(s: "0")),
+    json_kv(key: "enable_support", value: json_string(s: "0")),
+  ]
+}
+
+// Runs the exact pinned upstream artifact over explicitly supplied model and profiles.
+// A successful process result must still be followed by project/G-code readback before printing.
+fn run(appimage: String, model: String, output: String, machine: String, filament: String, process: String) -> ProcessExit {
+  let settings = concat(output, ".settings.json")
+  let original = Filesystem.Read(path: process)
+  if !original.success { return exit_failure(reason: "Cannot read base process profile") }
+  let overrides = gauge_settings_members()
+  let content = match parse_json_document(s: original.content) {
+    JsonDocumentParsed { value: JsonObject { members: members } } =>
+      serialize_json(v: json_object(members: concat(filter(members, m => !any(overrides, o => o.key == m.key)), overrides)))
+    _ => ""
+  }
+  if content == "" || !Filesystem.Write(path: settings, content: content).success {
+    return exit_failure(reason: "Cannot parse or write gauge process profile")
+  }
+  match with_verified_orca(appimage: appimage as FilePath, use: executable => {
+    let probe = run_shell_command_capture(command: orca_version_probe_command(executable: executable), transport: LocalExec)
+    match probe {
+      ProcessRefused { exit_code: _, stderr: _ } => probe
+      _ => run_shell_command_capture(command: orca_slice_to_project_command(
+        executable: executable, input_model: model, output_project: output,
+        printer_profile: machine, filament_profile: filament, process_profile: settings,
+      ), transport: LocalExec)
+    }
+  }) {
+    ProcessRefused { exit_code: _, stderr: e } => exit_failure(reason: e)
+    _ => ExitSuccess
+  }
+}

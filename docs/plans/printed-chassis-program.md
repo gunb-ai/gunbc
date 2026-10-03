@@ -126,9 +126,11 @@ parts differ, it is not a printer-to-printer calibration comparison. Source-iden
 hashes are staged under `/home/briansrls/print-prep-2026-10-03/two-printer-batch/`, one directory per
 printer. Material/colour reports are now modeled: Creality PLA, white on printer-01 and black on
 printer-02. Physical spool identity and current bed-clear state are not established by those reports.
-Nozzle/plate reconciliation and slicing are pending.
-The routine workload-identity entry point is implemented in the migration below; deployment and
-final slicing remain pending. No printer start is implied by staging the files. Label the finished gauges 3–4 and 4–5 before removing them.
+The selected slicing profile is the A1 mini 0.4 mm nozzle, Generic PLA and Textured PEI plate;
+this is a recorded process choice, not a claim of current printer telemetry.
+The routine workload-identity entry point is implemented in the migration below; its deployment
+remains pending. The operator-token batch route and live progress are recorded separately below.
+No printer start is implied by staging the files. Label the finished gauges 3–4 and 4–5 before removing them.
 
 ### Printer authentication migration to the ntfy workflow
 
@@ -169,6 +171,30 @@ start-replay regression tests passed. The canonical artifact gate regenerated th
 structure assertions and shell syntax checks passed. These are source checks, not live deployment
 or printer observations.
 
+### Operator-token batch execution — 2026-10-03
+
+The operator supplied a one-hour GCP token and asked to print before the migration lands. For this
+batch, `printer_operator_approval.run` uses the existing `OperatorSuppliedToken` capability and the
+shared signed ntfy approval gate. It does not relabel that token as WIF, invent an Actions run, or
+change IAM/secret versions. The permanent main-pinned GitHub route remains separate.
+
+The approval binds printer, project SHA-256, exact credential version and batch attempt. After the
+live approval it subscribes to a fresh report and requires IDLE/FINISH with zero print error, then
+creates a persistent per-printer start marker before upload/start. A refused or ambiguous start is
+never automatically replayed. `printer_report` reads telemetry through the same fleet identity,
+exact credential and pinned CA; its report is current-state evidence, not causal acknowledgement.
+
+Printer-01 credential version 1 was read successfully through the modeled client. Holes 3–4
+were sliced successfully by Orca 2.4.2, with ZIP and embedded G-code checksum checks, one plate,
+identity scaling, 15 layers/3 mm height, and bounds including the brim within 180 mm. Selected
+settings: PLA, 220 °C nozzle, 65 °C textured bed, 0.20 mm layers, 2 mm outer brim. Estimated
+19m22s and 6.99 g. Project SHA-256:
+`28a8700489cf908edb9ed59c0aa871fe6903b4d558c3b64de6a7636af701580e`.
+
+The isolated srv1 execution directory is `/home/briansrls/print-run-2026-10-03`; credentials live
+only in its owner-only private directory and are not repository artifacts. The first approval run
+and second slice are pending at this record. No physical start or RUNNING observation is claimed.
+
 ### Local preparation environment
 
 The isolated worktree is `/home/briansrls/.worktrees/gunbc/3d-printing-2026-10-03`.
@@ -188,11 +214,10 @@ Local preparation artifacts are in `/home/briansrls/print-prep-2026-10-03`:
 The preserved OrcaSlicer 2.4.2 AppImage at `/tmp/orca.AppImage` matches the digest recorded in
 `extdeps.printing.orca_slicer`. Its extracted CLI at `/tmp/orcax/squashfs-root/AppRun` now launches
 after installing its missing OpenGL/WebKitGTK runtime dependencies. `--help` and model inspection
-work. The upstream CLI refuses `--version` (despite the current modeled probe naming it); use the
-recorded help output as this session's executable observation, not a claimed successful version probe.
-The model's sealed positive Orca capability remains uninhabited; these local tool observations do
-not claim to repair that admission path. Final slicing and printer actuation are separate outstanding
-steps after the operator supplies current setup and gauge results.
+work. The modeled probe now uses the supported `--help` interface. `with_verified_orca` copies
+and hashes the pinned AppImage in a private realization, runs probe and slice inside its callback,
+and removes the realization before returning. `slice_run.run` uses it to produce the gauge project;
+its success establishes slicing, not an observed physical print.
 
 ### Gauge observations to collect today
 

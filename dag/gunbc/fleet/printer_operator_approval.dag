@@ -1,0 +1,123 @@
+module gunbc.fleet.printer_operator_approval
+
+import std.types { String, NonEmptyStr, Bool }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.measure { second }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.content_hash { sha256_hex_digest, as_content_hash_cryptographic }
+import std.effect_grant { Execute, NamespacePosition, ServiceOpTree }
+import std.scoped_authorization { AuthorizationRequest, AuthorizationScope, AttemptIdentity, AuthorizedAction }
+import extdeps.crypto.sha2 { sha256_hex }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.emit { json_object, json_kv, json_string, serialize_json }
+import extdeps.languages.json.emit { JsonString, JsonNumber }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_object_unique_member, JsonMemberFound }
+import extdeps.shell.exec { ProcessOutputPresent }
+import gunbc.fleet.printer_report { report }
+import gunbc.fleet_asset_identity { PhysicalAssetIdentity }
+import gunbc.fleet.printer_workflow_run { select_printer, PrinterSelected, PrinterSelectionRefused, print_inputs_admitted, print_project_with_source }
+import gunbc.fleet.printer_tool_readiness { printer_mqtt_tool_ready }
+import gunbc.auth.access_token_source { read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable, OperatorSuppliedToken }
+import gunbc.auth.approval_request_client { stored_request_from_authorization }
+import gunbc.auth.approval_gate {
+  approval_instant_now, approval_expires_at, approval_file_stored_request,
+  ApprovalFiled, ApprovalFilingRefused, approval_poll_ticks, PollObservedAt,
+  PollClockUnreadable, PollBudgetExhausted, approval_gate_from_poll,
+  GateAdmitted, GateRefused, approval_refusal_text,
+}
+
+// Local, explicitly operator-authenticated batch. It neither impersonates Actions nor
+// modifies IAM. The usual signed ntfy request binds the selected device, project bytes,
+// exact credential version and batch attempt. A persistent create-only marker is spent
+// before any transfer/start; ambiguous outcomes cannot be replayed for this batch.
+fn print_request(printer: PhysicalAssetIdentity, digest: String, version: String, attempt: String) -> AuthorizationRequest<String>? {
+  let subject = serialize_json(v: json_object(members: [
+    json_kv(key: "printer", value: json_string(s: printer as String)),
+    json_kv(key: "project_sha256", value: json_string(s: digest)),
+    json_kv(key: "credential_version", value: json_string(s: version)),
+    json_kv(key: "attempt", value: json_string(s: attempt)),
+  ]))
+  match sha256_hex_digest(hex: sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: subject)))) {
+    Absent => none
+    Present { value: hash } => Present { value: AuthorizationRequest {
+      escalation_id: concat("printer-start-", hash.hex as String) as NonEmptyStr,
+      scopes: [AuthorizationScope {
+        verb: Execute,
+        resource: NamespacePosition { tree: ServiceOpTree { service: "bambu-lan" }, path: [printer as String] },
+        action: "gunbc.printer.project-file.start" as AuthorizedAction,
+      }],
+      subject: subject,
+      purpose: join(["Print one Altra mounting gauge on ", printer as String, ". Project SHA-256 ", digest,
+        "; credential version ", version, "; batch ", attempt,
+        ". Bed reported clear. Uses the operator's one-hour token; no IAM or credential changes. One start only."], "") as NonEmptyStr,
+      attempt: attempt as AttemptIdentity,
+      intent_hash: as_content_hash_cryptographic(digest: hash),
+      destructive: false,
+    } }
+  }
+}
+
+fn run(printer: String, path: String, digest: String, version: String, attempt: String, bed_clear: String, batch_root: String) -> ProcessExit {
+  if path == "" || attempt == "" || batch_root == "" || !print_inputs_admitted(version: version, digest: digest, bed_clear: bed_clear, run_attempt: "1") {
+    return exit_failure(reason: "Print requires a path, digest, numeric credential version, attempt, persistent batch directory, and clear-bed confirmation")
+  }
+  if !printer_mqtt_tool_ready() { return exit_failure(reason: "MQTT tool is not ready; nothing requested or sent") }
+  match select_printer(name: printer) {
+    PrinterSelectionRefused => exit_failure(reason: "Unknown printer")
+    PrinterSelected { printer: p } => match read_supplied_access_token() {
+      SuppliedTokenUnavailable { cause: c } => exit_failure(reason: c as String)
+      SuppliedTokenReady { token: token } => match print_request(printer: p, digest: digest, version: version, attempt: attempt) {
+        Absent => exit_failure(reason: "Cannot identify print request")
+        Present { value: request } => match approval_instant_now() {
+          Absent => exit_failure(reason: "Cannot read clock")
+          Present { value: now } => {
+            let expires = approval_expires_at(issued: now, window: second(count: 900))
+            let stored = stored_request_from_authorization(request: request, issued_at: now, expires_at: expires)
+            match approval_file_stored_request(stored: stored, body_file_name: concat(printer, "-approval.json"), submit_timeout: second(count: 30)) {
+              ApprovalFilingRefused { reason: r } => exit_failure(reason: r)
+              ApprovalFiled => match approval_poll_ticks(remaining: 90, cadence: second(count: 10), escalation_id: request.escalation_id, expires_at: expires) {
+                PollClockUnreadable => exit_failure(reason: "Cannot read approval clock")
+                PollBudgetExhausted { escalation_id: _, observed_at: _ } => exit_failure(reason: "Print approval did not arrive; nothing sent")
+                PollObservedAt { standing: s, observed_at: at } => match approval_gate_from_poll(poll: s, request: request, observed_at: at) {
+                  GateRefused { cause: c } => exit_failure(reason: approval_refusal_text(cause: c))
+                  GateAdmitted { authorization: _ } => {
+                    let live = report(printer: p, version: version as NonEmptyStr, token_source: OperatorSuppliedToken { token: token })
+                    let idle = match live {
+                      ProcessOutputPresent { text: text } =>
+                        Filesystem.Write(path: join([batch_root, "/", printer, ".before-start.json"], ""), content: text).success && report_allows_start(text: text)
+                      _ => false
+                    }
+                    if !idle { return exit_failure(reason: "Printer was not freshly observed idle/finished with no print error; nothing uploaded or started") }
+                    let claim = Filesystem.WriteCreateNew(path: join([batch_root, "/", printer, ".start-claimed"], ""), content: request.subject)
+                    if !claim.success { exit_failure(reason: "This printer's batch start is already claimed or its durable marker cannot be written; do not replay") }
+                    else { print_project_with_source(printer: p, path: path, digest: digest, version: version as NonEmptyStr, token_source: OperatorSuppliedToken { token: token }) }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn report_allows_start(text: String) -> Bool {
+  match parse_json_document(s: text) {
+    JsonDocumentParsed { value: root } => match json_object_unique_member(v: root, key: "print") {
+      JsonMemberFound { value: p } => {
+        let idle = match json_object_unique_member(v: p, key: "gcode_state") {
+          JsonMemberFound { value: JsonString { value: state } } => state == "IDLE" || state == "FINISH"
+          _ => false
+        }
+        let clear = match json_object_unique_member(v: p, key: "print_error") {
+          JsonMemberFound { value: JsonNumber { lexeme: code } } => (code as String) == "0"
+          _ => false
+        }
+        idle && clear
+      }
+      _ => false
+    }
+    _ => false
+  }
+}

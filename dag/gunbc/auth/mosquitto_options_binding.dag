@@ -1,5 +1,7 @@
 module gunbc.auth.mosquitto_options_binding
 
+import extdeps.tools.mosquitto_sub { mosquitto_sub_options_file_name }
+
 import std.types { NonEmptyStr, String, Bool, Secret, FilePath, List }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -123,4 +125,18 @@ fn place_mosquitto_options_privately(
 // cannot reuse and the caller cannot see.
 fn shred_mosquitto_options_binding(binding: MosquittoOptionsBinding) -> Bool {
   shell.Remove.RecursiveForce(path: binding.dir).success
+}
+
+// Both clients use the same upstream options grammar but distinct fixed filenames.
+fn place_mosquitto_sub_options_privately(login: NonEmptyStr, password: Secret) -> MosquittoOptionsPlacement {
+  match place_mosquitto_options_privately(login: login, password: password) {
+    MosquittoOptionsPlaced { binding: b } => {
+      let source = join([b.dir as String, "/", mosquitto_pub_options_file_name as String], "")
+      let target = join([b.dir as String, "/", mosquitto_sub_options_file_name as String], "")
+      if shell.Copy.File(source: source as FilePath, destination: target as FilePath).success {
+        MosquittoOptionsPlaced { binding: b }
+      } else { mosquitto_options_write_refusal(removed_after_failure: shred_mosquitto_options_binding(binding: b)) }
+    }
+    other => other
+  }
 }

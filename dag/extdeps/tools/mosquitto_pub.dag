@@ -2,6 +2,8 @@ module extdeps.tools.mosquitto_pub
 
 import extdeps.exec.program { ProgramIdentity, cataloged_program }
 
+import extdeps.shell.exec { ProcessObservation }
+
 import std.types { String, NonEmptyStr, Bool, Port, FilePath, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.version { VersionConstraint }
@@ -124,13 +126,17 @@ fn mosquitto_publish_command(
   )
 }
 
-// The upstream synopsis exposes --help, not --version. Its first line identifies
-// the client version; publishing is never used as a tool-availability probe.
+// The upstream synopsis exposes --help, not --version. Its version banner may follow
+// the description line; publishing is never used as a tool-availability probe.
 fn mosquitto_pub_help_command() -> ArgvCommand {
   argv_command(program: mosquitto_pub_program(), arguments: ["--help"])
 }
 
 fn mosquitto_pub_help_supports_private_options(stdout: String) -> Bool {
+  any(split(s: stdout, delimiter: "\n"), line => mosquitto_pub_version_line_supported(stdout: line))
+}
+
+fn mosquitto_pub_version_line_supported(stdout: String) -> Bool {
   let prefix = "mosquitto_pub version "
   if !starts_with(s: stdout, prefix: prefix) { false }
   else {
@@ -146,4 +152,11 @@ fn mosquitto_pub_help_supports_private_options(stdout: String) -> Bool {
         }
     }
   }
+}
+
+// Measured on the installed 2.0.18 client: successful --help prints its banner but exits 1.
+// Code 1 without that specific supported-version banner is still a refusal.
+fn mosquitto_pub_help_observation_admitted(observation: ProcessObservation) -> Bool {
+  (observation.exit_code == 0 || observation.exit_code == 1) &&
+  mosquitto_pub_help_supports_private_options(stdout: observation.stdout)
 }

@@ -1,0 +1,34 @@
+module extdeps.tools.mosquitto_sub
+
+import std.types { NonEmptyStr, String, FilePath }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+import extdeps.tools { CliTool, SourceApt }
+import extdeps.apt { package_mosquitto_clients, apt_bin_dir }
+import extdeps.tools.mosquitto_pub { mosquitto_pub_pinned_version }
+import extdeps.oasis.mqtt { MqttEndpoint, MqttTopic }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "mosquitto.org/man/mosquitto_sub-1.html" }
+}
+fn mosquitto_sub_program() -> ProgramIdentity = cataloged_program(invocation: "mosquitto_sub")
+
+data mosquitto_sub_cli_tool: CliTool = CliTool {
+  program: mosquitto_sub_program(),
+  min_version: Present { value: mosquitto_pub_pinned_version },
+  installable_via: [SourceApt { package: package_mosquitto_clients, bin_dir: apt_bin_dir }],
+}
+
+data mosquitto_sub_options_file_name: NonEmptyStr = "mosquitto_sub"
+
+// One report, bounded by 15 seconds. TLS validates the same pinned issuer as the
+// publisher; the machine serial selects the report topic. No command is published.
+fn mosquitto_report_command(endpoint: MqttEndpoint, topic: MqttTopic, ca_bundle: FilePath) -> ArgvCommand {
+  argv_command(program: mosquitto_sub_program(), arguments: [
+    "-h", endpoint.host as String, "-p", to_string(endpoint.port),
+    "--cafile", ca_bundle as String, "--insecure", "-t", topic as String,
+    "-R", "-C", "1", "-W", "15",
+  ])
+}

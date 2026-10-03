@@ -30,7 +30,7 @@ test fn w_printer_federation_rejects_other_workflow_branch_and_environment() -> 
 }
 
 test fn w_tool_probe_requires_mosquitto_version_two_or_newer() -> Bool {
-  mosquitto_pub_help_supports_private_options(stdout: "mosquitto_pub version 2.0.18 running on libmosquitto 2.0.18.") &&
+  mosquitto_pub_help_supports_private_options(stdout: "mosquitto_pub is a simple mqtt client that will publish a message on a single topic and exit.\nmosquitto_pub version 2.0.18 running on libmosquitto 2.0.18.") &&
   !mosquitto_pub_help_supports_private_options(stdout: "mosquitto_pub version 1.6.12 running on libmosquitto 1.6.12.") &&
   !mosquitto_pub_help_supports_private_options(stdout: "") &&
   !mosquitto_pub_help_supports_private_options(stdout: "unrelated tool 2.0")
