@@ -103,6 +103,14 @@ data session_placement_schema: String = "gunbc.session-placement/v1"
 // branded std.types Seconds here would be a second representation cast back to Nat at the call --
 // moving the duration onto a typed carrier is a change to the capacity authority's signature, not
 // to this consumer (review 74593).
+//
+// feature:capacity-duration-carrier -- tracked debt, not a settled shape (review 74749).
+// dissolve-on: product.capacity.pool_events SeatRequest.term_seconds, product.capacity.lease
+// LeasePolicy.maximum_duration_seconds and gunbc.compute.host_capacity host_capacity_reserve's
+// term_seconds take a std.measure duration carrier instead of a Nat of seconds. SUFFICIENT FOR
+// retyping this row (and compute_reservation_term_seconds, its compute twin) in the same change; until
+// then this row stays in the carrier its only consumer accepts. The lease's two instants are already
+// carried as EpochSecs (SessionPlacementRecord.granted_at / expires_at), so they are not part of it.
 data session_placement_term_seconds: Nat = 14400
 
 // THE BOUNDS A GRANT DOES NOT CARRY. product.capacity.pool grants memory only, so CPU and task
@@ -354,8 +362,8 @@ type SessionPlacementRecord {
   reference: String
   grant_identity: String
   fence_generation: Nat
-  granted_at: Int
-  expires_at: Int
+  granted_at: EpochSecs
+  expires_at: EpochSecs
   partition: String
   amount: Kibibyte
   class_grant: String
@@ -486,6 +494,16 @@ fn session_int_or(r: JsonFieldRead<Int>) -> Int {
   match r { FieldRead { value } => value  FieldAbsent => 0  FieldMalformed { cause: _ } => 0 }
 }
 
+// AN INSTANT ON THE WIRE IS RE-ADMITTED, NOT CAST (the same rule as gunbc.compute.attempt_lifecycle
+// attempt_member_epoch): a negative number is not an epoch second.
+fn session_epoch_cause(key: String, r: JsonFieldRead<Int>) -> String {
+  match r {
+    FieldRead { value } => if value < 0 { join([key, " is ", to_string(value: value), ", which is not an epoch second"], "") } else { "" }
+    FieldAbsent => join([key, " is missing"], "")
+    FieldMalformed { cause } => cause
+  }
+}
+
 fn session_nat_or(r: JsonFieldRead<Nat>) -> Nat {
   match r { FieldRead { value } => value  FieldAbsent => 0  FieldMalformed { cause: _ } => 0 }
 }
@@ -517,8 +535,8 @@ fn session_placement_record_decode(doc: JsonValue) -> SessionFieldsAcc {
     session_field_cause(key: "reference", r: reference),
     session_field_cause(key: "grant_identity", r: grant_identity),
     session_field_cause(key: "fence_generation", r: fence_generation),
-    session_field_cause(key: "granted_at", r: granted_at),
-    session_field_cause(key: "expires_at", r: expires_at),
+    session_epoch_cause(key: "granted_at", r: granted_at),
+    session_epoch_cause(key: "expires_at", r: expires_at),
     session_field_cause(key: "partition", r: partition),
     session_field_cause(key: "amount_kib", r: amount_kib),
     session_field_cause(key: "class_grant", r: class_grant),

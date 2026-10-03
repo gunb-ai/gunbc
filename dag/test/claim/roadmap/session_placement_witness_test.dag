@@ -225,3 +225,38 @@ test fn the_worker_unit_is_capped_at_its_grant_by_the_compute_fold() -> Bool {
     && contains(compute, "MemoryMax=1048576")
     && !any(compute, p => starts_with(s: p, prefix: "CPUQuota="))
 }
+
+fn observe_record(content: String) -> SessionPlacementObservation {
+  observe_a(slot: held(rec: slot_a(opened: 1000)), record: planted(name: rec_name(), content: content), released: missing(name: rel_name()))
+}
+
+// AN INSTANT IS RE-ADMITTED, NOT CAST (review 74749): a record whose granted_at is negative is not a
+// placement with a pre-1970 grant, it is unreadable -- and the same bytes with the instant restored
+// read back (positive control on the same record).
+test fn a_negative_instant_in_a_placement_record_is_unreadable() -> Bool {
+  let good = record_bytes(node_id: node_a, attempt_key: key_a)
+  let bad = join(good.split(delimiter: "\"granted_at\": 1000"), "\"granted_at\": -1")
+  let refused = match observe_record(content: bad) {
+    SessionPlacementObserved { slot: _, grant, returned: _ } => match grant {
+      SessionGrantUnreadable { path: _, detail } => string_contains(s: detail, pattern: "not an epoch second")
+      SessionGrantRecorded { record: _ } => false
+      SessionGrantNotRecorded { path: _ } => false
+      SessionGrantForeign { path: _, detail: _ } => false
+    }
+    SessionPlacementAbsent { unit: _ } => false
+    SessionPlacementUnreadable { unit: _, detail: _ } => false
+    SessionPlacementForeign { unit: _, detail: _ } => false
+  }
+  let accepted = match observe_record(content: good) {
+    SessionPlacementObserved { slot: _, grant, returned: _ } => match grant {
+      SessionGrantRecorded { record } => record.granted_at == 1000 && record.expires_at == 15400
+      SessionGrantUnreadable { path: _, detail: _ } => false
+      SessionGrantNotRecorded { path: _ } => false
+      SessionGrantForeign { path: _, detail: _ } => false
+    }
+    SessionPlacementAbsent { unit: _ } => false
+    SessionPlacementUnreadable { unit: _, detail: _ } => false
+    SessionPlacementForeign { unit: _, detail: _ } => false
+  }
+  bad != good && refused && accepted
+}
