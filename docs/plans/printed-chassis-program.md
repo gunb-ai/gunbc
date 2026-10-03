@@ -1,6 +1,189 @@
 # Printed node chassis — program plan
 
-**Pinned plan. Updated 2026-09-02.** Printers land **2026-09-03**.
+**Pinned plan. Progress reconciled 2026-10-03.** Printers are in use; the operator has the
+printed standoff gauge in hand. The operator reports that the existing gauge aligns with numbered holes 1 and 3.
+
+## Current progress — 2026-10-03
+
+Evidence: merged PRINT-N commit `b242faf7655` (#10680), current printed-chassis modules,
+and the operator's 2026-10-03 report. Historical execution results are not tests rerun today.
+This dated status supersedes the pre-arrival implementation narrative below.
+
+- **CAD bootstrap and measured export profile landed.** PRINT-N records CadQuery 2.8.0 running
+  through user-owned micromamba/conda-forge and measured tessellation observations in
+  `product.printed_chassis.export_profile`. The old kernel blocker is resolved. Full STEP/3MF
+  solid-readback acceptance is not established by that fact and remains to be audited.
+- **Physical printing reached.** PRINT-N records printer-02 reporting `RUNNING` on the gauge
+  project after FTPS delivery and MQTT start through the modeled path. The operator now confirms
+  the gauge is in hand. No printer has been contacted in this session.
+- **Coupon feedback recorded.** `hole_fit_measurement.operator_ladder_reading_2026_09_04`
+  records M3 interference / tight / free at 3.00 / 3.10 / 3.20 mm nominal rungs. Printer attribution
+  remains absent; this is not universal hole compensation or qualification of both machines.
+- **Initial pair fit observed, 2026-10-03.** The operator reports that both gauge holes align
+  perfectly with numbered holes **1 and 3**, with the gauge underneath the motherboard and no
+  screws installed. The supplied annotated image identifies these as **F and C**. This is an
+  operator-reported alignment pass on that pair; it does not establish loaded support, exact
+  tolerances, the other holes or the full FIT milestone. One board is sufficient for this check.
+
+### Numbered reference and observed pair
+
+The repo already cited the operator's Drive image in
+`extdeps.boards.asrock_rack.asrock_altrad8ud_standoff_figure_authority`. A byte-for-byte local copy
+is now [ALTRAD8UD_standoff_grid.png](../extdeps/asrock_rack/ALTRAD8UD_standoff_grid.png), retrieved
+2026-10-03 from [the original Drive file](https://drive.google.com/file/d/1z36tmUWAwOwXWy6ASmaPWJNzKoZggBs8/view).
+Use the image's numbers in operator instructions. Its annotated decimal coordinates are a visual
+reference; they do not replace the standard's exact coordinate authority.
+
+| Image hole | Model location |
+|---|---|
+| 1 | F |
+| 2 | M |
+| 3 | C |
+| 4 | H |
+| 5 | L |
+| 6 | B |
+| 7 | R |
+
+**Observed:** 1–3 (F–C) aligns simultaneously underneath the board, without fasteners, per operator.
+**Next candidate:** 3–4 (C–H). Other prepared checks are 4–5, 5–2, 3–6 and 4–7.
+No new photo is required to identify the pair already reported against this reference.
+
+### Prepared follow-on experiments — 2026-10-03
+
+`product.printed_chassis.fit_gauges` selects five additional gauges using the existing standard
+location authority, gauge admission and CadQuery emitter. They are spacing experiments, not confirmed
+mounting locations or qualified structural parts. Start with C–H after the existing F–C check passes;
+the others extend coverage to the remaining inferred holes. Each is a separate part so it can be
+identified by its file and labeled before leaving the bed.
+
+| Pair | Question answered |
+|---|---|
+| C–H | Does the rear-to-middle spacing agree on the C/H/L column? |
+| H–L | Does the middle-to-front spacing agree on that column? |
+| L–M | Does the front-row spacing agree? |
+| C–B | Does the additional rear hole agree? |
+| H–R | Does the outboard middle hole agree? |
+
+J remains excluded and S remains unobserved. A connected set of pair distances does not fix every
+relative angle; the assembled adjustable fixture still must confirm the full map. Do not install
+extra standoffs merely because the standard has a named location.
+
+**Measurements to gather before a mounting fixture:**
+
+- Identify the seven candidate holes (F, C, B, H, R, L, M) on one physical board; record any absent
+  or unexpected hole and pair mismatch. No need to disassemble several boards for this step.
+- Actual standoff thread, height from support to board underside, and contact-pad/shoulder diameter;
+  identify the screws being used and their usable engagement. Do not infer these from the M3 coupon.
+- Highest underside protrusion and clearance around each support; note solder joints/components
+  near the front overhang where a possible support would touch.
+- Board edge dimensions and access around rear I/O, memory latches and power/storage connectors.
+
+**Measurements that can follow, before cassette geometry:** cooler model and total installed height;
+PSU model, actual envelope and mounting points; fan model and intended fasteners; intended drives and
+expansion cards; loaded node mass; cable connector bodies and the space needed to plug/unplug them;
+available deployment width/depth/height. Missing values stay open instead of becoming defaults. The current fleet inventory identifies Dynatron W1 coolers on srv3
+and srv4; that does not identify the cooler on the board being checked, and its catalog row supplies
+no measured installed envelope.
+
+**Recovered operator setup reports:** Creality PLA, white on printer-01 and black on printer-02,
+reported September 4–5; on October 3 the operator says both setups are identical. These reports are
+retained in `gunbc.fleet.printer_setup_reports`, with source timestamps and a read-only `main`
+projection. The AMS slot-1 report does not name a printer, so it is not assigned to both machines.
+Nozzle/plate settings still need reconciliation against retained execution evidence. Recovered files disagree: `print-n/work/gauge_petg.3mf` specifies PETG with
+textured PEI; `printn-slice/gauge_container.3mf` specifies PLA with a cool plate. Preset metadata does not supersede the operator’s filament reports. Do not reuse their machine G-code blindly. Final slicing must also check
+placement including brim/skirt: the longest narrow gauge nearly spans the 180 mm bed. Keep model
+scale at 100%; resolve any placement conflict through explicit orientation/adhesion settings, not
+by shrinking a measuring instrument. The existing fan-mount experiment
+is optional after the actual fan and fasteners are identified; it does not gate motherboard FIT.
+
+### Preparation results — 2026-10-03
+
+Generated **C–B, C–H, H–L, L–M and H–R** as individual STL and STEP files under
+`/home/briansrls/print-prep-2026-10-03`. Generation ran through `fit_gauges.batch` with the
+compiler built from this worktree; the generated Python contains the modeled geometry and export
+settings. `geometry-readback.json` records hashes and executed results for all five parts:
+valid single solids, expected dimensions and cylindrical hole locations/radii, STEP round-trip
+agreement, closed manifold meshes, mesh bounds and volume agreement. These checks establish file
+conformance for these gauges only, not physical fit or printer/material qualification.
+
+The three `test.claim.fit_gauges_witness_test` checks executed and passed: every candidate fits
+the actual modeled printer envelope; none requests J/S; an unknown pair cannot emit a substitute.
+`witnesses.log` retains the run. No physical observation has been inferred from those software tests; the 1–3 fit is separately
+recorded from the operator above.
+
+**Ready for final slicing, not yet machine-ready G-code:** use C–H as the next candidate after the
+existing F–C result. Use the recovered PLA reports; reconcile nozzle, plate and adhesion settings before
+slicing. No upload or printer start was performed. Authenticated delivery/start was not revalidated;
+the old `printer_credential_migration_run` includes destructive secret migration and is not an
+appropriate routine readiness probe. A subsequent print must use an admitted credential path rather
+than rerun that migration merely because it previously started a job.
+
+### Requested two-printer batch — 2026-10-03
+
+The operator requests concurrent printing on both printers. Prepare **printer-01: holes 3–4
+(C–H)** and **printer-02: holes 4–5 (H–L)**. This checks two additional board spans; because the
+parts differ, it is not a printer-to-printer calibration comparison. Source-identical STL copies and
+hashes are staged under `/home/briansrls/print-prep-2026-10-03/two-printer-batch/`, one directory per
+printer. Material/colour reports are now modeled: Creality PLA, white on printer-01 and black on
+printer-02. Physical spool identity and current bed-clear state are not established by those reports.
+Nozzle/plate reconciliation and slicing are pending.
+The routine authenticated print entry point is also outstanding, as recorded above. No printer
+start is implied by staging the files. Label the finished gauges 3–4 and 4–5 before removing them.
+
+### Local preparation environment
+
+The isolated worktree is `/home/briansrls/.worktrees/gunbc/3d-printing-2026-10-03`.
+Local preparation artifacts are in `/home/briansrls/print-prep-2026-10-03`:
+
+- `venv/`: CadQuery 2.8.0; resolved dependency versions in `requirements.lock`.
+- `target/debug/gunbc`: compiler built from this worktree. Invocation requires an enforced cgroup
+  memory budget; the preparation run uses a systemd scope with `MemoryMax=24G` and no swap.
+- `mounting-check-map.svg`: schematic from the checked-out standard-location rows; all physical
+  correspondences remain subject to the bench check.
+- `verify-generated-gauges.py`: reads the emitted literal geometry instructions, runs them in
+  CadQuery, checks the resulting solid and STEP round-trip dimensions/hole axes/volume, and checks
+  STL bounds, closed manifold edges and volume. Its result only concerns generated-file conformance.
+- `slicer-probe/DO_NOT_PRINT_old_settings.3mf`: tool-recovery probe using the old project settings;
+  deliberately excluded from the next-print candidates.
+
+The preserved OrcaSlicer 2.4.2 AppImage at `/tmp/orca.AppImage` matches the digest recorded in
+`extdeps.printing.orca_slicer`. Its extracted CLI at `/tmp/orcax/squashfs-root/AppRun` now launches
+after installing its missing OpenGL/WebKitGTK runtime dependencies. `--help` and model inspection
+work. The upstream CLI refuses `--version` (despite the current modeled probe naming it); use the
+recorded help output as this session's executable observation, not a claimed successful version probe.
+The model's sealed positive Orca capability remains uninhabited; these local tool observations do
+not claim to repair that admission path. Final slicing and printer actuation are separate outstanding
+steps after the operator supplies current setup and gauge results.
+
+### Gauge observations to collect today
+
+Record each board separately: stable label, model/revision, selected holes and gauge orientation.
+The gauge checks **LocF–LocC**, modeled as offsets of **157.48 mm along the rear edge and
+22.86 mm in depth**. These are model values, not measured dimensions of the printed part.
+Establish the physical hole correspondence before interpreting a result; say whether checking board
+holes directly or installed standoffs, since the latter also tests standoff placement.
+
+Report whether both locations align simultaneously with the gauge resting naturally; if not,
+which end aligns and the direction of the miss. Note obstructions or warp. Do not count alignment
+obtained by bending the gauge or drawing it into place with screws as a pass. Record measured
+values only when actually measured, with the instrument used. A photo can supplement the result.
+An F–C pass supports that pair on that board, not the full mounting map or underside clearance.
+
+### Next steps and dependencies
+
+| Order | Work | Dependency / completion evidence |
+|---|---|---|
+| 1 | Record each board's F–C result | Operator observations; retain disagreements and distinguish board-hole alignment from standoff fit |
+| 2 | Resolve misses; extend successful checks to remaining mounting locations | For a miss, distinguish orientation, printed-gauge dimensions and board/standoff placement before changing geometry. A pass permits additional pair gauges or an adjustable fixture, not freezing the entire map |
+| 3 | Audit CAD, slicing and print evidence | Can proceed during board checks: locate generated artifacts, profile/toolchain identity, printer/material/nozzle binding and outstanding solid-readback controls; close PRINT-7/8 only against their full criteria |
+| 4 | Complete process observations | Attribute the existing coupon only from retained evidence; otherwise print labeled replacements. Observe both printer/spool combinations independently and repeat attempts before claiming repeatability |
+| 5 | Build an unpowered adjustable fit fixture | Confirm remaining mounting positions, standoff thread/height, underside keep-outs and connector access. PLA can serve this experiment without qualifying structural or powered use |
+| 6 | Measure cassette inputs and choose joints/material | Can start now: actual cooler and PSU envelopes, node mass, drive requirement, fasteners, connector access and cable service space. Joint family and structural material precede their qualification prints |
+| 7 | Prototype one removable cassette and one fixed bay | Requires fit and structural-process evidence; then PSU/cables, airflow and powered thermal validation under standing requirements, followed by 2x2 service demonstration |
+
+The immediate milestone is a verified mounting map and an unpowered fit fixture. Full cassette
+geometry depends on measured hardware envelopes and structural-process qualification.
+
 
 Governing statement:
 
@@ -58,11 +241,11 @@ because a step without one cannot be said to be done.
 | **PRINT-3** | CAL | Coupon authority: ladder as modeled experimental design, rungs and plate derived | **done** |
 | **PRINT-4** | TOOLCHAIN | Realization contract v0: contract derives its own rungs; a wrong-step handler is caught and located | **done** |
 | **PRINT-5** | TOOLCHAIN | Raw transport schema admission: unknown version, missing field and unknown operation all refuse before any geometry call | **done** |
-| **PRINT-6** | TOOLCHAIN | CadQuery handler + authority wall; sealed instruction plan; walls 1-3 execute, wall 4 (solid readback) is a declared boundary | handler done; materializer + export profile open |
-| **PRINT-7** | TOOLCHAIN | STEP/3MF emitted and re-inspected; output conformance re-establishes envelope, holes, walls | |
-| **PRINT-8** | TOOLCHAIN | Slicer profile bound or refused; per-printer manifests; ProcessQualificationIdentity minted, not branded | |
-| **PRINT-9** | CAL | Coupons printed on BOTH printers; each printer+spool admitted or refused **independently** | needs printers |
-| **PRINT-10** | FIT | Adjustable-standoff fixture; real board mounted unpowered; hole map measured back and frozen | needs printers + board |
+| **PRINT-6** | TOOLCHAIN | CadQuery handler + authority wall; sealed instruction plan; walls 1-3 execute, wall 4 (solid readback) is a declared boundary | handler/export profile landed; full readback closure unverified |
+| **PRINT-7** | TOOLCHAIN | STEP/3MF emitted and re-inspected; output conformance re-establishes envelope, holes, walls | kernel blocker resolved; full acceptance to verify |
+| **PRINT-8** | TOOLCHAIN | Slicer profile bound or refused; per-printer manifests; ProcessQualificationIdentity minted, not branded | live printing exercised; qualification closure to verify |
+| **PRINT-9** | CAL | Coupons printed on BOTH printers; each printer+spool admitted or refused **independently** | coupon feedback recorded; independent qualification and repeatability pending |
+| **PRINT-10** | FIT | Adjustable-standoff fixture; real board mounted unpowered; hole map measured back and frozen | gauge in hand; 1–3 (F–C) alignment pass reported; full fixture/map open |
 | **PRINT-11** | CASSETTE | Structural cassette: rails, tray, handle, latch; carries node mass; no seam in layer-separation tension | needs PETG decision |
 | **PRINT-12** | CASSETTE | PSU carrier and harnesses; every connector insertable; nothing side-loaded; **PE continuous with board, standoffs and cassette all removed** | needs PSU envelope |
 | **PRINT-13** | CASSETTE | 80 mm fan carrier + replaceable duct; powered thermal admitted against a bench baseline | needs cooler choice |
@@ -92,23 +275,18 @@ nominal. The check was run because the module's own annotation asserted "changin
 moves that witness", and an annotation asserting a property the code does not have is exactly what
 #10119 had to repair four times.
 
-PRINT-5 and PRINT-6 landed with #10119, so the pre-arrival critical path is now **PRINT-7 alone**,
-and it is BLOCKED rather than merely pending: re-inspecting an emitted STEP/3MF needs a CAD kernel,
-and the trigger for that is a base image with glibc >= 2.38 or an x86_64 runner. PRINT-8 is the first
-step that needs the hardware itself, and it is not blocked by PRINT-7 — the coupon can be printed and
-measured before any kernel readback exists, it just cannot issue an absolute process-qualification
-receipt until PRINT-7 closes.
+PRINT-5 and PRINT-6 landed with #10119. PRINT-N (#10680) subsequently resolved CAD bootstrap,
+added measured export-profile work, and exercised physical printing. PRINT-7/8 still require an
+evidence audit against their full criteria; job-start evidence alone does not close them.
 
 ### What blocks what
 
-- **PRINT-5..6 are landed.** PRINT-7 is BLOCKED on a CAD kernel — measured, not assumed: CadQuery
-  installs on this arm64 container and clears `libGL.so.1`, then `casadi` requires `GLIBCXX_3.4.32`
-  which requires `GLIBC_2.38`, and this box is glibc 2.36. The trigger is a base image or an x86_64
-  runner, NOT a pip install.
+- **CAD bootstrap is resolved.** Full output-conformance and process-qualification evidence
+  remain to be reconciled.
 - **Joint family** (dovetail / tongue-and-groove / keyed slide / pin) gates the
   ProductionInterfaceCoupon only — a later half of PRINT-8, not the MachineProcessCoupon.
-- **PETG** gates PRINT-10 onward. PLA carries PRINT-8 and PRINT-9 and stops there: no PLA-to-PETG
-  receipt carry.
+- **Structural material qualification** gates durable/powered cassette work. PLA can carry CAL
+  and unpowered FIT; no PLA-to-PETG receipt carry.
 - **Deployment envelope** gates PRINT-13..14 layout admission, nothing earlier.
 - **Drive count** gates PRINT-11 completion only.
 
@@ -117,9 +295,9 @@ receipt until PRINT-7 closes.
 | Project | Scope | Terminal evidence | State |
 |---|---|---|---|
 | **CONTRACT** | Goals, non-goals, authority graph, refusal law, MVP boundary | No assumption represented as a default | deferred — no consumer yet |
-| **MEASURE** | Board, cooler, PSU, fan, DIMM, cable, **deployment envelope**, uncertainty | Pack sufficient to generate CAL+FIT | **partial — carrier landed, roster empty** |
-| **TOOLCHAIN** | Realization contract, CadQuery handler, authority wall, STEP/3MF, slicer env, printer nodes | Deterministic generation + executed no-parallel-authority controls | not started |
-| **CAL+FIT** | Coupons, qualified tolerances, adjustable standoff fixture, real-board fit, hole-map feedback | One unpowered board fits; hole authority admitted | not started |
+| **MEASURE** | Board, cooler, PSU, fan, DIMM, cable, **deployment envelope**, uncertainty | Pack sufficient to generate CAL+FIT | **partial — coupon readings recorded; board-fit observations pending** |
+| **TOOLCHAIN** | Realization contract, CadQuery handler, authority wall, STEP/3MF, slicer env, printer nodes | Deterministic generation + executed no-parallel-authority controls | partial — CAD/export and live printing exercised; full conformance open |
+| **CAL+FIT** | Coupons, qualified tolerances, adjustable standoff fixture, real-board fit, hole-map feedback | One unpowered board fits; hole authority admitted | in progress — coupon feedback and gauge in hand |
 | **CASSETTE** | Structure -> PSU/cables -> airflow -> powered thermal | Removable node operates and is serviceable | not started |
 | **RACK+VERDICT** | One bay -> 2x2 block -> scale/economics | Middle-node service proven; buy-more-printers verdict | not started |
 
@@ -356,7 +534,7 @@ unwalled**: a `CommitRequired` artifact whose path matches a developer ignore pa
 uncommittable. Its trigger is the first such artifact; walling it before one exists would be a check
 whose RED is unauthorable.
 
-**Export is removed from the emitted program rather than profiled.** The
+**Historical pre-PRINT-N state; the measured export profile subsequently landed.** Export was removed from the emitted program rather than profiled. The
 `cq.exporters.export(result, "…stl")` line chose five things the model never stated — STL over STEP
 or 3MF, a filename, a working-directory-relative destination, format-by-extension, and CadQuery's
 default tessellation policy. The last is not neutral: STL is a mesh format, so every modeled circle
@@ -382,7 +560,7 @@ on the grounds that it preserves a typed place for the next obligation, but noth
 gate required emptiness — so the forcing did not exist, and the discharged property is carried where
 it executes, in the type of the accepting arm.
 
-**Toolchain boundary, now measured rather than assumed.** Wall 4 — re-reading the produced *solid*
+**Historical bootstrap probe, superseded by PRINT-N conda-forge bootstrap.** Wall 4 — re-reading the produced *solid*
 for plate dimensions, datum location and the eleven ladder holes — is a §4b boundary obligation, not
 a rung. Its trigger was written as "a runner with cadquery importable", which was too vague to act
 on, so it was probed to termination:
@@ -396,7 +574,7 @@ on, so it was probed to termination:
 - Past that, `casadi` requires **`GLIBCXX_3.4.32`**, and a libstdc++ carrying it requires
   **`GLIBC_2.38`**. This container is **glibc 2.36**.
 
-So the real trigger is **a base image with glibc ≥ 2.38 (or an x86_64 runner), not a pip install** —
+The probe then incorrectly concluded the trigger was **a base image with glibc ≥ 2.38 (or an x86_64 runner), not a pip install** —
 and assembling one by hand-extracting `.deb`s onto `LD_LIBRARY_PATH` is where a probe turns into the
 workaround §5 names, so it was stopped there rather than pushed through. The environment wall 4 needs
 is a *pinned, identified* toolchain — Python version, CadQuery version, OCP closure, image digest,
@@ -492,20 +670,18 @@ So the PETG decision blocks the **durable/powered CASSETTE path**, not the first
 unpowered FIT fixture. Qualify each printer-spool combination independently; never infer that an
 observed difference is the printer alone.
 
-## Open decisions (operator) — none block the first print
+## Open decisions (operator) — structural and rack work
 
-- **Drive count** — a CASSETTE completion obligation. Blocks nothing before Thursday.
+- **Drive count** — a CASSETTE completion obligation. Does not block gauge checks or the unpowered fixture.
 - **PETG** — blocks structural/powered parts, not CAL or unpowered FIT.
 - **Deployment envelope** — **not on the pre-arrival critical path.** Its absence must refuse
   rack-layout admission later, not block calibration now.
 
 ## Next
 
-1. ~~`CalibrationCouponAuthority`~~ — landed as `product.printed_chassis.coupon`.
-2. `RealizationContract v0` — the transport-only, schema-bound feature graph the handler consumes.
-3. CadQuery handler + four-part wall executed over v0, with all four negative controls.
-4. STEP/3MF generation and conformance; bound slicer profile or refusal.
-5. Per-printer manifests for node 1 and node 2; measurement/admission form ready for results.
+Follow the dated next-step table above. Board-specific gauge observations and remaining mounting
+checks lead to the unpowered fixture; toolchain-evidence reconciliation and cassette measurements
+can proceed independently. The former list predated the landed PRINT-N implementation.
 
 **Deferred as definition-only residue until each has a consumer:** `CONTRACT` (needs the generator),
 `DeploymentEnvelope` (needs the layout-comparison consumer). The design of both is pinned above.

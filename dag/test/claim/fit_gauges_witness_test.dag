@@ -1,0 +1,35 @@
+module test.claim.fit_gauges_witness_test
+
+import std.types { Bool }
+import product.printed_chassis.fit_gauges { follow_on_fit_gauge_pairs, fit_gauge_admission, fit_gauge_source, FitGaugeSourceReady, FitGaugeSourceRefused }
+import product.printed_chassis.standoff_gauge {
+  GaugeAdmitted, GaugeLocationNotEnumerated, GaugeLocationDuplicated,
+  GaugeLocationsCoincide, GaugeExceedsBuildEnvelope,
+}
+import extdeps.standards.micro_atx { LocJ, LocS }
+
+test fn w_every_follow_on_gauge_fits_the_actual_printer_envelope() -> Bool {
+  (follow_on_fit_gauge_pairs |> length) > 0 &&
+  fold(follow_on_fit_gauge_pairs, init: true, f: fn(ok, pair) {
+    ok && match fit_gauge_admission(pair: pair) {
+      GaugeAdmitted { geometry: _ } => true,
+      GaugeLocationNotEnumerated { requested: _ } => false,
+      GaugeLocationDuplicated { requested: _, count: _ } => false,
+      GaugeLocationsCoincide { requested: _ } => false,
+      GaugeExceedsBuildEnvelope { fit: _ } => false,
+    }
+  })
+}
+
+test fn w_no_follow_on_gauge_asks_for_an_excluded_or_unobserved_board_hole() -> Bool {
+  fold(follow_on_fit_gauge_pairs, init: true, f: fn(ok, pair) {
+    ok && pair.a != LocJ && pair.b != LocJ && pair.a != LocS && pair.b != LocS
+  })
+}
+
+test fn w_unknown_pair_cannot_emit_a_default_print() -> Bool {
+  match fit_gauge_source(pair: "C-J") {
+    FitGaugeSourceRefused { cause: _ } => true,
+    FitGaugeSourceReady { source: _ } => false,
+  }
+}
