@@ -105,9 +105,10 @@ import gunbc.retained_shell_script {
   retained_shell_script_to_transport,
   retained_srvn,
 }
-import extdeps.ssh.session { ssh_session_exec_script, ssh_session_exec_portable_words, ssh_session_exec_portable_words_with_stdin }
+import extdeps.ssh.session { ssh_session_exec_script }
 import gunbc.typed_argv_exec {
   typed_argv_exec_over_ssh,
+  typed_argv_exec_over_ssh_with_stdin,
   typed_argv_exec_over_fleet_ssh,
   TypedArgvExecOutcome,
   TypedArgvExecConverged,
@@ -323,7 +324,6 @@ import gunbc.live_deploy.operations {
 }
 import extdeps.tools.gnu_coreutils { dd_overwrite_path_command, coreutils_install_file_argv, rm_force_command }
 import v2.std.compilers.cli_surface { cli_surface_of_literal_words, process_argv_expansion }
-import gunbc.fleet_known_hosts_anchor { shape_ssh_shell_exec }
 import extdeps.jobserver { jobserver_config }
 import gunbc.host_layout {
   CompilePoolPlacement,
@@ -3563,14 +3563,19 @@ fn run_shell_transport(script: RetainedShellScript, transport: HostEffectTranspo
 // THE HOST-EFFECT TRANSPORT TAKES TYPED ARGV. This is run_shell_transport's typed sibling: an
 // ArgvCommand already built by cited extdeps builders, run over the same HostEffectTransport arms.
 // LocalShell runs shell.Exec.RunArgv -- the program word and the argument words as DISTINCT
-// parameters, the state-space collapse the RunArgv op exists to close -- and the command's words
-// pass through cli_surface_of_literal_words so each word arrives as its own literal argument, never
-// re-quoted into a string. SshShell shapes the argv through shape_ssh_shell_exec (host, `--`, words)
-// and runs the portable-words op; there is no empty-script refusal arm here because there is no
-// script -- an ArgvCommand structurally always names a program (the sole_constructor wall's own
-// note at extdeps.exec.command). RunArgv's output carries no success field (the no-success-field
-// discipline recorded at extdeps.shell.exec), so success derives from the exit status here, where
-// the ShellExecObserved carrier requires it -- the same derivation every RunArgv caller makes.
+// parameters, the state-space collapse the RunArgv op exists to close. The ARGUMENT words are
+// command.arguments, NOT argv_words(command): argv_words re-prepends the program, and passing it
+// here would hand RunArgv the program twice (execve with argv[1] = the program path, the
+// double-sudo shape). cli_surface_of_literal_words makes each word its own literal argument, never
+// re-quoted into a string. SshShell routes through typed_argv_exec_over_ssh, which owns both the
+// shaping (shape_ssh_shell_exec: host, `--`, words -- the one arm where argv_words is correct,
+// because the remote vector starts with the program) and the portable-word wall, so a word the
+// remote shell would re-parse refuses here before any ssh leg; there is no empty-script refusal
+// arm because there is no script -- an ArgvCommand structurally always names a program (the
+// sole_constructor wall's own note at extdeps.exec.command). RunArgv's output carries no success
+// field (the no-success-field discipline recorded at extdeps.shell.exec), so success derives from
+// the exit status here, where the ShellExecObserved carrier requires it -- the same derivation
+// every RunArgv caller makes.
 //
 // FleetSsh and EmitArtifactThenThinRun refuse where run_shell_transport refuses them, but the
 // REFUSAL TEXT changes with the carrier and says so: the old text blamed the script body's shape (a
@@ -3583,7 +3588,7 @@ fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffe
     LocalShell => {
       let result = shell.Exec.RunArgv(
         program: command.program.invocation,
-        arguments: process_argv_expansion(surface: cli_surface_of_literal_words(words: argv_words(command: command))),
+        arguments: process_argv_expansion(surface: cli_surface_of_literal_words(words: command.arguments)),
       )
       ShellExecObserved {
         exit_code: result.exit_code,
@@ -3593,12 +3598,28 @@ fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffe
       }
     }
     SshShell { ssh_host: h } => {
-      let result = ssh_session_exec_portable_words(client_args: shape_ssh_shell_exec(host: h, argv: argv_words(command: command)))
-      ShellExecObserved {
-        exit_code: result.exit_code,
-        success: result.exit_code == 0,
-        stdout: result.stdout,
-        stderr: result.stderr,
+      let typed = typed_argv_exec_over_ssh(host: h, argv: argv_words(command: command))
+      match typed {
+        TypedArgvExecRefused { reason: why } =>
+          ShellExecObserved {
+            exit_code: 1,
+            success: false,
+            stdout: join(
+              [
+                "host_effect_apply: the portable-word wall refused the typed argv before any ssh leg: ",
+                why,
+              ],
+              "",
+            ),
+            stderr: "",
+          }
+        TypedArgvExecConverged { result: result } =>
+          ShellExecObserved {
+            exit_code: result.exit_code,
+            success: result.exit_code == 0,
+            stdout: result.stdout,
+            stderr: result.stderr,
+          }
       }
     }
     FleetSsh { target: t, context: _ } =>
@@ -3635,7 +3656,7 @@ fn run_argv_stdin_over_host_effect_transport(command: ArgvCommand, stdin_payload
     LocalShell => {
       let result = shell.Exec.RunArgvStdin(
         program: command.program.invocation,
-        arguments: process_argv_expansion(surface: cli_surface_of_literal_words(words: argv_words(command: command))),
+        arguments: process_argv_expansion(surface: cli_surface_of_literal_words(words: command.arguments)),
         stdin_payload: stdin_payload,
       )
       ShellExecObserved {
@@ -3646,15 +3667,28 @@ fn run_argv_stdin_over_host_effect_transport(command: ArgvCommand, stdin_payload
       }
     }
     SshShell { ssh_host: h } => {
-      let result = ssh_session_exec_portable_words_with_stdin(
-        client_args: shape_ssh_shell_exec(host: h, argv: argv_words(command: command)),
-        stdin_payload: stdin_payload,
-      )
-      ShellExecObserved {
-        exit_code: result.exit_code,
-        success: result.exit_code == 0,
-        stdout: result.stdout,
-        stderr: result.stderr,
+      let typed = typed_argv_exec_over_ssh_with_stdin(host: h, argv: argv_words(command: command), stdin_payload: stdin_payload)
+      match typed {
+        TypedArgvExecRefused { reason: why } =>
+          ShellExecObserved {
+            exit_code: 1,
+            success: false,
+            stdout: join(
+              [
+                "host_effect_apply: the portable-word wall refused the typed argv before any ssh leg: ",
+                why,
+              ],
+              "",
+            ),
+            stderr: "",
+          }
+        TypedArgvExecConverged { result: result } =>
+          ShellExecObserved {
+            exit_code: result.exit_code,
+            success: result.exit_code == 0,
+            stdout: result.stdout,
+            stderr: result.stderr,
+          }
       }
     }
     FleetSsh { target: t, context: _ } =>
@@ -5533,8 +5567,23 @@ fn compile_pool_slice_install_step(
         transport: transport,
       )
       if written.success == false {
+        // The stage write failed, but failure is not idempotence: dd may have written PARTIAL bytes
+        // before failing, and a stale stage file survives until the next step's install moves it
+        // out from under us. The discard pair below runs on every other failure arm of this fold;
+        // the write arm is not an exception -- cleanup is attempted before reporting, and its exit
+        // status rides in the reason so the report shows the attempt (a failed discard is not
+        // silent either, it is just not the headline).
+        let discarded = run_argv_over_host_effect_transport(command: discard, transport: transport)
         NotConverged {
-          reason: compile_pool_install_stage_failure(step: "stage write", slice_unit: slice_unit, observed: written),
+          reason: join(
+            [
+              compile_pool_install_stage_failure(step: "stage write", slice_unit: slice_unit, observed: written),
+              " (staged bytes discarded, exit ",
+              to_string(discarded.exit_code),
+              ")",
+            ],
+            "",
+          ),
           applied: effect_intent,
         }
       } else {

@@ -5,8 +5,19 @@ import gunbc.build_cache_instance { ProcessIdentity }
 import extdeps.systemd.unit_file { systemd_unit_file_lines }
 import v2.std.algebra { filter }
 import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.tools.gnu_coreutils { printf_command }
+import gunbc.host_effect { LocalShell, SshShell }
+import gunbc.compile_pool_ensure { compile_pool_slice_unit_file }
+import gunbc.typed_argv_exec { typed_argv_shell_safe_refusal_argv }
+import std.realization_reconcile { Converged, NotConverged }
+import std.measure { byte_size }
 import gunbc.host_effect_realize {
   compile_pool_slice_install_staging,
+  compile_pool_slice_install_step,
+  run_argv_over_host_effect_transport,
+  run_argv_stdin_over_host_effect_transport,
+  provision_build_cache_arch_unknown_host_fixture,
+  provision_build_cache_arch_unknown_intent_fixture,
   CompilePoolInstallReady,
   CompilePoolInstallRefused,
 }
@@ -776,5 +787,140 @@ test fn compile_pool_install_staging_refuses_a_path_unit_name_before_any_operati
   match compile_pool_slice_install_staging(slice_unit: "../escape.slice" as NonEmptyStr) {
     CompilePoolInstallRefused { reason: r } => string_contains(s: r, pattern: "carries '/'")
     CompilePoolInstallReady { stage_write: _, install: _, daemon_reload: _, start: _, discard_stage: _ } => false
+  }
+}
+
+// THE DECOMPOSED RECEIPT, NOT THE FLAT VECTOR. compile_pool_install_staging_preserves_install_semantics
+// pins argv_words -- the full vector -- and that pin CANNOT see the transport's decomposition, because
+// the transport splits the vector back into program and arguments before it execve's: the LocalShell
+// arm could pin the right flat vector and still hand shell.Exec.RunArgv the program twice (once as
+// the `program:` parameter, once as argv[1]) -- exactly the double-sudo shape the side chat measured
+// (`/usr/bin/sudo /usr/bin/sudo -n dd ...`), which the flat pin reads as clean because argv_words is
+// the vector the STAGING names, not the vector the PROCESS receives. The two receipts below run the
+// transport's LocalShell arms against printf(1), whose argv interpretation makes the decomposition
+// observable: with the program handed once, printf's FORMAT is `[%s]` and it renders `[x]`; with the
+// program doubled, printf's FORMAT is the program name itself -- `printf`, carrying no conversion --
+// and it renders `printf`. One string, wet, distinguishes `arguments = command.arguments` from
+// `arguments = argv_words(command)` at the seam where the split happens, on both run arms. This is
+// the same decomposition command_runner's LocalShell arms make and command_runner_local_argv_receipt
+// witnesses by hand; here it is enrolled, because the compile-pool fold is the transport's only
+// consumer that moves root-owned bytes and a doubled program there is a refused fold on every real
+// host (sudo would treat the second program word as the command to run).
+test fn witness_local_shell_transport_hands_the_program_exactly_once() -> Bool {
+  let observed = run_argv_over_host_effect_transport(
+    command: printf_command(format: "[%s]", values: ["x"]),
+    transport: LocalShell,
+  )
+  observed.success && observed.stdout == "[x]"
+}
+
+test fn witness_local_shell_stdin_transport_hands_the_program_exactly_once() -> Bool {
+  let observed = run_argv_stdin_over_host_effect_transport(
+    command: printf_command(format: "[%s]", values: ["x"]),
+    stdin_payload: "unused: printf reads no stdin, the receipt is the argv",
+    transport: LocalShell,
+  )
+  observed.success && observed.stdout == "[x]"
+}
+
+// THE WALL HOLDS AT THE TRANSPORT EDGE, NOT ONLY WHERE IT LIVES. gunbc.typed_argv_exec owns the
+// portable-word wall and witnesses it at its own grain; a transport arm that called the raw
+// portable-words op would bypass that wall with no seam-level witness going red -- which is exactly
+// the hole this edge HAD: the SshShell arm shaped the argv through shape_ssh_shell_exec and ran
+// ssh_session_exec_portable_words directly, so a word the remote shell re-parses (`a;b`, `a b`)
+// would have crossed ssh unrefused, and the fold's command vectors -- all root-operated -- would
+// have been one authored value away from shell interpretation on a live host. The refusals below run
+// the transport's SshShell arms with such a word and assert the wall's OWN text comes back: "outside
+// portable allowlist" (the admission's words, which no process produced), plus this edge's prefix
+// "before any ssh leg", plus the offending token, so the red cannot be mistaken for an ssh
+// connection failure (which would be stderr and exit 255 carrying no refusal text). The host is a
+// name under .invalid (RFC 2606: guaranteed unresolvable) to document that no leg is meant to run:
+// were the routing back to the raw op, these witnesses would attempt a real ssh leg to that name and
+// fail WITHOUT the refusal text -- red either way, but the marker names which wall broke.
+test fn witness_ssh_shell_transport_refuses_a_shell_reinterpreted_word_before_any_ssh_leg() -> Bool {
+  // printf's format is allowlist-clean on purpose (`x`, no % conversion): the wall names the FIRST
+  // offending token, and a format like "%s" would be named instead of the re-interpretable word,
+  // which would make this witness's token assertion pin the wrong word.
+  let observed = run_argv_over_host_effect_transport(
+    command: printf_command(format: "x", values: ["a;b"]),
+    transport: SshShell { ssh_host: "compile-pool-transport-wall-witness.invalid" as NonEmptyStr },
+  )
+  !observed.success
+    && string_contains(s: observed.stdout, pattern: "outside portable allowlist")
+    && string_contains(s: observed.stdout, pattern: "before any ssh leg")
+    && string_contains(s: observed.stdout, pattern: "a;b")
+}
+
+test fn witness_ssh_shell_stdin_transport_refuses_a_shell_reinterpreted_word_before_any_ssh_leg() -> Bool {
+  // Same first-offender discipline as the non-stdin witness: format clean, so the named token is
+  // the space-carrying word itself.
+  let observed = run_argv_stdin_over_host_effect_transport(
+    command: printf_command(format: "x", values: ["a b"]),
+    stdin_payload: "unused: the refusal precedes the leg, so nothing consumes it",
+    transport: SshShell { ssh_host: "compile-pool-transport-wall-witness.invalid" as NonEmptyStr },
+  )
+  !observed.success
+    && string_contains(s: observed.stdout, pattern: "outside portable allowlist")
+    && string_contains(s: observed.stdout, pattern: "before any ssh leg")
+    && string_contains(s: observed.stdout, pattern: "a b")
+}
+
+// POSITIVE CONTROL for the refusal pair above: the wall is admission, not veto. The fold's five real
+// operation vectors, exactly as staging names them, pass it untouched -- so the refusals prove
+// discrimination, not blanket denial, and the compile-pool fold's sudo/dd/install/systemctl vectors
+// are pinned as inside the allowlist (absolute paths, `-n`, `of=...`, mode words: every character in
+// the allowed set). The clean-token wet twin -- a real leg to a live host -- already runs at
+// typed_argv_exec_realization_witness_test; this control pins the ADMISSION grain, which needs no
+// host at all.
+fn argv_passes_portable_wall(command: ArgvCommand) -> Bool {
+  match typed_argv_shell_safe_refusal_argv(argv: argv_words(command: command)) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn witness_compile_pool_install_vectors_pass_the_portable_wall() -> Bool {
+  match compile_pool_slice_install_staging(slice_unit: "gunbc-compile-pool.slice" as NonEmptyStr) {
+    CompilePoolInstallReady { stage_write: w, install: i, daemon_reload: r, start: s, discard_stage: d } =>
+      argv_passes_portable_wall(command: w)
+        && argv_passes_portable_wall(command: i)
+        && argv_passes_portable_wall(command: r)
+        && argv_passes_portable_wall(command: s)
+        && argv_passes_portable_wall(command: d)
+    CompilePoolInstallRefused { reason: _ } => false
+  }
+}
+
+// THE FAILURE SEQUENCE, NOT JUST THE FAILURE. Until this review the stage-write arm was the one arm
+// of the fold that reported failure WITHOUT attempting the discard, while the install, daemon-reload
+// and start arms each attempted it: dd receiving unit bytes on stdin can write PARTIAL bytes and
+// still exit nonzero, and the staged sibling then survives until some later install moves it -- the
+// next run could move a STALE stage file into /etc/systemd/system believing it fresh. The witness
+// below runs the fold over the SshShell transport against a name the resolver must refuse (.invalid,
+// RFC 2606): the write leg fails, the discard leg is then attempted over the same transport, and the
+// returned reason must name BOTH the failed stage write AND the cleanup attempt --
+// "(staged bytes discarded, exit N)" where N is the discard leg's OWN observed exit status,
+// interpolated from the observation rather than a constant, so the marker's presence is evidence the
+// second leg ran. Delete the discard from the write-failure arm and the reason reverts to the bare
+// stage-write text and this goes red. Nothing is mutated on either leg: the write never happens (the
+// leg dies at name resolution), and the discard targets a staged sibling that was never created.
+test fn witness_stage_write_failure_still_attempts_the_discard() -> Bool {
+  let node = provision_build_cache_arch_unknown_host_fixture()
+  let sized = byte_size(134217728)
+  match compile_pool_slice_install_step(
+    node: node,
+    slice_unit: "gunbc-compile-pool.slice" as NonEmptyStr,
+    sized: sized,
+    slice_unit_file: compile_pool_slice_unit_file(
+      slice_unit: "gunbc-compile-pool.slice" as NonEmptyStr,
+      sized: sized,
+    ),
+    transport: SshShell { ssh_host: "compile-pool-stage-failure-witness.invalid" as NonEmptyStr },
+    effect_intent: provision_build_cache_arch_unknown_intent_fixture(),
+  ) {
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "stage write")
+        && string_contains(s: r, pattern: "staged bytes discarded, exit ")
+    Converged { evidence: _, applied: _ } => false
   }
 }
