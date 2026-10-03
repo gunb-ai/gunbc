@@ -93,7 +93,7 @@ fn header_bound_cases() -> List<NativeEmissionCase> {
 }
 
 // RULE: a generic fn stored as a function value forwards its bounds to the enclosing fn
-// (v1.compiler.emit_rust v1_record_lit_fn_value_clone_forwarded_param_names). control_keying is the
+// (v1.compiler.emit_rust v1_fn_result_fn_value_clone_forwarded_param_names). control_keying is the
 // shape of std.key_relation key_relation_global: it stores the generic control_global_scope_of into
 // an arrow field, which instantiates that fn at control_keying's own S. The callee emits
 // `<T: Clone>` and the wrapper emitted `<S: 'static, K: 'static>`, which rustc refuses (E0277,
@@ -114,6 +114,13 @@ fn control_keying<S, K>(key_of: fn(S) -> K) -> ControlKeying<S, K> {
   ControlKeying { scope_of: control_global_scope_of, key_of: key_of }
 }
 
+// The next hop: this fn stores nothing itself, it hands its own arrow to control_keying. Once
+// control_keying owes `S: Clone`, this one owes it for A -- joined through the arrow's argument
+// position, because an arrow-typed parameter has no head or type argument to match on.
+fn control_keying_via<A, B>(key_of: fn(A) -> B) -> ControlKeying<A, B> {
+  control_keying(key_of: key_of)
+}
+
 fn control_name_length(name: String) -> Int {
   string_length(s: name)
 }
@@ -125,7 +132,7 @@ fn control_keying_scope(name: String) -> String {
 }
 
 fn control_keying_key(name: String) -> Int {
-  let keying = control_keying(key_of: control_name_length)
+  let keying = control_keying_via(key_of: control_name_length)
   let key_of = keying.key_of
   key_of(name)
 }
