@@ -46,6 +46,10 @@ type OrchEmitPreparedRow {
   rules_budget: Int
 }
 
+// One prepared plan is scoped to a single medium/production: rows are keyed by the construct tag
+// WITHIN that medium's registry, and the fold threads the plan through one orch_emit_pipeline
+// call. A plan must never be reused across media (or across registries) -- a different medium's
+// tag space would collide on these keys and hand one medium's grammar rows to another.
 type OrchEmitPrepared {
   rows: Map<Symbol, OrchEmitPreparedRow>
 }

@@ -914,7 +914,7 @@ fn orch_emit_step_prepared(
     Exit { status: st } =>
       bind_outcome(
         o: orch_emit_exit_step(status: st),
-        f: fn(text) { outcome_accepted(OrchEmitCarried { text: text, prepared: prepared }) }
+        f: fn(m) { outcome_accepted(OrchEmitCarried { text: m.carried, prepared: prepared }) }
       )
     If { cond: c, then_: t, else_: e } =>
       orch_emit_if_step(cond: c, then_: t, else_: e, medium: medium, prepared: prepared)
