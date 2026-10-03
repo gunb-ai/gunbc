@@ -2357,10 +2357,20 @@ fn grammar_choice_lookahead_depth() -> Int { 2 }
 
 fn grammar_choice_lookahead_depth_cap() -> Int { 3 }
 
+// `honour_guards`: a not-predicate narrows the prefixes it heads only where it heads one of the
+// SITE'S OWN alternatives -- the only place a guard decides that site. Inside a production the walk
+// expands, a guard is read as what it consumes (nothing) and narrows nothing: that keeps more
+// prefixes, so it can only keep a row, never clear one wrongly. Honouring nested guards re-derived
+// every guard of `expr` and `stmt` at each of their many expansions and dominated the analysis.
 type LookaheadContext {
   productions: Map<Symbol, GrammarProduction>
   nullable_set: List<Symbol>
   first_rows: Map<Symbol, List<FirstKey>>
+  honour_guards: Bool
+}
+
+fn lookahead_context_nested(ctx: LookaheadContext) -> LookaheadContext {
+  LookaheadContext { productions: ctx.productions, nullable_set: ctx.nullable_set, first_rows: ctx.first_rows, honour_guards: false }
 }
 
 // One position of a prefix: the FirstKey it reads, less the exact words of its class a proved
@@ -2536,7 +2546,7 @@ fn lookahead_nonterminal_expand(
           depth: depth,
           head_keys: head_keys,
           visiting: Cons { head: name, tail: visiting },
-          ctx: ctx
+          ctx: lookahead_context_nested(ctx: ctx)
         )
       Absent => LookaheadUnknown
     }
@@ -2569,11 +2579,15 @@ fn lookahead_sequence(
 ) -> LookaheadPrefixes {
   match lookahead_leading_guard(expr: left) {
     Present { value: guard } =>
-      lookahead_subtract_guard(
-        prefixes: lookahead_prefixes(expr: right, depth: depth, head_keys: head_keys, visiting: visiting, ctx: ctx),
-        guard: guard,
-        ctx: ctx
-      )
+      if ctx.honour_guards {
+        lookahead_subtract_guard(
+          prefixes: lookahead_prefixes(expr: right, depth: depth, head_keys: head_keys, visiting: visiting, ctx: ctx),
+          guard: guard,
+          ctx: ctx
+        )
+      } else {
+        lookahead_prefixes(expr: right, depth: depth, head_keys: head_keys, visiting: visiting, ctx: ctx)
+      }
     Absent =>
       lookahead_extend(
         prefixes: lookahead_prefixes(expr: left, depth: depth, head_keys: head_keys, visiting: visiting, ctx: ctx),
@@ -3404,7 +3418,7 @@ fn prepare_grammar_expr(
             alts: prepared_alts,
             raw_alts: alts,
             production: production,
-            ctx: LookaheadContext { productions: productions, nullable_set: nullable_set, first_rows: first_rows }
+            ctx: LookaheadContext { productions: productions, nullable_set: nullable_set, first_rows: first_rows, honour_guards: true }
           )
         )
       }
