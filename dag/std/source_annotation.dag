@@ -1,6 +1,7 @@
 module std.source_annotation
 // The language-agnostic authority for source annotations, per DESIGN 4c. It names no .dag syntax and no lexical rule: a realization decides what its annotation syntax looks like and routes it through its own annotation channel, then lands rows of THIS shape. Both the v1 seed tokenizer and the v2 modeled tokenizer import from here rather than each minting a placement enum, because two spellings of one concept is the nicknaming defect this whole lane exists to remove.
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { String, SourceSpan, List, Bool }
 import std.algebra { FreeSemigroup }
 import std.occurrence_identity { OccurrenceId }
@@ -170,7 +171,7 @@ fn advance_line_prefix_indent_only(previous: Bool, code_points: List<Int>) -> Bo
 
 // The rule is stated over CODE POINTS, not over a String, because the two realizations do not share a string representation: the seed's String is a host string while the modeled compiler's is already a sequence of code points. Taking the sequence as the parameter puts the one representation-specific step — how to get code points out of whatever this realization calls a lexeme — at each call site, and keeps the rule itself single-authored. The text-shaped convenience below exists for host-string callers and is the same fold, never a second rule.
 fn advance_line_prefix_indent_only_text(previous: Bool, lexeme: String) -> Bool {
-  advance_line_prefix_indent_only(previous: previous, code_points: chars(s: lexeme))
+  advance_line_prefix_indent_only(previous: previous, code_points: unicode_scalar_unfold(s: lexeme))
 }
 
 fn placement_from_line_prefix(indent_only: Bool) -> AnnotationPlacement {
