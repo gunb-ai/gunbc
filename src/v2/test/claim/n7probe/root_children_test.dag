@@ -2,6 +2,7 @@ module v2.test.n7probe.root_children
 
 import v2.std.node { Edge, Node }
 import v2.std.logic { Bool }
+import v2.std.collection { List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

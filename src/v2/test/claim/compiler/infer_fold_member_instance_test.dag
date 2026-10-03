@@ -206,3 +206,23 @@ fn fmi_infer_with_member_formal_authored() -> Outcome<Bool> {
 fn fmi_fixture_shape_diagnostic(at: Node) -> Diagnostic {
   Diagnostic { reason: ^fmi_fixture_shape_unexpected, at: node_locus(node: at), correction: Unavailable { reason: CorrectionNotModeled } }
 }
+
+// (a) THE FOLD ITERATES ITS STEP'S BODY, AND THE CARRIER IS INIT'S TYPE: a fold whose body adds the carrier
+// to the member's field is ACCEPTED end to end. The body derives only if BOTH formals are instantiated --
+// `found` from init (Int), `e` from the domain (Pair) -- so this control holds the carrier frame and the member
+// frame together. RED ON THE BASE: the Loop row read the step callable's own type as the carrier and refused
+// infer_grounding_not_derived at the step Arrow for every fold. (fmi_record_fold's `found || ..` body is not
+// used here: infer derives no Bool join, a separate frontier.)
+data fmi_sum_fold: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Int {\n  fold(xs, init: 0, f: fn(found, e) { found + e.target })\n}\n"
+
+test fn fmi_fold_over_records_is_accepted() -> Bool {
+  fmi_reason(o: fmi_infer(src: fmi_sum_fold)) == ^accepted
+}
+
+data fmi_body_not_carrier_fold: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  fold(xs, init: false, f: fn(found, e) { e.target })\n}\n"
+
+// (a) A STEP WHOSE BODY DOES NOT INHABIT THE CARRIER REFUSES AT THE BODY: init is Bool, the body is Int.
+test fn fmi_fold_step_body_not_the_carrier_refuses() -> Bool {
+  fmi_reason(o: fmi_infer(src: fmi_body_not_carrier_fold)) == ^arrow_body_does_not_inhabit_declared_return
+}
+

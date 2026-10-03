@@ -45,6 +45,7 @@ import v2.std.node {
   ComputationNode,
   Conj,
   Edge,
+  Found,
   Instantiation,
   Loop,
   Named,
@@ -52,6 +53,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  arrow_body_target_lookup,
   content_hash,
   is_empty_conj_root,
   node_synthetic,
@@ -880,9 +882,19 @@ type FoldMemberFormal {
 }
 
 fn fold_step_member_formal(step: Node) -> Optional<FoldMemberFormal> {
+  fold_step_formal_at(step: step, position: 1)
+}
+
+// THE STEP'S CARRIER FORMAL, BY ROLE: declared position 0, the slot fold_recurrence_encoding binds to
+// the Bind's init. Instantiated from init's settled type exactly as the member formal is from the domain's.
+fn fold_step_carrier_formal(step: Node) -> Optional<FoldMemberFormal> {
+  fold_step_formal_at(step: step, position: 0)
+}
+
+fn fold_step_formal_at(step: Node, position: Int) -> Optional<FoldMemberFormal> {
   match arrow_declared_parameter_order(arrow: step) {
     ArrowParameterOrderDeclared { labels: labels } =>
-      match list_at_optional(xs: labels, index: 1) {
+      match list_at_optional(xs: labels, index: position) {
         Absent => optional_absent()
         Present { value: label } =>
           match list_at_optional(xs: node_positional_child_targets(node: step), index: 0) {
@@ -907,6 +919,35 @@ fn fold_step_member_formal(step: Node) -> Optional<FoldMemberFormal> {
       }
     ArrowParameterOrderAbsent => optional_absent()
     ArrowParameterOrderMalformed => optional_absent()
+  }
+}
+
+// WHAT ONE ITERATION OF A COLLECTION FOLD PRODUCES: the step callable's BODY, never the callable. The Loop
+// row reads its iterated body's type as the carrier; for a fold realization the positional child is the step
+// callable, whose own type is an Arrow over its fresh variables and is not the carrier (gunbc.recurring_failure_mode
+// infer_child_context_cannot_depend_on_a_sibling_result, link (a)). Absent when the step has no single body.
+fn fold_step_body_node(step: Node) -> Optional<Node> {
+  match arrow_body_target_lookup(children: step.children) {
+    Found { target: body } => optional_present(value: body)
+    _ => optional_absent()
+  }
+}
+
+// The step's DECLARED return, when the author wrote one: position 1 of the Arrow, unless it is one of the
+// step's own fresh variables (an unwritten return is minted as one), in which case nothing was declared.
+fn fold_step_declared_return(step: Node) -> Optional<Node> {
+  match list_at_optional(xs: node_positional_child_targets(node: step), index: 1) {
+    Present { value: declared } =>
+      if fold_type_is_variable_of(t: declared, step: step) { optional_absent() } else { optional_present(value: declared) }
+    Absent => optional_absent()
+  }
+}
+
+// The step callable of a fold encoding's Loop: its one positional child.
+fn fold_loop_step(loop_node: Node) -> Optional<Node> {
+  match node_positional_child_targets(node: loop_node) {
+    Cons { head: step, tail: Empty } => optional_present(value: step)
+    _ => optional_absent()
   }
 }
 
