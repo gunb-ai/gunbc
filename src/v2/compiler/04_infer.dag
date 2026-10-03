@@ -28,6 +28,7 @@ import v2.compiler.inferred_tree {
   NodeGrounding
 }
 import v2.std.algebra_structure_signature { algebra_inhabitance_declares_field }
+import v2.std.grammar { node_atom_identity_optional }
 import v2.extdeps.languages.dag {
   dag_algebra_inhabitance_decls,
   DagCanonicalBoolLiteral,
@@ -1844,10 +1845,17 @@ fn infer_loop_iteration(
 // ^lattice_field_meet for `&&`. The bare `+` token is the add field's surface spelling
 // (canonical_operation_op_add). Anything else is not an algebra primitive and stays out of this arm.
 fn infer_binary_algebra_field(op_node: Node) -> Optional<Symbol> {
-  match op_node.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      if id == ^dag_token_plus { infer_canonical_operation_field(operation: canonical_operation_op_add()) } else { infer_wire_algebra_field(wire: op_node) }
-    _ => infer_wire_algebra_field(wire: op_node)
+  if infer_operator_is_plus_token(op_node: op_node) {
+    infer_canonical_operation_field(operation: canonical_operation_op_add())
+  } else {
+    infer_wire_algebra_field(wire: op_node)
+  }
+}
+
+fn infer_operator_is_plus_token(op_node: Node) -> Bool {
+  match node_atom_identity_optional(node: op_node) {
+    Present { value: id } => id == ^dag_token_plus
+    Absent => false
   }
 }
 
@@ -1861,7 +1869,10 @@ fn infer_wire_algebra_field(wire: Node) -> Optional<Symbol> {
 fn infer_canonical_operation_field(operation: CanonicalOperation) -> Optional<Symbol> {
   match operation {
     AlgebraPrimitive { algebra_field: field } => optional_present(value: field)
-    _ => optional_absent()
+    AlgebraInverseCompose { binary_field: _, inverse_field: _ } => optional_absent()
+    OrderingComparison { compare_field: _, predicate: _ } => optional_absent()
+    EqualityComparison { eq_field: _, predicate: _ } => optional_absent()
+    CoercionCrossing { homomorphism_rule: _ } => optional_absent()
   }
 }
 
