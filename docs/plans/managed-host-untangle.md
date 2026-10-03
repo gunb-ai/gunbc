@@ -163,12 +163,19 @@ So the BMC and silicon leaves it needs move first.
 | **4b** | **Census boot image chain**: the 7 `mtcollins1_census_*` modules. Toolchain and QEMU modules are executor-host operations, so they are keyed by executor host, not managed host. | the `mtcollins1_census_*` procedure roots | After 4a. |
 | **4c** | **Boot federation standing**: `ManagedHostBootFederationStanding` replaces `gunbc.auth.mtcollins1_boot_federation*`, live names kept as the `mtcollins1` binding (ruling b). | `mtcollins1_boot_*` federation decls | After 0. Independent of 4a/4b. |
 | **4d** | **Boot run, dry realization, diagnostic bundle**: the vertical's root. Unit observations it reads today (`mtcollins1_memory_census_observation`, `mtcollins1_access_observation`) become row reads or parameters, so the dependency direction is procedure ← unit. | `mtcollins1_boot_run`, `_boot_dry_realization`, `_boot_diagnostic_bundle` | After 1, 4a, 4b, 4c. Likely split run/dry and bundle at dispatch. |
-| **O** | **Arrival convergence** (operator requirement, 2026-10-03): one host-generic convergence from factory state to the boot run, first subject `mtjade1`. See its own section below. | the caller-supplied password path into the reset and boot wrappers; the supplied `BmcSecureStanding` in the firmware convergence; the static row membership of `managed_hosts()` | After 4c. Before 4d, so the generic boot run is entered from it. The live rotation on mtjade1 needs operator sign-off. |
+| **O** | **Arrival convergence, a replacement migration** (operator ruling, 2026-10-03): one host-generic convergence from factory state through boot becomes the **single entry for boot**. The existing `mtcollins1_boot` mode is re-rooted onto it. See its own section below. | **the boot run's own entry** (the root that assumes `BmcSecured`); the caller-supplied password path into the reset and boot wrappers; the supplied `BmcSecureStanding` in the firmware convergence; the static row membership of `managed_hosts()` | After 4c. Before 4d, which then makes the already-re-rooted boot run host-generic. Each unit's live credential write needs its own operator go-ahead; mtcollins1 goes first. |
 | **5** | **Remaining BMC-stack observations**: fan observe, UI bundle observe, KVM observer, SOL notice, served-UI catalog, BMC fan, which the boot does not need. | those `mtcollins1_` procedure roots | After 3. |
 | **6** | **Platform**: physical orientation, DIMM connector and platform observation become logic over the baseboard read through `ManagedHost.access`. The Mt. Collins figure stays in `extdeps.ampere.mt_collins_*`. | the board bindings in those modules | After #13025 (it edits `mtcollins1_physical_orientation`). |
 | **7** | **Workflow modes**, per ruling (a). | the 8 `mtcollins1_*` literals and their steps in `gunbc.fleet_converge_workflow` and its projection; `mtcollins-canary.yml` dispositioned in the same change | Last. Operator sign-off on names first. |
 
 ### Cut O — arrival convergence (plan delta, 2026-10-03)
+
+**Framing (operator ruling, 2026-10-03): this is a consolidation, not a new mode beside the boot.** It is a replacement migration under DESIGN §3.
+- **Single entry.** The arrival convergence becomes the one entry for boot. The existing `mtcollins1_boot` fleet-converge mode is **re-rooted** onto it, in the same change that deletes the old entry.
+- **Entry phase.** A run enters at whatever phase the readback finds. A secured unit Noops through `BmcSecure` straight to boot; a factory unit stops at the first step whose Apply is not authorized.
+- **No second boot route.** No boot route survives beside the convergence, and the convergence never falls back to the old entry.
+- **Workflow surface.** No new mode, no new job, no renamed mode. The mode literal `mtcollins1_boot` and its job stay byte-identical until cut 7.
+- **Gap-intolerant boundary.** Boot is the gap-intolerant boundary, so this cut takes the staged form the doctrine allows: the convergence is built and witnessed dry, then **one transition** switches the mode's root and deletes the old entry together.
 
 **Requirement** (operator, via eager-gull-22). Boot is to be entered from onboarding, starting at **factory state**. Today's boot run assumes `BmcSecured` already holds. The cut is one host-generic convergence. `mtcollins1` enters at its satisfied state and every step is a Noop. `mtjade1` enters at factory: MegaRAC at 192.168.1.246, factory `admin`/`admin`, BMC clock reading the year 2000.
 
@@ -209,15 +216,17 @@ So the BMC and silicon leaves it needs move first.
   - its **dry** realization against the modeled controller (`gunbc.bmc_model` `BmcWorld`), with every Noop / Apply / Refuse arm exercised;
   - the wet realization as code;
   - the secret materialization with its first consumers (the reset run and the boot entry).
-- **Does not do:** the live rotation on mtjade1. That is the wet receipt, and it runs only on operator sign-off.
+- **The credential write is gated inside the single route, not by a second route.** The `BmcSecure` Apply arm refuses unless the authorization that `select_authorization_pattern` returns for it has been discharged for that unit and that run. A run that finds the unit unsecured and has no discharge **stops with a typed refusal** at `BmcSecure`. It never proceeds to boot on a factory credential and never widens to "boot anyway".
+- **Minimum Y preserves every required refusal.** Every refusal the current boot entry makes (admission, authorization, maintenance hold, artifact, medium readback) is preserved by the re-rooted entry. Each is listed and witnessed in the PR, and none is dropped by the move.
+- **Does not do:** any live credential write. Each unit's write gets its own operator go-ahead at the time. mtcollins1 goes first.
 - **Frontier:** the remaining password-path wrappers (media attach, KVM, SOL, fan, UI bundle) cut over in cuts 3, 4a, 4d and 5 as each becomes host-generic. `mtcollins1_managed_secret_fetch_frontier` is retired when the last one refuses a caller-supplied path, and not before.
-- **Workflow surface:** a new fleet-converge mode for the wet run is a new mode, so it needs operator sign-off like cut 7. Until then the wet realization has no workflow entry.
+- **Workflow surface:** none added (see Framing). The generated `.github/workflows/fleet-converge.yml` changes only where the re-rooted mode's steps change. That diff is shown in the PR and belongs to this ruling's approval.
 
 **Decisions (eager-gull-22 for the operator, 2026-10-03).**
 - **(i) Module name:** `gunbc.machine_intake_arrival_converge`. Approved.
 - **(ii) Read-only reads of mtjade1 with the factory credential:** no separate sign-off. The operator approved hands-on access to the unit on 2026-10-03. **The rotation and any account write do need sign-off.**
 - **(iii) First wet subject:** mtcollins1 goes first, and its unsecured state is to be treated as likely real. After the 2026-10-02 reflash the `gunbc` user and IPMI admin were restored by hand, but the factory `admin` was **not** disabled. So the conjunction's second half (the published credential is refused) is expected to fail on readback, which is the case it exists to catch. Finding 3 stands as written: the readback decides.
-- **(iv) Workflow mode:** no workflow entry for the wet run until the operator signs off the new mode (asked 2026-10-03).
+- **(iv) Workflow mode:** operator ruling 2026-10-03: approved as a **re-root of the existing `mtcollins1_boot` mode**, not a new mode (see Framing). The live credential write on each unit still gets its own go-ahead.
 - Findings 1, 2 and 4 are confirmed. The route authority is corrected first, keyed on executed evidence.
 
 ### Terminal receipt owed by every cut (review item 5)
