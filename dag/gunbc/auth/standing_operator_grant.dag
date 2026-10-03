@@ -2,7 +2,7 @@ module gunbc.auth.standing_operator_grant
 
 import std.types { String, Bool, List, NonEmptyStr, Timestamp }
 import product.placement_supply { HostIdentity, host_identity_eq }
-import std.list { list_cover }
+import std.list { list_member }
 import std.scoped_authorization { OperatorGrant, ScopedAuthorization, AuthorizationGranted, AuthorizationRequest, Unclaimed }
 import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
@@ -81,11 +81,14 @@ data group_a_dev_standing_grant: StandingOperatorGrant = StandingOperatorGrant {
 // COVERAGE IS AN IDENTITY JOIN: the group is the grant's, the effect is one of its effects, and EVERY host
 // the effect touches is one of its hosts (a host outside the roster is outside the ruling, however few).
 // An empty host list touches nothing a ruling could cover, so it is not covered.
+// SUBSET, NOT SET EQUALITY: std.list list_cover is equality in both directions, and using it here made an
+// effect on ONE granted host (a host-effect recovery on srv7) uncovered while all four passed -- found by
+// the recovery's witness (2026-10-03). Every effect host must be granted; the effect need not touch all.
 fn standing_grant_covers(g: StandingOperatorGrant, group: FabricGroup, effect: StandingGrantEffect, hosts: List<HostIdentity>) -> Bool {
   (fabric_group_wire(g: g.group) as String) == (fabric_group_wire(g: group) as String)
     && any(g.effects, e => (standing_grant_effect_wire(e: e) as String) == (standing_grant_effect_wire(e: effect) as String))
     && length(hosts) != 0
-    && list_cover(held: g.hosts, expected: hosts, eq: fn(a, b) { host_identity_eq(a: a, b: b) })
+    && all(hosts, h => list_member(xs: g.hosts, x: h, eq: fn(a, b) { host_identity_eq(a: a, b: b) }))
 }
 
 // THE GRANT A CONSUMER ACTS UNDER, MINTED OVER THE EXACT REQUEST: its scopes, subject and intent are the
