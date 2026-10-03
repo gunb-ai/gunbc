@@ -710,7 +710,15 @@ fn file_refusal_at_text(at: &serde_json::Value) -> Result<String, String> {
             .ok_or_else(|| format!("{variant} carries no {name}: {at}"))
     };
     Ok(match variant {
-        "FileRefusalAtLine" => format!("{}:{}", field("line")?, field("byte_column")?),
+        // `byte_column` is the `v2.std.source_position` `SourceByteColumn` brand, so its number is
+        // its `value`; a bare number there is a shape this decoder does not admit.
+        "FileRefusalAtLine" => format!(
+            "{}:{}",
+            field("line")?,
+            field("byte_column")?
+                .get("value")
+                .ok_or_else(|| format!("FileRefusalAtLine byte_column carries no value: {at}"))?
+        ),
         "FileRefusalAtWholeFile" => "<whole-file>".to_string(),
         "FileRefusalAtOtherFile" => format!("<other-file {}>", field("file")?),
         "FileRefusalAtInvariant" => format!("<invariant {}>", field("invariant")?),
@@ -3165,7 +3173,7 @@ mod tests {
     fn a_file_refusal_row_decodes_its_fatal_line_and_byte_column() {
         let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":1,\"advised_files\":0,\"admitted\":false,\"summary\":\"s\",\"frontier\":\"held\"}";
         let located = format!(
-            "{{\"file_refusal\":{{\"path\":\"a.dag\",\"module\":{{\"_variant\":\"Absent\"}},\"head_reason\":\"parse_grammar_choice_overlap_residue\",\"fatal_reason\":\"parse_g0_tokens_remain\",\"chain\":[{{\"reason\":\"parse_grammar_choice_overlap_residue\",\"at\":{{\"_variant\":\"FileRefusalAtInvariant\",\"invariant\":\"grammar_choice_overlap\"}}}},{{\"reason\":\"parse_g0_tokens_remain\",\"at\":{{\"_variant\":\"FileRefusalAtLine\",\"line\":12,\"byte_column\":5}}}}]}}}}\n{marker}\n"
+            "{{\"file_refusal\":{{\"path\":\"a.dag\",\"module\":{{\"_variant\":\"Absent\"}},\"head_reason\":\"parse_grammar_choice_overlap_residue\",\"fatal_reason\":\"parse_g0_tokens_remain\",\"chain\":[{{\"reason\":\"parse_grammar_choice_overlap_residue\",\"at\":{{\"_variant\":\"FileRefusalAtInvariant\",\"invariant\":\"grammar_choice_overlap\"}}}},{{\"reason\":\"parse_g0_tokens_remain\",\"at\":{{\"_variant\":\"FileRefusalAtLine\",\"line\":12,\"byte_column\":{{\"value\":5}}}}}}]}}}}\n{marker}\n"
         );
         let parsed = parse_native_run_output(&located).expect("a located row parses");
         assert_eq!(parsed.file_refusals[0].fatal_at, "12:5");
