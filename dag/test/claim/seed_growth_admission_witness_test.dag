@@ -1,6 +1,6 @@
 module test.claim.seed_growth_admission_witness
 
-import gunbc.roadmap_authority { observation_scoped_run_seed_growth_justification }
+import gunbc.observation_scoped_run_seed_growth { observation_scoped_run_seed_growth_justification }
 import gunbc.seed_growth_admission {
   seed_growth_admission_g0_population_note,
   seed_growth_forward_freeze_policy_note,

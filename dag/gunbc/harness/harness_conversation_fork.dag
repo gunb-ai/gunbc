@@ -1,0 +1,118 @@
+module gunbc.harness.harness_conversation_fork
+
+import std.types { String, Int, Bool }
+
+// THE FORK POINT: WHERE AN ATTEMPT LINEAGE COULD RESUME. A turn's conversation lives in memory
+// while it runs and is gone when the process exits; the fork point is the durable address of a
+// moment in that conversation -- which lineage, which epoch and round, and the digests of the
+// exact request and response bytes that passed the wire (gunbc.harness.harness_turn's wire log
+// persists those bytes under <events_path>.wire/<round>.{request,response}.json; the digests here
+// bind them without carrying the bytes).
+type ConversationForkPoint {
+  attempt_lineage: String
+  epoch: Int
+  round: Int
+  request_digest: String
+  response_digest: String
+  model_identity: String
+  wire_shape: String
+}
+
+// THE FORK RECEIPT'S LAW, stated where admittance is decided. The durable wire log is the
+// CORRECTNESS AUTHORITY for what the conversation was: a resume replays context from those bytes
+// or it does not happen. An engine's KV prefix residency is a PERFORMANCE DERIVATION from that
+// log -- a cache of computed state that may be present, absent, or gone -- and is NEVER a
+// correctness dependency: no admittance below consults it, and no resume may require it. A fork is
+// admitted only while every identity that produced the context still holds; any change refuses
+// with the cause named, because replaying context across a change silently substitutes work the
+// engine never did.
+type ConversationForkAdmittance
+  = ForkAdmitted { point: ConversationForkPoint }
+  | ForkInvalid { cause: String }
+
+// THE THREE REFUSALS, one per identity that must hold. The causes are the law's sentences: a fork
+// across a model change replays context the engine never computed; a fork across a wire-shape
+// change replays a conversation the current envelope cannot carry back to the engine; and a moved
+// chain fingerprint means the alignment chain the context was built against changed. Each cause
+// carries both spellings -- the fork point's and the candidate resume's -- so the refusal names
+// what moved instead of merely asserting that something did.
+fn conversation_fork_admit(
+  point: ConversationForkPoint,
+  model_identity: String,
+  wire_shape: String,
+  chain_fingerprint_at_point: String,
+  chain_fingerprint_now: String,
+) -> ConversationForkAdmittance {
+  if point.model_identity != model_identity {
+    ForkInvalid { cause: join([
+      "a fork across a model change replays context the engine never computed: the fork point was",
+      " built under model identity ", point.model_identity,
+      " and the candidate resume offers ", model_identity,
+    ], "") }
+  } else if point.wire_shape != wire_shape {
+    ForkInvalid { cause: join([
+      "a fork across a wire-shape change replays a conversation the current envelope cannot carry:",
+      " the fork point was built under ", point.wire_shape,
+      " and the candidate resume offers ", wire_shape,
+    ], "") }
+  } else if chain_fingerprint_at_point != chain_fingerprint_now {
+    ForkInvalid { cause: join([
+      "the alignment chain the context was built against changed: the fork point binds chain",
+      " fingerprint ", chain_fingerprint_at_point,
+      " and the candidate resume offers ", chain_fingerprint_now,
+    ], "") }
+  } else {
+    ForkAdmitted { point: point }
+  }
+}
+
+// KV PREFIX RESIDENCY IS AN OBSERVATION, NEVER CORRECTNESS STATE. The fabric's cache standing --
+// whether a serving unit still holds the prefix of a conversation in its KV cache -- informs
+// PLACEMENT PREFERENCE ONLY: a warm compatible location is PREFERRED (cheaper, faster), and when
+// none is available the lineage executes COLD FROM DURABLE STATE, replaying the wire log the slow
+// way. Neither direction is a correctness input: a wrong preference costs time, and a wrong
+// correctness dependency would cost truth.
+//
+// THE OBSERVATION'S IDENTITIES ARE THE REASON. A fork receipt binds model, checkpoint, tokenizer,
+// chat-template, tool-schema, projection and prefix digests -- the full set a KV prefix silently
+// encodes -- because two serving units only share a prefix when ALL of them match. A shared chain
+// fingerprint alone NEVER establishes the same KV prefix: the fingerprint names the alignment
+// chain the context was built against, not the token stream any particular engine resident holds.
+// Standing is therefore carried beside those identities, and a consumer that wants to trust a warm
+// location must check every one of them, not the chain name.
+type KvPrefixResidency
+  = Resident
+  | NotResident
+  | Unobserved
+  | Evicted
+  | Incompatible
+
+type KvPrefixResidencyObservation {
+  serving_unit: String
+  model_identity: String
+  tokenizer_identity: String
+  chat_template_identity: String
+  semantic_prompt_digest: String
+  wire_digest: String
+  standing: KvPrefixResidency
+  observed_at: String
+}
+
+// THE PLACEMENT RULE, pure so the preference is testable without the fabric: only an observed
+// Resident prefix earns preference. Unobserved is the honest default -- an unasked question never
+// answers warm, so it lands on cold exactly like NotResident, Evicted and Incompatible. Executing
+// cold is always available because the durable wire log, not any cache, is the correctness
+// authority; this fold decides speed, never possibility.
+type KvPlacementPreference
+  = PreferWarmLocation
+  | ExecuteColdFromDurableState
+
+fn kv_prefix_residency_placement(standing: KvPrefixResidency) -> KvPlacementPreference {
+  match standing {
+    Resident => PreferWarmLocation
+    NotResident => ExecuteColdFromDurableState
+    Unobserved => ExecuteColdFromDurableState
+    Evicted => ExecuteColdFromDurableState
+    Incompatible => ExecuteColdFromDurableState
+  }
+}

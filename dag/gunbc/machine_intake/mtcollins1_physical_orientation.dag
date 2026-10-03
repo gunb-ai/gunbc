@@ -2,12 +2,13 @@ module gunbc.machine_intake_mtcollins1_physical_orientation
 
 import std.types { Bool, NonEmptyStr, String, List, list_length }
 import std.nat { Nat }
-import std.measure { gibibyte_count }
+import std.measure { gibibyte_count, millivolt_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.roster_frontier { FrontierRow, DeclSubject }
 import std.dissolution { UnboundDissolution }
 import extdeps.publication { SpecificationDocumentDate }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited }
+import extdeps.ampere.smpro_register { SmproBootProgress, SmproBootProgressRead, SmproBootProgressRefused, smpro_stage_text, smpro_status_text, smpro_cur_bootstage_of, smpro_bootstage_of }
 import extdeps.ampere.mt_collins_product_brief.memory_population {
   MtCollinsChannelConnectorPair, MtCollinsDimmPopulationRow,
   mt_collins_channel_connector_pairs, mt_collins_population_rows,
@@ -37,6 +38,9 @@ import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
   MtCollins1ChassisEnd, FrontEnd, RearEnd, MtCollins1Viewpoint, ViewpointReported, ViewpointNotYetReported,
   mtcollins1_operator_front_report,
   MtCollins1DiagnosisHypothesis, MtCollins1HypothesisStanding, HypothesisOpen, HypothesisRefutedByStickSwap,
+  HypothesisWeakenedByMatchingCpu0Characteristics,
+  MtCollins1CpuFingerprintComparison, MtCollins1SecondaryJoinReading, MtCollins1SecondaryJoinOutcome, SecondaryJoined, SecondaryJoinTimeout,
+  SecondaryJoinUnclassified, secondary_join_outcome, mtcollins1_secondary_join_readings,
   MtCollins1StickSwapReport, MtCollins1StickPlacement, MtCollins1FirmwareSocketSummary, mtcollins1_firmware_socket_summary,
   MtCollins1SocketCpu, MtCollins1CpuRelease, EngineeringSample, ProductionPart, mtcollins1_socket_cpus,
   MtCollins1PairingBootHistory, MachineBootReportedSinceSwap, PairingBootNotYetReported, mtcollins1_pairing_boot_history,
@@ -704,7 +708,7 @@ fn history_block(history: List<MtCollins1Socket1InvestigationBoot>, orientation:
   if list_length(items: history) == 0 { [] } else {
     concat(concat(concat(["History (firmware rosters):"], map(history, b => boot_history_line(boot: b, orientation: orientation, banks: banks))),
       [socket1_standing_text(standing: socket1_standing(boots: history, orientation: orientation, banks: banks))]),
-      concat(cpu_block(cpus: mtcollins1_socket_cpus, history: mtcollins1_pairing_boot_history, banks: banks), map(mtcollins1_socket1_hypotheses, h => hypothesis_text(h: h, history: history, banks: banks, pairs: mt_collins_channel_connector_pairs))))
+      concat(concat(cpu_block(cpus: mtcollins1_socket_cpus, history: mtcollins1_pairing_boot_history, banks: banks), map(mtcollins1_secondary_join_readings, r => concat(concat(concat("Join outcome (", r.run), "): "), join_outcome_text(outcome: secondary_join_outcome(reading: r))))), map(mtcollins1_socket1_hypotheses, h => hypothesis_text(h: h, history: history, banks: banks, pairs: mt_collins_channel_connector_pairs))))
   }
 }
 
@@ -771,6 +775,34 @@ fn hypothesis_text(h: MtCollins1DiagnosisHypothesis, history: List<MtCollins1Soc
         concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat("Refuted hypothesis: ", h.hypothesis), " By the operator's swap report: "), k), " was silent in J"), to_string(sc)), " (run "), to_string(sr)), ") and trained in J"), to_string(tc)), " (run "), to_string(tr)), "). The J17 slot is not cleared.")
       StickNotCleared => concat("Stick refutation not derivable from the swap report and receipts (unverified): ", h.hypothesis)
     }
+    HypothesisWeakenedByMatchingCpu0Characteristics { comparison: c } => if matching_cpu0_characteristics(c: c) {
+        concat(concat(concat(concat(concat(concat("Weakened hypothesis (not refuted): ", h.hypothesis), " Socket 0 reads core "), to_string(millivolt_count(v: c.current_fingerprint.core_voltage))), concat(concat(" mV, AVS ", to_string(millivolt_count(v: c.current_fingerprint.avs_voltage))), concat(" mV, warranty ", to_string(c.current_fingerprint.warranty)))), " in both "), concat(concat(c.current.run, " and the two-socket boot "), concat(c.reference.run, ": matching characteristics, not a unique CPU identity.")))
+      } else { concat("Weakening not derivable from the two summaries (unverified): ", h.hypothesis) }
+  }
+}
+
+fn matching_cpu0_characteristics(c: MtCollins1CpuFingerprintComparison) -> Bool {
+  let a = c.reference_fingerprint
+  let b = c.current_fingerprint
+  c.reference.active_sockets >= 2 && a.socket == b.socket && millivolt_count(v: a.core_voltage) == millivolt_count(v: b.core_voltage) && millivolt_count(v: a.avs_voltage) == millivolt_count(v: b.avs_voltage) && a.warranty == b.warranty
+}
+
+fn secondary_stage_text(st: SmproBootProgress) -> String {
+  match st {
+    SmproBootProgressRead { current: c, reported: r } => concat(concat(smpro_stage_text(r: c), " (reported: "), concat(concat(smpro_stage_text(r: r.stage), concat(", ", smpro_status_text(r: r.status))), ")"))
+    SmproBootProgressRefused { cur_bootstage_word: c, bootstage_word: r } => concat(concat(concat("inconsistent SMpro pair (current: ", smpro_stage_text(r: smpro_cur_bootstage_of(word: c))), concat("; reported: ", smpro_stage_text(r: smpro_bootstage_of(word: r).stage))), ", reported stage ahead of current)")
+  }
+}
+
+fn bool_text(b: Bool) -> String { if b { "true" } else { "false" } }
+
+fn join_outcome_text(outcome: MtCollins1SecondaryJoinOutcome) -> String {
+  match outcome {
+    SecondaryJoined { inter_socket_links_reported: l } => concat("SecondaryJoined { inter_socket_links_reported: ", bool_text(b: l), " }")
+    SecondaryJoinUnclassified { reason: why } => concat("SecondaryJoinUnclassified: ", why)
+    SecondaryJoinTimeout { secondary_last_stage: st, inter_socket_links_reported: l, secondary_host_checkpoints: cps } =>
+      concat(concat(concat("SecondaryJoinTimeout { secondary_last_stage: ", secondary_stage_text(st: st)), ", socket 0 continued alone"),
+        concat(concat(", inter_socket_links_reported: ", bool_text(b: l)), concat(", secondary_host_checkpoints: ", if list_length(items: cps) == 0 { "none }" } else { concat(join(cps, ", "), " }") })))
   }
 }
 

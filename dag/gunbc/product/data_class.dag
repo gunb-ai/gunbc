@@ -21,9 +21,10 @@ import product.data_category {
 // repair of the anemic case beside Secret: std.types Email is `type Email = String`, a bare alias
 // with no boundary at all, so an email is a String with a nickname. extdeps.auth.oidc
 // OidcStandardClaims carries one; gunbc.principal_projection is where those claims enter our
-// program, and that boundary now mints Classified<PersonalIdentity, OidcStandardClaims> instead of
-// carrying the raw carrier onward. Email itself is left standing as upstream vocabulary (the
-// OIDC schema names it), not as a second, weaker authority for handling.
+// program, and that boundary now mints Classified<PersonalIdentity, OidcStandardClaims> at the
+// verified-ID-token verdict (verified_oidc_projection) instead of carrying the raw carrier
+// onward. Email itself is left standing as upstream vocabulary (the OIDC schema names it), not
+// as a second, weaker authority for handling.
 //
 // DESIGN 4b SAYS A WRAPPER IS COSMETIC UNTIL CONSTRUCTION AND ACCEPTANCE ENFORCE THE DISTINCTION,
 // so this module is organised around the two enforcement points and states, per point, what the
@@ -96,13 +97,14 @@ type Classified<C, T> sole_constructor {
 // mint: a mint nothing may call is a declaration nothing consumes (DESIGN 3c), and a category is
 // given its mint by the change that lands its first boundary. The admitted callers are the
 // boundaries, by declaration:
-//   PersonalIdentity -- gunbc.principal_projection oidc_projection, where an OIDC ID token's
-//     standard claims (email, email_verified, name) enter our program.
+//   PersonalIdentity -- gunbc.principal_projection verified_oidc_projection, where an OIDC ID
+//     token's standard claims (email, email_verified, name) enter our program behind the
+//     verified-ID-token verdict.
 //   BuildOutput -- gunbc.fabric_m0_origin_commit job_output_bytes, where a job's produced file
 //     enters the commit path toward the durable origin.
 fn classify_personal_identity<T>(value: T) -> Classified<PersonalIdentity, T>
   admit_callers: [
-    decl_ref(module_path: "gunbc.principal_projection", decl_name: "oidc_projection"),
+    decl_ref(module_path: "gunbc.principal_projection", decl_name: "verified_oidc_projection"),
   ]
   = Classified { category: personal_identity_ref(), reveal: fn(k) { value } }
 

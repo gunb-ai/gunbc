@@ -74,6 +74,8 @@ fn node_with_carriers(cs: List<Pointer>) -> RoadmapNode {
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
 }
 
@@ -105,6 +107,8 @@ test fn witness_node_status_drifts() -> Bool {
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
   verdict_is_drifted(v: node_status_drift(rn: rn, committed_box: true, merged: [5491]))
 }
@@ -119,6 +123,8 @@ test fn witness_node_unsigned_box_clean() -> Bool {
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
   match node_status_drift(rn: rn, committed_box: false, merged: [5491]) {
     Clean => true

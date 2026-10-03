@@ -12,7 +12,9 @@ import gunbc.spark.fabric_switch_observed { FabricGroup }
 import gunbc.spark.serving_arm {
   ArmIntent,
 }
-import gunbc.spark.serving_arm_launch { ArmLaunchPlan, plan_arm_launch_for, glm_native_arm_container }
+import gunbc.spark.serving_arm_launch { ArmLaunchPlan, ArmLaunchRefused, plan_arm_launch_under_memory_fit, glm_native_arm_container }
+import gunbc.spark.group_b_serving_capacity { group_b_restoration_executable }
+import v2.std.optional { Present, Absent }
 
 // ── THE ONE CALL SITE THAT SAYS WHAT GROUP B LAUNCHES ─────────────────────────────────────────
 //
@@ -117,25 +119,42 @@ fn glm_group_b_deployment_env() -> List<DockerEnvAssignment> {
 }
 
 // THE PLAN EVERY GROUP-B REALIZATION PROJECTS FROM, AND ITS TUPLE IS THE FABRIC ASSIGNMENT'S. The
-// checkpoint, runtime, topology, group and profile are read off gunbc.spark.fabric_serving_assignment
+// checkpoint, runtime, topology and group are read off gunbc.spark.fabric_serving_assignment
 // glm_group_b_serving_assignment -- the one row the launch and every client (enrollment, admitted
 // model, placement) read -- so what is launched and what clients are routed to cannot be two facts.
 //
-// THE PLAN EVERY GROUP-B REALIZATION PROJECTS FROM. A consumer that wants the arm's containers calls
-// this and reads `container` off each rank; a consumer that wants a unit file calls this and projects
-// the same spec through extdeps.docker.cli's foreground verb. Neither may assemble a launch of its own,
-// and the equality between the two projections is claimed rather than assumed --
+// THE PROFILE IS THE RESTORATION INTENT'S DERIVATION, NOT AN AUTHORED ROW. The executable profile
+// is gunbc.spark.group_b_serving_capacity group_b_restoration_executable: the declared seat
+// population (262144 tokens x the experiment subject's seats) put through profile_for_intent, which
+// is the same value gunbc.spark.arm_memory_fit prices and the experiment plan plans on. The authored
+// sixteen-sequence row (gunbc.spark.serving_arm glm_native_concurrent_profile) is the configuration
+// whose units crash-looped from 2026-09-18, and a launch that rendered it beside a proof priced on
+// another profile would be the second authority for one engine config. The assignment row's own
+// profile agrees with it on everything a client reads (port 30000, alias glm-5.3-flash). An intent
+// that refuses leaves no profile, and the plan refuses with it -- nothing falls back to a row.
+//
+// AND THE PLAN PASSES THE MEMORY WALL (gunbc.spark.serving_arm_launch plan_arm_launch_under_memory_fit):
+// normal serving only behind a proved fit, a bounded experiment only behind a typed experiment plan.
+//
+// A consumer that wants the arm's containers calls this and reads `container` off each rank; a
+// consumer that wants a unit file calls this and projects the same spec through extdeps.docker.cli's
+// foreground verb. Neither may assemble a launch of its own, and the equality between the two
+// projections is claimed rather than assumed --
 // dag/test/claim/spark/glm_group_b_launch_authority_witness_test.dag.
 fn glm_group_b_launch_plan(intent: ArmIntent) -> ArmLaunchPlan {
   let a = glm_group_b_serving_assignment
-  plan_arm_launch_for(
-    checkpoint: a.checkpoint,
-    runtime: a.runtime,
-    topology: a.topology,
-    group: a.group,
-    intent: intent,
-    profile: a.profile,
-    deployment_env: glm_group_b_deployment_env(),
-    container: glm_native_arm_container,
-  )
+  match group_b_restoration_executable() {
+    Absent => ArmLaunchRefused { cause: "the Group B restoration capacity intent refused (gunbc.spark.group_b_serving_capacity group_b_restoration_intent_admission), so no executable profile exists to launch" as NonEmptyStr }
+    Present { value: executable } =>
+      plan_arm_launch_under_memory_fit(
+        checkpoint: a.checkpoint,
+        runtime: a.runtime,
+        topology: a.topology,
+        group: a.group,
+        intent: intent,
+        profile: executable.profile,
+        deployment_env: glm_group_b_deployment_env(),
+        container: glm_native_arm_container,
+      )
+  }
 }
