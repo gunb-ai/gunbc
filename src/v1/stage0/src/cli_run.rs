@@ -46235,14 +46235,14 @@ pub use emitted_closure_compile_host::{
 #[cfg(test)]
 pub(crate) use emitted_closure_compile_host::{
     fixture_arm_diagnostic_lines, fixture_closure_attributed_diagnostic,
-    fixture_closure_attributed_line, fixture_closure_reached_rustc, fixture_closure_rustc_verdict,
-    fixture_closure_summary, fixture_discrimination_passed, fixture_discrimination_report,
-    run_append_concat_form_discrimination, run_argv_word_list_splice_discrimination,
-    run_empty_map_turbofish_discrimination, run_fixture_closure_discrimination,
-    run_function_value_adapter_discrimination, run_local_true_false_coproduct_discrimination,
-    run_native_bool_variant_discrimination, run_nested_refinement_cast_discrimination,
-    run_phantom_marker_identity_discrimination, run_shell_projection_arity_discrimination,
-    FixtureClosureOutcome,
+    fixture_closure_attributed_line, fixture_closure_compiled, fixture_closure_reached_rustc,
+    fixture_closure_rustc_verdict, fixture_closure_summary, fixture_discrimination_passed,
+    fixture_discrimination_report, run_append_concat_form_discrimination,
+    run_argv_word_list_splice_discrimination, run_empty_map_turbofish_discrimination,
+    run_fixture_closure_discrimination, run_function_value_adapter_discrimination,
+    run_local_true_false_coproduct_discrimination, run_native_bool_variant_discrimination,
+    run_nested_refinement_cast_discrimination, run_phantom_marker_identity_discrimination,
+    run_shell_projection_arity_discrimination, FixtureClosureOutcome,
 };
 
 /// The authority's own declared module path, for consumers outside this module.
