@@ -11,15 +11,16 @@ import v2.compiler.reference_conservation {
   reference_conservation_of_subject,
   reference_conservation_subject_of_read,
   reference_conservation_of_subject_admitted,
+  reference_conservation_report_lines,
   OccurrenceRoleTableUnadmitted
 }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.compiler.occurrence_role { NameProductionTableAdmission, NameProductionTableRefused, NameRoleNotYetRead, dag_name_production_rows, name_production_table_admission, name_row }
 import v2.extdeps.languages.dag { dag_grammar_root, dag_language_model }
-import v2.std.algebra { fold_list, length, list_map }
+import v2.std.algebra { any, fold_list, length, list_map }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, Diagnostic, Rejected, Unavailable, UserInputBoundary, diagnostics_has_reason, diagnostics_singleton, invariant_port_locus }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol, symbol_intern_lexeme }
@@ -543,4 +544,48 @@ test fn a_string_literal_is_conserved_by_its_value_holds() -> Bool {
   reference_conservation_admitted(report: r)
     && report_drop_count(report: r, wanted: symbol_intern_lexeme(lexeme: "hello")) == 0
     && report_drop_count(report: r, wanted: symbol_intern_lexeme(lexeme: "a\"b")) == 0
+}
+
+// ---- accepted-file advisories ------------------------------------------------------------------
+//
+// AN ACCEPTED SUBJECT'S ADVISORIES REACH THE REPORT AND ITS CENSUS LINES BY IDENTITY. The clean
+// control is accepted and carries the grammar's overlap residue, the advisory every module
+// carries today, so the real route is exercised here: dropping the advisories at
+// reference_conservation_of_subject_admitted (the old `diagnostics: _`) reds both conjuncts.
+test fn the_clean_control_carries_its_accepted_advisories_by_identity_holds() -> Bool {
+  let report = clean_control_report()
+  diagnostics_has_reason(d: report.advisories, reason: ^parse_grammar_choice_overlap_residue)
+    && any(
+      xs: reference_conservation_report_lines(report: report),
+      predicate: fn(line) { line == "advisory " + report.path + " parse_grammar_choice_overlap_residue" }
+    )
+}
+
+// A NON-RESIDUE ADVISORY IS CARRIED BY ITS OWN IDENTITY. The boundary is the accepted normalized
+// outcome, SUPPLIED here with one body-lowering advisory in place of whatever the real front end
+// attached; the real producer's inhabitance is the claim above. The supplied reason must come
+// back, and the residue must not -- the report reads the outcome it was given, it does not
+// re-derive or invent advisories.
+test fn a_supplied_accepted_advisory_reaches_the_report_by_identity_holds() -> Bool {
+  let subject = clean_control_subject()
+  match subject.normalized {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      let report = conservation_report_of(subject: ReferenceConservationSubject {
+        path: subject.path,
+        parsed: subject.parsed,
+        normalized: Accepted {
+          value: tree,
+          diagnostics: Some {
+            diagnostics: diagnostics_singleton(d: Diagnostic {
+              reason: ^body_lowering_reason_postfix_suffix_carried,
+              at: invariant_port_locus(port: ^body_lowering_locus_port, invariant: ^body_lowering_reason_postfix_suffix_carried),
+              correction: Unavailable { reason: UserInputBoundary }
+            })
+          }
+        }
+      })
+      diagnostics_has_reason(d: report.advisories, reason: ^body_lowering_reason_postfix_suffix_carried)
+        && !diagnostics_has_reason(d: report.advisories, reason: ^parse_grammar_choice_overlap_residue)
+  }
 }
