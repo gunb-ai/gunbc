@@ -17,13 +17,18 @@ import v2.std.node { symbol_identity_digest }
 // //gunbc/instruments:native-materialization-store-closure` emits the closure this entry reaches --
 // which contains extdeps.realization.materialization_store_local and everything it imports -- builds
 // the emitted crate under cargo, and runs it. The build is the first half of the evidence and the
-// reason this is a program rather than a string witness: the three defect classes it stands over
-// were each ACCEPTED source that emitted Rust rustc refused, and two of them sat under a
-// compile_dag_rust_emit_check row that was green the whole time, one of them asserting the
-// ill-formed text verbatim. A substring oracle cannot refuse Rust that does not compile; cargo can.
+// reason this is a program rather than a string witness. Its DISCRIMINATING claim is narrow: it
+// discriminates the two EMITTER defect classes this change repaired -- impl and fn headers that
+// omitted their item's bounds (class A) and an optional-returning lambda unwrapped inside a closure
+// body (class C) -- each ACCEPTED source that emitted Rust rustc refused, and both had sat under a
+// compile_dag_rust_emit_check row that was green the whole time, one asserting the ill-formed text
+// verbatim. A substring oracle cannot refuse Rust that does not compile; cargo can. The five text
+// sites (class B) are NOT discriminated by the build: after gunbc#12512 an identified crossing of
+// that shape unfolds or refuses at source acceptance, so their cases below are BEHAVIORAL controls of
+// the simplified functions, not reds the build would catch.
 //
-// The cases are the second half: one natively executed case per repaired site, each on the exact
-// function the defect sat in, each with a discriminating RED beside it.
+// The cases are the second half: one natively executed case per changed site, each on the exact
+// function changed, each with a RED beside it.
 //   audience_*          std.authorization_profile audience_subset / audience_join -- generic fns
 //                       over a Set element, which emitted `P: Clone` and no `P: Ord`, beside
 //                       hand-written Debug/PartialEq impls whose headers omitted the item header's
