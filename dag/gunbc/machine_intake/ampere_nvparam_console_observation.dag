@@ -4,7 +4,7 @@ import v2.std.algebra { filter, any }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
 import v2.std.optional { Present }
-import extdeps.languages.json.parse { json_hex_nibble }
+import extdeps.numeric.base16 { base16_word_value }
 import extdeps.ampere.nvparam {
   NvParamRegion, NvPreboot, NvManufacturing, NvUser, NvBoard,
   NvParamKeyReading, NvParamKeyDefined, NvParamKeyUndefined, nvparam_key_of, nvparam_key_text, nvparam_bytes_per_parameter,
@@ -60,12 +60,10 @@ fn nvparam_region_base(r: NvParamRegion) -> Int {
   match r { NvPreboot => 0 NvManufacturing => 16384 NvUser => 32768 NvBoard => 49152 }
 }
 
-// Hex digits of any nonzero length, through the corpus's one hex-nibble authority.
+// Hex through the corpus's one bounded base-16 word authority. Fifteen digits is that authority's
+// cap; the UINT32 bound on a value is checked separately, so 0x100000000 parses and is then refused.
 fn hex_of(text: String) -> Int? {
-  if text.length() == 0 { none } else {
-    let values = map(chars(s: text), c => json_hex_nibble(c: c))
-    if any(values, v => v < 0) { none } else { Present { value: fold(values, init: 0, f: (acc, v) => acc * 16 + v) } }
-  }
+  base16_word_value(word: text, max_digits: 15)
 }
 
 // PrintNVRAM's Val is a UINT32 printed with %X and with %d: the hex is 0..0xFFFFFFFF and the decimal
