@@ -735,6 +735,54 @@ fn native_file_refusal_summary(refusals: &[NativeFileRefusalObserved]) -> String
     out
 }
 
+/// One ACCEPTED file whose front end attached advisories (`v2.compiler.native_test_vocabulary`
+/// `NativeTestFileAdvisories`). The reasons are the identities, in chain order; the count is their
+/// length. Before this row the context fold matched an accepted file's advisories away, so they
+/// were visible only as the head of some later refusal and could not be counted at all.
+struct NativeFileAdvisoriesObserved {
+    path: String,
+    reasons: Vec<String>,
+}
+
+/// THE ACCEPTED FILES' ADVISORIES, COUNTED BY IDENTITY. A tally by reason over every advised
+/// accepted file, then one line per file naming its reasons. A grammar-level advisory copied onto
+/// every module shows here as one reason whose count equals the number of advised files -- which
+/// is the measurement the advisory program's later steps are judged against.
+fn native_file_advisories_summary(advised: &[NativeFileAdvisoriesObserved]) -> String {
+    let mut slot: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    let mut by_reason: Vec<(&str, usize)> = Vec::new();
+    let mut total = 0usize;
+    for file in advised {
+        for reason in &file.reasons {
+            total += 1;
+            match slot.get(reason.as_str()) {
+                Some(&i) => by_reason[i].1 += 1,
+                None => {
+                    slot.insert(reason.as_str(), by_reason.len());
+                    by_reason.push((reason.as_str(), 1));
+                }
+            }
+        }
+    }
+    let mut out = format!(
+        "v2-native-route: accepted files with advisories={} advisories={} distinct_advisory_reasons={}",
+        advised.len(),
+        total,
+        by_reason.len()
+    );
+    for (reason, n) in &by_reason {
+        out.push_str(&format!("\n  advisory {n}x {reason}"));
+    }
+    for file in advised {
+        out.push_str(&format!(
+            "\n  advised {} reasons={}",
+            file.path,
+            file.reasons.join(",")
+        ));
+    }
+    out
+}
+
 /// The spawned run's terminal marker, decoded. THE MARKER IS THE VERDICT SURFACE: the binary
 /// prints one, carrying the authority's own admission summary, and its absence is a refusal — a
 /// crash mid-population cannot be read as a quiet green.
@@ -743,6 +791,8 @@ struct NativeTerminalMarker {
     rows: u64,
     universe: u64,
     file_refusals: u64,
+    /// How many accepted files the run reported advisories for; checked against the rows decoded.
+    advised_files: u64,
     admitted: bool,
     summary: String,
     /// `gunbc.native_frontier_ratchet` `native_frontier_verdict_word`, read verbatim. Empty on a
@@ -831,6 +881,7 @@ fn native_member_termination(
 
 struct NativeRunOutput {
     file_refusals: Vec<NativeFileRefusalObserved>,
+    advised_files: Vec<NativeFileAdvisoriesObserved>,
     members: Vec<NativeMemberVerdict>,
     terminal: NativeTerminalMarker,
 }
@@ -841,6 +892,7 @@ struct NativeRunOutput {
 /// harness re-forming a receipt the authority has already judged.
 fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
     let mut file_refusals = Vec::new();
+    let mut advised_files: Vec<NativeFileAdvisoriesObserved> = Vec::new();
     let mut members: Vec<NativeMemberVerdict> = Vec::new();
     let mut terminal: Option<NativeTerminalMarker> = None;
     for line in stdout.lines() {
@@ -890,12 +942,14 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
             };
             let mode = need_str("mode")?;
             let file_refusals = need_u64("file_refusals")?;
+            let advised_files = need_u64("advised_files")?;
             terminal = Some(match mode.as_str() {
                 "census" => NativeTerminalMarker {
                     mode,
                     rows: 0,
                     universe: 0,
                     file_refusals,
+                    advised_files,
                     admitted: false,
                     summary: String::new(),
                     frontier: String::new(),
@@ -911,6 +965,7 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
                     summary: need_str("summary")?,
                     mode,
                     file_refusals,
+                    advised_files,
                 },
                 other => {
                     return Err(format!(
@@ -937,6 +992,36 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
                 path: path.to_string(),
                 head_reason: head_reason.to_string(),
                 fatal_reason: fatal_reason.to_string(),
+            });
+            continue;
+        }
+        if let Some(advised) = value.get("accepted_file_advisories") {
+            let path = advised
+                .get("path")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| format!("accepted-file advisories carry no path: {line}"))?;
+            // The row is head plus tail, non-empty by its producer's type
+            // (`NativeTestFileAdvisories`), so the decoder reads a head it can require rather than
+            // a list it would have to refuse when empty.
+            let as_reason = |r: &serde_json::Value| {
+                r.as_str()
+                    .map(|s| s.to_string())
+                    .ok_or_else(|| format!("an advisory reason is not a string: {line}"))
+            };
+            let mut reasons =
+                vec![as_reason(advised.get("head").ok_or_else(|| {
+                    format!("accepted-file advisories carry no head: {line}")
+                })?)?];
+            for r in advised
+                .get("tail")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| format!("accepted-file advisories carry no tail: {line}"))?
+            {
+                reasons.push(as_reason(r)?);
+            }
+            advised_files.push(NativeFileAdvisoriesObserved {
+                path: path.to_string(),
+                reasons,
             });
             continue;
         }
@@ -983,8 +1068,17 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
     }
     let terminal =
         terminal.ok_or_else(|| "the native run printed no terminal marker".to_string())?;
+    if terminal.advised_files != advised_files.len() as u64 {
+        return Err(format!(
+            "the terminal marker reports advised_files={} but {} accepted-file advisory rows were \
+             printed",
+            terminal.advised_files,
+            advised_files.len()
+        ));
+    }
     Ok(NativeRunOutput {
         file_refusals,
+        advised_files,
         members,
         terminal,
     })
@@ -2557,6 +2651,7 @@ fn run_required_v2_native_inner(
     if !run.file_refusals.is_empty() {
         eprintln!("{}", native_file_refusal_summary(&run.file_refusals));
     }
+    eprintln!("{}", native_file_advisories_summary(&run.advised_files));
 
     // REALIZATION TELEMETRY, ON ITS OWN LINE AND ON NO RECEIPT FIELD: this host process's peak
     // RSS and current RSS (process-scoped -- the emitted binary and the rustc children cargo
@@ -2718,7 +2813,7 @@ mod tests {
         let stdout = format!(
             "{REAL_REFUSED_ROW}\n{}\n",
             "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":1,\"universe\":1,\
-             \"file_refusals\":0,\"admitted\":false,\"summary\":\"s\",\"frontier\":\"held\"}"
+             \"file_refusals\":0,\"advised_files\":0,\"admitted\":false,\"summary\":\"s\",\"frontier\":\"held\"}"
         );
         let out = parse_native_run_output(&stdout).expect("the real row must decode");
         assert_eq!(out.members, vec![NativeMemberVerdict::Refused]);
@@ -2849,7 +2944,7 @@ mod tests {
     /// fire, which is the state this PR has already had to repair twice.
     #[test]
     fn a_nonzero_exit_claiming_admitted_is_refused() {
-        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"admitted\":true,\"summary\":\"s\",\"frontier\":\"held\"}";
+        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"advised_files\":0,\"admitted\":true,\"summary\":\"s\",\"frontier\":\"held\"}";
         let result = run_native_binary(
             Path::new("/bin/sh"),
             &["-c".to_string(), format!("echo '{marker}'; exit 1")],
@@ -2869,7 +2964,7 @@ mod tests {
     /// discriminates on the disagreement rather than on the fixture.
     #[test]
     fn a_zero_exit_claiming_admitted_is_accepted() {
-        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"admitted\":true,\"summary\":\"s\",\"frontier\":\"held\"}";
+        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"advised_files\":0,\"admitted\":true,\"summary\":\"s\",\"frontier\":\"held\"}";
         let parsed = run_native_binary(
             Path::new("/bin/sh"),
             &["-c".to_string(), format!("echo '{marker}'; exit 0")],
@@ -2883,7 +2978,7 @@ mod tests {
     /// carrying a REFUSED receipt is equally a disagreement between two observations of one run.
     #[test]
     fn a_zero_exit_claiming_refused_is_refused() {
-        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"admitted\":false,\"summary\":\"s\",\"frontier\":\"held\"}";
+        let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"advised_files\":0,\"admitted\":false,\"summary\":\"s\",\"frontier\":\"held\"}";
         let result = run_native_binary(
             Path::new("/bin/sh"),
             &["-c".to_string(), format!("echo '{marker}'; exit 0")],
@@ -2929,7 +3024,7 @@ mod tests {
         let stdout = concat!(
             "{\"file_refusal\":{\"path\":\"a.dag\",\"head_reason\":\"h\",\"fatal_reason\":\"f\"}}\n",
             "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":3,\"universe\":3,",
-            "\"file_refusals\":1,\"admitted\":false,\"summary\":\"REFUSED: population_omissions_present\",\"frontier\":\"held\"}\n"
+            "\"file_refusals\":1,\"advised_files\":0,\"admitted\":false,\"summary\":\"REFUSED: population_omissions_present\",\"frontier\":\"held\"}\n"
         );
         let parsed = parse_native_run_output(stdout).expect("the marker parses");
         assert!(!parsed.terminal.admitted);
@@ -2939,6 +3034,48 @@ mod tests {
         );
         assert_eq!(parsed.file_refusals.len(), 1);
         assert_eq!(parsed.file_refusals[0].fatal_reason, "f");
+    }
+
+    /// ACCEPTED FILES' ADVISORIES ARE DECODED BY IDENTITY AND COUNTED. Two accepted files, one
+    /// carrying two advisories: both rows decode with their reasons in chain order, and the summary
+    /// tallies the shared reason twice and the other once.
+    #[test]
+    fn accepted_file_advisories_decode_and_tally_by_reason() {
+        let stdout = concat!(
+            "{\"accepted_file_advisories\":{\"path\":\"a.dag\",\"head\":\"r\",\"tail\":[\"s\"]}}\n",
+            "{\"accepted_file_advisories\":{\"path\":\"b.dag\",\"head\":\"r\",\"tail\":[]}}\n",
+            "{\"_terminal\":\"complete\",\"mode\":\"census\",\"file_refusals\":0,\"advised_files\":2}\n"
+        );
+        let parsed = parse_native_run_output(stdout).expect("advisory rows decode");
+        assert_eq!(parsed.advised_files.len(), 2);
+        assert_eq!(parsed.advised_files[0].reasons, vec!["r", "s"]);
+        let summary = native_file_advisories_summary(&parsed.advised_files);
+        assert!(
+            summary.contains(
+                "accepted files with advisories=2 advisories=3 distinct_advisory_reasons=2"
+            ),
+            "got: {summary}"
+        );
+        assert!(summary.contains("advisory 2x r"), "got: {summary}");
+        assert!(
+            summary.contains("advised a.dag reasons=r,s"),
+            "got: {summary}"
+        );
+    }
+
+    /// THE MARKER'S COUNT AND THE ROWS MUST AGREE. A run that reports more advised files than it
+    /// printed rows dropped some, and the decode refuses rather than reporting the short list.
+    #[test]
+    fn advised_files_count_disagreeing_with_rows_refuses() {
+        let stdout = concat!(
+            "{\"accepted_file_advisories\":{\"path\":\"a.dag\",\"head\":\"r\",\"tail\":[]}}\n",
+            "{\"_terminal\":\"complete\",\"mode\":\"census\",\"file_refusals\":0,\"advised_files\":2}\n"
+        );
+        let cause = match parse_native_run_output(stdout) {
+            Err(cause) => cause,
+            Ok(_) => panic!("a short advisory list must refuse"),
+        };
+        assert!(cause.contains("advised_files=2"), "got: {cause}");
     }
 
     /// NO MARKER IS A REFUSAL, NEVER A GREEN. A run that crashed mid-population prints rows and
@@ -2957,7 +3094,7 @@ mod tests {
     /// absorbing arm.
     #[test]
     fn an_adjudicate_marker_without_frontier_refuses() {
-        let stdout = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"admitted\":true,\"summary\":\"s\"}\n";
+        let stdout = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":0,\"advised_files\":0,\"admitted\":true,\"summary\":\"s\"}\n";
         let cause = match parse_native_run_output(stdout) {
             Err(cause) => cause,
             Ok(_) => panic!("a marker without frontier must refuse"),

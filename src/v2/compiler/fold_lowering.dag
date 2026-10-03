@@ -416,6 +416,45 @@ fn fv_after_fat_arrow_optional(node: Node) -> Optional<Node> {
   }
 }
 
+// A LAMBDA WHOSE BODY IS A BLOCK HAS A BLOCK BODY, NOT AN EXPRESSION BODY. The grammar says so:
+// dag_grammar_block_expr_expr IS the fn_body nonterminal, so `(acc, e) => { let c = ..; R { .. } }`
+// carries the same fn_body production a fn literal does. Reading it as FunctionLiteralExprBody handed
+// the block to every consumer as an opaque expression, and neither consumer reads statements out of
+// one: body_lower_function_value_body refused it as function_value_body_unread, and fold_step_body
+// answered the shell instead of its statement sequence. So the body kind is decided here, once, from
+// the production the expr resolved to -- expr, then block_expr, then fn_body, and no other route --
+// and every consumer takes the fn_body arm it already takes for a fn literal.
+fn fv_block_body_optional(expr: Node) -> Optional<Node> {
+  match fv_production_captured_optional(node: expr, emitted: ^dag_surface_expr) {
+    Absent => optional_absent()
+    Present { value: alternative } =>
+      match fv_production_captured_optional(node: alternative, emitted: ^dag_surface_block_expr) {
+        Absent => optional_absent()
+        Present { value: fn_body } =>
+          if fv_production_is(node: fn_body, emitted: ^dag_surface_fn_body) {
+            optional_present(value: fn_body)
+          } else {
+            optional_absent()
+          }
+      }
+  }
+}
+
+fn fv_production_is(node: Node, emitted: Symbol) -> Bool {
+  match parse_production_emitted_identity_optional(node: fv_unwrap(node: node)) {
+    Present { value: id } => id == emitted
+    Absent => false
+  }
+}
+
+fn fv_production_captured_optional(node: Node, emitted: Symbol) -> Optional<Node> {
+  if fv_production_is(node: node, emitted: emitted) {
+    parse_production_captured_child_optional(node: fv_unwrap(node: node))
+  } else {
+    optional_absent()
+  }
+}
+
 fn fv_expr_parts(binders: List<FunctionValueBinder>, after_binders: Node) -> Optional<FunctionValueParts> {
   match fv_after_fat_arrow_optional(node: after_binders) {
     Absent => optional_absent()
@@ -424,7 +463,10 @@ fn fv_expr_parts(binders: List<FunctionValueBinder>, after_binders: Node) -> Opt
         value: FunctionValueParts {
           binders: binders,
           return_clause: fv_empty_return_clause(),
-          body: FunctionLiteralExprBody { expr: expr }
+          body: match fv_block_body_optional(expr: expr) {
+            Present { value: fn_body } => FunctionLiteralBlockBody { fn_body: fn_body }
+            Absent => FunctionLiteralExprBody { expr: expr }
+          }
         }
       }
   }
