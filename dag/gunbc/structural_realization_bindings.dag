@@ -90,14 +90,14 @@ data conversion_plan_rows: List<ConversionPlan> = [
     route: decl_ref(module_path: "std.coercion", decl_name: "unicode_scalar_unfold"),
     source: host_text_endpoint(),
     target: code_point_sequence_endpoint(),
-    phases: [UnfoldPhase { producer: UnicodeScalarSequenceUnfold }]
+    phase: UnfoldPhase { producer: UnicodeScalarSequenceUnfold }
   },
   ConversionPlan {
     identity: "unicode_scalar_fold" as NonEmptyStr,
     route: decl_ref(module_path: "std.coercion", decl_name: "unicode_scalar_fold"),
     source: code_point_sequence_endpoint(),
     target: host_text_endpoint(),
-    phases: [InverseUnfoldPhase { producer: UnicodeScalarSequenceUnfold }]
+    phase: InverseUnfoldPhase { producer: UnicodeScalarSequenceUnfold }
   }
 ]
 
