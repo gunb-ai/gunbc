@@ -25,8 +25,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // readers are handed the parsed node rather than reached through a whole normalize. The real path is
 // executed by v2.test.parse.closure_parse_batch_two an_early_return_guard_parses_and_lowers_holds
 // (a guard specimen normalized end to end), which is the pairing this file's supplied nodes owe.
-data elif_guard_source: String = "module p\nfn f(x: Int) -> Int {\n  if x == 0 { return 1 }\n  x\n}\n"
-data elif_value_source: String = "module p\nfn f(c: Bool) -> Int {\n  let y = if c { 1 }\n  y\n}\n"
+// Each source is the smallest that reaches its position: a data initializer is where a value is owed.
+data elif_guard_source: String = "module p\nfn f() -> I {\n  if c { return a }\n  b\n}\n"
+data elif_value_source: String = "module p\ndata d: I = if c { a }\n"
 
 fn elif_parse(text: String) -> Outcome<Node> {
   match dag_prepared_grammar() {
