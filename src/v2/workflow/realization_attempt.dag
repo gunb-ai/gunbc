@@ -13,7 +13,7 @@ import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.collection { list_at_optional }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.communication.medium { Medium }
-import v2.std.diagnostic { Accepted, Rejected, Outcome, Diagnostic, NonEmptyDiagnostics, Textual, diagnostics_fatal, diagnostics_fatal_reason }
+import v2.std.diagnostic { Accepted, Rejected, Outcome, DeclarationLocus, Diagnostic, InvariantPortLocus, NodeLocus, NonEmptyDiagnostics, SourcePortLocus, Textual, diagnostics_fatal, diagnostics_fatal_reason }
 import v2.std.node { Node, Edge, TypeNode, Arrow, Conj, Authored, Symbol, node_synthetic, symbol_lexeme }
 import v2.std.optional { Optional, Present, Absent }
 import v2.std.algebra { fold_list, length }
@@ -94,7 +94,10 @@ fn attempt_refused_at(entry: String, phase: RealizationPhase, cause: Symbol, loc
 fn diagnostic_textual_file(d: Diagnostic) -> String {
   match d.at {
     Textual { file: f, extent: _ } => symbol_lexeme(sym: f)
-    _ => ""
+    NodeLocus { anchor: _ } => ""
+    SourcePortLocus { anchor: _, file: _, extent: _ } => ""
+    InvariantPortLocus { anchor: _, invariant: _ } => ""
+    DeclarationLocus { declaration: _ } => ""
   }
 }
 
