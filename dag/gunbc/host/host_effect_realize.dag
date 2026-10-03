@@ -323,7 +323,11 @@ import gunbc.live_deploy.operations {
   systemctl_restart_command,
 }
 import extdeps.tools.gnu_coreutils { dd_overwrite_path_command, coreutils_install_file_argv, rm_force_command }
-import v2.std.compilers.cli_surface { cli_surface_of_literal_words, process_argv_expansion }
+import v2.std.compilers.cli_surface {
+  cli_surface_of_literal_words,
+  process_argv_expansion,
+  ProcessArgvExpansion,
+}
 import extdeps.jobserver { jobserver_config }
 import gunbc.host_layout {
   CompilePoolPlacement,
@@ -3600,12 +3604,16 @@ fn typed_argv_outcome_to_shell_exec(typed: TypedArgvExecOutcome) -> ShellExecObs
 // program, so passing it as the argument words hands the op the program twice (the double-sudo shape
 // the side chat measured on this very fold). Both wet LocalShell arms delegate here, and the
 // witness supplies commands and pins the discriminating property -- the program is the `program`
-// parameter and does NOT appear among the argument words. The printf receipts that used to exec
-// printf locally are gone: the floor runs changed witnesses hermetically and never reaches an exec,
-// so a receipt that needs a real process is not a floor claim.
+// parameter and does NOT appear among the argument words. The argument field carries the
+// ProcessArgvExpansion the op consumes (the computed-surface carrier, not a raw list: a bare
+// List<String> at an argv position is exactly the ambiguity the carrier exists to close); the
+// witness projects the words out through process_argv_expansion_surface and cli_surface_arguments
+// to check membership. The printf receipts that used to exec printf locally are gone: the floor
+// runs changed witnesses hermetically and never reaches an exec, so a receipt that needs a real
+// process is not a floor claim.
 type RunArgvParameters {
   program: String
-  arguments: List<String>
+  arguments: ProcessArgvExpansion
 }
 
 fn run_argv_parameters_of(command: ArgvCommand) -> RunArgvParameters {

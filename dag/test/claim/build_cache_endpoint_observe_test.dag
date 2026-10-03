@@ -3,13 +3,14 @@ module test.claim.build_cache_endpoint_observe
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.build_cache_instance { ProcessIdentity }
 import extdeps.systemd.unit_file { systemd_unit_file_lines }
-import v2.std.algebra { filter }
+import v2.std.algebra { filter, any }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.tools.gnu_coreutils { printf_command }
 import gunbc.host_effect { SshShell }
 import gunbc.compile_pool_ensure { compile_pool_slice_unit_file }
 import gunbc.typed_argv_exec { typed_argv_shell_safe_refusal_argv }
 import std.realization_reconcile { Converged, NotConverged }
+import v2.std.compilers.cli_surface { cli_surface_arguments, process_argv_expansion_surface }
 import gunbc.host_effect_realize {
   compile_pool_slice_install_staging,
   compile_pool_install_failed_step_result,
@@ -797,18 +798,22 @@ test fn compile_pool_install_staging_refuses_a_path_unit_name_before_any_operati
 // split the receipt was after is factored into run_argv_parameters_of, a pure function from
 // ArgvCommand to the (program, arguments) pair both LocalShell arms hand the op, and the witness
 // supplies commands and pins the discriminating property: the program is the `program` parameter
-// and does NOT appear among the argument words. The argv_words form -- the exact defect this
-// pins, the double-sudo shape the side chat measured -- puts the program in argv[1], so pinning
-// its absence is the red: revert the decomposition to argv_words(command) and this goes false.
-// The designed command's own words must also arrive, one per argument, so the pin cannot be
-// satisfied by an empty or mangled split.
+// and does NOT appear among the argument words. The argument field carries the ProcessArgvExpansion
+// the op consumes, so the words are projected out through process_argv_expansion_surface and
+// cli_surface_arguments before membership is checked -- folding the expansion record itself was a
+// runtime type error the interpreter only hits when the claim executes. The argv_words form -- the
+// exact defect this pins, the double-sudo shape the side chat measured -- puts the program in
+// argv[1], so pinning its absence is the red: revert the decomposition to argv_words(command) and
+// this goes false. The designed command's own words must also arrive, one per argument, so the pin
+// cannot be satisfied by an empty or mangled split.
 test fn witness_local_shell_decomposition_hands_the_program_exactly_once() -> Bool {
   let command = printf_command(format: "[%s]", values: ["x"])
   let params = run_argv_parameters_of(command: command)
+  let words = cli_surface_arguments(surface: process_argv_expansion_surface(expansion: params.arguments))
   params.program == command.program.invocation
-    && !string_list_contains(xs: params.arguments, wanted: command.program.invocation)
-    && string_list_contains(xs: params.arguments, wanted: "[%s]")
-    && string_list_contains(xs: params.arguments, wanted: "x")
+    && !any(words, fn(w) { w.text == command.program.invocation })
+    && any(words, fn(w) { w.text == "[%s]" })
+    && any(words, fn(w) { w.text == "x" })
 }
 
 // Same decomposition, stdin command form: the stdin payload is DATA and is not what the split
@@ -819,10 +824,11 @@ test fn witness_local_shell_decomposition_hands_the_program_exactly_once() -> Bo
 test fn witness_local_shell_stdin_decomposition_hands_the_program_exactly_once() -> Bool {
   let command = printf_command(format: "[%s]", values: ["x"])
   let params = run_argv_parameters_of(command: command)
+  let words = cli_surface_arguments(surface: process_argv_expansion_surface(expansion: params.arguments))
   params.program == command.program.invocation
-    && !string_list_contains(xs: params.arguments, wanted: command.program.invocation)
-    && string_list_contains(xs: params.arguments, wanted: "[%s]")
-    && string_list_contains(xs: params.arguments, wanted: "x")
+    && !any(words, fn(w) { w.text == command.program.invocation })
+    && any(words, fn(w) { w.text == "[%s]" })
+    && any(words, fn(w) { w.text == "x" })
 }
 
 // THE WALL HOLDS AT THE TRANSPORT EDGE, NOT ONLY WHERE IT LIVES. gunbc.typed_argv_exec owns the
