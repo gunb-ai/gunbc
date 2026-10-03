@@ -49,10 +49,11 @@ test fn kvn_let_refuses_at_the_keyword_holds() -> Bool {
   )
 }
 
-data kvn_bare_eq_source: String = "module m.t\nfn f() -> Int {\n  then = 1\n  0\n}\n"
+data kvn_bare_eq_source: String = "module m.t\nfn f() -> Int {\n  loop = 1\n  0\n}\n"
 
-// a bare NAME = binder named by a keyword refuses at the keyword: `then` is bytes 29..33 of kvn_bare_eq_source. (A keyword that heads a
-// module-level declaration, like `type`, would end the fn body instead, so the subject uses one that heads nothing.)
+// a bare NAME = binder named by a keyword refuses at the keyword: `loop` is bytes 29..33 of kvn_bare_eq_source. The keyword heads an
+// expression of its own, which the statement guard excludes before `=`; a clause keyword (`then`) or a declaration head (`type`) would
+// instead end the statement sequence before the binder is reached.
 test fn kvn_bare_eq_refuses_at_the_keyword_holds() -> Bool {
   g_fatal_at(
     parsed: g_tokenize_parse(text: kvn_bare_eq_source, file: ^probe_kvn_bare_eq),
