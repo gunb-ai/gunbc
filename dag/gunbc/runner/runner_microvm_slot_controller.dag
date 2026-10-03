@@ -16,7 +16,7 @@ import gunbc.runner_microvm_slot_unit { workspace_launch_credential_id }
 
 
 import gunbc.clock_read { clock_now_probed_at }
-import gunbc.workspace_allocation_store { WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused, workspace_settle_unstarted_retirement, WorkspaceRetired, WorkspaceAcquiring }
+import gunbc.workspace_allocation_store { WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused, workspace_settle_unstarted_retirement, WorkspaceDesired, WorkspaceRetired, WorkspaceAcquiring }
 import gunbc.workspace_allocation_acquisition { workspace_apply_recorded_plan }
 import gunbc.workspace_allocation_lifecycle { workspace_complete_teardown, workspace_recover_release }
 import gunbc.runner_attempt_launch { LaunchWithdrawn }
@@ -31,7 +31,7 @@ import gunbc.workspace_gateway { WorkspaceGateway, workspace_fleet_gateway }
 import gunbc.runner_microvm_attempt { microvm_attempt, MicroVmAttemptAccepted, MicroVmAttemptRefused, attempt_segment_refusal_text }
 import gunbc.fabric_required_build_cell { observe_required_build_cell_for_identity }
 import gunbc.fabric_control_plane { fabric_cell_allocation_key }
-import gunbc.runner_microvm_cell_readiness { cell_incarnation_admission, CellRecoveryRequired, CellIncarnationAdmitted, CellWithdrawn, HostWithdrawn }
+import gunbc.runner_microvm_cell_readiness { cell_incarnation_admission, CellIncarnationAdmission, CellBoundAttempt, CellRecoveryRequired, CellIncarnationAdmitted, CellWithdrawn, HostWithdrawn }
 import gunbc.runner_microvm_cell_readiness_store { read_cell_readiness_store }
 import gunbc.runner_microvm_lifecycle { ControllerLost }
 import gunbc.runner_microvm_lifecycle_realize { run_teardown }
@@ -801,12 +801,13 @@ fn workspace_slot_from_current_ledger(allocation: WorkspaceAllocation, store: Fa
             workspace_slot_refused(reason: "workspace reservation generation is stale")
           } else { match resolve_network_subject(slot: held.slot) {
             NetworkSubjectRefused { refusal: r } => SlotControllerRefused { refusal: r }
-            NetworkSubjectResolved { subject } => match cell_incarnation_admission(store: read_cell_readiness_store(), cell: live.cell, allocation_generation: held.generation) {
-              CellRecoveryRequired { bound } => workspace_settle_controller_outcome(reservation: held, store: store, outcome: ControllerRecovered { teardown: run_teardown(bound: bound, subject: subject, trigger: ControllerLost) })
-              CellIncarnationAdmitted { cell: _, generation: _ } => if (allocation.desired != WorkspaceWanted) { workspace_retire_reserved_slot(reservation: held, subject: subject, store: store, release_dir: release_dir, invocation_id: invocation_id) }
-                else { workspace_slot_launch_observed(reservation: held, live: live, subject: subject, store: store, release_dir: release_dir, invocation_id: invocation_id) }
-              CellWithdrawn { cell: _, withdrawal: _ } => workspace_slot_withdrawn(allocation: allocation, held: held, subject: subject, store: store, release_dir: release_dir, invocation_id: invocation_id)
-              HostWithdrawn { withdrawal: _ } => workspace_slot_withdrawn(allocation: allocation, held: held, subject: subject, store: store, release_dir: release_dir, invocation_id: invocation_id)
+            NetworkSubjectResolved { subject } => match workspace_slot_readiness_route(
+              readiness: cell_incarnation_admission(store: read_cell_readiness_store(), cell: live.cell, allocation_generation: held.generation),
+              desired: allocation.desired) {
+              WorkspaceSlotRecover { bound } => workspace_settle_controller_outcome(reservation: held, store: store, outcome: ControllerRecovered { teardown: run_teardown(bound: bound, subject: subject, trigger: ControllerLost) })
+              WorkspaceSlotRetire => workspace_retire_reserved_slot(reservation: held, subject: subject, store: store, release_dir: release_dir, invocation_id: invocation_id)
+              WorkspaceSlotLaunch => workspace_slot_launch_observed(reservation: held, live: live, subject: subject, store: store, release_dir: release_dir, invocation_id: invocation_id)
+              WorkspaceSlotWithdrawn => workspace_slot_refused(reason: "cell readiness is withdrawn; the reserved slot is not admitted for a new workspace incarnation")
             }
           } }
           ReservationAbsent { slot_key: _ } => workspace_slot_recover_released(reservation: held, store: store)
@@ -825,10 +826,28 @@ fn workspace_slot_from_current_ledger(allocation: WorkspaceAllocation, store: Fa
 // WITHDRAWN READINESS IS NOT AN ALLOCATABLE SLOT. A withdrawn cell or host may still be retired --
 // teardown and release only remove a hold -- but it never receives a new workspace incarnation;
 // a reservation on it waits for readiness to be re-established rather than launching over it.
-fn workspace_slot_withdrawn(allocation: WorkspaceAllocation, held: WorkspaceReservation, subject: SlotNetworkSanitationSubject,
-  store: FabricStorageBinding, release_dir: String, invocation_id: NonEmptyStr) -> SlotControllerOutcome {
-  if (allocation.desired != WorkspaceWanted) { workspace_retire_reserved_slot(reservation: held, subject: subject, store: store, release_dir: release_dir, invocation_id: invocation_id) }
-  else { workspace_slot_refused(reason: "cell readiness is withdrawn; the reserved slot is not admitted for a new workspace incarnation") }
+type WorkspaceSlotRoute
+  = WorkspaceSlotRecover { bound: CellBoundAttempt }
+  | WorkspaceSlotRetire
+  | WorkspaceSlotLaunch
+  | WorkspaceSlotWithdrawn
+
+fn workspace_slot_readiness_route(readiness: CellIncarnationAdmission, desired: WorkspaceDesired) -> WorkspaceSlotRoute {
+  match readiness {
+    CellRecoveryRequired { bound } => WorkspaceSlotRecover { bound: bound }
+    CellIncarnationAdmitted { cell: _, generation: _ } => match desired {
+      WorkspaceWanted => WorkspaceSlotLaunch
+      WorkspaceRetired => WorkspaceSlotRetire
+    }
+    CellWithdrawn { cell: _, withdrawal: _ } => match desired {
+      WorkspaceWanted => WorkspaceSlotWithdrawn
+      WorkspaceRetired => WorkspaceSlotRetire
+    }
+    HostWithdrawn { withdrawal: _ } => match desired {
+      WorkspaceWanted => WorkspaceSlotWithdrawn
+      WorkspaceRetired => WorkspaceSlotRetire
+    }
+  }
 }
 
 fn workspace_slot_launch_observed(reservation: WorkspaceReservation, live: RequiredBuildCellSnapshot, subject: SlotNetworkSanitationSubject,
