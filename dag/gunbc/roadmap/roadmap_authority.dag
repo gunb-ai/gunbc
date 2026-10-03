@@ -3093,6 +3093,51 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "vm-service", contribution: "A milestone of the VM service (DRAFT, operator 2026-10-01): customer workspace service."),
     ),
     roadmap_node(
+      identity: "rn_CREDENTIAL0LIFECYCLE0REVOKE",
+      id: "credential-lifecycle-revocation",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/auth/privileged_effect_census.dag"),
+      line: ticket(t: level_fields(
+          headline: "Every service credential can be rotated and revoked, proven by an executed revocation drill",
+          boundary: "Issuance, scope, expiry, rotation and revocation for every machine and service credential: reviewer GitHub credentials, R2 publisher and reader identities, host identities, image signing, and customer-facing App credentials. Follows the leasing/grants/privileged-access conformance domain (DESIGN §3b; gunbc.auth.authorization_pattern_selection, gunbc.auth.privileged_effect_census).",
+          approach: "DRAFT (operator 2026-10-03): first slice and closing contract pending; members join as implementation-ready tasks are cut.",
+          red_control: "A credential with no executed revocation drill is not admitted to a customer-facing path. After revocation, no guest or workload retains access.",
+          displaced_cost: "The fleet-wide reviewer 401 on 2026-10-03 froze every landing: a credential nobody could rotate on demand stopped the line, and the same gap exists for every customer-facing identity.",
+          handback: "DRAFT: per member, the executed drill or witness named by its instrument."
+        )),
+      parent: in_project(project: "managed-identity-access-dependencies", contribution: "A service is only as safe as the credentials that reach it; every machine and service credential needs an issuance, scope, expiry, rotation and revocation path, proven by drill."),
+    ),
+    roadmap_node(
+      identity: "rn_FAILURE0BILLING0OUTCOMES0A",
+      id: "failure-billing-outcomes",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/product/fabric/selection.dag"),
+      line: ticket(t: level_fields(
+          headline: "Every non-success has a declared billing or credit outcome",
+          boundary: "Each typed failure ending of the VM service (placement refusal, host or drive loss, storage outage, compound failure, operator cancellation) maps to exactly one declared billing disposition: no charge, credit, or charged with a named consequence. Commercial amounts stay in the private plan; this node owns the mapping's completeness.",
+          approach: "DRAFT (operator 2026-10-03): first slice and closing contract pending; members join as implementation-ready tasks are cut.",
+          red_control: "A failure ending with no billing disposition refuses admission of the service path that can produce it.",
+          displaced_cost: "Without the mapping, every failure is billed by whoever notices it, and a degraded delivery keeps the premium price: the externalization DESIGN §5 forbids.",
+          handback: "DRAFT: per member, the executed drill or witness named by its instrument."
+        )),
+      parent: in_project(project: "vm-service", contribution: "A customer pays for outcomes; a failure that has no declared billing disposition is externalized degradation (DESIGN §5)."),
+    ),
+    roadmap_node(
+      identity: "rn_SERVICE0EVIDENCE0CAPTURE0A",
+      id: "service-evidence-capture",
+      owner: "fleet",
+      carriers: carrier(path: "dag/std/observation.dag"),
+      line: ticket(t: level_fields(
+          headline: "Capture service evidence from the first qualifying run: usage, cache, placement, failures, recovery, intervention",
+          boundary: "From the first qualifying end-to-end run onward, every run emits joined receipts: workload class and resource request; wait, execution and completion time; cache hits, misses, shared misses and corrupt-hit refusals; placement and seat utilization; artifact bytes and egress; failure attribution and recovery action; operator intervention time; hardware health events; billable usage and credits; workspace recovery point and recovery time. Follows the process observability conformance domain (std.observation).",
+          approach: "DRAFT (operator 2026-10-03): first slice and closing contract pending; members join as implementation-ready tasks are cut.",
+          red_control: "A run on the qualifying route that emits no receipt is not counted toward the dogfood window.",
+          displaced_cost: "Evidence added late loses the observation period it should have covered, and the dogfood window cannot be backdated.",
+          handback: "DRAFT: per member, the executed drill or witness named by its instrument."
+        )),
+      parent: in_project(project: "vm-service", contribution: "The operator's go/no-go on external customers is their own confidence from dogfooding; that confidence must rest on receipts captured from the first qualifying run, not reconstructed later."),
+    ),
+    roadmap_node(
       identity: "rn_A9QSP5ZMHYH0WDJR571D78N439",
       id: "contained-development-execution",
       owner: "fleet",
