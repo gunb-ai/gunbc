@@ -5,7 +5,7 @@ import v2.compiler.body_lowering_fold {
   body_lower_else_less_if_parts_optional,
   body_lower_if_expr
 }
-import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.parse { PreparedModeled, PreparedVoidGrammar, parse_module_prepared, parse_production_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex, parse_production_emitted_identity_optional }
@@ -25,8 +25,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // readers are handed the parsed node rather than reached through a whole normalize. The real path is
 // executed by v2.test.parse.closure_parse_batch_two an_early_return_guard_parses_and_lowers_holds
 // (a guard specimen normalized end to end), which is the pairing this file's supplied nodes owe.
-// Each source is the smallest that reaches its position: a data initializer is where a value is owed.
-data elif_guard_source: String = "module p\nfn f() -> I {\n  if c { return a }\n  b\n}\n"
+// Each source is the smallest that reaches its position: a data initializer is where a value is owed,
+// and a fn body alone (parsed as the fn_body production) is where a statement stands.
+data elif_guard_source: String = "{\n  if c { return a }\n  b\n}"
 data elif_value_source: String = "module p\ndata d: I = if c { a }\n"
 
 fn elif_parse(text: String) -> Outcome<Node> {
@@ -42,6 +43,34 @@ fn elif_parse(text: String) -> Outcome<Node> {
           }
         }
       )
+  }
+}
+
+// The guard is read where it stands -- a fn body's statement spine -- by parsing the body alone as
+// the fn_body production, so the claim pays for the body's tokens and no module or signature.
+fn elif_parse_body(text: String) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: _ } =>
+      match prepared {
+        PreparedVoidGrammar => elif_parse(text: text)
+        PreparedModeled { modeled: modeled, materialization: m } =>
+          bind_outcome(
+            o: tokenize(text: text, file: ^elif_probe, rules: dag_lex()),
+            f: fn(token_stream) {
+              match parse_production_prepared(
+                tokens: token_stream.all,
+                validated: modeled.validated,
+                analysis: modeled.analysis,
+                production_name: ^dag_production_fn_body,
+                materialization: m
+              ) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }
+              }
+            }
+          )
+      }
   }
 }
 
@@ -104,7 +133,10 @@ fn elif_locus_is_the_if(at: Locus) -> Bool {
 }
 
 test fn statement_guard_parses_to_one_else_less_if_route() -> Bool {
-  elif_parses_to_one_else_less_if(text: elif_guard_source)
+  match elif_parse_body(text: elif_guard_source) {
+    Accepted { value: tree, diagnostics: _ } => elif_count_else_less_ifs(root: tree) == 1
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 test fn value_if_parses_to_one_else_less_if_route() -> Bool {
@@ -113,7 +145,7 @@ test fn value_if_parses_to_one_else_less_if_route() -> Bool {
 
 // The statement whose whole expression is the else-less `if` is an admitted guard.
 test fn statement_position_guard_is_admitted() -> Bool {
-  match elif_parse(text: elif_guard_source) {
+  match elif_parse_body(text: elif_guard_source) {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       match elif_first(root: tree, pick: fn(n) { elif_emitted(node: n) == ^dag_surface_stmt }) {
