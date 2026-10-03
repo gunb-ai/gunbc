@@ -6831,11 +6831,11 @@ pub(crate) fn derive_and_install_cross_claim_share(
     let Value::Record { fields, .. } = &result else {
         return Err(malformed("expected a CrossClaimShareDerivation record"));
     };
+    // The fold's lists may be kernel lists or v2.std.algebra FreeMonoid chains; both decode.
     let list_of = |name: &str| -> Result<Vec<Value>, String> {
-        match ctx.field(fields, name) {
-            Some(Value::List(xs)) => Ok(xs.iter().cloned().collect()),
-            _ => Err(malformed(&format!("no `{name}` list"))),
-        }
+        ctx.field(fields, name)
+            .and_then(|v| v1_interpreter::list_value_items(ctx, v))
+            .ok_or_else(|| malformed(&format!("no `{name}` list")))
     };
     let text_of = |row: &[(v1_interpreter::Symbol, Value)], name: &str| -> Result<String, String> {
         match ctx.field(row, name) {
@@ -6894,10 +6894,10 @@ pub(crate) fn derive_and_install_cross_claim_share(
                  -- the derivation admitted a producer the prepared subject carries no declaration for"
             )
         })?;
-        let row_sites = match ctx.field(r, "sites") {
-            Some(Value::List(xs)) => xs.iter().cloned().collect::<Vec<_>>(),
-            _ => return Err(malformed("an admitted row has no `sites` list")),
-        };
+        let row_sites = ctx
+            .field(r, "sites")
+            .and_then(|v| v1_interpreter::list_value_items(ctx, v))
+            .ok_or_else(|| malformed("an admitted row has no `sites` list"))?;
         let mut sites_of_row: Vec<(String, i64, i64)> = Vec::new();
         for site in &row_sites {
             let Value::Str(text) = site else {
