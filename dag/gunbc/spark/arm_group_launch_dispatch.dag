@@ -1,0 +1,121 @@
+module gunbc.spark.arm_group_launch_dispatch
+
+import std.types { String, List, NonEmptyStr }
+import v2.std.optional { Present, Absent }
+import std.process { ProcessExit, exit_failure }
+import gunbc.fleet_multi_principal_probe { env_var_nonempty }
+import gunbc.spark.group_arm_launch { ArmDryPlan, ArmWetSession, group_arm_dry_plan_write, group_arm_launch_wet }
+import gunbc.spark.v41_group_a_launch { v41_group_a_dry_plan, v41_group_a_wet_session }
+import gunbc.spark.glm53_arm_staircase {
+  Glm53StaircaseStep, Glm53IncumbentChoice, glm53_staircase_steps, glm53_step_wire, glm53_step_of_wire,
+  glm53_incumbent_choices, glm53_incumbent_choice_wire, glm53_incumbent_choice_of_wire,
+  glm53_step_dry_plan, glm53_step_wet_session,
+}
+
+// ── WHICH ARM A GROUP-LAUNCH MODE RUNS, FROM CLOSED WORKFLOW INPUTS (deforking cut 8a) ────────────
+//
+// THE DISPATCH THAT SELECTS A REALIZATION IS ITSELF REALIZATION (DESIGN §3), so it sits here, peripheral
+// to both arms and to the one launch path: gunbc.spark.group_arm_launch knows no arm, each arm module
+// knows only itself, and this module is the only place that knows the roster. The workflow modes
+// spark_arm_group_launch_plan and spark_arm_group_launch (gunbc.fleet.fleet_converge_workflow) call
+// the two entries below; the arm, the staircase step and the declared incumbent are dispatch inputs
+// whose options are the wires of the closed types they parse into, so an unknown word refuses and names
+// the vocabulary rather than being typed through.
+//
+// V4.1 TAKES NO STEP AND NO INCUMBENT. Its shape is the capacity measurement's and it refuses every
+// occupied host, so a step or an incumbent supplied for it is a dispatch that asked for something this
+// arm does not have, and it refuses rather than ignoring the input.
+type ArmGroupLaunchChoice
+  = ArmV41GroupA
+  | ArmGlm53GroupAStep { step: Glm53StaircaseStep, incumbent: Glm53IncumbentChoice }
+
+type ArmGroupLaunchSelection
+  = ArmGroupLaunchSelected { choice: ArmGroupLaunchChoice }
+  | ArmGroupLaunchSelectionRefused { cause: String }
+
+data arm_group_launch_arm_env: NonEmptyStr = "GUNBC_ARM_LAUNCH" as NonEmptyStr
+data arm_group_launch_step_env: NonEmptyStr = "GUNBC_ARM_STAIRCASE_STEP" as NonEmptyStr
+data arm_group_launch_incumbent_env: NonEmptyStr = "GUNBC_ARM_INCUMBENT" as NonEmptyStr
+
+data arm_group_launch_arm_v41: String = "v41-group-a"
+data arm_group_launch_arm_glm53: String = "glm53-group-a"
+
+fn arm_group_launch_arm_options() -> List<String> {
+  [arm_group_launch_arm_v41, arm_group_launch_arm_glm53]
+}
+
+fn arm_group_launch_step_options() -> List<String> {
+  map(glm53_staircase_steps, s => glm53_step_wire(s: s) as String)
+}
+
+fn arm_group_launch_incumbent_options() -> List<String> {
+  map(glm53_incumbent_choices, c => glm53_incumbent_choice_wire(c: c) as String)
+}
+
+// THE DECISION, SEPARATED FROM THE ENVIRONMENT READ SO IT IS WITNESSABLE AT ALL. An absent input is the
+// empty word.
+fn arm_group_launch_select(arm: String, step: String, incumbent: String) -> ArmGroupLaunchSelection {
+  if arm == arm_group_launch_arm_v41 {
+    if step != "" || incumbent != "" {
+      ArmGroupLaunchSelectionRefused { cause: join(["the V4.1 Group A arm takes no staircase step and no declared incumbent (its shape is the capacity measurement's and it refuses every occupied host); got step `", step, "` incumbent `", incumbent, "`"], "") }
+    } else {
+      ArmGroupLaunchSelected { choice: ArmV41GroupA }
+    }
+  } else if arm == arm_group_launch_arm_glm53 {
+    match glm53_step_of_wire(word: step) {
+      Absent => ArmGroupLaunchSelectionRefused { cause: join([arm_group_launch_step_env as String, "=`", step, "` is not a GLM staircase step; the steps are ", join(arm_group_launch_step_options(), ", ")], "") }
+      Present { value: s } =>
+        match glm53_incumbent_choice_of_wire(word: incumbent) {
+          Absent => ArmGroupLaunchSelectionRefused { cause: join([arm_group_launch_incumbent_env as String, "=`", incumbent, "` is not an incumbent choice; the choices are ", join(arm_group_launch_incumbent_options(), ", ")], "") }
+          Present { value: c } => ArmGroupLaunchSelected { choice: ArmGlm53GroupAStep { step: s, incumbent: c } }
+        }
+    }
+  } else {
+    ArmGroupLaunchSelectionRefused { cause: join([arm_group_launch_arm_env as String, "=`", arm, "` is not an arm; the arms are ", join(arm_group_launch_arm_options(), ", ")], "") }
+  }
+}
+
+fn env_word(name: NonEmptyStr) -> String {
+  match env_var_nonempty(name: name) {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+fn arm_group_launch_selection_from_env() -> ArmGroupLaunchSelection {
+  arm_group_launch_select(arm: env_word(name: arm_group_launch_arm_env), step: env_word(name: arm_group_launch_step_env), incumbent: env_word(name: arm_group_launch_incumbent_env))
+}
+
+fn arm_group_launch_dry_plan_of(c: ArmGroupLaunchChoice) -> ArmDryPlan {
+  match c {
+    ArmV41GroupA => v41_group_a_dry_plan()
+    ArmGlm53GroupAStep { step: s, incumbent: i } => glm53_step_dry_plan(s: s, choice: i)
+  }
+}
+
+fn arm_group_launch_wet_session_of(c: ArmGroupLaunchChoice) -> ArmWetSession {
+  match c {
+    ArmV41GroupA => v41_group_a_wet_session()
+    ArmGlm53GroupAStep { step: s, incumbent: i } => glm53_step_wet_session(s: s, choice: i)
+  }
+}
+
+data arm_group_launch_plan_path: String = "target/arm-group-launch-plan.txt"
+data arm_group_launch_receipt_path: String = "target/arm-group-launch-receipt.txt"
+
+// THE DRY-PLAN ENTRY (mode spark_arm_group_launch_plan): reaches no host except the authority log's
+// read; exits zero only when the plan is ADMITTED, and writes the report either way.
+fn arm_group_launch_plan_ci() -> ProcessExit {
+  match arm_group_launch_selection_from_env() {
+    ArmGroupLaunchSelectionRefused { cause: c } => exit_failure(reason: c)
+    ArmGroupLaunchSelected { choice: c } => group_arm_dry_plan_write(title: "arm group launch", plan: arm_group_launch_dry_plan_of(c: c), path: arm_group_launch_plan_path)
+  }
+}
+
+// THE WET ENTRY (mode spark_arm_group_launch): exits zero only when the arm COMMITTED.
+fn arm_group_launch_ci_wet() -> ProcessExit {
+  match arm_group_launch_selection_from_env() {
+    ArmGroupLaunchSelectionRefused { cause: c } => exit_failure(reason: c)
+    ArmGroupLaunchSelected { choice: c } => group_arm_launch_wet(arm: arm_group_launch_wet_session_of(c: c), receipt_path: arm_group_launch_receipt_path)
+  }
+}

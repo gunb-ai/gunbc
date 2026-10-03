@@ -1292,7 +1292,7 @@ fn spark_native_transaction_receipt(t: SparkNativeArmTransaction) -> String {
 
 // ONE ARM TRANSACTION OVER PLANNED STEPS, WHOEVER PLANNED THEM: the grant preflight on every host (a
 // refusal touches no host), the transaction identity, then the bounded transaction body. Group B's
-// entry below and the V4.1 Group A launch (gunbc.spark.v41_group_a_launch v41_group_a_launch_ci_wet)
+// entry below and the V4.1 Group A launch (gunbc.spark.group_arm_launch group_arm_apply_admitted, whose callers are the V4.1 and GLM Group A arms)
 // both run their plans through this, so the preflight, preserve, head-first apply, readback and
 // commit-or-rollback are one realization with two callers. Only a clean commit is `committed`;
 // cleanup-pending, rolled back and unestablished all read false, as the entry's exit always did.
