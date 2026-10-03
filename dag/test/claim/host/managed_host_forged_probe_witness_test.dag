@@ -1,0 +1,67 @@
+module test.claim.managed_host_forged_probe_witness
+
+import v2.std.algebra { filter }
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE MANAGED-HOST SEALS, ENROLLED AS EXECUTED REDS (eager-gull-22's review of gunbc#13055). The
+// probe source below authors a ManagedHost, a ManagedHostBinding and an AdmittedResetSubject outside
+// their modules, mints a row through managed_host_fixture from an unadmitted caller, and drives
+// host_reset_return_issue_and_watch with the forged subject. This witness hands that source to the
+// compiler through the diagnostic-census harness and requires the refusal CLASS at each SUBJECT by
+// name. It is an identity join, so a probe refusing for any other reason measures another wall, and
+// the harness control shows the census ran.
+data forged_probe_source: String = "module probe_managed_host_forged\n\nimport std.types { EpochMs, NonEmptyStr, String }\nimport gunbc.host_reset_return { ObserverSelfIdentity, ResetAttemptMint, ResetIssuanceRoute, ResetObserverSelection }\nimport extdeps.bmc.access_profile { BmcAccessObserved }\nimport gunbc.fleet_intent_network { operator_host_mtcollins1 }\nimport gunbc.managed_host { ManagedHost, ManagedHostBinding, ResetNoUnitHold, managed_host_fixture }\nimport gunbc.host_reset_subject_roster { AdmittedResetSubject }\nimport gunbc.host_reset_return_run { host_reset_return_issue_and_watch }\nimport gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_access_observation, mtcollins1_capability_row }\nimport gunbc.machine_intake_mtcollins1_actuate { mtcollins1_cdrom_selection }\n\nfn forged_row_named_mtcollins1(h: ManagedHost) -> ManagedHost {\n  ManagedHost {\n    host: operator_host_mtcollins1,\n    access: BmcAccessObserved { observation: mtcollins1_access_observation },\n    capability_row: mtcollins1_capability_row,\n    secure: h.secure,\n    unit_hold: ResetNoUnitHold,\n  }\n}\n\nfn forged_row_through_the_fixture(h: ManagedHost) -> ManagedHost {\n  managed_host_fixture(host: operator_host_mtcollins1, access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: ResetNoUnitHold)\n}\n\nfn forged_binding(h: ManagedHost) -> ManagedHostBinding {\n  ManagedHostBinding { host: h, observation: mtcollins1_access_observation, account: \"forger\" }\n}\n\nfn forged_subject(h: ManagedHost) -> AdmittedResetSubject {\n  AdmittedResetSubject { binding: forged_binding(h: h), boot_selection: mtcollins1_cdrom_selection }\n}\n\nfn drive_the_run_with_a_forged_subject(\n  h: ManagedHost,\n  selection: ResetObserverSelection,\n  identity: ObserverSelfIdentity,\n  route: ResetIssuanceRoute,\n  issued_at: EpochMs,\n) -> ResetAttemptMint {\n  host_reset_return_issue_and_watch(\n    proof: none,\n    candidate: forged_subject(h: h),\n    selection: selection,\n    identity: identity,\n    attempt: \"forged\",\n    route: route,\n    password_file: \"/tmp/pw\",\n    issued_at: issued_at,\n  )\n}\n"
+
+fn probe() -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(forged_probe_source)
+}
+
+fn blocking_count_for_class_and_subject(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+fn blocking_count_for_class(c: CompileDiagnosticCensus, wanted: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows |> filter(r => (r.diagnostic_class as String) == wanted && r.blocking) |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+data harness_control_source: String = "module probe_managed_host_harness_control\nimport std.types { List }\nimport gunbc.managed_host { ManagedHost, managed_hosts }\nfn rows() -> List<ManagedHost> { managed_hosts() }\n"
+
+// THE CONTROL IS CLASS-SCOPED: a clean source reading the same module through its real producer
+// yields NO row of either class the reds count, so a red below is the probe's own forgery or outside
+// call, joined by class and subject, and not background the harness emits for any importer.
+test fn the_harness_runs_and_a_clean_source_emits_neither_wall_class() -> Bool {
+  let c = compile_dag_diagnostic_census(harness_control_source)
+  blocking_count_for_class(c: c, wanted: "SoleConstructorViolation") == 0
+    && blocking_count_for_class(c: c, wanted: "ConstructorCallAdmissionRefused") == 0
+}
+
+// A ROW, A BINDING AND AN ADMITTED SUBJECT CANNOT BE AUTHORED OUTSIDE THEIR MINTS.
+test fn each_forged_managed_host_carrier_is_refused_at_its_literal() -> Bool {
+  let c = probe()
+  blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "ManagedHost") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "ManagedHostBinding") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "AdmittedResetSubject") >= 1
+}
+
+// THE FIXTURE MINT AND THE RUN'S ISSUING STEP REFUSE A CALLER OUTSIDE THEIR ADMITTED ROOTS.
+test fn the_fixture_mint_and_the_issuing_step_refuse_an_outside_caller() -> Bool {
+  let c = probe()
+  blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "managed_host_fixture") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "host_reset_return_issue_and_watch") >= 1
+}

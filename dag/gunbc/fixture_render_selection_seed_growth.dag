@@ -1,0 +1,38 @@
+module gunbc.fixture_render_selection_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for floor repair C1 (docs/plans/floor-time-attribution-2026-10-02.md):
+// the fixture compile instruments render only the modules their reader reads.
+//
+// WHAT THE CHANGE IS. compile_dag_rust_emit_check and compile_dag_diagnostic_census compiled the
+// fixture's whole live import closure, which is unchanged, and then rendered Rust for EVERY
+// module of it. The emit check reads one emitted file. The census reads diagnostics, among them
+// the emit refusals of the modules it renders. Every other rendered module was demanded by no
+// consumer (DESIGN section 2: delete redundant demand, do not cache it). The selection is the
+// existing RenderSelectedMirrors arm of v1.compiler.artifact RustModuleRenderSelection, which
+// required_regen_host already uses in production. No pipeline stage is edited.
+//
+// HAND-ITEM DELTA: +7 citable declarations in v1_compiler.cli_run, plus one uncitable Display
+// impl listed in gunbc.seed_growth_admission seed_growth_uncitable_item_keys. Two enum variants
+// are added and are not declarations: v1_interpreter InterpError FixtureRenderRefused and
+// v1_compiler.cli_run WitnessRuntimeCause FixtureRenderRefused. Both are the typed refusal arm,
+// and WitnessRuntimeCause is total over InterpError. They are named here so the receipt does not
+// under-report its own growth.
+data fixture_render_selection_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "FIXTURE_SOURCE_PATH", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "compile_fixture_rendering_only_what_is_read", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "fixture_render_selection", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "FixtureRenderRefusal", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "RenderSelectionAgreementFixture", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "RENDER_SELECTION_AGREEMENT_FIXTURES", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "render_selection_agreement_receipt", field: WholeDeclaration }
+  ],
+  reason: "The two instruments are host builtins that call the seed's compile pipeline synchronously, so the place to stop rendering what nobody reads is the host call site. A .dag-side selection would have to name a compile the substrate cannot represent, which is the boundary gunbc.census_memo_seed_growth records for the memo on the same builtins. compile_fixture_rendering_only_what_is_read is the one route both instruments now take. fixture_render_selection DERIVES the render set from the compiled graph: the modules spanned in FIXTURE_SOURCE_PATH, plus the closure module whose emitted path is the read path. So the selection cannot name a module outside the closure. FixtureRenderRefusal is the typed refusal arm: no fixture module in the closure, or a clean compile that emitted no file at the read path. That refusal replaces both a fall back to rendering every module and a silent false. render_selection_agreement_receipt over RENDER_SELECTION_AGREEMENT_FIXTURES (rows of RenderSelectionAgreementFixture) is the enrolled control that the required floor runs on every run. It is the one remaining execution of the full render. It refuses the floor when the read bytes, the diagnostics or the narrowing route disagree, and its import-free fixture is the authorable red for the route.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete all seven when compile_dag_rust_emit_check and compile_dag_diagnostic_census are MODELED operations rather than host builtins. At that point the render set is the demand of the modeled reader, derived by the substrate. The receipt and its fixtures migrate with the instruments or are deleted with them; they never stand beside a modeled sibling.",
+  current_boundary: "Confined to the two fixture instruments and the one required-floor receipt. The narrowing is a stated semantic change, not an invisible one. A corpus module in a fixture's closure is no longer rendered, so its own per-module emit refusal no longer reaches the census rows or the emit check's hard-diagnostic gate. Whole-graph emit checks run before selection and are unchanged. A corpus module's own emission is the subject of the generated-artifact lanes, which render it for real."
+}
