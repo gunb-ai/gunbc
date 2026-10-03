@@ -14,7 +14,7 @@ import gunbc.spark.serving_compatibility { AdmitsNormalServing, AdmitsBoundedExp
 import gunbc.spark.arm_memory_fit { ArmMemoryFitVerdict, ArmMemoryFitProved, ArmMemoryFitRefused, ArmMemoryFitUnestablished, ArmPhaseModelLoad, CacheFitProved }
 import gunbc.spark.serving_promotion {
   ServingPromotionEvidence, ServingPromotionStanding, PromotionAdmitsNormalServing, PromotionMeasurementServeOnly, PromotionRefused,
-  serving_promotion_standing, serving_promotion_policy, QualityReceipt, WorkloadCalibrationReceipt, SubjectBoundCacheFit,
+  serving_promotion_standing, serving_promotion_policy, QualityReceipt, WorkloadCalibrationReceipt, SubjectBoundCacheFit, AcceptanceManifest,
 }
 
 // THE SUBJECT IS THE ONE PROMOTION FOLD: five receipts, each bound to this subject's key, compared
@@ -45,7 +45,8 @@ fn fx_key() -> ServingSubjectKey { serving_subject_key(s: fx_subject()) }
 fn fx_incumbent_key() -> ServingSubjectKey { serving_subject_key(s: fx_subject_at(ceiling: 8, profile: "incumbent-profile")) }
 fn fx_other_key() -> ServingSubjectKey { serving_subject_key(s: fx_subject_at(ceiling: 12, profile: "another-profile")) }
 
-fn fx_manifest() -> ContentHash { content_hash_of_value(value: "agentic-acceptance-manifest-v1" as NonEmptyStr) }
+fn fx_manifest() -> AcceptanceManifest { AcceptanceManifest { digest: content_hash_of_value(value: "agentic-acceptance-manifest-v1" as NonEmptyStr), cases: 100 } }
+fn fx_plan() -> ContentHash { content_hash_of_value(value: "allocation-plan-fixture" as NonEmptyStr) }
 
 fn fx_quality(key: ServingSubjectKey, accepted: Nat, parse_failures: Nat) -> QualityReceipt {
   QualityReceipt { subject_key: key, acceptance_manifest: fx_manifest(), attempts: 100, accepted: accepted, tool_parse_failures: parse_failures, evidence: "fixture" as NonEmptyStr }
@@ -70,7 +71,7 @@ data fx_proved: ArmMemoryFitVerdict = ArmMemoryFitProved { rank: 3, phase: ArmPh
 
 fn fx_cache(key: ServingSubjectKey) -> SubjectBoundCacheFit {
   SubjectBoundCacheFit {
-    subject_key: key, allocation_plan: "plan-fixture" as NonEmptyStr,
+    subject_key: key, allocation_plan: fx_plan(),
     verdict: CacheFitProved {
       limiting_rank: 3, seats: 8, length: token_count(count: 262144), blocks_per_seat: allocator_block_count(count: 123),
       blocks_used: allocator_block_count(count: 984), blocks_reserved: allocator_block_count(count: 0), hard_ceiling: 8, block_equivalent_bytes: none,
@@ -88,6 +89,7 @@ fn fx_evidence_with(memory: ArmMemoryFitVerdict, cache: SubjectBoundCacheFit?, q
     incumbent_subject_key: Present { value: fx_incumbent_key() },
     incumbent_quality: Present { value: fx_quality(key: fx_incumbent_key(), accepted: 80, parse_failures: 2) },
     incumbent_calibration: Present { value: fx_calibration(key: fx_incumbent_key(), turns: 100, preemptions: Present { value: 0 }) },
+    resolved_allocation_plan: Present { value: fx_plan() },
   }
 }
 
@@ -162,7 +164,7 @@ test fn w_a_cache_fit_from_another_subject_does_not_promote() -> Bool {
 // QUALITY IS COMPARED ONLY ON THE SAME ACCEPTANCE MANIFEST: an incumbent graded on another manifest is no
 // baseline.
 test fn w_quality_on_a_different_acceptance_manifest_is_not_compared() -> Bool {
-  let other = QualityReceipt { subject_key: fx_key(), acceptance_manifest: content_hash_of_value(value: "agentic-acceptance-manifest-v2" as NonEmptyStr),
+  let other = QualityReceipt { subject_key: fx_key(), acceptance_manifest: AcceptanceManifest { digest: content_hash_of_value(value: "agentic-acceptance-manifest-v2" as NonEmptyStr), cases: 100 },
     attempts: 100, accepted: 90, tool_parse_failures: 0, evidence: "fixture" as NonEmptyStr }
   w_missing_count(e: fx_evidence(memory: fx_proved, quality: Present { value: other }, calibration: fx_good_calibration())) == 1
 }
@@ -199,7 +201,7 @@ test fn w_an_unestablished_fit_is_a_measurement_serve_and_a_refused_fit_is_refus
 test fn w_a_subject_with_nothing_produced_names_every_missing_receipt() -> Bool {
   match serving_promotion_standing(subject: fx_subject(), policy: serving_promotion_policy, evidence: ServingPromotionEvidence {
     compatibility: AdmitsBoundedExperimentOnly, memory: none, cache: none, quality: none, calibration: none,
-    incumbent_subject_key: none, incumbent_quality: none, incumbent_calibration: none,
+    incumbent_subject_key: none, incumbent_quality: none, incumbent_calibration: none, resolved_allocation_plan: none,
   }) {
     PromotionMeasurementServeOnly { missing: ms } => length(ms) == 5
     PromotionAdmitsNormalServing => false
@@ -217,6 +219,7 @@ test fn w_the_candidate_cannot_be_its_own_incumbent() -> Bool {
     quality: Present { value: q }, calibration: Present { value: c },
     incumbent_subject_key: Present { value: fx_key() },
     incumbent_quality: Present { value: q }, incumbent_calibration: Present { value: c },
+    resolved_allocation_plan: Present { value: fx_plan() },
   }) == 2
 }
 
@@ -242,4 +245,32 @@ test fn w_calibration_on_a_different_trace_is_not_compared() -> Bool {
     out_of_memory_events: c.out_of_memory_events, stalls_or_lost_requests: c.stalls_or_lost_requests, evidence: c.evidence,
   }
   w_missing_count(e: fx_evidence(memory: fx_proved, quality: fx_good_quality(), calibration: Present { value: other })) == 1
+}
+
+// A RECEIPT CANNOT PROVE MORE THAN IT ATTEMPTED (side-chat review): accepted above attempts, parse failures
+// above attempts, and attempts short of the manifest's population each leave quality missing.
+test fn w_impossible_or_incomplete_quality_counts_do_not_promote() -> Bool {
+  let over = QualityReceipt { subject_key: fx_key(), acceptance_manifest: fx_manifest(), attempts: 100, accepted: 101, tool_parse_failures: 0, evidence: "fixture" as NonEmptyStr }
+  let fails = QualityReceipt { subject_key: fx_key(), acceptance_manifest: fx_manifest(), attempts: 100, accepted: 90, tool_parse_failures: 101, evidence: "fixture" as NonEmptyStr }
+  let short = QualityReceipt { subject_key: fx_key(), acceptance_manifest: fx_manifest(), attempts: 50, accepted: 50, tool_parse_failures: 0, evidence: "fixture" as NonEmptyStr }
+  w_missing_count(e: fx_evidence(memory: fx_proved, quality: Present { value: over }, calibration: fx_good_calibration())) == 1
+    && w_missing_count(e: fx_evidence(memory: fx_proved, quality: Present { value: fails }, calibration: fx_good_calibration())) == 1
+    && w_missing_count(e: fx_evidence(memory: fx_proved, quality: Present { value: short }, calibration: fx_good_calibration())) == 1
+}
+
+// THE CACHE VERDICT MUST BE ABOUT THE PLAN THIS SUBJECT RESOLVED (side-chat review): the same proved verdict
+// read from another plan, or with no resolved plan observed, does not promote.
+test fn w_a_cache_fit_from_another_plan_or_with_no_resolved_plan_does_not_promote() -> Bool {
+  let e = fx_evidence(memory: fx_proved, quality: fx_good_quality(), calibration: fx_good_calibration())
+  let other_plan = ServingPromotionEvidence {
+    compatibility: e.compatibility, memory: e.memory, cache: e.cache, quality: e.quality, calibration: e.calibration,
+    incumbent_subject_key: e.incumbent_subject_key, incumbent_quality: e.incumbent_quality, incumbent_calibration: e.incumbent_calibration,
+    resolved_allocation_plan: Present { value: content_hash_of_value(value: "another-plan" as NonEmptyStr) },
+  }
+  let unobserved = ServingPromotionEvidence {
+    compatibility: e.compatibility, memory: e.memory, cache: e.cache, quality: e.quality, calibration: e.calibration,
+    incumbent_subject_key: e.incumbent_subject_key, incumbent_quality: e.incumbent_quality, incumbent_calibration: e.incumbent_calibration,
+    resolved_allocation_plan: none,
+  }
+  w_missing_count(e: other_plan) == 1 && w_missing_count(e: unobserved) == 1
 }

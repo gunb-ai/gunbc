@@ -78,9 +78,21 @@ data serving_promotion_calibration_producer_frontier: DissolutionCondition = unb
 // exact preimage. Quality names the exact acceptance manifest by content digest, not by a name. A
 // calibration receipt names the realized collective transport it ran on (a launch cannot know it in
 // advance), its forward-progress stalls and lost requests, and the concurrency it actually sustained.
+// THE ACCEPTANCE MANIFEST IS ITS DIGEST AND ITS POPULATION (side-chat review): a receipt proves the manifest
+// only when it attempted every case the manifest names, so the case count travels with the digest and two
+// manifests are equal only when both agree.
+type AcceptanceManifest {
+  digest: ContentHash
+  cases: Nat
+}
+
+fn acceptance_manifest_equal(a: AcceptanceManifest, b: AcceptanceManifest) -> Bool {
+  content_hash_equal(left: a.digest, right: b.digest) && a.cases == b.cases
+}
+
 type QualityReceipt {
   subject_key: ServingSubjectKey
-  acceptance_manifest: ContentHash
+  acceptance_manifest: AcceptanceManifest
   attempts: Nat
   accepted: Nat
   tool_parse_failures: Nat
@@ -107,7 +119,7 @@ type WorkloadCalibrationReceipt {
 // the plan it was read from.
 type SubjectBoundCacheFit {
   subject_key: ServingSubjectKey
-  allocation_plan: NonEmptyStr
+  allocation_plan: ContentHash
   verdict: CacheFitVerdict
 }
 
@@ -156,6 +168,7 @@ type ServingPromotionEvidence {
   incumbent_subject_key: ServingSubjectKey?
   incumbent_quality: QualityReceipt?
   incumbent_calibration: WorkloadCalibrationReceipt?
+  resolved_allocation_plan: ContentHash?
 }
 
 // THE RECEIPTS A CALLER HOLDS, separate from the two verdicts the launch wall computes itself
@@ -168,11 +181,13 @@ type ServingPromotionReceipts {
   incumbent_subject_key: ServingSubjectKey?
   incumbent_quality: QualityReceipt?
   incumbent_calibration: WorkloadCalibrationReceipt?
+  resolved_allocation_plan: ContentHash?
 }
 
 // NO RECEIPT HAS BEEN PRODUCED, stated as such: a subject with these receipts is a measurement serve.
 data no_promotion_receipts: ServingPromotionReceipts = ServingPromotionReceipts {
   cache: none, quality: none, calibration: none, incumbent_subject_key: none, incumbent_quality: none, incumbent_calibration: none,
+  resolved_allocation_plan: none,
 }
 
 fn promotion_evidence(compatibility: CompatibilityAdmission, memory: ArmMemoryFitVerdict, receipts: ServingPromotionReceipts) -> ServingPromotionEvidence {
@@ -181,6 +196,7 @@ fn promotion_evidence(compatibility: CompatibilityAdmission, memory: ArmMemoryFi
     quality: receipts.quality, calibration: receipts.calibration,
     incumbent_subject_key: receipts.incumbent_subject_key,
     incumbent_quality: receipts.incumbent_quality, incumbent_calibration: receipts.incumbent_calibration,
+    resolved_allocation_plan: receipts.resolved_allocation_plan,
   }
 }
 
@@ -212,10 +228,10 @@ fn promotion_fold(key: ServingSubjectKey, ceiling: Int?, evidence: ServingPromot
   match memory_refusal(m: evidence.memory) {
     Present { value: c } => PromotionRefused { cause: c }
     Absent =>
-      match cache_refusal(key: key, c: evidence.cache) {
+      match cache_refusal(key: key, c: evidence.cache, resolved: evidence.resolved_allocation_plan) {
         Present { value: c } => PromotionRefused { cause: c }
         Absent => {
-          let missing = concat(compatibility_missing, concat(memory_missing(m: evidence.memory), concat(cache_missing(key: key, c: evidence.cache),
+          let missing = concat(compatibility_missing, concat(memory_missing(m: evidence.memory), concat(cache_missing(key: key, c: evidence.cache, resolved: evidence.resolved_allocation_plan),
             concat(quality_missing(key: key, q: evidence.quality, incumbent_key: evidence.incumbent_subject_key, incumbent: evidence.incumbent_quality, policy: policy),
               calibration_missing(key: key, ceiling: ceiling, c: evidence.calibration, incumbent_key: evidence.incumbent_subject_key, incumbent: evidence.incumbent_calibration, policy: policy)))))
           if length(missing) == 0 { PromotionAdmitsNormalServing } else { PromotionMeasurementServeOnly { missing: missing } }
@@ -248,11 +264,18 @@ fn memory_missing(m: ArmMemoryFitVerdict?) -> List<NonEmptyStr> {
 }
 
 // A CACHE VERDICT FOR ANOTHER SUBJECT IS NEITHER A REFUSAL NOR A PROOF FOR THIS ONE: it is missing.
-fn cache_refusal(key: ServingSubjectKey, c: SubjectBoundCacheFit?) -> NonEmptyStr? {
+fn cache_bound_to_resolved_plan(b: SubjectBoundCacheFit, resolved: ContentHash?) -> Bool {
+  match resolved {
+    Absent => false
+    Present { value: r } => content_hash_equal(left: b.allocation_plan, right: r)
+  }
+}
+
+fn cache_refusal(key: ServingSubjectKey, c: SubjectBoundCacheFit?, resolved: ContentHash?) -> NonEmptyStr? {
   match c {
     Absent => none
     Present { value: b } =>
-      if !serving_subject_key_equal(a: b.subject_key, b: key) { none }
+      if !serving_subject_key_equal(a: b.subject_key, b: key) || !cache_bound_to_resolved_plan(b: b, resolved: resolved) { none }
       else {
         match b.verdict {
           CacheFitRefused { limiting_rank: _, seats: _, length: _, blocks_per_seat: _, blocks_used: _, supply_allocator_blocks: _, cause: cause } => Present { value: cause }
@@ -263,12 +286,17 @@ fn cache_refusal(key: ServingSubjectKey, c: SubjectBoundCacheFit?) -> NonEmptySt
   }
 }
 
-fn cache_missing(key: ServingSubjectKey, c: SubjectBoundCacheFit?) -> List<NonEmptyStr> {
+// THE VERDICT MUST BE ABOUT THE PLAN THIS SUBJECT ACTUALLY RESOLVED (side-chat review): the receipt names the
+// plan it read by content digest, and promotion compares it with the plan identity read off the candidate's
+// own launch. A verdict about any other plan -- or with no resolved plan observed -- is missing, not proof.
+fn cache_missing(key: ServingSubjectKey, c: SubjectBoundCacheFit?, resolved: ContentHash?) -> List<NonEmptyStr> {
   match c {
     Absent => ["resolved-layout cache fit: no allocation plan has been read from this subject's own launch" as NonEmptyStr]
     Present { value: b } =>
       if !serving_subject_key_equal(a: b.subject_key, b: key) {
-        [join(["resolved-layout cache fit: the verdict from allocation plan ", b.allocation_plan as String, " names another subject"], "") as NonEmptyStr]
+        ["resolved-layout cache fit: the verdict names another subject" as NonEmptyStr]
+      } else if !cache_bound_to_resolved_plan(b: b, resolved: resolved) {
+        ["resolved-layout cache fit: the verdict is not about the allocation plan this subject resolved (no resolved plan observed, or a different plan digest)" as NonEmptyStr]
       } else {
         match b.verdict {
           CacheFitProved { limiting_rank: _, seats: _, length: _, blocks_per_seat: _, blocks_used: _, blocks_reserved: _, hard_ceiling: _, block_equivalent_bytes: _ } => []
@@ -291,6 +319,12 @@ fn incumbent_defect(key: ServingSubjectKey, incumbent_key: ServingSubjectKey?, r
   }
 }
 
+// A COUNT IS A SUBSET OF ATTEMPTS: a receipt claiming more accepted turns or parse failures than attempts
+// proves nothing and is refused as malformed.
+fn quality_counts_possible(r: QualityReceipt) -> Bool {
+  r.accepted <= r.attempts && r.tool_parse_failures <= r.attempts
+}
+
 // QUALITY: present, about this subject, on the incumbent's exact acceptance manifest, within the margin.
 fn quality_missing(key: ServingSubjectKey, q: QualityReceipt?, incumbent_key: ServingSubjectKey?, incumbent: QualityReceipt?, policy: ServingPromotionPolicy) -> List<NonEmptyStr> {
   match q {
@@ -298,6 +332,8 @@ fn quality_missing(key: ServingSubjectKey, q: QualityReceipt?, incumbent_key: Se
     Present { value: r } =>
       if !serving_subject_key_equal(a: r.subject_key, b: key) { ["quality: the receipt names another subject" as NonEmptyStr] }
       else if r.attempts == 0 { ["quality: the receipt carries zero attempts" as NonEmptyStr] }
+      else if !quality_counts_possible(r: r) { ["quality: the receipt's counts are impossible (accepted or tool-parse failures exceed attempts)" as NonEmptyStr] }
+      else if r.attempts != r.acceptance_manifest.cases { [join(["quality: ", to_string(r.attempts), " attempts do not exercise the manifest's ", to_string(r.acceptance_manifest.cases), " cases"], "") as NonEmptyStr] }
       else {
         match incumbent {
           Absent => ["quality: no incumbent receipt on the same acceptance manifest to compare against" as NonEmptyStr]
@@ -305,10 +341,12 @@ fn quality_missing(key: ServingSubjectKey, q: QualityReceipt?, incumbent_key: Se
             match incumbent_defect(key: key, incumbent_key: incumbent_key, receipt_key: i.subject_key, what: "quality") {
               Present { value: d } => [d]
               Absent =>
-                if !content_hash_equal(left: i.acceptance_manifest, right: r.acceptance_manifest) {
+                if !acceptance_manifest_equal(a: i.acceptance_manifest, b: r.acceptance_manifest) {
                   ["quality: the incumbent was measured on a different acceptance manifest" as NonEmptyStr]
                 } else if i.attempts == 0 {
                   ["quality: the incumbent receipt carries zero attempts" as NonEmptyStr]
+                } else if !quality_counts_possible(r: i) || i.attempts != i.acceptance_manifest.cases {
+                  ["quality: the incumbent receipt's counts are impossible or do not exercise the whole manifest" as NonEmptyStr]
                 } else if r.accepted * 10000 * i.attempts + basis_point_count(bp: policy.quality_non_inferiority_margin) * r.attempts * i.attempts < i.accepted * 10000 * r.attempts {
                   [join(["quality: accepted ", to_string(r.accepted), "/", to_string(r.attempts), " is more than the margin below the incumbent's ", to_string(i.accepted), "/", to_string(i.attempts)], "") as NonEmptyStr]
                 } else if !policy.allow_more_tool_parse_failures && r.tool_parse_failures * i.attempts > i.tool_parse_failures * r.attempts {
