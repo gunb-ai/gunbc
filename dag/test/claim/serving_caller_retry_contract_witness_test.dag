@@ -1,0 +1,55 @@
+module test.claim.serving_caller_retry_contract_witness_test
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import v2.std.algebra { length, filter }
+import gunbc.serving.caller_retry_contract {
+  DurableRetryProperty, DurableRetryPropertyRow, RetryPropertyEstablished, RetryPropertyUnestablished,
+  PersistBeforeOffer, RetriableRefusal, StableTurnIdentity, IdempotentRetryDuplicateSuppression,
+  NoExpiryOnLongWait, DurableCancellation, NoDoubleExecution, durable_retry_properties,
+  CallerBacklogStanding, DurableCallerBacklog, ExternalRetryObligation, CallerBacklogRosterMalformed, caller_backlog_standing, serving_route_caller_backlog,
+}
+import gunbc.harness.harness_cli { harness_placement_pending_exit }
+
+// THE SUBJECT IS THE BACKLOG STANDING FOLD: a durable caller backlog exists only when EVERY durable-retry
+// property is established; one unestablished row makes it an external retry obligation naming that row,
+// and an empty roster is not "nothing missing" but every property unmet. Rows are supplied here.
+fn w_est(p: DurableRetryProperty) -> DurableRetryPropertyRow { DurableRetryPropertyRow { property: p, standing: RetryPropertyEstablished { basis: "fixture" as NonEmptyStr } } }
+
+fn w_unmet_count(s: CallerBacklogStanding) -> Nat {
+  match s {
+    DurableCallerBacklog => 0
+    ExternalRetryObligation { unmet: us } => length(us)
+    CallerBacklogRosterMalformed { duplicated: _ } => 0
+  }
+}
+
+test fn w_every_property_established_is_a_durable_backlog_and_one_missing_is_not() -> Bool {
+  let all_est = map(durable_retry_properties, p => w_est(p: p))
+  (match caller_backlog_standing(rows: all_est) { DurableCallerBacklog => true  ExternalRetryObligation { unmet: _ } => false  CallerBacklogRosterMalformed { duplicated: _ } => false })
+    && w_unmet_count(s: caller_backlog_standing(rows: concat(filter(all_est, r => match r.property { NoDoubleExecution => false  PersistBeforeOffer => true  RetriableRefusal => true  StableTurnIdentity => true  IdempotentRetryDuplicateSuppression => true  NoExpiryOnLongWait => true  DurableCancellation => true }),
+        [DurableRetryPropertyRow { property: NoDoubleExecution, standing: RetryPropertyUnestablished { obligation: "fixture" as NonEmptyStr } }]))) == 1
+    && w_unmet_count(s: caller_backlog_standing(rows: [] as List<DurableRetryPropertyRow>)) == length(durable_retry_properties)
+}
+
+// THE ROUTE'S CALLERS TODAY HOLD AN EXTERNAL RETRY OBLIGATION, and the pending exit -- the real path a
+// caller reads -- says so by name. With the wire removed from the exit this row goes red.
+test fn w_the_pending_exit_names_the_external_retry_obligation() -> Bool {
+  (match serving_route_caller_backlog() { DurableCallerBacklog => false  ExternalRetryObligation { unmet: us } => length(us) > 0  CallerBacklogRosterMalformed { duplicated: _ } => false })
+    && (match harness_placement_pending_exit(detail: "fixture") {
+      ExitSuccess => false
+      ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "EXTERNAL RETRY OBLIGATION") && string_contains(s: r, pattern: "no-double-execution")
+    })
+}
+
+// COMPLETENESS IS AGAINST THE CANONICAL SEVEN (side-chat review): one established row is not a durable
+// backlog -- the six properties with no row are unmet -- and two rows for one property refuse as malformed.
+test fn w_a_partial_roster_is_not_durable_and_a_duplicate_roster_is_malformed() -> Bool {
+  w_unmet_count(s: caller_backlog_standing(rows: [w_est(p: PersistBeforeOffer)])) == length(durable_retry_properties) - 1
+    && (match caller_backlog_standing(rows: concat(map(durable_retry_properties, p => w_est(p: p)), [w_est(p: RetriableRefusal)])) {
+      CallerBacklogRosterMalformed { duplicated: ds } => length(ds) == 1
+      DurableCallerBacklog => false
+      ExternalRetryObligation { unmet: _ } => false
+    })
+}
