@@ -21,16 +21,18 @@ import gunbc.roadmap.roadmap_event_log {
   Claimed, Released, Progress, Blocked, HandedBack, ReceiptReferenced, CommentCreated, CommentEdited, CommentDeleted,
   ResultReturned, AttemptResultOutcome, ResultPublished, ResultVerificationFailed, ResultHandedBack,
   attempt_result_outcome_word, attempt_result_outcome_text, event_principal_label,
-  roadmap_result_returned_event, roadmap_results_for_attempt, roadmap_event_heads,
-  roadmap_node_standing, roadmap_node_standing_key, roadmap_node_standing_text,
+  roadmap_results_for_attempt, roadmap_node_standing, roadmap_node_standing_key, roadmap_node_standing_text,
+  RoadmapResultBinding, RoadmapResultAdmission, ResultAdmitted, ResultAlreadyOnLog, ResultNotAdmitted,
+  roadmap_bound_result_admission,
 }
 import gunbc.roadmap.roadmap_event_carrier {
-  RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_event_append, roadmap_events_read_all,
-  RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused,
+  RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_bound_result_append,
+  roadmap_events_read_all, roadmap_events_read,
+  RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused, RoadmapEventsRead, EventsRead, EventsReadRefused,
   EventAppended, EventAlreadyPresent, EventAppendRefused,
 }
 import gunbc.roadmap.roadmap_attempt_request_binding {
-  AttemptRequestBinding, RequestClaimBound, RequestClaimAbsent, RequestClaimUnobserved,
+  AttemptRequestBinding, RequestClaimBound, RequestAutonomous,
   AttemptRequestBindingRead, RequestBindingRead, RequestBindingAbsent, RequestBindingUnreadable,
   attempt_request_binding_read_for_instance,
 }
@@ -105,11 +107,12 @@ fn result_history_refusal(node_envelopes: List<RoadmapEventEnvelope>) -> String?
 // THE REQUEST AN ATTEMPT ANSWERS, JOINED THROUGH ITS LAUNCH BINDING AND NOTHING ELSE. Joined is a
 // claim event on THIS issue's history that is a Claimed, with the return_to that event states; the
 // issue's current assignment is never consulted, so a later claim or a release changes nothing
-// about who this attempt answers. No request is an attempt that was launched unclaimed or before
-// bindings were recorded: it has no requester and never will. Unjoinable is a binding that names a
-// claim the issue's history does not carry as a Claimed (absent, another issue's, another kind),
-// or a launch that could not read the log: a result cannot be addressed and is not addressed.
-// Unreadable is a binding file that is there and cannot be read, which may clear.
+// about who this attempt answers. No request is an attempt launched autonomously, or before
+// bindings were recorded: it has no requester and never will. Unjoinable is a binding naming a
+// claim the issue's history does not carry as a Claimed (absent, another issue's, another kind);
+// the launch established that claim before it committed the binding, so this is a log that has
+// LOST something and is a failure, not a quiet outcome. Unreadable is a binding file that is there
+// and cannot be read, which may clear.
 type ResultRequestJoin
   = ResultRequestJoined { claim: RoadmapEventId, return_to: EventPrincipal }
   | ResultRequestNone { reason: String }
@@ -139,98 +142,83 @@ fn result_request_join(binding: AttemptRequestBindingRead, node_envelopes: List<
   match binding {
     RequestBindingAbsent => ResultRequestNone { reason: "the attempt recorded no request binding at launch, so no request is known for it" }
     RequestBindingUnreadable { reason } => ResultRequestUnreadable { reason: join(["the attempt's request binding could not be read: ", reason], "") }
-    RequestBindingRead { binding: RequestClaimAbsent } => ResultRequestNone { reason: "the attempt was launched on an issue nobody had claimed, so there is no requester" }
-    RequestBindingRead { binding: RequestClaimUnobserved { reason } } => ResultRequestUnjoinable { reason: join(["the attempt's request was not observed at launch: ", reason], "") }
+    RequestBindingRead { binding: RequestAutonomous } => ResultRequestNone { reason: "the attempt was launched autonomously, so there is no requester" }
     RequestBindingRead { binding: RequestClaimBound { claim } } => result_claim_join(node_envelopes: node_envelopes, claim: claim)
   }
 }
 
-// THE WRITE DECISION, PURE, OVER THE NODE'S HISTORY AS READ AND THE JOINED REQUEST. An attempt has
-// ONE final result. If the history carries none for the attempt, the result is appended, naming the
-// bound claim, authored by the workflow principal, chained on the single head. If it carries
-// exactly the event this decision would write -- same attempt, same claim, same outcome -- it is
-// already returned and nothing is written. If it carries a result
-// that differs in ANY of those, the decision refuses: a second answer for one attempt is the thing
-// that must not exist, and deriving one means either the first was not final or the binding moved,
-// both of which someone has to look at. A forked or incomplete history refuses, because appending
-// on a head the writer could not single out is how a fork becomes three.
-type ResultReturnDecision
-  = ResultReturnAppend { event: RoadmapEvent }
-  | ResultAlreadyReturned { id: RoadmapEventId }
-  | ResultReturnRefused { reason: String }
+// THE RESULT ALREADY ON THE LOG FOR THIS EXACT IDENTITY: a ResultReturned on the binding's issue,
+// for the binding's attempt, naming the binding's claim. Only that event answers the attempt. A
+// result carrying the same attempt key on another issue, or naming another claim, is not this
+// attempt's answer and does not take it out of the population still owed one.
+fn result_attempt_answer(envelopes: List<RoadmapEventEnvelope>, binding: RoadmapResultBinding) -> RoadmapEventEnvelope? {
+  filter(roadmap_results_for_attempt(envs: envelopes, attempt: binding.attempt as String), e =>
+    (e.event.node as String) == (binding.node as String) && (match e.event.kind {
+      ResultReturned { attempt: _, claim, outcome: _ } => (claim as String) == (binding.claim as String)
+      Claimed { assignee: _, return_to: _ } => false
+      Released => false
+      Progress { note: _ } => false
+      Blocked { reason: _ } => false
+      HandedBack { reason: _ } => false
+      ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
+      CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false
+      CommentEdited { comment: _, body: _ } => false
+      CommentDeleted { comment: _ } => false
+    })).first()
+}
 
-fn result_return_decision(
-  node: RoadmapNodeId,
-  attempt_key: String,
-  claim: RoadmapEventId,
-  outcome: AttemptResultOutcome,
-  node_envelopes: List<RoadmapEventEnvelope>,
-  recorded_at: String,
-) -> ResultReturnDecision {
-  if attempt_key == "" {
-    ResultReturnRefused { reason: "the attempt has no key, so a result could not be addressed to it" }
-  } else {
-    match result_history_refusal(node_envelopes: node_envelopes) {
-      Present { value: why } => ResultReturnRefused { reason: join(["the issue history cannot take a result: ", why], "") }
-      Absent => {
-        let wanted = ResultReturned { attempt: attempt_key as NonEmptyStr, claim: claim, outcome: outcome }
-        let existing = roadmap_results_for_attempt(envs: node_envelopes, attempt: attempt_key)
-        match existing.first() {
-          Present { value: prior } =>
-            if count(existing) == 1 && prior.event.kind == wanted {
-              ResultAlreadyReturned { id: prior.id }
-            } else {
-              ResultReturnRefused { reason: join(["attempt ", attempt_key, " already has a final result on this issue (event ", prior.id as String, ") that differs from the one now derived (", attempt_result_outcome_text(o: outcome), " for claim ", claim as String, "); a second result is not written"], "") }
-            }
-          Absent =>
-            ResultReturnAppend {
-              event: roadmap_result_returned_event(
-                node: node,
-                attempt: attempt_key as NonEmptyStr,
-                claim: claim,
-                outcome: outcome,
-                author: EventPrincipalAuthenticated { ref: fabric_workflow_principal },
-                parent: match roadmap_event_heads(envs: node_envelopes).first() { Present { value: h } => Present { value: h.id }  Absent => none },
-                recorded_at: recorded_at,
-              ),
-            }
-        }
-      }
-    }
+// THE WRITE DECISION, PURE, OVER EVERY ISSUE'S EVENTS AS READ: the same admission the bound append
+// applies inside its own snapshot (roadmap_bound_result_admission), asked here first so a pass that
+// has nothing to write performs no append. Append carries the binding and the outcome, never an
+// event: the carrier builds the event. Already returned names the identical result on the log.
+// Refused carries the rule that refused -- a result for the attempt on another issue, a different
+// result on this one, a claim the history does not carry, a history with no single head.
+type ResultReturnDecision
+  = ResultReturnAppend { binding: RoadmapResultBinding, outcome: AttemptResultOutcome }
+  | ResultAlreadyReturned { id: RoadmapEventId }
+  | ResultReturnRefused { step: String, reason: String }
+
+fn result_return_decision(binding: RoadmapResultBinding, outcome: AttemptResultOutcome, envelopes: List<RoadmapEventEnvelope>) -> ResultReturnDecision {
+  match roadmap_bound_result_admission(envs: envelopes, binding: binding, outcome: outcome) {
+    ResultAdmitted { parent: _ } => ResultReturnAppend { binding: binding, outcome: outcome }
+    ResultAlreadyOnLog { id } => ResultAlreadyReturned { id: id }
+    ResultNotAdmitted { step, reason } => ResultReturnRefused { step: step, reason: reason }
   }
 }
 
 // ONE ATTEMPT'S PASS OUTCOME, every arm a named state. Recorded and already-recorded are delivered.
-// Not-terminal is an attempt still in motion and stays eligible. No-request and unjoinable are the
-// PERMANENT refusals: both are derived from the attempt's durable launch binding on every pass, so
-// the record that settles them is that binding and nothing is written beside it. Failed is a result
-// that is owed and was not delivered, and stays eligible.
+// Not-terminal is an attempt still in motion and stays eligible. No-request is the one PERMANENT
+// quiet outcome -- an autonomous attempt, or one launched before bindings were recorded -- and it is
+// derived from the attempt's durable launch binding on every pass, so nothing is written beside it.
+// Failed is a result that is owed and was not delivered, and stays eligible: it includes a bound
+// claim the log no longer carries and a result the log holds for this attempt under another
+// identity, neither of which may pass quietly.
 type ResultReturnOutcome
   = ResultReturnRecorded { node_id: String, attempt_key: String, event: String, outcome_word: String }
   | ResultReturnAlreadyRecorded { node_id: String, attempt_key: String, event: String }
   | ResultReturnNotTerminal { node_id: String, attempt_key: String, handoff: String }
   | ResultReturnNoRequest { node_id: String, attempt_key: String, reason: String }
-  | ResultReturnUnjoinable { node_id: String, attempt_key: String, reason: String }
   | ResultReturnFailed { node_id: String, attempt_key: String, step: String, reason: String }
 
 fn result_envelopes_of_node(envelopes: List<RoadmapEventEnvelope>, node_id: String) -> List<RoadmapEventEnvelope> {
   filter(envelopes, e => (e.event.node as String) == node_id)
 }
 
-// THE ATTEMPTS STILL OWED A LOOK: every attempt in the durable history that has a key and no
-// result on the log. The population is the HISTORY (one ref per attempt ever dispatched), not the
-// node's current attempt, so an attempt whose result could not be appended -- a refused push, a
-// process that died between the tick's receipt and this pass -- is still here on the next pass
-// after a newer attempt of the same node has become current.
-fn result_return_open_attempts(attempts: List<DispatchAttemptRef>, envelopes: List<RoadmapEventEnvelope>) -> List<DispatchAttemptRef> {
-  filter(attempts, a => a.attempt_key != "" && count(roadmap_results_for_attempt(envs: envelopes, attempt: a.attempt_key)) == 0)
+// THE ATTEMPTS THE PASS CONSIDERS: every attempt of the durable history that has a key. The
+// population is the HISTORY (one ref per attempt ever dispatched), not the node's current attempt,
+// and no result event takes an attempt out of it by attempt key alone: whether an attempt is
+// answered is decided per attempt against its own binding (result_attempt_answer), so an attempt
+// whose result could not be appended is still here after a newer attempt of the same node has
+// become current, and a result misaddressed under its key does not hide it.
+fn result_return_keyed_attempts(attempts: List<DispatchAttemptRef>) -> List<DispatchAttemptRef> {
+  filter(attempts, a => a.attempt_key != "")
 }
 
 fn result_return_for_progress(
   layout: RoadmapEventCarrierLayout,
   progress: WorkflowAttemptProgress,
-  claim: RoadmapEventId,
-  node_envelopes: List<RoadmapEventEnvelope>,
+  binding: RoadmapResultBinding,
+  envelopes: List<RoadmapEventEnvelope>,
   recorded_at: String,
 ) -> ResultReturnOutcome {
   match attempt_result_standing(handoff: progress.handoff) {
@@ -239,22 +227,15 @@ fn result_return_for_progress(
     AttemptResultUnstatable { reason } =>
       ResultReturnFailed { node_id: progress.node_id, attempt_key: progress.attempt_key, step: "outcome", reason: reason }
     AttemptResultTerminal { outcome } =>
-      match result_return_decision(
-        node: progress.node_id as NonEmptyStr as RoadmapNodeId,
-        attempt_key: progress.attempt_key,
-        claim: claim,
-        outcome: outcome,
-        node_envelopes: node_envelopes,
-        recorded_at: recorded_at,
-      ) {
+      match result_return_decision(binding: binding, outcome: outcome, envelopes: envelopes) {
         ResultAlreadyReturned { id } =>
           ResultReturnAlreadyRecorded { node_id: progress.node_id, attempt_key: progress.attempt_key, event: id as String }
-        ResultReturnRefused { reason } =>
-          ResultReturnFailed { node_id: progress.node_id, attempt_key: progress.attempt_key, step: "decision", reason: reason }
-        ResultReturnAppend { event } =>
-          match roadmap_event_append(layout: layout, event: event) {
+        ResultReturnRefused { step, reason } =>
+          ResultReturnFailed { node_id: progress.node_id, attempt_key: progress.attempt_key, step: step, reason: reason }
+        ResultReturnAppend { binding: bound, outcome: final } =>
+          match roadmap_bound_result_append(layout: layout, binding: bound, outcome: final, author: EventPrincipalAuthenticated { ref: fabric_workflow_principal }, recorded_at: recorded_at) {
             EventAppended { id } =>
-              ResultReturnRecorded { node_id: progress.node_id, attempt_key: progress.attempt_key, event: id as String, outcome_word: attempt_result_outcome_word(o: outcome) }
+              ResultReturnRecorded { node_id: progress.node_id, attempt_key: progress.attempt_key, event: id as String, outcome_word: attempt_result_outcome_word(o: final) }
             EventAlreadyPresent { id } =>
               ResultReturnAlreadyRecorded { node_id: progress.node_id, attempt_key: progress.attempt_key, event: id as String }
             EventAppendRefused { id: _, step, reason } =>
@@ -264,9 +245,28 @@ fn result_return_for_progress(
   }
 }
 
-// One attempt of the history. The request is joined FIRST, from the binding file alone, so an
-// attempt with no request costs one small read and its evidence is never gathered; only an attempt
-// that answers a request has its evidence read, by its own key.
+// WHAT ONE ATTEMPT NEEDS BEFORE ITS EVIDENCE IS READ, pure: the request joined from the binding
+// file alone, then the log asked whether this exact identity is already answered. Only an attempt
+// that answers a request and is not yet answered has its evidence gathered.
+type ResultReturnPrecheck
+  = ResultPrecheckSettled { outcome: ResultReturnOutcome }
+  | ResultPrecheckOwed { binding: RoadmapResultBinding }
+
+fn result_return_precheck(node_id: String, attempt_key: String, binding: AttemptRequestBindingRead, envelopes: List<RoadmapEventEnvelope>) -> ResultReturnPrecheck {
+  match result_request_join(binding: binding, node_envelopes: result_envelopes_of_node(envelopes: envelopes, node_id: node_id)) {
+    ResultRequestNone { reason } => ResultPrecheckSettled { outcome: ResultReturnNoRequest { node_id: node_id, attempt_key: attempt_key, reason: reason } }
+    ResultRequestUnjoinable { reason } => ResultPrecheckSettled { outcome: ResultReturnFailed { node_id: node_id, attempt_key: attempt_key, step: "claim", reason: reason } }
+    ResultRequestUnreadable { reason } => ResultPrecheckSettled { outcome: ResultReturnFailed { node_id: node_id, attempt_key: attempt_key, step: "request-binding", reason: reason } }
+    ResultRequestJoined { claim, return_to: _ } => {
+      let bound = RoadmapResultBinding { node: node_id as NonEmptyStr as RoadmapNodeId, attempt: attempt_key as NonEmptyStr, claim: claim }
+      match result_attempt_answer(envelopes: envelopes, binding: bound) {
+        Present { value: answer } => ResultPrecheckSettled { outcome: ResultReturnAlreadyRecorded { node_id: node_id, attempt_key: attempt_key, event: answer.id as String } }
+        Absent => ResultPrecheckOwed { binding: bound }
+      }
+    }
+  }
+}
+
 fn result_return_attempt(
   instance: HostDashboardInstance,
   layout: RoadmapEventCarrierLayout,
@@ -275,21 +275,19 @@ fn result_return_attempt(
   envelopes: List<RoadmapEventEnvelope>,
   recorded_at: String,
 ) -> ResultReturnOutcome {
-  let node_id = attempt.node_id as String
-  let node_envelopes = result_envelopes_of_node(envelopes: envelopes, node_id: node_id)
-  match result_request_join(
+  match result_return_precheck(
+    node_id: attempt.node_id as String,
+    attempt_key: attempt.attempt_key,
     binding: attempt_request_binding_read_for_instance(instance: instance, node_id: attempt.node_id as RoadmapNodeId, attempt_key: attempt.attempt_key),
-    node_envelopes: node_envelopes,
+    envelopes: envelopes,
   ) {
-    ResultRequestNone { reason } => ResultReturnNoRequest { node_id: node_id, attempt_key: attempt.attempt_key, reason: reason }
-    ResultRequestUnjoinable { reason } => ResultReturnUnjoinable { node_id: node_id, attempt_key: attempt.attempt_key, reason: reason }
-    ResultRequestUnreadable { reason } => ResultReturnFailed { node_id: node_id, attempt_key: attempt.attempt_key, step: "request-binding", reason: reason }
-    ResultRequestJoined { claim, return_to: _ } =>
+    ResultPrecheckSettled { outcome } => outcome
+    ResultPrecheckOwed { binding } =>
       result_return_for_progress(
         layout: layout,
         progress: workflow_attempt_progress(evidence: belt_workflow_attempt_evidence_for_key(instance: instance, panes: panes, attempt: attempt, current_key: attempt.attempt_key)),
-        claim: claim,
-        node_envelopes: node_envelopes,
+        binding: binding,
+        envelopes: envelopes,
         recorded_at: recorded_at,
       )
   }
@@ -306,9 +304,9 @@ type ResultReturnPass
 // THE BELT'S RESULT-RETURN RECONCILIATION, run by every tick (gunbc.roadmap_belt_tick_cli
 // belt_run_once_cli_in) whether or not the tick's other passes ran: an outstanding result is a
 // durable obligation, and a launch or authority refusal elsewhere does not discharge it. It reads
-// the event log once and the attempt refs once, and considers every attempt of the history that
-// has no result on the log. Nothing is remembered between passes -- delivery is whatever the log
-// says, so a pass that failed, or never ran, is repeated by the next one.
+// the event log once and the attempt refs once, and considers every keyed attempt of the history.
+// Nothing is remembered between passes -- delivery is whatever the log says for the attempt's exact
+// identity, so a pass that failed, or never ran, is repeated by the next one.
 fn result_return_attempts_for_instance(instance: HostDashboardInstance, recorded_at: String) -> ResultReturnPass {
   match instance.actuation {
     DashboardObserveOnly =>
@@ -321,13 +319,13 @@ fn result_return_attempts_for_instance(instance: HostDashboardInstance, recorded
           match belt_attempts_observe_for_instance(instance: instance) {
             AttemptsRefused { reason } => ResultReturnPassRefused { step: "attempts", reason: reason }
             AttemptsObserved { attempts } => {
-              let open = result_return_open_attempts(attempts: attempts, envelopes: envelopes)
-              if count(open) == 0 {
+              let keyed = result_return_keyed_attempts(attempts: attempts)
+              if count(keyed) == 0 {
                 ResultReturnPassRan { outcomes: [] }
               } else {
                 let panes = belt_attempt_panes_observe_for_instance(instance: instance)
                 ResultReturnPassRan {
-                  outcomes: map(open, a => result_return_attempt(instance: instance, layout: layout, panes: panes, attempt: a, envelopes: envelopes, recorded_at: recorded_at)),
+                  outcomes: map(keyed, a => result_return_attempt(instance: instance, layout: layout, panes: panes, attempt: a, envelopes: envelopes, recorded_at: recorded_at)),
                 }
               }
             }
@@ -345,7 +343,6 @@ fn result_return_outcome_failure_line(o: ResultReturnOutcome) -> String? {
     ResultReturnAlreadyRecorded { node_id: _, attempt_key: _, event: _ } => none
     ResultReturnNotTerminal { node_id: _, attempt_key: _, handoff: _ } => none
     ResultReturnNoRequest { node_id: _, attempt_key: _, reason: _ } => none
-    ResultReturnUnjoinable { node_id: _, attempt_key: _, reason: _ } => none
   }
 }
 
@@ -371,8 +368,7 @@ fn result_return_pass_failure(pass: ResultReturnPass) -> String? {
 }
 
 // A RESULT THAT IS OWED AND WAS NOT DELIVERED STOPS THE LINE: a nonzero exit naming each attempt and
-// the step that refused. Not-terminal, no-request and unjoinable are counted outcomes, never
-// failures.
+// the step that refused. Not-terminal and no-request are counted outcomes, never failures.
 fn result_return_pass_exit(pass: ResultReturnPass) -> ProcessExit {
   match result_return_pass_failure(pass: pass) {
     Present { value: reason } => exit_failure(reason: reason)
@@ -380,35 +376,33 @@ fn result_return_pass_exit(pass: ResultReturnPass) -> ProcessExit {
   }
 }
 
-// WHAT A READER OF ONE ATTEMPT GETS. Observed is the attempt's one result, with the issue it is on,
-// the event that states it, the claim it answers and the principal that claim returns to. Not
-// returned is a readable log with no result for this attempt -- an absence, not a refusal.
-// Ambiguous is one attempt key answered on more than one issue, which no attempt can be.
-// Unobserved is everything that is neither: a log that could not be read, a history that cannot be
-// ordered, more than one result for the attempt, or a result whose claim the history does not
-// carry -- each named by its step.
+// WHAT A READER OF ONE ATTEMPT GETS. The attempt is named by its issue AND its key, and its answer
+// is the result on that issue naming the claim the attempt was bound to at launch. Observed is that
+// result, with the event that states it, the claim, and the principal the claim returns to. Not
+// returned is a readable issue history with no result for the attempt. Not owed is an attempt with
+// no request (autonomous, or launched before bindings were recorded). Unobserved is everything that
+// is none of those: a binding or log that could not be read, a history that cannot be ordered, more
+// than one result for the attempt, or a result naming a claim other than the bound one -- each
+// named by its step, and none of them reported as the attempt's answer.
 type ResultReturnedObservation
   = ResultReturnedObserved { node: RoadmapNodeId, event: RoadmapEventId, claim: RoadmapEventId, return_to: EventPrincipal, outcome: AttemptResultOutcome, recorded_at: String }
   | ResultNotReturned { attempt_key: String }
-  | ResultReturnedAmbiguous { attempt_key: String, nodes: List<String> }
+  | ResultNotOwed { reason: String }
   | ResultReturnedUnobserved { step: String, reason: String }
 
-fn result_distinct_nodes(envelopes: List<RoadmapEventEnvelope>) -> List<String> {
-  fold(envelopes, init: [], f: (acc, e) => if any(acc, n => n == (e.event.node as String)) { acc } else { concat(acc, [e.event.node as String]) })
-}
-
-// The result event joined to its claim: the event carries no principal, so the return_to the reader
-// answers with IS the claim's, and a result whose claim the history does not carry as a Claimed has
-// no recipient to report.
-fn result_returned_observation_of_envelope(env: RoadmapEventEnvelope, node_envelopes: List<RoadmapEventEnvelope>) -> ResultReturnedObservation {
+fn result_returned_observation_of_envelope(env: RoadmapEventEnvelope, node_envelopes: List<RoadmapEventEnvelope>, bound_claim: RoadmapEventId) -> ResultReturnedObservation {
   match env.event.kind {
     ResultReturned { attempt: _, claim, outcome } =>
-      match result_claim_join(node_envelopes: node_envelopes, claim: claim) {
-        ResultRequestJoined { claim: joined, return_to } =>
-          ResultReturnedObserved { node: env.event.node, event: env.id, claim: joined, return_to: return_to, outcome: outcome, recorded_at: env.event.recorded_at }
-        ResultRequestUnjoinable { reason } => ResultReturnedUnobserved { step: "claim", reason: reason }
-        ResultRequestNone { reason } => ResultReturnedUnobserved { step: "claim", reason: reason }
-        ResultRequestUnreadable { reason } => ResultReturnedUnobserved { step: "claim", reason: reason }
+      if (claim as String) != (bound_claim as String) {
+        ResultReturnedUnobserved { step: "binding", reason: join(["the issue carries a result for this attempt naming claim ", claim as String, ", but the attempt is bound to claim ", bound_claim as String], "") }
+      } else {
+        match result_claim_join(node_envelopes: node_envelopes, claim: claim) {
+          ResultRequestJoined { claim: joined, return_to } =>
+            ResultReturnedObserved { node: env.event.node, event: env.id, claim: joined, return_to: return_to, outcome: outcome, recorded_at: env.event.recorded_at }
+          ResultRequestUnjoinable { reason } => ResultReturnedUnobserved { step: "claim", reason: reason }
+          ResultRequestNone { reason } => ResultReturnedUnobserved { step: "claim", reason: reason }
+          ResultRequestUnreadable { reason } => ResultReturnedUnobserved { step: "claim", reason: reason }
+        }
       }
     Claimed { assignee: _, return_to: _ } => ResultReturnedUnobserved { step: "kind", reason: "the selected event is not a result" }
     Released => ResultReturnedUnobserved { step: "kind", reason: "the selected event is not a result" }
@@ -422,56 +416,60 @@ fn result_returned_observation_of_envelope(env: RoadmapEventEnvelope, node_envel
   }
 }
 
-// THE READ, PURE OVER THE LOG AS READ, so a witness drives it with constructed envelopes while the
-// carrier read stays in result_returned_observe_for_attempt. The attempt key is the join: the result
-// event names its attempt, so no ledger beside the log is consulted to find the issue.
-fn result_returned_observation_of(read: RoadmapAllEventsRead, attempt_key: String) -> ResultReturnedObservation {
-  if attempt_key == "" {
-    ResultReturnedUnobserved { step: "attempt-key", reason: "the attempt key is empty, so there is no attempt to read a result for" }
+// THE READ, PURE OVER THE ATTEMPT'S BINDING AND ITS ISSUE'S HISTORY AS READ, so a witness drives it
+// with constructed values while the two reads stay in result_returned_observe_for_attempt. Only the
+// named issue's history is consulted: a result carrying this attempt key on any other issue is not
+// read, so it cannot be returned as this attempt's answer.
+fn result_returned_observation_of(read: RoadmapEventsRead, binding: AttemptRequestBindingRead, node_id: String, attempt_key: String) -> ResultReturnedObservation {
+  if attempt_key == "" || node_id == "" {
+    ResultReturnedUnobserved { step: "attempt-identity", reason: "the issue or the attempt key is empty, so there is no attempt to read a result for" }
   } else {
-    match read {
-      AllEventsReadRefused { step, reason } => ResultReturnedUnobserved { step: join(["events/", step], ""), reason: reason }
-      AllEventsRead { envelopes } => {
-        let nodes = result_distinct_nodes(envelopes: roadmap_results_for_attempt(envs: envelopes, attempt: attempt_key))
-        if count(nodes) > 1 {
-          ResultReturnedAmbiguous { attempt_key: attempt_key, nodes: nodes }
-        } else {
-          match nodes.first() {
-            Absent => ResultNotReturned { attempt_key: attempt_key }
-            Present { value: node_id } => {
-              let node_envelopes = result_envelopes_of_node(envelopes: envelopes, node_id: node_id)
-              match result_history_refusal(node_envelopes: node_envelopes) {
-                Present { value: why } => ResultReturnedUnobserved { step: "history", reason: join(["issue ", node_id, ": ", why], "") }
-                Absent => {
-                  let results = roadmap_results_for_attempt(envs: node_envelopes, attempt: attempt_key)
-                  if count(results) > 1 {
-                    ResultReturnedUnobserved { step: "result-duplicate", reason: join(["issue ", node_id, " carries ", to_string(value: count(results)), " results for attempt ", attempt_key, "; an attempt has one"], "") }
-                  } else {
-                    match results.first() {
-                      Present { value: env } => result_returned_observation_of_envelope(env: env, node_envelopes: node_envelopes)
-                      Absent => ResultNotReturned { attempt_key: attempt_key }
-                    }
+    match binding {
+      RequestBindingAbsent => ResultNotOwed { reason: "the attempt recorded no request binding at launch, so no request is known for it" }
+      RequestBindingRead { binding: RequestAutonomous } => ResultNotOwed { reason: "the attempt was launched autonomously, so there is no requester" }
+      RequestBindingUnreadable { reason } => ResultReturnedUnobserved { step: "request-binding", reason: reason }
+      RequestBindingRead { binding: RequestClaimBound { claim } } =>
+        match read {
+          EventsReadRefused { node: _, step, reason } => ResultReturnedUnobserved { step: join(["events/", step], ""), reason: reason }
+          EventsRead { node: _, envelopes } => {
+            let node_envelopes = result_envelopes_of_node(envelopes: envelopes, node_id: node_id)
+            match result_history_refusal(node_envelopes: node_envelopes) {
+              Present { value: why } => ResultReturnedUnobserved { step: "history", reason: join(["issue ", node_id, ": ", why], "") }
+              Absent => {
+                let results = roadmap_results_for_attempt(envs: node_envelopes, attempt: attempt_key)
+                if count(results) > 1 {
+                  ResultReturnedUnobserved { step: "result-duplicate", reason: join(["issue ", node_id, " carries ", to_string(value: count(results)), " results for attempt ", attempt_key, "; an attempt has one"], "") }
+                } else {
+                  match results.first() {
+                    Present { value: env } => result_returned_observation_of_envelope(env: env, node_envelopes: node_envelopes, bound_claim: claim)
+                    Absent => ResultNotReturned { attempt_key: attempt_key }
                   }
                 }
               }
             }
           }
         }
-      }
     }
   }
 }
 
-// ONE ATTEMPT'S RESULT, READ FROM THE INSTANCE'S EVENT LOG: the log is read once and answered for
-// the attempt. Its consumer in this module is result_returned_report, the operator's entry.
-// DECLARED FRONTIER: the dogfood route receipt (operator ruling 2026-10-03) is to fold this reader as
-// its result-returned stage; the trigger is the change that makes that receipt call it -- until then
-// no receipt consumes this function and none is claimed.
-fn result_returned_observe_for_attempt(instance: HostDashboardInstance, attempt_key: String) -> ResultReturnedObservation {
-  result_returned_observation_of(
-    read: roadmap_events_read_all(layout: roadmap_event_carrier_layout_for_instance(instance: instance)),
-    attempt_key: attempt_key,
-  )
+// ONE ATTEMPT'S RESULT, READ FOR ITS EXACT IDENTITY: the attempt's launch binding from its attempt
+// state and its issue's history from the event log. Its consumer in this module is
+// result_returned_report, the operator's entry.
+// DECLARED FRONTIER: the dogfood route receipt (gunbc.roadmap_dogfood_route) is to fold this reader
+// as its result-returned stage; the trigger is the change that makes that receipt call it -- until
+// then no receipt consumes this function and none is claimed.
+fn result_returned_observe_for_attempt(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> ResultReturnedObservation {
+  if attempt_key == "" || node_id == "" {
+    ResultReturnedUnobserved { step: "attempt-identity", reason: "the issue or the attempt key is empty, so there is no attempt to read a result for" }
+  } else {
+    result_returned_observation_of(
+      read: roadmap_events_read(layout: roadmap_event_carrier_layout_for_instance(instance: instance), node: node_id as NonEmptyStr as RoadmapNodeId),
+      binding: attempt_request_binding_read_for_instance(instance: instance, node_id: node_id as NonEmptyStr as RoadmapNodeId, attempt_key: attempt_key),
+      node_id: node_id,
+      attempt_key: attempt_key,
+    )
+  }
 }
 
 fn result_returned_observation_text(o: ResultReturnedObservation) -> String {
@@ -479,7 +477,7 @@ fn result_returned_observation_text(o: ResultReturnedObservation) -> String {
     ResultReturnedObserved { node, event, claim, return_to, outcome, recorded_at } =>
       join(["returned on issue ", node as String, " (event ", event as String, ", ", recorded_at, ") for claim ", claim as String, " to ", event_principal_label(p: return_to), ": ", attempt_result_outcome_text(o: outcome)], "")
     ResultNotReturned { attempt_key } => join(["no result has been returned for attempt ", attempt_key], "")
-    ResultReturnedAmbiguous { attempt_key, nodes } => join(["attempt ", attempt_key, " has results on more than one issue: ", join(nodes, ", ")], "")
+    ResultNotOwed { reason } => join(["no result is owed: ", reason], "")
     ResultReturnedUnobserved { step, reason } => join(["the result could not be read (", step, "): ", reason], "")
   }
 }
@@ -487,11 +485,11 @@ fn result_returned_observation_text(o: ResultReturnedObservation) -> String {
 // THE OPERATOR'S READ OF ONE ATTEMPT'S RESULT, a String because `gunbc run` prints a String return
 // inside its typed envelope (gunbc.roadmap.roadmap_event_cli roadmap_event_standing_report):
 //   gunbc run --entry dag/gunbc/roadmap/roadmap_result_returned.dag --function result_returned_report \
-//     --arg repo_root=<instance repo> --arg attempt_key=<key>
-fn result_returned_report(repo_root: String, attempt_key: String) -> String {
+//     --arg repo_root=<instance repo> --arg node_id=<issue> --arg attempt_key=<key>
+fn result_returned_report(repo_root: String, node_id: String, attempt_key: String) -> String {
   match dashboard_instance_for_repo_root(repo_root: repo_root) {
     DashboardInstanceRootUnknown { repo_root: w } => join(["result_returned_report: no dashboard instance is rooted at ", w], "")
     DashboardInstanceResolved { instance } =>
-      result_returned_observation_text(o: result_returned_observe_for_attempt(instance: instance, attempt_key: attempt_key))
+      result_returned_observation_text(o: result_returned_observe_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key))
   }
 }

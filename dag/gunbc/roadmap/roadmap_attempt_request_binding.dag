@@ -1,7 +1,10 @@
 module gunbc.roadmap.roadmap_attempt_request_binding
 
 import std.types { String, Bool, List, NonEmptyStr }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem, FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused,
+  FilesystemCreateKindUnrecognized, filesystem_create_new,
+}
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, json_object, json_kv, json_string, serialize_json }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
@@ -11,30 +14,58 @@ import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.roadmap_dispatch_actuator { dispatch_attempt_state_path_for_instance }
 import gunbc.roadmap.roadmap_event_log {
-  RoadmapEventEnvelope, RoadmapEventId, roadmap_issue_current_claim, roadmap_node_standing, roadmap_node_standing_key, roadmap_node_standing_text,
+  RoadmapEventEnvelope, RoadmapEventId, roadmap_claim_return_to, roadmap_node_standing, roadmap_node_standing_key, roadmap_node_standing_text,
 }
 import gunbc.roadmap.roadmap_event_carrier {
   roadmap_event_carrier_layout_for_instance, roadmap_events_read, RoadmapEventsRead, EventsRead, EventsReadRefused,
 }
 
-// THE REQUEST AN ATTEMPT WAS LAUNCHED FOR, FIXED AT LAUNCH. An attempt exists because someone
-// assigned the issue: that assignment is one Claimed event on the issue's log, and its id is the
-// request's identity. Reading "who does the work come back to" from the issue's CURRENT assignment
-// when the attempt ends answers a different question -- a second claim made while the attempt runs
-// would take the first requester's result, and a release would erase its recipient -- so the
-// attempt records the claim it was launched under, once, in its own attempt state, before the
-// worker starts. Everything that later returns the attempt's result
-// (gunbc.roadmap.roadmap_result_returned) joins through this record and nothing else.
+// THE REQUEST A LAUNCH WAS DECIDED FOR, CARRIED FROM THE DECISION. An attempt exists because a
+// dispatch decision admitted it. When that decision was caused by someone assigning the issue, the
+// assignment is one Claimed event on the issue's log, and its id is the request's identity: the
+// assign route holds that id the moment the claim is appended and hands it to the dispatch it
+// triggers. This type is that hand-off. It is NOT read back from the issue later -- by the time an
+// attempt initializes, another claim may be the current one, and binding whichever claim is current
+// would address this attempt's result to a request that did not cause it. A dispatch nobody's claim
+// caused (the timer's, or an operator pressing dispatch) is Autonomous when it starts a lineage: its
+// own launch class, with no requester, never a request whose identity went unobserved.
 //
-// Three states, each written, none defaulted: Bound names the claim event; Unclaimed is an attempt
-// launched on an issue nobody had assigned (the timer's own dispatch), which has no requester and
-// never will; Unobserved is a launch at which the issue's log could not be read or ordered, which
-// is NOT the same as unclaimed and is recorded with its reason so a result is never addressed on a
-// guess.
+// A CONTINUATION IS NEITHER. When such a dispatch turns out to continue an earlier attempt's
+// lineage, that lineage may have a requester, and calling the new turn autonomous would erase the
+// obligation -- its result would never return. Continuing names the attempt it continues, and the
+// new attempt's binding is a COPY of that attempt's recorded, create-only binding
+// (attempt_launch_request_for_origin decides the class; attempt_request_binding_admission does the
+// copy). That carries a recorded fact forward along the lineage; it reads no issue state, so the
+// claim current at the time of the continuation has no way in.
+type AttemptLaunchRequest
+  = LaunchForClaim { node: RoadmapNodeId, claim: RoadmapEventId }
+  | LaunchContinuing { predecessor_attempt_key: String }
+  | LaunchAutonomous
+
+// THE LAUNCH CLASS ONCE THE LINEAGE IS KNOWN. The dispatch decision supplies the request; the
+// continuation decision, taken later in the spawn, says whether this attempt continues a
+// predecessor. A launch for a claim stays a launch for that claim even when it continues a lineage:
+// a new assignment caused it, and it answers that assignment. A launch nobody's claim caused becomes
+// Continuing when there is a predecessor and stays Autonomous when there is none. A Continuing
+// request is already what it is.
+fn attempt_launch_request_for_origin(request: AttemptLaunchRequest, predecessor_attempt_key: String?) -> AttemptLaunchRequest {
+  match request {
+    LaunchForClaim { node: _, claim: _ } => request
+    LaunchContinuing { predecessor_attempt_key: _ } => request
+    LaunchAutonomous => match predecessor_attempt_key {
+      Present { value: key } => LaunchContinuing { predecessor_attempt_key: key }
+      Absent => LaunchAutonomous
+    }
+  }
+}
+
+// THE BINDING AN ATTEMPT RECORDS, ONCE. Bound names the claim event; Autonomous is an attempt with
+// no requester. There is no third state: a request-bound launch whose claim cannot be established
+// does not launch (attempt_request_binding_commit_for_instance refuses), because an attempt that
+// ran without knowing who asked could finish and never be able to answer.
 type AttemptRequestBinding
   = RequestClaimBound { claim: RoadmapEventId }
-  | RequestClaimAbsent
-  | RequestClaimUnobserved { reason: String }
+  | RequestAutonomous
 
 data attempt_request_binding_schema: String = "roadmap-attempt-request-binding/v1"
 data attempt_request_binding_basename: String = "request-binding.json"
@@ -50,14 +81,9 @@ fn attempt_request_binding_json(binding: AttemptRequestBinding) -> String {
       json_kv(key: "status", value: json_string(s: "bound")),
       json_kv(key: "claim", value: json_string(s: claim as String)),
     ]
-    RequestClaimAbsent => [
+    RequestAutonomous => [
       json_kv(key: "schema", value: json_string(s: attempt_request_binding_schema)),
-      json_kv(key: "status", value: json_string(s: "unclaimed")),
-    ]
-    RequestClaimUnobserved { reason } => [
-      json_kv(key: "schema", value: json_string(s: attempt_request_binding_schema)),
-      json_kv(key: "status", value: json_string(s: "unobserved")),
-      json_kv(key: "reason", value: json_string(s: reason)),
+      json_kv(key: "status", value: json_string(s: "autonomous")),
     ]
   }))
 }
@@ -80,9 +106,8 @@ type AttemptRequestBindingDecode
   = RequestBindingDecoded { binding: AttemptRequestBinding }
   | RequestBindingUndecodable { reason: String }
 
-// THE DECODE IS STRICT: the schema must be this one, the status one of the three, a bound record
-// must name a non-empty claim and an unobserved one its reason. A document that is anything else
-// is undecodable, never unclaimed.
+// THE DECODE IS STRICT: the schema must be this one, the status one of the two, and a bound record
+// must name a non-empty claim. A document that is anything else is undecodable, never autonomous.
 fn attempt_request_binding_decode(text: String) -> AttemptRequestBindingDecode {
   match parse_json_document(s: text) {
     JsonDocumentUnreadable { gap } => RequestBindingUndecodable { reason: join(["not JSON: ", json_document_gap_text(gap: gap)], "") }
@@ -103,15 +128,10 @@ fn attempt_request_binding_decode(text: String) -> AttemptRequestBindingDecode {
                       if claim == "" { RequestBindingUndecodable { reason: "a bound binding names an empty claim" } }
                       else { RequestBindingDecoded { binding: RequestClaimBound { claim: claim as NonEmptyStr as RoadmapEventId } } }
                   }
-                } else if status == "unclaimed" {
-                  RequestBindingDecoded { binding: RequestClaimAbsent }
-                } else if status == "unobserved" {
-                  match binding_member_string(doc: doc, key: "reason") {
-                    Absent => RequestBindingUndecodable { reason: "an unobserved binding gives no reason" }
-                    Present { value: reason } => RequestBindingDecoded { binding: RequestClaimUnobserved { reason: reason } }
-                  }
+                } else if status == "autonomous" {
+                  RequestBindingDecoded { binding: RequestAutonomous }
                 } else {
-                  RequestBindingUndecodable { reason: join(["status ", status, " is not bound, unclaimed or unobserved"], "") }
+                  RequestBindingUndecodable { reason: join(["status ", status, " is not bound or autonomous"], "") }
                 }
             }
           }
@@ -119,48 +139,128 @@ fn attempt_request_binding_decode(text: String) -> AttemptRequestBindingDecode {
   }
 }
 
-// THE BINDING AN ISSUE'S LOG GIVES A LAUNCH, pure over the read. The claim is the one the issue is
-// held under at this moment (roadmap_issue_current_claim: the newest Claimed in causal order that
-// no later Released ended). A refused read, or a history that forks or is incomplete, is
-// Unobserved with the reason.
-fn attempt_request_binding_of_read(read: RoadmapEventsRead) -> AttemptRequestBinding {
-  match read {
-    EventsReadRefused { node: _, step, reason } => RequestClaimUnobserved { reason: join(["the issue's event log could not be read at launch (", step, "): ", reason], "") }
-    EventsRead { node: _, envelopes } => {
-      let standing = roadmap_node_standing(envs: envelopes)
-      let key = roadmap_node_standing_key(s: standing)
-      if key == "forked" || key == "history_incomplete" {
-        RequestClaimUnobserved { reason: join(["the issue's history could not be ordered at launch: ", roadmap_node_standing_text(s: standing)], "") }
+// WHETHER THE CARRIED REQUEST CAN BE BOUND TO THIS ATTEMPT, pure over the issue's log and the
+// predecessor's binding as read. An autonomous launch binds as autonomous and consults nothing. A
+// continuing launch takes exactly the binding its predecessor recorded -- bound to the same claim,
+// or autonomous -- and refuses when the predecessor has no readable binding, because a continuation
+// whose lineage's request is unknown would run unable to answer anyone (the remedy is a new
+// assignment, which launches for its own claim). A launch for a claim binds only when
+// the request names THIS attempt's node and the claim is a Claimed event on that node's readable,
+// ordered history. Everything else refuses and says which: a request for another node, a log that
+// could not be read, a history that forks or is incomplete, a claim id the history does not carry
+// as a claim. The log is read to ESTABLISH the claim the decision carried, never to choose one, so
+// a newer claim on the same issue changes nothing here.
+type AttemptRequestBindingAdmission
+  = RequestBindingAdmitted { binding: AttemptRequestBinding }
+  | RequestBindingNotAdmitted { step: String, detail: String }
+
+fn attempt_request_binding_admission(request: AttemptLaunchRequest, node_id: RoadmapNodeId, read: RoadmapEventsRead, predecessor: AttemptRequestBindingRead) -> AttemptRequestBindingAdmission {
+  match request {
+    LaunchAutonomous => RequestBindingAdmitted { binding: RequestAutonomous }
+    LaunchContinuing { predecessor_attempt_key } =>
+      match predecessor {
+        RequestBindingRead { binding } => RequestBindingAdmitted { binding: binding }
+        RequestBindingAbsent =>
+          RequestBindingNotAdmitted { step: "request-predecessor", detail: join(["this attempt continues attempt ", predecessor_attempt_key, " of issue ", node_id as String, ", which recorded no request binding, so the request this lineage answers is unknown; assign the issue again to continue it under a recorded request"], "") }
+        RequestBindingUnreadable { reason } =>
+          RequestBindingNotAdmitted { step: "request-predecessor", detail: join(["this attempt continues attempt ", predecessor_attempt_key, " of issue ", node_id as String, ", whose request binding cannot be read: ", reason], "") }
+      }
+    LaunchForClaim { node, claim } =>
+      if (node as String) != (node_id as String) {
+        RequestBindingNotAdmitted { step: "request-node", detail: join(["the launch request is for issue ", node as String, " and cannot bind an attempt of issue ", node_id as String], "") }
       } else {
-        match roadmap_issue_current_claim(envs: envelopes) {
-          Present { value: claim } => RequestClaimBound { claim: claim.id }
-          Absent => RequestClaimAbsent
+        match read {
+          EventsReadRefused { node: _, step, reason } =>
+            RequestBindingNotAdmitted { step: "request-log", detail: join(["the issue's event log could not be read (", step, "), so the claim this launch answers cannot be established: ", reason], "") }
+          EventsRead { node: _, envelopes } => {
+            let standing = roadmap_node_standing(envs: envelopes)
+            let key = roadmap_node_standing_key(s: standing)
+            if key == "forked" || key == "history_incomplete" {
+              RequestBindingNotAdmitted { step: "request-history", detail: join(["the issue's history cannot be ordered, so the claim this launch answers cannot be established: ", roadmap_node_standing_text(s: standing)], "") }
+            } else {
+              match roadmap_claim_return_to(envs: envelopes, claim: claim) {
+                Present { value: _ } => RequestBindingAdmitted { binding: RequestClaimBound { claim: claim } }
+                Absent => RequestBindingNotAdmitted { step: "request-claim", detail: join(["the launch request names claim ", claim as String, ", which is not a claim on issue ", node_id as String, "'s history"], "") }
+              }
+            }
+          }
         }
       }
+  }
+}
+
+// THE CREATE-ONLY COMMIT, pure over what the create answered and what is on disk. Created is the
+// first commit. An occupied target is read back: the SAME binding is an idempotent success, so a
+// repeated initialization of the same decision changes nothing; a DIFFERENT binding, or a file that
+// does not decode, refuses -- the first commit stands and a later initialization under another
+// claim cannot replace it. Any other refusal of the create is the host's and fails the launch.
+type AttemptRequestBindingCommit
+  = RequestBindingCommitted { binding: AttemptRequestBinding }
+  | RequestBindingCommitRefused { step: String, detail: String }
+
+fn attempt_request_binding_commit_of(binding: AttemptRequestBinding, created: FilesystemCreateNew, existing: AttemptRequestBindingRead) -> AttemptRequestBindingCommit {
+  match created {
+    FilesystemCreated { path: _ } => RequestBindingCommitted { binding: binding }
+    FilesystemCreateRefused { path: _, kind: _, error } => RequestBindingCommitRefused { step: "attempt-request-binding-persist", detail: error }
+    FilesystemCreateKindUnrecognized { path: _, observed, error } => RequestBindingCommitRefused { step: "attempt-request-binding-persist", detail: join([observed, ": ", error], "") }
+    FilesystemCreateTargetOccupied { path: _ } =>
+      match existing {
+        RequestBindingRead { binding: recorded } =>
+          if recorded == binding { RequestBindingCommitted { binding: recorded } }
+          else { RequestBindingCommitRefused { step: "attempt-request-binding-conflict", detail: join(["the attempt is already bound (", attempt_request_binding_json(binding: recorded), ") and cannot be re-bound (", attempt_request_binding_json(binding: binding), ")"], "") } }
+        RequestBindingAbsent => RequestBindingCommitRefused { step: "attempt-request-binding-persist", detail: "the binding could not be created because the target was occupied, and then could not be found" }
+        RequestBindingUnreadable { reason } => RequestBindingCommitRefused { step: "attempt-request-binding-conflict", detail: join(["the attempt already has a binding that cannot be read, which is not replaced: ", reason], "") }
+      }
+  }
+}
+
+// THE LAUNCH-TIME COMMIT (gunbc.roadmap_belt_actuate belt_attempt_state_initialize_for_instance,
+// before the worker starts). The request arrives from the dispatch decision; the issue's log is
+// read only when the request names a claim, to establish it, and the predecessor's binding only
+// when the launch continues one (same issue, by the path it is read from); the binding is written
+// create-only.
+// A refusal here fails the launch.
+fn attempt_request_binding_commit_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, request: AttemptLaunchRequest) -> AttemptRequestBindingCommit {
+  let admission = match request {
+    LaunchAutonomous => attempt_request_binding_admission(request: request, node_id: node_id, read: EventsRead { node: node_id, envelopes: [] }, predecessor: RequestBindingAbsent)
+    LaunchContinuing { predecessor_attempt_key } =>
+      attempt_request_binding_admission(
+        request: request,
+        node_id: node_id,
+        read: EventsRead { node: node_id, envelopes: [] },
+        predecessor: attempt_request_binding_read_for_instance(instance: instance, node_id: node_id, attempt_key: predecessor_attempt_key),
+      )
+    LaunchForClaim { node: _, claim: _ } =>
+      attempt_request_binding_admission(
+        request: request,
+        node_id: node_id,
+        read: roadmap_events_read(layout: roadmap_event_carrier_layout_for_instance(instance: instance), node: node_id),
+        predecessor: RequestBindingAbsent,
+      )
+  }
+  match admission {
+    RequestBindingNotAdmitted { step, detail } => RequestBindingCommitRefused { step: step, detail: detail }
+    RequestBindingAdmitted { binding } => {
+      let path = attempt_request_binding_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+      let write = Filesystem.WriteCreateNew(path: path, content: attempt_request_binding_json(binding: binding))
+      let created = filesystem_create_new(path: write.path, success: write.success, error: write.error, error_kind: write.error_kind)
+      attempt_request_binding_commit_of(
+        binding: binding,
+        created: created,
+        existing: match created {
+          FilesystemCreateTargetOccupied { path: _ } => attempt_request_binding_read_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
+          FilesystemCreated { path: _ } => RequestBindingAbsent
+          FilesystemCreateRefused { path: _, kind: _, error: _ } => RequestBindingAbsent
+          FilesystemCreateKindUnrecognized { path: _, observed: _, error: _ } => RequestBindingAbsent
+        },
+      )
     }
   }
 }
 
-type AttemptRequestBindingRecord
-  = RequestBindingRecorded { binding: AttemptRequestBinding }
-  | RequestBindingWriteFailed { detail: String }
-
-// THE LAUNCH-TIME WRITE (gunbc.roadmap_belt_actuate belt_attempt_state_initialize_for_instance,
-// before the worker starts): read the issue's log once, derive the binding, write it into the
-// attempt's state directory. Only a failed WRITE fails the launch; an unreadable log is a binding
-// in its own right.
-fn attempt_request_binding_record_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> AttemptRequestBindingRecord {
-  let binding = attempt_request_binding_of_read(read: roadmap_events_read(layout: roadmap_event_carrier_layout_for_instance(instance: instance), node: node_id))
-  let write = Filesystem.Write(
-    path: attempt_request_binding_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
-    content: attempt_request_binding_json(binding: binding),
-  )
-  if write.success { RequestBindingRecorded { binding: binding } } else { RequestBindingWriteFailed { detail: write.error } }
-}
-
 // THE BINDING AS A LATER READER FINDS IT. Absent is an attempt launched before bindings were
 // recorded (or one whose state was never initialized): it has no recorded request, which is its
-// own arm and not unclaimed. Unreadable is a file that is there and cannot be read or decoded.
+// own arm and not autonomous. Unreadable is a file that is there and cannot be read or decoded.
 type AttemptRequestBindingRead
   = RequestBindingRead { binding: AttemptRequestBinding }
   | RequestBindingAbsent

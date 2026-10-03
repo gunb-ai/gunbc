@@ -5,7 +5,11 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import std.algebra { trim }
 import std.content_hash { content_hash_of_value }
 import std.durable_compare_and_set { CasGeneration, CasReadableSlot, CasReadableAbsent, CasReadablePresent, CasSlotVersion, ExpectSlotAbsent, ExpectSlotGeneration, cas_expectation_admits }
-import gunbc.roadmap.roadmap_event_log { roadmap_event_chain, roadmap_event_admitted_after }
+import gunbc.roadmap.roadmap_event_log {
+  roadmap_event_chain, roadmap_event_admitted_after,
+  EventPrincipal, AttemptResultOutcome, RoadmapResultBinding, roadmap_result_returned_event,
+  RoadmapResultAdmission, ResultAdmitted, ResultAlreadyOnLog, ResultNotAdmitted, roadmap_bound_result_admission,
+}
 import extdeps.shell
 import gunbc.roadmap.roadmap_event_log { roadmap_event_heads, roadmap_node_standing_key, roadmap_issue_state }
 import gunbc.output_policy { OutcomeIsData }
@@ -245,7 +249,7 @@ fn roadmap_event_append_private(layout: RoadmapEventCarrierLayout, event: Roadma
           EventsReadRefused { node: _, step, reason } => EventAppendRefused { id: env.id, step: step, reason: reason }
           EventsRead { node: _, envelopes } => if any(envelopes, existing => existing.id == env.id) { EventAlreadyPresent { id: env.id } }
             else if !roadmap_event_admitted_after(envs: envelopes, event: event) {
-              EventAppendRefused { id: env.id, step: "result-not-admitted", reason: "a result is admitted once per attempt and only for a claim on this issue's history; this one is a second result for its attempt or names a claim the history does not carry" }
+              EventAppendRefused { id: env.id, step: "result-requires-binding", reason: "a result is written only through the bound result append, which builds it from the attempt's own binding; the generic append does not admit one" }
             } else if !roadmap_event_parent_admitted(event: event, envelopes: envelopes) {
               EventAppendRefused { id: env.id, step: "revision-conflict", reason: "expected issue revision does not match the committed issue head" }
             } else { roadmap_event_publish_private(layout: layout, env: env, operation: operation, receipt_path: receipt_path, expected_commit: trim(revision)) }
@@ -427,6 +431,19 @@ fn roadmap_all_events_of_reads(reads: List<RoadmapEventsRead>) -> RoadmapAllEven
   }
 }
 
+// Every node's events from a worktree the caller already synced: the one walk both the all-events
+// read and the bound result append decide over.
+fn roadmap_events_read_all_synced(layout: RoadmapEventCarrierLayout) -> RoadmapAllEventsRead {
+  let root = join([layout.worktree as String, "/", roadmap_events_dir_segment], "")
+  let listing = Filesystem.List(path: root)
+  if !listing.success && listing.error_kind != "not_found" { AllEventsReadRefused { step: "list", reason: listing.error } } else if !listing.success {
+    AllEventsRead { envelopes: [] }
+  } else {
+    let nodes = filter(split(s: listing.entries, delimiter: "\n"), n => trim(n) != "")
+    roadmap_all_events_of_reads(map(nodes, n => roadmap_events_read_synced(layout: layout, node: trim(n) as NonEmptyStr as RoadmapNodeId)))
+  }
+}
+
 fn roadmap_events_read_all_private(layout: RoadmapEventCarrierLayout) -> RoadmapAllEventsRead {
   match roadmap_event_carrier_ensure(layout: layout) {
     CarrierEnsureRefused { step, reason } => AllEventsReadRefused { step: join(["ensure/", step], ""), reason: reason }
@@ -434,14 +451,7 @@ fn roadmap_events_read_all_private(layout: RoadmapEventCarrierLayout) -> Roadmap
       match roadmap_event_carrier_sync(layout: layout) {
         CarrierEnsureRefused { step, reason } => AllEventsReadRefused { step: join(["sync/", step], ""), reason: reason }
         CarrierReady => {
-          let root = join([layout.worktree as String, "/", roadmap_events_dir_segment], "")
-          let listing = Filesystem.List(path: root)
-          if !listing.success && listing.error_kind != "not_found" { AllEventsReadRefused { step: "list", reason: listing.error } } else if !listing.success {
-            AllEventsRead { envelopes: [] }
-          } else {
-            let nodes = filter(split(s: listing.entries, delimiter: "\n"), n => trim(n) != "")
-            roadmap_all_events_of_reads(map(nodes, n => roadmap_events_read_synced(layout: layout, node: trim(n) as NonEmptyStr as RoadmapNodeId)))
-          }
+          roadmap_events_read_all_synced(layout: layout)
         }
       }
   }
@@ -476,6 +486,52 @@ fn roadmap_events_read_all(layout: RoadmapEventCarrierLayout) -> RoadmapAllEvent
       let result = roadmap_events_read_all_private(layout: private)
       let cleanup = roadmap_event_snapshot_close(layout: private)
       result
+    }
+  }
+}
+
+// THE BOUND RESULT APPEND: the one way a ResultReturned reaches the log. The caller supplies the
+// identity the result answers under -- issue, attempt, bound claim -- and the outcome; it does not
+// supply an event. Inside ONE private snapshot the whole log is read, roadmap_bound_result_admission
+// decides over it (no result for the attempt on any other issue, none that differs on this one, the
+// claim a Claimed on this issue's history, a single head), the event is built from the binding and
+// chained on the head that snapshot read, and it is published against that exact commit. A log
+// that moved between the read and the publish is refused by the same conditional push as any
+// append, so the admission cannot be decided on one state and written on another.
+fn roadmap_bound_result_append(layout: RoadmapEventCarrierLayout, binding: RoadmapResultBinding, outcome: AttemptResultOutcome, author: EventPrincipal, recorded_at: String) -> RoadmapEventAppend {
+  let unparented = roadmap_event_envelope(e: roadmap_result_returned_event(binding: binding, outcome: outcome, author: author, parent: none, recorded_at: recorded_at))
+  match roadmap_event_private_snapshot(layout: layout) {
+    CarrierSnapshotRefused { reason } => EventAppendRefused { id: unparented.id, step: "snapshot", reason: reason }
+    CarrierSnapshotReady { layout: private } => {
+      let result = roadmap_bound_result_append_private(layout: private, binding: binding, outcome: outcome, author: author, recorded_at: recorded_at, unparented: unparented.id)
+      let cleanup = roadmap_event_snapshot_close(layout: private)
+      result
+    }
+  }
+}
+
+fn roadmap_bound_result_append_private(layout: RoadmapEventCarrierLayout, binding: RoadmapResultBinding, outcome: AttemptResultOutcome, author: EventPrincipal, recorded_at: String, unparented: RoadmapEventId) -> RoadmapEventAppend {
+  match roadmap_event_carrier_sync(layout: layout) {
+    CarrierEnsureRefused { step, reason } => EventAppendRefused { id: unparented, step: step, reason: reason }
+    CarrierReady => match carrier_exec(layout: layout, workdir: layout.worktree as String, args: ["rev-parse", "HEAD"]) {
+      CarrierExecFailed { exit_code: _, stderr } => EventAppendRefused { id: unparented, step: "snapshot-revision", reason: stderr }
+      CarrierExecOk { stdout: revision } =>
+        match roadmap_events_read_all_synced(layout: layout) {
+          AllEventsReadRefused { step, reason } => EventAppendRefused { id: unparented, step: step, reason: reason }
+          AllEventsRead { envelopes } =>
+            match roadmap_bound_result_admission(envs: envelopes, binding: binding, outcome: outcome) {
+              ResultNotAdmitted { step, reason } => EventAppendRefused { id: unparented, step: step, reason: reason }
+              ResultAlreadyOnLog { id } => EventAlreadyPresent { id: id }
+              ResultAdmitted { parent } =>
+                roadmap_event_publish_private(
+                  layout: layout,
+                  env: roadmap_event_envelope(e: roadmap_result_returned_event(binding: binding, outcome: outcome, author: author, parent: parent, recorded_at: recorded_at)),
+                  operation: "",
+                  receipt_path: "",
+                  expected_commit: trim(revision),
+                )
+            }
+        }
     }
   }
 }

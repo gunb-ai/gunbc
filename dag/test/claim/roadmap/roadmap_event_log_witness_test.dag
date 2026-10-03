@@ -16,7 +16,8 @@ import gunbc.roadmap.roadmap_event_log {
   IssueAssignmentProjection, roadmap_issue_assignment,
   IssueComment, roadmap_issue_comments, roadmap_comment_created_key_present, roadmap_comment_retry_present, issue_comment_anchor,
   roadmap_recent_claimed_assignees, roadmap_events_newest_first, roadmap_result_returned_event, ResultReturned, AttemptResultOutcome, ResultPublished, ResultVerificationFailed, ResultHandedBack, NodeReadyForReview,
-  roadmap_event_admitted_after, roadmap_issue_current_claim, roadmap_results_for_attempt,
+  roadmap_event_admitted_after, roadmap_results_for_attempt,
+  RoadmapResultBinding, RoadmapResultAdmission, ResultAdmitted, ResultAlreadyOnLog, ResultNotAdmitted, roadmap_bound_result_admission,
 }
 
 fn node() -> RoadmapNodeId { "demo-node" as RoadmapNodeId }
@@ -393,7 +394,7 @@ test fn every_result_outcome_round_trips_and_a_result_missing_its_member_refuses
     ResultHandedBack { reason: "the worker declared blocked" as NonEmptyStr },
   ]
   let round_trips = all(outcomes, o => {
-    let env = roadmap_event_envelope(e: roadmap_result_returned_event(node: node(), attempt: "feedfacefeedface" as NonEmptyStr, claim: "c1a1c1a1c1a1c1a1" as RoadmapEventId, outcome: o, author: fabric, parent: none, recorded_at: "t1"))
+    let env = roadmap_event_envelope(e: roadmap_result_returned_event(binding: RoadmapResultBinding { node: node(), attempt: "feedfacefeedface" as NonEmptyStr, claim: "c1a1c1a1c1a1c1a1" as RoadmapEventId }, outcome: o, author: fabric, parent: none, recorded_at: "t1"))
     match roadmap_event_decode(text: roadmap_event_wire_text(env: env)) {
       RoadmapEventDecoded { envelope } => (envelope.id as String) == (env.id as String) && envelope.event.kind == env.event.kind
       RoadmapEventUndecodable { reason: _ } => false
@@ -423,48 +424,84 @@ fn note_env(parent: RoadmapEventId) -> RoadmapEventEnvelope {
   ev(kind: Progress { note: "not a claim" as NonEmptyStr }, parent: Present { value: parent }, author: human_principal(), at: "t2")
 }
 
-// ONE FINAL RESULT PER ATTEMPT, FOR A CLAIM THE HISTORY CARRIES, AT THE APPEND'S OWN ADMISSION. A
-// history that already answers an attempt admits no second result for it -- not the same outcome
-// again, and not a different one -- and a result naming a claim that is absent from the history,
-// or an event that is not a claim, is not admitted at all; a result for ANOTHER attempt on the
-// same issue, and every other kind, is admitted.
-test fn a_second_result_for_an_answered_attempt_is_not_admitted() -> Bool {
+fn evlog_binding(claim: RoadmapEventId) -> RoadmapResultBinding {
+  RoadmapResultBinding { node: node(), attempt: "feedfacefeedface" as NonEmptyStr, claim: claim }
+}
+
+fn evlog_failed_outcome() -> AttemptResultOutcome {
+  ResultVerificationFailed { head: "52c56a8" as NonEmptyStr, cause: "verdict validation-failed" as NonEmptyStr }
+}
+
+fn evlog_published_outcome() -> AttemptResultOutcome {
+  ResultPublished { pr: "p" as NonEmptyStr, head: "52c56a8" as NonEmptyStr }
+}
+
+fn evlog_not_admitted_at(a: RoadmapResultAdmission, step: String) -> Bool {
+  match a {
+    ResultNotAdmitted { step: s, reason } => s == step && string_length(s: reason) > 0
+    ResultAdmitted { parent: _ } => false
+    ResultAlreadyOnLog { id: _ } => false
+  }
+}
+
+// THE GENERIC APPEND ADMITS NO RESULT AT ALL. A ResultReturned offered to the admission every append
+// asks is refused whatever it says -- a first result, a well-formed one, one naming a real claim --
+// because the generic append has no binding to check it against; every other kind is admitted.
+test fn the_generic_append_admits_no_result_event() -> Bool {
   let fabric = event_principal_authenticated(ref: fabric_workflow_principal())
   let claim = ev(kind: Claimed { assignee: fabric, return_to: human_principal() }, parent: none, author: human_principal(), at: "t1")
-  let failed = ev(kind: ResultReturned { attempt: "feedfacefeedface" as NonEmptyStr, claim: claim.id, outcome: ResultVerificationFailed { head: "52c56a8" as NonEmptyStr, cause: "verdict validation-failed" as NonEmptyStr } }, parent: Present { value: claim.id }, author: fabric, at: "t2")
-  let again = RoadmapEvent { node: node(), author: fabric, parent: Present { value: failed.id }, kind: failed.event.kind, recorded_at: "t3" }
-  let revised = RoadmapEvent { node: node(), author: fabric, parent: Present { value: failed.id }, kind: ResultReturned { attempt: "feedfacefeedface" as NonEmptyStr, claim: claim.id, outcome: ResultPublished { pr: "p" as NonEmptyStr, head: "52c56a8" as NonEmptyStr } }, recorded_at: "t3" }
-  let other = RoadmapEvent { node: node(), author: fabric, parent: Present { value: failed.id }, kind: ResultReturned { attempt: "0ther0ther0ther00" as NonEmptyStr, claim: claim.id, outcome: ResultPublished { pr: "p" as NonEmptyStr, head: "52c56a8" as NonEmptyStr } }, recorded_at: "t3" }
-  let note = RoadmapEvent { node: node(), author: fabric, parent: Present { value: failed.id }, kind: Progress { note: "n" as NonEmptyStr }, recorded_at: "t3" }
-  !roadmap_event_admitted_after(envs: [claim, failed], event: again)
-    && !roadmap_event_admitted_after(envs: [claim, failed], event: revised)
-    && roadmap_event_admitted_after(envs: [claim, failed], event: other)
-    && roadmap_event_admitted_after(envs: [claim, failed], event: note)
-    && roadmap_event_admitted_after(envs: [claim], event: failed.event)
-    && !roadmap_event_admitted_after(envs: [claim], event: RoadmapEvent { node: node(), author: fabric, parent: Present { value: claim.id }, kind: ResultReturned { attempt: "feedfacefeedface" as NonEmptyStr, claim: "0000000000000000" as RoadmapEventId, outcome: ResultPublished { pr: "p" as NonEmptyStr, head: "52c56a8" as NonEmptyStr } }, recorded_at: "t2" })
-    && !roadmap_event_admitted_after(envs: [claim, note_env(parent: claim.id)], event: RoadmapEvent { node: node(), author: fabric, parent: Present { value: claim.id }, kind: ResultReturned { attempt: "feedfacefeedface" as NonEmptyStr, claim: note_env(parent: claim.id).id, outcome: ResultPublished { pr: "p" as NonEmptyStr, head: "52c56a8" as NonEmptyStr } }, recorded_at: "t2" })
-    && count(roadmap_results_for_attempt(envs: [claim, failed], attempt: "feedfacefeedface")) == 1
+  let first_result = RoadmapEvent { node: node(), author: fabric, parent: Present { value: claim.id }, kind: ResultReturned { attempt: "feedfacefeedface" as NonEmptyStr, claim: claim.id, outcome: evlog_failed_outcome() }, recorded_at: "t2" }
+  let note = RoadmapEvent { node: node(), author: fabric, parent: Present { value: claim.id }, kind: Progress { note: "n" as NonEmptyStr }, recorded_at: "t2" }
+  !roadmap_event_admitted_after(envs: [claim], event: first_result)
+    && roadmap_event_admitted_after(envs: [claim], event: note)
+    && roadmap_event_admitted_after(envs: [], event: claim.event)
 }
 
-fn evlog_claim_is(found: RoadmapEventEnvelope?, want: RoadmapEventId) -> Bool {
-  match found { Present { value: e } => (e.id as String) == (want as String)  Absent => false }
-}
-
-// THE CLAIM A LAUNCH BINDS is the newest Claimed in CAUSAL order that no later Released ended: a
-// reassignment names the newer claim, a release names none, and a history that forks names none
-// rather than choosing a side.
-test fn the_current_claim_is_the_newest_unreleased_claim_in_causal_order() -> Bool {
+// THE BOUND ADMISSION'S POSITIVE CONTROL AND ITS IDEMPOTENCE: a first result for the exact identity
+// is admitted on the issue's head; the identical result already on the log is reported as on the
+// log and names its event.
+test fn a_bound_result_is_admitted_once_on_the_head_and_recognised_when_already_there() -> Bool {
   let fabric = event_principal_authenticated(ref: fabric_workflow_principal())
-  let first = ev(kind: Claimed { assignee: fabric, return_to: human_principal() }, parent: none, author: human_principal(), at: "t9")
-  let note = ev(kind: Progress { note: "working" as NonEmptyStr }, parent: Present { value: first.id }, author: fabric, at: "t2")
-  let second = ev(kind: Claimed { assignee: fabric, return_to: legacy("lead@gunb.ai") }, parent: Present { value: note.id }, author: human_principal(), at: "t1")
-  let released = ev(kind: Released, parent: Present { value: second.id }, author: human_principal(), at: "t4")
-  let fork = ev(kind: Progress { note: "a writer who never saw the note" as NonEmptyStr }, parent: Present { value: first.id }, author: fabric, at: "t2")
-  evlog_claim_is(found: roadmap_issue_current_claim(envs: [first, note]), want: first.id)
-    && evlog_claim_is(found: roadmap_issue_current_claim(envs: [second, first, note]), want: second.id)
-    && (match roadmap_issue_current_claim(envs: [first, note, second, released]) { Present { value: _ } => false  Absent => true })
-    && (match roadmap_issue_current_claim(envs: [first, note, fork]) { Present { value: _ } => false  Absent => true })
-    && (match roadmap_issue_current_claim(envs: []) { Present { value: _ } => false  Absent => true })
+  let claim = ev(kind: Claimed { assignee: fabric, return_to: human_principal() }, parent: none, author: human_principal(), at: "t1")
+  let note = note_env(parent: claim.id)
+  let admitted = match roadmap_bound_result_admission(envs: [claim, note], binding: evlog_binding(claim: claim.id), outcome: evlog_failed_outcome()) {
+    ResultAdmitted { parent } => match parent { Present { value: p } => (p as String) == (note.id as String)  Absent => false }
+    ResultAlreadyOnLog { id: _ } => false
+    ResultNotAdmitted { step: _, reason: _ } => false
+  }
+  let failed = ev(kind: ResultReturned { attempt: "feedfacefeedface" as NonEmptyStr, claim: claim.id, outcome: evlog_failed_outcome() }, parent: Present { value: note.id }, author: fabric, at: "t3")
+  let already = match roadmap_bound_result_admission(envs: [claim, note, failed], binding: evlog_binding(claim: claim.id), outcome: evlog_failed_outcome()) {
+    ResultAlreadyOnLog { id } => (id as String) == (failed.id as String)
+    ResultAdmitted { parent: _ } => false
+    ResultNotAdmitted { step: _, reason: _ } => false
+  }
+  admitted && already && count(roadmap_results_for_attempt(envs: [claim, note, failed], attempt: "feedfacefeedface")) == 1
+}
+
+// THE BOUND ADMISSION'S REDS, EACH NAMED BY ITS RULE. A different outcome for an answered attempt is
+// a second result. The same attempt answered under ANOTHER claim of the same issue is a second
+// result. A result for the attempt already on ANOTHER issue refuses this one -- at the append, not
+// as an ambiguity found later. A claim that is absent from the issue's history, or an event that is
+// not a claim, or a claim that belongs to another issue, is no claim to answer. A forked history
+// has no head to follow.
+test fn a_bound_result_is_refused_for_a_second_answer_a_foreign_claim_or_another_issue() -> Bool {
+  let fabric = event_principal_authenticated(ref: fabric_workflow_principal())
+  let c1 = ev(kind: Claimed { assignee: fabric, return_to: human_principal() }, parent: none, author: human_principal(), at: "t1")
+  let c2 = ev(kind: Claimed { assignee: fabric, return_to: legacy("lead@gunb.ai") }, parent: Present { value: c1.id }, author: human_principal(), at: "t2")
+  let failed = ev(kind: ResultReturned { attempt: "feedfacefeedface" as NonEmptyStr, claim: c1.id, outcome: evlog_failed_outcome() }, parent: Present { value: c2.id }, author: fabric, at: "t3")
+  let revised = evlog_not_admitted_at(a: roadmap_bound_result_admission(envs: [c1, c2, failed], binding: evlog_binding(claim: c1.id), outcome: evlog_published_outcome()), step: "result-duplicate")
+  let reclaimed = evlog_not_admitted_at(a: roadmap_bound_result_admission(envs: [c1, c2, failed], binding: evlog_binding(claim: c2.id), outcome: evlog_failed_outcome()), step: "result-duplicate")
+  let other_node = "other-node" as RoadmapNodeId
+  let b1 = roadmap_event_envelope(e: RoadmapEvent { node: other_node, author: human_principal(), parent: none, kind: Claimed { assignee: fabric, return_to: human_principal() }, recorded_at: "t1" })
+  let on_b = roadmap_event_envelope(e: RoadmapEvent { node: other_node, author: fabric, parent: Present { value: b1.id }, kind: ResultReturned { attempt: "feedfacefeedface" as NonEmptyStr, claim: b1.id, outcome: evlog_published_outcome() }, recorded_at: "t2" })
+  let elsewhere = evlog_not_admitted_at(a: roadmap_bound_result_admission(envs: [c1, c2, b1, on_b], binding: evlog_binding(claim: c1.id), outcome: evlog_failed_outcome()), step: "result-elsewhere")
+  let absent_claim = evlog_not_admitted_at(a: roadmap_bound_result_admission(envs: [c1, c2], binding: evlog_binding(claim: "0000000000000000" as RoadmapEventId), outcome: evlog_failed_outcome()), step: "result-claim")
+  let note = note_env(parent: c1.id)
+  let not_a_claim = evlog_not_admitted_at(a: roadmap_bound_result_admission(envs: [c1, note], binding: evlog_binding(claim: note.id), outcome: evlog_failed_outcome()), step: "result-claim")
+  let foreign_claim = evlog_not_admitted_at(a: roadmap_bound_result_admission(envs: [c1, c2, b1], binding: evlog_binding(claim: b1.id), outcome: evlog_failed_outcome()), step: "result-claim")
+  let fork = ev(kind: Progress { note: "a writer who never saw the second claim" as NonEmptyStr }, parent: Present { value: c1.id }, author: fabric, at: "t2")
+  let forked = evlog_not_admitted_at(a: roadmap_bound_result_admission(envs: [c1, c2, fork], binding: evlog_binding(claim: c1.id), outcome: evlog_failed_outcome()), step: "result-history")
+  revised && reclaimed && elsewhere && absent_claim && not_a_claim && foreign_claim && forked
 }
 
 test fn progress_actor_does_not_replace_the_committed_holder() -> Bool {

@@ -916,11 +916,11 @@ fn issue_comment_anchor(ordinal: Int) -> String {
   join(["comment-", to_string(value: ordinal)], "")
 }
 
-// THE RESULT EVENT, the one constructor the belt's result-return pass appends
-// (gunbc.roadmap.roadmap_result_returned result_return_decision): authored by the workflow
-// principal, chained on the head the pass read, content-addressed like every event.
-fn roadmap_result_returned_event(node: RoadmapNodeId, attempt: NonEmptyStr, claim: RoadmapEventId, outcome: AttemptResultOutcome, author: EventPrincipal, parent: RoadmapEventId?, recorded_at: String) -> RoadmapEvent {
-  RoadmapEvent { node: node, author: author, parent: parent, kind: ResultReturned { attempt: attempt, claim: claim, outcome: outcome }, recorded_at: recorded_at }
+// THE RESULT EVENT, built from the binding and nothing else: the issue, attempt and claim are the
+// binding's, so a caller cannot offer a result addressed by any other identity. The bound append
+// (gunbc.roadmap.roadmap_event_carrier roadmap_bound_result_append) is its one production caller.
+fn roadmap_result_returned_event(binding: RoadmapResultBinding, outcome: AttemptResultOutcome, author: EventPrincipal, parent: RoadmapEventId?, recorded_at: String) -> RoadmapEvent {
+  RoadmapEvent { node: binding.node, author: author, parent: parent, kind: roadmap_result_kind_for(binding: binding, outcome: outcome), recorded_at: recorded_at }
 }
 
 // THE RESULTS A HISTORY ALREADY CARRIES FOR ONE ATTEMPT, in the order given. An attempt has one
@@ -962,19 +962,15 @@ fn roadmap_claim_return_to(envs: List<RoadmapEventEnvelope>, claim: RoadmapEvent
   }
 }
 
-// ONE FINAL RESULT PER ATTEMPT, ANSWERING A CLAIM THE HISTORY CARRIES, AT THE APPEND. A result is
-// an answer, not a revision: an event that would be a SECOND ResultReturned for an attempt the
-// history already answered is not admitted, whatever it says. And a result answers a request: one
-// naming a claim that is not a Claimed on this same history is not admitted either, so no result
-// can be written whose recipient cannot be read. The carrier asks this of every append
-// (roadmap_event_append_private), so both rules hold for any writer and not only for the pass that
-// knows to check first. Every other kind is admitted here and judged by the carrier's revision
-// check alone.
+// A RESULT IS NEVER ADMITTED THROUGH THE GENERIC APPEND. Every other kind is judged by the
+// carrier's revision check alone; a ResultReturned is an answer to one request by one attempt, and
+// whether it may be written depends on the attempt's own binding, which the generic append does not
+// have. So the generic append refuses the kind outright, and the only way a result reaches the log
+// is the bound append (gunbc.roadmap.roadmap_event_carrier roadmap_bound_result_append), which
+// builds the event from the binding it is given and decides with roadmap_bound_result_admission.
 fn roadmap_event_admitted_after(envs: List<RoadmapEventEnvelope>, event: RoadmapEvent) -> Bool {
   match event.kind {
-    ResultReturned { attempt, claim, outcome: _ } =>
-      count(roadmap_results_for_attempt(envs: envs, attempt: attempt as String)) == 0
-        && (match roadmap_claim_return_to(envs: envs, claim: claim) { Present { value: _ } => true  Absent => false })
+    ResultReturned { attempt: _, claim: _, outcome: _ } => false
     Claimed { assignee: _, return_to: _ } => true
     Released => true
     Progress { note: _ } => true
@@ -987,38 +983,57 @@ fn roadmap_event_admitted_after(envs: List<RoadmapEventEnvelope>, event: Roadmap
   }
 }
 
-// THE CLAIM AN ISSUE IS HELD UNDER NOW: the newest Claimed in causal order that no later Released
-// ended. This is what a launch binds (gunbc.roadmap.roadmap_attempt_request_binding); a forked or
-// incomplete history has no single chain and names none.
-fn roadmap_issue_current_claim(envs: List<RoadmapEventEnvelope>) -> RoadmapEventEnvelope? {
-  if count(roadmap_event_missing_parents(envs: envs)) > 0 || count(roadmap_event_heads(envs: envs)) != 1 {
-    none
-  } else {
-    fold(roadmap_issue_history_newest_first(envs: envs), init: roadmap_claim_scan_start(), f: (acc, e) => roadmap_claim_scan_step(acc: acc, env: e)).found
-  }
+// THE IDENTITY A RESULT ANSWERS UNDER: the issue, the attempt, and the claim the attempt was bound
+// to at launch. All three, together; an attempt key alone identifies nothing a result may be
+// addressed by.
+type RoadmapResultBinding {
+  node: RoadmapNodeId
+  attempt: NonEmptyStr
+  claim: RoadmapEventId
 }
 
-type RoadmapClaimScan {
-  settled: Bool
-  found: RoadmapEventEnvelope?
+fn roadmap_result_kind_for(binding: RoadmapResultBinding, outcome: AttemptResultOutcome) -> RoadmapEventKind {
+  ResultReturned { attempt: binding.attempt, claim: binding.claim, outcome: outcome }
 }
 
-fn roadmap_claim_scan_start() -> RoadmapClaimScan { RoadmapClaimScan { settled: false, found: none } }
+// WHETHER THE BOUND RESULT MAY BE WRITTEN, pure over EVERY issue's events as read in the append's
+// own snapshot. Admitted names the head to chain on. Already on the log is the identical result on
+// the binding's issue -- the same attempt, claim and outcome -- and names its event. Everything else
+// is not admitted and says which rule: the attempt already has a result on ANOTHER issue; it
+// already has a different result on this issue; the claim is not a Claimed on this issue's history;
+// the issue's history forks or is incomplete. One final result per (issue, attempt, claim), and no
+// result for the attempt anywhere else.
+type RoadmapResultAdmission
+  = ResultAdmitted { parent: RoadmapEventId? }
+  | ResultAlreadyOnLog { id: RoadmapEventId }
+  | ResultNotAdmitted { step: String, reason: String }
 
-fn roadmap_claim_scan_step(acc: RoadmapClaimScan, env: RoadmapEventEnvelope) -> RoadmapClaimScan {
-  if acc.settled { acc } else {
-    match env.event.kind {
-      Claimed { assignee: _, return_to: _ } => RoadmapClaimScan { settled: true, found: Present { value: env } }
-      Released => RoadmapClaimScan { settled: true, found: none }
-      Progress { note: _ } => acc
-      Blocked { reason: _ } => acc
-      HandedBack { reason: _ } => acc
-      ReceiptReferenced { obligation: _, address: _, verdict: _ } => acc
-      CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => acc
-      CommentEdited { comment: _, body: _ } => acc
-      CommentDeleted { comment: _ } => acc
-      ResultReturned { attempt: _, claim: _, outcome: _ } => acc
-    }
+fn roadmap_bound_result_admission(envs: List<RoadmapEventEnvelope>, binding: RoadmapResultBinding, outcome: AttemptResultOutcome) -> RoadmapResultAdmission {
+  let existing = roadmap_results_for_attempt(envs: envs, attempt: binding.attempt as String)
+  let elsewhere = filter(existing, e => (e.event.node as String) != (binding.node as String))
+  let here = filter(existing, e => (e.event.node as String) == (binding.node as String))
+  let node_envs = filter(envs, e => (e.event.node as String) == (binding.node as String))
+  match elsewhere.first() {
+    Present { value: other } =>
+      ResultNotAdmitted { step: "result-elsewhere", reason: join(["attempt ", binding.attempt as String, " already has a result on issue ", other.event.node as String, " (event ", other.id as String, "); a result for it is not written on issue ", binding.node as String], "") }
+    Absent =>
+      match here.first() {
+        Present { value: prior } =>
+          if count(here) == 1 && prior.event.kind == roadmap_result_kind_for(binding: binding, outcome: outcome) {
+            ResultAlreadyOnLog { id: prior.id }
+          } else {
+            ResultNotAdmitted { step: "result-duplicate", reason: join(["attempt ", binding.attempt as String, " already has a final result on this issue (event ", prior.id as String, ") that differs from the one offered (", attempt_result_outcome_text(o: outcome), " for claim ", binding.claim as String, "); a second result is not written"], "") }
+          }
+        Absent =>
+          if count(roadmap_event_missing_parents(envs: node_envs)) > 0 || (count(node_envs) > 0 && count(roadmap_event_heads(envs: node_envs)) != 1) {
+            ResultNotAdmitted { step: "result-history", reason: join(["issue ", binding.node as String, "'s history forks or is incomplete, so a result has no single head to follow"], "") }
+          } else {
+            match roadmap_claim_return_to(envs: node_envs, claim: binding.claim) {
+              Absent => ResultNotAdmitted { step: "result-claim", reason: join(["claim ", binding.claim as String, " is not a claim on issue ", binding.node as String, "'s history"], "") }
+              Present { value: _ } => ResultAdmitted { parent: match roadmap_event_heads(envs: node_envs).first() { Present { value: h } => Present { value: h.id }  Absent => none } }
+            }
+          }
+      }
   }
 }
 
