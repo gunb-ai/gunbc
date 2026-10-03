@@ -4932,7 +4932,7 @@ fn dag_string_decode_step(state: DagStringDecode, c: Int) -> DagStringDecode {
 // The lexeme's scalars in order; a lexeme is framed when its first and last scalars are the quote
 // and there are at least two of them.
 fn dag_string_literal_body_optional(lexeme: String) -> Optional<List<Int>> {
-  let cs = chars(s: lexeme)
+  let cs = lexeme
   let n = length(xs: cs)
   if n < 2 {
     optional_absent()
@@ -5042,7 +5042,7 @@ fn dag_string_literal_encoded(value: String) -> String {
   concat(
     "\"",
     concat(
-      fold(chars(s: value), init: "", f: fn(acc, c) { concat(acc, dag_string_encode_scalar(c: c)) }),
+      fold(value, init: "", f: fn(acc, c) { concat(acc, dag_string_encode_scalar(c: c)) }),
       "\""
     )
   )
