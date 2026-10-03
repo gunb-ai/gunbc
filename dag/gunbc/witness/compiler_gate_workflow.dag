@@ -144,7 +144,7 @@ import gunbc.heal_workflow { heal_same_repository_clause, heal_not_dependabot_cl
 import gunbc.fleet_release_bins_key {
   compiler_pair_release_product, release_bins_key_script_for, release_bins_pack_manifest_script_for,
   release_bins_pack_object_script, release_bins_pack_object_path_expression,
-  compiler_pair_candidate_artifact_name, compiler_pair_candidate_retention_days,
+  compiler_pair_candidate_artifact_name, compiler_pair_candidate_retention_whole_days,
 }
 import gunbc.repo_self_build { repo_self_build_command, repo_self_clippy_command }
 import extdeps.exec.command { shell_command_render }
@@ -806,7 +806,7 @@ fn compiler_gate_candidate_pack_bound_steps() -> List<CompilerGateBoundStep> {
             kv(key: "name", value: yaml_string(s: compiler_pair_candidate_artifact_name)),
             kv(key: "path", value: yaml_string(s: release_bins_pack_object_path_expression())),
             kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-            kv(key: "retention-days", value: yaml_int(n: compiler_pair_candidate_retention_days)),
+            kv(key: "retention-days", value: yaml_int(n: compiler_pair_candidate_retention_whole_days())),
             kv(key: "compression-level", value: yaml_int(n: 0))
           ]
         },

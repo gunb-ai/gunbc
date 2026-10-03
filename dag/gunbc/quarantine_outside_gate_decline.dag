@@ -1,7 +1,6 @@
 module gunbc.quarantine_outside_gate_decline
 
-import std.types { NonEmptyStr }
-import v2.std.collection { List }
+import std.types { NonEmptyStr, List }
 import v2.std.text { String }
 
 // QUARANTINE PROBES THE REQUIRED FLOOR NEVER PLANS, ONE ROW PER PROBE, EACH WITH ITS OWN TRIGGER.

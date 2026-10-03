@@ -66,14 +66,6 @@ type FabricBlobShellTarget
     }
   | FabricBlobShellUnreachable { cause: NonEmptyStr }
 
-fn pinned(c: OriginCredentialStanding) -> Bool {
-  match c {
-    OriginCredentialPinned { access_key_id: _, token_value: _ } => true
-    OriginCredentialUnminted { mint_entry: _ } => false
-    OriginCredentialMintEntryUnbuilt { secret_id: _ } => false
-  }
-}
-
 fn standing_cause(direction: String, c: OriginCredentialStanding) -> NonEmptyStr {
   match c {
     OriginCredentialPinned { access_key_id: _, token_value: _ } => concat("the cache ", direction) as NonEmptyStr
@@ -102,9 +94,11 @@ fn fabric_blob_shell_target() -> FabricBlobShellTarget {
                     read_key_id: rk, read_token: rt,
                     write_key_id: wk, write_token: wt,
                   }
-                _ => FabricBlobShellUnreachable { cause: standing_cause(direction: "WRITE", c: b.write_credential) }
+                OriginCredentialUnminted { mint_entry: _ } => FabricBlobShellUnreachable { cause: standing_cause(direction: "WRITE", c: b.write_credential) }
+                OriginCredentialMintEntryUnbuilt { secret_id: _ } => FabricBlobShellUnreachable { cause: standing_cause(direction: "WRITE", c: b.write_credential) }
               }
-            _ => FabricBlobShellUnreachable { cause: standing_cause(direction: "READ", c: b.read_credential) }
+            OriginCredentialUnminted { mint_entry: _ } => FabricBlobShellUnreachable { cause: standing_cause(direction: "READ", c: b.read_credential) }
+            OriginCredentialMintEntryUnbuilt { secret_id: _ } => FabricBlobShellUnreachable { cause: standing_cause(direction: "READ", c: b.read_credential) }
           }
       }
   }
