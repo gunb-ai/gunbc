@@ -1,5 +1,0 @@
-[workspace-root] discovered /home/briansrls/scratch-wt/allocation-state-custody
-✓ typecheck v2.std.compilers.target_model done in 23 seconds
-✓ typecheck v2.compiler.target_serialize done in 2 seconds
-✓ typecheck v2.compiler.translate done in 3 seconds
-✓ typecheck gunbc.spark.pair_serving_authority_log done in 2 seconds

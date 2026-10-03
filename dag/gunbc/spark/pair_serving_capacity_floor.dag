@@ -14,6 +14,9 @@ import gunbc.spark.pair_serving_launch_receipt {
 import extdeps.vllm.kv_layout {
   ResolvedKvLayout, AdmissionCost, AdmissionCostBlocks, AdmissionCostUnestablished, cold_admission_blocks,
 }
+import gunbc.spark.serving_capacity_intent {
+  ServingCapacityIntentAdmission, uniform_cold_seats,
+}
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.harness.harness_seat { harness_interactive_quality_seats }
 
@@ -42,6 +45,19 @@ type MinimumColdSessions {
 data spark_pair_serving_minimum_cold_sessions: MinimumColdSessions = MinimumColdSessions {
   maximum_sequence_tokens: token_count(count: 500000),
   sessions: harness_interactive_quality_seats,
+}
+
+// THE FLOOR'S UNIFORM SHAPE IS THE NATIVE INTENT'S SEAT POPULATION, and the projection lives here
+// because direction matters: this module already sits below the harness seat authority, and the
+// intent module cannot import upward through it without closing a cycle through the serving
+// enrollment chain back to the launch planner. The batched ceiling is a parameter because the
+// floor's block-grain question never asked for one; a caller deriving a native-arm intent from a
+// floor row supplies the batching policy its launch profile carries.
+fn minimum_cold_sessions_intent(
+  floor: MinimumColdSessions,
+  max_batched_tokens: TokenCount,
+) -> ServingCapacityIntentAdmission {
+  uniform_cold_seats(each: floor.maximum_sequence_tokens, seats: floor.sessions, max_batched_tokens: max_batched_tokens)
 }
 
 // ── CAPACITY IS A READINESS PROPERTY OF ONE INCARNATION ────────────────────────────────────────

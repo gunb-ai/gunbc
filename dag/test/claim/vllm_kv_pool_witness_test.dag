@@ -6,7 +6,7 @@ import std.measure { TokenCount, Percent, token_count, percent }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
 import extdeps.vllm.log_lines {
   VllmStartupReading, vllm_startup_reading,
-  VllmStartupLine, GpuKvCacheSize, MaximumConcurrency, ResolvedKvCacheFormat,
+  VllmStartupLine, GpuKvCacheSize, MaximumConcurrency, ResolvedKvCacheFormat, MemoryProfileSummary,
   vllm_startup_line_prefix, vllm_startup_lines
 }
 import extdeps.vllm.kv_cache {
@@ -53,15 +53,22 @@ test fn w_an_unobserved_format_is_not_an_observation() -> Bool {
     && vllm_resolved_kv_format_is_observed(f: ResolvedFp8DsMla)
 }
 
-// ── THE STARTUP LINES ARE CITED BY PREFIX, AND THE THREE ARE DISTINCT ──────────────────────────
+// ── THE STARTUP LINES ARE CITED BY PREFIX, AND EVERY PAIR IS DISTINCT ────────────────────────────
 //
 // A prefix that collided with another would make a parser select the wrong line while still
-// reporting a match. Distinctness is the property that makes prefix-citation safe.
+// reporting a match. Distinctness is the property that makes prefix-citation safe. THE COUNT IS
+// PART OF THE CLAIM, and it went stale once: the memory-profile summary line joined the cited set
+// (extdeps.vllm.log_lines vllm_startup_lines) and this row kept asserting three, so a suite that
+// should have gone red at the fourth line's landing went red a commit late instead. Every pair
+// below is checked so a fifth line has an obvious place to extend.
 test fn w_the_three_startup_prefixes_are_distinct() -> Bool {
   (vllm_startup_line_prefix(line: GpuKvCacheSize) != vllm_startup_line_prefix(line: MaximumConcurrency))
     && (vllm_startup_line_prefix(line: GpuKvCacheSize) != vllm_startup_line_prefix(line: ResolvedKvCacheFormat))
+    && (vllm_startup_line_prefix(line: GpuKvCacheSize) != vllm_startup_line_prefix(line: MemoryProfileSummary))
     && (vllm_startup_line_prefix(line: MaximumConcurrency) != vllm_startup_line_prefix(line: ResolvedKvCacheFormat))
-    && length(vllm_startup_lines) == 3
+    && (vllm_startup_line_prefix(line: MaximumConcurrency) != vllm_startup_line_prefix(line: MemoryProfileSummary))
+    && (vllm_startup_line_prefix(line: ResolvedKvCacheFormat) != vllm_startup_line_prefix(line: MemoryProfileSummary))
+    && length(vllm_startup_lines) == 4
 }
 
 fn kv_size_reading() -> VllmStartupReading {
