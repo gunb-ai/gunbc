@@ -7,10 +7,11 @@ import std.markdown {
 }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, Pointer, RoadmapNodeId,
-  RoadmapParent, TopLevel, UnderParent, roadmap_primary_parent, roadmap_parent_ids, is_top_level,
+  roadmap_parent_index, roadmap_parent_ids_in, roadmap_primary_children_index, roadmap_primary_children_in,
   SectionElement, Prose, Group, SectionProse, SectionGroup,
 }
 
+import v2.std.collection { Map }
 import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketFields, item_is_done, item_superseded_by, signoff_accepts, signoff_by }
 
 fn roadmap_max_depth() -> Int { 12 }
@@ -102,8 +103,8 @@ fn node_is_plain(rn: RoadmapNode) -> Bool {
   }
 }
 
-fn dependency_inlines(rn: RoadmapNode, edges: List<RoadmapEdge>) -> List<MarkdownInline> {
-  let parents = roadmap_parent_ids(edges: edges, node: rn.node)
+fn dependency_inlines(rn: RoadmapNode, graph: MarkdownTreeGraph) -> List<MarkdownInline> {
+  let parents = roadmap_parent_ids_in(parents: graph.parents, node: rn.node)
   if count(parents) > 1 {
     [
       TextInline {
@@ -118,21 +119,30 @@ fn dependency_inlines(rn: RoadmapNode, edges: List<RoadmapEdge>) -> List<Markdow
   }
 }
 
-fn node_inlines(rn: RoadmapNode, edges: List<RoadmapEdge>) -> List<MarkdownInline> {
+fn node_inlines(rn: RoadmapNode, graph: MarkdownTreeGraph) -> List<MarkdownInline> {
   concat(
     concat(
       line_inlines(line: rn.line),
       carriers_inlines(carriers: rn.carriers),
     ),
-    dependency_inlines(rn: rn, edges: edges),
+    dependency_inlines(rn: rn, graph: graph),
   )
 }
 
-fn children_of(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, parent: RoadmapNodeId) -> List<RoadmapNode> {
-  nodes |> filter(n => match roadmap_primary_parent(edges: edges, node: n.node) {
-    UnderParent { parent: p } => p == parent
-    TopLevel => false
-  })
+// A group's tree, indexed once where the group is projected: every node's parents (its dependency
+// line, and whether it is top-level) and every node's primary children (its nested list). The walk
+// below asked both questions of the whole edge list per node, which made the projection nodes x
+// edges (gunbc.roadmap_model roadmap_parent_index, roadmap_primary_children_index).
+type MarkdownTreeGraph {
+  parents: Map<String, List<RoadmapNodeId>>
+  children: Map<String, List<RoadmapNode>>
+}
+
+fn markdown_tree_graph(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> MarkdownTreeGraph {
+  MarkdownTreeGraph {
+    parents: roadmap_parent_index(edges: edges),
+    children: roadmap_primary_children_index(nodes: nodes, edges: edges),
+  }
 }
 
 fn task_item_with(done: Bool, blocks: List<MarkdownBlock>) -> MarkdownTaskItem {
@@ -143,15 +153,15 @@ fn task_item_with(done: Bool, blocks: List<MarkdownBlock>) -> MarkdownTaskItem {
   }
 }
 
-fn plain_item_for(rn: RoadmapNode, edges: List<RoadmapEdge>) -> MarkdownListItem {
-  MarkdownListItem { blocks: [ParagraphBlock { inlines: node_inlines(rn: rn, edges: edges) }] }
+fn plain_item_for(rn: RoadmapNode, graph: MarkdownTreeGraph) -> MarkdownListItem {
+  MarkdownListItem { blocks: [ParagraphBlock { inlines: node_inlines(rn: rn, graph: graph) }] }
 }
 
-fn task_item_for(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int) -> MarkdownTaskItem {
-  let para = ParagraphBlock { inlines: concat(node_inlines(rn: rn, edges: edges), signoff_suffix_inlines(rn: rn, merged: merged)) }
-  let kids = if fuel > 0 { children_of(nodes: nodes, edges: edges, parent: rn.node) } else { [] }
+fn task_item_for(rn: RoadmapNode, graph: MarkdownTreeGraph, merged: List<Int>, fuel: Int) -> MarkdownTaskItem {
+  let para = ParagraphBlock { inlines: concat(node_inlines(rn: rn, graph: graph), signoff_suffix_inlines(rn: rn, merged: merged)) }
+  let kids = if fuel > 0 { roadmap_primary_children_in(index: graph.children, parent: rn.node) } else { [] }
   let blocks = if count(kids) > 0 {
-    concat([para], nodes_to_blocks(items: kids, nodes: nodes, edges: edges, merged: merged, fuel: fuel - 1))
+    concat([para], nodes_to_blocks(items: kids, graph: graph, merged: merged, fuel: fuel - 1))
   } else {
     [para]
   }
@@ -170,22 +180,23 @@ fn flush_run(acc: { blocks: List<MarkdownBlock>, mode: Int, tbuf: List<MarkdownT
   }
 }
 
-fn nodes_to_blocks(items: List<RoadmapNode>, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int) -> List<MarkdownBlock> {
+fn nodes_to_blocks(items: List<RoadmapNode>, graph: MarkdownTreeGraph, merged: List<Int>, fuel: Int) -> List<MarkdownBlock> {
   let acc = fold(items, init: { blocks: [], mode: 0, tbuf: [], pbuf: [] }, f: (a, rn) => {
     if node_is_plain(rn: rn) {
       let flushed = if a.mode == 1 { concat(a.blocks, [TaskListBlock { items: a.tbuf }]) } else { a.blocks }
-      { blocks: flushed, mode: 2, tbuf: [], pbuf: concat(a.pbuf, [plain_item_for(rn: rn, edges: edges)]) }
+      { blocks: flushed, mode: 2, tbuf: [], pbuf: concat(a.pbuf, [plain_item_for(rn: rn, graph: graph)]) }
     } else {
       let flushed = if a.mode == 2 { concat(a.blocks, [UnorderedListBlock { items: a.pbuf }]) } else { a.blocks }
-      { blocks: flushed, mode: 1, tbuf: concat(a.tbuf, [task_item_for(rn: rn, nodes: nodes, edges: edges, merged: merged, fuel: fuel)]), pbuf: [] }
+      { blocks: flushed, mode: 1, tbuf: concat(a.tbuf, [task_item_for(rn: rn, graph: graph, merged: merged, fuel: fuel)]), pbuf: [] }
     }
   })
   flush_run(acc: acc)
 }
 
 fn group_blocks(g: SectionGroup, merged: List<Int>) -> List<MarkdownBlock> {
-  let tops = g.nodes |> filter(n => is_top_level(edges: g.edges, node: n.node))
-  let list_blocks = nodes_to_blocks(items: tops, nodes: g.nodes, edges: g.edges, merged: merged, fuel: roadmap_max_depth())
+  let graph = markdown_tree_graph(nodes: g.nodes, edges: g.edges)
+  let tops = g.nodes |> filter(n => count(roadmap_parent_ids_in(parents: graph.parents, node: n.node)) == 0)
+  let list_blocks = nodes_to_blocks(items: tops, graph: graph, merged: merged, fuel: roadmap_max_depth())
   if g.label == "" {
     list_blocks
   } else {

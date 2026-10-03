@@ -2,11 +2,11 @@ module extdeps.vllm.engine_args
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.measure { TokenCount, Percent, BasisPoint, basis_point_count, ByteSize, byte_size_count }
+import std.measure { TokenCount, Percent, BasisPoint, basis_point_count, basis_point, ByteSize, byte_size_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_1967a5627 }
 
 // VLLM'S ENGINE ARGUMENTS AS THE UPSTREAM SHAPE, held apart from extdeps.vllm.server because that
 // module owns the SERVED ROUTES and this one owns what the engine is LAUNCHED with. Both cite the
@@ -340,7 +340,7 @@ type VllmVerifiedNegative {
 data vllm_negative_nvfp4_kv_for_mla: VllmVerifiedNegative = VllmVerifiedNegative {
   subject: "--kv-cache-dtype nvfp4 on an MLA model" as NonEmptyStr,
   error_text: "nvfp4 is not among the accepted kv-cache-dtype values for MLA attention" as NonEmptyStr,
-  observed_at_revision: vllm_source_revision_read
+  observed_at_revision: vllm_source_revision_1967a5627
 }
 
 // Decode context parallelism is refused for a sliding-window backend, which is what this checkpoint
@@ -348,7 +348,7 @@ data vllm_negative_nvfp4_kv_for_mla: VllmVerifiedNegative = VllmVerifiedNegative
 data vllm_negative_dcp_with_sliding_window: VllmVerifiedNegative = VllmVerifiedNegative {
   subject: "--decode-context-parallel-size with a sliding-window attention backend" as NonEmptyStr,
   error_text: "DCP not support sliding window" as NonEmptyStr,
-  observed_at_revision: vllm_source_revision_read
+  observed_at_revision: vllm_source_revision_1967a5627
 }
 
 // ── THE DO-NOT-SET ROW FOR --max-num-batched-tokens IS WITHDRAWN, AND FOR A LAYER REASON ──────
@@ -543,5 +543,144 @@ fn vllm_pad_fraction_to_basis_points(fraction: String) -> String {
     fraction
   } else {
     vllm_pad_fraction_to_basis_points(fraction: join([fraction, "0"], ""))
+  }
+}
+
+// ── THE SCHEDULER'S RUNTIME KV ADMISSION CONTROLS ────────────────────────────────────────────────
+//
+// vLLM's SchedulerConfig as upstream ships it, read at github.com/vllm-project/vllm revision
+// 8d09804c877c48165c6ba69bc9dc02d09bae0b83 (vllm/config/scheduler.py SchedulerConfig): two fields
+// govern whether a WAITING request may enter the running set once the sequence cap admits it.
+//   scheduler_reserve_full_isl: bool = True -- vllm/v1/core/kv_cache_manager.py allocate_slots,
+//     full_sequence_must_fit: the full current sequence (min(num_tokens, max_model_len)) must fit
+//     in the free blocks AFTER the engine's own prefix-cache lookup, or the request is not admitted.
+//     Without it only the first chunk is checked, and chunked prefill can over-admit.
+//   watermark: float = 0.0, range [0.0, 1.0) -- a fraction of total KV blocks held free when
+//     admitting WAITING or PREEMPTED requests while at least one request is already scheduled.
+// vllm/engine/arg_utils.py registers them as --scheduler-reserve-full-isl (argparse
+// BooleanOptionalAction, so --no-scheduler-reserve-full-isl is its negation) and --watermark.
+//
+// WHY THEY ARE MODELLED NOW. A launch that admits more sequences than its cold guarantee prices is
+// safe only through this gate: the sequence cap says how many request states may run, and THIS says
+// whether the next one's actual incremental KV demand fits. Left as inherited defaults, the safety
+// of every above-floor sequence would rest on a value nobody declared and nothing reads back.
+//
+// THE SAME SHAPE AS PREFIX CACHING: omitted is a real state (the revision's default resolves it, and
+// that resolution is extdeps.vllm.runtime_defaults' job), explicit renders exactly one flag.
+type VllmFullInputAdmissionRequest
+  = FullInputAdmissionOmitted
+  | FullInputAdmissionExplicit { enabled: Bool }
+
+type VllmKvWatermarkRequest
+  = KvWatermarkOmitted
+  | KvWatermarkExplicit { fraction: BasisPoint }
+
+type VllmSchedulerAdmissionRequest {
+  full_input_admission: VllmFullInputAdmissionRequest
+  kv_watermark: VllmKvWatermarkRequest
+}
+
+// THE LAUNCH THAT STATES NEITHER CONTROL, which is every launch before this change: the revision's
+// defaults decide both, and extdeps.vllm.runtime_defaults resolve_vllm_scheduler_admission names them.
+data vllm_scheduler_admission_omitted: VllmSchedulerAdmissionRequest = VllmSchedulerAdmissionRequest {
+  full_input_admission: FullInputAdmissionOmitted,
+  kv_watermark: KvWatermarkOmitted,
+}
+
+data vllm_scheduler_reserve_full_isl_flag: String = "--scheduler-reserve-full-isl"
+data vllm_no_scheduler_reserve_full_isl_flag: String = "--no-scheduler-reserve-full-isl"
+data vllm_watermark_flag: String = "--watermark"
+
+// A WATERMARK OF 10000 BASIS POINTS OR MORE IS OUTSIDE UPSTREAM'S DECLARED RANGE (lt=1.0), and the
+// engine refuses it at config validation. The request type cannot exclude it, so this names the
+// defect before anything renders it; a renderer that emitted it would ship a launch that dies at init.
+fn vllm_scheduler_admission_defect(r: VllmSchedulerAdmissionRequest) -> NonEmptyStr? {
+  match r.kv_watermark {
+    KvWatermarkOmitted => none
+    KvWatermarkExplicit { fraction: bp } =>
+      if basis_point_count(bp: bp) >= 10000 {
+        Present { value: join([
+          "a KV watermark of ", to_string(basis_point_count(bp: bp)),
+          " basis points is outside upstream's range [0.0, 1.0): SchedulerConfig.watermark refuses it at validation",
+        ], "") as NonEmptyStr }
+      } else {
+        none
+      }
+  }
+}
+
+fn vllm_scheduler_admission_argv(r: VllmSchedulerAdmissionRequest) -> List<String> {
+  concat(
+    match r.full_input_admission {
+      FullInputAdmissionOmitted => []
+      FullInputAdmissionExplicit { enabled: e } =>
+        if e { [vllm_scheduler_reserve_full_isl_flag] } else { [vllm_no_scheduler_reserve_full_isl_flag] }
+    },
+    match r.kv_watermark {
+      KvWatermarkOmitted => []
+      KvWatermarkExplicit { fraction: bp } => [vllm_watermark_flag, vllm_basis_point_fraction_wire(bp: bp)]
+    })
+}
+
+fn vllm_scheduler_admission_key(r: VllmSchedulerAdmissionRequest) -> String {
+  join([
+    match r.full_input_admission {
+      FullInputAdmissionOmitted => "fullisl:omitted"
+      FullInputAdmissionExplicit { enabled: e } => if e { "fullisl:on" } else { "fullisl:off" }
+    },
+    "/",
+    match r.kv_watermark {
+      KvWatermarkOmitted => "watermark:omitted"
+      KvWatermarkExplicit { fraction: bp } => join(["watermark:", vllm_basis_point_fraction_wire(bp: bp)], "")
+    },
+  ], "")
+}
+
+// ── READING THE CONTROLS BACK OFF A LAUNCHED ARGV ────────────────────────────────────────────────
+//
+// The inverse of the renderer above, so a plan and a container can be compared on these fields
+// rather than assumed equal. DECLARED FRONTIER: in this change only the scheduler-envelope witness calls
+// these readers; their production consumer is gunbc.spark.serving_relaunch_transaction's admission-controls
+// axis, which lands in deforking cut 7 (#12986), and that landing is the trigger. Both spellings of the boolean present at once, or either repeated, is a
+// mis-assembled argv and refuses rather than taking argparse's last-wins answer.
+type VllmFullInputAdmissionRead
+  = FullInputAdmissionReadOmitted
+  | FullInputAdmissionReadExplicit { enabled: Bool }
+  | FullInputAdmissionReadConflict { cause: NonEmptyStr }
+
+fn vllm_argv_full_input_admission(argv: List<String>) -> VllmFullInputAdmissionRead {
+  let on = fold(argv, init: 0, f: (acc, w) => if w == vllm_scheduler_reserve_full_isl_flag { acc + 1 } else { acc })
+  let off = fold(argv, init: 0, f: (acc, w) => if w == vllm_no_scheduler_reserve_full_isl_flag { acc + 1 } else { acc })
+  if on + off > 1 {
+    FullInputAdmissionReadConflict { cause: join([
+      "the argv carries ", vllm_scheduler_reserve_full_isl_flag, " ", to_string(on), " times and ",
+      vllm_no_scheduler_reserve_full_isl_flag, " ", to_string(off), " times; one launch states this once",
+    ], "") as NonEmptyStr }
+  } else if on == 1 {
+    FullInputAdmissionReadExplicit { enabled: true }
+  } else if off == 1 {
+    FullInputAdmissionReadExplicit { enabled: false }
+  } else {
+    FullInputAdmissionReadOmitted
+  }
+}
+
+type VllmKvWatermarkRead
+  = KvWatermarkReadOmitted
+  | KvWatermarkReadExplicit { fraction: BasisPoint }
+  | KvWatermarkReadUnread { cause: NonEmptyStr }
+
+fn vllm_argv_kv_watermark(argv: List<String>) -> VllmKvWatermarkRead {
+  let flag = vllm_watermark_flag
+  let read = vllm_argv_value(argv: argv, flag: flag)
+  match read {
+    VllmArgvFlagAbsent => KvWatermarkReadOmitted
+    VllmArgvValue { value: v } =>
+      match vllm_basis_points_of_fraction(text: v, flag: flag) {
+        VllmArgvNat { value: n } => KvWatermarkReadExplicit { fraction: basis_point(count: n) }
+        VllmArgvNatUnread { cause: c } => KvWatermarkReadUnread { cause: c }
+      }
+    VllmArgvFlagWithoutValue => KvWatermarkReadUnread { cause: vllm_argv_value_text(r: read, flag: flag) as NonEmptyStr }
+    VllmArgvFlagRepeated { values: _ } => KvWatermarkReadUnread { cause: vllm_argv_value_text(r: read, flag: flag) as NonEmptyStr }
   }
 }

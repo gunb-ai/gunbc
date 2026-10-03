@@ -1,5 +1,6 @@
 module gunbc.spark.pair_serving_d0
 
+import gunbc.auth.standing_operator_grant { StandingOperatorGrant, group_a_dev_standing_grant, standing_grant_covers, StandingD0ReleaseToFleet }
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs, Port, Timestamp }
 import std.nat { Nat }
 import std.measure { Second, second, second_count }
@@ -60,6 +61,8 @@ import std.algebra { trim }
 import gunbc.spark.vllm_serving_launch { DigestsAgree, DigestsDiffer, DigestsIncomparable, digests_agree }
 import gunbc.spark.pair_serving_desired { SparkPairServingUnitReady, SparkPairServingUnitRefused, spark_pair_serving_unit }
 import gunbc.spark.pair_serving_realization { spark_pair_head_unit_name, spark_pair_worker_unit_name }
+import gunbc.compute.host_occupancy { HostOccupancyReading, HostOccupancyRead, HostOccupancyUnread, read_host_occupancy, host_occupant_wire }
+import gunbc.spark.host_commitment { fleet_argv_run }
 import gunbc.spark.pair_incumbent_identity {
   DeclaredPairRealization, DeclaredRankUnit, DeclaredPairRealizationStanding, DeclaredPairRealizationKeyed, DeclaredPairRealizationUnavailable, declared_pair_realization,
   observe_pair_realization, PairRealizationAgreement, PairRealizationEstablished, pair_realization_agreement, pair_realization_agreement_lines,
@@ -67,7 +70,7 @@ import gunbc.spark.pair_incumbent_identity {
 import gunbc.spark.released_baseline { ReleasedBaselineSpec, QuiescentReservedBaseline, released_baseline_wire, parse_released_baseline }
 import gunbc.spark.pair_serving_authority {
   PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, FencedRefusal, ReleasedToFleet,
-  PairRealizationKeyed,
+  PairRealizationKeyed, PairRealizationIdentity,
 }
 import gunbc.spark.pair_serving_authority_log {
   CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authority, authority_wire, same_group,
@@ -166,18 +169,39 @@ import gunbc.spark.pair_serving_authority_log {
 // no generation fence on its touches, so an expired holder's running engine is not rejected by
 // anything -- expiry removes the right to START, and capacity is free only once stale use is
 // observed quiescent. That is product.capacity.lease QuiescenceRequired, derived for every D0 grant.
+// ── WHAT THE OPERATOR AUTHORIZES THE TRANSACTION TO DO, AS ONE OF TWO OPERATIONS ─────────────────
+//
+// SUSPEND FOR A KEYED SUCCESSOR is the transaction as it was first built: the successor, the cleanup
+// baseline and the lease term. RELEASE TO THE FLEET (operator-approved 2026-10-03, relayed by
+// valiant-crab-775) is the second: the group's pair-serving authority leaves its commitment, so its
+// hosts are no longer fenced for host effects (gunbc.spark.pair_serving_authority
+// pair_serving_committed_hosts answers [] only for ReleasedToFleet) -- and it is settled through the
+// SAME claim, pending state, readings and saga as a suspension, landing on ReleasedToFleet instead of
+// SuspendedForAuthorizedSuccessor, and only when the readings show every host quiescent. A release
+// names its cause and the operator approval it rests on; both are part of the subject, so they are in
+// the intent the operator approves and in the frozen filing.
+type D0Operation
+  = D0SuspendForSuccessor { successor: ContentHash, cleanup: ReleasedBaselineSpec, term: Second }
+  | D0ReleaseToFleet { cause: NonEmptyStr, approval: NonEmptyStr }
+
 type D0Subject {
   group: FabricGroup
   hosts: List<HostIdentity>
-  successor: ContentHash
-  cleanup: ReleasedBaselineSpec
-  term: Second
+  operation: D0Operation
+}
+
+// The successor a subject names, when it is a suspension's; a release names none.
+fn d0_subject_successor(s: D0Subject) -> ContentHash? {
+  match s.operation {
+    D0SuspendForSuccessor { successor: succ, cleanup: _, term: _ } => Present { value: succ }
+    D0ReleaseToFleet { cause: _, approval: _ } => none
+  }
 }
 
 data pair_serving_release_law: ReleaseLaw = QuiescenceRequired
 
-fn d0_lease_policy(subject: D0Subject) -> LeasePolicy {
-  LeasePolicy { maximum_duration_seconds: second_count(s: subject.term), release_law: pair_serving_release_law }
+fn d0_lease_policy(term: Second) -> LeasePolicy {
+  LeasePolicy { maximum_duration_seconds: second_count(s: term), release_law: pair_serving_release_law }
 }
 
 // THE POPULATION IS AN IDENTITY JOIN IN BOTH DIRECTIONS: every granted host is a current member
@@ -212,14 +236,43 @@ fn d0_required_scope() -> AuthorizationScope {
   AuthorizationScope { verb: Write, resource: NamespacePosition { tree: CodeNameTree, path: ["gunbc", "spark", "pair_serving_authority"] }, action: d0_authorized_action }
 }
 
+// THE RELEASE IS ITS OWN ACTION, so a grant for a suspension never authorizes a release, nor the
+// reverse: the scope is the enforcing fact.
+data d0_release_action: AuthorizedAction = "release-pair-serving-authority" as AuthorizedAction
+
+fn d0_release_scope() -> AuthorizationScope {
+  AuthorizationScope { verb: Write, resource: NamespacePosition { tree: CodeNameTree, path: ["gunbc", "spark", "pair_serving_authority"] }, action: d0_release_action }
+}
+
+fn d0_scope_of(op: D0Operation) -> AuthorizationScope {
+  match op {
+    D0SuspendForSuccessor { successor: _, cleanup: _, term: _ } => d0_required_scope()
+    D0ReleaseToFleet { cause: _, approval: _ } => d0_release_scope()
+  }
+}
+
+// THE SUSPENSION'S WIRE IS UNCHANGED BY THE SECOND OPERATION, byte for byte, so a filing frozen before
+// the release existed still round-trips. A release's free-text cause and approval reference sit on
+// their own lines after the subject line, since the subject line is split on spaces.
 fn d0_subject_wire(subject: D0Subject) -> String {
-  join([
-    "group=", fabric_group_wire(g: subject.group) as String,
-    " hosts=", hosts_wire(hs: subject.hosts),
-    " successor=", serialize_content_hash(hash: subject.successor) as String,
-    " cleanup=", released_baseline_wire(s: subject.cleanup) as String,
-    " term=", to_string(second_count(s: subject.term)), "s",
-  ], "")
+  match subject.operation {
+    D0SuspendForSuccessor { successor: succ, cleanup: cl, term: t } =>
+      join([
+        "group=", fabric_group_wire(g: subject.group) as String,
+        " hosts=", hosts_wire(hs: subject.hosts),
+        " successor=", serialize_content_hash(hash: succ) as String,
+        " cleanup=", released_baseline_wire(s: cl) as String,
+        " term=", to_string(second_count(s: t)), "s",
+      ], "")
+    D0ReleaseToFleet { cause: c, approval: a } =>
+      join([
+        "group=", fabric_group_wire(g: subject.group) as String,
+        " hosts=", hosts_wire(hs: subject.hosts),
+        " operation=release-to-fleet",
+        "\ncause=", c as String,
+        "\napproval=", a as String,
+      ], "")
+  }
 }
 
 // THE INTENT IS THE EXACT OPERATION, AS A CRYPTOGRAPHIC IDENTITY OVER ONE CANONICAL ENCODING:
@@ -239,7 +292,7 @@ data d0_intent_schema: String = "pair-serving-d0-intent/v2"
 // the filer, before anything is hashed or filed -- never an empty head standing in for one (review
 // 72009). d0_required_scope has a wire, so the refusing arm is unreachable today; it stays typed.
 fn d0_intent_text(subject: D0Subject, group: FabricGroup, transaction: NonEmptyStr) -> String? {
-  match intent_frame_head(schema: d0_intent_schema as NonEmptyStr, scopes: [d0_required_scope()]) {
+  match intent_frame_head(schema: d0_intent_schema as NonEmptyStr, scopes: [d0_scope_of(op: subject.operation)]) {
     Absent => none
     Present { value: head } => Present { value: d0_intent_body(head: head, subject: subject, group: group, transaction: transaction) }
   }
@@ -275,8 +328,13 @@ fn sha256_of_text(text: String) -> ContentHash? {
 // typed scope the intent frame carries and the same subject wire the intent text carries.
 fn d0_purpose(subject: D0Subject, transaction: NonEmptyStr) -> NonEmptyStr {
   join([
-    "Cut D D0 (transaction ", transaction as String, "): suspend the pair-serving authority for a bounded successor. Scope: ",
-    authorization_scopes_render(scopes: [d0_required_scope()]),
+    "Cut D D0 (transaction ", transaction as String, "): ",
+    match subject.operation {
+      D0SuspendForSuccessor { successor: _, cleanup: _, term: _ } => "suspend the pair-serving authority for a bounded successor"
+      D0ReleaseToFleet { cause: _, approval: _ } => "RELEASE the pair-serving authority to the fleet, removing the group's host commitment, only if every host reads quiescent"
+    },
+    ". Scope: ",
+    authorization_scopes_render(scopes: [d0_scope_of(op: subject.operation)]),
     ". Over: ", d0_subject_wire(subject: subject), ".",
   ], "") as NonEmptyStr
 }
@@ -287,7 +345,7 @@ fn d0_purpose(subject: D0Subject, transaction: NonEmptyStr) -> NonEmptyStr {
 fn d0_request(escalation_id: NonEmptyStr, subject: D0Subject, transaction: NonEmptyStr, intent: ContentHash) -> AuthorizationRequest<D0Subject> {
   AuthorizationRequest {
     escalation_id: escalation_id,
-    scopes: [d0_required_scope()],
+    scopes: [d0_scope_of(op: subject.operation)],
     subject: subject,
     purpose: d0_purpose(subject: subject, transaction: transaction),
     attempt: (transaction as String) as AttemptIdentity,
@@ -361,70 +419,124 @@ fn line_at(lines: List<String>, i: Int) -> String {
   match first(lines |> skip(n: i)) { Present { value: l } => l  Absent => "" }
 }
 
-fn parse_d0_intent_text(text: String) -> D0IntentParsed? {
-  let lines = intent_lines(text: text)
-  let framed = match parse_intent_scopes(text: text) {
-    Present { value: f } => (f.schema as String) == d0_intent_schema && count(f.scopes) == 1 && all(f.scopes, sc => authorization_scope_eq(a: sc, b: d0_required_scope()))
-    Absent => false
+// WHICH OPERATION A FRAMED INTENT IS, from its one scope: the suspension's or the release's.
+type D0FramedOperation = D0FramedSuspend | D0FramedRelease | D0FramedNeither
+
+fn d0_framed_operation(text: String) -> D0FramedOperation {
+  match parse_intent_scopes(text: text) {
+    Absent => D0FramedNeither
+    Present { value: f } =>
+      if (f.schema as String) != d0_intent_schema || count(f.scopes) != 1 { D0FramedNeither }
+      else if all(f.scopes, sc => authorization_scope_eq(a: sc, b: d0_required_scope())) { D0FramedSuspend }
+      else if all(f.scopes, sc => authorization_scope_eq(a: sc, b: d0_release_scope())) { D0FramedRelease }
+      else { D0FramedNeither }
   }
-  if !framed { none }
-  else {
-    match intent_field(line: line_at(lines: lines, i: 2), key: "target") {
-      Absent => none
-      Present { value: target } =>
-        match parse_fabric_group(wire: target) {
-          Absent => none
-          Present { value: group } =>
-            match intent_field(line: line_at(lines: lines, i: 3), key: "attempt") {
-              Absent => none
-              Present { value: attempt } =>
-                if attempt == "" { none } else {
-                  let words = intent_words(line: line_at(lines: lines, i: 4))
-                  match subject_field(words: words, key: "group") {
+}
+
+// A PARSED SUBJECT IS ADMITTED ONLY WHEN IT RE-RENDERS TO THE EXACT TEXT, so the request it yields
+// carries the filed revision by construction.
+fn d0_round_trip(text: String, group: FabricGroup, attempt: String, subject: D0Subject) -> D0IntentParsed? {
+  if (match d0_intent_text(subject: subject, group: group, transaction: attempt as NonEmptyStr) { Present { value: t } => t == text  Absent => false }) {
+    Present { value: D0IntentParsed { group: group, transaction: attempt as NonEmptyStr, subject: subject } }
+  } else { none }
+}
+
+fn parse_d0_suspend_subject(words: List<String>, subject_group: FabricGroup) -> D0Subject? {
+  match subject_field(words: words, key: "successor") {
+    Absent => none
+    Present { value: succ } =>
+      match parse_content_hash(wire: succ) {
+        Absent => none
+        Present { value: successor } =>
+          match subject_field(words: words, key: "cleanup") {
+            Absent => none
+            Present { value: cl } =>
+              match parse_released_baseline(wire: cl) {
+                Absent => none
+                Present { value: cleanup } =>
+                  match subject_field(words: words, key: "term") {
                     Absent => none
-                    Present { value: sg } =>
-                      match parse_fabric_group(wire: sg) {
+                    Present { value: tw } =>
+                      match parse_d0_term(wire: tw) {
                         Absent => none
-                        Present { value: subject_group } =>
-                          match subject_field(words: words, key: "successor") {
+                        Present { value: term } =>
+                          match subject_field(words: words, key: "hosts") {
                             Absent => none
-                            Present { value: succ } =>
-                              match parse_content_hash(wire: succ) {
-                                Absent => none
-                                Present { value: successor } =>
-                                  match subject_field(words: words, key: "cleanup") {
-                                    Absent => none
-                                    Present { value: cl } =>
-                                      match parse_released_baseline(wire: cl) {
-                                        Absent => none
-                                        Present { value: cleanup } =>
-                                          match subject_field(words: words, key: "term") {
-                                            Absent => none
-                                            Present { value: tw } =>
-                                              match parse_d0_term(wire: tw) {
-                                                Absent => none
-                                                Present { value: term } =>
-                                                  match subject_field(words: words, key: "hosts") {
-                                                    Absent => none
-                                                    Present { value: hw } => {
-                                                      let subject = D0Subject { group: subject_group, hosts: parse_d0_hosts(wire: hw), successor: successor, cleanup: cleanup, term: term }
-                                                      if (match d0_intent_text(subject: subject, group: group, transaction: attempt as NonEmptyStr) { Present { value: t } => t == text  Absent => false }) {
-                                                        Present { value: D0IntentParsed { group: group, transaction: attempt as NonEmptyStr, subject: subject } }
-                                                      } else { none }
-                                                    }
-                                                  }
-                                              }
-                                          }
-                                      }
-                                  }
-                              }
+                            Present { value: hw } => Present { value: D0Subject { group: subject_group, hosts: parse_d0_hosts(wire: hw), operation: D0SuspendForSuccessor { successor: successor, cleanup: cleanup, term: term } } }
                           }
                       }
                   }
+              }
+          }
+      }
+  }
+}
+
+fn parse_d0_release_subject(lines: List<String>, words: List<String>, subject_group: FabricGroup) -> D0Subject? {
+  match subject_field(words: words, key: "operation") {
+    Absent => none
+    Present { value: op } =>
+      if op != "release-to-fleet" { none } else {
+        match subject_field(words: words, key: "hosts") {
+          Absent => none
+          Present { value: hw } =>
+            match intent_field(line: line_at(lines: lines, i: 5), key: "cause") {
+              Absent => none
+              Present { value: cause } =>
+                match intent_field(line: line_at(lines: lines, i: 6), key: "approval") {
+                  Absent => none
+                  Present { value: approval } =>
+                    if cause == "" || approval == "" { none } else {
+                      Present { value: D0Subject { group: subject_group, hosts: parse_d0_hosts(wire: hw), operation: D0ReleaseToFleet { cause: cause as NonEmptyStr, approval: approval as NonEmptyStr } } }
+                    }
                 }
             }
         }
-    }
+      }
+  }
+}
+
+fn parse_d0_intent_text(text: String) -> D0IntentParsed? {
+  let lines = intent_lines(text: text)
+  let framed = d0_framed_operation(text: text)
+  match framed {
+    D0FramedNeither => none
+    D0FramedSuspend => parse_d0_intent_over(text: text, lines: lines, framed: framed)
+    D0FramedRelease => parse_d0_intent_over(text: text, lines: lines, framed: framed)
+  }
+}
+
+fn parse_d0_intent_over(text: String, lines: List<String>, framed: D0FramedOperation) -> D0IntentParsed? {
+  match intent_field(line: line_at(lines: lines, i: 2), key: "target") {
+    Absent => none
+    Present { value: target } =>
+      match parse_fabric_group(wire: target) {
+        Absent => none
+        Present { value: group } =>
+          match intent_field(line: line_at(lines: lines, i: 3), key: "attempt") {
+            Absent => none
+            Present { value: attempt } =>
+              if attempt == "" { none } else {
+                let words = intent_words(line: line_at(lines: lines, i: 4))
+                match subject_field(words: words, key: "group") {
+                  Absent => none
+                  Present { value: sg } =>
+                    match parse_fabric_group(wire: sg) {
+                      Absent => none
+                      Present { value: subject_group } =>
+                        match (match framed {
+                          D0FramedSuspend => parse_d0_suspend_subject(words: words, subject_group: subject_group)
+                          D0FramedRelease => parse_d0_release_subject(lines: lines, words: words, subject_group: subject_group)
+                          D0FramedNeither => none
+                        }) {
+                          Absent => none
+                          Present { value: subject } => d0_round_trip(text: text, group: group, attempt: attempt, subject: subject)
+                        }
+                    }
+                }
+              }
+          }
+      }
   }
 }
 
@@ -618,13 +730,47 @@ type AdmittedD0Grant sole_constructor {
   binding: ContentHash
 }
 
+// A STANDING OPERATOR GRANT ANSWERS FOR EXACTLY THE REQUESTS IT COVERS (gunbc.auth.standing_operator_grant):
+// a release-to-fleet of the grant's group whose subject hosts are all the grant's. For such a request the
+// door admits the grant minted over that exact request, in place of filing with the broker and polling --
+// on a first run and on a rerun alike, since the ruling, unlike a broker decision, is not consumed by the
+// lifecycle that first used it; the durable claim still decides whether a rerun may continue. Every other
+// request -- a suspension, another group, a host outside the grant -- files and polls as before.
+data d0_standing_grants: List<StandingOperatorGrant> = [group_a_dev_standing_grant]
+
+fn d0_standing_grant_for(request: AuthorizationRequest<D0Subject>) -> StandingOperatorGrant? {
+  d0_standing_grant_for_subject(subject: request.subject)
+}
+
+fn d0_standing_grant_for_subject(subject: D0Subject) -> StandingOperatorGrant? {
+  match subject.operation {
+    D0SuspendForSuccessor { successor: _, cleanup: _, term: _ } => none
+    D0ReleaseToFleet { cause: _, approval: _ } =>
+      first(filter(d0_standing_grants, g => standing_grant_covers(g: g, group: subject.group, effect: StandingD0ReleaseToFleet, hosts: subject.hosts)))
+  }
+}
+
+// THE LIFECYCLE TERM OF THE BINDING (side-chat review of #13067). A broker grant's lifecycle is its one
+// decided window, so its expiry is in the binding and a re-issued grant with a later expiry is another
+// lifecycle. A STANDING grant is minted per run with that run's live window, so its expiry would make every
+// rerun a new lifecycle: a crash after the pending write (or after ReleasedToFleet, before the claim
+// completes) could never be resumed. Its lifecycle is the grant's identity, which every run of the
+// request derives the same way. The run's window still bounds the run (authorize checks it); it is only
+// kept out of the identity. A broker grant's binding text is byte-identical to before.
+fn d0_binding_lifecycle_term(grant: OperatorGrant<D0Subject>) -> String {
+  match d0_standing_grant_for_subject(subject: grant.subject) {
+    Present { value: g } => join(["\nstanding_grant=", g.identity as String], "")
+    Absent => join(["\nexpires_at=", grant.expires_at], "")
+  }
+}
+
 fn d0_binding_text(grant: OperatorGrant<D0Subject>, claim_generation: CasGeneration) -> String {
   join([
     "escalation=", grant.escalation_id as String,
     "\nattempt=", grant.attempt as String,
     "\nintent=", serialize_content_hash(hash: grant.intent_hash) as String,
     "\n", d0_subject_wire(subject: grant.subject),
-    "\nexpires_at=", grant.expires_at,
+    d0_binding_lifecycle_term(grant: grant),
     "\nclaim_generation=", to_string(cas_generation_count(g: claim_generation)),
     "\n",
   ], "")
@@ -715,7 +861,7 @@ fn admit_d0_grant(store: FabricStorageBinding, authorization: ScopedAuthorizatio
 // decision names the cause. The request handed to it carries no intent (the subject is not the
 // grant's), which is fine: the decision refuses before comparing intents.
 fn d0_not_granted_cause(authorization: ScopedAuthorization<D0Subject>, escalation_id: NonEmptyStr, group: FabricGroup) -> AuthorizationRefusalCause {
-  let placeholder = D0Subject { group: group, hosts: [] as List<HostIdentity>, successor: content_hash_of_value(value: "unauthorized" as NonEmptyStr), cleanup: QuiescentReservedBaseline, term: second(count: 0) }
+  let placeholder = D0Subject { group: group, hosts: [] as List<HostIdentity>, operation: D0SuspendForSuccessor { successor: content_hash_of_value(value: "unauthorized" as NonEmptyStr), cleanup: QuiescentReservedBaseline, term: second(count: 0) } }
   match authorize(authorization: authorization, request: d0_request(escalation_id: escalation_id, subject: placeholder, transaction: "unauthorized" as NonEmptyStr, intent: content_hash_of_value(value: "unauthorized" as NonEmptyStr)), observed_at: "") {
     AuthorizationRefused { cause: c } => c
     AuthorizationPermitted { grant: g } => AuthorizationEscalationMismatch { requested: escalation_id, granted: g.escalation_id }
@@ -793,10 +939,20 @@ type IncumbentReading
   | IncumbentDidNotAnswer { receipt: NonEmptyStr, head: HeadEndpointReading }
   | IncumbentRouteUnread { cause: NonEmptyStr }
 
+// EVERY HOST'S OWN OCCUPANCY, read beside the declared units: the pair units by name and every GPU
+// compute process (gunbc.compute.host_occupancy read_host_occupancy). The declared-unit reading cannot
+// tell an empty rank from a foreign occupant; this one can, and a release decides on it. A suspension
+// carries it in its receipt as evidence and decides as before.
+type RankVacancyReading {
+  host: HostIdentity
+  reading: HostOccupancyReading
+}
+
 type D0Observation {
   group: FabricGroup
   incumbent: IncumbentReading
   ranks: List<RankOccupancyReading>
+  vacancy: List<RankVacancyReading>
 }
 
 // ── THE RECONCILIATION ─────────────────────────────────────────────────────────────────────────
@@ -913,12 +1069,14 @@ type D0Cause
   | D0IncumbentUnidentified { cause: NonEmptyStr }
   | D0OccupancyUnread { cause: NonEmptyStr }
   | D0DeclarationUnavailable { obligation: NonEmptyStr }
+  | D0HostNotQuiescent { cause: NonEmptyStr }
 
 // What the second transition writes, decided from the readings alone.
 type D0Decision
   = D0DecidedSuspend { next: PairServingGroupAuthority, reconciliation: OccupancyReconciliation }
   | D0DecidedRestore { next: PairServingGroupAuthority, key: ContentHash }
   | D0DecidedFence { next: PairServingGroupAuthority, cause: D0Cause }
+  | D0DecidedRelease { group: FabricGroup, hosts: List<HostIdentity> }
 
 data d0_disposition_authority: NonEmptyStr = "operator" as NonEmptyStr
 
@@ -928,6 +1086,7 @@ fn fence(group: FabricGroup, hosts: List<HostIdentity>, cause: D0Cause) -> D0Dec
     D0IncumbentUnidentified { cause: c } => join(["the enrolled route answered but the answering launch could not be identified, so an incumbent may be live: ", c as String], "")
     D0OccupancyUnread { cause: c } => join(["occupancy could not be reconciled: ", c as String], "")
     D0DeclarationUnavailable { obligation: o } => join(["the declared pair realization could not be keyed: ", o as String], "")
+    D0HostNotQuiescent { cause: c } => join(["a release is admitted only on quiescent hosts, and one is not: ", c as String], "")
   }
   D0DecidedFence { next: FencedRefusal { group: group, hosts: hosts, cause: text as NonEmptyStr, disposition_authority: d0_disposition_authority }, cause: cause }
 }
@@ -949,10 +1108,25 @@ fn d0_decide(
   lease: HeldLease,
   grant: OperatorGrant<D0Subject>,
 ) -> D0Decision {
-  let authorization = grant.escalation_id
-  let candidate = PairRealizationKeyed { key: grant.subject.successor }
-  let cleanup = grant.subject.cleanup
   let hosts = grant.subject.hosts
+  let group = observation.group
+  match grant.subject.operation {
+    D0ReleaseToFleet { cause: _, approval: _ } => d0_decide_release(observation: observation, hosts: hosts)
+    D0SuspendForSuccessor { successor: successor, cleanup: cleanup, term: _ } =>
+      d0_decide_suspend(declared: declared, observation: observation, active: active, lease: lease, authorization: grant.escalation_id, candidate: PairRealizationKeyed { key: successor }, cleanup: cleanup, hosts: hosts)
+  }
+}
+
+fn d0_decide_suspend(
+  declared: DeclaredPairRealizationStanding,
+  observation: D0Observation,
+  active: PairServingGroupAuthority,
+  lease: HeldLease,
+  authorization: NonEmptyStr,
+  candidate: PairRealizationIdentity,
+  cleanup: ReleasedBaselineSpec,
+  hosts: List<HostIdentity>,
+) -> D0Decision {
   let group = observation.group
   match declared {
     DeclaredPairRealizationUnavailable { group: _, obligation: o } => fence(group: group, hosts: hosts, cause: D0DeclarationUnavailable { obligation: o })
@@ -986,11 +1160,60 @@ fn d0_decide(
   }
 }
 
-fn d0_decision_next(d: D0Decision) -> PairServingGroupAuthority {
+// ── THE RELEASE DECISION: EVERY READING QUIESCENT, OR A FENCE NAMING THE ONE THAT IS NOT ──────────
+//
+// The front door must not answer at all (an answering incumbent, identified or not, is something
+// serving), the head must be quiet (no listener on the enrolled port, no engine process), and EVERY
+// granted host's own occupancy must read with no occupant -- no pair unit running and no GPU compute
+// process. An unread host, or a host the observation has no reading for, is not quiescent: absence is
+// not vacancy. Any of these fences for an operator, exactly as the suspension's refusals do; nothing
+// is stopped and nothing is released.
+fn vacancy_cause(host: HostIdentity, vacancy: List<RankVacancyReading>) -> String? {
+  match first(filter(vacancy, v => host_identity_eq(a: v.host, b: host))) {
+    Absent => Present { value: join([host as String, ": no occupancy reading was taken"], "") }
+    Present { value: v } =>
+      match v.reading {
+        HostOccupancyUnread { cause: c } => Present { value: join([host as String, ": occupancy unread: ", c], "") }
+        HostOccupancyRead { occupants: occ, available: _ } =>
+          if length(occ) == 0 { none } else { Present { value: join([host as String, " is occupied: ", join(map(occ, o => host_occupant_wire(o: o)), "; ")], "") } }
+      }
+  }
+}
+
+fn release_not_quiet(group: FabricGroup, hosts: List<HostIdentity>, cause: String) -> D0Decision {
+  fence(group: group, hosts: hosts, cause: D0HostNotQuiescent { cause: cause as NonEmptyStr })
+}
+
+fn d0_decide_release(observation: D0Observation, hosts: List<HostIdentity>) -> D0Decision {
+  let group = observation.group
+  match observation.incumbent {
+    IncumbentRouteUnread { cause: c } => fence(group: group, hosts: hosts, cause: D0OccupancyUnread { cause: c })
+    IncumbentAnsweredUnread { cause: c } => release_not_quiet(group: group, hosts: hosts, cause: join(["the front door answered: ", c as String], ""))
+    IncumbentAnswered { agreement: a } => release_not_quiet(group: group, hosts: hosts, cause: join(["the front door answered and serves: ", join(pair_realization_agreement_lines(a: a), "; ")], ""))
+    IncumbentDidNotAnswer { receipt: rc, head: head } =>
+      match head {
+        HeadEndpointListening { port: pt, rows: rows } => release_not_quiet(group: group, hosts: hosts, cause: join([rc as String, "; and ", to_string(length(rows)), " socket(s) LISTEN on port ", to_string(pt), " on the head"], ""))
+        HeadEndpointEngineProcess { listing: l } => release_not_quiet(group: group, hosts: hosts, cause: join([rc as String, "; and an engine process is running on the head: ", trim(s: l)], ""))
+        HeadEndpointUnread { cause: c } => fence(group: group, hosts: hosts, cause: D0OccupancyUnread { cause: join([rc as String, "; and the head's socket table or process scan could not be read: ", c as String], "") as NonEmptyStr })
+        HeadEndpointQuiet => {
+          let causes = flat_map(hosts, h => match vacancy_cause(host: h, vacancy: observation.vacancy) { Present { value: c } => [c]  Absent => [] as List<String> })
+          if length(hosts) == 0 { release_not_quiet(group: group, hosts: hosts, cause: "the grant names no host, so no host was read quiescent") }
+          else if length(causes) != 0 { release_not_quiet(group: group, hosts: hosts, cause: join(causes, "; ")) }
+          else { D0DecidedRelease { group: group, hosts: hosts } }
+        }
+      }
+  }
+}
+
+// THE NEXT AUTHORITY, WITH THE ENTRY-STATE RECEIPT'S IDENTITY: a release names the recorded receipt it
+// was decided from as its release_receipt, which exists only once the receipt is on the log -- so the
+// next state is built after the receipt is recorded, never before.
+fn d0_decision_next(d: D0Decision, entry_state: ContentHash) -> PairServingGroupAuthority {
   match d {
     D0DecidedSuspend { next: n, reconciliation: _ } => n
     D0DecidedRestore { next: n, key: _ } => n
     D0DecidedFence { next: n, cause: _ } => n
+    D0DecidedRelease { group: g, hosts: _ } => ReleasedToFleet { group: g, release_receipt: entry_state }
   }
 }
 
@@ -999,6 +1222,7 @@ fn d0_decision_is_eligible(d: D0Decision) -> Bool {
     D0DecidedSuspend { next: _, reconciliation: _ } => true
     D0DecidedRestore { next: _, key: _ } => false
     D0DecidedFence { next: _, cause: _ } => false
+    D0DecidedRelease { group: _, hosts: _ } => true
   }
 }
 
@@ -1035,6 +1259,13 @@ fn occupancy_line(r: RankOccupancyReading) -> String {
   join(["  rank ", r.host as String, " ", r.unit_name as String, ": ", o], "")
 }
 
+fn vacancy_line(v: RankVacancyReading) -> String {
+  join(["  host ", v.host as String, " occupancy: ", match v.reading {
+    HostOccupancyUnread { cause: c } => join(["unread: ", c], "")
+    HostOccupancyRead { occupants: occ, available: _ } => if length(occ) == 0 { "no occupant" } else { join(map(occ, o => host_occupant_wire(o: o)), "; ") }
+  }], "")
+}
+
 fn incumbent_lines(i: IncumbentReading) -> List<String> {
   match i {
     IncumbentAnswered { agreement: a } => concat(["  incumbent answered:"], map(pair_realization_agreement_lines(a: a), l => join(["  ", l], "")))
@@ -1066,13 +1297,14 @@ fn decision_lines(d: D0Decision) -> List<String> {
     D0DecidedSuspend { next: n, reconciliation: r } => ["verdict: d0-eligible", reconciliation_line(r: r), join(["  authority: ", authority_wire(a: n)], "")]
     D0DecidedRestore { next: n, key: k } => ["verdict: d0-refused incumbent-live-restored", join(["  key: ", serialize_content_hash(hash: k) as String], ""), join(["  authority: ", authority_wire(a: n)], "")]
     D0DecidedFence { next: n, cause: _ } => ["verdict: d0-refused fenced", join(["  authority: ", authority_wire(a: n)], "")]
+    D0DecidedRelease { group: g, hosts: hs } => ["verdict: d0-release-eligible", join(["  every host quiescent: [", hosts_wire(hs: hs), "]; the group's authority is released to the fleet under this receipt"], "")]
   }
 }
 
 fn entry_state_receipt_body(r: EntryStateReceipt) -> String {
   join(concat(
     [join(["pair serving d0 entry state at ", r.at, " transaction=", r.transaction as String, " group=", fabric_group_wire(g: r.group) as String], "")],
-    concat(incumbent_lines(i: r.observation.incumbent), concat(map(r.observation.ranks, o => occupancy_line(r: o)), decision_lines(d: r.decision))),
+    concat(incumbent_lines(i: r.observation.incumbent), concat(map(r.observation.ranks, o => occupancy_line(r: o)), concat(map(r.observation.vacancy, v => vacancy_line(v: v)), decision_lines(d: r.decision)))),
   ), "\n")
 }
 
@@ -1204,8 +1436,15 @@ fn observe_incumbent(context: FleetSshExecutionContext, group: FabricGroup, decl
   }
 }
 
+fn observe_vacancy(context: FleetSshExecutionContext, group: FabricGroup) -> List<RankVacancyReading> {
+  map(fabric_group_hosts(g: group), h => RankVacancyReading {
+    host: h,
+    reading: read_host_occupancy(run: fn(argv) { fleet_argv_run(context: context, host: h, argv: argv) }, units: [spark_pair_head_unit_name, spark_pair_worker_unit_name]),
+  })
+}
+
 fn observe_d0(context: FleetSshExecutionContext, group: FabricGroup, declared: DeclaredPairRealizationStanding) -> D0Observation {
-  D0Observation { group: group, incumbent: observe_incumbent(context: context, group: group, declared: declared), ranks: observe_ranks(context: context, group: group, declared: declared) }
+  D0Observation { group: group, incumbent: observe_incumbent(context: context, group: group, declared: declared), ranks: observe_ranks(context: context, group: group, declared: declared), vacancy: observe_vacancy(context: context, group: group) }
 }
 
 // ── THE TRANSACTION ────────────────────────────────────────────────────────────────────────────
@@ -1276,11 +1515,15 @@ fn d0_settle(store: FabricStorageBinding, pending: PairServingGroupAuthority, he
           let wr = Filesystem.Write(path: path, content: body)
           let term = match decision {
             D0DecidedSuspend { next: _, reconciliation: _ } =>
-              Present { value: lease_grant(reference: transaction, fence: lease_fence_of(admitting_event: admitting, generation: pending_generation), granted_at: at, policy: d0_lease_policy(subject: admitted.grant.subject)) }
+              match admitted.grant.subject.operation {
+                D0SuspendForSuccessor { successor: _, cleanup: _, term: t } => Present { value: lease_grant(reference: transaction, fence: lease_fence_of(admitting_event: admitting, generation: pending_generation), granted_at: at, policy: d0_lease_policy(term: t)) }
+                D0ReleaseToFleet { cause: _, approval: _ } => none
+              }
             D0DecidedRestore { next: _, key: _ } => none
             D0DecidedFence { next: _, cause: _ } => none
+            D0DecidedRelease { group: _, hosts: _ } => none
           }
-          match pair_serving_authority_transition(store: store, group: group, expected: pending, next: d0_decision_next(d: decision), transaction: transaction, lifecycle: Present { value: admitted.binding }, grant: term, entry_state: Present { value: digest }, actor: executor, at: at) {
+          match pair_serving_authority_transition(store: store, group: group, expected: pending, next: d0_decision_next(d: decision, entry_state: digest), transaction: transaction, lifecycle: Present { value: admitted.binding }, grant: term, entry_state: Present { value: digest }, actor: executor, at: at) {
             AuthorityTransitionAppended { id: _, generation: g, next: _, placement: PlacementFinalizedAt { preparation: _, id: _ } } =>
               D0Settled { decision: decision, generation: g, receipt_path: if wr.success { path } else { join(["(local copy not written: ", wr.error, ")"], "") }, entry_state: digest }
             AuthorityTransitionAppended { id: _, generation: g, next: _, placement: PlacementCleanupStillFencing { preparation: pr, cause: c } } =>
@@ -1513,6 +1756,7 @@ fn d0_drift_observation(group: FabricGroup, granted: List<HostIdentity>, current
     group: group,
     incumbent: IncumbentRouteUnread { cause: join(["the group's host population changed after this transaction was authorized: authorized [", hosts_wire(hs: granted), "], current [", hosts_wire(hs: current), "]; the pending transaction is settled by fencing rather than read against hosts the operator never saw"], "") as NonEmptyStr },
     ranks: [] as List<RankOccupancyReading>,
+    vacancy: [] as List<RankVacancyReading>,
   }
 }
 
@@ -1645,6 +1889,7 @@ fn d0_dispatch(store: FabricStorageBinding, g: FabricGroup, group: String, curre
             D0ClaimTerminated =>
               match st.next {
                 SuspendedForAuthorizedSuccessor { group: _, authorization: _, exact_candidate_realization: _, lease: _, cleanup: _ } => ExitSuccess
+                ReleasedToFleet { group: _, release_receipt: _ } => ExitSuccess
                 _ => exit_failure(reason: join([d0_recovery_text(r: recovery), "; the claim is completed and the authority was not moved by this run"], ""))
               }
             other => exit_failure(reason: join([d0_recovery_text(r: recovery), claim_terminal_text(t: other)], ""))
@@ -1696,12 +1941,25 @@ fn d0_single_lifecycle_admits(group: FabricGroup, escalation_id: NonEmptyStr) ->
 
 // The admission over a supplied standing of the drop row, so its RED with the row retired is
 // witnessed without retiring the real row.
+// AND EXACTLY ONE MORE (operator-ruled 2026-10-03, relayed by valiant-crab-775, dashboard message
+// msg_eb268a0a): the Group A release-to-fleet, whose escalation is the release row's
+// (gunbc.spark.pair_serving_d0_authorization d0_release_requests). Same terms: Group A only, that one
+// lifecycle and its reruns, refused once the row retires.
+// THE ID MOVED ONCE, AND WHY: the first lifecycle under "d0-group-a-release-glm53-2026-10-03" froze its
+// filing at revision 593e333 and then could not reach the approval broker on srv1 (fleet-converge run
+// 37096004282: no claim taken, no authority write). A frozen filing refuses every other revision, so that
+// lifecycle can never finish once the door changes; it is inert, and the release runs as a new lifecycle
+// under this id, admitted by the operator's standing Group A ruling (gunbc.auth.standing_operator_grant
+// group_a_dev_standing_grant, 2026-10-03) on the same single-lifecycle terms.
+data d0_release_lifecycle_escalation_id: NonEmptyStr = "d0-group-a-release-glm53-standing-2026-10-03" as NonEmptyStr
+
 fn d0_single_lifecycle_admits_under(standing: RungDropStanding, group: FabricGroup, escalation_id: NonEmptyStr) -> Bool {
   match standing {
     Retired { trigger_fired: _ } => false
     Standing =>
       (match group { FabricGroupA => true  FabricGroupB => false })
-        && (escalation_id as String) == (d0_single_lifecycle_escalation_id as String)
+        && ((escalation_id as String) == (d0_single_lifecycle_escalation_id as String)
+          || (escalation_id as String) == (d0_release_lifecycle_escalation_id as String))
   }
 }
 

@@ -11,6 +11,7 @@ import extdeps.vllm.engine_args {
   VllmKvCacheDtypeRequest, KvAuto, KvFp8, KvFp16, KvBf16, KvFp8DsMla, vllm_kv_cache_dtype_wire,
   VllmEngramConfigRequest, EngramConfigOmitted, EngramConfigExplicit,
   VllmModalityRequest, ModalityOmitted, LanguageModelOnly, vllm_hf_override,
+  VllmSchedulerAdmissionRequest, vllm_scheduler_admission_omitted, vllm_scheduler_admission_argv, vllm_scheduler_admission_key,
 }
 import extdeps.zhipu.glm_5_3_flash {
   glm_5_3_flash_native_manifest, glm_5_3_flash_vllm_integration_commit, glm_5_3_flash_mla_pe_dim,
@@ -33,7 +34,7 @@ import extdeps.docker.images.gitcommit90_glm_53_one_spark {
 import gunbc.spark.runtime_architecture_registry_reading {
   ArchitectureRegistryReading, registry_reading_contains, reading_applies_to,
   sparkrun_vllm_ds4_gb10_registry_reading, gitcommit90_glm_53_one_spark_registry_reading,
-  glm53_nope_derived_registry_reading, glm53_derived_registry_reading,
+  glm53_nope_derived_registry_reading, glm53_derived_registry_reading, glm53_derived_kvplan_v2_registry_reading,
 }
 import gunbc.spark.model_snapshot_acquisition {
   SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement, spark_hub_cache_root, spark_models_root,
@@ -92,6 +93,7 @@ type ServingRuntime
   | VllmOpenaiGlm53Flash
   | GunbcGlm53NopeDerivedGb10
   | GunbcGlm53DerivedGb10
+  | GunbcGlm53DerivedKvplanV2Gb10
   | GunbcDeepseekV41EngramProduced { artifact: RuntimeArtifactIdentity, registry_reading: ArchitectureRegistryReading? }
 
 // THE EIGHT-RANK TOPOLOGY IS A CANDIDATE SHAPE, NOT A DEPLOYED ONE, AND ONLY A RANK COUNT. It exists
@@ -164,6 +166,7 @@ fn serving_runtime_wire(r: ServingRuntime) -> NonEmptyStr {
     VllmOpenaiGlm53Flash => "vllm-openai-glm53-flash" as NonEmptyStr
     GunbcGlm53NopeDerivedGb10 => "gunbc-glm53-nope-derived-gb10" as NonEmptyStr
     GunbcGlm53DerivedGb10 => "gunbc-glm53-derived-gb10" as NonEmptyStr
+    GunbcGlm53DerivedKvplanV2Gb10 => "gunbc-glm53-derived-kvplan-v2-gb10" as NonEmptyStr
     GunbcDeepseekV41EngramProduced { artifact: _, registry_reading: _ } => "gunbc-deepseek-v41-engram-produced" as NonEmptyStr
   }
 }
@@ -725,14 +728,21 @@ fn serving_runtime_row(r: ServingRuntime) -> ServingRuntimeRow? {
     GunbcDeepseekV41EngramProduced { artifact: a, registry_reading: rr } => Present { value: produced_runtime_row(runtime: r, artifact: a, registry_reading: rr) }
     GunbcGlm53NopeDerivedGb10 => Present { value: glm53_nope_derived_row }
     GunbcGlm53DerivedGb10 => Present { value: glm53_derived_row }
+    GunbcGlm53DerivedKvplanV2Gb10 => Present { value: glm53_derived_kvplan_v2_row }
   }
 }
 
 // ── ADMISSION ──────────────────────────────────────────────────────────────────────────────────
 //
-// A TUPLE IS ADMITTED OR REFUSED, AND THE REFUSAL NAMES WHICH AXIS FAILED. Two independent walls,
-// both measured rather than assumed, and either alone is disqualifying -- which is exactly the state
-// the branch was in when it pinned native FP8 against the DeepSeek image.
+// A TUPLE IS ADMITTED OR REFUSED, AND THE REFUSAL NAMES WHICH AXIS FAILED. The walls here are
+// presence, currency and registry membership -- what the image provably CANNOT load -- plus the
+// aggregate screen below (resident bytes x5 against pool x4), which can only REFUSE: it takes no
+// utilization split beyond a declared page-cache allowance and no KV, so passing it establishes
+// nothing about fit. That is not hypothetical: the weights-only form of it admitted the native FP8
+// tp4 tuple that OOM-crash-looped from 2026-09-18. Fit is a proof obligation at the planner
+// (gunbc.spark.serving_arm_launch plan_arm_launch_under_memory_fit, through gunbc.spark.arm_memory_fit),
+// where it is compositional, per-rank and per-phase, for the arm whose terms that proof models;
+// this fold's admitted arm means "plausible", and the planner's memory wall means "proved".
 type ServingArmVerdict
   = ServingArmAdmitted
   | ServingArmRefused { cause: NonEmptyStr }
@@ -936,6 +946,7 @@ type ServingLaunchProfile sole_constructor {
   max_model_len: TokenCount
   max_num_batched_tokens: TokenCount
   max_num_seqs: Nat
+  guaranteed_cold_seqs: Nat
   decided_gpu_memory_basis_points: BasisPoint
   kv_cache_dtype: VllmKvCacheDtypeRequest
   serve_port: Port
@@ -943,6 +954,46 @@ type ServingLaunchProfile sole_constructor {
   prefix_caching: VllmPrefixCachingRequest
   engram: VllmEngramConfigRequest
   modality: VllmModalityRequest
+  scheduler_admission: VllmSchedulerAdmissionRequest
+}
+
+// THE MINT, EXPORTED SO A PROFILE CAN BE DERIVED, NOT ONLY AUTHORED. The seal's job is keeping a
+// record literal that omits or reorders a dimension from compiling; a named derivation --
+// gunbc.spark.serving_capacity_intent profile_for_envelope builds the executable profile FROM the
+// service obligation -- is a legitimate constructor, and without this mint the only profiles in
+// existence would be the authored rows, which would make "the engine config the proof prices" and
+// "the engine config the launch renders" two independently typed values that happen to agree.
+// Derived profiles still pass through the same type and the same key, so a derivation that
+// disagrees with the obligation is visible at the join (gunbc.spark.arm_memory_fit refuses it),
+// not silently launchable.
+fn serving_launch_profile(
+  max_model_len: TokenCount,
+  max_num_batched_tokens: TokenCount,
+  max_num_seqs: Nat,
+  guaranteed_cold_seqs: Nat,
+  decided_gpu_memory_basis_points: BasisPoint,
+  kv_cache_dtype: VllmKvCacheDtypeRequest,
+  serve_port: Port,
+  served_alias: NonEmptyStr,
+  prefix_caching: VllmPrefixCachingRequest,
+  engram: VllmEngramConfigRequest,
+  modality: VllmModalityRequest,
+  scheduler_admission: VllmSchedulerAdmissionRequest,
+) -> ServingLaunchProfile {
+  ServingLaunchProfile {
+    max_model_len: max_model_len,
+    max_num_batched_tokens: max_num_batched_tokens,
+    max_num_seqs: max_num_seqs,
+    guaranteed_cold_seqs: guaranteed_cold_seqs,
+    decided_gpu_memory_basis_points: decided_gpu_memory_basis_points,
+    kv_cache_dtype: kv_cache_dtype,
+    serve_port: serve_port,
+    served_alias: served_alias,
+    prefix_caching: prefix_caching,
+    engram: engram,
+    modality: modality,
+    scheduler_admission: scheduler_admission,
+  }
 }
 
 // THE PREFIX-CACHING REQUEST IS PART OF THE IDENTITY. Two launches differing only in whether they asked
@@ -989,6 +1040,8 @@ fn serving_launch_profile_key(p: ServingLaunchProfile) -> String {
       LanguageModelOnly { hf_overrides: os } =>
         join([" modality=language-only", join(map(os, o => join([",", o.key as String, ":", o.json_value as String], "")), "")], "")
     },
+    if p.guaranteed_cold_seqs == p.max_num_seqs { "" } else { join([" cold=", to_string(p.guaranteed_cold_seqs)], "") },
+    if vllm_scheduler_admission_argv(r: p.scheduler_admission) == [] { "" } else { join([" sched=", vllm_scheduler_admission_key(r: p.scheduler_admission)], "") },
   ], "")
 }
 
@@ -1097,6 +1150,7 @@ data glm_native_initial_profile: ServingLaunchProfile = ServingLaunchProfile {
   max_model_len: token_count(count: 262144),
   max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: 1,
+  guaranteed_cold_seqs: 1,
   decided_gpu_memory_basis_points: basis_point(count: 8400),
   kv_cache_dtype: KvAuto,
   serve_port: 30000,
@@ -1104,6 +1158,7 @@ data glm_native_initial_profile: ServingLaunchProfile = ServingLaunchProfile {
   prefix_caching: PrefixCachingExplicit { enabled: true },
   engram: EngramConfigOmitted,
   modality: ModalityOmitted,
+  scheduler_admission: vllm_scheduler_admission_omitted,
 }
 
 // ── THE CONCURRENT PROFILE IS A DIFFERENT SUBJECT, AND THAT IS THE POINT ──────────────────────
@@ -1154,6 +1209,7 @@ data glm_native_concurrent_profile: ServingLaunchProfile = ServingLaunchProfile 
   max_model_len: token_count(count: 262144),
   max_num_batched_tokens: token_count(count: 2048),
   max_num_seqs: 16,
+  guaranteed_cold_seqs: 16,
   decided_gpu_memory_basis_points: basis_point(count: 8567),
   kv_cache_dtype: KvFp8,
   serve_port: glm_native_initial_profile.serve_port,
@@ -1161,6 +1217,7 @@ data glm_native_concurrent_profile: ServingLaunchProfile = ServingLaunchProfile 
   prefix_caching: PrefixCachingExplicit { enabled: true },
   engram: EngramConfigOmitted,
   modality: ModalityOmitted,
+  scheduler_admission: vllm_scheduler_admission_omitted,
 }
 
 // ── THE V4.1 MEASUREMENT PROFILE: WHAT V4.1 DECIDES, OVER WHAT THE MEASUREMENT DECIDES ─────────
@@ -1200,6 +1257,7 @@ fn deepseek_v41_measurement_profile(
     max_model_len: max_model_len,
     max_num_batched_tokens: max_num_batched_tokens,
     max_num_seqs: max_num_seqs,
+    guaranteed_cold_seqs: max_num_seqs,
     decided_gpu_memory_basis_points: gpu_memory_basis_points,
     kv_cache_dtype: KvFp8DsMla,
     serve_port: serve_port,
@@ -1207,6 +1265,7 @@ fn deepseek_v41_measurement_profile(
     prefix_caching: prefix_caching,
     engram: EngramConfigExplicit { cpu_offload: true, dp_shared_memory: false },
     modality: LanguageModelOnly { hf_overrides: [vllm_hf_override(key: "vision_n_layers" as NonEmptyStr, json_value: "0" as NonEmptyStr)] },
+    scheduler_admission: vllm_scheduler_admission_omitted,
   }
 }
 
@@ -1233,6 +1292,7 @@ data glm_exl3_canary_profile: ServingLaunchProfile = ServingLaunchProfile {
   max_model_len: token_count(count: 262144),
   max_num_batched_tokens: token_count(count: 7168),
   max_num_seqs: 1,
+  guaranteed_cold_seqs: 1,
   decided_gpu_memory_basis_points: defaults_gpu_utilization(r: Vllm487ecf187),
   kv_cache_dtype: KvFp8,
   serve_port: 30001,
@@ -1240,6 +1300,7 @@ data glm_exl3_canary_profile: ServingLaunchProfile = ServingLaunchProfile {
   prefix_caching: PrefixCachingOmitted,
   engram: EngramConfigOmitted,
   modality: ModalityOmitted,
+  scheduler_admission: vllm_scheduler_admission_omitted,
 }
 
 
@@ -1343,5 +1404,59 @@ data glm53_derived_row: ServingRuntimeRow = ServingRuntimeRow {
   registry_reading: Present { value: glm53_derived_registry_reading },
   reasoning_projection: none,
   provenance: "read inside this exact image on the Group B head 2026-09-18 by the GLM performance lane: vllm 0.1.dev1+g8d09804c8; flashinfer-python, flashinfer-cubin 0.7.0.dev20260910 and flashinfer-jit-cache 0.7.0.dev20260910+cu130; torch 2.13.0+cu130; Glm5NextForConditionalGeneration registered True (what Group B serves) and GlmMoeDsaForCausalLM registered True, 378 architectures in total (sorted-roster sha256 2e43451e...); a modelopt.py quantization module present in the package; hf at /usr/local/bin/hf. NOT established: any kernel execution, any checkpoint load, the reasoning projection, or the FP4 W4A4 path on SM121 -- the FP4 probe's own discriminator is absent from this build's op namespace, recorded as KernelProbeSymbolUngrounded in gunbc.spark.serving_runtime_capability_probe glm53_derived_probe_rows" as NonEmptyStr,
+  claimed_defaults_revision: Present { value: Vllm8d09804 },
+}
+
+// ── THE IMAGE GROUP B RUNS SINCE 2026-09-26: THE DERIVED BUILD PLUS THE v2 ALLOCATION-PLAN LAYER ──
+//
+// A PURE FILE-COPY LAYER OVER glm53_derived_row's CONTENT ID (sha256:c7d63d15...), carrying the two
+// files of dag/extdeps/vllm/patches/kv-allocation-plan-emission-v2-8d09804c8.patch (sha256
+// 8267d86b..., applied INSTEAD of v1, never both) so the engine prints its resolved KV allocation
+// plan at startup. The build and roll-out are docs/runbooks/glm-kv-allocation-plan-image-rebuild.md;
+// the patched core.py was verified in-image at pin 7ffe8efa... on all four Group B ranks, and the
+// bounded 262144x6 experiment converged under this image on 2026-09-26 (its captured plan line is
+// test.fixture.kv_allocation_plan_emission.real_262144x6_v2_line).
+//
+// PINNED ELSEWHERE, BY TAG, AND THAT IS THE HONEST PIN RATHER THAN A WEAKER ONE. The layer was
+// built PER HOST from the same patch, so the four hosts hold four content ids under one tag and
+// there is no single id to pin; the tag is what the units spell and what each daemon resolves
+// locally. A subject keyed on it is therefore <unpinned:...> (runtime_artifact_key), which is the
+// truth: nothing here has compared the four builds' bytes.
+//
+// THE REGISTRY READING IS ABSENT, AND serving_arm_admits REFUSES THIS RUNTIME UNTIL ONE EXISTS. The
+// base image's 378-architecture dump (glm53_derived_registry_reading) was taken inside c7d63d15,
+// not inside this layer; the layer only replaces vllm/v1/engine/core.py and vllm/envs.py, so the
+// registry is very likely unchanged -- but that is an inference, and reading_applies_to keys a
+// reading to the exact image it was taken in. Borrowing the base's reading would be exactly the
+// re-addressed receipt gunbc.spark.runtime_architecture_registry_reading exists to refuse. The
+// discharge is one registry dump inside this tag on a Group B host (the fleet converge
+// spark_runtime_image_probe mode), recorded as a reading and named here.
+data glm53_derived_kvplan_v2_tag: NonEmptyStr = "gunbc-vllm-glm53-gb10:derived-kvplan-v2-20260926" as NonEmptyStr
+
+data glm53_derived_kvplan_v2_row: ServingRuntimeRow = ServingRuntimeRow {
+  runtime: GunbcGlm53DerivedKvplanV2Gb10,
+  artifact: runtime_artifact_identity(
+    pin: PinnedElsewhere {
+      reference: glm53_derived_kvplan_v2_tag,
+      pin_authority: "docs/runbooks/glm-kv-allocation-plan-image-rebuild.md: a file-copy layer built per Group B host over the base content id sha256:c7d63d15... from the v2 patch (sha256 8267d86b...), so each host holds its own content id under this tag" as NonEmptyStr,
+    },
+    source: PackageVersionClaimsRevision {
+      revision: (defaults_source_revision(r: Vllm8d09804)).full_revision,
+      package_version: glm53_nope_derived_vllm_version,
+      build_provenance: "the base's own labels say VLLM_BUILD_COMMIT=unknown (glm53_derived_row); this layer adds only the two patched files, and the engine running in it self-reported 0.1.dev1+g8d09804c8 at the 2026-09-26 launch, so the lineage is still claimed by the package and not established by a build record" as NonEmptyStr,
+    },
+    patch_set: [
+      "flashinfer_python-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
+      "flashinfer_cubin-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
+      "flashinfer_jit_cache-0.7.0.dev20260910+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+      "kv-allocation-plan-emission-v2-8d09804c8.patch" as NonEmptyStr,
+    ],
+    provenance: "built per host by the operator from docs/runbooks/glm-kv-allocation-plan-image-rebuild.md (2026-09-26 amendment: v2 instead of v1) as a pure file-copy layer over the recorded base content id sha256:c7d63d15...; post-patch pins core.py 7ffe8efa..., envs.py 239d5093..., verified in-image on all four Group B ranks" as NonEmptyStr,
+  ),
+  hub_cli_path: none,
+  vllm_version: Present { value: glm53_nope_derived_vllm_version },
+  registry_reading: Present { value: glm53_derived_kvplan_v2_registry_reading },
+  reasoning_projection: none,
+  provenance: "the engine inside this tag self-reported vllm 0.1.dev1+g8d09804c8 and printed its v2 KV allocation plan at the 2026-09-26 bounded experiment on the four Group B ranks; its architecture registry was read inside the tag on 2026-10-01 (glm53_derived_kvplan_v2_registry_reading). NOT read inside this tag: the hub CLI path and the reasoning projection" as NonEmptyStr,
   claimed_defaults_revision: Present { value: Vllm8d09804 },
 }

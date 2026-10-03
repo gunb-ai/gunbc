@@ -1,7 +1,7 @@
 module gunbc.harness.harness_cli
 
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
-import std.nat { Nat }
+import std.nat { Nat, nat_range_inclusive }
 import std.checked_arithmetic { checked_int_to_nat }
 import gunbc.fabric_event_log_host { now_epoch_seconds }
 import product.capacity.event_chain { PartitionId }
@@ -13,9 +13,9 @@ import std.measure { TokenCount, token_count, token_count_value, Second, second,
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.harness.harness_tool { HarnessToolEnvironment }
 import gunbc.harness.harness_turn {
-  HarnessTurnConfig, HarnessTurnOutcome, TurnProviderStopped, TurnCompletedByArtifact, harness_tool_contract_wire,
+  HarnessTurnConfig, HarnessTurnOutcome, TurnProviderStopped, TurnCompletedByArtifact, TurnAlignmentCheckpointDue, harness_tool_contract_wire,
   CompletesOnProviderStop, CompletesWhenEntryPresent, harness_run_turn, harness_outcome_label,
-  harness_outcome_detail,
+  harness_outcome_detail, harness_event_placement_waiting,
 }
 import gunbc.harness.harness_guidance {
   harness_worker_guidance_at, harness_guidance_prose, harness_probe_guidance,
@@ -25,6 +25,7 @@ import gunbc.compute.test_run {
   compile_process_command, compile_process_receipt_path, compile_process_entry_placeholder,
 }
 import gunbc.harness.harness_review_guidance { harness_reviewer_guidance_at, review_guidance_prose }
+import gunbc.harness.harness_supervisor_guidance { supervisor_system_prompt_at }
 import gunbc.harness.harness_goal_audit_guidance { harness_auditor_guidance_at, audit_guidance_prose }
 import gunbc.roadmap.roadmap_review_role { review_verdict_shape_text }
 import gunbc.harness.harness_wire { harness_context_budget_for }
@@ -43,6 +44,7 @@ import product.capacity.lease { LeasePolicy, QuiescenceRequired, GrantIdentity }
 import extdeps.tools.hostname
 import extdeps.filesystem.filesystem_io
 import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 
 // THE FIRST WET ENTRY FOR THE DEDICATED HARNESS. It exists to make DCH-2 provable by execution
 // rather than by typecheck -- DESIGN section 5's specification-without-execution trap names exactly
@@ -235,6 +237,7 @@ fn harness_macbook_config(backend_url: String, model: NonEmptyStr, unit: Harness
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
     system_prompt: harness_default_system_prompt,
+    alignment_chain_fingerprint: "",
     request_scratch_path: harness_request_scratch_path,
     events_path: harness_probe_events_path,
     context_budget: harness_context_budget_for(unit: unit),
@@ -263,6 +266,9 @@ fn harness_probe_outcome(backend_url: String, model: NonEmptyStr, unit: HarnessS
 // happened rather than whether the task succeeded. Nothing here inspects the assistant's text for
 // correctness: that is external verification's subject, and a harness that graded its own worker's
 // answer would be the same conflation DCH-2 forbids between a stop reason and a completed task.
+// CHECKPOINT-DUE IS A CONTROL TRANSFER, NOT A FAILURE (review 5358022153): it gets its own admitted
+// exit standing (3) rather than the generic failure code, so a consumer matching on 1 never reads a
+// planned adjudication handoff as a crash. The belt's authority remains the provider event stream.
 fn harness_turn_exit(outcome: HarnessTurnOutcome) -> ProcessExit {
   match outcome {
     TurnProviderStopped { wire_stop_reason: _, assistant_text: _, steps_taken: _, input_tokens: _, output_tokens: _ } =>
@@ -276,6 +282,9 @@ fn harness_turn_exit(outcome: HarnessTurnOutcome) -> ProcessExit {
     TurnTruncatedMidToolCall { output_tokens: _, ceiling: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnThinkingFormatInvalid { cause: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnUsageUnavailable { cause: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnSubmissionUndecodable { reason: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnAlignmentCheckpointDue { steps_taken: _ } =>
+      ExitFailure { code: 3, reason: harness_outcome_label(outcome: outcome) }
   }
 }
 
@@ -300,6 +309,72 @@ fn harness_backend_refusal_exit(detail: String) -> ProcessExit {
 // belt reading this line needs to be able to tell that apart from a fleet that is broken.
 fn harness_placement_pending_exit(detail: String) -> ProcessExit {
   ExitFailure { code: 1, reason: join(["harness placement pending: ", detail], "") }
+}
+
+// A BELT-SPAWNED TURN WAITS IN LINE FOR ITS SEAT. The belt's turns are BatchQualityTolerant work
+// nobody is reading live, so a Pending bind -- every admissible group busy -- is not a reason to
+// end the process: exiting spent a continuation turn and rendered "Agent failed" for a turn that
+// never reached a provider (srv2, 2026-10-02: group-b saturated by traffic outside the seat ledger,
+// group-a down). Instead the worker asks again every interval, announcing each wait on its own
+// event stream so the dashboard shows why it is waiting. The wait is bounded, as every loop here
+// is: at the cap it exits pending exactly as before, loudly. A refused bind, an unwritable event
+// stream, or a sleep that did not happen ends the wait at once -- the wait never widens into
+// placing a turn beside occupants the ledger cannot explain; it only defers asking.
+data harness_seat_wait_interval: Second = second(count: 60)
+
+data harness_seat_wait_cap: Nat = 1440
+
+type HarnessSeatWait {
+  binding: HarnessSeatBinding
+  waits: Int
+}
+
+// The seat request every belt-spawned role makes; the waiting fold asks it once up front and once
+// after each announced interval.
+fn harness_bind_belt_seat(role: String, system_prompt: String, brief: String, actor: NonEmptyStr, attempt: NonEmptyStr) -> HarnessSeatBinding {
+  harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: role, shape: harness_default_wire_shape, system_prompt: system_prompt, user_input: brief), actor: actor, attempt: attempt, policy: harness_seat_policy)
+}
+
+fn harness_bind_seat_waiting(
+  role: String,
+  system_prompt: String,
+  brief: String,
+  actor: NonEmptyStr,
+  attempt: NonEmptyStr,
+  events_path: String,
+) -> HarnessSeatBinding {
+  let waited = fold(
+    nat_range_inclusive(lo: 1, hi: harness_seat_wait_cap),
+    init: HarnessSeatWait { binding: harness_bind_belt_seat(role: role, system_prompt: system_prompt, brief: brief, actor: actor, attempt: attempt), waits: 0 },
+    f: (acc, _) =>
+      match acc.binding {
+        HarnessSeatPending { detail } => {
+          let wait = acc.waits + 1
+          match harness_seat_wait_announce_and_sleep(wait: wait, detail: detail, events_path: events_path) {
+            Present { value: refusal } => HarnessSeatWait { binding: HarnessSeatRefused { detail: refusal }, waits: wait }
+            Absent => HarnessSeatWait { binding: harness_bind_belt_seat(role: role, system_prompt: system_prompt, brief: brief, actor: actor, attempt: attempt), waits: wait }
+          }
+        }
+        HarnessSeatRefused { detail: _ } => acc
+        HarnessSeatBound { url: _, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: _, unit: _, class: _ } => acc
+      },
+  )
+  waited.binding
+}
+
+// Absent is "announced, and the interval elapsed"; Present is why the wait cannot continue.
+fn harness_seat_wait_announce_and_sleep(wait: Int, detail: String, events_path: String) -> String? {
+  let written = Filesystem.Write(
+    path: events_path,
+    content: concat(harness_event_placement_waiting(wait: wait, wait_cap: harness_seat_wait_cap as Int, reason: detail), "\n"),
+  )
+  if !written.success {
+    Present { value: join(["placement pending and the wait could not be announced on ", events_path, ": ", written.error, "; pending: ", detail], "") }
+  } else if !sleep_delay_seconds_second_carrier_projection(duration: harness_seat_wait_interval) {
+    Present { value: join(["placement pending and the wait interval did not elapse (sleep failed); pending: ", detail], "") }
+  } else {
+    none
+  }
 }
 
 // ── THE CALLABLE PLACEMENT BOUNDARY, WHICH IS WHAT A ROUTER CALLS INSTEAD OF PICKING ──────────
@@ -533,6 +608,7 @@ fn harness_worker_config(
   model: NonEmptyStr,
   unit: HarnessServingUnit,
   system_prompt: String,
+  alignment_chain_fingerprint: String,
 ) -> HarnessTurnConfig {
   HarnessTurnConfig {
     backend_url: backend_url,
@@ -542,6 +618,7 @@ fn harness_worker_config(
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
     system_prompt: system_prompt,
+    alignment_chain_fingerprint: alignment_chain_fingerprint,
     request_scratch_path: request_scratch_path,
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: unit),
@@ -591,9 +668,10 @@ fn harness_worker_cli(
   repo_root: String,
   gunbc_program: String,
   attempt_identity: String,
+  alignment_chain_fingerprint: String,
 ) -> ProcessExit {
   let system_prompt = harness_worker_system_prompt_at(worktree: worktree, repo_root: repo_root, gunbc_program: gunbc_program)
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "worker", shape: harness_default_wire_shape, system_prompt: system_prompt, user_input: brief), actor: join(["worker:", worktree], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, policy: harness_seat_policy)
+  let binding = harness_bind_seat_waiting(role: "worker", system_prompt: system_prompt, brief: brief, actor: join(["worker:", worktree], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, events_path: events_path)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
@@ -608,6 +686,7 @@ fn harness_worker_cli(
           model: bound_model,
           unit: bound_unit,
           system_prompt: system_prompt,
+          alignment_chain_fingerprint: alignment_chain_fingerprint,
         ),
         prompt: brief,
         step_budget: harness_worker_step_budget,
@@ -656,6 +735,7 @@ fn harness_reviewer_config(
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
     system_prompt: system_prompt,
+    alignment_chain_fingerprint: "",
     request_scratch_path: request_scratch_path,
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: unit),
@@ -669,6 +749,10 @@ fn harness_reviewer_config(
   }
 }
 
+// ATTEMPT IDENTITY IS MINTED BY THE SPAWNER, for the reason harness_worker_cli records: the bind
+// below consumes it as a fleet-ssh path segment and the verdict path is absolute. The reviewer was
+// the one entry 3db98ec3d0 missed; its actor stays seeded on the verdict path (an affinity key,
+// not a path segment) for the spread that seeding bought.
 fn harness_reviewer_cli(
   worktree: String,
   brief: String,
@@ -677,10 +761,11 @@ fn harness_reviewer_cli(
   events_path: String,
   verdict_dir: String,
   verdict_name: String,
+  attempt_identity: String,
 ) -> ProcessExit {
   let verdict_path = join([verdict_dir, "/", verdict_name], "")
   let system_prompt = harness_reviewer_system_prompt_at(worktree: worktree, verdict_path: verdict_path)
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "reviewer", shape: harness_default_wire_shape, system_prompt: system_prompt, user_input: brief), actor: join(["reviewer:", verdict_path], "") as NonEmptyStr, attempt: join(["reviewer:", verdict_path], "") as NonEmptyStr, policy: harness_seat_policy)
+  let binding = harness_bind_seat_waiting(role: "reviewer", system_prompt: system_prompt, brief: brief, actor: join(["reviewer:", verdict_path], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, events_path: events_path)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
@@ -732,6 +817,7 @@ fn harness_auditor_config(
     reasoning_mode: harness_reasoning_mode,
     wire_shape: harness_default_wire_shape,
     system_prompt: system_prompt,
+    alignment_chain_fingerprint: "",
     request_scratch_path: request_scratch_path,
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: unit),
@@ -760,7 +846,7 @@ fn harness_auditor_cli(
 ) -> ProcessExit {
   let verdict_path = join([verdict_dir, "/", verdict_name], "")
   let system_prompt = harness_auditor_system_prompt_at(worktree: worktree, verdict_path: verdict_path)
-  let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "auditor", shape: harness_default_wire_shape, system_prompt: system_prompt, user_input: brief), actor: join(["auditor:", verdict_path], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, policy: harness_seat_policy)
+  let binding = harness_bind_seat_waiting(role: "auditor", system_prompt: system_prompt, brief: brief, actor: join(["auditor:", verdict_path], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, events_path: events_path)
   match binding {
     HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
     HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
@@ -780,6 +866,94 @@ fn harness_auditor_cli(
         ),
         prompt: brief,
         step_budget: harness_reviewer_step_budget,
+      )
+      let seat_release = harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr)
+      harness_turn_exit_released(outcome: outcome, seat: seat_release)
+    }
+  }
+}
+
+// THE SUPERVISOR ENTRY: the reviewer's harness under the supervisor's own prompt
+// (gunbc.harness.harness_supervisor_guidance) and one typed output -- the verdict receipt the
+// belt's continuation decision reads on the next dispatch evaluation. Same seat admission, same
+// completion-by-artifact: the verdict file IS the session's product, so the turn completes when it
+// appears, exactly as the reviewer's does.
+//
+// THE BUDGET IS A DECLARED POLICY ROW, NOT A LITERAL (docs/plans/harness-work-lifecycle.md,
+// "Resource policy": escalation sessions run one to two magnitudes above the leaf budget they
+// supervise -- the supervisor must re-read the checkpoint, adjudicate, and still have runway to
+// act, which a same-size budget cannot do). The multiplier is the low end of the declared band,
+// applied to the worker's own row so the two budgets can never drift apart silently.
+data harness_supervisor_budget_multiplier: Int = 10
+
+data harness_supervisor_step_budget: Int = harness_worker_step_budget * harness_supervisor_budget_multiplier
+
+fn harness_supervisor_config(
+  worktree: FilePath,
+  timeout_program: FilePath,
+  request_scratch_path: FilePath,
+  events_path: FilePath,
+  verdict_dir: String,
+  verdict_name: String,
+  backend_url: String,
+  model: NonEmptyStr,
+  unit: HarnessServingUnit,
+  system_prompt: String,
+) -> HarnessTurnConfig {
+  HarnessTurnConfig {
+    backend_url: backend_url,
+    model: model as String,
+    max_tokens: harness_default_max_tokens,
+    serving_unit: unit,
+    reasoning_mode: harness_reasoning_mode,
+    wire_shape: harness_default_wire_shape,
+    system_prompt: system_prompt,
+    alignment_chain_fingerprint: "",
+    request_scratch_path: request_scratch_path,
+    events_path: events_path,
+    context_budget: harness_context_budget_for(unit: unit),
+    request_deadline: harness_request_deadline,
+    environment: HarnessToolEnvironment {
+      working_directory: worktree,
+      timeout_program: timeout_program,
+      duration_limit_seconds: harness_default_duration_limit_seconds,
+    },
+    completion: CompletesWhenEntryPresent { directory: verdict_dir, name: verdict_name },
+  }
+}
+
+fn harness_supervisor_cli(
+  worktree: String,
+  brief: String,
+  timeout_program: String,
+  request_scratch_path: String,
+  events_path: String,
+  verdict_dir: String,
+  verdict_name: String,
+  attempt_identity: String,
+) -> ProcessExit {
+  let verdict_path = join([verdict_dir, "/", verdict_name], "")
+  let system_prompt = supervisor_system_prompt_at(worktree: worktree, verdict_path: verdict_path)
+  let binding = harness_bind_seat_waiting(role: "supervisor", system_prompt: system_prompt, brief: brief, actor: join(["supervisor:", verdict_path], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, events_path: events_path)
+  match binding {
+    HarnessSeatRefused { detail } => harness_backend_refusal_exit(detail: detail)
+    HarnessSeatPending { detail } => harness_placement_pending_exit(detail: detail)
+    HarnessSeatBound { url, grant: _, partition: _, ceiling: _, group_wire: _, launch: _, store: _, model: bound_model, unit: bound_unit, class: _ } => {
+      let outcome = harness_run_turn(
+        config: harness_supervisor_config(
+          worktree: worktree as FilePath,
+          timeout_program: timeout_program as FilePath,
+          request_scratch_path: request_scratch_path as FilePath,
+          events_path: events_path as FilePath,
+          verdict_dir: verdict_dir,
+          verdict_name: verdict_name,
+          backend_url: url,
+          model: bound_model,
+          unit: bound_unit,
+          system_prompt: system_prompt,
+        ),
+        prompt: brief,
+        step_budget: harness_supervisor_step_budget,
       )
       let seat_release = harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr)
       harness_turn_exit_released(outcome: outcome, seat: seat_release)

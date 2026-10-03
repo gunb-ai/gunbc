@@ -8,8 +8,12 @@ import std.types { GitRef, FilePath }
 import extdeps.git
 import v2.workflow.floor_unimported_bare_provider_debt_roster {
   UnimportedBareProviderRowView,
+  ActiveDebt,
   Retired,
+  ImportsFixed,
+  FileDeleted,
   RelocatedOutOfSourceRoots,
+  NotAReference,
   unimported_bare_provider_roster_rows,
 }
 
@@ -81,7 +85,10 @@ fn unimported_bare_provider_roster_coherence(rows: List<UnimportedBareProviderRo
 }
 
 // The edit against the base. Growth and removal are identity-set differences; a transition is a
-// label comparison, admitted only from ActiveDebt or to the same retired label.
+// label comparison, admitted only from ActiveDebt, to the same retired label, or from a retirement to
+// FileDeleted: a file whose pairs were retired can still be deleted later, and the standing check
+// requires FileDeleted of a row whose file is gone (and refuses it while the file exists), so without
+// that one transition no edit could delete such a file.
 fn unimported_bare_provider_roster_edit(
   base: List<UnimportedBareProviderRowView>,
   head: List<UnimportedBareProviderRowView>,
@@ -104,7 +111,7 @@ fn unimported_bare_provider_roster_edit(
       match map_lookup(m: head_labels, key: b.identity) {
         Absent => acc + ["RosterRemovedIdentity " + b.identity + " (was " + b.label + ")"]
         Present { value: now } =>
-          if b.active || now == b.label {
+          if b.active || now == b.label || now == "Retired FileDeleted" {
             acc
           } else {
             acc + ["RosterRetirementChanged " + b.identity + " (" + b.label + " -> " + now + ")"]
@@ -123,7 +130,10 @@ fn unimported_bare_provider_row_standing(
 ) -> List<String> {
   let relocation_not_done = match r.standing {
     Retired { cause: RelocatedOutOfSourceRoots { to: _ } } => exists
-    _ => false
+    ActiveDebt => false
+    Retired { cause: ImportsFixed } => false
+    Retired { cause: FileDeleted } => false
+    Retired { cause: NotAReference } => false
   }
   if r.active && !exists {
     ["ActiveDebtOnAbsentFile " + r.identity + " -- the file is gone; retire the row as FileDeleted"]

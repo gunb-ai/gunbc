@@ -4,7 +4,26 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, CommitSha, String }
 import extdeps.git.object_store { GitObjectId, git_object_id_eq, git_object_id_wire_hex, git_sha1_object_id }
 import extdeps.github.checks { Success, Failure }
-import tools.merge_admission_walk { merge_admission_fetch_stall_deadline_seconds }
+import extdeps.filesystem.filesystem_io {
+  FilesystemFileObservation,
+  filesystem_read_outcome,
+  filesystem_listing_observation,
+  filesystem_file_observation,
+}
+import tools.merge_admission_walk {
+  merge_admission_fetch_stall_deadline_seconds,
+  TestedSubjectWireRead,
+  TestedSubjectWireAbsent,
+  TestedSubjectWireUnobservable,
+  FloorReceiptWireRead,
+  FloorReceiptWireAbsent,
+  FloorReceiptWireUnobservable,
+  tested_subject_wire_observation_of,
+  floor_receipt_wire_observation_of,
+  merge_target_refresh_refusal_label,
+  RefreshTestedSubjectWireUnreadable,
+  RefreshFloorReceiptWireUnreadable,
+}
 import gunbc.merge_admission_subject {
   TestedSubject,
   WalkAttemptId,
@@ -775,4 +794,155 @@ test fn subject_wire_refuses_a_blank_base_commit_line() -> Bool {
     head: head_sha_fx,
     base_commit: "",
   ))
+}
+
+// ---- THE STAGE WIRE OBSERVATIONS (tools.merge_admission_walk) ----
+//
+// read_tested_subject and read_floor_receipt execute Filesystem.List and Filesystem.Read against
+// the stage's wire paths; these claims hold the translation that consumes what they reported,
+// built over authored channel values through the filesystem observation fold.
+//
+// THE RED CELLS ARE THE DEFECT AS FOUND. Both readers used to answer the Optional's absent arm on
+// a refused read, so a stage receipt that exists and cannot be read reported exactly what a stage
+// that never wrote reports. Absence now comes only from a listing that succeeded.
+fn stage_wire_observation(
+  listing_success: Bool,
+  entries: String,
+  listing_error: String,
+  read_success: Bool,
+  content: String,
+  read_error: String
+) -> FilesystemFileObservation {
+  filesystem_file_observation(
+    listing: filesystem_listing_observation(
+      directory: "/repo/target/merge-admission",
+      success: listing_success,
+      entries: entries,
+      error: listing_error,
+    ),
+    name: "tested-subject.txt",
+    path: "/repo/target/merge-admission/tested-subject.txt",
+    read: filesystem_read_outcome(content: content, success: read_success, error: read_error)
+  )
+}
+
+test fn an_unreadable_but_listed_subject_wire_is_unobservable_not_missing() -> Bool {
+  match tested_subject_wire_observation_of(o: stage_wire_observation(
+    listing_success: true,
+    entries: "tested-subject.txt\n",
+    listing_error: "",
+    read_success: false,
+    content: "",
+    read_error: "Permission denied (os error 13)"
+  )) {
+    TestedSubjectWireUnobservable { cause: c } =>
+      string_contains(s: c, pattern: "Permission denied")
+        && string_contains(
+          s: merge_target_refresh_refusal_label(cause: RefreshTestedSubjectWireUnreadable { cause: c }),
+          pattern: "unreadable",
+        )
+    TestedSubjectWireAbsent(_) => false
+    TestedSubjectWireRead { decoded: _ } => false
+  }
+}
+
+test fn an_unlistable_stage_wire_directory_is_unobservable_not_missing() -> Bool {
+  match tested_subject_wire_observation_of(o: stage_wire_observation(
+    listing_success: false,
+    entries: "",
+    listing_error: "Permission denied (os error 13)",
+    read_success: false,
+    content: "",
+    read_error: "Permission denied (os error 13)"
+  )) {
+    TestedSubjectWireUnobservable { cause: _ } => true
+    TestedSubjectWireAbsent(_) => false
+    TestedSubjectWireRead { decoded: _ } => false
+  }
+}
+
+test fn a_subject_wire_absent_from_the_listing_is_the_only_missing_route() -> Bool {
+  match tested_subject_wire_observation_of(o: stage_wire_observation(
+    listing_success: true,
+    entries: "other.txt\n",
+    listing_error: "",
+    read_success: false,
+    content: "",
+    read_error: "No such file or directory (os error 2)"
+  )) {
+    TestedSubjectWireAbsent(_) => true
+    TestedSubjectWireUnobservable { cause: _ } => false
+    TestedSubjectWireRead { decoded: _ } => false
+  }
+}
+
+test fn a_listed_and_decodable_subject_wire_reads() -> Bool {
+  match tested_subject_wire_observation_of(o: stage_wire_observation(
+    listing_success: true,
+    entries: "tested-subject.txt\n",
+    listing_error: "",
+    read_success: true,
+    content: render_tested_subject_wire(subject: subject_fx(attempt: attempt_a(), head: head_sha_fx)),
+    read_error: ""
+  )) {
+    TestedSubjectWireRead { decoded: d } =>
+      match d {
+        Present { value: subject } => subject.head_sha == head_sha_fx
+        Absent => false
+      }
+    TestedSubjectWireAbsent(_) => false
+    TestedSubjectWireUnobservable { cause: _ } => false
+  }
+}
+
+test fn an_unreadable_but_listed_floor_receipt_is_unobservable_not_missing() -> Bool {
+  match floor_receipt_wire_observation_of(o: filesystem_file_observation(
+    listing: filesystem_listing_observation(
+      directory: "/repo/target/merge-admission",
+      success: true,
+      entries: "floor-receipt.txt\n",
+      error: "",
+    ),
+    name: "floor-receipt.txt",
+    path: "/repo/target/merge-admission/floor-receipt.txt",
+    read: filesystem_read_outcome(
+      content: "",
+      success: false,
+      error: "Permission denied (os error 13)"
+    )
+  )) {
+    FloorReceiptWireUnobservable { cause: c } =>
+      string_contains(
+        s: merge_target_refresh_refusal_label(cause: RefreshFloorReceiptWireUnreadable { cause: c }),
+        pattern: "unreadable",
+      )
+    FloorReceiptWireAbsent(_) => false
+    FloorReceiptWireRead { decoded: _ } => false
+  }
+}
+
+test fn a_listed_and_decodable_floor_receipt_reads() -> Bool {
+  match floor_receipt_wire_observation_of(o: filesystem_file_observation(
+    listing: filesystem_listing_observation(
+      directory: "/repo/target/merge-admission",
+      success: true,
+      entries: "floor-receipt.txt\n",
+      error: "",
+    ),
+    name: "floor-receipt.txt",
+    path: "/repo/target/merge-admission/floor-receipt.txt",
+    read: filesystem_read_outcome(
+      content: render_receipt_wire_v2(receipt: receipt_fx(attempt: attempt_a(), head: head_sha_fx)),
+      success: true,
+      error: ""
+    )
+  )) {
+    FloorReceiptWireRead { decoded: d } =>
+      match d {
+        Present { value: receipt } => receipt.tested_head_sha == head_sha_fx
+        Absent => false
+      }
+    FloorReceiptWireAbsent(_) => false
+    FloorReceiptWireUnobservable { cause: _ } => false
+  }
 }
