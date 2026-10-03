@@ -288,6 +288,12 @@ These were settled while building slice A and through its side-chat reviews. Eac
 - **#13025's `secondary_checkpoints` is deleted (Q3).** The per-socket CP classification belongs to the private refinement slice.
 - **The receipt's live inputs are slice B (Q4).** Slice B adds the boot-workflow input for the applied stimulus (with a human inspection receipt through the operator-attested route), the current population, and the pre-power-on firmware readback. Until it lands, those fields are `NotRecorded` and every question needing them is open.
 
+## 11. Questions
+
+Q1 and Q2 were decided by the side chat on `75f0bd113c` and are encoded in §1, §3 and §5. Q3 (delete `secondary_checkpoints`) and Q4 (add the receipt inputs, as slice B) were decided during slice A (§10a). Q5 is decided; Q6 is the only one open:
+- **Q5 (decided by eager-gull-22, 2026-10-03):** the plan and the inspection receipt are committed JSON under `artifacts/receipts/`, read from the checkout by a fail-closed typed reader that records the file's digest. One dispatch input names the file. Inline JSON in a dispatch input is refused.
+- **Q6 (open, with the operator):** adding that dispatch input to the fleet-converge workflow surface.
+
 ## 12. Slice B: the attempt receipt's live inputs (plan, for review before code)
 
 Slice B fills the `AttemptConfigurationReceipt` fields that slice A records as `NotRecorded` (decided Q4). The boot run takes its host as a `ManagedHost` / `ManagedHostBinding` (`gunbc.managed_host`), not as mtcollins1 constants; cut 4d of the managed-host untangle will re-root the rest of the run. Code waits on Q6 and this section's approval.
@@ -349,9 +355,3 @@ The pre-power-on firmware readback is bound to the same plan (`FirmwareReadBefor
 | firmware | a new pre-power-on `hpm check` read through `extdeps.bmc.ipmi` (none exists on main; `gunbc.fleet.mtcollins_firmware_converge` only renders a dry argv), plus the SMpro version word where it answers, both bound to the plan |
 
 **Delivery (Q5, decided by eager-gull-22 on 2026-10-03).** The plan and the inspection receipt are committed JSON under `artifacts/receipts/`, reviewed and versioned like any change. eager-gull-22 authors them from what the operator reports about the physical change. One fleet-converge dispatch input names the receipt file, and the boot run reads it from the checkout with the fail-closed typed reader above. Inline JSON in a dispatch input is refused because it is not reviewable. Adding that input is Q6, which is open.
-
-## 11. Questions
-
-Q1 and Q2 were decided by the side chat on `75f0bd113c` and are encoded in §1, §3 and §5. Q3 (delete `secondary_checkpoints`) and Q4 (add the receipt inputs, as slice B) were decided during slice A (§10a). Open:
-- **Q5 (decided by eager-gull-22, 2026-10-03):** the plan and the inspection receipt are committed JSON under `artifacts/receipts/`, read from the checkout by a fail-closed typed reader that records the file's digest. One dispatch input names the file. Inline JSON in a dispatch input is refused.
-- **Q6 (open, with the operator):** adding that dispatch input to the fleet-converge workflow surface.
