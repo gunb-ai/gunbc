@@ -2,7 +2,7 @@ module gunbc.auth.standing_operator_grant
 
 import std.types { String, Bool, List, NonEmptyStr, Timestamp }
 import product.placement_supply { HostIdentity, host_identity_eq }
-import std.list { list_cover }
+import std.list { list_member }
 import std.scoped_authorization { OperatorGrant, ScopedAuthorization, AuthorizationGranted, AuthorizationRequest, Unclaimed }
 import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
@@ -29,17 +29,22 @@ import gunbc.auth.authorization_pattern_selection { StandingDestructiveAuthoriza
 // THE EFFECTS ARE ONLY THOSE A GATE CONSUMES (DESIGN §3c, review 74624). D0's release is consumed here
 // (gunbc.spark.pair_serving_d0_door d0_gate). ArmLaunch is a declared frontier: its consumer is the
 // launch gate's released-group arm, gunbc.spark.group_arm_launch group_arm_released_launch_causes, which
-// lands in gunbc#13040 (stacked on this change). The image, checkpoint and teardown effects the ruling
-// also covers are NOT rows: nothing gates them on a grant (they are fenced by the per-host claim), and
-// an effect row nothing reads would pre-authorize what no wall asks about.
+// lands in gunbc#13040 (stacked on this change). HostEffectRecover is a declared frontier with the same
+// consumer PR: the dispatched recovery of a dead lane's host-effect claim on a Group A host
+// (gunbc.spark.host_commitment's release, which settles only after a fresh quiescence read of the host --
+// never on a claim's term alone; ruling of valiant-crab-775, 2026-10-03). The image, checkpoint and teardown
+// effects the ruling also covers are NOT rows: nothing gates them on a grant (they are fenced by the
+// per-host claim), and an effect row nothing reads would pre-authorize what no wall asks about.
 type StandingGrantEffect
   = StandingD0ReleaseToFleet
   | StandingArmLaunch
+  | StandingHostEffectRecover
 
 fn standing_grant_effect_wire(e: StandingGrantEffect) -> NonEmptyStr {
   match e {
     StandingD0ReleaseToFleet => "d0-release-to-fleet" as NonEmptyStr
     StandingArmLaunch => "arm-launch" as NonEmptyStr
+    StandingHostEffectRecover => "host-effect-recover" as NonEmptyStr
   }
 }
 
@@ -64,23 +69,26 @@ data group_a_dev_standing_grant: StandingOperatorGrant = StandingOperatorGrant {
   principal: "operator" as NonEmptyStr,
   ruled_at: "2026-10-03T05:00:00Z",
   ruling: StandingDestructiveAuthorization {
-    ruling_text: "Operator ruling 2026-10-03, given directly in valiant-crab-775's session and relayed by dashboard message msg_2940687d: 'you have my permission to use group A however you want from now on.' The approval broker and app are a separate lane and will not be set up now. Scope as relayed: FabricGroupA hosts srv5-srv8; the D0 release-to-fleet plus the GLM staircase's host effects (image produce and distribute, checkpoint materialize, arm launch and teardown). Group B is outside it." as NonEmptyStr,
+    ruling_text: "Operator ruling 2026-10-03, given directly in valiant-crab-775's session and relayed by dashboard message msg_2940687d: 'you have my permission to use group A however you want from now on.' The approval broker and app are a separate lane and will not be set up now. Scope as relayed: FabricGroupA hosts srv5-srv8; the D0 release-to-fleet plus the GLM staircase's host effects (image produce and distribute, checkpoint materialize, arm launch and teardown), and, per valiant-crab-775 on 2026-10-03, recovering a dead lane's host-effect claim on a Group A host after a fresh quiescence read. Group B is outside it." as NonEmptyStr,
     effect_subject: "Group A development effects: the D0 release-to-fleet of Group A's pair-serving authority and the GLM-5.3-Flash staircase's host effects on srv5-srv8" as NonEmptyStr,
     interlock: decl_ref(module_path: "gunbc.spark.pair_serving_d0", decl_name: "d0_claim_grant"),
   },
   group: FabricGroupA,
   hosts: [operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8],
-  effects: [StandingD0ReleaseToFleet, StandingArmLaunch],
+  effects: [StandingD0ReleaseToFleet, StandingArmLaunch, StandingHostEffectRecover],
 }
 
 // COVERAGE IS AN IDENTITY JOIN: the group is the grant's, the effect is one of its effects, and EVERY host
 // the effect touches is one of its hosts (a host outside the roster is outside the ruling, however few).
 // An empty host list touches nothing a ruling could cover, so it is not covered.
+// SUBSET, NOT SET EQUALITY: std.list list_cover is equality in both directions, and using it here made an
+// effect on ONE granted host (a host-effect recovery on srv7) uncovered while all four passed -- found by
+// the recovery's witness (2026-10-03). Every effect host must be granted; the effect need not touch all.
 fn standing_grant_covers(g: StandingOperatorGrant, group: FabricGroup, effect: StandingGrantEffect, hosts: List<HostIdentity>) -> Bool {
   (fabric_group_wire(g: g.group) as String) == (fabric_group_wire(g: group) as String)
     && any(g.effects, e => (standing_grant_effect_wire(e: e) as String) == (standing_grant_effect_wire(e: effect) as String))
     && length(hosts) != 0
-    && list_cover(held: g.hosts, expected: hosts, eq: fn(a, b) { host_identity_eq(a: a, b: b) })
+    && all(hosts, h => list_member(xs: g.hosts, x: h, eq: fn(a, b) { host_identity_eq(a: a, b: b) }))
 }
 
 // THE GRANT A CONSUMER ACTS UNDER, MINTED OVER THE EXACT REQUEST: its scopes, subject and intent are the
