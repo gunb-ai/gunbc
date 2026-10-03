@@ -3,7 +3,7 @@ new file mode 100644
 index 0000000..ed3e6e0
 --- /dev/null
 +++ b/vllm/models/deepseek_v4_1/nvidia/engram_file_backed.py
-@@ -0,0 +1,774 @@
+@@ -0,0 +1,830 @@
 +# File-backed Engram storage for vLLM d2d649e674c75425d2d6975c87eb89fd4d55fff8.
 +#
 +# THIS IS A BACKING SWAP, NOT NEW PREFETCH MACHINERY. Upstream
@@ -77,6 +77,11 @@ index 0000000..ed3e6e0
 +
 +class EngramPageCacheResident(RuntimeError):
 +    pass
++
++
++# Bounded retry of the post-verify page-cache release (see _verify_and_release).
++_RELEASE_ATTEMPTS = 5
++_RELEASE_PAUSE_S = 0.2
 +
 +
 +class EngramRowOffsetMisaligned(RuntimeError):
@@ -196,7 +201,7 @@ index 0000000..ed3e6e0
 +            # The mmap is read-only; the table is only ever read through index.
 +            warnings.simplefilter("ignore", UserWarning)
 +            self._table = torch.frombuffer(self._mmap, dtype=torch.uint8)
-+        self._span = torch.arange(expected.record_bytes, dtype=torch.int64)
++        self._span = torch.arange(expected.record_bytes, dtype=torch.int64, device="cpu")
 +        self._header_ok = True
 +        self._page_bytes = os.sysconf("SC_PAGE_SIZE")
 +        self._page_count = (self._mmap.size() + self._page_bytes - 1) // self._page_bytes
@@ -226,8 +231,19 @@ index 0000000..ed3e6e0
 +        if head != self.expected.magic:
 +            raise EngramRowStoreIdentityMismatch("row-store MAGIC mismatch")
 +        after_verify = resident_bytes(self._fd, verified)
-+        os.posix_fadvise(self._fd, 0, verified, os.POSIX_FADV_DONTNEED)
-+        after_release = resident_bytes(self._fd, verified)
++        # POSIX_FADV_DONTNEED is advisory: pages still in flight from the hash pass's
++        # readahead can survive one call (srv8, 2026-10-02: 135168 of 25345200678 bytes
++        # left, the rank refused and the four-rank launch hung). The release is
++        # retried a bounded number of times with a short pause; residue that
++        # survives every attempt still refuses, and the receipt records the count.
++        after_release = after_verify
++        attempts = 0
++        while attempts < _RELEASE_ATTEMPTS and (attempts == 0 or after_release != 0):
++            if attempts > 0:
++                time.sleep(_RELEASE_PAUSE_S)
++            os.posix_fadvise(self._fd, 0, verified, os.POSIX_FADV_DONTNEED)
++            after_release = resident_bytes(self._fd, verified)
++            attempts += 1
 +        receipt = EngramStoreOpenReceipt(
 +            store_bytes=store,
 +            verified_bytes=verified,
@@ -237,7 +253,7 @@ index 0000000..ed3e6e0
 +        if after_release != 0:
 +            raise EngramPageCacheResident(
 +                f"{self.path}: {after_release} of {verified} verified bytes remain "
-+                f"page-cache resident after POSIX_FADV_DONTNEED; receipt {receipt}"
++                f"page-cache resident after {attempts} POSIX_FADV_DONTNEED attempts; receipt {receipt}"
 +            )
 +        return receipt
 +
@@ -266,7 +282,7 @@ index 0000000..ed3e6e0
 +                raise EngramRowOffsetMisaligned(
 +                    f"offset {off} is not magic + k * {record} inside a {size}-byte store"
 +                )
-+        return (torch.as_tensor(offsets, dtype=torch.int64).unsqueeze(1) + self._span).view(-1)
++        return (torch.as_tensor(offsets, dtype=torch.int64, device="cpu").unsqueeze(1) + self._span).view(-1)
 +
 +    def fetch_rows(self, offsets: list[int], nbytes: int, dest: torch.Tensor) -> None:
 +        """Copy selected rows, in request order, into an already-allocated
@@ -336,10 +352,10 @@ index 0000000..ed3e6e0
 +    record = storage.expected.record_bytes
 +    count = (storage._mmap.size() - len(storage.expected.magic)) // record
 +    g = torch.Generator().manual_seed(seed)
-+    local = torch.randint(0, count, (rows,), generator=g)
++    local = torch.randint(0, count, (rows,), generator=g, device="cpu")
 +    offsets = (len(storage.expected.magic) + local * record).tolist()
-+    a = torch.zeros((rows, record), dtype=torch.uint8)
-+    b = torch.zeros((rows, record), dtype=torch.uint8)
++    a = torch.zeros((rows, record), dtype=torch.uint8, device="cpu")
++    b = torch.zeros((rows, record), dtype=torch.uint8, device="cpu")
 +    timings = {}
 +    for name, fn, dest in (("batched", storage.fetch_rows, a), ("per_row", storage._fetch_rows_per_row, b)):
 +        fn(offsets, record, dest)
@@ -375,7 +391,7 @@ index 0000000..ed3e6e0
 +    device: torch.device,
 +) -> Tuple[FileBackedEngramStorage, torch.Tensor]:
 +    storage = FileBackedEngramStorage(path, expected)
-+    staging = torch.empty((staging_rows, row_bytes), dtype=torch.uint8, pin_memory=True)
++    staging = torch.empty((staging_rows, row_bytes), dtype=torch.uint8, device="cpu", pin_memory=True)
 +    if staging.numel() >= os.path.getsize(path):
 +        raise EngramFullTablePinned(
 +            "pinned staging is not smaller than the row store; refusing full-table pin"
@@ -577,7 +593,7 @@ index 0000000..ed3e6e0
 +            n = tokens * local_heads
 +            ids_dev = compact_ids.cuda()
 +            _engram_lookup_kernel[(triton.cdiv(n, 16),)](weight, scales, ids_dev, upstream, vocab_start, vocab_start + rows, n, ids_dev.stride(0), ids_dev.stride(1), HEAD_START=head_start, LOCAL_HEADS=local_heads, TOTAL_HEADS=total_heads, DIM=dim, QUANT_BLOCK=block, BLOCK_R=16, GRID=triton.cdiv(n, 16))
-+            staging = torch.empty((n, m.record_bytes), dtype=torch.uint8, pin_memory=True)
++            staging = torch.empty((n, m.record_bytes), dtype=torch.uint8, device="cpu", pin_memory=True)
 +            ours = torch.empty_like(upstream)
 +            present = total_heads - head_start
 +            local_ids = torch.full((tokens, local_heads), -1, dtype=torch.int64)
@@ -744,6 +760,46 @@ index 0000000..ed3e6e0
 +        geometry = True
 +    m.check_checkpoint_geometry(torch.empty((100, 256), dtype=torch.float8_e4m3fn), False, 256, 32, 50)
 +    check("checkpoint geometry refuses a table the stores were not encoded from", geometry)
++
++    # vLLM builds the model under a CUDA default device (torch.utils._device), so a staging
++    # allocation that names no device lands on CUDA and pin_memory refuses. Allocate the way the
++    # launch does; without CUDA the control cannot run and reports FAIL rather than skipping.
++    if not torch.cuda.is_available():
++        check("staging under a CUDA default device is pinned host memory", False, "CUDA unavailable")
++    else:
++        with tempfile.TemporaryDirectory(dir=directory) as d3:
++            p3 = os.path.join(d3, "rank.bin")
++            with open(p3, "wb") as f:
++                f.write(data)
++            try:
++                with torch.device("cuda"):
++                    s3, st3 = m.allocate_file_backed(p3, m.ExpectedRowStoreIdentity(_h.sha256(data).hexdigest(), magic, record), 2, record, torch.device("cuda"))
++                s3.close()
++                check("staging under a CUDA default device is pinned host memory", st3.device.type == "cpu" and st3.is_pinned(), str(st3.device))
++            except RuntimeError as err:
++                check("staging under a CUDA default device is pinned host memory", False, str(err))
++            # The store's own host tensors (the record span, the gather index) are built under the
++            # same context: construct the storage and run one fetch_rows and one design-B lookup
++            # inside it, against the default-context reads above.
++            p4 = os.path.join(d3, "rank2.bin")
++            with open(p4, "wb") as f:
++                f.write(data2)
++            try:
++                with torch.device("cuda"):
++                    s4, st4 = m.allocate_file_backed(p4, m.ExpectedRowStoreIdentity(_h.sha256(data2).hexdigest(), magic, rec), 8, rec, torch.device("cuda"))
++                    try:
++                        got = torch.zeros((2, rec), dtype=torch.uint8, device="cpu")
++                        s4.fetch_rows([len(magic), len(magic) + 7 * rec], rec, got)
++                        out4 = torch.empty((2, 4, dim), dtype=torch.bfloat16, device="cuda")
++                        m.FileBackedLookup(s4, st4, dim, block).lookup(ids, start, end, out4)
++                        torch.cuda.synchronize()
++                    finally:
++                        s4.close()
++                want4 = torch.frombuffer(bytearray(data2[len(magic):len(magic) + rec] + data2[len(magic) + 7 * rec:len(magic) + 8 * rec]), dtype=torch.uint8).view(2, rec)
++                check("fetch_rows under a CUDA default device gathers the store's bytes", torch.equal(got, want4))
++                check("design-B lookup under a CUDA default device equals the reference", torch.equal(out4.cpu().view(torch.int16), want.view(torch.int16)))
++            except RuntimeError as err:
++                check("fetch_rows and lookup under a CUDA default device", False, str(err))
 +
 +    return 0 if all(results) else 1
 +

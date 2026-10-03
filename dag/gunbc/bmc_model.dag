@@ -1,8 +1,7 @@
 module gunbc.bmc_model
 
 import std.types { Bool, Int, List }
-import std.string_type { String }
-import std.measure { Second, second_count }
+import std.measure { Second, second, second_count }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { filter }
 import extdeps.bmc.ipmi_chassis_control {
@@ -11,24 +10,32 @@ import extdeps.bmc.ipmi_chassis_control {
 
 // THE ONE BMC MODEL: scenario state and its transitions, nothing else. The controller operations and
 // their response shapes are interface facts owned by extdeps.bmc (ipmi, ipmi_chassis_control,
-// megarac); this module never re-declares one. It is consumed by the dry operation realization
-// (gunbc.bmc_dry_realization) today and is written to be consumed unchanged by a protocol-speaking
-// simulator later: every transition is pure, time is an INPUT, and persistence is the world value,
-// so whoever runs the model supplies the clock and the storage.
-//
-// THIS IS THE FIRST SLICE: chassis power and one scheduled external event. Media rows, boot
-// parameters, the SOL session and notification delivery arrive with the acceptance matrix that
-// consumes them, as rows of this world, not as a second model.
+// megarac, ipmitool_observed_output); this module never re-declares one. It is consumed by the dry
+// operation realizations (gunbc.bmc_dry_realization, gunbc.machine_intake_mtcollins1_boot_dry_realization)
+// and is written to be consumed unchanged by a protocol-speaking simulator later: every transition is
+// pure, time is an INPUT, and persistence is the world value.
 type BmcPower
   = BmcPowerOn
   | BmcPowerOff
 
-// An event the world undergoes on its own, independent of any request: the SEL on the Mt. Collins
-// unit records `Power Unit ChassisPwrStatus | AC lost` (run 36335369059, mtcollins1-boot-diagnostics.txt
-// sha256 eda19cde2e60d90d3d04946273e615eb5bf774496b9907e03d3bc15dbedc2c1c), which is the grounding for
-// modeling power loss as an event rather than as the answer to a command.
+// THE ONE-SHOT BOOT OVERRIDE (IPMI boot parameter 5), in the two states this controller has been
+// observed in: no override, and a valid next-boot EFI CD/DVD override. A next-boot override is
+// consumed by the boot it applies to, which is what the post-attempt read reports.
+type BmcBootOverride
+  = BootOverrideNone
+  | BootOverrideCdromEfiNextBoot
+
+// An event the world undergoes on its own, independent of any request. AC loss is grounded in the
+// Mt. Collins SEL (run 36335369059, mtcollins1-boot-diagnostics.txt sha256
+// eda19cde2e60d90d3d04946273e615eb5bf774496b9907e03d3bc15dbedc2c1c: `Power Unit ChassisPwrStatus | AC lost`).
+// A dropped SOL session is the controller ending the serial session on its own, which the 2026-09-27
+// incident (gunbc#12423) recorded as a loss mid-boot while the management interface kept answering.
+// A power restore is the second half of a power cycle: the controller drops power, and after the
+// scenario's off interval brings it back, so a read taken inside the interval sees it off.
 type BmcEvent
   = BmcAcPowerLost {}
+  | BmcPowerRestored {}
+  | BmcSolSessionDropped {}
   | BmcKvmStreamClosed {}
 
 type BmcScheduledEvent {
@@ -36,11 +43,43 @@ type BmcScheduledEvent {
   event: BmcEvent
 }
 
+// One system event log record, in the fields `ipmitool sel elist` prints
+// (extdeps.bmc.ipmitool_observed_output ipmitool_sel_elist_line).
+type BmcSelRecord {
+  id_hex: String
+  date: String
+  time: String
+  sensor: String
+  event: String
+  state: String
+}
+
+// sol_drop_after_boot, when a scenario sets it, schedules the controller dropping its SOL session that
+// long after the host starts booting, so the loss follows the route's own power-on rather than a clock
+// guessed in advance.
+// host_booted_at is the virtual instant the host last started booting (power on, or the restore of a
+// cycle); the host's console is timed from it. booted_via_override records whether that boot consumed
+// the one-shot override.
 type BmcWorld {
   power: BmcPower
   pending: List<BmcScheduledEvent>
   fired: List<BmcScheduledEvent>
+  boot_override: BmcBootOverride
+  sel: List<BmcSelRecord>
+  sol_session_open: Bool
+  cycle_off_interval: Second
+  host_booted_at: Second?
+  booted_via_override: Bool
+  sol_drop_after_boot: Second?
   web: BmcWebWorld
+}
+
+fn bmc_world(power: BmcPower) -> BmcWorld {
+  BmcWorld {
+    power: power, pending: [], fired: [], boot_override: BootOverrideNone, sel: [],
+    sol_session_open: false, cycle_off_interval: second(count: 5), host_booted_at: none, booted_via_override: false, sol_drop_after_boot: none,
+    web: bmc_web_world_untouched,
+  }
 }
 
 // THE WEB AND KVM SURFACE OF A MegaRAC SP-X CONTROLLER (firmware 0.32; operations and wire shapes in
@@ -86,10 +125,10 @@ data bmc_web_world_untouched: BmcWebWorld = BmcWebWorld {
 }
 
 // A COMMAND'S EFFECT AND ITS REPLY ARE SEPARATE FACTS. effect_taken says whether the world changed;
-// the reply is the adapter's to render from the new world. §28.3 recommends a controller refuse a
-// power cycle at an OFF host with completion code D5h; the Mt. Collins MegaRAC does not, and answers
-// success doing nothing (extdeps.bmc.ipmi_chassis_control, run 36023602469). The model follows the
-// observed unit, and that departure from the recommendation is the reason the arm exists.
+// the reply is the adapter's to render. §28.3 recommends a controller refuse a power cycle at an OFF
+// host with completion code D5h; the Mt. Collins MegaRAC does not, and answers success doing nothing
+// (extdeps.bmc.ipmi_chassis_control, run 36023602469). The model follows the observed unit, and that
+// departure from the recommendation is the reason the arm exists.
 type BmcChassisControlStep {
   world: BmcWorld
   effect_taken: Bool
@@ -103,11 +142,21 @@ fn bmc_power_is_on(world: BmcWorld) -> Bool {
 }
 
 fn bmc_with_power(world: BmcWorld, power: BmcPower) -> BmcWorld {
-  BmcWorld { power: power, pending: world.pending, fired: world.fired, web: world.web }
+  BmcWorld {
+    power: power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
+    sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
+    host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
+    web: world.web,
+  }
 }
 
 fn bmc_with_web(world: BmcWorld, web: BmcWebWorld) -> BmcWorld {
-  BmcWorld { power: world.power, pending: world.pending, fired: world.fired, web: web }
+  BmcWorld {
+    power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
+    sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
+    host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
+    web: web,
+  }
 }
 
 fn bmc_web_with(web: BmcWebWorld, sessions: List<BmcWebSession>, next_session_id: Int, kvm: BmcKvmStream) -> BmcWebWorld {
@@ -152,7 +201,8 @@ fn bmc_web_session_of_token(world: BmcWorld, csrf_token: String) -> List<BmcWebS
 fn bmc_kvm_viewer_count(world: BmcWorld) -> Int {
   world.web.other_kvm_viewers + match world.web.kvm {
     BmcKvmStreaming { session: _ } => 1
-    _ => 0
+    BmcKvmIdle {} => 0
+    BmcKvmClosedByController { session: _ } => 0
   }
 }
 
@@ -209,35 +259,150 @@ fn bmc_web_logout(world: BmcWorld, csrf_token: String) -> BmcWebLogoutStep {
   }
 }
 
-fn bmc_chassis_control(world: BmcWorld, action: IpmiChassisControlAction) -> BmcChassisControlStep {
+fn bmc_with_override(world: BmcWorld, over: BmcBootOverride) -> BmcWorld {
+  BmcWorld {
+    power: world.power, pending: world.pending, fired: world.fired, boot_override: over, sel: world.sel,
+    sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
+    host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
+    web: world.web,
+  }
+}
+
+fn bmc_with_sol_session(world: BmcWorld, open: Bool) -> BmcWorld {
+  BmcWorld {
+    power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
+    sol_session_open: open, cycle_off_interval: world.cycle_off_interval,
+    host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
+    web: world.web,
+  }
+}
+
+fn bmc_with_pending(world: BmcWorld, pending: List<BmcScheduledEvent>, fired: List<BmcScheduledEvent>) -> BmcWorld {
+  BmcWorld {
+    power: world.power, pending: pending, fired: fired, boot_override: world.boot_override, sel: world.sel,
+    sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
+    host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
+    web: world.web,
+  }
+}
+
+// The host starts booting now: power is on, the boot is timed from here, and a pending next-boot
+// override is consumed by it.
+fn bmc_host_boots(world: BmcWorld, now: Second) -> BmcWorld {
+  let via = match world.boot_override { BootOverrideCdromEfiNextBoot => true BootOverrideNone => false }
+  let pending = match world.sol_drop_after_boot {
+    Absent => world.pending
+    Present { value: after } => list_append(world.pending, BmcScheduledEvent { at: second(count: second_count(s: now) + second_count(s: after)), event: BmcSolSessionDropped {} })
+  }
+  BmcWorld {
+    power: BmcPowerOn, pending: pending, fired: world.fired, boot_override: BootOverrideNone, sel: world.sel,
+    sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
+    host_booted_at: Present { value: now }, booted_via_override: via, sol_drop_after_boot: world.sol_drop_after_boot,
+    web: world.web,
+  }
+}
+
+fn bmc_chassis_control(world: BmcWorld, action: IpmiChassisControlAction, now: Second) -> BmcChassisControlStep {
   match action {
-    IpmiChassisPowerUp => BmcChassisControlStep { world: bmc_with_power(world: world, power: BmcPowerOn), effect_taken: !bmc_power_is_on(world: world) }
+    IpmiChassisPowerUp =>
+      if bmc_power_is_on(world: world) { BmcChassisControlStep { world: world, effect_taken: false } }
+      else { BmcChassisControlStep { world: bmc_host_boots(world: world, now: now), effect_taken: true } }
     IpmiChassisPowerDown => BmcChassisControlStep { world: bmc_with_power(world: world, power: BmcPowerOff), effect_taken: bmc_power_is_on(world: world) }
-    IpmiChassisPowerCycle => BmcChassisControlStep { world: world, effect_taken: bmc_power_is_on(world: world) }
-    IpmiChassisHardReset => BmcChassisControlStep { world: world, effect_taken: bmc_power_is_on(world: world) }
+    IpmiChassisPowerCycle =>
+      if bmc_power_is_on(world: world) {
+        let off = bmc_with_power(world: world, power: BmcPowerOff)
+        let restore = BmcScheduledEvent { at: second(count: second_count(s: now) + second_count(s: world.cycle_off_interval)), event: BmcPowerRestored {} }
+        BmcChassisControlStep { world: bmc_with_pending(world: off, pending: list_append(off.pending, restore), fired: off.fired), effect_taken: true }
+      } else { BmcChassisControlStep { world: world, effect_taken: false } }
+    IpmiChassisHardReset =>
+      if bmc_power_is_on(world: world) { BmcChassisControlStep { world: bmc_host_boots(world: world, now: now), effect_taken: true } }
+      else { BmcChassisControlStep { world: world, effect_taken: false } }
   }
 }
 
 // A stream the controller closes on its own (the dropped /kvm connection) ends the stream but not
 // the web session that opened it.
-fn bmc_apply_event(world: BmcWorld, event: BmcEvent) -> BmcWorld {
+fn bmc_apply_event(world: BmcWorld, event: BmcEvent, at: Second) -> BmcWorld {
   match event {
     BmcAcPowerLost {} => bmc_with_power(world: world, power: BmcPowerOff)
+    BmcPowerRestored {} => bmc_host_boots(world: world, now: at)
+    BmcSolSessionDropped {} => bmc_with_sol_session(world: world, open: false)
     BmcKvmStreamClosed {} => match world.web.kvm {
       BmcKvmStreaming { session: k } => bmc_with_web(world: world, web: bmc_web_with(web: world.web, sessions: world.web.sessions, next_session_id: world.web.next_session_id, kvm: BmcKvmClosedByController { session: k }))
-      _ => world
+      BmcKvmIdle {} => world
+      BmcKvmClosedByController { session: _ } => world
     }
   }
 }
 
-// Every event due at or before `now` fires, in schedule order, and moves from pending to fired.
+// EVERY EVENT DUE AT OR BEFORE `now` FIRES, EARLIEST FIRST, AND AN EVENT A TRANSITION SCHEDULES IS
+// KEPT. One due event is taken off the world's own pending list, applied, and recorded as fired; the
+// advance then repeats on the world THAT TRANSITION PRODUCED, so an event it scheduled -- a power
+// restore arming its SOL drop -- stays pending and fires in turn if it too is due. (An earlier fold
+// rebuilt pending from its own accumulator after each transition and so discarded exactly those
+// events: #12423 side-chat review 5342387382.) Each step fires one due event, so the repetition ends.
+// With nothing due the world is returned as it is rather than rebuilt.
 fn bmc_advance(world: BmcWorld, now: Second) -> BmcWorld {
-  fold(world.pending, init: BmcWorld { power: world.power, pending: [], fired: world.fired, web: world.web }, f: fn(acc, e) {
-    if second_count(s: e.at) <= second_count(s: now) {
-      let applied = bmc_apply_event(world: acc, event: e.event)
-      BmcWorld { power: applied.power, pending: acc.pending, fired: list_append(acc.fired, e), web: applied.web }
-    } else {
-      BmcWorld { power: acc.power, pending: list_append(acc.pending, e), fired: acc.fired, web: acc.web }
+  match bmc_first_due(pending: world.pending, now: now) {
+    Absent => world
+    Present { value: e } => {
+      let remaining = bmc_without_first(pending: world.pending, event: e)
+      let applied = bmc_apply_event(world: bmc_with_pending(world: world, pending: remaining, fired: world.fired), event: e.event, at: e.at)
+      bmc_advance(world: bmc_with_pending(world: applied, pending: applied.pending, fired: list_append(applied.fired, e)), now: now)
+    }
+  }
+}
+
+// The due event with the earliest instant; among equal instants, the first in schedule order.
+fn bmc_no_event() -> BmcScheduledEvent? {
+  none
+}
+
+fn bmc_first_due(pending: List<BmcScheduledEvent>, now: Second) -> BmcScheduledEvent? {
+  fold(pending, init: bmc_no_event(), f: fn(acc, e) {
+    if second_count(s: e.at) > second_count(s: now) { acc } else {
+      match acc {
+        Absent => Present { value: e }
+        Present { value: best } => if second_count(s: e.at) < second_count(s: best.at) { Present { value: e } } else { acc }
+      }
     }
   })
+}
+
+type BmcPendingRemoval {
+  kept: List<BmcScheduledEvent>
+  removed: Bool
+}
+
+// Removes ONE occurrence -- the first equal to `event` -- so two identical scheduled events fire twice.
+fn bmc_without_first(pending: List<BmcScheduledEvent>, event: BmcScheduledEvent) -> List<BmcScheduledEvent> {
+  fold(pending, init: BmcPendingRemoval { kept: [], removed: false }, f: fn(acc, e) {
+    if !acc.removed && second_count(s: e.at) == second_count(s: event.at) && bmc_event_eq(a: e.event, b: event.event) {
+      BmcPendingRemoval { kept: acc.kept, removed: true }
+    } else {
+      BmcPendingRemoval { kept: list_append(acc.kept, e), removed: acc.removed }
+    }
+  }).kept
+}
+
+fn bmc_event_eq(a: BmcEvent, b: BmcEvent) -> Bool {
+  match a {
+    BmcAcPowerLost {} => match b { BmcAcPowerLost {} => true _ => false }
+    BmcPowerRestored {} => match b { BmcPowerRestored {} => true _ => false }
+    BmcSolSessionDropped {} => match b { BmcSolSessionDropped {} => true _ => false }
+    BmcKvmStreamClosed {} => match b { BmcKvmStreamClosed {} => true _ => false }
+  }
+}
+
+fn bmc_with_sol_drop_after_boot(world: BmcWorld, after: Second) -> BmcWorld {
+  BmcWorld {
+    power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
+    sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
+    host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: Present { value: after },
+    web: world.web,
+  }
+}
+
+fn bmc_sol_drop_fired(world: BmcWorld) -> Bool {
+  !all(world.fired, e => match e.event { BmcSolSessionDropped {} => false _ => true })
 }

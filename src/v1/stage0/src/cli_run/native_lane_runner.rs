@@ -217,6 +217,52 @@ struct EmittedBuildObserved {
     rustc_identity: String,
     exit_status: i64,
     warning_count: i64,
+    warning_headers: Vec<String>,
+}
+
+/// WHY A COMPLETED EMITTED BUILD IS NOT CLEAN, as one typed, located sentence -- or `None` when it
+/// is. The instrument seam maps a non-clean build to `ObservationDidNotHold` (exit 1), and before
+/// this the only thing printed beside that exit was the counters line, so a run whose every step
+/// said "success" exited 1 with no stated cause (DESIGN §5). The cause names the counter that
+/// decided and the warning lines themselves, which are the only evidence of WHAT warned: under
+/// `-D warnings` a rustc lint is an error, so a warning beside status 0 is one the denial did not
+/// own, and naming it is the whole point of carrying the count.
+pub fn emitted_build_not_clean_cause(
+    label: &str,
+    exit_status: i64,
+    warning_count: i64,
+    warning_headers: &[String],
+) -> Option<String> {
+    if exit_status != 0 {
+        return Some(format!(
+            "{label} REFUSAL cause=EmittedBuildNonZeroStatus exit_status={exit_status}"
+        ));
+    }
+    if warning_count == 0 {
+        return None;
+    }
+    let mut distinct: Vec<(&str, usize)> = Vec::new();
+    for header in warning_headers {
+        match distinct
+            .iter_mut()
+            .find(|(line, _)| *line == header.as_str())
+        {
+            Some((_, n)) => *n += 1,
+            None => distinct.push((header.as_str(), 1)),
+        }
+    }
+    let shown: Vec<String> = distinct
+        .iter()
+        .take(40)
+        .map(|(line, n)| format!("  {n}x {line}"))
+        .collect();
+    Some(format!(
+        "{label} REFUSAL cause=EmittedBuildWarnings warning_count={warning_count} \
+         distinct_headers={} — the emitted crate built with status 0 under -D warnings and cargo \
+         stderr carried these warning headers (first 40 distinct, with multiplicity):\n{}",
+        distinct.len(),
+        shown.join("\n")
+    ))
 }
 
 fn sha256_file(path: &Path) -> Result<String, String> {
@@ -255,6 +301,29 @@ fn emitted_closure_identity(crate_dir: &Path) -> Result<String, String> {
         hasher.update(&bytes);
     }
     Ok(format!("{:x}", hasher.finalize()))
+}
+
+/// A FAILED BUILD KEEPS ITS ROOT. Dropping it deleted the emitted sources the first error names,
+/// so the one artefact a reader needs to open `file:line` was gone before the refusal printed
+/// (a one-line E0308 in the self-host closure cost three rounds that way). The root is consumed
+/// here and retained, and its path is printed beside the first error's typed locus.
+fn emitted_build_failed_refusal(
+    probe_root: super::emitted_closure_compile_host::PrivateProbeRoot,
+    crate_dir: &Path,
+    verdict: &super::emitted_closure_compile_host::CargoVerdict,
+    invocation: &str,
+) -> String {
+    let first_error = super::emitted_closure_compile_host::rustc_error_locus_render(
+        super::emitted_closure_compile_host::cargo_verdict_first_error(verdict),
+    );
+    let retained = probe_root.retain();
+    format!(
+        "V2-NATIVE REFUSAL cause=EmittedCompilerBuildFailed first_error={first_error} \
+         retained_probe_root={} crate_dir={} — {} ({invocation})",
+        retained.display(),
+        crate_dir.display(),
+        super::emitted_closure_compile_host::cargo_verdict_summary(verdict),
+    )
 }
 
 /// PREPARATION IS THE EMIT-COMPILE PHASE'S OWN MACHINERY, REUSED. The same emission entry
@@ -345,21 +414,29 @@ fn prepare_emitted_compiler_for_entry(
         super::emitted_closure_compile_host::MUTATION_PROBE_SYMBOL,
     );
     if !super::emitted_closure_compile_host::cargo_verdict_compiled(&verdict) {
-        return Err(format!(
-            "V2-NATIVE REFUSAL cause=EmittedCompilerBuildFailed — {} (argv={:?} RUSTFLAGS={:?} rustc={rustc})",
-            super::emitted_closure_compile_host::cargo_verdict_summary(&verdict),
-            invocation.argv,
-            invocation.rustflags,
+        return Err(emitted_build_failed_refusal(
+            probe_root,
+            &crate_dir,
+            &verdict,
+            &format!(
+                "argv={:?} RUSTFLAGS={:?} rustc={rustc}",
+                invocation.argv, invocation.rustflags
+            ),
         ));
     }
     // `cargo_verdict_compiled` admitted only the `Completed { status: 0 }` arm, so the fields
     // below are the run's own; a verdict of any other shape refused above.
-    let (exit_status, warning_count) = match &verdict {
+    let (exit_status, warning_count, warning_headers) = match &verdict {
         super::emitted_closure_compile_host::CargoVerdict::Completed {
             status,
             warning_count,
+            warning_headers,
             ..
-        } => (i64::from(*status), *warning_count as i64),
+        } => (
+            i64::from(*status),
+            *warning_count as i64,
+            warning_headers.clone(),
+        ),
         other => {
             return Err(format!(
                 "V2-NATIVE REFUSAL cause=EmittedCompilerBuildFailed — verdict admitted as compiled \
@@ -375,6 +452,7 @@ fn prepare_emitted_compiler_for_entry(
         rustc_identity: rustc,
         exit_status,
         warning_count,
+        warning_headers,
     };
     eprintln!(
         "v2-native-route: emitted crate built — argv={:?} RUSTFLAGS={:?} compiler={} \
@@ -1170,6 +1248,8 @@ pub struct SelfHostHeld {
     pub seed_identity: String,
     pub exit_status: i64,
     pub warning_count: i64,
+    /// The warning header lines behind `warning_count`, so the seam can name them.
+    pub warning_headers: Vec<String>,
     /// The cause the built driver gave for refusing the poison specimen when this instrument
     /// STARTED it. Carried as the refusal's own sentence rather than as a Bool, so a receipt reader
     /// can see WHICH refusal fired — the flattening this file's `run_native_binary` annotation
@@ -1329,6 +1409,7 @@ pub fn run_self_host(source_roots: &[String]) -> Result<SelfHostHeld, String> {
         seed_identity: prepared.seed_identity,
         exit_status: prepared.build.exit_status,
         warning_count: prepared.build.warning_count,
+        warning_headers: prepared.build.warning_headers.clone(),
         door_refusal_reason,
     })
 }
@@ -1343,6 +1424,8 @@ pub struct V2NativeCliHeld {
     pub seed_identity: String,
     pub exit_status: i64,
     pub warning_count: i64,
+    /// The warning header lines behind `warning_count`, so the seam can name them.
+    pub warning_headers: Vec<String>,
     /// The status the built binary itself took on the EMIT PROBE, and the length of what it wrote on
     /// stdout. Carried rather than folded into a Bool because a receipt that says only "the probe
     /// held" cannot be read afterwards for what the door actually did — the flattening
@@ -2150,6 +2233,7 @@ pub fn run_v2_native_cli(source_roots: &[String]) -> Result<V2NativeCliHeld, Str
         seed_identity: prepared.seed_identity,
         exit_status: prepared.build.exit_status,
         warning_count: prepared.build.warning_count,
+        warning_headers: prepared.build.warning_headers.clone(),
         door_exit_status,
         door_emitted_bytes: door_emitted_bytes as i64,
         door_refusal_exit_status,
@@ -2458,6 +2542,36 @@ fn run_required_v2_native_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A FAILED BUILD'S ROOT OUTLIVES THE REFUSAL. Before this, the root dropped on the `Err`
+    /// return and the emitted sources the error names were deleted; the control reds there
+    /// (`exists()` false) and names the first error's span, which the old message did not carry.
+    #[test]
+    fn a_failed_emitted_build_retains_its_root_and_names_the_first_error() {
+        use super::super::emitted_closure_compile_host as host;
+        let base = std::env::temp_dir().join(format!("nlr-retain-{}", std::process::id()));
+        std::fs::create_dir_all(&base).unwrap();
+        let root = host::create_private_probe_root(&base).unwrap();
+        let path = root.path().to_path_buf();
+        let stderr = "error[E0308]: mismatched types\n --> src/m.rs:7:3\n";
+        let verdict = host::CargoVerdict::Completed {
+            status: 101,
+            stderr_tail: stderr.to_string(),
+            probe_line: None,
+            probe_diagnostic: None,
+            warning_count: 0,
+            warning_headers: Vec::new(),
+            first_error: host::first_rustc_error(stderr).map(Box::new),
+        };
+        let message = emitted_build_failed_refusal(root, &path.join("crate"), &verdict, "argv=[]");
+        assert!(
+            path.is_dir(),
+            "the root was deleted with the refusal: {message}"
+        );
+        assert!(message.contains(&format!("retained_probe_root={}", path.display())));
+        assert!(message.contains("first_error=error[E0308]: mismatched types @ src/m.rs:7:3"));
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     /// THE MEMBER FOLD, HANDED REAL PRODUCER BYTES.
     ///
@@ -3169,5 +3283,41 @@ mod cli_emit_probe_tests {
             )),
             CliEmitProbeVerdict::StdoutNotEmpty { .. }
         ));
+    }
+}
+
+#[cfg(test)]
+mod emitted_build_not_clean_cause_tests {
+    use super::emitted_build_not_clean_cause;
+
+    #[test]
+    fn a_clean_build_has_no_cause() {
+        assert_eq!(emitted_build_not_clean_cause("X", 0, 0, &[]), None);
+    }
+
+    #[test]
+    fn warnings_name_the_counter_and_the_headers() {
+        let headers = vec![
+            "warning: spurious thing".to_string(),
+            "warning: spurious thing".to_string(),
+            "warning: other".to_string(),
+        ];
+        let cause = emitted_build_not_clean_cause("V2-NATIVE-CLI", 0, 3, &headers)
+            .expect("a warning beside status 0 is not clean");
+        assert!(
+            cause.starts_with("V2-NATIVE-CLI REFUSAL cause=EmittedBuildWarnings warning_count=3")
+        );
+        assert!(cause.contains("distinct_headers=2"), "{cause}");
+        assert!(cause.contains("2x warning: spurious thing"), "{cause}");
+        assert!(cause.contains("1x warning: other"), "{cause}");
+    }
+
+    #[test]
+    fn a_non_zero_status_is_its_own_cause() {
+        let cause = emitted_build_not_clean_cause("SELF-HOST", 101, 0, &[]).expect("not clean");
+        assert!(
+            cause.contains("cause=EmittedBuildNonZeroStatus exit_status=101"),
+            "{cause}"
+        );
     }
 }

@@ -4,7 +4,7 @@ import std.types { Float }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
+import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_1967a5627 }
 
 // vLLM'S SAMPLING PARAMETERS, as the OpenAI-compatible server actually binds them. The upstream
 // class is vllm.SamplingParams: `temperature` is a float, 0 selects greedy decoding, and the
@@ -31,9 +31,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-// THE BOUND IS READ AT ONE VLLM REVISION, the same pin the sibling carriers observe against, and the
-// constructor consumes BOTH fields: the minimum decides admission and the revision is stamped into
-// every admitted value, so a temperature admitted under one upstream reading is distinguishable
+// THE BOUND IS READ AT ONE VLLM REVISION — vllm_source_revision_1967a5627, the pre-patch reading
+// the bound was actually read at, not the live pin: the corpus pin advanced to the patched 8d09804
+// source on 2026-09-25 and this reading did not move with it. The constructor consumes BOTH
+// fields: the minimum decides admission and the revision is stamped into every admitted value, so
+// a temperature admitted under one upstream reading is distinguishable
 // from one admitted under another, and a change to this row changes every value it admits.
 type SamplingTemperatureBound {
   minimum: Float
@@ -42,7 +44,7 @@ type SamplingTemperatureBound {
 
 data sampling_temperature_bound: SamplingTemperatureBound = SamplingTemperatureBound {
   minimum: 0.0,
-  observed_at_revision: vllm_source_revision_read,
+  observed_at_revision: vllm_source_revision_1967a5627,
 }
 
 type SamplingTemperature sole_constructor {

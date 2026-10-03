@@ -26,7 +26,7 @@ import v2.std.dependency {
 import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, None, diagnostics_singleton }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, ComputationNode, Edge, Named, Node, Symbol, TypeNode, Value }
+import v2.std.node { Atom, ComputationNode, Edge, Authored, Node, Symbol, TypeNode, Value }
 import v2.std.runtime {
   BindInterpreter,
   BranchInterpreter,
@@ -64,7 +64,7 @@ data effect_child: Node = claim_atom_node(s: ^effect_child_symbol)
 data effect_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^effect_root_symbol } },
   children: [
-    Edge { label: Named { name: ^effect_edge_symbol }, target: effect_child }
+    Edge { label: Authored { name: ^effect_edge_symbol }, target: effect_child }
   ],
   occurrence_id: OccurrenceSynthetic
 }
@@ -117,7 +117,7 @@ fn effect_depends_on_claim_holds() -> Bool {
         ),
         b: effect_depends_on_claim.expected
       )
-    _ => false
+    Holds { value: _ } => false
   }
 }
 
@@ -128,7 +128,7 @@ fn lens_effect_marker_node(marker: Symbol) -> Node {
     kind: ComputationNode { behavior: Value },
     children: [
       Edge {
-        label: Named { name: marker },
+        label: Authored { name: marker },
         target: effect_root
       }
     ],

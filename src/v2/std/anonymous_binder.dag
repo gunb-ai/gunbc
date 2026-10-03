@@ -5,8 +5,8 @@ import v2.std.algebra { list_reverse }
 import v2.std.collection { List }
 import v2.std.integer { Int, integer_int_to_decimal_string }
 import v2.std.logic { Bool }
-import v2.std.node { Edge, Named, Positional, Symbol, symbol_intern_lexeme, symbol_lexeme }
-import v2.std.node_query { pattern_wildcard_name }
+import v2.std.node { Edge, Authored, Positional, Symbol, symbol_intern_lexeme, symbol_lexeme, StructuralLabel }
+import v2.std.node_query { binder_relabelled, pattern_wildcard_name }
 
 // AN ANONYMOUS PARAMETER SLOT IS A MINTED BINDER, NOT A FIELD NAMED `_`. A function's domain is a
 // name-keyed Conj (v2.std.node edges_conform: every edge Named, every name distinct), so two `_`
@@ -107,13 +107,15 @@ fn anonymous_binder_mint_parameter_list(edges: List<Edge>) -> DeclaredParameterL
   let minted = fold(edges, init: AnonymousBinderMint { slot: 0, edges: Empty, order: Empty }, f: fn(acc, e) {
     let slot = acc.slot + 1
     match e.label {
-      Named { name: sym } =>
+      Authored { name: sym } =>
         let label = if sym == pattern_wildcard_name() { anonymous_param_label(slot: slot) } else { sym }
         AnonymousBinderMint {
           slot: slot,
-          edges: Cons { head: Edge { label: Named { name: label }, target: e.target }, tail: acc.edges },
+          edges: Cons { head: binder_relabelled(binder: e, name: label), tail: acc.edges },
           order: Cons { head: label, tail: acc.order }
         }
+      StructuralLabel { label: _ } =>
+        AnonymousBinderMint { slot: slot, edges: Cons { head: e, tail: acc.edges }, order: acc.order }
       Positional =>
         AnonymousBinderMint { slot: slot, edges: Cons { head: e, tail: acc.edges }, order: acc.order }
     }

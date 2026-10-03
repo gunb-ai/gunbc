@@ -41,6 +41,7 @@ import v2.workflow.floor_grandfathered_roster {
   floor_grandfathered_holds, grandfathered_cut_holds, floor_grandfathered_cut_size,
   floor_grandfathered_removals,
 }
+import std.algebra { Cons, Empty }
 
 // THE REQUIRED FLOOR'S CLAIM CEILING IS TWO-TIER, GATES ON EVAL STEPS, AND ITS CPU READING IS
 // OBSERVED ONLY (operator ruling via fierce-lark-661, 2026-09-12 and 2026-09-13). This module is
@@ -538,7 +539,7 @@ test fn a_struck_identity_selects_the_new_witness_tier() -> Bool {
 // may separate the two outcomes. A drop arm that ignored identity (every overrun admitted) fails the
 // RED; one that never fired fails the control; one that dropped the figures fails both.
 fn drop_member_identity() -> String {
-  "test.claim.roadmap_receipt_continuity_acceptance.witness_dispatch_never_presents_empty_frontier_on_authority_refusal"
+  "test.claim.live_deploy.emit.repository_convergence_is_ordered_after_binary_and_before_readback"
 }
 
 fn drop_probe_steps() -> EvalStepCount {

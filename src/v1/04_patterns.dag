@@ -258,9 +258,9 @@ fn pattern_binding_type(subject: PatternSubject) -> Node {
   }
 }
 
-fn variant_not_found_result(scrut: Node, variant_name: String, module_name: String, source_indices: Map<String, NewlineIndex>) -> NodeLookupResult {
+fn variant_not_found_result(scrut: Node, variant_name: String, site: SourceSpan, module_name: String, source_indices: Map<String, NewlineIndex>) -> NodeLookupResult {
   node_lookup_failed(
-    diagnostics: [make_error_node(diagnostic: VariantNotFound { variant: variant_name, type_name: authored_name_at(source_indices: source_indices, node: scrut), span: scrut.span }, module_name: module_name)]
+    diagnostics: [make_error_node(diagnostic: VariantNotFound { variant: variant_name, type_name: authored_name_at(source_indices: source_indices, node: scrut), span: site }, module_name: module_name)]
   )
 }
 
@@ -278,7 +278,7 @@ fn variant_not_found_result(scrut: Node, variant_name: String, module_name: Stri
 // is where the bound NODE comes from once admission succeeds -- the scrutinee
 // when it carries that variant, the declaration otherwise, which is the
 // pre-existing answer for a scrutinee that does not.
-fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_name: String, env: TypeEnv, field_binding_count: Int) -> NodeLookupResult {
+fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, site: SourceSpan, module_name: String, env: TypeEnv, field_binding_count: Int) -> NodeLookupResult {
   match scrut {
     PatternLookupBlocked =>
       node_lookup_failed(diagnostics: [])
@@ -297,13 +297,13 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
                     Absent => node_lookup_resolved(node: variant_child)
                   }
                 Absent =>
-                  variant_not_found_result(scrut: scrut_node, variant_name: variant_name, module_name: module_name, source_indices: source_indices)
+                  variant_not_found_result(scrut: scrut_node, variant_name: variant_name, site: site, module_name: module_name, source_indices: source_indices)
               }
             } else {
               node_lookup_resolved(node: resolved)
             }
           Absent =>
-            variant_not_found_result(scrut: scrut_node, variant_name: variant_name, module_name: module_name, source_indices: source_indices)
+            variant_not_found_result(scrut: scrut_node, variant_name: variant_name, site: site, module_name: module_name, source_indices: source_indices)
         }
       } else {
       let scrut_node = expand_scrut_type_for_variant_lookup(scrut_node: scrut_node, env: env)
@@ -338,7 +338,7 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
           } else if optional_coproduct_subject && variant_name == "Absent" {
             node_lookup_resolved(node: none_type)
           } else {
-            variant_not_found_result(scrut: scrut_node, variant_name: variant_name, module_name: module_name, source_indices: source_indices)
+            variant_not_found_result(scrut: scrut_node, variant_name: variant_name, site: site, module_name: module_name, source_indices: source_indices)
           }
           match direct_match {
             Present { value: v } => node_lookup_resolved(node: v)
@@ -555,7 +555,7 @@ fn constructor_roster_for(type_node: Node, env: TypeEnv) -> ConstructorRoster {
 // of the coproduct declaration.
 fn constructor_fields(type_node: Node, ctor: String, env: TypeEnv, module_name: String) -> List<ConstructorField> {
   let subject = pattern_subject_from_node(n: resolve_scrutinee_type(type_node: type_node, env: env))
-  let lookup = lookup_variant_in_type(scrut: subject, variant_name: ctor, module_name: module_name, env: env, field_binding_count: 0)
+  let lookup = lookup_variant_in_type(scrut: subject, variant_name: ctor, site: type_node.span, module_name: module_name, env: env, field_binding_count: 0)
   match lookup.status {
     LookupFailed => []
     LookupResolved { node: variant_node } =>
@@ -579,7 +579,7 @@ fn pattern_row_is_irrefutable(row: List<MatchPattern>) -> Bool {
 
 fn pattern_matches_constructor(p: MatchPattern, ctor: String) -> Bool {
   match p {
-    VariantPattern { name: n, parent_enum: _, field_bindings: _ } =>
+    VariantPattern { name: n, parent_enum: _, field_bindings: _, parent_identity: _ } =>
       variant_pattern_coverage_key(name: n) == variant_pattern_coverage_key(name: ctor)
     LitPattern { value: v } =>
       match v {
@@ -611,7 +611,7 @@ fn specialize_pattern_row(row: List<MatchPattern>, ctor: String, fields: List<Co
     [concat(fields |> map(f => Wildcard), rest)]
   } else if pattern_matches_constructor(p: head, ctor: ctor) {
     match head {
-      VariantPattern { name: _, parent_enum: _, field_bindings: fbs } =>
+      VariantPattern { name: _, parent_enum: _, field_bindings: fbs, parent_identity: _ } =>
         [concat(fields |> map(f => field_binding_pattern_for(bindings: fbs, field_name: f.name, source_indices: source_indices)), rest)]
       _ => [concat(fields |> map(f => Wildcard), rest)]
     }

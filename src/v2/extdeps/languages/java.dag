@@ -1,5 +1,6 @@
 module v2.extdeps.languages.java
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.arrow_signature { anonymous_signature_arrow }
 import v2.std.language_model { LanguageModel }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -81,7 +82,7 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -89,7 +90,8 @@ import v2.std.node {
 }
 import v2.std.logic { Bool, bool_boolean_algebra }
 import std.algebra { Cons, Empty, list_append, list_snoc_item }
-import v2.std.algebra { BooleanAlgebra, boolean_algebra_node, boolean_algebra_type_node, commutative_semiring_node, commutative_semiring_type_node, fold_list, fold_list_right }
+import v2.std.algebra { BooleanAlgebra, fold_list, fold_list_right }
+import v2.std.algebra_structure_signature { boolean_algebra_node, boolean_algebra_type_node, commutative_semiring_node, commutative_semiring_type_node }
 import v2.std.text { String }
 
 type JavaIntKind
@@ -501,7 +503,7 @@ fn java_void_declared_inhabitant_node() -> Node {
 }
 
 fn java_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn java_declared_inhabitants_root() -> Node {
@@ -527,15 +529,7 @@ fn java_selection_policy_node() -> Node {
 }
 
 fn java_emitted_add_method_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: java_inhabitant_int_node() },
-      Edge { label: Positional, target: java_inhabitant_int_node() },
-      Edge { label: Positional, target: java_inhabitant_int_node() }
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
+  anonymous_signature_arrow(domain_types: [java_inhabitant_int_node(), java_inhabitant_int_node()], codomain: java_inhabitant_int_node(), source: java_inhabitant_int_node())
 }
 
 fn java_source_text_authority() -> String {
@@ -735,7 +729,8 @@ fn java_method_add_lex_rules() -> LexRuleSet {
       java_lex_rule(token_class: ^java_token_rparen, text: ") "),
       java_lex_rule(token_class: ^java_token_comma, text: ", "),
       java_lex_rule(token_class: ^java_token_semicolon, text: ";")
-    ]
+    ],
+    modes: []
   }
 }
 
@@ -807,7 +802,8 @@ fn java_lex_rules() -> LexRuleSet {
     rules: list_append(
       left: java_method_add_lex_rules().rules,
       right: java_extended_lex_rules()
-    )
+    ),
+    modes: []
   }
 }
 

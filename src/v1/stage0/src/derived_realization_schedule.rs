@@ -98,12 +98,12 @@ pub fn realize_pack_width_from_scalars(
         v1_interpreter::run_in_context_with_args(&realize_ctx, "realize_advisory", &args, false)
             .map_err(|e| format!("realize_advisory: {e}"))?;
     match result {
-        Value::Record { fields, .. } => {
-            let width = match realize_ctx.field(&fields, "width") {
+        Value::Record { ref fields, .. } => {
+            let width = match realize_ctx.field(fields, "width") {
                 Some(Value::Int(w)) => *w,
                 _ => -1,
             };
-            let verdict = match realize_ctx.field(&fields, "verdict") {
+            let verdict = match realize_ctx.field(fields, "verdict") {
                 Some(Value::Str(s)) => s.rc(),
                 _ => Rc::from("unknown"),
             };
@@ -128,7 +128,7 @@ pub const DISCOVERY_POOL_WIDTH_UNTIL_SHARED_INDEX: usize = 1;
 ///
 /// Per-entry derived-space scans are intentionally NOT run here: resolving every roster
 /// entry to read `function_space_bytes` is O(entries) whole-tree work (tens of minutes on
-/// the floor corpus). Opt-in per-row advisory logging uses `GUNBC_REALIZE_ADVISORY`.
+/// the floor corpus).
 pub fn derive_discovery_schedule_width(
     source_roots: &[String],
     _entry_function_pairs: &[(String, String)],

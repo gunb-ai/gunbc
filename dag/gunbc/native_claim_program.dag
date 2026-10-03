@@ -3,6 +3,7 @@ module gunbc.native_claim_program
 import std.types { Int, List, String, Bool }
 import v2.std.algebra { filter }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.algebra { Cons, Empty }
 
 // HOW A NativeClaimDriver PROGRAM'S RUN IS READ, decided here rather than in the host that spawned
 // it. std.compiler_entry NativeClaimDriver fixes the program's side of the contract: its rendered

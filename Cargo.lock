@@ -865,6 +865,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "stacker",
+ "syn",
  "toml",
  "unicode-ident",
  "unicode-properties",
@@ -889,6 +890,7 @@ name = "v1-stage0-emit-core"
 version = "0.1.0"
 dependencies = [
  "im",
+ "libc",
  "serde",
  "serde_json",
  "stacker",
@@ -907,6 +909,7 @@ name = "v1-stage0-extdeps-languages"
 version = "0.1.0"
 dependencies = [
  "im",
+ "libc",
  "serde",
  "serde_json",
  "stacker",
@@ -922,6 +925,7 @@ name = "v1-stage0-runtime"
 version = "0.1.0"
 dependencies = [
  "im",
+ "libc",
  "serde",
  "serde_json",
  "stacker",
@@ -934,6 +938,7 @@ name = "v1-stage0-std-core"
 version = "0.1.0"
 dependencies = [
  "im",
+ "libc",
  "serde",
  "serde_json",
  "stacker",
@@ -947,6 +952,7 @@ name = "v1-stage0-std-surface"
 version = "0.1.0"
 dependencies = [
  "im",
+ "libc",
  "serde",
  "serde_json",
  "stacker",
@@ -961,6 +967,7 @@ name = "v1-stage0-v1-artifact"
 version = "0.1.0"
 dependencies = [
  "im",
+ "libc",
  "serde",
  "serde_json",
  "stacker",
@@ -977,6 +984,7 @@ name = "v1-stage0-v1-infer"
 version = "0.1.0"
 dependencies = [
  "im",
+ "libc",
  "serde",
  "serde_json",
  "stacker",

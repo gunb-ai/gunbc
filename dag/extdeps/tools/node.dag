@@ -1,10 +1,9 @@
 module extdeps.tools.node
 
-import extdeps.exec.program { cataloged_program }
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
 
 import std.types { NonEmptyStr, Bool, Unit, Int, List }
 import extdeps.exec.command { ArgvCommand, argv_command }
-import std.string_type { String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -18,8 +17,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+fn node_program() -> ProgramIdentity = cataloged_program(invocation: "node")
+
 data node_cli_tool: CliTool = CliTool {
-  name: "node",
+  program: node_program(),
   min_version: none,
   installable_via: [SourceApt { package: package_nodejs, bin_dir: apt_bin_dir }],
 }
@@ -31,6 +32,7 @@ data node_cli_tool: CliTool = CliTool {
 
 service nodejs.Cli {
   operation Version {
+    requires none
     input {}
     output {
       version: String from "stdout"

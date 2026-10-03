@@ -1,7 +1,6 @@
 module extdeps.linux.procfs
 
 import std.types { NonEmptyStr, List, Bool, Unit }
-import std.string_type { String }
 import std.os.types { KernelFamily, Linux, Darwin, WindowsNt, LinuxGuestOnWindows }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -107,8 +106,19 @@ data procfs_paths_read_by_this_repository: List<ProcfsPath> = [
 // an argv over an arbitrary path cannot be materialized from this service. ReadMeminfo serves the
 // host memory capacity and live availability a compute admission reads before it reserves
 // (gunbc.compute.host_capacity).
+// ReadUptime IS BOUND TO THE FILE TRANSPORT, NOT `cat` OVER THE SHELL TRANSPORT, because its reader
+// (extdeps.linux.proc_uptime proc_uptime_parse) has a byte-exact contract -- the record ends with one
+// newline -- and the shell transport's captured stdout is trimmed (bounded_shell_host_drain
+// retained_utf8_lossy_trimmed), which removes exactly that byte: the composition rostered as
+// gunbc.recurring_failure_mode a_termination_contract_is_met_by_a_trimming_transport. Every live
+// reading was therefore refused, while the hermetic mock (an authored string that keeps the newline)
+// stayed green. The file transport reads the kernel's bytes unaltered, so the mock and the live route
+// now carry the same record. Its one consumer reads the executing host's own clock; a read of ANOTHER
+// host's uptime would need an exact-bytes read over the fleet transport, which is that row's trigger,
+// not something this binding can supply.
 service linux.Procfs {
   operation ReadStat {
+    requires none
     input {}
     output {
       value: String from "stdout"
@@ -126,23 +136,21 @@ service linux.Procfs {
   }
 
   operation ReadUptime {
+    requires none
     input {}
     output {
-      value: String from "stdout"
-      success: Bool from "exit_success"
+      value: String from "content"
+      success: Bool from "read_success"
     }
     readonly
-    transport shell { argv: ["cat", "/proc/uptime"] }
-    exit {
-      0 => Unit
-      nonzero => String "/proc/uptime read failed"
-    }
+    transport file { path: "/proc/uptime" }
     mock_response {
       0 => { value: "350735.47 234388.90\n", success: true } "hermetic linux.Procfs.ReadUptime"
     }
   }
 
   operation ReadMeminfo {
+    requires none
     input {}
     output {
       value: String from "stdout"
@@ -160,6 +168,7 @@ service linux.Procfs {
   }
 
   operation ReadPidStat {
+    requires none
     input { pid: NonEmptyStr }
     output {
       value: String from "stdout"
@@ -177,6 +186,7 @@ service linux.Procfs {
   }
 
   operation ReadNetTcp {
+    requires none
     input {}
     output {
       value: String from "stdout"
@@ -194,6 +204,7 @@ service linux.Procfs {
   }
 
   operation ReadNetTcp6 {
+    requires none
     input {}
     output {
       value: String from "stdout"
@@ -211,6 +222,7 @@ service linux.Procfs {
   }
 
   operation ReadPidCgroup {
+    requires none
     input { pid: NonEmptyStr }
     output {
       value: String from "stdout"

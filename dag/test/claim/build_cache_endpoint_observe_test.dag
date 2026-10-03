@@ -1,5 +1,6 @@
 module test.claim.build_cache_endpoint_observe
 
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.build_cache_instance { ProcessIdentity }
 import extdeps.systemd.unit_file { systemd_unit_file_lines }
 import std.materialization_ladder { string_list_contains }

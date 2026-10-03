@@ -1,5 +1,6 @@
 module v2.extdeps.languages.python
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.arrow_signature { anonymous_signature_arrow }
 import v2.std.language_model { LanguageModel }
 
 import std.algebra { Empty, BooleanAlgebra, list_append, list_snoc_item }
@@ -94,18 +95,14 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
   TypeNode,
 }
 import v2.std.logic { Bool, bool_boolean_algebra }
-import v2.std.algebra {
-  approximate_field_node,
-  boolean_algebra_node,
-  ordered_ring_node
-}
+import v2.std.algebra_structure_signature { approximate_field_node, boolean_algebra_node, ordered_ring_node }
 import v2.std.text { String }
 
 type PythonSingletonKind
@@ -252,7 +249,7 @@ fn python_inhabitant_atom(id: Symbol) -> Node {
 }
 
 fn python_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target }
 }
 
 fn python_primitive_facts_node(
@@ -918,15 +915,7 @@ fn python_selection_policy_node() -> Node {
 }
 
 fn python_emitted_add_fn_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: python_int_inhabitant_node() },
-      Edge { label: Positional, target: python_int_inhabitant_node() },
-      Edge { label: Positional, target: python_int_inhabitant_node() }
-    ],
-    occurrence_id: OccurrenceSynthetic
-}
+  anonymous_signature_arrow(domain_types: [python_int_inhabitant_node(), python_int_inhabitant_node()], codomain: python_int_inhabitant_node(), source: python_int_inhabitant_node())
 }
 
 fn python_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
@@ -1276,7 +1265,8 @@ fn python_lex_rules() -> LexRuleSet {
       python_lex_rule(token_class: ^python_token_comma, text: ", "),
       python_lex_rule(token_class: ^python_token_rparen, text: ")"),
       python_lex_rule(token_class: ^python_token_colon, text: ": ")
-    ]
+    ],
+    modes: []
   }
 }
 

@@ -3,7 +3,7 @@ module extdeps.ssh.session
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.types { Bool, FilePath, Int, List, NonEmptyStr, Unit }
-import std.string_type { String }
+import std.resources { Network }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -56,6 +56,7 @@ type SshSessionExecResult {
 
 service ssh.Session {
   operation Exec {
+    requires Network
     input { host: NonEmptyStr, command: NonEmptyStr }
     output {
       exit_code: Int from "exit_code"
@@ -73,6 +74,7 @@ service ssh.Session {
   }
 
   operation ExecPortableWords {
+    requires Network
     input { client_args: List<String> }
     output {
       exit_code: Int from "exit_code"
@@ -93,6 +95,7 @@ service ssh.Session {
   }
 
   operation ExecPortableWordsWithStdin {
+    requires Network
     input { client_args: List<String>, stdin_payload: String }
     output {
       exit_code: Int from "exit_code"
@@ -114,6 +117,7 @@ service ssh.Session {
   }
 
   operation ExecScript {
+    requires Network
     input { host: NonEmptyStr, script: String }
     output {
       exit_code: Int from "exit_code"
@@ -135,6 +139,7 @@ service ssh.Session {
   }
 
   operation Reachability {
+    requires Network
     input { host: NonEmptyStr }
     output { reachable: Bool from "exit_success" }
     readonly

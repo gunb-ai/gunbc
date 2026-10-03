@@ -293,7 +293,8 @@ test fn witness_self_receipt_verdict_is_joint_never_false_converged() -> Bool {
 // clauses run in that order: VerdictAbsent absorbing from either side, then the Drifted row the
 // wildcard used to answer, then converged reachable only when both sides are converged.
 test fn witness_converge_verdict_meet_is_total_over_every_pair() -> Bool {
-  converge_verdict_label(v: converge_verdict_meet(a: VerdictAbsent, b: VerdictAbsent)) == "absent"
+  converge_verdict_label(v: converge_verdict(effective: "", expected: "x")) == "absent"
+    && converge_verdict_label(v: converge_verdict_meet(a: VerdictAbsent, b: VerdictAbsent)) == "absent"
     && converge_verdict_label(v: converge_verdict_meet(a: VerdictAbsent, b: Drifted)) == "absent"
     && converge_verdict_label(v: converge_verdict_meet(a: VerdictAbsent, b: VerdictConverged)) == "absent"
     && converge_verdict_label(v: converge_verdict_meet(a: Drifted, b: VerdictAbsent)) == "absent"

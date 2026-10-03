@@ -19,21 +19,22 @@ import v2.std.node {
   Edge,
   Instantiation,
   Match,
-  Named,
+  Authored,
   Node,
   Positional,
   Transform,
   TypeNode,
   canonicalize_node_strip_provenance,
-  match_arm_pattern,
   node_subtree_nodes,
   symbol_lexeme,
+  MatchArmPatternEdge,
+  StructuralLabel,
 }
 import std.constructors { Cardinality, Required, Optional }
 import v2.std.node_query {
   DeclaredField,
   construct_field_edges,
-  construct_tag_optional,
+  construct_tag_path_optional,
   declared_field_list,
   declared_field_named,
   find_arrow_body_child,
@@ -41,10 +42,12 @@ import v2.std.node_query {
   is_wildcard_pattern,
   node_labeled_child_edges,
   node_positional_child_targets,
-  positional_payload_field_name
+  positional_payload_field_name,
+  find_core_child,
 }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.collection { List, list_at_optional }
+import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_projection }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -115,7 +118,8 @@ fn vf_named_member_optional(root: Node, lexeme: String) -> Optional<Node> {
             Present { value: _ } => inner
             Absent =>
               match e.label {
-                Named { name: sym } =>
+                StructuralLabel { label: _ } => Absent
+                Authored { name: sym } =>
                   match symbol_lexeme(sym: sym) == lexeme {
                     true => Present { value: e.target }
                     false => Absent
@@ -333,16 +337,16 @@ test fn vf_positional_construction_carries_its_operand() -> Bool {
   }
 }
 
-// A record construction is the construct shape: tag edge R -> Atom(R), then field v -> x.
+// A record construction is the construct shape: the marked tag edge -> the authored path R, then field v -> x.
 test fn vf_record_construction_is_the_construct_shape() -> Bool {
   match vf_fn_body_of(o: vfs_normalized_5(), fn_lexeme: "mk") {
     Absent => false
     Present { value: body } =>
-      (match construct_tag_optional(n: body) { Present { value: tag } => symbol_lexeme(sym: tag) == "R"  Absent => false })
+      (match construct_tag_path_optional(n: body) { Present { value: path } => qualified_name_to_dotted_string(qn: path) == "R"  Absent => false })
         && (count(construct_field_edges(n: body)) == 1)
         && (match list_at_optional(xs: construct_field_edges(n: body), index: 0) {
           Present { value: e } =>
-            (match e.label { Named { name: nm } => symbol_lexeme(sym: nm) == "v"  Positional => false })
+            (match e.label { Authored { name: nm } => symbol_lexeme(sym: nm) == "v"  Positional => false })
               && vf_type_atom_is(n: e.target, lexeme: "x")
           Absent => false
         })
@@ -365,7 +369,7 @@ fn vf_first_arm_pattern_from_tree(nt: NormalizedTree, fn_lexeme: String) -> Opti
           match list_at_optional(xs: node_positional_child_targets(node: body), index: 1) {
             Absent => Absent
             Present { value: arm } =>
-              match find_named_child(root: arm, name: match_arm_pattern) {
+              match find_core_child(root: arm, marker: MatchArmPatternEdge) {
                 Accepted { value: pat, diagnostics: _ } => Present { value: pat }
                 Rejected { diagnostics: _ } => Absent
               }
@@ -376,11 +380,11 @@ fn vf_first_arm_pattern_from_tree(nt: NormalizedTree, fn_lexeme: String) -> Opti
 }
 
 fn vf_pattern_binds(pat: Node, tag: String, field: String, binder: String) -> Bool {
-  (match construct_tag_optional(n: pat) { Present { value: t } => symbol_lexeme(sym: t) == tag  Absent => false })
+  (match construct_tag_path_optional(n: pat) { Present { value: path } => qualified_name_to_dotted_string(qn: path) == tag  Absent => false })
     && (count(construct_field_edges(n: pat)) == 1)
     && (match list_at_optional(xs: construct_field_edges(n: pat), index: 0) {
       Present { value: e } =>
-        (match e.label { Named { name: nm } => symbol_lexeme(sym: nm) == field  Positional => false })
+        (match e.label { Authored { name: nm } => symbol_lexeme(sym: nm) == field  Positional => false })
           && vf_type_atom_is(n: e.target, lexeme: binder)
       Absent => false
     })
@@ -419,11 +423,11 @@ test fn vf_wildcard_pattern_keeps_its_field() -> Bool {
   match vf_first_arm_pattern_of(o: vfs_normalized_8(), fn_lexeme: "tag") {
     Absent => false
     Present { value: pat } =>
-      (match construct_tag_optional(n: pat) { Present { value: t } => symbol_lexeme(sym: t) == "A"  Absent => false })
+      (match construct_tag_path_optional(n: pat) { Present { value: path } => qualified_name_to_dotted_string(qn: path) == "A"  Absent => false })
         && (count(construct_field_edges(n: pat)) == 1)
         && (match list_at_optional(xs: construct_field_edges(n: pat), index: 0) {
           Present { value: e } =>
-            (match e.label { Named { name: nm } => symbol_lexeme(sym: nm) == "0"  Positional => false })
+            (match e.label { Authored { name: nm } => symbol_lexeme(sym: nm) == "0"  Positional => false })
               && is_wildcard_pattern(pattern: e.target)
           Absent => false
         })

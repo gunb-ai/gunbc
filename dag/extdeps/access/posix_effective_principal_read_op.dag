@@ -1,7 +1,6 @@
 module extdeps.access.posix_effective_principal_read_op
 
 import std.types { Int, Bool, List, Unit }
-import std.string_type { String }
 import extdeps.access.posix_effective_principal {
   EffectivePosixPrincipalRead, EffectivePosixPrincipalReadOutcome,
 }
@@ -39,6 +38,7 @@ fn effective_posix_principal_read(
 
 service access.PosixEffectivePrincipal {
   operation Read {
+    requires none
     input { read: EffectivePosixPrincipalRead }
     output {
       exit_code: Int from "exit_code"

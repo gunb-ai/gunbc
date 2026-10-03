@@ -111,7 +111,7 @@ fn edge_target_named(ctx: &InterpContext, projection: &Value, label: &str) -> Op
                             fields: label_fields,
                             ..
                         }) => {
-                            if *variant_name != ctx.sym("Named") {
+                            if *variant_name != ctx.sym("Authored") {
                                 continue;
                             }
                             match ctx.field(label_fields, "name") {
@@ -160,7 +160,7 @@ fn eval_decl_facts_explicit_import_resolves_unique_variant_projection() {
         .into_owned()];
     let facts = eval_decl_facts(&ctx, &roots).expect("decl_facts must marshal");
     match facts {
-        Value::List(rows) => {
+        Value::List(ref rows) => {
             let node = rows
                 .iter()
                 .find_map(|row| {

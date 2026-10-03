@@ -1,0 +1,43 @@
+module gunbc.floor_memory_instrumentation_seed_growth
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+
+// Seed-growth obligation for the floor's memory instrumentation (gunbc#12774): the per-phase beat
+// transcription the floor-memory-qualification instrument hands to gunbc.floor_demand, and the
+// structure census and byte attribution read over the typed graph at the floor's seams.
+// (FLOOR_BYTE_ATTRIBUTION_ARMED, CROSS_CLAIM_LAST_STORE_DIGEST were thread_local! stores: macro-declared,
+//  gunbc.rust_item_scan MacroScope cannot name them at item grain, so they carry no citation here; a changed line inside the block refuses unattributed instead.)
+data floor_memory_instrumentation_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "floor_retention_census", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "wiring_identity", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "process_resolve_store_graphs", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "arm_floor_byte_attribution", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "floor_heap_in_use", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "typed_graph_byte_attribution", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "floor_retained_census", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "prepared_graph_without_typecheck_caches", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.floor_memory_supervisor", decl_name: "FloorBeatLine", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.floor_memory_supervisor", decl_name: "FLOOR_BEAT_STAT_KEYS", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.floor_memory_supervisor", decl_name: "beat_field", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.floor_memory_supervisor", decl_name: "transcribe_floor_beats", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "floor_phase_attribution_rendered", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "WarmFrameSlot", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "order_warm_modules", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "floor_warm_row_identity", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "take_cross_claim_store_digest", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "TypedModuleClass", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "ExclusiveBytesReading", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "typed_module_class_exclusive_bytes", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "run_typed_graph_exclusive_bytes", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "run_typed_graph_exclusive_bytes_floor_subject", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.target_invocation_host", decl_name: "typed_graph_exclusive_bytes_over", field: WholeDeclaration }
+  ],
+  reason: "WHY RUST: the subjects are host objects the modeled substrate cannot hold. The census and the byte attribution read the resolver's typed graph -- TypedModule, TypeEnv and their Rc identity -- which exists only as host values while the v1 seed typechecks; no .dag carrier names a TypedModule or an allocation, and the allocator's live bytes (glibc mallinfo2) are a host reading with no modeled observation. The beat transcription reads a child's stderr and lifts decimal text to integers, which the interpreter cannot do (it registers string_contains and string_length only, gunbc.observation_emit_census). WHAT IS IN .dag: every judgment the instrumentation makes -- which seam a token is, what the held set is, where a phase begins, what a reading refuses on -- is gunbc.floor_demand floor_phase_attribution; the Rust reads and transcribes. WarmFrameSlot is a lifetime change on the same route: the pure-producer warm holds one module frame at a time instead of every producer module frame at once, so freed frames stop growing the allocator arena that set the floor peak; floor_warm_row_identity and the store digest it reads (CROSS_CLAIM_LAST_STORE_DIGEST, take_cross_claim_store_digest) print one (producer, portable digest) line per warmed producer, the producer-grain differential between floor runs. prepared_graph_without_typecheck_caches is the one change that is not instrumentation: it ends a typecheck cache's lifetime at the strict resolve's return, a §2 lifetime fix on the floor's route. WHY ADMITTED AGAINST THE v1 FREEZE (gunbc.v1_maintenance_standing v1_seed_standing): by PURPOSE -- it measures and trims the required floor's memory on the v2 self-host path. It adds no language behaviour, no compatibility obligation, no escape hatch or admission row, and no capability the seed lacked; the floor's verdicts are unchanged, and the instrumentation only reads and frees what the floor frees anyway.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Two capabilities, each retiring its half. (1) The census and byte-attribution half (entry_resolve and required_floor_runner declarations) deletes when the typed graph the floor prepares is a VALUE a .dag fold holds -- the v2 self-hosted typecheck producing its typed modules in the substrate -- together with a modeled allocator observation (a live-bytes reading bound to its host realization), so that the census and attribution become folds over that value and the allocator reading becomes an observation, not a host call. A rewrite that keeps the walk in Rust behind a .dag wrapper does not satisfy it. The leave-one-out half (TypedModuleClass, ExclusiveBytesReading, typed_module_class_exclusive_bytes and the two typed-graph-exclusive-bytes host producers) retires with (1): its meaning is already gunbc.typed_graph_exclusive_bytes, and the host part is the same drop-and-read over the same host value. (2) The transcription half (floor_memory_supervisor FloorBeatLine through transcribe_floor_beats, and floor_phase_attribution_rendered) deletes on the trigger already declared at gunbc.floor_demand floor_beat_reading_primitive_boundary: the interpreter's argument surface admitting a constructed std.measure value, plus string parsing sufficient to read a beat line, so the fold reads the heartbeat directly. WarmFrameSlot dissolves on its frontier row in gunbc.resolver_cost_frontier (the demand-sized frame consuming the declarer pool of PR-2); the warm-row digest line dissolves with the census half above. prepared_graph_without_typecheck_caches dissolves when the typed module no longer carries a typecheck-time cache past its importers' typecheck, which is a representation fact the per-module TypeEnv design owns.",
+  current_boundary: "src/v1/stage0/src/cli_run/entry_resolve.rs (floor_retention_census, wiring_identity, process_resolve_store_graphs, the byte attribution and its arming); src/v1/stage0/src/cli_run/required_floor_runner.rs (floor_retained_census, its seam calls, the parse-index handover and the fold's last-scope drop); src/v1/stage0/src/cli_run.rs (prepared_graph_without_typecheck_caches); src/v1/stage0/src/cli_run/floor_memory_supervisor.rs (stderr tee and beat transcription); src/v1/stage0/src/target_invocation_host.rs (floor_phase_attribution_rendered); src/v1/stage0/src/v1_interpreter.rs (CROSS_CLAIM_LAST_STORE_DIGEST, take_cross_claim_store_digest); src/v1/stage0/src/cli_run/required_floor_runner.rs (WarmFrameSlot, order_warm_modules, floor_warm_row_identity); dag/gunbc/floor_memory_instrumentation_seed_growth.dag"
+}

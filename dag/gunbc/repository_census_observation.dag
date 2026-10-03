@@ -1,7 +1,7 @@
 module gunbc.repository_census_observation
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField }
+import std.types { String, NonEmptyStr, Bool, Int, List, brand }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, TypeParameter }
 import std.content_hash {
   Fnv1a64Structural,
   content_hash_atom,
@@ -90,6 +90,8 @@ fn census_declaration_ref_identity(reference: DeclarationRef) -> Fnv1a64Structur
       census_tagged_identity(tag: "census-declaration-field-whole", value: "whole")
     NamedField { field_name: named } =>
       census_tagged_identity(tag: "census-declaration-field-named", value: named)
+    TypeParameter { name: parameter } =>
+      census_tagged_identity(tag: "census-declaration-field-type-parameter", value: parameter)
   }
   content_hash_combine_structural(
     left: module_part,

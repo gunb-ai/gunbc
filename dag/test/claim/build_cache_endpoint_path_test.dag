@@ -46,8 +46,8 @@ test fn witness_the_srv4_stale_socket_is_the_one_state_that_unlinks() -> Bool {
 }
 
 test fn witness_a_live_listener_is_never_unlinked() -> Bool {
-  let refused = unlinks(observed: EndpointListening { owner: live_owner() }, currency: current())
-  let naive = unconditional_unlink_sketch(observed: EndpointListening { owner: live_owner() })
+  let refused = unlinks(observed: gunbc.build_cache_endpoint_path.EndpointListening { owner: live_owner() }, currency: current())
+  let naive = unconditional_unlink_sketch(observed: gunbc.build_cache_endpoint_path.EndpointListening { owner: live_owner() })
   (refused == false) && naive
 }
 
@@ -119,7 +119,7 @@ test fn witness_a_tcp_endpoint_has_no_stale_socket_state() -> Bool {
 
 test fn witness_the_unconditional_sketch_differs_where_it_is_destructive() -> Bool {
   let states = [
-    EndpointListening { owner: live_owner() },
+    gunbc.build_cache_endpoint_path.EndpointListening { owner: live_owner() },
     EndpointPathConflict { detail: "regular file" as NonEmptyStr },
   ]
   states |> all(s => unconditional_unlink_sketch(observed: s) && (unlinks(observed: s, currency: current()) == false))

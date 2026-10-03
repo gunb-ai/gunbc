@@ -11,7 +11,7 @@ import v2.std.diagnostic {
   Suggested,
   diagnostics_singleton
 }
-import v2.std.node { Edge, Named, Node, Positional, Symbol, TypeNode, Atom, Arrow, Conj }
+import v2.std.node { Edge, Authored, Node, Positional, Symbol, TypeNode, Atom, Arrow, Conj }
 import v2.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -31,6 +31,7 @@ fn atom_node(s: Symbol) -> Node {
 }
 }
 
+// Arrow used as a generic node shape; not a function signature (Program P).
 fn effect_subject(signature: Node, body: Node) -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
@@ -46,11 +47,11 @@ data effect_derived_from_signature_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
     Edge {
-      label: Named { name: ^effect_read_subject_field },
+      label: Authored { name: ^effect_read_subject_field },
       target: effect_subject(signature: atom_node(s: ^read_signature_symbol), body: atom_node(s: ^read_signature_symbol))
     },
     Edge {
-      label: Named { name: ^effect_write_subject_field },
+      label: Authored { name: ^effect_write_subject_field },
       target: effect_subject(signature: atom_node(s: ^write_signature_symbol), body: atom_node(s: ^write_signature_symbol))
     },
   ],
@@ -62,8 +63,8 @@ data explicit_reread_input: Node = effect_subject(signature: atom_node(s: ^read_
 data falsification_redundant_read: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: ^effect_signature_field }, target: atom_node(s: ^read_signature_symbol) },
-    Edge { label: Named { name: ^effect_body_field }, target: atom_node(s: ^read_signature_symbol) },
+    Edge { label: Authored { name: ^effect_signature_field }, target: atom_node(s: ^read_signature_symbol) },
+    Edge { label: Authored { name: ^effect_body_field }, target: atom_node(s: ^read_signature_symbol) },
   ],
   occurrence_id: OccurrenceSynthetic
 }

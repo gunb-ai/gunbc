@@ -1,7 +1,6 @@
 module extdeps.linux.cgroup_v2
 
 import std.types { Bool, NonEmptyStr, Unit, Int, List }
-import std.string_type { String }
 import std.algebra { trim }
 import std.os.types { KernelFamily, Linux, Darwin, WindowsNt, LinuxGuestOnWindows }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -62,6 +61,7 @@ data cgroup_v2_mount_point: NonEmptyStr = "/sys/fs/cgroup"
 // inhabitance claim over the real route needs to reach a positive verdict without a host.
 service linux.CgroupV2 {
   operation ListChildCgroups {
+    requires none
     input { cgroup_path: NonEmptyStr }
     output {
       value: String from "stdout"
@@ -77,6 +77,7 @@ service linux.CgroupV2 {
   }
 
   operation ReadInterfaceFile {
+    requires none
     input { file_path: NonEmptyStr }
     output {
       value: String from "stdout"
@@ -91,6 +92,7 @@ service linux.CgroupV2 {
     }
   }
   operation PathIsDirectory {
+    requires none
     input { path: NonEmptyStr }
     output {
       value: String from "stdout"
@@ -109,6 +111,7 @@ service linux.CgroupV2 {
   }
 
   operation ReadEvents {
+    requires none
     input { events_path: NonEmptyStr }
     output {
       value: String from "stdout"

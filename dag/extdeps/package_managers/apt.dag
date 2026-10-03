@@ -1,10 +1,10 @@
 module extdeps.apt
 
 import std.types { NonEmptyStr, FilePath, Bool, List, Unit }
-import std.string_type { String }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -65,6 +65,7 @@ data apt_man_url: NonEmptyStr = "https://manpages.debian.org/testing/apt/apt.8.e
 // this declaration instead.
 service apt.PackageManager {
   operation Install {
+    requires Network
     input { package: NonEmptyStr }
     output {
       success: Bool from "exit_success"

@@ -156,7 +156,7 @@ test fn nonzero_exit_refuses_the_read_and_preserves_its_cause() -> Bool {
 // THE COMPARATOR'S RELATION TO GIT'S, MECHANISED RATHER THAN ONLY ASSERTED. The ordering witnesses
 // above establish that the check refuses a decreasing pair; they say nothing about WHICH ORDER it is
 // enforcing, and that is the fact the enumeration annotation actually claims. git orders refnames
-// BYTEWISE; string_is_lexicographically_before compares CODE POINTS; the two agree over well-formed
+// BYTEWISE; host String `<` compares CODE POINTS; the two agree over well-formed
 // UTF-8 because that encoding is order-preserving.
 //
 // THE DISCRIMINATING PAIR IS ASCII-vs-MULTIBYTE, chosen because it separates our comparator from the

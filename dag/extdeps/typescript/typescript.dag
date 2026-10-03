@@ -4,6 +4,7 @@ import std.types { FilePath, String }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
+import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -32,6 +33,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // success describes the exit, never the existence or absence of emitted files.
 service typescript.Compiler {
   operation Compile {
+    requires opaque
     input { workdir: FilePath, source_path: FilePath, out_dir: FilePath, target: String, module: String }
     output {
       success: Bool from "exit_success"

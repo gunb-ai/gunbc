@@ -1,5 +1,7 @@
 module extdeps.tools.grep
 
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
 import std.types { NonEmptyStr, Bool, Unit, List, String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -12,14 +14,17 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+fn grep_program() -> ProgramIdentity = cataloged_program(invocation: "grep")
+
 data grep_cli_tool: CliTool = CliTool {
-  name: "grep",
+  program: grep_program(),
   min_version: none,
   installable_via: [SourceCoreutils],
 }
 
 service grep.Grep {
   operation MatchesFixedString {
+    requires none
     input { pattern: NonEmptyStr, path: NonEmptyStr }
     output { matches: Bool from "exit_success" }
     readonly

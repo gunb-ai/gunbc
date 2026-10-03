@@ -24,11 +24,15 @@ fn violation_count(source: String, wanted: String) -> Int {
   }
 }
 
-// THE PAIR THIS FILE EXISTS FOR. std.nat and v2.std.nat both declare a type spelled Nat and they
-// are NOT the same concept: std.nat.Nat is CommutativeSemiring<Magnitude> and realizes natively
-// as a kernel integer, while v2.std.nat.Nat is the Peano coproduct Zero | Succ { prev: Nat }.
-// v1.compiler.coercion numeric_realization_identity_note names this exact pair as the hazard a
-// bare-name rule gets wrong.
+// THE PAIR THIS FILE EXISTS FOR. std.nat Nat and test.fixture.structural_peano_nat StructuralNat
+// are both declared as the Peano coproduct (zero, and the successor of one) and they do NOT
+// realize the same way: std.nat Nat is bound to the kernel integer
+// (gunbc.structural_realization_bindings kernel_grounding_rows) and realizes natively, while the
+// fixture type has no such row and stays structural. Until the Nat de-fork (operator ruling A,
+// 2026-09-30) the second member of the pair was v2.std.nat Nat, a same-spelling declaration, and
+// v1.compiler.coercion numeric_realization_identity_note named that pair as the hazard a bare-name
+// rule gets wrong; with one Nat in the corpus the pair is now same SHAPE rather than same
+// spelling, which a shape-keyed rule gets wrong in exactly the same way.
 //
 // declared_type_inhabitance admits a kernel numeric at the FIRST by consulting
 // decl_file_realizes_natively, which is keyed on the resolved DECLARING MODULE. If that
@@ -41,7 +45,7 @@ fn violation_count(source: String, wanted: String) -> Int {
 // This row used to assert a refusal (5 is not Zero and not Succ) and sat in
 // v2.workflow.floor_expected_red with the trigger "the expected-type-directed literal introduction
 // judgment -- the MODEL half -- is NOT built". It is built: std.literal_elaboration elaborates the
-// kernel literal at the exact v2.std.nat.Nat boundary through the ONE declared Peano homomorphism
+// kernel literal at the exact test.fixture.structural_peano_nat.StructuralNat boundary through the ONE declared Peano homomorphism
 // (gunbc.structural_realization_bindings) into Succ^5(Zero), typed as the destination, so the
 // value the inhabitance judgment sees IS a Nat. Admission here is therefore the ruled answer, and
 // this row is the positive control for it. The DISCRIMINATING evidence -- that the literal is
@@ -50,7 +54,7 @@ fn violation_count(source: String, wanted: String) -> Int {
 // w_literal_at_peano_argument_boundary_emits_its_image, whose forbidden token is exactly the bare
 // digit this probe used to carry; the two rows are read together. DESIGN 4b(4): the probe flips
 // to a permanent regression control, it does not retire.
-data peano_nat_arg_source: String = "module probe_inhabit_peano\nimport v2.std.nat { Nat }\nfn takes_peano(n: Nat) -> Int { 1 }\nfn probe() -> Int { takes_peano(n: 5) }\n"
+data peano_nat_arg_source: String = "module probe_inhabit_peano\nimport test.fixture.structural_peano_nat { StructuralNat }\nfn takes_peano(n: StructuralNat) -> Int { 1 }\nfn probe() -> Int { takes_peano(n: 5) }\n"
 
 test fn w_kernel_numeric_at_the_peano_nat_is_admitted_through_its_homomorphism() -> Bool {
   violation_count(source: peano_nat_arg_source, wanted: "DeclaredTypeNotInhabited") == 0
@@ -474,6 +478,24 @@ data disjoint_partner_source: String = "module probe_disjoint_refinement_at_prod
 test fn w_a_branded_refinement_at_an_unrelated_product_formal_still_refuses() -> Bool {
   violation_count(source: disjoint_refinement_at_product_source, wanted: "DeclaredTypeNotInhabited")
     > violation_count(source: disjoint_partner_source, wanted: "DeclaredTypeNotInhabited")
+}
+
+// THE RESIDUAL OF THE DISJOINT-CHAIN HOLE, AFTER THE KERNEL-BASE SPECIMEN ABOVE CLOSED. gunbc#12695
+// peeled the PRODUCED side's where-refinement before the kernel-at-structured judgment, so
+// HostIdentity (a refinement whose chain bottoms out in kernel String) now refuses at Box and the
+// control above is a permanent regression control. That repair did NOT remove the accepting
+// residual at the final default, which is what the admission row's trigger names: a refinement
+// whose chain bottoms out in a PRODUCT reaches no arm. Measured at #12695's head: Tagged (Other
+// where brand) at Box -> 0 DeclaredTypeNotInhabited, while plain Other at Box -> 1. Same
+// one-token-differing closure pair as above, so a row appearing elsewhere in the closure cancels.
+// Class and trigger: gunbc.recurring_failure_mode.absence_classifier_default_bucket.
+data disjoint_product_refinement_at_product_source: String = "module probe_disjoint_product_refinement\nimport std.types { Int, String }\ntype Other { w: Int }\ntype Tagged = Other where brand(\"Tagged\")\ntype Box { v: String }\ndata probe_tagged_d: Tagged = Other { w: 1 } as Tagged\ndata probe_box_d: Box = Box { v: \"x\" }\nfn takes_box(b: Box) -> Int { 1 }\nfn probe() -> Int { takes_box(b: probe_tagged_d) }\n"
+
+data disjoint_product_refinement_partner_source: String = "module probe_disjoint_product_refinement\nimport std.types { Int, String }\ntype Other { w: Int }\ntype Tagged = Other where brand(\"Tagged\")\ntype Box { v: String }\ndata probe_tagged_d: Tagged = Other { w: 1 } as Tagged\ndata probe_box_d: Box = Box { v: \"x\" }\nfn takes_box(b: Box) -> Int { 1 }\nfn probe() -> Int { takes_box(b: probe_box_d) }\n"
+
+test fn w_a_branded_product_refinement_at_an_unrelated_product_formal_still_refuses() -> Bool {
+  violation_count(source: disjoint_product_refinement_at_product_source, wanted: "DeclaredTypeNotInhabited")
+    > violation_count(source: disjoint_product_refinement_partner_source, wanted: "DeclaredTypeNotInhabited")
 }
 
 // THE COLLECTION-VERSUS-NOMINAL-PRODUCT CELL, IN BOTH DIRECTIONS. Measured on main ff2110b7e24,

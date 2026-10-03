@@ -1,13 +1,11 @@
 module gunbc.machine_intake_sol_hold
 
 import std.types { Bool, NonEmptyStr, Unit }
-import std.string_type { String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.node { Node }
 import v2.workflow.bash_emit { bash_emit_stmts }
-import v2.workflow.gunbc_invoke_step_emit { gunbc_invoke_step_orch_refused_poison }
 import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes, bash_build_word_cmdsubst, bash_build_command_with_words,
   bash_build_command_from_lits, bash_build_assign, bash_build_and_then, bash_build_or_else, bash_build_pipe, bash_build_if_from_stmts,
@@ -237,10 +235,17 @@ fn sol_hold_proc_present() -> Node {
   bash_build_test_bracket(words: [shl(text: "-e"), bash_build_word_concat_from_nodes(parts: [shl(text: "/proc/"), shv(name: "p")])])
 }
 
+// The String seam: a refused render becomes a marker that is not valid shell, the same discipline as
+// v2.workflow.bash_emit bash_emit_program_sequence_refused_poison. Its own marker, naming its own
+// subject: the one it used to borrow named the gunbc run step pipeline, and borrowing it put
+// v2.workflow.gunbc_invoke_step_emit, and through it v2.compiler.emit_orchestration, in the closure of
+// every process hold and every read-only observer that releases one.
+data sol_hold_render_refused_poison: String = "__GUNBC_SOL_HOLD_RENDER_REFUSED__ v2.workflow.bash_emit bash_emit_stmts refused a gunbc.machine_intake_sol_hold script; this marker is not valid shell, so the hold or release it stands for fails loudly rather than running a partial script (DESIGN 5: refuse, never widen)\n"
+
 fn sol_hold_rendered(stmts: List<Node>) -> String {
   match bash_emit_stmts(statements: stmts, set_e: false) {
     Accepted { value: text, diagnostics: _ } => text
-    Rejected { diagnostics: _ } => gunbc_invoke_step_orch_refused_poison
+    Rejected { diagnostics: _ } => sol_hold_render_refused_poison
   }
 }
 
@@ -283,6 +288,7 @@ data mtcollins1_sol_hold_owned_check_script: String = sol_hold_rendered(stmts: s
 
 service gunbc.machine_intake.sol_hold {
   operation ActivateHeld {
+    requires opaque
     input {
       bmc_host: NonEmptyStr
       username: NonEmptyStr
@@ -315,6 +321,7 @@ service gunbc.machine_intake.sol_hold {
   }
 
   operation ReleaseHeld {
+    requires none
     input {
       pid_path: NonEmptyStr
     }

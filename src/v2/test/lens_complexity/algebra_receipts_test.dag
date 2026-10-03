@@ -28,11 +28,11 @@ data algebra_receipts_y: Node = Node {
 }
 
 data polynomial_degree_two_receipt: PolynomialDegree = PolynomialDegree {
-  predecessor_after_linear: NonZeroNat { prev: v2.std.nat.Zero }
+  predecessor_after_linear: NonZeroNat { prev: std.nat.Zero }
 }
 
 data polynomial_degree_four_receipt: PolynomialDegree = PolynomialDegree {
-  predecessor_after_linear: NonZeroNat { prev: v2.std.nat.Succ { prev: v2.std.nat.Succ { prev: v2.std.nat.Zero } } }
+  predecessor_after_linear: NonZeroNat { prev: std.nat.Succ { prev: std.nat.Succ { prev: std.nat.Zero } } }
 }
 
 data algebra_receipts_diagnostic: Diagnostic = Diagnostic {

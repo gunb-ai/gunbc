@@ -1,6 +1,7 @@
 module v2.test.claim.compilation_unit_witness
 
 import std.algebra { Empty }
+import v2.std.arrow_signature { anonymous_signature_arrow }
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.compilers.compilation_unit {
@@ -42,7 +43,7 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Symbol,
   TypeNode,
@@ -50,6 +51,7 @@ import v2.std.node {
   node_synthetic,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node_query { binder_edge }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -73,29 +75,19 @@ fn witness_point_struct_conj_body() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^x },
-        target: witness_type_atom(sym: witness_type_int),
-      }
+      binder_edge(
+        name: ^x,
+        type_node: witness_type_atom(sym: witness_type_int)
+      )
     ]
   )
 }
 
 fn witness_fn_taking_point_by_value() -> Node {
-  node_synthetic(
-    kind: TypeNode {
-      connective: Arrow,
-    },
-    children: [
-      Edge {
-        label: Named { name: ^domain },
-        target: witness_type_atom(sym: witness_type_point),
-      },
-      Edge {
-        label: Named { name: ^codomain },
-        target: witness_type_atom(sym: witness_type_int),
-      }
-    ]
+  anonymous_signature_arrow(
+    domain_types: [witness_type_atom(sym: witness_type_point)],
+    codomain: witness_type_atom(sym: witness_type_int),
+    source: witness_type_atom(sym: witness_type_point)
   )
 }
 

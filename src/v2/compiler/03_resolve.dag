@@ -1,7 +1,7 @@
 module v2.compiler.resolve
 import v2.std.language_model { LanguageModel }
 
-import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_resource_declarations }
 import v2.compiler.namespace_graft { namespace_graft_module_body_optional }
 import v2.std.declaration_marker {
   ReachesNoTestCode,
@@ -14,22 +14,34 @@ import v2.std.declaration_marker {
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.extdeps.languages.dag {
+  namespace_graft_node_is_module_body,
+  dag_kernel_string_type_spelling,
+  dag_string_literal_value_optional,
   dag_kernel_type_binding_optional,
   dag_kernel_type_declaration_binding_optional,
+  dag_kernel_type_foreign_declaration,
+  ForeignDeclarationBinds,
+  ForeignDeclarationRefuses,
   dag_node_is_float_literal_atom,
   dag_node_is_int_literal_atom,
+  dag_symbol_literal_name_optional,
+  dag_string_literal_value_symbol_optional,
   dag_node_is_module_root_conj,
   dag_resolve_preserve_module_metadata_subtree,
   dag_surface_module_header_metadata_edge,
   dag_surface_operator_canonicalization_lookup,
+  namespace_graft_spine_body_optional,
+  parse_production_emitted_identity_optional,
   qualified_name_from_module_node
 }
+import v2.compiler.parse { parse_tree_projection_edge }
 import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
-import v2.std.algebra { any, fold_list, length }
+import v2.std.algebra { any, fold_list, length, skip }
 import v2.std.collection {
   Map,
   PointwisePower,
   empty_map,
+  list_at_optional,
   map_get,
   map_insert,
   map_lookup
@@ -58,15 +70,22 @@ import v2.std.diagnostic {
   diagnostics_merge,
   diagnostics_fatal_reason,
   diagnostics_singleton,
+  bind_outcome,
   rejected_with_pending
 }
+import v2.compiler.fold_lowering { FoldRealization, FoldRealizesDeclaration, FoldRealizesRosterOperation, fold_family_realization }
 import v2.std.qualified_name {
   QualifiedName,
+  qualified_name_from_dotted_string,
   qualified_name_from_node,
   qualified_name_init,
   qualified_name_last_segment,
+  qualified_name_to_dotted_string,
   qualified_name_snoc,
-  declaration_reference_node
+  declaration_reference_node,
+  parameter_reference_node,
+  lexical_reference_node,
+  declaration_reference_path_optional
 }
 import v2.std.resolution_policy {
   ImportScoped,
@@ -74,6 +93,7 @@ import v2.std.resolution_policy {
   NamespaceOnlyY,
   default_name_resolution_policy
 }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations }
 import v2.std.symbol_index {
   LexicalAmbiguous,
   LexicalBindingCandidate,
@@ -88,11 +108,17 @@ import v2.std.symbol_index {
   RecordTypePayload,
   VariantArmPayload,
   symbol_index_declared_payload_at,
+  symbol_index_declares_resource_at,
   symbol_index_global_unique_lookup,
   symbol_index_declaring_path_of,
-  symbol_index_lexical_lookup
+  symbol_index_lexical_lookup,
+  symbol_index_lookup,
+  symbol_index_renaming_alias_at
 }
 import v2.std.node {
+  Cardinality,
+  MapLiteralEntriesEdge,
+  labeled_core_is,
   named_edges,
   positional_child_count,
   positional_edges,
@@ -104,33 +130,79 @@ import v2.std.node {
   Disj,
   Edge,
   Match,
-  Named,
+  Authored,
   Node,
   NodeFold,
   Positional,
   Symbol,
   Transform,
   TypeNode,
+  Loop,
   fold_node,
-  match_arm_body,
-  match_arm_pattern,
+  LoopCarrierBinder,
+  LoopRealizedDeclaration,
+  loop_edge_role,
+  symbol_intern_lexeme,
+  symbol_lexeme,
+  arrow_domain_binds_a_name,
   arrow_first_positional_target,
-  arrow_signature_order_label,
+  arrow_named_edge_is_contract,
+  ArrowResourceRequirementsEdge,
   FirstPositionalAbsent,
   FirstPositionalFound,
   edge_label_of,
   node_with_occurrence_id,
+  Instantiation,
+  symbol_eq,
+  symbol_lexeme,
+  labeled_named_is,
   well_formed,
+  MatchArmPatternEdge,
+  ArrowSignatureOrderEdge,
+  edge_is_core,
+  StructuralLabel,
+  label_sort_key,
+  labeled_named_is,
+  ConstructTagEdge,
+  ArrowBodyEdge,
+  BinderDefaultEdge,
 }
-import v2.std.type_binder { edge_is_cast_target, edge_is_type_annotation, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names }
+import v2.std.type_binder { GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names }
 import v2.std.node_query {
+  binder_node_edge,
+  binder_node_parts,
+  declared_field_from_edge,
+  member_edge_type_node,
+  NamedChildAmbiguous,
+  NamedChildFound,
+  NamedChildMissing,
+  named_child_lookup,
   construct_field_edges,
+  construct_tag_reading,
+  ConstructTagAuthored,
+  ConstructTagElided,
+  NotAConstruct,
   construct_tag_optional,
+  node_positional_child_targets,
   find_named_child,
   is_wildcard_pattern,
-  pattern_wildcard_name
+  pattern_wildcard_name,
+  find_core_child,
 }
-import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
+import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
+import v2.std.map_introduction {
+  MapIntroductionEntryNodes,
+  MapIntroductionKeyRepeated,
+  MapIntroductionKeysDistinct,
+  MapLiteralEntriesMalformed,
+  MapLiteralEntriesNone,
+  MapLiteralEntriesPresent,
+  map_literal_entries,
+  lower_map_introduction,
+  map_introduction_duplicate_key,
+  map_introduction_expected_head_is_map
+}
 
 // RESOLVE'S OUTPUT IS THE RESOLVED ROOT AND THE INDEX IT WAS RESOLVED AGAINST, one record. A later
 // stage that needs a reference's declaration asks the SAME authority resolution asked
@@ -138,13 +210,57 @@ import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId }
 // the Namespace.symbol_index the walk ran under, minted beside the root on the Accepted arm only, so
 // a refusal carries no index and no stage can read one for a tree that did not resolve.
 // CONSUMERS: .root is read by every stage after resolve (infer's gather reads it at its entry).
-// .symbol_index is a DECLARED FRONTIER in this change: its consumer is gunbc#12407, which stacks on
-// it -- v2.compiler.infer refinement_declaration asks symbol_index_lookup for a refinement
-// declaration a cast operand's type references (the declared-carrier widening), replacing an
-// infer-private walk over the tree.
+// .symbol_index is the table resolve resolves against; no later stage reads it. A later stage that needs
+// a declaration reads .resolved_declarations below: v2.compiler.infer infer_parameter_reference_facts
+// grounds a named fn's parameter reference (minted by resolve_frame_bound_reference) by
+// symbol_index_lookup there at its path, and refinement_declaration (gunbc#12407) asks it for the
+// refinement declaration a cast operand's type references.
+// TWO INDEXES OVER THE SAME DECLARATIONS AT DIFFERENT PHASES, NEVER ONE QUESTION TWICE.
+// symbol_index is THE INDEX RESOLUTION CONSULTED: declarations as authored, before resolve, the table
+// resolve looks references up in. resolved_declarations is DECLARATIONS WITH RESOLVED BODIES: the same
+// module fold (v2.compiler.symbol_index_fill symbol_index_fill_module_declarations) run over the
+// RESOLVED root, so a declaration's body carries the identities resolve bound in it -- a where-refined
+// carrier `Int` is the kernel binding, a carrier naming a corpus type is its declaration reference. A
+// reader that needs a body's resolved type reads resolved_declarations; nothing reads symbol_index for
+// a body type (neat-boar-16 ruling), so the two never answer the same question.
+// lexical_bindings is WHICH BINDER ANSWERED EACH LEXICAL REFERENCE, keyed by the reference's own
+// minted occurrence: the record resolve's Lexical frames made while walking (LexicalBinding). It is
+// the lexical counterpart of resolved_declarations for a parameter reference -- a consumer reads it
+// and never re-derives scope.
 type ResolvedTree {
   root: Node
   symbol_index: SymbolIndex
+  resolved_declarations: SymbolIndex
+  lexical_bindings: Map<OccurrenceId, LexicalBinding>
+}
+
+// The resolved root's declarations, by the same module fold the pre-resolve index uses: the module's
+// qualified name is read from the root's own header, so a declaration is keyed at its full path (p.Pos).
+// A root whose module name cannot be read yields the empty index -- every lookup through it refuses.
+fn resolved_declarations_of(root: Node) -> SymbolIndex {
+  symbol_index_fill_module_declarations(index: empty_symbol_index(), root: root, record_declarations: Empty, resource_declarations: Empty)
+}
+
+// THE ONE CONSTRUCTOR of an accepted resolution's carrier: the root, the index it was resolved
+// against, its declarations as resolved, and the lexical bindings its walk recorded.
+fn resolved_tree_of(root: Node, symbol_index: SymbolIndex, lexical: List<LexicalBindingEntry>) -> ResolvedTree {
+  ResolvedTree {
+    root: root,
+    symbol_index: symbol_index,
+    resolved_declarations: resolved_declarations_of(root: root),
+    lexical_bindings: fold(lexical, init: empty_map(), f: fn(m, e) { map_insert(m, e.reference, e.binding) })
+  }
+}
+
+// The binding that answered a lexical reference node, read through its own occurrence. Absent for a
+// node that is not a lexical reference this tree's resolve recorded.
+fn resolved_tree_lexical_binding(tree: ResolvedTree, reference: Node) -> Optional<LexicalBinding> {
+  match reference.occurrence_id {
+    OccurrenceMinted { id: id } => map_lookup(m: tree.lexical_bindings, key: id)
+    OccurrenceProjected { id: id, caused_by: _ } => map_lookup(m: tree.lexical_bindings, key: id)
+    OccurrenceSynthetic => optional_absent()
+    OccurrencePending { caused_by: _ } => optional_absent()
+  }
 }
 
 // `test_code`, `declared_in` and `imported_origins` exist for one decision: whether a reference binds
@@ -164,7 +280,48 @@ type Namespace {
 
 type Scope
   = ScopeRoot { module: Namespace }
-  | ScopeFrame { locals: Map<Symbol, Symbol>, outer: Scope }
+  | ScopeFrame { locals: Map<Symbol, Symbol>, outer: Scope, kind: FrameKind }
+
+// WHAT A FRAME'S BINDERS ARE, DECIDED ONCE WHERE THE FRAME IS BUILT AND NEVER RE-READ FROM SHAPE.
+// A frame opened over the domain of an Arrow the containment walk reaches -- a declared fn, whose
+// parameters v2.compiler.symbol_index_fill indexes at <declaring path>.<label> -- is a
+// ParameterFrame carrying that declaring path, and a reference it answers is minted as a
+// path-keyed parameter reference (resolve_frame_bound_reference). A `let`, a match arm and a
+// lambda's own Arrow are Lexical: their binders are not declarations (see the match-arm frame below),
+// so a reference they answer is minted as a lexical reference keyed by its own occurrence, with the
+// binder that answered it recorded in ResolvedTree.lexical_bindings (LexicalBinding). A type-parameter
+// frame is TypeParameterFrame: it binds a type, not a value, and a name it answers stays the bare
+// canonical atom, which is how v2.compiler.infer recognizes a type variable (type_param_names).
+// Every consumer of a value reference therefore reads which binder answered it from resolve, and
+// none searches scope again: the lambda frontier this carrier used to declare -- infer's parameter
+// scope search -- is closed by the lexical reference, not
+// by an index path for anonymous Arrows (a lambda parameter is not a declaration, so the occurrence
+// of its Arrow, not a path, is its key).
+type FrameKind
+  = ParameterFrame { arrow_path: QualifiedName }
+  | LexicalFrame { binders: Map<Symbol, LexicalBinding> }
+  | TypeParameterFrame
+
+// A LEXICAL BINDER, AS THE FRAME THAT INTRODUCES IT RECORDED IT. A `let`, a match-arm pattern binder
+// and a lambda's parameter are not declarations: nothing indexes them at a path, so the frame keys
+// each by its SITE -- the minted occurrence (std.occurrence_identity) of the node that introduces
+// it: the binder atom for a `let` or a pattern binder, the lambda's Arrow for a parameter its domain
+// carries as an edge label. `declared` is the binder's declared type where its frame carries one (a
+// lambda domain edge, read through v2.std.node_query member_edge_type_node), Absent where it does not.
+// A reference this frame answers is minted as v2.std.qualified_name lexical_reference_node and its
+// binding is recorded in ResolvedTree.lexical_bindings under the REFERENCE's own occurrence, so a
+// consumer reads which binder answered and never searches scope again: resolve decided it here.
+type LexicalBinding {
+  binder_site: NodeOccurrenceIdentity
+  declared: Optional<Node>
+}
+
+// One answered lexical reference: the reference's own minted occurrence and the binding that
+// answered it. The walk accumulates these beside the tree it builds (ResolveWalkAccepted.lexical).
+type LexicalBindingEntry {
+  reference: OccurrenceId
+  binding: LexicalBinding
+}
 
 // type_scope IS THE TYPE-ROLE FRAME: the scope a name in a TYPE position resolves in. It is the
 // enclosing Arrows' type-parameter frames over the namespace root, and it never carries a value
@@ -180,7 +337,22 @@ type ResolveContext {
   position: QualifiedName
   lm: LanguageModel
   under_module_root: Bool
+  declaring: DeclaringPosition
 }
+
+// WHERE THE WALK STANDS IN THE CONTAINMENT TREE, IN THE PATH v2.compiler.symbol_index_fill KEYS
+// DECLARATIONS BY. It is not `position`, which is a LOOKUP position and counts every named edge; the
+// fill's path skips parse-tree projection edges and module-header metadata, and at a namespace spine
+// it jumps to the module body without extending the path. The step below asks the fill's own
+// predicates (v2.compiler.parse parse_tree_projection_edge, v2.extdeps.languages.dag
+// dag_surface_module_header_metadata_edge and namespace_graft_spine_body_optional), so the two
+// cannot disagree about where a declaration lives. DeclaringInSpine carries the spine's module body:
+// until the walk reaches it, no edge extends the path. Below an Arrow nothing is containment
+// (NotDeclaring), so an Arrow met there -- a lambda -- opens a LexicalFrame.
+type DeclaringPosition
+  = DeclaringAt { path: QualifiedName }
+  | DeclaringInSpine { path: QualifiedName, body: Node }
+  | NotDeclaring
 
 type DeclaredBinding {
   name: Symbol
@@ -212,23 +384,9 @@ fn empty_canonical_symbol_set() -> PointwisePower<Symbol> {
 
 fn try_edge_declared_binding(e: Edge) -> DeclaredBinding? {
   match e.label {
-    Named { name: sym } => optional_present(value: DeclaredBinding { name: sym })
+    Authored { name: sym } => optional_present(value: DeclaredBinding { name: sym })
+    StructuralLabel { label: _ } => optional_absent()
     Positional => optional_absent()
-  }
-}
-
-fn direct_atom_binding_fold(base: Map<Symbol, Symbol>) -> NodeFold<Map<Symbol, Symbol>> {
-  NodeFold {
-    init: fn(n0) {
-      match n0.kind {
-        TypeNode { connective: Atom { identity: sym } } =>
-          map_insert(base, sym, sym)
-        _ => base
-      }
-    },
-    step: fn(acc, _, _) {
-      acc
-    }
   }
 }
 
@@ -245,13 +403,6 @@ fn harvest_conj_named_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symb
   }
 }
 
-fn harvest_direct_atom_binding(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
-  fold_node(
-    n: root,
-    algebra: direct_atom_binding_fold(base: acc)
-  )
-}
-
 data resolve_variant_visibility_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
@@ -265,37 +416,125 @@ fn namespace_bindings_augment_from_module_atoms(
   root: Node,
   bindings: Map<Symbol, Symbol>
 ) -> Map<Symbol, Symbol> {
-  harvest_conj_named_bindings(root: root, acc: bindings)
+  harvest_module_root_named_bindings(root: root, acc: bindings)
 }
 
-fn add_arrow_domain_named_params(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
+// A MODULE ROOT'S BARE BINDINGS OMIT ITS SERVICE NAMESPACES (the operator's nesting ban; XL-2 service
+// spine). A named edge whose target is a marked namespace body -- the prefix `s` of `service s.F` -- is a
+// path segment, never a lexical binding: its members stay reachable by their qualified paths through the
+// symbol index, and v2.std.symbol_index NamespaceBodyDeclared keeps the index walk from answering with
+// it. This is the same classification at the module root's binding harvest, which resolve consults
+// before the index. Module-root only: an Arrow domain's binders (add_arrow_domain_named_params) are
+// harvested by harvest_conj_named_bindings, unchanged.
+fn harvest_module_root_named_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
+  match root.kind {
+    TypeNode { connective: c } =>
+      match c {
+        Conj => harvest_module_root_conj_bindings(root: root, acc: acc)
+        Atom { identity: _ } => acc
+        Disj => acc
+        Arrow => acc
+        Cardinality => acc
+        Instantiation => acc
+      }
+    ComputationNode { behavior: _ } => acc
+  }
+}
+
+// Only a Conj root has named members to harvest; every other node kind binds nothing at the module root.
+fn harvest_module_root_conj_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
+  fold(root.children, init: acc, f: fn(a, e) {
+    if module_binding_edge_is_namespace_body(e: e) {
+      a
+    } else {
+      match try_edge_declared_binding(e: e) {
+        Present { value: b } => map_insert(a, b.name, b.name)
+        Absent => a
+      }
+    }
+  })
+}
+
+fn module_binding_edge_is_namespace_body(e: Edge) -> Bool {
+  match e.label {
+    Authored { name: _ } => namespace_graft_node_is_module_body(node: e.target)
+    StructuralLabel { label: _ } => false
+    Positional => false
+  }
+}
+
+// A FRAME'S BINDERS, BUILT ONCE: the name each binder answers (locals, what lookup_chain reads) and,
+// for a Lexical frame, the binding its references are keyed to. One builder fills both, so the set a
+// frame answers for and the set it can key are the same set by construction.
+type FrameBinders {
+  locals: Map<Symbol, Symbol>
+  binders: Map<Symbol, LexicalBinding>
+}
+
+fn frame_binders_empty() -> FrameBinders {
+  FrameBinders { locals: empty_map(), binders: empty_map() }
+}
+
+fn frame_binders_add(fb: FrameBinders, name: Symbol, binding: LexicalBinding) -> FrameBinders {
+  FrameBinders {
+    locals: map_insert(fb.locals, name, name),
+    binders: map_insert(fb.binders, name, binding)
+  }
+}
+
+fn lexical_frame(fb: FrameBinders, outer: Scope) -> Scope {
+  ScopeFrame { locals: fb.locals, outer: outer, kind: LexicalFrame { binders: fb.binders } }
+}
+
+// An Arrow's domain binders: each Named domain edge, sited at the Arrow (the label is not a node),
+// with its declared type. Only a Named binder binds (v2.std.node A4: a domain is a Conj of Named
+// binders with its declared order).
+fn arrow_domain_frame_binders(n: Node) -> FrameBinders {
   match n.kind {
     TypeNode { connective: Arrow } =>
       match arrow_first_positional_target(children: n.children) {
         FirstPositionalFound { target: domain } =>
-          harvest_direct_atom_binding(
-            root: domain,
-            acc: harvest_conj_named_bindings(root: domain, acc: acc)
-          )
-        FirstPositionalAbsent => acc
+          match domain.kind {
+            TypeNode { connective: Conj } =>
+              fold(domain.children, init: frame_binders_empty(), f: fn(fb, e) {
+                match try_edge_declared_binding(e: e) {
+                  Present { value: b } =>
+                    frame_binders_add(fb: fb, name: b.name, binding: LexicalBinding {
+                      binder_site: n.occurrence_id,
+                      declared: member_edge_type_node(e: e)
+                    })
+                  Absent => fb
+                }
+              })
+            _ => frame_binders_empty()
+          }
+        FirstPositionalAbsent => frame_binders_empty()
       }
-    _ => acc
+    _ => frame_binders_empty()
   }
 }
 
-fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
+// A `let`'s binder: its first positional child, an atom, sited at itself.
+fn bind_frame_binders(n: Node) -> FrameBinders {
   match n.kind {
     ComputationNode { behavior: Bind } =>
       if positional_child_count(children: n.children) == 3 {
         match first(positional_edges(children: n.children)) {
           Present { value: e0 } =>
-            harvest_direct_atom_binding(root: e0.target, acc: acc)
-          Absent => acc
+            match e0.target.kind {
+              TypeNode { connective: Atom { identity: sym } } =>
+                frame_binders_add(fb: frame_binders_empty(), name: sym, binding: LexicalBinding {
+                  binder_site: e0.target.occurrence_id,
+                  declared: optional_absent()
+                })
+              _ => frame_binders_empty()
+            }
+          Absent => frame_binders_empty()
         }
       } else {
-        acc
+        frame_binders_empty()
       }
-    _ => acc
+    _ => frame_binders_empty()
   }
 }
 
@@ -306,6 +545,11 @@ fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol
 // (review 5342739525 on #12540). The body is selected by the graft's own mark
 // (v2.compiler.namespace_graft namespace_graft_module_body_optional), never by walking names, so
 // a missing or ambiguous step stops and a record that shares a segment's name is not a body.
+// A SINGLE TREE'S INDEX IS ITS OWN DECLARATIONS, BY THE ONE FILL. The program route's symbol_index is
+// the corpus fill; a single tree's is the same fold (v2.compiler.symbol_index_fill
+// symbol_index_fill_module_declarations) over its one root, keyed at its module's paths. Parameter
+// references are verified against it (resolve_frame_bound_reference), so both routes verify against
+// the index each resolves through -- one authority, not a second table beside it.
 fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace {
   let declared_in = namespace_tree_module_qn(tree: tree)
   let root_bindings = namespace_bindings_augment_from_module_atoms(
@@ -313,13 +557,13 @@ fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace
     bindings: empty_map()
   )
   let bindings = match namespace_graft_module_body_optional(root: tree.root) {
-    Present { value: body } => harvest_conj_named_bindings(root: body, acc: root_bindings)
+    Present { value: body } => harvest_module_root_named_bindings(root: body, acc: root_bindings)
     Absent => root_bindings
   }
   Namespace {
     bindings: bindings,
     canonical_symbols: lm.canonical_symbols,
-    symbol_index: empty_symbol_index(),
+    symbol_index: symbol_index_fill_module_declarations(index: empty_symbol_index(), root: tree.root, record_declarations: Empty, resource_declarations: normalized_tree_resource_declarations(t: tree)),
     module_qn: Empty,
     test_code: test_code_index_add_module(
       index: test_code_index_empty(),
@@ -347,7 +591,7 @@ fn scope_from_namespace(namespace: Namespace) -> Scope {
 
 fn scope_root_module(s: Scope) -> Namespace {
   match s {
-    ScopeFrame { outer: o, locals: _ } => scope_root_module(s: o)
+    ScopeFrame { outer: o, locals: _, kind: _ } => scope_root_module(s: o)
     ScopeRoot { module: m } => m
   }
 }
@@ -364,7 +608,8 @@ fn resolve_ctx_init(
     policy: policy,
     position: namespace.module_qn,
     lm: lm,
-    under_module_root: false
+    under_module_root: false,
+    declaring: resolve_declaring_root(namespace: namespace)
   }
 }
 
@@ -376,7 +621,8 @@ fn resolve_ctx_with_scope(ctx: ResolveContext, scope: Scope) -> ResolveContext {
     policy: ctx.policy,
     position: ctx.position,
     lm: ctx.lm,
-    under_module_root: ctx.under_module_root
+    under_module_root: ctx.under_module_root,
+    declaring: ctx.declaring
   }
 }
 
@@ -388,7 +634,8 @@ fn resolve_ctx_with_type_scope(ctx: ResolveContext, type_scope: Scope) -> Resolv
     policy: ctx.policy,
     position: ctx.position,
     lm: ctx.lm,
-    under_module_root: ctx.under_module_root
+    under_module_root: ctx.under_module_root,
+    declaring: ctx.declaring
   }
 }
 
@@ -408,7 +655,91 @@ fn resolve_ctx_snoc_position(ctx: ResolveContext, segment: Symbol) -> ResolveCon
     policy: ctx.policy,
     position: qualified_name_snoc(qn: ctx.position, segment: segment),
     lm: ctx.lm,
-    under_module_root: ctx.under_module_root
+    under_module_root: ctx.under_module_root,
+    declaring: ctx.declaring
+  }
+}
+
+fn resolve_ctx_leaving_containment(ctx: ResolveContext) -> ResolveContext {
+  ResolveContext {
+    scope: ctx.scope,
+    type_scope: ctx.type_scope,
+    namespace: ctx.namespace,
+    policy: ctx.policy,
+    position: ctx.position,
+    lm: ctx.lm,
+    under_module_root: ctx.under_module_root,
+    declaring: NotDeclaring
+  }
+}
+
+// THE WALK STARTS DECLARING ONLY WHERE THE FILL STARTS INDEXING: at a root whose module name reads
+// (v2.compiler.symbol_index_fill symbol_index_fill_module_declarations indexes nothing otherwise),
+// which the namespace records as a non-empty declared_in. A tree with no module -- a bare Arrow
+// handed to resolve -- declares nothing, so its Arrow's frame is Lexical, never a ParameterFrame over
+// a path no index can hold.
+fn resolve_declaring_root(namespace: Namespace) -> DeclaringPosition {
+  match namespace.declared_in {
+    Empty => NotDeclaring
+    Cons { head: _, tail: _ } => DeclaringAt { path: namespace.declared_in }
+  }
+}
+
+fn resolve_ctx_with_declaring(ctx: ResolveContext, declaring: DeclaringPosition) -> ResolveContext {
+  ResolveContext {
+    scope: ctx.scope,
+    type_scope: ctx.type_scope,
+    namespace: ctx.namespace,
+    policy: ctx.policy,
+    position: ctx.position,
+    lm: ctx.lm,
+    under_module_root: ctx.under_module_root,
+    declaring: declaring
+  }
+}
+
+// ONE NAMED EDGE'S STEP, AS THE FILL TAKES IT (v2.compiler.symbol_index_fill
+// symbol_index_fill_containment_edge): metadata and projection edges keep the path, every other
+// label extends it.
+fn resolve_declaring_across_named_edge(declaring: DeclaringPosition, e: Edge) -> DeclaringPosition {
+  match declaring {
+    DeclaringAt { path: path } =>
+      match e.label {
+        StructuralLabel { label: _ } =>
+          if dag_surface_module_header_metadata_edge(e: e) || binder_node_edge(e: e) {
+            declaring
+          } else {
+            DeclaringAt { path: qualified_name_snoc(qn: path, segment: label_sort_key(label: e.label)) }
+          }
+        Authored { name: name } =>
+          if parse_tree_projection_edge(name: name) {
+            declaring
+          } else {
+            DeclaringAt { path: qualified_name_snoc(qn: path, segment: name) }
+          }
+        Positional => declaring
+      }
+    DeclaringInSpine { path: _, body: _ } => declaring
+    NotDeclaring => declaring
+  }
+}
+
+// ENTERING A NODE, AS THE FILL ENTERS IT (symbol_index_fill_containment_node): a Conj whose namespace
+// spine ends at a module body keeps the path until that body is reached, and reaching it resumes.
+fn resolve_declaring_entering(declaring: DeclaringPosition, n: Node) -> DeclaringPosition {
+  match declaring {
+    DeclaringAt { path: path } =>
+      match n.kind {
+        TypeNode { connective: Conj } =>
+          match namespace_graft_spine_body_optional(node: n) {
+            Present { value: body } => DeclaringInSpine { path: path, body: body }
+            Absent => declaring
+          }
+        _ => declaring
+      }
+    DeclaringInSpine { path: path, body: body } =>
+      if n == body { DeclaringAt { path: path } } else { declaring }
+    NotDeclaring => declaring
   }
 }
 
@@ -420,7 +751,8 @@ fn resolve_ctx_with_under_module_root(ctx: ResolveContext, under_module_root: Bo
     policy: ctx.policy,
     position: ctx.position,
     lm: ctx.lm,
-    under_module_root: under_module_root
+    under_module_root: under_module_root,
+    declaring: ctx.declaring
   }
 }
 
@@ -428,17 +760,17 @@ fn resolve_ctx_with_under_module_root(ctx: ResolveContext, under_module_root: Bo
 // scope, so only a ROOT hit can be a reference to a module-level declaration, and the test-code wall
 // (resolve_atom_bound) reads that distinction from here rather than re-walking the chain.
 type ScopeBinding
-  = BoundInFrame { canonical: Symbol }
+  = BoundInFrame { canonical: Symbol, kind: FrameKind }
   | BoundAtRoot { canonical: Symbol }
   | ScopeUnbound
 
 fn lookup_chain(s: Scope, name: Symbol) -> Outcome<ScopeBinding> {
   match s {
-    ScopeFrame { locals: m, outer: o } =>
+    ScopeFrame { locals: m, outer: o, kind: kind } =>
       match v2.std.collection.map_get(m, name) {
         Accepted { value: opt, diagnostics: d_here } => match opt {
           Present { value: v } =>
-            Accepted { value: BoundInFrame { canonical: v }, diagnostics: d_here }
+            Accepted { value: BoundInFrame { canonical: v, kind: kind }, diagnostics: d_here }
           Absent =>
             match lookup_chain(s: o, name: name) {
               Accepted { value: found, diagnostics: d_outer } =>
@@ -519,7 +851,7 @@ fn anonymous_parameter_referenced_diagnostic(n: Node) -> Diagnostic {
 // and the value scope deliberately does not. It refuses with its own reason, located at the use.
 fn type_parameter_in_value_position_optional(ctx: ResolveContext, n: Node, name: Symbol) -> Optional<Diagnostic> {
   match lookup_chain(s: ctx.type_scope, name: name) {
-    Accepted { value: BoundInFrame { canonical: _ }, diagnostics: _ } =>
+    Accepted { value: BoundInFrame { canonical: _, kind: _ }, diagnostics: _ } =>
       optional_present(
         value: Diagnostic {
           reason: ^resolve_reason_type_parameter_in_value_position,
@@ -803,7 +1135,7 @@ fn qualified_head_bound_on_chain(ctx: ResolveContext, path: QualifiedName) -> Ou
         Accepted { value: found, diagnostics: d } =>
           Accepted {
             value: (match found {
-              BoundInFrame { canonical: _ } => true
+              BoundInFrame { canonical: _, kind: _ } => true
               BoundAtRoot { canonical: _ } => true
               ScopeUnbound => false
             }),
@@ -954,10 +1286,18 @@ type KernelTypeReading
 fn resolve_kernel_type_reading(identity: Symbol, path: QualifiedName, declared_here: Bool) -> KernelTypeReading {
   match dag_kernel_type_binding_optional(sym: identity) {
     Absent => NotAKernelTypeReading
-    Present { value: _ } =>
+    Present { value: spelled } =>
       match dag_kernel_type_declaration_binding_optional(path: path) {
         Present { value: canonical } => KernelTypeBinding { canonical: canonical }
-        Absent => if declared_here { NotAKernelTypeReading } else { KernelSpellingForeignDeclaration }
+        Absent =>
+          if declared_here {
+            NotAKernelTypeReading
+          } else {
+            match dag_kernel_type_foreign_declaration(canonical: spelled) {
+              ForeignDeclarationRefuses => KernelSpellingForeignDeclaration
+              ForeignDeclarationBinds => NotAKernelTypeReading
+            }
+          }
       }
   }
 }
@@ -1082,9 +1422,147 @@ fn resolve_atom_unbound(ctx: ResolveContext, n: Node, identity: Symbol, pending:
   }
 }
 
+// A FRAME-BOUND REFERENCE IS MINTED BY ITS FRAME'S KIND, WHICH WAS FIXED WHEN THE FRAME WAS BUILT.
+// A Lexical frame's binder stays the bare canonical atom. A ParameterFrame's binder is the parameter
+// v2.compiler.symbol_index_fill indexed at <arrow_path>.<label>, and the reference is minted over
+// exactly that path -- after the index confirms it. A path the index does not hold means the
+// resolver's containment position and the fill's disagree about where this fn is declared; that is
+// a located refusal, never a quiet fall back to the bare atom, which would leave the parameter
+// grounded by nothing the index can key.
+fn resolve_frame_bound_reference(
+  ctx: ResolveContext,
+  n: Node,
+  canonical: Symbol,
+  kind: FrameKind,
+  pending: Diagnostics
+) -> Outcome<ResolvedAtom> {
+  match kind {
+    TypeParameterFrame =>
+      Accepted {
+        value: ResolvedAtom { node: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id), lexical: [] },
+        diagnostics: pending
+      }
+    LexicalFrame { binders: binders } =>
+      resolve_lexical_reference(n: n, canonical: canonical, binding: map_lookup(m: binders, key: canonical), pending: pending)
+    ParameterFrame { arrow_path: arrow_path } =>
+      let path = qualified_name_snoc(qn: arrow_path, segment: canonical)
+      match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: path) {
+        Present { value: _ } =>
+          Accepted {
+            value: ResolvedAtom { node: parameter_reference_node(qn: path, occurrence_id: n.occurrence_id), lexical: [] },
+            diagnostics: pending
+          }
+        Absent =>
+          Rejected {
+            diagnostics: rejected_with_pending(
+              pending: pending,
+              rejected: diagnostics_singleton(d: Diagnostic {
+                reason: ^resolve_reason_parameter_path_not_indexed,
+                at: node_locus(node: n),
+                correction: Unavailable { reason: UserInputBoundary }
+              })
+            )
+          }
+      }
+  }
+}
+
+// A LEXICAL REFERENCE IS MINTED UNDER ITS MARKER AND ITS BINDING RECORDED BY THE REFERENCE'S OWN
+// OCCURRENCE (ResolvedTree.lexical_bindings). A reference with no minted occurrence has no key a
+// consumer could read its binding back by, so it refuses, typed and located, rather than becoming a
+// lexical reference whose binder nobody can find. A frame that answers a name its binders do not
+// record is a resolver defect, and refuses as one.
+fn resolve_lexical_reference(
+  n: Node,
+  canonical: Symbol,
+  binding: Optional<LexicalBinding>,
+  pending: Diagnostics
+) -> Outcome<ResolvedAtom> {
+  let unkeyed = Rejected {
+    diagnostics: rejected_with_pending(pending: pending, rejected: diagnostics_singleton(d: Diagnostic {
+      reason: ^resolve_reason_lexical_reference_unkeyed,
+      at: node_locus(node: n),
+      correction: Unavailable { reason: UserInputBoundary }
+    }))
+  }
+  match binding {
+    Absent => unkeyed
+    Present { value: b } =>
+      match n.occurrence_id {
+        OccurrenceSynthetic => unkeyed
+        OccurrencePending { caused_by: _ } => unkeyed
+        OccurrenceMinted { id: id } => resolve_lexical_reference_keyed(n: n, canonical: canonical, id: id, binding: b, pending: pending)
+        OccurrenceProjected { id: id, caused_by: _ } => resolve_lexical_reference_keyed(n: n, canonical: canonical, id: id, binding: b, pending: pending)
+      }
+  }
+}
+
+fn resolve_lexical_reference_keyed(
+  n: Node,
+  canonical: Symbol,
+  id: OccurrenceId,
+  binding: LexicalBinding,
+  pending: Diagnostics
+) -> Outcome<ResolvedAtom> {
+  Accepted {
+    value: ResolvedAtom {
+      node: lexical_reference_node(label: canonical, occurrence_id: n.occurrence_id),
+      lexical: [LexicalBindingEntry { reference: id, binding: binding }]
+    },
+    diagnostics: pending
+  }
+}
+
+// AN ATOM'S ANSWER: the node it resolves to and, when a Lexical frame answered it, the binding the
+// walk records. Every other answer records nothing.
+type ResolvedAtom {
+  node: Node
+  lexical: List<LexicalBindingEntry>
+}
+
+fn resolved_atom_plain(o: Outcome<Node>) -> Outcome<ResolvedAtom> {
+  match o {
+    Accepted { value: v, diagnostics: d } => Accepted { value: ResolvedAtom { node: v, lexical: [] }, diagnostics: d }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+// THE NODE-ONLY PROJECTION, for callers that place no value reference into the tree: type-role and
+// type-parameter lookups (whose scope carries no value binder) and a construct tag (which refuses a
+// non-constructor). The walk reads resolve_atom_answer and keeps the binding.
 fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node> {
+  match resolve_atom_answer(ctx: ctx, n: n, identity: identity) {
+    Accepted { value: a, diagnostics: d } => Accepted { value: a.node, diagnostics: d }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn resolve_walk_of_atom(o: Outcome<ResolvedAtom>) -> ResolveNodeWalk {
+  match o {
+    Accepted { value: a, diagnostics: d } => ResolveWalkAccepted { value: a.node, diagnostics: d, lexical: a.lexical }
+    Rejected { diagnostics: r } => resolve_walk_refused_one(chain: r)
+  }
+}
+
+// A symbol literal is a value, returned whole: its payload is never looked up as a reference.
+fn resolve_atom_answer(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<ResolvedAtom> {
+  match dag_symbol_literal_name_optional(node: n) {
+    Present { value: _ } => resolved_atom_plain(o: Accepted { value: n, diagnostics: None })
+    Absent => resolve_atom_not_symbol_literal(ctx: ctx, n: n, identity: identity)
+  }
+}
+
+// A string literal carrying its value is a value, returned whole: its payload is never looked up.
+fn resolve_atom_not_symbol_literal(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<ResolvedAtom> {
+  match dag_string_literal_value_symbol_optional(node: n) {
+    Present { value: _ } => resolved_atom_plain(o: Accepted { value: n, diagnostics: None })
+    Absent => resolve_atom_not_string_literal(ctx: ctx, n: n, identity: identity)
+  }
+}
+
+fn resolve_atom_not_string_literal(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<ResolvedAtom> {
   if dag_node_is_int_literal_atom(node: n) {
-    Accepted { value: n, diagnostics: None }
+    resolved_atom_plain(o: Accepted { value: n, diagnostics: None })
   } else if dag_node_is_float_literal_atom(node: n) {
     Rejected {
       diagnostics: diagnostics_singleton(d: float_literal_not_lowered_diagnostic(n: n))
@@ -1092,43 +1570,43 @@ fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node>
   } else {
     match lookup_chain(s: ctx.scope, name: identity) {
       Accepted { value: found, diagnostics: pending } => match found {
-        BoundInFrame { canonical: canonical } =>
-          Accepted {
-            value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id),
-            diagnostics: pending
-          }
-        BoundAtRoot { canonical: _ } =>
-          resolve_atom_declared(
+        BoundInFrame { canonical: canonical, kind: kind } =>
+          resolve_frame_bound_reference(ctx: ctx, n: n, canonical: canonical, kind: kind, pending: pending)
+        BoundAtRoot { canonical: _ } => resolved_atom_plain(o: resolve_atom_declared(
             ctx: ctx,
             n: n,
             identity: identity,
             path: qualified_name_snoc(qn: root_binding_origin(namespace: ctx.namespace, name: identity), segment: identity),
             pending: pending
-          )
-        ScopeUnbound =>
-          match lookup_symbol_index_atom_identity(ctx: ctx, name: identity) {
-            SymbolIndexAtomHit { path: path } =>
-              resolve_atom_declared(ctx: ctx, n: n, identity: identity, path: path, pending: pending)
-            SymbolIndexAtomAmbiguous { class: class } =>
-              match resolve_kernel_type_ambiguity_optional(ctx: ctx, n: n, identity: identity, class: class) {
-                Present { value: kernel } => Accepted { value: kernel, diagnostics: pending }
-                Absent =>
-                  Rejected {
-                    diagnostics: rejected_with_pending(
-                      pending: pending,
-                      rejected: ambiguous_symbol_diagnostics(n: n, class: class)
-                    )
-                  }
-              }
-            SymbolIndexAtomUnbound =>
-              match resolve_kernel_type_atom_optional(n: n, identity: identity) {
-                Present { value: kernel } => Accepted { value: kernel, diagnostics: pending }
-                Absent => resolve_atom_unbound(ctx: ctx, n: n, identity: identity, pending: pending)
-              }
-          }
+          ))
+        ScopeUnbound => resolved_atom_plain(o: resolve_atom_unscoped(ctx: ctx, n: n, identity: identity, pending: pending))
       }
       Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
     }
+  }
+}
+
+// A NAME NO FRAME AND NO ROOT BINDING ANSWERS: the symbol index, then the kernel types, then unbound.
+fn resolve_atom_unscoped(ctx: ResolveContext, n: Node, identity: Symbol, pending: Diagnostics) -> Outcome<Node> {
+  match lookup_symbol_index_atom_identity(ctx: ctx, name: identity) {
+    SymbolIndexAtomHit { path: path } =>
+      resolve_atom_declared(ctx: ctx, n: n, identity: identity, path: path, pending: pending)
+    SymbolIndexAtomAmbiguous { class: class } =>
+      match resolve_kernel_type_ambiguity_optional(ctx: ctx, n: n, identity: identity, class: class) {
+        Present { value: kernel } => Accepted { value: kernel, diagnostics: pending }
+        Absent =>
+          Rejected {
+            diagnostics: rejected_with_pending(
+              pending: pending,
+              rejected: ambiguous_symbol_diagnostics(n: n, class: class)
+            )
+          }
+      }
+    SymbolIndexAtomUnbound =>
+      match resolve_kernel_type_atom_optional(n: n, identity: identity) {
+        Present { value: kernel } => Accepted { value: kernel, diagnostics: pending }
+        Absent => resolve_atom_unbound(ctx: ctx, n: n, identity: identity, pending: pending)
+      }
   }
 }
 
@@ -1136,21 +1614,21 @@ fn resolve_surface_operator_atom(
   ctx: ResolveContext,
   n: Node,
   identity: Symbol
-) -> Outcome<Node> {
+) -> Outcome<ResolvedAtom> {
   match dag_surface_operator_canonicalization_lookup(lm: ctx.lm, surface_token: identity) {
     Accepted { value: canonical_op, diagnostics: pending } => {
       let wire = target_model_canonical_operation_wire_node(operation: canonical_op)
-      Accepted {
+      resolved_atom_plain(o: Accepted {
         value: node_with_occurrence_id(
           kind: wire.kind,
           children: wire.children,
           occurrence_id: n.occurrence_id
         ),
         diagnostics: pending
-      }
+      })
     }
     Rejected { diagnostics: _ } =>
-      resolve_atom(ctx: ctx, n: n, identity: identity)
+      resolve_atom_answer(ctx: ctx, n: n, identity: identity)
   }
 }
 
@@ -1178,7 +1656,7 @@ fn resolve_surface_operator_atom(
 // each refused child and the rest are gone before the module root. So every recursive step returns
 // ResolveNodeWalk, the refused arm carries the whole population upward, and the ONE projection to
 // Outcome sits at the legacy entries (resolve_node, resolve_with_namespace_policy,
-// resolve_with_admission_context_policy), which keep answering what they answered.
+// resolve_in_context), which keep answering what they answered.
 //
 // WHY ORDINAL IS CARRIED SEPARATELY, and it is load-bearing rather than tidy: resolve_transform_children
 // used `length(done) == 0` to mean "this is the operator child" -- the accumulated EDGE LIST
@@ -1190,7 +1668,7 @@ fn resolve_surface_operator_atom(
 // WHY CONTINUING IS SOUND, checkable rather than assumed: a child's scope is fixed BEFORE the fold
 // runs -- one ctx, a child_ctx computed above the fold, or scope_outer/scope_inner as parameters --
 // with ONE exception, and the exception is recorded rather than guessed through. A Bind's inner
-// scope is add_bind_atom_binder over its FIRST child, so when that binder is itself refused the
+// scope is bind_frame_binders over its FIRST child, so when that binder is itself refused the
 // inner scope would be built from a binder the walk just rejected. resolve_bind_edges therefore
 // marks the site that scope would have governed ObservationIncomplete instead of resolving it: an
 // unobserved site is reported as unobserved, never as clean, and never as a refusal it may not own.
@@ -1217,7 +1695,7 @@ fn observation_meet(a: ObservationCompleteness, b: ObservationCompleteness) -> O
 // changes nothing else. `first` is therefore the one the old short-circuiting walk would have
 // stopped at, which is what makes the legacy projection below answer exactly what it answered.
 type ResolveNodeWalk
-  = ResolveWalkAccepted { value: Node, diagnostics: Diagnostics }
+  = ResolveWalkAccepted { value: Node, diagnostics: Diagnostics, lexical: List<LexicalBindingEntry> }
   | ResolveWalkRefused {
       first: NonEmptyDiagnostics
       rest: List<NonEmptyDiagnostics>
@@ -1230,7 +1708,7 @@ fn resolve_walk_refused_one(chain: NonEmptyDiagnostics) -> ResolveNodeWalk {
 
 fn resolve_walk_of_outcome(o: Outcome<Node>) -> ResolveNodeWalk {
   match o {
-    Accepted { value: v, diagnostics: d } => ResolveWalkAccepted { value: v, diagnostics: d }
+    Accepted { value: v, diagnostics: d } => ResolveWalkAccepted { value: v, diagnostics: d, lexical: [] }
     Rejected { diagnostics: r } => resolve_walk_refused_one(chain: r)
   }
 }
@@ -1238,10 +1716,10 @@ fn resolve_walk_of_outcome(o: Outcome<Node>) -> ResolveNodeWalk {
 // THE LEGACY PROJECTION. resolve's Outcome carries ONE chain, and the population's FIRST chain is
 // projected -- the chain the previous walk produced, because it stopped at that same child with the
 // same advisories before it. The remaining chains are not discarded: census-resolve reads the walk
-// itself through resolve_walk_with_admission_context_policy.
+// itself through resolve_walk_in_context.
 fn resolve_walk_outcome(w: ResolveNodeWalk) -> Outcome<Node> {
   match w {
-    ResolveWalkAccepted { value: v, diagnostics: d } => Accepted { value: v, diagnostics: d }
+    ResolveWalkAccepted { value: v, diagnostics: d, lexical: _ } => Accepted { value: v, diagnostics: d }
     ResolveWalkRefused { first: f, rest: _, observation: _ } => Rejected { diagnostics: f }
   }
 }
@@ -1249,8 +1727,8 @@ fn resolve_walk_outcome(w: ResolveNodeWalk) -> Outcome<Node> {
 // The stage exit: the same projection, with the index resolution consulted minted beside the root.
 fn resolved_tree_outcome(w: ResolveNodeWalk, symbol_index: SymbolIndex) -> Outcome<ResolvedTree> {
   match w {
-    ResolveWalkAccepted { value: v, diagnostics: d } =>
-      Accepted { value: ResolvedTree { root: v, symbol_index: symbol_index }, diagnostics: d }
+    ResolveWalkAccepted { value: v, diagnostics: d, lexical: l } =>
+      Accepted { value: resolved_tree_of(root: v, symbol_index: symbol_index, lexical: l), diagnostics: d }
     ResolveWalkRefused { first: f, rest: _, observation: _ } => Rejected { diagnostics: f }
   }
 }
@@ -1262,8 +1740,8 @@ fn resolved_tree_outcome(w: ResolveNodeWalk, symbol_index: SymbolIndex) -> Outco
 // Advisories raised after the last refusal are dropped with the rejected tree, as they were.
 fn resolve_walk_prefix_pending(pending: Diagnostics, w: ResolveNodeWalk) -> ResolveNodeWalk {
   match w {
-    ResolveWalkAccepted { value: v, diagnostics: d } =>
-      ResolveWalkAccepted { value: v, diagnostics: diagnostics_merge(outer: pending, inner: d) }
+    ResolveWalkAccepted { value: v, diagnostics: d, lexical: l } =>
+      ResolveWalkAccepted { value: v, diagnostics: diagnostics_merge(outer: pending, inner: d), lexical: l }
     ResolveWalkRefused { first: f, rest: r, observation: o } =>
       ResolveWalkRefused {
         first: rejected_with_pending(pending: pending, rejected: f),
@@ -1280,6 +1758,7 @@ type ChildWalk {
   failures: List<NonEmptyDiagnostics>
   observation: ObservationCompleteness
   scope_prerequisite_refused: Bool
+  lexical: List<LexicalBindingEntry>
 }
 
 fn child_walk_init() -> ChildWalk {
@@ -1289,7 +1768,8 @@ fn child_walk_init() -> ChildWalk {
     pending: None,
     failures: [],
     observation: ObservationComplete,
-    scope_prerequisite_refused: false
+    scope_prerequisite_refused: false,
+    lexical: []
   }
 }
 
@@ -1312,18 +1792,20 @@ fn child_walk_refused(
       right: rest
     ),
     observation: observation_meet(a: w.observation, b: observation),
-    scope_prerequisite_refused: w.scope_prerequisite_refused
+    scope_prerequisite_refused: w.scope_prerequisite_refused,
+    lexical: w.lexical
   }
 }
 
-fn child_walk_accepted(w: ChildWalk, edge: Edge, d: Diagnostics) -> ChildWalk {
+fn child_walk_accepted(w: ChildWalk, edge: Edge, d: Diagnostics, lexical: List<LexicalBindingEntry>) -> ChildWalk {
   ChildWalk {
     ordinal: w.ordinal + 1,
     edges: list_snoc_item(xs: w.edges, item: edge),
     pending: diagnostics_merge(outer: w.pending, inner: d),
     failures: w.failures,
     observation: w.observation,
-    scope_prerequisite_refused: w.scope_prerequisite_refused
+    scope_prerequisite_refused: w.scope_prerequisite_refused,
+    lexical: list_append(left: w.lexical, right: lexical)
   }
 }
 
@@ -1337,7 +1819,8 @@ fn child_walk_unobservable(w: ChildWalk, reason: Symbol) -> ChildWalk {
     pending: w.pending,
     failures: w.failures,
     observation: ObservationIncomplete { reason: reason },
-    scope_prerequisite_refused: w.scope_prerequisite_refused
+    scope_prerequisite_refused: w.scope_prerequisite_refused,
+    lexical: w.lexical
   }
 }
 
@@ -1345,8 +1828,8 @@ fn child_walk_step(w: ChildWalk, e: Edge, r: ResolveNodeWalk) -> ChildWalk {
   match r {
     ResolveWalkRefused { first: f, rest: rs, observation: o } =>
       child_walk_refused(w: w, first: f, rest: rs, observation: o)
-    ResolveWalkAccepted { value: t, diagnostics: ed } =>
-      child_walk_accepted(w: w, edge: Edge { label: e.label, target: t }, d: ed)
+    ResolveWalkAccepted { value: t, diagnostics: ed, lexical: l } =>
+      child_walk_accepted(w: w, edge: Edge { label: e.label, target: t }, d: ed, lexical: l)
   }
 }
 
@@ -1362,8 +1845,9 @@ fn child_walk_step_prerequisite(w: ChildWalk, e: Edge, r: ResolveNodeWalk) -> Ch
     observation: stepped.observation,
     scope_prerequisite_refused: match r {
       ResolveWalkRefused { first: _, rest: _, observation: _ } => true
-      ResolveWalkAccepted { value: _, diagnostics: _ } => false
-    }
+      ResolveWalkAccepted { value: _, diagnostics: _, lexical: _ } => false
+    },
+    lexical: stepped.lexical
   }
 }
 
@@ -1379,7 +1863,8 @@ fn child_walk_node(w: ChildWalk, n: Node) -> ResolveNodeWalk {
         ObservationComplete =>
           ResolveWalkAccepted {
             value: node_with_occurrence_id(kind: n.kind, children: w.edges, occurrence_id: n.occurrence_id),
-            diagnostics: w.pending
+            diagnostics: w.pending,
+            lexical: w.lexical
           }
         ObservationIncomplete { reason: _ } =>
           resolve_walk_refused_one(chain: diagnostics_singleton(d: Diagnostic {
@@ -1399,7 +1884,7 @@ fn resolve_transform_operator_child(
 ) -> ResolveNodeWalk {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      resolve_walk_of_outcome(o: resolve_surface_operator_atom(ctx: ctx, n: n, identity: id))
+      resolve_walk_of_atom(o: resolve_surface_operator_atom(ctx: ctx, n: n, identity: id))
     _ => resolve_node_walk(ctx: ctx, n: n)
   }
 }
@@ -1419,12 +1904,13 @@ fn resolve_transform_children(
           } else {
             resolve_node_walk(ctx: ctx, n: e.target)
           }
-        Named { name: _ } =>
+        StructuralLabel { label: _ } =>
           if edge_is_cast_target(e: e) {
             resolve_type_role_target(ctx: ctx, target: e.target)
           } else {
             resolve_node_walk(ctx: ctx, n: e.target)
           }
+        Authored { name: _ } => resolve_node_walk(ctx: ctx, n: e.target)
       }
     )
   }))
@@ -1435,7 +1921,7 @@ fn resolve_transform_children(
 // over a fielded variant to the construct shape (v2.std.node_query construct_node): a tag edge that
 // names the constructor and one edge per field the pat names, whose target is the
 // sub-pat -- a binder atom, `_`, a literal, or a nested construct. The arm's BODY resolves
-// under one ScopeFrame holding those binders (name -> name, as add_arrow_domain_named_params
+// under one ScopeFrame holding those binders (name -> name, as arrow_domain_frame_binders
 // does); the scrutinee and the sibling arms keep the outer scope, so a binder neither leaks to a
 // sibling nor past the match. lookup_chain answers a frame local BoundInFrame before it reaches the
 // root or the symbol index, so a binder that spells an outer name shadows it -- a lexical frame,
@@ -1542,7 +2028,7 @@ fn resolve_pattern_atom_names_constructor(ctx: ResolveContext, id: Symbol) -> Bo
   }
 }
 
-fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
+fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: FrameBinders) -> FrameBinders {
   match construct_tag_optional(n: pat) {
     Absent => acc
     Present { value: _ } =>
@@ -1554,7 +2040,10 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: Map<Symbol, Symb
             } else if resolve_pattern_atom_names_constructor(ctx: ctx, id: id) {
               m
             } else {
-              map_insert(m, id, id)
+              frame_binders_add(fb: m, name: id, binding: LexicalBinding {
+                binder_site: e.target.occurrence_id,
+                declared: optional_absent()
+              })
             }
           _ => resolve_pattern_binders(ctx: ctx, pat: e.target, acc: m)
         }
@@ -1580,41 +2069,607 @@ fn resolve_pattern_binders(ctx: ResolveContext, pat: Node, acc: Map<Symbol, Symb
 // comparing an atom's spelling to `_`.
 fn resolve_pattern_node_walk(ctx: ResolveContext, pat: Node) -> ResolveNodeWalk {
   if is_wildcard_pattern(pattern: pat) {
-    ResolveWalkAccepted { value: pat, diagnostics: None }
+    ResolveWalkAccepted { value: pat, diagnostics: None, lexical: [] }
   } else {
     match construct_tag_optional(n: pat) {
       Absent => resolve_node_walk(ctx: ctx, n: pat)
-      Present { value: _ } =>
-        child_walk_node(n: pat, w: fold(pat.children, init: child_walk_init(), f: fn(acc, e) {
-          child_walk_step(w: acc, e: e, r: resolve_pattern_node_walk(ctx: ctx, pat: e.target))
-        }))
+      Present { value: reference } =>
+        resolve_construct_walk(ctx: ctx, n: pat, reference: reference, field: fn(e, _) {
+          resolve_pattern_node_walk(ctx: ctx, pat: e.target)
+        })
     }
   }
 }
 
+// A CONSTRUCT RESOLVES ITS TAG AS A REFERENCE AND ITS FIELDS AS THEIR ROLE DEMANDS. The tag edge
+// (v2.std.node CoreEdgeLabel ConstructTagEdge) targets the constructor's authored path; it is resolved here,
+// once, for a construction and a pattern alike, and the field edges are walked by the caller's
+// own rule (a value field as an ordinary child, a pattern field as a sub-pattern). The marker label
+// is a role, not a declaration segment, so it never extends the lookup position.
+fn resolve_construct_walk(
+  ctx: ResolveContext,
+  n: Node,
+  reference: Node,
+  field: fn(Edge, Optional<QualifiedName>) -> ResolveNodeWalk
+) -> ResolveNodeWalk {
+  resolve_construct_walk_with_tag(
+    n: n,
+    tag: resolve_construct_tag_walk(ctx: ctx, reference: reference),
+    field: field
+  )
+}
+
+// THE TAG IS WALKED ONCE, BEFORE THE FIELDS, and its resolved declaration path is handed to the
+// field rule: a value field under a record construct is walked with that record's authored field
+// type as its expectation (resolve_expected_edge), which is how a headless literal nested under an
+// authored OR elaborated head elaborates. A tag that did not resolve to a declaration hands Absent,
+// and the fields walk as ordinary children.
+fn resolve_construct_walk_with_tag(
+  n: Node,
+  tag: ResolveNodeWalk,
+  field: fn(Edge, Optional<QualifiedName>) -> ResolveNodeWalk
+) -> ResolveNodeWalk {
+  let tag_path = match tag {
+    ResolveWalkAccepted { value: resolved, diagnostics: _, lexical: _ } => declaration_reference_path_optional(node: resolved)
+    ResolveWalkRefused { first: _, rest: _, observation: _ } => Absent
+  }
+  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
+    if edge_is_core(e: e, marker: ConstructTagEdge) {
+      child_walk_step(w: acc, e: e, r: tag)
+    } else {
+      child_walk_step(w: acc, e: e, r: field(e, tag_path))
+    }
+  }))
+}
+
+// AN ANONYMOUS RECORD LITERAL IS ELABORATED FROM AN AUTHORED ANNOTATION, OR REFUSED
+// (docs/plans/anonymous-record-literal-design.md). `{ f: v }` lowers to a construct whose tag is
+// ELIDED (v2.std.node_query construct_tag_reading answers ConstructTagElided). Its constructor is the record the EXPECTED
+// type names, and the expectation is an explicit parameter handed by three position rules --
+// an Arrow's body under its declared return (which covers a `data` initializer), a record field
+// under its authored field type, and a list element under its annotated list's element type -- and
+// never ambient context. So a headless literal reached by ANY other edge (a call argument, a let
+// without an annotation, a match-arm body) meets resolve_node_walk, which has no expectation to give
+// and refuses resolve_anonymous_record_no_expected_type. Nothing is inferred, unified or substituted
+// here: the expectation is peeled SYNTACTICALLY from what was written, its head resolved through
+// the existing lexical lookup, and the choice is the existing declared-payload authority's
+// RecordTypePayload answer. The literal's field set is never an input to the choice; infer checks
+// the fields afterwards, exactly as it checks an authored tag.
+fn resolve_anonymous_record_refused(n: Node, reason: Symbol) -> ResolveNodeWalk {
+  resolve_walk_refused_one(chain: diagnostics_singleton(d: Diagnostic {
+    reason: reason,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: UserInputBoundary }
+  }))
+}
+
+// THE HEAD OF AN AUTHORED TYPE EXPRESSION, peeled syntactically: a bare name, or the head of an
+// instantiation `H<A, ..>`. Anything else -- an optional `T?`, a function type, an anonymous record
+// type -- has no head a record could be read from, and answers Absent.
+fn resolve_expected_head_node_optional(t: Node) -> Optional<Node> {
+  match t.kind {
+    TypeNode { connective: Atom { identity: _ } } => optional_present(value: t)
+    TypeNode { connective: Instantiation } =>
+      match list_at_optional(xs: node_positional_child_targets(node: t), index: 0) {
+        Present { value: head } =>
+          match head.kind {
+            TypeNode { connective: Atom { identity: _ } } => optional_present(value: head)
+            _ => optional_absent()
+          }
+        Absent => optional_absent()
+      }
+    _ => optional_absent()
+  }
+}
+
+// THE HEAD IS RESOLVED BY THE SAME ROUTE THE ANNOTATION ITSELF IS. An annotation written in the
+// literal's own module (a data declaration's type, a fn's return, a list element type taken from one)
+// resolves its head through resolve_atom in this context -- scope chain, root bindings, the index,
+// the kernel -- so the expectation can never bind a head to a different declaration than the one
+// the annotation denotes. A field type is written in the RECORD's module, whose scope and bindings
+// this context does not carry, so it is looked up at the record's own position through the index's
+// lexical lookup (NamespaceOnlyY: lookup by containment position). A head that is a binder, a kernel
+// symbol, or unbound gives no declaration path, and answers Absent.
+// WHERE AN EXPECTED TYPE'S HEAD LEADS: a declaration, nowhere, or round a cycle of aliases.
+type ExpectedHead
+  = ExpectedHeadAt { path: QualifiedName }
+  | ExpectedHeadAbsent
+  | ExpectedHeadAliasCycle
+
+fn resolve_expected_head_path(ctx: ResolveContext, x: ResolveExpectation) -> ExpectedHead {
+  match resolve_expected_head_path_as_written(ctx: ctx, x: x) {
+    Absent => ExpectedHeadAbsent
+    Present { value: path } => resolve_expected_rename_chain(ctx: ctx, path: path, visited: [])
+  }
+}
+
+// A PURE-RENAMING ALIAS IS FOLLOWED; NO OTHER ALIAS IS (docs/plans/anonymous-record-literal-design.md,
+// section Pure-renaming aliases). Whether an alias is a
+// pure renaming -- `type A<p1..pn> = H<p1..pn>`, or `type A = H` -- was decided once, on its
+// declaration, and recorded in the index (v2.std.type_binder type_alias_renaming,
+// v2.std.symbol_index symbol_index_renaming_alias_at); this reads that fact and does not re-derive
+// it. Following a renaming substitutes nothing: the annotation's own arguments stay in the positions
+// they were written. This is how `List<R>` (type List<element> = FreeMonoid<element>) reaches the list
+// head. Chains are followed transitively, each renamed head looked up at the alias's own position
+// through the existing lexical lookup, and a path met twice is a cycle, refused located rather than
+// followed. Any other alias is not recorded as a renaming and is the declaration the head names,
+// which is not a record, so the literal refuses.
+fn resolve_expected_rename_chain(ctx: ResolveContext, path: QualifiedName, visited: List<QualifiedName>) -> ExpectedHead {
+  if any(xs: visited, predicate: fn(v) { v == path }) {
+    ExpectedHeadAliasCycle
+  } else {
+    match symbol_index_renaming_alias_at(index: ctx.namespace.symbol_index, qualified_path: path) {
+      Absent => ExpectedHeadAt { path: path }
+      Present { value: head } =>
+        match symbol_index_lexical_lookup(index: ctx.namespace.symbol_index, position: path, name: head) {
+          LexicalHit { node: _, path: renamed } =>
+            resolve_expected_rename_chain(ctx: ctx, path: renamed, visited: list_snoc_item(xs: visited, item: path))
+          _ => ExpectedHeadAbsent
+        }
+    }
+  }
+}
+
+fn resolve_expected_head_path_as_written(ctx: ResolveContext, x: ResolveExpectation) -> Optional<QualifiedName> {
+  match resolve_expected_head_node_optional(t: x.expected) {
+    Absent => optional_absent()
+    Present { value: head } =>
+      match head.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          if x.at_use_site {
+            match resolve_atom(ctx: resolve_ctx_with_scope(ctx: ctx, scope: ctx.type_scope), n: head, identity: id) {
+              Accepted { value: resolved, diagnostics: _ } => declaration_reference_path_optional(node: resolved)
+              Rejected { diagnostics: _ } => optional_absent()
+            }
+          } else {
+            match symbol_index_lexical_lookup(index: ctx.namespace.symbol_index, position: x.position, name: id) {
+              LexicalHit { node: _, path: path } => optional_present(value: path)
+              _ => optional_absent()
+            }
+          }
+        _ => optional_absent()
+      }
+  }
+}
+
+// An expected type, and the position its names are read at.
+type ResolveExpectation {
+  expected: Node
+  position: QualifiedName
+  at_use_site: Bool
+}
+
+// A value edge walked under an expectation. Only three node shapes consume one -- a headless
+// literal, an authored construct (whose fields take their own), and a list literal -- and every
+// other node is walked exactly as resolve_child_edge would, so the expectation stops here.
+fn resolve_expected_edge(ctx: ResolveContext, e: Edge, x: ResolveExpectation) -> ResolveNodeWalk {
+  match construct_tag_reading(n: e.target) {
+    ConstructTagElided => resolve_elided_construct_walk(ctx: ctx, n: e.target, x: x)
+    ConstructTagAuthored { reference: _ } => resolve_child_edge(ctx: ctx, e: e)
+    NotAConstruct =>
+      match list_introduction_elements_optional(node: e.target) {
+        Present { value: _ } => resolve_list_literal_expected(ctx: ctx, n: e.target, x: x)
+        Absent => resolve_child_edge(ctx: ctx, e: e)
+      }
+  }
+}
+
+fn resolve_elided_construct_walk(ctx: ResolveContext, n: Node, x: ResolveExpectation) -> ResolveNodeWalk {
+  match resolve_expected_head_path(ctx: ctx, x: x) {
+    ExpectedHeadAbsent =>
+      if resolve_elided_construct_is_map_literal(n: n) {
+        resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_expected_type_not_map)
+      } else {
+        resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_record_expected_type_not_record)
+      }
+    ExpectedHeadAliasCycle => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_record_alias_cycle)
+    ExpectedHeadAt { path: path } =>
+      if map_introduction_expected_head_is_map(path: path) {
+        resolve_map_literal_walk(ctx: ctx, n: n, x: x)
+      } else if resolve_elided_construct_is_map_literal(n: n) {
+        resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_expected_type_not_map)
+      } else {
+      match symbol_index_declared_payload_at(index: ctx.namespace.symbol_index, qualified_path: path) {
+        Present { value: RecordTypePayload } =>
+          match construct_tag_optional_edge_target(n: n) {
+            Absent => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_record_expected_type_not_record)
+            Present { value: elided } =>
+              resolve_construct_walk_with_tag(
+                n: n,
+                tag: ResolveWalkAccepted {
+                  value: declaration_reference_node(qn: path, occurrence_id: elided.occurrence_id),
+                  diagnostics: None,
+                  lexical: []
+                },
+                field: fn(e, record) { resolve_record_field_edge(ctx: ctx, e: e, record: record) }
+              )
+          }
+        _ => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_record_expected_type_not_record)
+      }
+      }
+  }
+}
+
+// THE MAP ARM OF THE ONE ELABORATION WRITER (docs/plans/map-literal-introduction-design.md). A
+// headless brace whose authored expected head is, by declaration identity, a Map
+// (v2.std.map_introduction map_introduction_expected_head_is_map) elaborates to the one
+// introduction v2.std.map_introduction lower_map_introduction builds, or refuses located:
+//
+//   - the expectation must be a closed `Map<K, V>` instantiation, peeled syntactically; else
+//     resolve_anonymous_map_expected_type_not_closed at the literal;
+//   - every item must be string-keyed; a name-keyed brace under a Map head refuses
+//     resolve_anonymous_map_name_key at its first item;
+//   - K must be the type a string literal denotes: the kernel text binding an unimported String
+//     takes (v2.extdeps.languages.dag dag_kernel_type_binding_optional), never a declaration (a K resolving to any declaration -- the structural v2.std.text String
+//     included -- is a text crossing no route declares here); else
+//     resolve_anonymous_map_key_kind_mismatch at the first key;
+//   - no key may repeat, judged by the key type's equality -- for string literals, decoded text
+//     (the decoder gunbc#12759 lands; until then no key has text and the arm refuses at it) -- through the ONE key law,
+//     v2.std.map_introduction map_introduction_duplicate_key; a repeat refuses
+//     resolve_anonymous_map_duplicate_key at its SECOND occurrence. Never last-wins.
+//
+// Each value is walked under V (the fifth position rule beside #12711's four), so a nested headless
+// value elaborates through this same writer; each key is walked as the ordinary child it is.
+// Nothing is unified here, and infer still checks every value against V afterwards.
+fn resolve_elided_construct_is_map_literal(n: Node) -> Bool {
+  match map_literal_entries(n: n) {
+    MapLiteralEntriesNone => false
+    MapLiteralEntriesPresent { pairs: _ } => true
+    MapLiteralEntriesMalformed => true
+  }
+}
+
+
+fn resolve_map_literal_walk(ctx: ResolveContext, n: Node, x: ResolveExpectation) -> ResolveNodeWalk {
+  let type_args = node_positional_child_targets(node: x.expected)
+  match list_at_optional(xs: type_args, index: 1) {
+    Absent => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_expected_type_not_closed)
+    Present { value: key_type } =>
+      match list_at_optional(xs: type_args, index: 2) {
+        Absent => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_expected_type_not_closed)
+        Present { value: value_type } =>
+          match resolve_map_first_name_keyed_item(items: skip(xs: n.children, n: 1)) {
+            Present { value: offending } => resolve_anonymous_record_refused(n: offending, reason: ^resolve_anonymous_map_name_key)
+            Absent =>
+              match resolve_map_literal_pairs(n: n) {
+                ResolveMapPairMalformed { at: p } => resolve_anonymous_record_refused(n: p, reason: ^resolve_anonymous_map_entry_malformed)
+                ResolveMapPairsRead { entries: entries } =>
+                  if resolve_map_key_type_is_string_literal_type(ctx: ctx, position: x.position, t: key_type) {
+                    resolve_map_literal_entries(ctx: ctx, n: n, entries: entries, value_x: ResolveExpectation { expected: value_type, position: x.position, at_use_site: x.at_use_site })
+                  } else {
+                    match list_at_optional(xs: entries, index: 0) {
+                      Present { value: first } => resolve_anonymous_record_refused(n: first.key, reason: ^resolve_anonymous_map_key_kind_mismatch)
+                      Absent => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_key_kind_mismatch)
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn resolve_map_first_name_keyed_item(items: List<Edge>) -> Optional<Node> {
+  fold(items, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if labeled_core_is(x: e, label_of: edge_label_of, wanted: MapLiteralEntriesEdge) { optional_absent() } else { optional_present(value: e.target) }
+    }
+  })
+}
+
+fn resolve_map_key_type_is_string_literal_type(ctx: ResolveContext, position: QualifiedName, t: Node) -> Bool {
+  match t.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      match symbol_index_lexical_lookup(index: ctx.namespace.symbol_index, position: position, name: id) {
+        LexicalUnbound =>
+          dag_kernel_string_type_spelling(sym: id) && match dag_kernel_type_binding_optional(sym: id) {
+            Present { value: _ } => true
+            Absent => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// A pair is a tag-elided construct carrying `key` and `value` (body lowering
+// body_lower_map_literal_entry_edge); these read them back.
+fn resolve_map_entry_field(entry: Node, field: Symbol) -> Optional<Node> {
+  match named_child_lookup(root: entry, name: field) {
+    NamedChildFound { target: t } => optional_present(value: t)
+    NamedChildMissing => optional_absent()
+    NamedChildAmbiguous => optional_absent()
+  }
+}
+
+// A KEY'S TEXT, OR NONE, read through the ONE string decoder: a string literal lowers to a terminal
+// carrying its decoded text (gunbc#12759, v2.extdeps.languages.dag dag_string_literal_value_optional;
+// a malformed escape already refused at lowering). A key without that payload has no text, and the
+// arm refuses at it rather than compare it -- payload-less keys would all compare equal.
+fn resolve_map_key_text_optional(key: Node) -> Optional<String> {
+  dag_string_literal_value_optional(node: key)
+}
+
+// THE PAIRS, READ TOTALLY. A pair is a tag-elided construct carrying `key` and `value` (body lowering
+// body_lower_map_literal_entry_edge). Either every pair carries both, and the entries come back typed
+// (key, value, source), or the first pair that does not is named -- never substituted: DESIGN 5 forbids
+// a fabricated default, so a missing field is a located refusal
+// (resolve_anonymous_map_entry_malformed), however unlikely lowering is to produce one.
+type ResolveMapPairs
+  = ResolveMapPairsRead { entries: List<MapIntroductionEntryNodes> }
+  | ResolveMapPairMalformed { at: Node }
+
+fn resolve_map_pairs(pairs: List<Node>) -> ResolveMapPairs {
+  fold(pairs, init: ResolveMapPairsRead { entries: [] }, f: fn(acc, p) {
+    match acc {
+      ResolveMapPairMalformed { at: _ } => acc
+      ResolveMapPairsRead { entries: es } =>
+        match resolve_map_entry_field(entry: p, field: ^key) {
+          Absent => ResolveMapPairMalformed { at: p }
+          Present { value: k } =>
+            match resolve_map_entry_field(entry: p, field: ^value) {
+              Absent => ResolveMapPairMalformed { at: p }
+              Present { value: v } =>
+                ResolveMapPairsRead { entries: list_snoc_item(xs: es, item: MapIntroductionEntryNodes { key: k, value: v, source: p }) }
+            }
+        }
+    }
+  })
+}
+
+fn resolve_map_pair_targets(items: List<Edge>) -> List<Node> {
+  fold(items, init: [], f: fn(acc, e) { list_snoc_item(xs: acc, item: e.target) })
+}
+
+// The literal's pairs, read through v2.std.map_introduction map_literal_entries: `{}` has none, and a
+// malformed entries carrier refuses at the literal rather than reading as empty.
+fn resolve_map_literal_pairs(n: Node) -> ResolveMapPairs {
+  match map_literal_entries(n: n) {
+    MapLiteralEntriesNone => ResolveMapPairsRead { entries: [] }
+    MapLiteralEntriesMalformed => ResolveMapPairMalformed { at: n }
+    MapLiteralEntriesPresent { pairs: pairs } => resolve_map_pairs(pairs: pairs)
+  }
+}
+
+// THE KEYS' TEXTS, READ TOTALLY: one text per entry, in order, or the first key with no text, named.
+type ResolveMapKeyTexts
+  = ResolveMapKeyTextsRead { texts: List<String> }
+  | ResolveMapKeyTextless { at: Node }
+
+fn resolve_map_key_texts(entries: List<MapIntroductionEntryNodes>) -> ResolveMapKeyTexts {
+  fold(entries, init: ResolveMapKeyTextsRead { texts: [] }, f: fn(acc, e) {
+    match acc {
+      ResolveMapKeyTextless { at: _ } => acc
+      ResolveMapKeyTextsRead { texts: ts } =>
+        match resolve_map_key_text_optional(key: e.key) {
+          Present { value: t } => ResolveMapKeyTextsRead { texts: list_snoc_item(xs: ts, item: t) }
+          Absent => ResolveMapKeyTextless { at: e.key }
+        }
+    }
+  })
+}
+
+// The key law sees one text per entry, so its indices are entry indices.
+// The pairs are walked under a Transform carrier (positional edges only) that never leaves this
+// arm; the resolved pairs are read again through resolve_map_pairs, never defaulted.
+fn resolve_map_literal_entries(ctx: ResolveContext, n: Node, entries: List<MapIntroductionEntryNodes>, value_x: ResolveExpectation) -> ResolveNodeWalk {
+  match resolve_map_key_texts(entries: entries) {
+    ResolveMapKeyTextless { at: key } => resolve_anonymous_record_refused(n: key, reason: ^resolve_anonymous_map_key_text_unavailable)
+    ResolveMapKeyTextsRead { texts: texts } =>
+      match map_introduction_duplicate_key(keys: texts) {
+        MapIntroductionKeyRepeated { first_index: _, second_index: second } =>
+          match list_at_optional(xs: entries, index: second) {
+            Present { value: e } => resolve_anonymous_record_refused(n: e.key, reason: ^resolve_anonymous_map_duplicate_key)
+            Absent => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_duplicate_key)
+          }
+        MapIntroductionKeysDistinct =>
+          let walked = fold(entries, init: child_walk_init(), f: fn(acc, e) {
+            child_walk_step(w: acc, e: Edge { label: Positional, target: e.source }, r: resolve_map_entry_walk(ctx: ctx, entry: e.source, value_x: value_x))
+          })
+          let carrier = node_with_occurrence_id(kind: ComputationNode { behavior: Transform }, children: [], occurrence_id: n.occurrence_id)
+          match child_walk_node(w: walked, n: carrier) {
+            ResolveWalkRefused { first: f, rest: r, observation: o } => ResolveWalkRefused { first: f, rest: r, observation: o }
+            ResolveWalkAccepted { value: resolved, diagnostics: d, lexical: l } =>
+              match resolve_map_pairs(pairs: resolve_map_pair_targets(items: resolved.children)) {
+                ResolveMapPairMalformed { at: p } => resolve_anonymous_record_refused(n: p, reason: ^resolve_anonymous_map_entry_malformed)
+                ResolveMapPairsRead { entries: resolved_entries } =>
+                  ResolveWalkAccepted { value: lower_map_introduction(entries: resolved_entries, source: n), diagnostics: d, lexical: l }
+              }
+          }
+      }
+  }
+}
+
+// One entry: its key walked as an ordinary child, its value under V. The pair keeps its elided tag
+// edge untouched; it never leaves this arm.
+fn resolve_map_entry_walk(ctx: ResolveContext, entry: Node, value_x: ResolveExpectation) -> ResolveNodeWalk {
+  child_walk_node(n: entry, w: fold(entry.children, init: child_walk_init(), f: fn(acc, e) {
+    if acc.ordinal == 0 {
+      child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] })
+    } else {
+      match e.label {
+        Authored { name: nm } =>
+          if symbol_eq(a: nm, b: ^value) {
+            child_walk_step(w: acc, e: e, r: resolve_expected_edge(ctx: ctx, e: e, x: value_x))
+          } else {
+            child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: ctx, e: e))
+          }
+        StructuralLabel { label: _ } => child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: ctx, e: e))
+        Positional => child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: ctx, e: e))
+      }
+    }
+  }))
+}
+
+fn construct_tag_optional_edge_target(n: Node) -> Optional<Node> {
+  match list_at_optional(xs: n.children, index: 0) {
+    Present { value: e } => optional_present(value: e.target)
+    Absent => optional_absent()
+  }
+}
+
+// A FIELD OF A RECORD CONSTRUCT carries its authored field type as its expectation. The field type
+// is read from the record's own declaration (symbol_index_lookup, type_decl_view) and its names are
+// resolved at the record's path, where they were written. A field with no declared type found --
+// an unknown field, which infer refuses at the field -- walks as an ordinary child.
+fn resolve_record_field_edge(ctx: ResolveContext, e: Edge, record: Optional<QualifiedName>) -> ResolveNodeWalk {
+  match record {
+    Absent => resolve_child_edge(ctx: ctx, e: e)
+    Present { value: path } =>
+      match e.label {
+        StructuralLabel { label: _ } => resolve_child_edge(ctx: ctx, e: e)
+        Positional => resolve_child_edge(ctx: ctx, e: e)
+        Authored { name: field } =>
+          match resolve_record_field_type_optional(ctx: ctx, record: path, field: field) {
+            Absent => resolve_child_edge(ctx: ctx, e: e)
+            Present { value: t } =>
+              resolve_expected_edge(ctx: ctx, e: e, x: ResolveExpectation { expected: t, position: path, at_use_site: false })
+          }
+      }
+  }
+}
+
+fn resolve_record_field_type_optional(ctx: ResolveContext, record: QualifiedName, field: Symbol) -> Optional<Node> {
+  match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: record) {
+    Absent => optional_absent()
+    Present { value: decl } =>
+      let member = match type_decl_view(target: decl) {
+        PlainTypeDecl { member: m } => optional_present(value: m)
+        GenericTypeDecl { binders: _, member: m } => optional_present(value: m)
+        _ => optional_absent()
+      }
+      match member {
+        Absent => optional_absent()
+        Present { value: m } =>
+          fold_list(xs: m.children, empty: optional_absent(), cons: fn(acc, fe) {
+            match acc {
+              Present { value: _ } => acc
+              Absent =>
+                match declared_field_from_edge(e: fe) {
+                  Present { value: binder } => if symbol_eq(a: binder.name, b: field) { optional_present(value: binder.type_node) } else { optional_absent() }
+                  Absent => optional_absent()
+                }
+            }
+          })
+      }
+  }
+}
+
+// A LIST LITERAL UNDER AN ANNOTATED LIST TYPE passes its element type to each element. The list is
+// recognised by the ONE authority infer types list literals with (v2.std.list_introduction
+// list_introduction_head_path): the annotation's head must reach exactly that declaration, directly
+// or through pure-renaming aliases (resolve_expected_rename_chain; `List<R>` is one). A head that
+// reaches it only through any other alias passes no expectation, and a headless element then refuses
+// resolve_anonymous_record_no_expected_type.
+fn resolve_list_literal_expected(ctx: ResolveContext, n: Node, x: ResolveExpectation) -> ResolveNodeWalk {
+  match resolve_expected_head_path(ctx: ctx, x: x) {
+    ExpectedHeadAliasCycle => resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_record_alias_cycle)
+    ExpectedHeadAbsent => resolve_node_walk(ctx: ctx, n: n)
+    ExpectedHeadAt { path: path } =>
+      if path == list_introduction_head_path() {
+        resolve_list_elements_expected(ctx: ctx, n: n, x: x, element_type: list_at_optional(xs: node_positional_child_targets(node: x.expected), index: 1))
+      } else {
+        resolve_node_walk(ctx: ctx, n: n)
+      }
+  }
+}
+
+fn resolve_list_elements_expected(ctx: ResolveContext, n: Node, x: ResolveExpectation, element_type: Optional<Node>) -> ResolveNodeWalk {
+  match element_type {
+    Absent => resolve_node_walk(ctx: ctx, n: n)
+    Present { value: et } =>
+      child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
+        if acc.ordinal == 0 {
+          child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: ctx, e: e))
+        } else {
+          child_walk_step(w: acc, e: e, r: resolve_expected_edge(ctx: ctx, e: e, x: ResolveExpectation { expected: et, position: x.position, at_use_site: x.at_use_site }))
+        }
+      }))
+  }
+}
+
+// ONE ROUTE FOR THE TAG, THROUGH THE DOORS EVERY OTHER REFERENCE USES. The authored path is read
+// whole (v2.std.qualified_name qualified_name_from_node) and dispatched by its length only: two or
+// more segments go to the qualified door (try_resolve_qualified_name_node), one segment to the bare
+// door (resolve_atom on that segment, with the spine root's occurrence, which is the tag's locus).
+// Both mint through resolved_reference_node, so a qualified and an unqualified constructor naming
+// one declaration resolve to one node. The path is never trimmed: `m.R` is looked up as `m.R`.
+//
+// WHAT IT RESOLVES TO MUST BE A CONSTRUCTOR. A declaration reference whose path is not a declared
+// payload -- a coproduct TYPE rather than one of its variants, a function, a data row -- refuses
+// resolve_reason_construct_tag_not_a_constructor, located at the tag. The variant is its own
+// declaration (symbol_index_declared_payload_at answers VariantArmPayload for the variant, not for
+// its coproduct), so the check is by identity, never by spelling. A tag bound to a kernel canonical
+// symbol carries no declaration path and is accepted as that symbol, as a bare atom always was. Any
+// other answer -- a field projection, if the qualified door reads the first segment as a local value
+// (whether a dotted path is a name or a projection is decided in that door, by the first segment's
+// scope, and nowhere here) -- is not a constructor and refuses the same way.
+fn resolve_construct_tag_walk(ctx: ResolveContext, reference: Node) -> ResolveNodeWalk {
+  match qualified_name_from_node(root: reference) {
+    Rejected { diagnostics: r } => resolve_walk_of_outcome(o: Rejected { diagnostics: r })
+    Accepted { value: path, diagnostics: _ } =>
+      resolve_walk_of_outcome(o: bind_outcome(
+        o: resolve_construct_tag_reference(ctx: ctx, reference: reference, path: path),
+        f: fn(resolved) { resolve_construct_tag_names_constructor(ctx: ctx, reference: reference, resolved: resolved) }
+      ))
+  }
+}
+
+fn resolve_construct_tag_reference(ctx: ResolveContext, reference: Node, path: QualifiedName) -> Outcome<Node> {
+  match path {
+    Cons { head: only, tail: Empty } =>
+      resolve_atom(ctx: ctx, n: reference, identity: only)
+    Cons { head: _, tail: Cons { head: _, tail: _ } } =>
+      match try_resolve_qualified_name_node(ctx: ctx, n: reference) {
+        Present { value: outcome } => outcome
+        Absent => Rejected { diagnostics: diagnostics_singleton(d: unbound_symbol_diagnostic(n: reference)) }
+      }
+    Empty => Rejected { diagnostics: diagnostics_singleton(d: unbound_symbol_diagnostic(n: reference)) }
+  }
+}
+
+fn resolve_construct_tag_names_constructor(ctx: ResolveContext, reference: Node, resolved: Node) -> Outcome<Node> {
+  match declaration_reference_path_optional(node: resolved) {
+    Absent =>
+      match resolved.kind {
+        TypeNode { connective: Atom { identity: _ } } => Accepted { value: resolved, diagnostics: None }
+        _ => resolve_construct_tag_not_a_constructor(reference: reference)
+      }
+    Present { value: declared } =>
+      if resolve_path_is_declared_payload(ctx: ctx, path: declared) {
+        Accepted { value: resolved, diagnostics: None }
+      } else {
+        resolve_construct_tag_not_a_constructor(reference: reference)
+      }
+  }
+}
+
+fn resolve_construct_tag_not_a_constructor(reference: Node) -> Outcome<Node> {
+  Rejected {
+    diagnostics: diagnostics_singleton(d: Diagnostic {
+      reason: ^resolve_reason_construct_tag_not_a_constructor,
+      at: node_locus(node: reference),
+      correction: Unavailable { reason: UserInputBoundary }
+    })
+  }
+}
+
 fn resolve_match_arm_walk(ctx: ResolveContext, arm: Node) -> ResolveNodeWalk {
-  match find_named_child(root: arm, name: match_arm_pattern) {
+  match find_core_child(root: arm, marker: MatchArmPatternEdge) {
     Rejected { diagnostics: _ } => resolve_children_homogeneous_scope(ctx: ctx, n: arm)
     Accepted { value: pat, diagnostics: _ } =>
       let arm_ctx = resolve_ctx_with_scope(
         ctx: ctx,
-        scope: ScopeFrame {
-          locals: resolve_pattern_binders(ctx: ctx, pat: pat, acc: empty_map()),
-          outer: ctx.scope
-        }
+        scope: lexical_frame(fb: resolve_pattern_binders(ctx: ctx, pat: pat, acc: frame_binders_empty()), outer: ctx.scope)
       )
       child_walk_node(n: arm, w: fold(arm.children, init: child_walk_init(), f: fn(acc, e) {
         child_walk_step(
           w: acc,
           e: e,
-          r: match e.label {
-            Named { name: label } =>
-              if label == match_arm_pattern {
-                resolve_pattern_node_walk(ctx: arm_ctx, pat: e.target)
-              } else {
-                resolve_node_walk(ctx: arm_ctx, n: e.target)
-              }
-            Positional => resolve_node_walk(ctx: arm_ctx, n: e.target)
+          r: if edge_is_core(e: e, marker: MatchArmPatternEdge) {
+            resolve_pattern_node_walk(ctx: arm_ctx, pat: e.target)
+          } else {
+            resolve_node_walk(ctx: arm_ctx, n: e.target)
           }
         )
       }))
@@ -1650,9 +2705,19 @@ fn resolve_node_walk(
   ctx: ResolveContext,
   n: Node
 ) -> ResolveNodeWalk {
+  resolve_node_walk_entered(
+    ctx: resolve_ctx_with_declaring(ctx: ctx, declaring: resolve_declaring_entering(declaring: ctx.declaring, n: n)),
+    n: n
+  )
+}
+
+fn resolve_node_walk_entered(
+  ctx: ResolveContext,
+  n: Node
+) -> ResolveNodeWalk {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      resolve_walk_of_outcome(o: resolve_atom(ctx: ctx, n: n, identity: id))
+      resolve_walk_of_atom(o: resolve_atom_answer(ctx: ctx, n: n, identity: id))
     TypeNode { connective: Arrow } =>
       resolve_arrow_node(ctx: ctx, n: n)
     ComputationNode { behavior: Bind } =>
@@ -1661,10 +2726,29 @@ fn resolve_node_walk(
       resolve_match_node_walk(ctx: ctx, n: n)
     ComputationNode { behavior: Transform } =>
       resolve_transform_children(ctx: ctx, n: n)
+    ComputationNode { behavior: Loop } =>
+      resolve_loop_node(ctx: ctx, n: n)
     TypeNode { connective: Conj } =>
-      match try_resolve_qualified_name_node(ctx: ctx, n: n) {
-        Present { value: outcome } => resolve_walk_of_outcome(o: outcome)
-        Absent => resolve_children_homogeneous_scope(ctx: ctx, n: n)
+      if resolve_is_where_refinement_clause(n: n) {
+        resolve_where_refinement_clause(ctx: ctx, n: n)
+      } else {
+        match construct_tag_reading(n: n) {
+          ConstructTagElided =>
+            if resolve_elided_construct_is_map_literal(n: n) {
+              resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_map_no_expected_type)
+            } else {
+              resolve_anonymous_record_refused(n: n, reason: ^resolve_anonymous_record_no_expected_type)
+            }
+          ConstructTagAuthored { reference: reference } =>
+            resolve_construct_walk(ctx: ctx, n: n, reference: reference, field: fn(e, record) {
+              resolve_record_field_edge(ctx: ctx, e: e, record: record)
+            })
+          NotAConstruct =>
+            match try_resolve_qualified_name_node(ctx: ctx, n: n) {
+              Present { value: outcome } => resolve_walk_of_outcome(o: outcome)
+              Absent => resolve_children_homogeneous_scope(ctx: ctx, n: n)
+            }
+        }
       }
     TypeNode { connective: _ } =>
       resolve_children_homogeneous_scope(ctx: ctx, n: n)
@@ -1673,16 +2757,227 @@ fn resolve_node_walk(
   }
 }
 
-fn resolve_preserve_module_root_named_edge(name: Symbol, target: Node) -> Bool {
-  if dag_surface_module_header_metadata_edge(name: name) {
-    true
-  } else if dag_resolve_preserve_module_metadata_subtree(node: target) {
-    true
-  } else if name == ^grammar_production_identity_node_projection {
-    true
-  } else {
-    false
+// A LOOP RESOLVES ITS EDGES AS ANY NODE DOES, EXCEPT TWO. The domain and body walk through
+// resolve_child_edge as ordinary expressions. ^loop_realized_declaration_edge (v2.std.node
+// LoopRealizedDeclaration) is a CLAIM made by a desugaring about which declaration the author's head
+// names; resolve checks that claim and does not take it on trust. ^loop_carrier_edge
+// (LoopCarrierBinder) is a BINDER, never a value (v2.compiler.fold_lowering fold_recurrence_encoding):
+// it names the enclosing Bind's binder, which a desugaring wrote as a synthetic atom. It is checked
+// against that frame and kept as the binder atom, exactly as the Bind's own binder is
+// (resolve_bind_binder_target); minting it as a lexical reference would read a binder as a use.
+fn resolve_loop_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
+  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
+    match loop_edge_role(e: e) {
+      LoopRealizedDeclaration => child_walk_step(w: acc, e: e, r: resolve_walk_of_outcome(o: resolve_realized_declaration(ctx: ctx, head: e.target)))
+      LoopCarrierBinder => child_walk_step(w: acc, e: e, r: resolve_loop_carrier_binder(ctx: ctx, carrier: e.target))
+      _ => child_walk_step(w: acc, e: e, r: resolve_child_edge(ctx: ctx, e: e))
+    }
+  }))
+}
+
+// The carrier, bound by a frame, stays the atom it names; any other answer is what resolve_atom
+// gives any name, so an unbound carrier refuses exactly as before.
+fn resolve_loop_carrier_binder(ctx: ResolveContext, carrier: Node) -> ResolveNodeWalk {
+  match carrier.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      match lookup_chain(s: ctx.scope, name: id) {
+        Accepted { value: BoundInFrame { canonical: canonical, kind: _ }, diagnostics: pending } =>
+          ResolveWalkAccepted { value: canonical_atom(identity: canonical, occurrence_id: carrier.occurrence_id), diagnostics: pending, lexical: [] }
+        _ => resolve_walk_of_outcome(o: resolve_atom(ctx: ctx, n: carrier, identity: id))
+      }
+    _ => resolve_node_walk(ctx: ctx, n: carrier)
   }
+}
+
+fn realized_declaration_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn realized_declaration_refused(reason: Symbol, n: Node, pending: Diagnostics) -> Outcome<Node> {
+  Rejected {
+    diagnostics: rejected_with_pending(
+      pending: pending,
+      rejected: diagnostics_singleton(d: realized_declaration_diagnostic(reason: reason, n: n))
+    )
+  }
+}
+
+fn declaration_ref_path(r: DeclarationRef) -> QualifiedName {
+  qualified_name_snoc(
+    qn: qualified_name_from_dotted_string(dotted: r.module_path),
+    segment: symbol_intern_lexeme(lexeme: r.decl_name)
+  )
+}
+
+// What the author's head binds to, asked exactly as resolve_atom asks it for any reference (the
+// frame, the module root, then the imports on the symbol index). Absent means that nothing binds it.
+type RealizedHeadLookup
+  = RealizedHeadBound { path: QualifiedName }
+  | RealizedHeadBoundLocally
+  | RealizedHeadAmbiguous { class: AmbiguousLookupClass }
+  | RealizedHeadUnbound
+
+fn realized_head_lookup(ctx: ResolveContext, identity: Symbol) -> Outcome<RealizedHeadLookup> {
+  match lookup_chain(s: ctx.scope, name: identity) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: found, diagnostics: pending } =>
+      match found {
+        BoundInFrame { canonical: _ } => Accepted { value: RealizedHeadBoundLocally, diagnostics: pending }
+        BoundAtRoot { canonical: _ } =>
+          Accepted {
+            value: RealizedHeadBound {
+              path: qualified_name_snoc(qn: root_binding_origin(namespace: ctx.namespace, name: identity), segment: identity)
+            },
+            diagnostics: pending
+          }
+        ScopeUnbound =>
+          match lookup_symbol_index_atom_identity(ctx: ctx, name: identity) {
+            SymbolIndexAtomHit { path: path } => Accepted { value: RealizedHeadBound { path: path }, diagnostics: pending }
+            SymbolIndexAtomAmbiguous { class: class } => Accepted { value: RealizedHeadAmbiguous { class: class }, diagnostics: pending }
+            SymbolIndexAtomUnbound => Accepted { value: RealizedHeadUnbound, diagnostics: pending }
+          }
+      }
+  }
+}
+
+// THE CHECK, and the order matters. A ROSTER OPERATION (collection `fold`) has no corpus
+// declaration, so if the head's chain binds its spelling at all -- a local, a module-level `fn fold`,
+// an import -- the author wrote a call to THAT declaration, and the desugar is refused at the head
+// (^resolve_reason_realized_declaration_shadowed). Only an unbound head binds, and it binds to the
+// row's declaring function. It never falls back to treating the head as the builtin. A CORPUS
+// DECLARATION (fold_list) must be bound by the chain to exactly that declaration; anything else,
+// unbound included, refuses (^resolve_reason_realized_declaration_mismatch). A head the family does
+// not know refuses the same way, because a Loop claiming a declaration nobody can check is the
+// fabricated claim this edge exists to stop.
+fn resolve_realized_declaration(ctx: ResolveContext, head: Node) -> Outcome<Node> {
+  match head.kind {
+    TypeNode { connective: Atom { identity: identity } } =>
+      match realized_head_lookup(ctx: ctx, identity: identity) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: found, diagnostics: pending } =>
+          match fold_family_realization(head: identity) {
+            Absent => realized_declaration_refused(reason: ^resolve_reason_realized_declaration_mismatch, n: head, pending: pending)
+            Present { value: FoldRealizesRosterOperation { template: t, row: row, slots: _ } } =>
+              match found {
+                RealizedHeadUnbound =>
+                  if symbol_lexeme(sym: identity) == t.name {
+                    resolve_atom_bound(ctx: ctx, n: head, path: declaration_ref_path(r: row), pending: pending)
+                  } else {
+                    realized_declaration_refused(reason: ^resolve_reason_realized_declaration_mismatch, n: head, pending: pending)
+                  }
+                RealizedHeadBound { path: _ } => realized_declaration_refused(reason: ^resolve_reason_realized_declaration_shadowed, n: head, pending: pending)
+                RealizedHeadBoundLocally => realized_declaration_refused(reason: ^resolve_reason_realized_declaration_shadowed, n: head, pending: pending)
+                RealizedHeadAmbiguous { class: _ } => realized_declaration_refused(reason: ^resolve_reason_realized_declaration_shadowed, n: head, pending: pending)
+              }
+            Present { value: FoldRealizesDeclaration { declaration: d, slots: _ } } =>
+              match found {
+                RealizedHeadBound { path: path } =>
+                  if qualified_name_to_dotted_string(qn: path) == qualified_name_to_dotted_string(qn: declaration_ref_path(r: d)) {
+                    resolve_atom_bound(ctx: ctx, n: head, path: path, pending: pending)
+                  } else {
+                    realized_declaration_refused(reason: ^resolve_reason_realized_declaration_mismatch, n: head, pending: pending)
+                  }
+                RealizedHeadBoundLocally => realized_declaration_refused(reason: ^resolve_reason_realized_declaration_mismatch, n: head, pending: pending)
+                RealizedHeadAmbiguous { class: _ } => realized_declaration_refused(reason: ^resolve_reason_realized_declaration_mismatch, n: head, pending: pending)
+                RealizedHeadUnbound => realized_declaration_refused(reason: ^resolve_reason_realized_declaration_mismatch, n: head, pending: pending)
+              }
+          }
+      }
+    _ => Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: head)) }
+  }
+}
+
+// A WHERE-REFINEMENT PREDICATE BINDS TO ITS DECLARATION, OR THE CLAUSE REFUSES. Lowering
+// (v2.compiler.body_lowering_fold body_lower_kept_where_clause) carries the clause as a production
+// Conj whose captured child holds one call-shaped Transform per predicate, the predicate's own name
+// atom as operator. The operator resolves by ORDINARY name lookup -- the same resolve_atom every
+// reference takes, so the NAME has one authority, the declaration (std.types string_non_empty /
+// gt_zero / range, std.content_hash lower_hex_*), and there is no second predicate namespace. The
+// predicate's MEANING is still stated twice until v1's enforcement tables can consult the
+// declaration (feature:where-refinement-predicate-declaration-authority, the next change); the drift
+// between them is held by test.claim.where_refinement_predicate_vocabulary_witness_test. A spelling nothing declares refuses as resolve_reason_where_predicate_unbound,
+// located at the predicate's own atom: an unbound predicate is not an unbound value reference, and
+// the author looking for it needs to know a where clause named it. `brand` binds to its declared
+// nominal marker (std.types brand -> WherePredicateMarker), so it too is bound and never silent.
+// What resolve does NOT do is judge a predicate: it binds, and nothing here evaluates.
+fn resolve_is_where_refinement_clause(n: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: n) {
+    Present { value: emitted } => emitted == ^dag_surface_where_refinement_clause
+    Absent => false
+  }
+}
+
+fn where_predicate_unbound_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^resolve_reason_where_predicate_unbound,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn resolve_where_predicate_operator(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      match resolve_atom(ctx: ctx, n: n, identity: id) {
+        Rejected { diagnostics: d } =>
+          if diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol {
+            resolve_walk_refused_one(chain: diagnostics_singleton(d: where_predicate_unbound_diagnostic(n: n)))
+          } else {
+            resolve_walk_of_outcome(o: Rejected { diagnostics: d })
+          }
+        Accepted { value: v, diagnostics: d } => resolve_walk_of_outcome(o: Accepted { value: v, diagnostics: d })
+      }
+    _ => resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: n)))
+  }
+}
+
+fn resolve_where_predicate_call(ctx: ResolveContext, call: Node) -> ResolveNodeWalk {
+  child_walk_node(n: call, w: fold(call.children, init: child_walk_init(), f: fn(acc, e) {
+    child_walk_step(
+      w: acc,
+      e: e,
+      r: if acc.ordinal == 0 {
+        resolve_where_predicate_operator(ctx: ctx, n: e.target)
+      } else {
+        resolve_node_walk(ctx: ctx, n: e.target)
+      }
+    )
+  }))
+}
+
+fn resolve_where_predicate_set(ctx: ResolveContext, set: Node) -> ResolveNodeWalk {
+  child_walk_node(n: set, w: fold(set.children, init: child_walk_init(), f: fn(acc, e) {
+    child_walk_step(w: acc, e: e, r: resolve_where_predicate_call(ctx: ctx, call: e.target))
+  }))
+}
+
+fn resolve_where_refinement_clause(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
+  child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
+    child_walk_step(
+      w: acc,
+      e: e,
+      r: match e.label {
+        Authored { name: sym } =>
+          if sym == ^grammar_production_captured_node_projection {
+            resolve_where_predicate_set(ctx: ctx, set: e.target)
+          } else {
+            ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] }
+          }
+        StructuralLabel { label: _ } => ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] }
+        Positional => resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: e.target)))
+      }
+    )
+  }))
+}
+
+fn resolve_preserve_module_root_named_edge(e: Edge) -> Bool {
+  dag_surface_module_header_metadata_edge(e: e)
+    || dag_resolve_preserve_module_metadata_subtree(node: e.target)
+    || labeled_named_is(x: e, label_of: edge_label_of, wanted: ^grammar_production_identity_node_projection)
 }
 
 
@@ -1693,56 +2988,44 @@ fn resolve_child_edge(
   e: Edge
 ) -> ResolveNodeWalk {
   match e.label {
-    Named { name: sym } =>
-      if ctx.under_module_root
-        && resolve_preserve_module_root_named_edge(name: sym, target: e.target) {
-        ResolveWalkAccepted { value: e.target, diagnostics: None }
-      } else {
-        let child_ctx = if ctx.under_module_root
-          && !dag_surface_module_header_metadata_edge(name: sym) {
-          resolve_ctx_snoc_position(ctx: ctx, segment: sym)
-        } else {
-          ctx
-        }
-        resolve_node_walk(ctx: child_ctx, n: e.target)
-      }
+    Authored { name: _ } => resolve_labeled_child_edge(ctx: ctx, e: e)
+    StructuralLabel { label: _ } => resolve_labeled_child_edge(ctx: ctx, e: e)
     Positional =>
       if ctx.under_module_root
         && dag_resolve_preserve_module_metadata_subtree(node: e.target) {
-        ResolveWalkAccepted { value: e.target, diagnostics: None }
+        ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] }
       } else {
         resolve_node_walk(ctx: ctx, n: e.target)
       }
   }
 }
 
-data arrow_domain_param_scoping_note: String = "Wave 1 Gate 1 A1: param scoping is add_arrow_domain_named_params over lowered Arrow domain Named edges (general-body-producer-design Stage A). dag_fn_decl_param_binding_atoms and scope_with_fn_decl_params dissolved. fn_decl ident now routes through StampLexeme and SymbolIndex fill carries module_qn.fn.param (parity proven by execution); domain construction remains interim param-list-walk (body_lower_domain_from_param_list) until domain is built from SymbolIndex lookup rather than walked from the param list."
-
-fn domain_root_has_named_bindings(root: Node) -> Bool {
-  match root.kind {
-    TypeNode { connective: Conj } =>
-      fold(root.children, init: false, f: fn(acc, e) {
-        if acc {
-          acc
-        } else {
-          match try_edge_declared_binding(e: e) {
-            Present { value: _ } => true
-            Absent => false
-          }
-        }
-      })
-    TypeNode { connective: Atom { identity: _ } } => true
-    _ => false
+// A labeled edge under the module root extends the lexical position by the label's scope segment
+// (label_sort_key), except a preserved metadata edge, which is accepted as its own target.
+fn resolve_labeled_child_edge(ctx: ResolveContext, e: Edge) -> ResolveNodeWalk {
+  if ctx.under_module_root && resolve_preserve_module_root_named_edge(e: e) {
+    ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] }
+  } else {
+    let child_ctx = if ctx.under_module_root && !dag_surface_module_header_metadata_edge(e: e) && !binder_node_edge(e: e) {
+      resolve_ctx_snoc_position(ctx: ctx, segment: label_sort_key(label: e.label))
+    } else {
+      ctx
+    }
+    resolve_node_walk(
+      ctx: resolve_ctx_with_declaring(ctx: child_ctx, declaring: resolve_declaring_across_named_edge(declaring: ctx.declaring, e: e)),
+      n: e.target
+    )
   }
 }
 
+data arrow_domain_param_scoping_note: String = "Wave 1 Gate 1 A1: param scoping is arrow_domain_frame_binders over lowered Arrow domain Named edges (general-body-producer-design Stage A). dag_fn_decl_param_binding_atoms and scope_with_fn_decl_params dissolved. fn_decl ident now routes through StampLexeme and SymbolIndex fill carries module_qn.fn.param (parity proven by execution); domain construction remains interim param-list-walk (body_lower_domain_from_param_list) until domain is built from SymbolIndex lookup rather than walked from the param list."
+
+// Whether an Arrow scopes its domain's binders is v2.std.node arrow_domain_binds_a_name, the same
+// answer Node admission reads (A4). The retired Atom-domain arm is gone: under the one Arrow encoding
+// (gunbc#12625) a domain is a Conj of binders, and an Atom in domain position is a type, never a local.
 fn arrow_domain_has_named_bindings(n: Node) -> Bool {
   match n.kind {
-    TypeNode { connective: Arrow } =>
-      match arrow_first_positional_target(children: n.children) {
-        FirstPositionalFound { target: domain } => domain_root_has_named_bindings(root: domain)
-        FirstPositionalAbsent => false
-      }
+    TypeNode { connective: Arrow } => arrow_domain_binds_a_name(children: n.children)
     _ => false
   }
 }
@@ -1754,11 +3037,7 @@ fn resolve_children_homogeneous_scope(
   let at_module_root = ctx.under_module_root || dag_node_is_module_root_conj(n: n)
   let scope_type = resolve_type_param_frame(n: n, outer: ctx.scope)
   let scope_here = match arrow_domain_has_named_bindings(n: n) {
-    true =>
-      ScopeFrame {
-        locals: add_arrow_domain_named_params(n: n, acc: empty_map()),
-        outer: scope_type
-      }
+    true => lexical_frame(fb: arrow_domain_frame_binders(n: n), outer: scope_type)
     false => scope_type
   }
   let child_ctx = resolve_ctx_with_scope(
@@ -1814,7 +3093,8 @@ fn resolve_type_param_frame(n: Node, outer: Scope) -> Scope {
         locals: fold(type_param_names(n: n), init: empty_map(), f: fn(acc, name) {
           map_insert(acc, name, name)
         }),
-        outer: outer
+        outer: outer,
+        kind: TypeParameterFrame
       }
   }
 }
@@ -1835,7 +3115,7 @@ fn resolve_type_param_binder(ctx: ResolveContext, binder: Node) -> ResolveNodeWa
       match resolve_atom(ctx: ctx, n: binder, identity: id) {
         Rejected { diagnostics: d } =>
           if diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol {
-            ResolveWalkAccepted { value: canonical_atom(identity: id, occurrence_id: binder.occurrence_id), diagnostics: None }
+            ResolveWalkAccepted { value: canonical_atom(identity: id, occurrence_id: binder.occurrence_id), diagnostics: None, lexical: [] }
           } else {
             resolve_walk_refused_one(chain: diagnostics_singleton(d: type_param_shadows_visible_name_diagnostic(binder: binder)))
           }
@@ -1853,7 +3133,7 @@ fn resolve_type_params_conj(ctx: ResolveContext, conj: Node) -> ResolveNodeWalk 
 }
 
 // THE ARROW'S DOMAIN IS NOT A SCOPE-PRODUCING PREREQUISITE in the sense the Bind binder is: its
-// parameter names are read syntactically by add_arrow_domain_named_params (and its type parameters by
+// parameter names are read syntactically by arrow_domain_frame_binders (and its type parameters by
 // v2.std.type_binder type_param_names), so a domain that refuses
 // to RESOLVE a parameter's type still binds the parameter's name, and the codomain's scope is not
 // invented by that refusal.
@@ -1865,6 +3145,44 @@ fn resolve_arrow_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
   )
 }
 
+
+// THE BODY OF AN ARROW IS WALKED UNDER ITS DECLARED RETURN, as authored: a `data x: T = e` lowers to
+// Arrow(<empty domain>, T, T, body: e) and a `fn f(..) -> T { e }` to the same shape, so this one
+// rule is both the data-initializer and the declared-return position of
+// docs/plans/anonymous-record-literal-design.md. Only a headless literal or a list literal consumes
+// the expectation; every other body walks exactly as it did.
+fn resolve_arrow_body_or_named_edge(ctx: ResolveContext, arrow: Node, e: Edge) -> ResolveNodeWalk {
+  if resolve_edge_is_arrow_body(e: e) && resolve_node_consumes_expectation(n: e.target) {
+    match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) {
+      Present { value: declared } =>
+        resolve_expected_edge(
+          ctx: ctx,
+          e: e,
+          x: ResolveExpectation { expected: declared, position: symbol_index_lookup_position(ctx: ctx), at_use_site: true }
+        )
+      Absent => resolve_node_walk(ctx: ctx, n: e.target)
+    }
+  } else {
+    resolve_node_walk(ctx: ctx, n: e.target)
+  }
+}
+
+fn resolve_edge_is_arrow_body(e: Edge) -> Bool {
+  edge_is_core(e: e, marker: ArrowBodyEdge)
+}
+
+fn resolve_node_consumes_expectation(n: Node) -> Bool {
+  match construct_tag_reading(n: n) {
+    ConstructTagElided => true
+    ConstructTagAuthored { reference: _ } => false
+    NotAConstruct =>
+      match list_introduction_elements_optional(node: n) {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
+}
+
 // The Arrow's own <T> binders are checked from the OUTER context: the frame they open must not
 // answer for them, or every binder would read as shadowing itself.
 // THE DECLARED ORDER IS LABELS, NOT REFERENCES. The ^arrow_signature_order_edge's atoms name the
@@ -1872,45 +3190,179 @@ fn resolve_arrow_node(ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
 // under scope_body would resolve each against a parameter or, spelled like a free name, against the
 // enclosing scope, and a minted anonymous label against nothing. It is carried unwalked; the Arrow
 // wall (v2.std.node arrow_signature_order_conforms) is its check.
+//
+// THE FRAME'S KIND IS DECIDED HERE, ONCE. An Arrow reached while the walk still stands at a declaring
+// path (DeclaringAt) is the declaration there -- the path v2.compiler.symbol_index_fill indexes its
+// parameters under -- so its value frame is a ParameterFrame over that path. Nothing below an Arrow
+// is containment: its body, codomain and domain walk NotDeclaring, so an Arrow met there (a lambda)
+// opens a LexicalFrame.
 fn resolve_arrow_node_in(outer_ctx: ResolveContext, ctx: ResolveContext, n: Node) -> ResolveNodeWalk {
   let scope_type = resolve_type_param_frame(n: n, outer: ctx.scope)
-  let value_params = add_arrow_domain_named_params(n: n, acc: empty_map())
-  let scope_codomain = ScopeFrame { locals: value_params, outer: scope_type }
-  let scope_body = ScopeFrame { locals: value_params, outer: ctx.scope }
+  let value_params = arrow_domain_frame_binders(n: n)
+  let frame_kind = match ctx.declaring {
+    DeclaringAt { path: path } => ParameterFrame { arrow_path: path }
+    DeclaringInSpine { path: _, body: _ } => LexicalFrame { binders: value_params.binders }
+    NotDeclaring => LexicalFrame { binders: value_params.binders }
+  }
+  let scope_codomain = ScopeFrame { locals: value_params.locals, outer: scope_type, kind: frame_kind }
+  let scope_body = ScopeFrame { locals: value_params.locals, outer: ctx.scope, kind: frame_kind }
+  let inner_ctx = resolve_ctx_leaving_containment(ctx: ctx)
   child_walk_node(n: n, w: fold(n.children, init: child_walk_init(), f: fn(acc, e) {
     match e.label {
-      Named { name: _ } =>
+      StructuralLabel { label: _ } =>
         if edge_is_type_params(e: e) {
           child_walk_step(w: acc, e: e, r: resolve_type_params_conj(ctx: outer_ctx, conj: e.target))
-        } else if (edge_label_of(e: e) == arrow_signature_order_label) {
-          child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None })
+        } else if edge_is_core(e: e, marker: ArrowSignatureOrderEdge) {
+          child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] })
+        } else if edge_is_core(e: e, marker: ArrowResourceRequirementsEdge) {
+          child_walk_step(w: acc, e: e, r: resolve_arrow_resource_requirements(ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: scope_type), requirements: e.target))
+        } else if arrow_named_edge_is_contract(e: e) {
+          child_walk_step(w: acc, e: e, r: ResolveWalkAccepted { value: e.target, diagnostics: None, lexical: [] })
         } else {
           child_walk_step(
             w: acc,
             e: e,
-            r: resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_body), n: e.target)
+            r: resolve_arrow_body_or_named_edge(
+              ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: scope_body),
+              arrow: n,
+              e: e
+            )
           )
         }
-      Positional =>
+      Authored { name: _ } =>
         child_walk_step(
           w: acc,
           e: e,
-          r: resolve_node_walk(
-            ctx: resolve_ctx_with_scope(
-              ctx: ctx,
-              scope: if acc.ordinal == 0 { scope_type } else { scope_codomain }
-            ),
-            n: e.target
-          )
+          r: resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: ctx, scope: scope_body), n: e.target)
         )
+      Positional =>
+        if acc.ordinal == 0 {
+          child_walk_step(
+            w: acc,
+            e: e,
+            r: resolve_arrow_domain_walk(
+              type_ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: scope_type),
+              default_ctx: inner_ctx,
+              domain: e.target
+            )
+          )
+        } else {
+          child_walk_step(
+            w: acc,
+            e: e,
+            r: resolve_node_walk(ctx: resolve_ctx_with_scope(ctx: inner_ctx, scope: scope_codomain), n: e.target)
+          )
+        }
     }
   }))
+}
+
+// AN ARROW'S DOMAIN: each binder's TYPE resolves in the Arrow's type-parameter frame (type_ctx), as the
+// whole domain did; each binder's DEFAULT (v2.std.node_query binder_node_parts) resolves in the
+// ENCLOSING value scope (default_ctx: the Arrow's own context, before its parameters), with the
+// type-parameter frame only as its type_scope. So a default sees an outer value, never a sibling
+// parameter, and a type parameter's spelling is not a value it can bind (XL-2 PR2c-ii, side-chat review
+// on #12948). A domain member that is not a binder node walks in type_ctx exactly as before.
+fn resolve_arrow_domain_walk(type_ctx: ResolveContext, default_ctx: ResolveContext, domain: Node) -> ResolveNodeWalk {
+  match domain.kind {
+    TypeNode { connective: Conj } =>
+      child_walk_node(n: domain, w: fold(domain.children, init: child_walk_init(), f: fn(acc, e) {
+        child_walk_step(w: acc, e: e, r: resolve_arrow_domain_member(type_ctx: type_ctx, default_ctx: default_ctx, member: e.target))
+      }))
+    _ => resolve_node_walk(ctx: type_ctx, n: domain)
+  }
+}
+
+fn resolve_arrow_domain_member(type_ctx: ResolveContext, default_ctx: ResolveContext, member: Node) -> ResolveNodeWalk {
+  match binder_node_parts(n: member) {
+    Absent => resolve_node_walk(ctx: type_ctx, n: member)
+    Present { value: _ } =>
+      child_walk_node(n: member, w: fold(member.children, init: child_walk_init(), f: fn(acc, be) {
+        child_walk_step(w: acc, e: be, r: resolve_binder_part(type_ctx: type_ctx, default_ctx: default_ctx, part: be))
+      }))
+  }
+}
+
+fn resolve_binder_part(type_ctx: ResolveContext, default_ctx: ResolveContext, part: Edge) -> ResolveNodeWalk {
+  if edge_is_core(e: part, marker: BinderDefaultEdge) {
+    resolve_node_walk(ctx: default_ctx, n: part.target)
+  } else {
+    resolve_node_walk(ctx: type_ctx, n: part.target)
+  }
+}
+
+// AN ARROW'S CONTRACT EDGES ARE NOT VALUES (v2.std.node arrow_named_edge_is_contract). The effect-claims
+// and execution-mode edges hold self-named atoms of a closed vocabulary that v2.std.arrow_contract has
+// already checked; they are carried unwalked, like the declared order. The resource-requirements edge
+// alone holds REFERENCES (`requires Network`), so it is walked -- in the Arrow's type scope, which sees
+// its type parameters and not its value parameters, because a requirement is a fact about the
+// operation, never about an argument -- and each member must then name a declared resource
+// (v2.std.symbol_index symbol_index_declares_resource_at, marked from the normalize-captured
+// resource declarations), at most once by resolved declaration. A member naming anything else, or a
+// declaration a second spelling already named, refuses at that member.
+fn resolve_arrow_resource_requirements(ctx: ResolveContext, requirements: Node) -> ResolveNodeWalk {
+  match requirements.kind {
+    TypeNode { connective: Atom { identity: _ } } =>
+      ResolveWalkAccepted { value: requirements, diagnostics: None, lexical: [] }
+    _ => resolve_arrow_resource_requirement_members(ctx: ctx, requirements: requirements)
+  }
+}
+
+// `requires none` and `requires opaque` are declared words, not references, so the Atom forms are
+// carried unwalked (v2.std.arrow_contract has already checked their identity); only the member Conj
+// names declarations.
+fn resolve_arrow_resource_requirement_members(ctx: ResolveContext, requirements: Node) -> ResolveNodeWalk {
+  match resolve_node_walk(ctx: ctx, n: requirements) {
+    ResolveWalkRefused { first: f, rest: rs, observation: o } => ResolveWalkRefused { first: f, rest: rs, observation: o }
+    ResolveWalkAccepted { value: resolved, diagnostics: d, lexical: l } =>
+      match resolve_requirement_member_refusal_optional(index: ctx.namespace.symbol_index, members: resolved.children) {
+        Present { value: refusal } => resolve_walk_refused_one(chain: diagnostics_singleton(d: refusal))
+        Absent => ResolveWalkAccepted { value: resolved, diagnostics: d, lexical: l }
+      }
+  }
+}
+
+type ResolveRequirementScan {
+  seen: List<QualifiedName>
+  refusal: Optional<Diagnostic>
+}
+
+// THE REQUIREMENT DECISION, over the resolved members and the index alone: it reads nothing else of the
+// resolution context, so it takes nothing else, and its refusals can be exercised at this interface
+// with supplied members (v2.test.claim.normalize.operation_requires_edge) while the full route stays
+// exercised by that module's resolving claims.
+fn resolve_requirement_member_refusal_optional(index: SymbolIndex, members: List<Edge>) -> Optional<Diagnostic> {
+  fold(members, init: ResolveRequirementScan { seen: Empty, refusal: optional_absent() }, f: fn(acc, e) {
+    match acc.refusal {
+      Present { value: _ } => acc
+      Absent =>
+        match declaration_reference_path_optional(node: e.target) {
+          Absent => ResolveRequirementScan { seen: acc.seen, refusal: optional_present(value: resolve_requirement_diagnostic(reason: ^resolve_reason_requirement_not_a_resource, n: e.target)) }
+          Present { value: path } =>
+            if !symbol_index_declares_resource_at(index: index, qualified_path: path) {
+              ResolveRequirementScan { seen: acc.seen, refusal: optional_present(value: resolve_requirement_diagnostic(reason: ^resolve_reason_requirement_not_a_resource, n: e.target)) }
+            } else if fold(acc.seen, init: false, f: fn(found, p) { found || (p == path) }) {
+              ResolveRequirementScan { seen: acc.seen, refusal: optional_present(value: resolve_requirement_diagnostic(reason: ^resolve_reason_requirement_repeated, n: e.target)) }
+            } else {
+              ResolveRequirementScan { seen: list_snoc_item(xs: acc.seen, item: path), refusal: optional_absent() }
+            }
+        }
+    }
+  }).refusal
+}
+
+fn resolve_requirement_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
 }
 
 fn resolve_bind_binder_target(t: Node) -> ResolveNodeWalk {
   match t.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      ResolveWalkAccepted { value: canonical_atom(identity: id, occurrence_id: t.occurrence_id), diagnostics: None }
+      ResolveWalkAccepted { value: canonical_atom(identity: id, occurrence_id: t.occurrence_id), diagnostics: None, lexical: [] }
     _ =>
       resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)))
   }
@@ -1990,10 +3442,7 @@ fn resolve_bind_node(
       ctx: ctx,
       edges: n.children,
       scope_outer: ctx.scope,
-      scope_inner: ScopeFrame {
-        locals: add_bind_atom_binder(n: n, acc: empty_map()),
-        outer: ctx.scope
-      }
+      scope_inner: lexical_frame(fb: bind_frame_binders(n: n), outer: ctx.scope)
     ))
   } else {
     resolve_walk_refused_one(chain: diagnostics_singleton(d: malformed_tree_diagnostic(n: n)))

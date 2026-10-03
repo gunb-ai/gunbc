@@ -43,7 +43,8 @@ module gunbc.scm.repository_load
 // names as authority substitution.
 
 import std.types { List, String }
-import extdeps.filesystem.filesystem_io {
+import std.content_hash { Fnv1a64Structural }
+import extdeps.filesystem.filesystem_io { Filesystem,
   FilesystemReadOutcome,
   FilesystemReadSucceeded,
   FilesystemReadRefused,
@@ -56,7 +57,15 @@ import extdeps.languages.json.parse {
   JsonDocumentUnreadable,
   JsonDocumentGap,
 }
+import gunbc.scm.json_member { read_string_member, MemberString, MemberArray, MemberObject, MemberFailed }
+import gunbc.scm.object_shard_json { decode_object_shard, ObjectShardDecoded, ObjectShardNotDecodable, object_shard_path_for }
+import gunbc.scm.object_store { ScmObject, store_assemble_decoded, StoreAssembled, StoreAssemblyCollision }
 import gunbc.scm.repository_envelope {
+  repository_format_of, RepositoryFormatV7, RepositoryFormatV6, RepositoryFormatV5, RepositoryFormatV4,
+  RepositoryFormatRetiredV3, RepositoryFormatUnknown,
+  decode_repository_v7_index, decode_repository_v7_finish,
+  ShardedIndexDecoded, ShardedIndexRefused,
+  RepositoryShardNotDecodable,
   RepositoryEnvelope,
   decode_repository,
   RepositoryDecodeOutcome,
@@ -68,6 +77,7 @@ import gunbc.scm.repository_envelope {
   RepositoryProtocolUnrecognizedFormat,
   RepositoryProtocolUnrecognizedIdentityRule,
   RepositoryProtocolNotAProtocolRefusal,
+  repository_generation_of_content,
 }
 
 // THE REFUSALS ARE THEIR OWN TYPE SO A CONSUMER CAN CARRY ONE WITHOUT BEING ABLE TO HOLD A SUCCESS.
@@ -103,7 +113,7 @@ type RepositoryLoadRefusal
 // shape has now been removed three times (`checkout_succeeded`, `gunbc.scm.ancestry` under review
 // 56207, and here). Consumers match the arms.
 type RepositoryLoad
-  = RepositoryLoaded { path: String, envelope: RepositoryEnvelope }
+  = RepositoryLoaded { path: String, envelope: RepositoryEnvelope, generation: Fnv1a64Structural }
   | RepositoryLoadRefused { cause: RepositoryLoadRefusal }
 
 // THE ONLY HOST EFFECT IN THE READ PATH, AND IT IS FOLDED BEFORE IT IS READ. The scalar transport
@@ -118,23 +128,51 @@ type RepositoryLoad
 // only the success channel separates them. Deciding on content alone would fuse a legitimate empty
 // document with a missing one -- so consuming the raw projections here while the header above
 // argues against conflating channels would have been incoherent, not merely untidy.
+// v7's index document is not a whole repository: it names its shards by content identity
+// and the loader reads them. Every older format is a whole document and takes the
+// unchanged decode path.
+// THE LOADED ARM CARRIES THE GENERATION OF THE BYTES IT DECODED, because that hash is the evidence
+// a later guarded save needs to refuse a stale write (gunbc.scm.repository_save
+// save_repository_sharded_guarded): the load observed the document at one generation, and the save
+// must compare against exactly that observation -- re-reading later could observe a NEWER
+// generation and admit a write derived from older bytes, which is the clobber the guard exists to
+// refuse. The generation travels beside the envelope so the pairing cannot drift: a caller holding
+// the envelope holds the generation it was decoded from, with no second lookup to mis-pair.
 fn load_repository(path: String) -> RepositoryLoad {
   let read = Filesystem.Read(path: path)
   match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
     FilesystemReadRefused { error: e } =>
       RepositoryLoadRefused { cause: RepositoryFileUnreadable { path: path, error: e } }
     FilesystemReadSucceeded { content: content } =>
+      let generation = repository_generation_of_content(content: content)
       match parse_json_document(s: content) {
         JsonDocumentUnreadable { gap: gap } =>
           RepositoryLoadRefused { cause: RepositoryDocumentUnparseable { path: path, gap: gap } }
         JsonDocumentParsed { value: v } =>
-          match decode_repository(v: v) {
-            RepositoryDecoded { envelope: envelope } =>
-              RepositoryLoaded { path: path, envelope: envelope }
-            RepositoryDecodeRefused { cause: cause } =>
-              RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: cause } }
+          match read_string_member(v: v, key: "format") {
+            MemberString { value: format } =>
+              match repository_format_of(tag: format) {
+                RepositoryFormatV7 => load_repository_sharded(path: path, v: v, generation: generation)
+                RepositoryFormatV6 => load_repository_whole(path: path, v: v, generation: generation)
+                RepositoryFormatV5 => load_repository_whole(path: path, v: v, generation: generation)
+                RepositoryFormatV4 => load_repository_whole(path: path, v: v, generation: generation)
+                RepositoryFormatRetiredV3 => load_repository_whole(path: path, v: v, generation: generation)
+                RepositoryFormatUnknown { found: _ } => load_repository_whole(path: path, v: v, generation: generation)
+              }
+            MemberArray { elements: _ } => load_repository_whole(path: path, v: v, generation: generation)
+            MemberObject { value: _ } => load_repository_whole(path: path, v: v, generation: generation)
+            MemberFailed { cause: _ } => load_repository_whole(path: path, v: v, generation: generation)
           }
       }
+  }
+}
+
+fn load_repository_whole(path: String, v: JsonValue, generation: Fnv1a64Structural) -> RepositoryLoad {
+  match decode_repository(v: v) {
+    RepositoryDecoded { envelope: envelope } =>
+      RepositoryLoaded { path: path, envelope: envelope, generation: generation }
+    RepositoryDecodeRefused { cause: cause } =>
+      RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: cause } }
   }
 }
 
@@ -189,6 +227,106 @@ fn repository_load_refusal_lines(cause: RepositoryLoadRefusal) -> List<String> {
             "  this build reads the format but not that identity rule, so its contents were not validated",
           ]
         RepositoryProtocolNotAProtocolRefusal => [concat("not a repository document: ", path)]
+      }
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// THE SHARDED READ (v7). The index document names its objects by content identity; each shard is
+// then read and decoded on its own (gunbc.scm.object_shard_json), and the store is assembled in
+// one pass (gunbc.scm.object_store store_assemble_decoded) rather than by an insert per object.
+// The downstream adjudication is the shared decode body, unchanged: v7 changes WHERE the objects
+// come from, never what a repository may mean.
+// ------------------------------------------------------------------------------------------------
+
+
+// The fold carries BLOCKS (one per shard) and prepends: concat-at-end would copy the accumulator
+// per shard, the quadratic shape the sharded read exists to remove at envelope scale. Prepending
+// flat object lists and reversing once at the end is NOT order-preserving -- it also reverses
+// inside each shard (measured 2026-09-23: a four-object store loaded back exactly backwards, and
+// every sealed shard identity moved at the next save). Each read therefore wraps its objects as
+// one block, and the flatten concatenates blocks in writer order.
+type ShardedObjectRead
+  = ShardObjectsRead { blocks: List<List<ScmObject>> }
+  | ShardObjectReadRefused { path: String, reason: String }
+
+// CONTRACT: blocks arrive in writer order (first shard first). Copy work is one accumulator pass
+// per block boundary -- bounded by the shard count, not the object count.
+fn shard_blocks_flatten(blocks: List<List<ScmObject>>) -> List<ScmObject> {
+  fold(blocks, init: [] as List<ScmObject>, f: fn(acc, block) { concat(acc, block) })
+}
+
+fn load_object_shard(envelope_path: String, digest: String) -> ShardedObjectRead {
+  let shard_path = object_shard_path_for(envelope_path: envelope_path, identity_digest: digest)
+  let read = Filesystem.Read(path: shard_path)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: e } =>
+      ShardObjectReadRefused {
+        path: shard_path,
+        reason: join(["the index rosters this shard but it could not be read: ", shard_path, " (", e, ")"], ""),
+      }
+    FilesystemReadSucceeded { content } =>
+      match decode_object_shard(text: content) {
+        ObjectShardNotDecodable { reason } =>
+          ShardObjectReadRefused { path: shard_path, reason: reason }
+        ObjectShardDecoded { objects } =>
+          ShardObjectsRead { blocks: [objects] }
+      }
+  }
+}
+
+fn load_sharded_objects(envelope_path: String, digests: List<String>) -> ShardedObjectRead {
+  let acc = fold(
+    digests,
+    init: ShardObjectsRead { blocks: [] },
+    f: fn(acc, digest) {
+      match acc {
+        ShardObjectReadRefused { path: _, reason: _ } => acc
+        ShardObjectsRead { blocks } =>
+          match load_object_shard(envelope_path: envelope_path, digest: digest) {
+            ShardObjectReadRefused { path: p, reason: r } => ShardObjectReadRefused { path: p, reason: r }
+            ShardObjectsRead { blocks: one } =>
+              ShardObjectsRead { blocks: concat(one, blocks) }
+          }
+      }
+    },
+  )
+  match acc {
+    ShardObjectReadRefused { path: _, reason: _ } => acc
+    ShardObjectsRead { blocks } => ShardObjectsRead { blocks: [shard_blocks_flatten(blocks: reverse(blocks))] }
+  }
+}
+
+fn load_repository_sharded(path: String, v: JsonValue, generation: Fnv1a64Structural) -> RepositoryLoad {
+  match decode_repository_v7_index(v: v) {
+    ShardedIndexRefused { cause } => RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: cause } }
+    ShardedIndexDecoded { index } =>
+      match load_sharded_objects(envelope_path: path, digests: index.shard_digests) {
+        ShardObjectReadRefused { path: p, reason } =>
+          RepositoryLoadRefused {
+            cause: RepositoryDocumentRefused {
+              path: p,
+              cause: RepositoryShardNotDecodable { detail: reason },
+            },
+          }
+        ShardObjectsRead { blocks } =>
+          match store_assemble_decoded(objects: shard_blocks_flatten(blocks: blocks)) {
+            StoreAssemblyCollision { identity: _ } =>
+              RepositoryLoadRefused {
+                cause: RepositoryDocumentRefused {
+                  path: path,
+                  cause: RepositoryShardNotDecodable {
+                    detail: "two shards hold different content under one content identity",
+                  },
+                },
+              }
+            StoreAssembled { store } =>
+              match decode_repository_v7_finish(v: index.document, store: store) {
+                RepositoryDecoded { envelope } => RepositoryLoaded { path: path, envelope: envelope, generation: generation }
+                RepositoryDecodeRefused { cause } =>
+                  RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: cause } }
+              }
+          }
       }
   }
 }

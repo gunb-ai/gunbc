@@ -5,7 +5,8 @@ import std.occurrence_identity {
 }
 import v2.extdeps.languages.dag {
   dag_surface_operator_canonicalization_member,
-  dag_value_expression_projection
+  dag_value_expression_projection,
+  dag_surface_edge_label,
 }
 import extdeps.communication.medium {
   Medium
@@ -54,9 +55,10 @@ import v2.std.node {
   Atom,
   Conj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
+  StructuralLabel,
   Symbol,
   TypeNode,
   node_subtree_count
@@ -66,7 +68,8 @@ import v2.std.type_binder {
 }
 import v2.std.node_query {
   find_named_child,
-  node_positional_child_targets
+  node_positional_child_targets,
+  find_labeled_child,
 }
 import v2.std.compilers.target_model {
   ConcreteSyntaxToken,
@@ -232,22 +235,24 @@ fn target_bundle_child_lookup_step(
     BundleChildDuplicate => acc
     BundleChildMissing =>
       match e.label {
-        Named { name: n } =>
+        Authored { name: n } =>
           if n == edge_name {
             BundleChildFound { value: e.target }
           } else {
             acc
           }
+        StructuralLabel { label: _ } => BundleChildInvalidEdge
         Positional => BundleChildInvalidEdge
       }
     BundleChildFound { value: _ } =>
       match e.label {
-        Named { name: n } =>
+        Authored { name: n } =>
           if n == edge_name {
             BundleChildDuplicate
           } else {
             acc
           }
+        StructuralLabel { label: _ } => BundleChildInvalidEdge
         Positional => BundleChildInvalidEdge
       }
   }
@@ -368,7 +373,7 @@ fn grammar_relation_row_with_bodied_scaffold(rules: Node) -> Outcome<Node> {
           match acc {
             Accepted { value: _, diagnostics: _ } =>
               match e.label {
-                Named { name: _ } =>
+                Authored { name: _ } =>
                   match find_named_child(
                     root: e.target,
                     name: ^grammar_relation_field_bodied_scaffold
@@ -379,11 +384,12 @@ fn grammar_relation_row_with_bodied_scaffold(rules: Node) -> Outcome<Node> {
                       )
                     Rejected { diagnostics: _ } => acc
                   }
+                StructuralLabel { label: _ } => acc
                 Positional => acc
               }
             Rejected { diagnostics: _ } =>
               match e.label {
-                Named { name: _ } =>
+                Authored { name: _ } =>
                   match find_named_child(
                     root: e.target,
                     name: ^grammar_relation_field_bodied_scaffold
@@ -392,6 +398,7 @@ fn grammar_relation_row_with_bodied_scaffold(rules: Node) -> Outcome<Node> {
                       Accepted { value: e.target, diagnostics: d }
                     Rejected { diagnostics: _ } => acc
                   }
+                StructuralLabel { label: _ } => acc
                 Positional => acc
               }
           }
@@ -444,22 +451,24 @@ fn optional_named_child_ignoring_positional(parent: Node, edge_name: Symbol) -> 
             BundleChildDuplicate => acc
             BundleChildMissing =>
               match e.label {
-                Named { name: n } =>
+                Authored { name: n } =>
                   if n == edge_name {
                     BundleChildFound { value: e.target }
                   } else {
                     acc
                   }
+                StructuralLabel { label: _ } => acc
                 Positional => acc
               }
             BundleChildFound { value: _ } =>
               match e.label {
-                Named { name: n } =>
+                Authored { name: n } =>
                   if n == edge_name {
                     BundleChildDuplicate
                   } else {
                     acc
                   }
+                StructuralLabel { label: _ } => acc
                 Positional => acc
               }
           }
@@ -770,6 +779,18 @@ fn target_serialize_relation_row_from_model_bounded(
   target: TargetModel,
   emitted: Node
 ) -> Outcome<TargetText> {
+  target_serialize_relation_row_with_lex_bounded(remaining, target, lex_literal_index(rules: target.lex), emitted)
+}
+
+// ONE ROW'S SERIALIZATION, GIVEN THE TARGET'S SPELLING INDEX. The index is a fact about the target, the
+// same for every row of one serialization, so it is built once at the entry and carried down: a
+// nonterminal inside a row re-enters here with the index it was handed, never rebuilding it (DESIGN §2).
+fn target_serialize_relation_row_with_lex_bounded(
+  remaining: Int,
+  target: TargetModel,
+  lex: LexLiteralIndex,
+  emitted: Node
+) -> Outcome<TargetText> {
   if remaining <= 0 {
     outcome_rejected(
       translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
@@ -789,7 +810,7 @@ fn target_serialize_relation_row_from_model_bounded(
                 bind_outcome(
                   o: grammar_tokens_node_targets(tokens_node: tokens_root),
                   f: fn(tokens) {
-                    serialize_relation_row_tokens_bounded(remaining: remaining, target: target, lex: lex_literal_index(rules: target.lex), tokens: tokens)
+                    serialize_relation_row_tokens_bounded(remaining: remaining, target: target, lex: lex, tokens: tokens)
                   }
                 )
               }
@@ -904,7 +925,7 @@ fn token_item_to_source_bounded(
         TokenSequenceNestedBlock { unit: unit, tokens: inner } =>
           serialize_relation_row_nested_bounded(remaining - 1, target, lex, unit, inner)
         TokenSequenceNonterminal =>
-          target_serialize_relation_row_from_model_bounded(remaining - 1, target, item)
+          target_serialize_relation_row_with_lex_bounded(remaining - 1, target, lex, item)
       }
     }
   )
@@ -1182,13 +1203,15 @@ fn type_expr_spelling_for_atom(target: TargetModel, node: Node) -> Outcome<Targe
 
 fn serialize_type_expr_record_field_label(target: TargetModel, edge: Edge) -> Outcome<TargetText> {
   match edge.label {
-    Named { name: label } =>
+    Authored { name: label } =>
       bind_outcome(
         o: target_binding_spelling_lookup(target: target, binding: label),
         f: fn(spelling) {
           outcome_accepted(text_atom(lexeme: spelling))
         }
       )
+    StructuralLabel { label: _ } =>
+      outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: edge.target))
     Positional =>
       outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: edge.target))
   }
@@ -2120,7 +2143,7 @@ fn serialize_type_expr_boundary_bounded(
 }
 
 fn is_dag_import_carrier(emitted: Node) -> Bool {
-  match find_named_child(root: emitted, name: ^dag_surface_import_decl) {
+  match find_labeled_child(root: emitted, label: dag_surface_edge_label(edge: ^dag_surface_import_decl)) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }

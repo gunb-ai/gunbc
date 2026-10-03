@@ -26,7 +26,7 @@ module std.durable_exclusive_hold
 // codec or comparison would return the fork one layer below a generic-looking
 // API, which is the same second authority wearing a type parameter.
 
-import std.types { NonEmptyStr, String, Bool }
+import std.types { NonEmptyStr, String, Bool, brand }
 import std.durable_compare_and_set {
   CasGeneration, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
   CasUnreadableSlot, cas_generation_count,
@@ -165,6 +165,75 @@ fn durable_hold_release_assess(
           }
         } else {
           HoldReleaseEligible { generation: g }
+        }
+      }
+  }
+}
+
+// RECOVERY OF A HOLD WHOSE HOLDER WAS OBSERVED DEAD -- THE THIRD AMENDMENT (gunbc#12533 finding 2).
+//
+// Without it a holder that dies holding the slot holds it forever: acquire refuses while held, and
+// only the holder may release. That is not a safe default but a lockout the protocol manufactured,
+// because the holder's death is an observable fact about the world and nothing here could consume it.
+//
+// RECOVERY IS DECIDED BY AN OBSERVATION OF THE HOLDER, NEVER BY AGE. There is deliberately no clock,
+// timestamp or duration anywhere in this assessment: a hold is never broken because it is old, only
+// because its holder was OBSERVED gone. How a holder is observed is the consumer's (a process by boot,
+// pid and start time; a lease by its declared deadline), so the protocol takes the verdict, not the
+// method -- and takes it BOUND to the holder and generation it is about, so a verdict taken of one
+// hold cannot recover another. Three verdicts, and the third is the reason there are three: a holder
+// that could not be observed is not dead, and a recovery over it would be ⊤-as-ignorance.
+type DurableHoldHolderLiveness
+  = HolderObservedLive { evidence: NonEmptyStr }
+  | HolderObservedDead { evidence: NonEmptyStr }
+  | HolderLivenessUnobservable { cause: NonEmptyStr }
+
+type DurableHoldHolderReport {
+  holder: DurableHoldOwnerRef
+  generation: CasGeneration
+  liveness: DurableHoldHolderLiveness
+}
+
+// Each refusal names its own remedy: nothing held means acquire directly; a live holder means wait;
+// an unobservable holder sends the caller to whatever prevented the look; a slot that moved since the
+// report means the report is about a hold that no longer stands, whoever holds the slot now.
+type DurableHoldRecoveryRefusal
+  = HoldRecoveryNothingHeld
+  | HoldRecoveryHolderLive { generation: CasGeneration, holder: DurableHoldOwnerRef, evidence: NonEmptyStr }
+  | HoldRecoveryHolderUnobservable { generation: CasGeneration, holder: DurableHoldOwnerRef, cause: NonEmptyStr }
+  | HoldRecoverySlotMoved { reported: CasGeneration, observed: CasGeneration }
+  | HoldRecoveryReportForAnotherHolder { holder: DurableHoldOwnerRef, reported: DurableHoldOwnerRef }
+  | HoldRecoverySlotUndecodable { generation: CasGeneration, detail: NonEmptyStr }
+  | HoldRecoveryObservationUnavailable { cause: CasUnreadableSlot }
+
+// The eligible arm frees the slot at the generation both the live read and the report name; it does
+// not hand the slot to anyone. The successor then acquires through durable_hold_acquire_assess like
+// every other acquirer, so there is still exactly one way a slot becomes held.
+type DurableHoldRecoveryAssessment
+  = HoldRecoveryEligible { generation: CasGeneration, dead_holder: DurableHoldOwnerRef, evidence: NonEmptyStr }
+  | HoldRecoveryRefused { refusal: DurableHoldRecoveryRefusal }
+
+fn durable_hold_recovery_assess(observed: DurableHoldObservation, report: DurableHoldHolderReport) -> DurableHoldRecoveryAssessment {
+  match observed {
+    HoldSlotAbsent => HoldRecoveryRefused { refusal: HoldRecoveryNothingHeld }
+    HoldSlotFree { generation: _, released_by: _ } => HoldRecoveryRefused { refusal: HoldRecoveryNothingHeld }
+    HoldSlotUndecodable { generation: g, detail: d } =>
+      HoldRecoveryRefused { refusal: HoldRecoverySlotUndecodable { generation: g, detail: d } }
+    HoldObservationUnavailable { cause: c } =>
+      HoldRecoveryRefused { refusal: HoldRecoveryObservationUnavailable { cause: c } }
+    HoldSlotHeld { generation: g, owner: holder } =>
+      if !durable_hold_owner_equal(left: holder, right: report.holder) {
+        HoldRecoveryRefused { refusal: HoldRecoveryReportForAnotherHolder { holder: holder, reported: report.holder } }
+      } else if cas_generation_count(g: g) != cas_generation_count(g: report.generation) {
+        HoldRecoveryRefused { refusal: HoldRecoverySlotMoved { reported: report.generation, observed: g } }
+      } else {
+        match report.liveness {
+          HolderObservedLive { evidence: e } =>
+            HoldRecoveryRefused { refusal: HoldRecoveryHolderLive { generation: g, holder: holder, evidence: e } }
+          HolderLivenessUnobservable { cause: c } =>
+            HoldRecoveryRefused { refusal: HoldRecoveryHolderUnobservable { generation: g, holder: holder, cause: c } }
+          HolderObservedDead { evidence: e } =>
+            HoldRecoveryEligible { generation: g, dead_holder: holder, evidence: e }
         }
       }
   }

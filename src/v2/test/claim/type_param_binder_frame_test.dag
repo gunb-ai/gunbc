@@ -22,7 +22,7 @@ import v2.compiler.translate { translate_type_expression_project }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
 import v2.extdeps.languages.rust_test { rust_semantic_decl_target_model_staging }
 import extdeps.communication.medium { Medium }
-import v2.std.node_query { coproduct_arm_list_from_node, declared_field_list }
+import v2.std.node_query { coproduct_arm_list_from_node, declared_field_list, binder_edge }
 import v2.std.compilers.coproduct_variant_shape { coproduct_all_variants_nullary }
 import v2.compiler.trait_derive_completeness { repr_grounding_derive_elem_shape }
 import std.trait_derive_shape { ReprDeriveElemNullaryEnumCopy }
@@ -33,14 +33,17 @@ import v2.std.node {
   Conj,
   Disj,
   Edge,
-  Named,
+  Authored,
   Node,
   Positional,
   Transform,
   TypeNode,
   node_subtree_nodes,
   node_synthetic,
-  well_formed
+  well_formed,
+  ArrowBodyEdge,
+  TypeParamsEdge,
+  core_edge_label,
 }
 import v2.std.text { String }
 import v2.std.optional { Absent, Present }
@@ -55,7 +58,6 @@ import v2.std.type_binder {
   type_decl_wrapper,
   type_opaque_wrapper,
   type_param_names,
-  type_params_marker
 }
 import v2.compiler.symbol_index_fill { symbol_index_declared }
 
@@ -109,14 +111,14 @@ fn tpb_assemble(src: String) -> Outcome<ResolvedTree> {
 // Each tpb_* specimen below is nullary and pure over an inline source -- Nodes and located
 // diagnostics, no closure -- and is enrolled in v2.workflow.floor_pure_producer_share, so
 // preparation runs the real route once per specimen and the rows read it.
-fn tpb_accepts(o: Outcome<ResolvedTree>) -> Bool {
+fn tpb_accepts<T>(o: Outcome<T>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn tpb_refuses_with(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
+fn tpb_refuses_with<T>(o: Outcome<T>, reason: Symbol) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
@@ -247,7 +249,7 @@ test fn tpb_infer_admits_the_resolved_generic_fn() -> Bool {
 // argument against a formal only when the operator IS an Arrow; (1) above is the inhabitance
 // claim that the real producer emits exactly this type-parameter edge shape.
 fn tpb_binder_edge(name: Symbol) -> Edge {
-  Edge { label: Named { name: name }, target: dag_type_atom_node(identity: name) }
+  Edge { label: Authored { name: name }, target: dag_type_atom_node(identity: name) }
 }
 
 fn tpb_generic_arrow(type_params: List<Symbol>, formals: List<Edge>) -> Node {
@@ -260,19 +262,19 @@ fn tpb_generic_arrow(type_params: List<Symbol>, formals: List<Edge>) -> Node {
       Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
       Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_binding_type_int) },
       Edge {
-        label: Named { name: type_params_marker() },
+        label: core_edge_label(marker: TypeParamsEdge),
         target: node_synthetic(
           kind: TypeNode { connective: Conj },
           children: fold(type_params, init: [], f: fn(acc, p) { concat(acc, [tpb_binder_edge(name: p)]) })
         )
       },
-      Edge { label: Named { name: ^arrow_body_edge }, target: dag_int_literal_fixture_one() }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: dag_int_literal_fixture_one() }
     ]
   )
 }
 
 fn tpb_formal(name: Symbol, declared: Symbol) -> Edge {
-  Edge { label: Named { name: name }, target: dag_type_atom_node(identity: declared) }
+  binder_edge(name: name, type_node: dag_type_atom_node(identity: declared))
 }
 
 fn tpb_apply(arrow: Node, args: List<Node>) -> Node {
@@ -330,16 +332,35 @@ test fn tpb_distinct_type_variables_do_not_alias() -> Bool {
   }
 }
 
-// (12) The type variable is the callee's OWN: an Arrow declaring no `T` still judges `x: T` as the
-// ordinary declared type, and the Int argument refuses.
+// (12) The type variable is the callee's OWN: an Arrow declaring no `T` still judges `x: T` as an
+// ordinary declared type, never instantiating it. RE-STATED 2026-10-01 against gunbc#12566 (bisected:
+// green at its parent, red at it), which routes every declared position through
+// infer_declared_position_undecidable_reason: a declared atom that denotes no value type and is not
+// one of the callee's type variables is counted UndecidableFormalUnresolved on the Accepted path,
+// "never refused for the spelling and never admitted silently". So `T` no longer refuses the Int as
+// the structural atom `T`; the evidence that it was not taken as a type variable is that it was
+// judged at all -- an instantiated variable carries no undecidable advisory (the twin below).
 test fn tpb_undeclared_t_is_not_a_type_variable() -> Bool {
   match infer(tree: claim_resolved_tree_without_declarations(root: tpb_apply(
     arrow: tpb_generic_arrow(type_params: [^U], formals: [tpb_formal(name: ^x, declared: ^T)]),
     args: [dag_int_literal_fixture_one()]
   ))) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } =>
-      diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^application_argument_does_not_inhabit)
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
+      diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_formal_unresolved)
+  }
+}
+
+// THE TWIN THAT MAKES (12) DISCRIMINATE: the same application with `T` declared as the callee's type
+// parameter instantiates it from the Int argument and carries no undecidable-formal advisory.
+test fn tpb_declared_t_is_instantiated_not_judged_unresolved() -> Bool {
+  match infer(tree: claim_resolved_tree_without_declarations(root: tpb_apply(
+    arrow: tpb_generic_arrow(type_params: [^T], formals: [tpb_formal(name: ^x, declared: ^T)]),
+    args: [dag_int_literal_fixture_one()]
+  ))) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
+      diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_formal_unresolved) == false
   }
 }
 
@@ -357,7 +378,7 @@ fn tpb_with_type_param(decl: Node) -> Node {
         target: node_synthetic(
           kind: e.target.kind,
           children: concat(e.target.children, [Edge {
-            label: Named { name: type_params_marker() },
+            label: core_edge_label(marker: TypeParamsEdge),
             target: node_synthetic(kind: TypeNode { connective: Conj }, children: [tpb_binder_edge(name: ^T)])
           }])
         )
@@ -494,8 +515,8 @@ fn tpb_box_disj() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Disj },
     children: [
-      Edge { label: Named { name: ^Full }, target: node_synthetic(kind: TypeNode { connective: Conj }, children: []) },
-      Edge { label: Named { name: ^Empty }, target: node_synthetic(kind: TypeNode { connective: Conj }, children: []) },
+      Edge { label: Authored { name: ^Full }, target: node_synthetic(kind: TypeNode { connective: Conj }, children: []) },
+      Edge { label: Authored { name: ^Empty }, target: node_synthetic(kind: TypeNode { connective: Conj }, children: []) },
     ]
   )
 }
@@ -515,21 +536,28 @@ fn tpb_box_member(with_params: Bool) -> Node {
 fn tpb_box_member_mixed() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Disj },
-    children: concat(tpb_box_disj().children, [Edge { label: Named { name: type_params_marker() }, target: tpb_t_binders() }])
+    children: concat(tpb_box_disj().children, [Edge { label: core_edge_label(marker: TypeParamsEdge), target: tpb_t_binders() }])
   )
 }
 
-fn tpb_type_decl_emit_twin() -> Outcome<ResolvedTree> {
+fn tpb_type_decl_emit_twin() -> Outcome<Node> {
   translate_type_expression_project(node: tpb_box_member(with_params: false), target: rust_target_model(), projection: rust_type_expression_projection())
 }
 
-fn tpb_type_decl_emit_generic() -> Outcome<ResolvedTree> {
+fn tpb_type_decl_emit_generic() -> Outcome<Node> {
   translate_type_expression_project(node: tpb_box_member(with_params: true), target: rust_target_model(), projection: rust_type_expression_projection())
 }
 
 test fn tpb_translator_refuses_a_generic_type_decl_member() -> Bool {
-  tpb_accepts(o: tpb_type_decl_emit_twin())
-    && tpb_refuses_with(o: tpb_type_decl_emit_generic(), reason: ^translate_reason_generic_type_decl_not_rendered)
+  let accepted = match tpb_type_decl_emit_twin() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+  let refused = match tpb_type_decl_emit_generic() {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^translate_reason_generic_type_decl_not_rendered
+  }
+  accepted && refused
 }
 
 // A GENERIC DECLARATION'S BINDERS SIT BESIDE ITS MEMBER (v2.std.type_binder type_decl_wrapper), so a
@@ -603,7 +631,8 @@ fn tpb_semantic_emit(with_params: Bool) -> Outcome<Medium<String>> {
     name: ^Box,
     params: Empty,
     node: tpb_box_member(with_params: with_params),
-    target: rust_semantic_decl_target_model_staging()
+    target: rust_semantic_decl_target_model_staging(),
+    realization_host: rust_semantic_decl_target_model_staging()
   )
 }
 
@@ -788,8 +817,8 @@ test fn tpb_wrapper_with_no_view_arm_is_refused() -> Bool {
   let stray = node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: type_params_marker() }, target: tpb_t_binders() },
-      Edge { label: Named { name: ^stray }, target: dag_type_atom_node(identity: ^Int) }
+      Edge { label: core_edge_label(marker: TypeParamsEdge), target: tpb_t_binders() },
+      Edge { label: Authored { name: ^stray }, target: dag_type_atom_node(identity: ^Int) }
     ]
   )
   !type_binder_labels_conform(root: stray)

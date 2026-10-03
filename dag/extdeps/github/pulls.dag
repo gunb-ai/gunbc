@@ -2,7 +2,6 @@ module extdeps.github.pulls
 
 import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
 import std.types { CommitSha, EpochMs, FilePath, GitRef, NonEmptyStr, Timestamp, AuthScheme }
-import std.string_type { String }
 import extdeps.github.errors { GitHubErrorShape }
 import std.credentials { CredentialSource, EnvVar }
 import std.serialization { WireFormat, Text }
@@ -16,6 +15,7 @@ import extdeps.github.pulls_contracts {
   review_event_wire_contract
 }
 import extdeps.ietf.http_semantics { HttpMethod }
+import std.resources { Network }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -147,6 +147,7 @@ data gunbc_pr_7542_timing: PullTimingObservation = pull_timing_observation(
 
 service github.CliPulls {
   operation ListOpenJson {
+    requires Network
     input { repo: NonEmptyStr }
     output {
       success: Bool from "exit_success"
@@ -166,6 +167,7 @@ service github.CliPulls {
   }
 
   operation SquashMergeExactHead {
+    requires Network
     input {
       repo: NonEmptyStr
       pull_number: Int
@@ -196,6 +198,7 @@ service github.Pulls {
   }
 
   operation List {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -223,6 +226,7 @@ service github.Pulls {
   }
 
   operation Get {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -246,6 +250,7 @@ service github.Pulls {
   }
 
   operation Diff {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -271,6 +276,7 @@ service github.Pulls {
   }
 
   operation ListReviews {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -294,6 +300,7 @@ service github.Pulls {
   }
 
   operation CreateReview {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -322,6 +329,7 @@ service github.Pulls {
   }
 
   operation Create {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -354,6 +362,7 @@ service github.Pulls {
   }
 
   operation SetState {
+    requires Network
     input {
       auth_token: Secret
       owner: String
@@ -382,6 +391,7 @@ service github.Pulls {
   }
 
   operation ListComments {
+    requires Network
     input {
       auth_token: Secret
       owner: String

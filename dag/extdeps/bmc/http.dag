@@ -5,7 +5,7 @@ import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
 import std.types { Bool, Int, NonEmptyStr, Unit }
-import std.string_type { String }
+import std.resources { Network }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -91,6 +91,7 @@ data redfish_http_hardwired_transport_note: String = "§3(b) declared debt: ever
 service redfish.Http {
 
   operation GetServiceRoot {
+    requires Network
     input { bmc_host: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -104,6 +105,7 @@ service redfish.Http {
   }
 
   operation ProbeServiceRoot {
+    requires Network
     input { bmc_host: NonEmptyStr, write_out: String }
     output {
       body: String from "stdout",
@@ -121,6 +123,7 @@ service redfish.Http {
   }
 
   operation GetManagers {
+    requires Network
     input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -134,6 +137,7 @@ service redfish.Http {
   }
 
   operation GetManager {
+    requires Network
     input { bmc_host: NonEmptyStr, manager_id: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -147,6 +151,7 @@ service redfish.Http {
   }
 
   operation GetSystem {
+    requires Network
     input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -160,6 +165,7 @@ service redfish.Http {
   }
 
   operation GetChassisSensors {
+    requires Network
     input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -173,6 +179,7 @@ service redfish.Http {
   }
 
   operation GetPower {
+    requires Network
     input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -186,6 +193,7 @@ service redfish.Http {
   }
 
   operation GetThermal {
+    requires Network
     input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -199,6 +207,7 @@ service redfish.Http {
   }
 
   operation GetChassisThermal {
+    requires Network
     input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -212,6 +221,7 @@ service redfish.Http {
   }
 
   operation GetChassisSensor {
+    requires Network
     input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, sensor_id: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -225,6 +235,7 @@ service redfish.Http {
   }
 
   operation GetSystemEventLogEntries {
+    requires Network
     input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -238,6 +249,7 @@ service redfish.Http {
   }
 
   operation GetAccounts {
+    requires Network
     input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -251,6 +263,7 @@ service redfish.Http {
   }
 
   operation GetAccount {
+    requires Network
     input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, account_id: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
@@ -264,6 +277,7 @@ service redfish.Http {
   }
 
   operation CreateAccount {
+    requires Network
     input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, request_body_file: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     transport shell {
@@ -276,6 +290,7 @@ service redfish.Http {
   }
 
   operation SetAccountPassword {
+    requires Network
     input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, account_id: NonEmptyStr, request_body_file: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     transport shell {
@@ -288,6 +303,7 @@ service redfish.Http {
   }
 
   operation SetBootSourceOverride {
+    requires Network
     input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, system_id: NonEmptyStr, request_body_file: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     transport shell {
@@ -300,6 +316,7 @@ service redfish.Http {
   }
 
   operation ResetSystem {
+    requires Network
     input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, system_id: NonEmptyStr, request_body_file: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     transport shell {
@@ -312,6 +329,7 @@ service redfish.Http {
   }
 
   operation GetResourceByPath {
+    requires Network
     input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, odata_path: NonEmptyStr, max_seconds: NonEmptyStr }
     output {
       body: String from "stdout",

@@ -4,7 +4,6 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.access.posix { FileOwnership, FileMode, file_mode_of_octal_text }
 import std.types { Bool, Int, List, NonEmptyStr, Unit }
-import std.string_type { String }
 import std.algebra { trim }
 
 // OBSERVING WHO OWNS A PATH, as a modeled operation. extdeps.access.posix owns the CONCEPT --
@@ -47,6 +46,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // spelling.
 service coreutils.Stat {
   operation PathOwnership {
+    requires none
     input { path: NonEmptyStr }
     output {
       line: String from "stdout"
@@ -61,6 +61,7 @@ service coreutils.Stat {
   }
 
   operation PathSize {
+    requires none
     input { path: NonEmptyStr }
     output {
       size_text: String from "stdout"
@@ -75,6 +76,7 @@ service coreutils.Stat {
   }
 
   operation PathMode {
+    requires none
     input { path: NonEmptyStr }
     output {
       mode_text: String from "stdout"

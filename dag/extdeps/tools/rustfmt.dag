@@ -1,10 +1,11 @@
 module extdeps.tools.rustfmt
 
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceRustup }
 import std.types { Bool, FilePath, Unit }
-import std.string_type { String }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -13,8 +14,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+fn rustfmt_program() -> ProgramIdentity = cataloged_program(invocation: "rustfmt")
+
 data rustfmt_cli_tool: CliTool = CliTool {
-  name: "rustfmt",
+  program: rustfmt_program(),
   min_version: Absent,
   installable_via: [SourceRustup],
 }
@@ -23,6 +26,7 @@ data rustfmt_parse_files_note: String = "--emit stdout makes this a parse observ
 
 service rustfmt.Parse {
   operation Files {
+    requires opaque
     input { workdir: FilePath, edition: String, files: List<String> }
     output {
       success: Bool from "exit_success"

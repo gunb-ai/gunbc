@@ -1,9 +1,10 @@
 module extdeps.tools.sha512sum
 
+import extdeps.exec.program { ProgramIdentity, cataloged_program }
+
 import std.algebra { trim }
 
 import std.types { NonEmptyStr, Bool, FilePath, Unit }
-import std.string_type { String }
 import std.content_hash { Sha512Digest, sha512_hex_digest }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -17,8 +18,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+fn sha512sum_program() -> ProgramIdentity = cataloged_program(invocation: "sha512sum")
+
 data sha512sum_cli_tool: CliTool = CliTool {
-  name: "sha512sum",
+  program: sha512sum_program(),
   min_version: none,
   installable_via: [SourceCoreutils],
 }
@@ -52,6 +55,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 service sha512sum.Sha512 {
   operation DigestFile {
+    requires none
     input { path: FilePath }
     output {
       stdout: String from "stdout"

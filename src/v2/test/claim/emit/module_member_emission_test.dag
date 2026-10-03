@@ -1,6 +1,10 @@
 module v2.test.claim.emit.module_member_emission
 
+import v2.extdeps.languages.dag { dag_surface_edge_label }
+
 import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.emit_produced { emit_module_member }
+import v2.compiler.body_lowering_fold { DeclaredRefinement }
 import v2.compiler.self_host.closure_emission {
   ClosureEmissionLocated, ClosureMemberEmitted, ClosureMemberRefused, emit_closure_from_ingest_located,
 }
@@ -11,7 +15,7 @@ import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol, node_synthetic }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, node_synthetic, symbol_lexeme }
 import v2.std.optional { Absent, Present }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
@@ -94,6 +98,30 @@ fn member_emission_generic_verdict() -> MemberEmissionVerdict {
   member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Tag<T> = A | B\n\nfn f(x: Int) -> Int { x as Int }\n")
 }
 
+fn member_emission_payload_variant_verdict() -> MemberEmissionVerdict {
+  member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Wrapped = Only { a: Int }\n\nfn f(x: Int) -> Int { x as Int }\n")
+}
+
+fn member_emission_label_spelled_record_verdict() -> MemberEmissionVerdict {
+  member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Weird { dag_surface_where_refinement_clause: Int }\n\nfn f(x: Int) -> Int { x as Int }\n")
+}
+
+fn member_emission_bool_signature_verdict() -> MemberEmissionVerdict {
+  member_emission_verdict_of(source: "module v2.test.member_emission\n\nfn f(p: Bool) -> Bool { p }\n")
+}
+
+fn member_emission_declared_type_signature_verdict() -> MemberEmissionVerdict {
+  member_emission_verdict_of(source: "module v2.test.member_emission\n\ntype Decision = Allowed | Blocked\n\nfn f(d: Decision) -> Decision { d }\n")
+}
+
+fn member_emission_bare_parameter_body_verdict() -> MemberEmissionVerdict {
+  member_emission_verdict_of(source: "module v2.test.member_emission\n\nfn f(x: Int) -> Int { x }\n")
+}
+
+fn member_emission_bare_literal_body_verdict() -> MemberEmissionVerdict {
+  member_emission_verdict_of(source: "module v2.test.member_emission\n\nfn t() -> Bool { true }\n")
+}
+
 // A coproduct beside a function: BOTH are emitted, the enum first because it is declared first -- the
 // module's direct members in source order, the coproduct through the semantic-declaration emitter and
 // the function through the produced-declaration rows.
@@ -113,24 +141,126 @@ test fn a_coproduct_beside_a_function_emits_both_in_source_order_holds() -> Bool
   }
 }
 
-// A where-refinement shares a record's lowered shape, so it refuses as UNDECIDED at the member and is
-// never rendered as a struct; the function beside it is not published alone. The refinement is declared
-// FIRST so the fold, which refuses at the first member it cannot realize, reaches it before its
-// predicate: a literal-bodied function is a separate emission frontier (target_value_expr_reason_
-// transform_shape_invalid) that would otherwise answer this row for the wrong member.
-test fn a_where_refinement_is_not_emitted_as_a_record_holds() -> Bool {
+// A WHERE-REFINEMENT IS CLASSIFIED FROM ITS DECLARATION AND NEVER RENDERED AS A RECORD, although it shares a
+// record's lowered shape: on the production route (parse, normalize, lowered carrier) it emits the target's
+// transparent alias, not a struct. This is the route's inhabitance claim for the supplied row below.
+test fn a_where_refinement_emits_its_transparent_alias_on_the_production_route_holds() -> Bool {
   match member_emission_refinement_verdict() {
-    MemberEmitted { text: _ } => false
-    MemberRefused { reason: r } => r == ^emit_module_member_record_or_refinement_undecided
+    MemberEmitted { text: t } => string_contains(s: t, pattern: "type Pos = i32;") && !string_contains(s: t, pattern: "struct")
+    MemberRefused { reason: _ } => false
     MemberClosureRefused { reason: _ } => false
   }
 }
 
-// A genuine record refuses under the same undecided reason until the record fact reaches emission.
-test fn a_record_refuses_until_its_kind_reaches_emission_holds() -> Bool {
+// THE REFINEMENT REALIZATION ITSELF, over a SUPPLIED member whose carrier is already lowered (the form the
+// lowering above will produce): named in the module's refinement facts, it emits the target's transparent
+// alias, the carrier spelled by the one type resolver -- `type Pos = i32;`, never a struct. The inhabitance
+// partner is the route row above, which reaches the same arm for real.
+fn member_emission_supplied_refinement() -> String {
+  let member = Edge {
+    label: Authored { name: ^Pos },
+    target: node_synthetic(
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge { label: Authored { name: ^dag_surface_type_expr }, target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } }, children: []) },
+        Edge { label: dag_surface_edge_label(edge: ^dag_surface_where_refinement_clause), target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^positive } }, children: []) }
+      ]
+    )
+  }
+  match emit_module_member(
+    edge: member,
+    target: rust_target_model(),
+    realization_host: rust_target_model(),
+    kinds: [DeclaredRefinement { name: ^Pos }]
+  ) {
+    Accepted { value: m, diagnostics: _ } => m.carried
+    Rejected { diagnostics: d } => concat("REFUSED ", symbol_lexeme(sym: diagnostics_fatal_reason(d: d)))
+  }
+}
+
+test fn a_refinement_with_a_lowered_carrier_emits_a_transparent_alias_holds() -> Bool {
+  let text = member_emission_supplied_refinement()
+  string_contains(s: text, pattern: "type Pos = i32;") && !string_contains(s: text, pattern: "struct")
+}
+
+// A record -- a Conj its module's declaration kinds call DeclaredRecord -- emits as a struct beside the function, the
+// record through the semantic-declaration emitter and its field's Int through the target's spelling.
+test fn a_record_beside_a_function_emits_as_a_struct_holds() -> Bool {
   match member_emission_record_verdict() {
-    MemberEmitted { text: _ } => false
-    MemberRefused { reason: r } => r == ^emit_module_member_record_or_refinement_undecided
+    MemberEmitted { text: t } =>
+      string_contains(s: t, pattern: "struct Point")
+        && string_contains(s: t, pattern: "a: i32")
+        && !string_contains(s: t, pattern: "dag_binding_type_int")
+        && string_contains(s: t, pattern: "fn f(x: i32) -> i32")
+    MemberRefused { reason: _ } => false
+    MemberClosureRefused { reason: _ } => false
+  }
+}
+
+// A PAYLOAD-BEARING SINGLE VARIANT IS A ONE-ARM COPRODUCT, not a record and not an undecided Conj:
+// `type Wrapped = Only { a: Int }` lowers to a Disj, so it emits as an enum whose one variant carries its
+// field, spelled by the target.
+test fn a_payload_single_variant_emits_as_a_one_arm_enum_holds() -> Bool {
+  match member_emission_payload_variant_verdict() {
+    MemberEmitted { text: t } =>
+      string_contains(s: t, pattern: "enum Wrapped")
+        && string_contains(s: t, pattern: "Only")
+        && string_contains(s: t, pattern: "a: i32")
+        && !string_contains(s: t, pattern: "dag_binding_type_int")
+    MemberRefused { reason: _ } => false
+    MemberClosureRefused { reason: _ } => false
+  }
+}
+
+// THE KIND IS THE DECLARATION'S, NEVER ITS SPELLING: a record whose field is literally named like the
+// where-clause label is still a record, because the record fact says so.
+test fn a_record_with_a_where_labelled_field_is_still_a_record_holds() -> Bool {
+  match member_emission_label_spelled_record_verdict() {
+    MemberEmitted { text: t } => string_contains(s: t, pattern: "struct Weird")
+    MemberRefused { reason: _ } => false
+    MemberClosureRefused { reason: _ } => false
+  }
+}
+
+// A SIGNATURE TYPE IS SPELLED BY THE TARGET: Bool reaches Rust `bool` through its atom realization and
+// the target's spelling of that surface symbol -- never its carrier name `bool_node_symbol`.
+test fn a_bool_signature_is_spelled_by_its_realization_holds() -> Bool {
+  match member_emission_bool_signature_verdict() {
+    MemberEmitted { text: t } =>
+      string_contains(s: t, pattern: "fn f(p: bool) -> bool") && !string_contains(s: t, pattern: "bool_node_symbol")
+    MemberRefused { reason: _ } => false
+    MemberClosureRefused { reason: _ } => false
+  }
+}
+
+// A REFERENCE TO A DECLARED TYPE IS SPELLED BY THE TARGET'S DECLARATION-REFERENCE FORM -- the rule the
+// type-expression translate applies (v2.std.compilers.target_model
+// target_type_expr_declaration_reference_emitted): Rust's is crate-rooted, `crate::<module>::<Name>`,
+// the same for this module's types and another's, and never a bare leaf name. The enum it declares is
+// emitted beside the function that uses it.
+test fn a_declared_type_in_a_signature_keeps_its_name_holds() -> Bool {
+  match member_emission_declared_type_signature_verdict() {
+    MemberEmitted { text: t } =>
+      string_contains(s: t, pattern: "enum Decision")
+        && string_contains(s: t, pattern: "fn f(d: crate::v2_test_member_emission::Decision) -> crate::v2_test_member_emission::Decision")
+    MemberRefused { reason: _ } => false
+    MemberClosureRefused { reason: _ } => false
+  }
+}
+
+// A BARE PARAMETER OR LITERAL BODY is the same atom form as a nested operand and emits.
+test fn a_bare_parameter_body_emits_holds() -> Bool {
+  match member_emission_bare_parameter_body_verdict() {
+    MemberEmitted { text: t } => string_contains(s: t, pattern: "fn f(x: i32) -> i32 { x }")
+    MemberRefused { reason: _ } => false
+    MemberClosureRefused { reason: _ } => false
+  }
+}
+
+test fn a_bare_literal_body_emits_holds() -> Bool {
+  match member_emission_bare_literal_body_verdict() {
+    MemberEmitted { text: t } => string_contains(s: t, pattern: "fn t() -> bool { true }")
+    MemberRefused { reason: _ } => false
     MemberClosureRefused { reason: _ } => false
   }
 }
