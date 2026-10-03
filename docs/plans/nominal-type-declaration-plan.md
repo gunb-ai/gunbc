@@ -99,10 +99,10 @@ declares `type Unit`, `type Json` and `type Bytes` with no body, and `v2.std.typ
 bodyless declaration (`type_opaque_wrapper`). There are two `nominal_opaque` declarations today.
 
 **`std.types` `Secret` (`nominal_opaque = String`).** Today it is opaque in name only. The corpus has
-~124 `as Secret` casts in (most in `test.claim.*` fixtures; production mints in
+`as Secret` casts in (M0 `NominalIntroduction` rows targeting `Secret`; most in `test.claim.*` fixtures; production mints in
 `extdeps.cloud.gcp.adc_document`, `extdeps.cloud.gcp.secret_manager`, `gunbc.spark.glm_canary_converge`),
 and `as String` casts out, e.g. `extdeps.cloud.gcp.secret_manager`
-`encode_sm_access_version_payload_wire` and `extdeps.cloud.gcp.secret_ref` (provisional greps; M0 counts
+`encode_sm_access_version_payload_wire` and `extdeps.cloud.gcp.secret_ref` (M0 counts
 them). Both directions are unconfined, so DESIGN §4b's "cosmetic until construction enforces it" is
 literally its state. As `type Secret` (bodyless) it needs:
 
@@ -228,8 +228,8 @@ Population figures are provisional. They are not a size, and M0 sizes both.
 | **UnconstrainedNominal** (old brand) | `type T nominal = Y` | `type T { value: Y }` (constructor in, projection out) |
 | **CheckedConstructionStage** (old refinement) | `sealed` + checked ctor | `sole_constructor` record + checked function |
 | **Opaque** | `opaque` | bodyless `type X` + modeled operations (needs C6) |
-| **introduction sites** (~16.6k `"…" as T`, provisional) | rewritten to a constructor call | same rewrite, generated; identical burden |
-| **projection sites** (~9.3k `as String\|Int\|Nat`, provisional) | rewritten to `.value` | rewritten to explicit projection; **workaround sites** (compare, hash) **vanish** under C5 product inhabitance instead of being rewritten, so this model's burden is lower by exactly M0's `OperationWorkaround` count |
+| **introduction sites** (M0 `NominalIntroduction` rows) | rewritten to a constructor call | same rewrite, generated; identical burden |
+| **projection sites** (M0 `NominalProjection` and `OperationWorkaround` rows) | rewritten to `.value` | rewritten to explicit projection; **workaround sites** (compare, hash) **vanish** under C5 product inhabitance instead of being rewritten, so this model's burden is lower by exactly M0's `OperationWorkaround` count |
 | **capabilities** | `derives(…)`: author-listed, a second vocabulary to keep in step with `std.algebra` | derived by product inhabitance; nothing listed; a bodyless type has only modeled operations |
 | **invariant rung** | structural once `sealed` is enforced | structural once the C4 lane closes both native drops: **the same precondition**, already modeled and with a seed implementation |
 | **`RoadmapNodeId` as `String`** | refuses; author projects `.value`, with no stated reason | residual to the call site naming the proven projection: the acknowledgment the operator asked for |
