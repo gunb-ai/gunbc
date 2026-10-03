@@ -183,3 +183,8 @@ fn timeline(label: &str, event: &str, calls: u64) {
 pub fn mark(label: &str) {
     timeline(label, "mark", 0);
 }
+
+/// Adds `n` to a counted label.
+pub fn add(label: &'static str, n: u64) {
+    SLOTS.with(|s| s.borrow_mut().entry(label).or_default().calls += n);
+}

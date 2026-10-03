@@ -31336,6 +31336,27 @@ pub fn rewire_type_env_import_str_binding_identity(
                         local_names.clone(),
                         inherited_keys.clone(),
                     );
+                    // PROBE: what each stamped rewrite changes, against the module's pre-rewire ancestry.
+                    crate::phase_cpu::add(
+                        "census.ancestry_entries",
+                        m.type_env.ancestry_str_bindings.len() as u64,
+                    );
+                    crate::phase_cpu::add("census.rewrites", rewrites.len() as u64);
+                    for (k, v) in rewrites.iter() {
+                        match m.type_env.ancestry_str_bindings.get(k) {
+                            Some(old) if Rc::ptr_eq(old, v) => {
+                                crate::phase_cpu::count("census.rewrite_same_rc")
+                            }
+                            Some(old) if **old == **v => {
+                                crate::phase_cpu::count("census.rewrite_equal_value")
+                            }
+                            Some(old) if old.resolved.span == v.resolved.span => {
+                                crate::phase_cpu::count("census.rewrite_differs_same_span")
+                            }
+                            Some(_) => crate::phase_cpu::count("census.rewrite_differs_other_span"),
+                            None => crate::phase_cpu::count("census.rewrite_not_in_ancestry"),
+                        }
+                    }
                     let str_binding_overlay = rewire_str_binding_overlay(
                         m.type_env.clone().str_bindings.clone(),
                         rewrites.clone(),

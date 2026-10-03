@@ -47151,5 +47151,83 @@ mod reconcile_interior_probe {
             result.diagnostics.len(),
             phase_cpu::maxrss_kb()
         );
+        // TWO VERSIONS OF EACH ANCESTRY MAP? Point every interface.env and every parents entry at
+        // its module's ONE post-rewire ancestry map, and read what that frees. The control repoints
+        // nothing, so it measures only the cost of rebuilding the structs.
+        let graph = Rc::try_unwrap(result)
+            .ok()
+            .and_then(|r| r.graph)
+            .expect("graph");
+        let graph = Rc::try_unwrap(graph).ok().expect("the graph has one owner");
+        let mut modules: Vec<Rc<crate::v1_compiler_infer_items::TypedModule>> =
+            Rc::try_unwrap(graph.modules)
+                .ok()
+                .expect("the module list has one owner")
+                .into_iter()
+                .collect();
+        for mode in ["control", "repoint"] {
+            let (freed, rebuilt) = two_versions_step(modules, mode == "repoint");
+            eprintln!("[two-versions] mode={mode} freed={freed}");
+            modules = rebuilt;
+        }
+    }
+
+    fn heap_in_use() -> i128 {
+        // SAFETY: mallinfo2 reads allocator bookkeeping and changes nothing.
+        let mi = unsafe { libc::mallinfo2() };
+        (mi.uordblks + mi.hblkhd) as i128
+    }
+
+    /// Rebuilds every module's environment holders from an OWNED module list. If `repoint` is set,
+    /// every interface env and parent env carries its module's post-rewire ancestry map. Then the
+    /// originals are dropped, the bytes freed are reported, and the rebuilt list is returned.
+    fn two_versions_step(
+        originals: Vec<Rc<crate::v1_compiler_infer_items::TypedModule>>,
+        repoint: bool,
+    ) -> (i128, Vec<Rc<crate::v1_compiler_infer_items::TypedModule>>) {
+        use crate::v1_compiler_infer_env::TypeEnv;
+        use crate::v1_compiler_infer_items::{ModuleInterface, TypedModule};
+        let canonical: std::collections::HashMap<
+            String,
+            Rc<im::HashMap<String, Rc<crate::v1_compiler_infer_env::TypeBinding>>>,
+        > = originals
+            .iter()
+            .map(|m| {
+                (
+                    m.type_env.module_path.clone(),
+                    m.type_env.ancestry_str_bindings.clone(),
+                )
+            })
+            .collect();
+        let repoint_env = |e: &Rc<TypeEnv>| -> Rc<TypeEnv> {
+            match canonical.get(&e.module_path) {
+                Some(c) if repoint && !Rc::ptr_eq(c, &e.ancestry_str_bindings) => {
+                    let mut n = (**e).clone();
+                    n.ancestry_str_bindings = c.clone();
+                    Rc::new(n)
+                }
+                _ => e.clone(),
+            }
+        };
+        let before = heap_in_use();
+        let rebuilt: Vec<Rc<TypedModule>> = originals
+            .iter()
+            .map(|m| {
+                let mut te = (*m.type_env).clone();
+                te.parents = Rc::new(te.parents.iter().map(|p| repoint_env(p)).collect());
+                Rc::new(TypedModule {
+                    type_env: Rc::new(te),
+                    interface: Rc::new(ModuleInterface {
+                        summary: m.interface.summary.clone(),
+                        env: repoint_env(&m.interface.env),
+                        cache: m.interface.cache.clone(),
+                    }),
+                    ..(**m).clone()
+                })
+            })
+            .collect();
+        drop(originals);
+        let after = heap_in_use();
+        (before - after, rebuilt)
     }
 }
