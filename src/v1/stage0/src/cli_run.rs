@@ -15995,12 +15995,10 @@ pub struct ResolveStageNanos {
     /// `expand_transitive_services` (monotone fixpoint over every bodied item, under a bound
     /// derived from the registry rather than a chosen pass count).
     pub assembly_services: u128,
-    /// The three `rewire_*` passes (type-env parents, import-str identity, func-env parents).
+    /// The two `rewire_*` passes (type-env parents, func-env parents).
     pub assembly_rewire: u128,
     /// `rewire_type_env_parent_links` alone.
     pub assembly_rewire_type_env: u128,
-    /// `rewire_type_env_import_str_binding_identity` alone.
-    pub assembly_rewire_import_str: u128,
     /// `rewire_func_env_parent_links` alone.
     pub assembly_rewire_func_env: u128,
     /// `corpus_has_v1_seed_source_indices` + `build_emit_graph_info`.
@@ -16135,7 +16133,6 @@ impl ResolveStageNanos {
         self.assembly_services += other.assembly_services;
         self.assembly_rewire += other.assembly_rewire;
         self.assembly_rewire_type_env += other.assembly_rewire_type_env;
-        self.assembly_rewire_import_str += other.assembly_rewire_import_str;
         self.assembly_rewire_func_env += other.assembly_rewire_func_env;
         self.assembly_emit_info += other.assembly_emit_info;
         self.load_reference_scan += other.load_reference_scan;
@@ -16196,7 +16193,6 @@ impl ResolveStageNanos {
             + self.assembly_registry
             + self.assembly_services
             + self.assembly_rewire_type_env
-            + self.assembly_rewire_import_str
             + self.assembly_rewire_func_env
             + self.assembly_emit_info
     }
@@ -16221,7 +16217,6 @@ impl ResolveStageNanos {
             + self.assembly_registry
             + self.assembly_services
             + self.assembly_rewire_type_env
-            + self.assembly_rewire_import_str
             + self.assembly_rewire_func_env
             + self.assembly_emit_info
     }
@@ -16253,7 +16248,6 @@ thread_local! {
             assembly_services: 0,
             assembly_rewire: 0,
             assembly_rewire_type_env: 0,
-            assembly_rewire_import_str: 0,
             assembly_rewire_func_env: 0,
             assembly_emit_info: 0,
             load_reference_scan: 0,
@@ -16653,10 +16647,6 @@ pub fn exclusive_cost_partition_from(
         CostPartitionRow {
             name: "assembly_rewire_type_env",
             nanos: st.assembly_rewire_type_env,
-        },
-        CostPartitionRow {
-            name: "assembly_rewire_import_str",
-            nanos: st.assembly_rewire_import_str,
         },
         CostPartitionRow {
             name: "assembly_rewire_func_env",
@@ -17417,14 +17407,6 @@ fn finish_resolved_graph_assembly(
     let modules =
         v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
     resolve_stage_slot_add(|s| s.assembly_rewire_type_env += rewire_started.elapsed().as_nanos());
-    let rewire2_started = std::time::Instant::now();
-    let modules = v1_compiler_infer::rewire_type_env_import_str_binding_identity(
-        modules.clone(),
-        source_indices.clone(),
-    );
-    resolve_stage_slot_add(|s| {
-        s.assembly_rewire_import_str += rewire2_started.elapsed().as_nanos()
-    });
     let rewire3_started = std::time::Instant::now();
     let modules =
         v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
@@ -41877,18 +41859,17 @@ mod exclusive_cost_partition_law {
 
     #[test]
     fn rewire_sub_rows_are_exclusive_and_total_is_observation_only() {
-        // The three non-overlapping passes enter the partition directly. Their enclosing
+        // The two non-overlapping passes enter the partition directly. Their enclosing
         // timer remains available on the text receipt but cannot become a quoted share.
         let st = ResolveStageNanos {
-            assembly_rewire: 300,
+            assembly_rewire: 150,
             assembly_rewire_type_env: 100,
-            assembly_rewire_import_str: 150,
             assembly_rewire_func_env: 50,
             ..ResolveStageNanos::default()
         };
         let p = exclusive_cost_partition_from(&st, "test_basis", 1_000, 1, 0, Vec::new());
-        assert_eq!(p.sum_exclusive_nanos(), 300);
-        assert_eq!(p.remainder_nanos, 700);
+        assert_eq!(p.sum_exclusive_nanos(), 150);
+        assert_eq!(p.remainder_nanos, 850);
 
         assert_eq!(p.share_of_parent("assembly_rewire"), None);
         assert_eq!(
@@ -41897,14 +41878,14 @@ mod exclusive_cost_partition_law {
                 .filter(|r| r.name.starts_with("assembly_rewire_"))
                 .map(|r| r.nanos)
                 .sum::<u128>(),
-            300
+            150
         );
 
         // The invariant that actually matters, over every inclusive row from every parent:
         // an inclusive row is contained in some other row (exclusive, or another inclusive
         // row -- `load_bare_*` nest under `load_bare_reference_closure`, which nests under
         // `load`), and is therefore already counted there. `sum_exclusive_nanos` above is
-        // 300, not 600, which is the double-count this control exists to catch.
+        // 150, not 300, which is the double-count this control exists to catch.
         let exclusive_names: Vec<&str> = p.exclusive.iter().map(|r| r.name).collect();
         let inclusive_names: Vec<&str> = p.inclusive.iter().map(|r| r.name).collect();
         for row in &p.inclusive {
