@@ -1,5 +1,7 @@
 module gunbc.auth.approval_decision_store
 
+import gunbc.auth.mac_keyring { ApprovalKeyringRefusal, ApprovalKeyFileAbsent, ApprovalKeyFileUnreadable, ApprovalKeyMalformed, ApprovalKeyringRead, ApprovalKeyLoaded, ApprovalKeyringRefused, is_lower_hex, approval_keyring_from_content, approval_keyring_from_exact_read, read_mac_keyring, approval_mac_key_suite }
+
 import extdeps.numeric.base16 { base16_is_lower_digit_code_point }
 import std.types { Bool, Int, List, NonEmptyStr, String, Timestamp, Secret }
 import std.content_hash { ContentHash, serialize_content_hash }
@@ -18,7 +20,7 @@ import extdeps.filesystem.filesystem_io { Filesystem, FilesystemExactRead, Files
 import extdeps.tailscale.identity { TailnetIdentity }
 import extdeps.network.address { IpV4, ip_address_is_loopback }
 import extdeps.network.ipv4 { parse_ipv4_address, Ipv4Parsed, Ipv4ParseFailed }
-import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.srv1_dashboard_bind { srv1_dashboard_listen_host }
 import extdeps.crypto.mac { MacKey, MacKeyId, MacSuite, HmacSha256, MacVerification, mac_verify, mac_key_material_hex_length }
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonBool, serialize_json, json_object, json_kv, json_string, json_bool }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject, parse_json_document, json_object_unique_member }
@@ -109,7 +111,6 @@ data approval_mac_key_secret_ref: SecretRef = secret_ref_pin_version(
 
 data approval_mac_key_id: MacKeyId = "approval-capability-mac-key/1" as MacKeyId
 
-data approval_mac_key_suite: MacSuite = HmacSha256
 
 // WHERE THE KEY LIVES ON THE HOST THAT SERVES /approve: a file under the roadmap server's config
 // directory, the same shape as /etc/gunbc-ntfy/publisher-token, materialized from the SecretRef
@@ -117,59 +118,6 @@ data approval_mac_key_suite: MacSuite = HmacSha256
 // unit's user only. The server reads the PATH from this row and the material into a Secret;
 // nothing renders it.
 data approval_mac_key_path: NonEmptyStr = "/etc/gunbc-roadmap/approval-mac-key"
-
-// ABSENT AND UNREADABLE ARE TWO REFUSALS WITH TWO REMEDIES (review 66990; the doctrine
-// extdeps.filesystem.filesystem_io filesystem_file_observation carries: absence is established by a
-// listing that succeeded, never by a failed read): an absent
-// key means the materialization frontier has not run; an unreadable one means it ran and the unit
-// cannot read what it wrote -- a permission on the file, not a missing step. Reading `content`
-// alone and calling "" absent would report the second as the first, which fails toward good news.
-// THE FAILURES ARE THEIR OWN COPRODUCT so a refusal downstream can carry exactly a failure and
-// never the loaded key (review 67005: a refusal arm that could hold the success state validates
-// instead of constructing).
-type ApprovalKeyringRefusal
-  = ApprovalKeyFileAbsent { path: NonEmptyStr }
-  | ApprovalKeyFileUnreadable { path: NonEmptyStr, error: String }
-  | ApprovalKeyMalformed { path: NonEmptyStr, length: Int }
-
-type ApprovalKeyringRead
-  = ApprovalKeyLoaded { key: MacKey }
-  | ApprovalKeyringRefused { cause: ApprovalKeyringRefusal }
-
-fn is_lower_hex(s: String) -> Bool {
-  all(s.chars(), cp => base16_is_lower_digit_code_point(cp: cp))
-}
-
-// THE MATERIAL IS 64 LOWERCASE HEX DIGITS AND NOTHING ELSE; a trailing newline from an editor is
-// refused rather than trimmed, because a key that verifies with one reader and not another is
-// worse than one that refuses everywhere. An empty file is malformed, not absent: absence is the
-// filesystem's answer, established by the exact read below, never inferred from empty content.
-fn approval_keyring_from_content(path: NonEmptyStr, key_id: MacKeyId, content: String) -> ApprovalKeyringRead {
-  if content.length() != mac_key_material_hex_length(s: approval_mac_key_suite) || !is_lower_hex(s: content) {
-    ApprovalKeyringRefused { cause: ApprovalKeyMalformed { path: path, length: content.length() } }
-  } else {
-    ApprovalKeyLoaded { key: MacKey { id: key_id, suite: approval_mac_key_suite, material: content as Secret } }
-  }
-}
-
-// ONE READER FOR EVERY MAC KEY FILE THE APPROVAL LOOP HOLDS. The capability key and the submission
-// key (gunbc.auth.approval_request_submission) differ only in path and key id, so those are
-// parameters; the 64-lower-hex rule and the absent/unreadable/malformed partition are stated once.
-// A second copy of this fold drifted (it dropped the hex check) within a day of being written, and
-// the drift reported a malformed server key to the filer as its own 403.
-fn approval_keyring_from_exact_read(path: NonEmptyStr, key_id: MacKeyId, exact: FilesystemExactRead) -> ApprovalKeyringRead {
-  match exact {
-    FilesystemExactPathRead { path: _, content: c } => approval_keyring_from_content(path: path, key_id: key_id, content: c)
-    FilesystemExactPathAbsent { path: _ } => ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: path } }
-    FilesystemExactPathUnreadable { path: _, kind: _, error: e } => ApprovalKeyringRefused { cause: ApprovalKeyFileUnreadable { path: path, error: e } }
-    FilesystemExactPathKindUnrecognized { path: _, observed: o, error: e } => ApprovalKeyringRefused { cause: ApprovalKeyFileUnreadable { path: path, error: concat(o, concat(": ", e)) } }
-  }
-}
-
-fn read_mac_keyring(path: NonEmptyStr, key_id: MacKeyId) -> ApprovalKeyringRead {
-  let read = Filesystem.Read(path: path as String)
-  approval_keyring_from_exact_read(path: path, key_id: key_id, exact: filesystem_exact_read(path: path as String, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind))
-}
 
 fn read_approval_keyring() -> ApprovalKeyringRead {
   read_mac_keyring(path: approval_mac_key_path, key_id: approval_mac_key_id)
@@ -213,7 +161,7 @@ type IdentityTrustStanding
 
 // THE TRUST STANDING IS DERIVED FROM THE ROW THE UNIT IS EMITTED FROM, never asserted beside it
 // (review 67264), AND A LOOPBACK BIND ATTRIBUTES NOTHING (reviews 67306, 67348):
-// gunbc.roadmap_dashboard_instance srv1_live_dashboard_instance.listen_host is the one fact
+// gunbc.srv1_dashboard_bind srv1_dashboard_listen_host (srv1_live_dashboard_instance.listen_host) is the one fact
 // live_deploy turns into the unit's --host, so the standing reads that field. Any bind other than
 // loopback keeps the gate closed: the header is self-assertable by whoever reaches the port. A
 // loopback bind rules out off-host callers only; an on-host process under another POSIX user can
@@ -243,7 +191,7 @@ fn approval_identity_trust_for(listen_host: NonEmptyStr) -> IdentityTrustStandin
   }
 }
 
-data approval_identity_trust: IdentityTrustStanding = approval_identity_trust_for(listen_host: srv1_live_dashboard_instance().listen_host)
+data approval_identity_trust: IdentityTrustStanding = approval_identity_trust_for(listen_host: srv1_dashboard_listen_host)
 
 // ── the store ──────────────────────────────────────────────────────────────────────────────────
 

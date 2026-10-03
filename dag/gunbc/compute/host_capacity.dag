@@ -104,16 +104,56 @@ fn compute_memory_partition(host: NonEmptyStr) -> PartitionId {
   join(["compute-memory-", host as String], "") as PartitionId
 }
 
+// WHICH OF THE HOST'S POOLS A RESERVATION DRAWS FROM. A host carries TWO memory pools and they are
+// separate on purpose (bold-bee-114 ruling 2026-10-03, on a finding from the G5 dogfood lane): an
+// agent session that held a seat in the BUILD pool while the builds it requests need that same pool
+// is a self-starvation shape -- two live sessions take both build slots and every build they cause
+// refuses as a full pool. A typed refusal there only turns a deadlock into a refusal storm. So the
+// session lease and the builds it causes draw from different partitions, each with its own
+// appropriation, under the SAME ledger realization, linearization and release law -- one capacity
+// authority, two subjects, not a second authority.
+//
+// THE SESSION POOL'S SLOT COUNT IS SUPPLIED, NOT DECLARED HERE, because its authority is the
+// belt's admission count (gunbc.roadmap_session_placement passes it) and this module may not import
+// the belt. A count supplied by the caller is a fact of the subject, exactly like the request.
+//
+// DECLARED FRONTIER (DESIGN 3c): the two pools are adjudicated separately against the machine's
+// live availability, so neither sees the other's granted-but-untouched memory -- the double-promise
+// compute_backing_ceiling closes WITHIN a pool is open BETWEEN pools. Trigger: the per-host read of
+// outstanding grants' resident share named at compute_backing_ceiling, whose second consumer is the
+// cross-pool sum.
+type HostCapacityPool
+  = ComputeBuildPool
+  | AgentSessionPool { slots: Nat }
+
+fn host_capacity_pool_partition(pool: HostCapacityPool, host: NonEmptyStr) -> PartitionId {
+  match pool {
+    ComputeBuildPool => compute_memory_partition(host: host)
+    AgentSessionPool { slots: _ } => join(["session-memory-", host as String], "") as PartitionId
+  }
+}
+
+fn host_capacity_pool_slots(pool: HostCapacityPool) -> Nat {
+  match pool {
+    ComputeBuildPool => compute_pool_slots
+    AgentSessionPool { slots } => slots
+  }
+}
+
 // THE JOIN WITH THE DEPLOYMENT, and the only function in this module that knows what an instance is.
 fn compute_capacity_subject(instance: HostDashboardInstance, request: Kibibyte) -> ComputeSubjectResolution {
+  host_capacity_subject(instance: instance, pool: ComputeBuildPool, request: request)
+}
+
+fn host_capacity_subject(instance: HostDashboardInstance, pool: HostCapacityPool, request: Kibibyte) -> ComputeSubjectResolution {
   match dashboard_instance_for_host(host: instance.host_identity as String) {
     DashboardInstanceHostUnknown { host: h } => ComputeSubjectHostUnresolved { host: h as NonEmptyStr }
     DashboardInstanceForHost { instance: host_instance } =>
       ComputeSubjectResolved {
         subject: ComputeCapacitySubject {
           root: compute_capacity_root(host_instance: host_instance),
-          partition: compute_memory_partition(host: instance.host_identity),
-          appropriation: compute_memory_appropriation(instance: host_instance),
+          partition: host_capacity_pool_partition(pool: pool, host: instance.host_identity),
+          appropriation: host_capacity_pool_appropriation(instance: host_instance, pool: pool),
           request: request,
         },
       }
@@ -173,7 +213,11 @@ fn observe_host_memory() -> HostMemoryObservation {
 data compute_pool_slots: Nat = 2
 
 fn compute_memory_appropriation(instance: HostDashboardInstance) -> Kibibyte {
-  kibibyte(count: kibibyte_count(k: kibibyte_from_byte_size_floor(b: instance.dispatch_worker_memory_max)) * compute_pool_slots)
+  host_capacity_pool_appropriation(instance: instance, pool: ComputeBuildPool)
+}
+
+fn host_capacity_pool_appropriation(instance: HostDashboardInstance, pool: HostCapacityPool) -> Kibibyte {
+  kibibyte(count: kibibyte_count(k: kibibyte_from_byte_size_floor(b: instance.dispatch_worker_memory_max)) * host_capacity_pool_slots(pool: pool))
 }
 
 // THE UNIT'S CEILING IS THE RESERVED AMOUNT, and that identity is the whole point rather than a
@@ -273,7 +317,11 @@ data compute_partition_read_budget: Nat = 4096
 // the declared share is a configuration error that would otherwise present as an OOM kill during a
 // build, which is the same information arriving hours later and destructively.
 fn compute_reserve(instance: HostDashboardInstance, reference: NonEmptyStr, term_seconds: Nat, request: Kibibyte) -> ComputeReservation {
-  match compute_capacity_subject(instance: instance, request: request) {
+  host_capacity_reserve(instance: instance, pool: ComputeBuildPool, reference: reference, term_seconds: term_seconds, request: request)
+}
+
+fn host_capacity_reserve(instance: HostDashboardInstance, pool: HostCapacityPool, reference: NonEmptyStr, term_seconds: Nat, request: Kibibyte) -> ComputeReservation {
+  match host_capacity_subject(instance: instance, pool: pool, request: request) {
     ComputeSubjectHostUnresolved { host: h } =>
       ComputeReservationRefused { detail: join(["no dashboard instance is declared for host ", h as String, ", so this host has no compute capacity authority to reserve against"], "") }
     ComputeSubjectResolved { subject: subject } => compute_reserve_on(subject: subject, reference: reference, term_seconds: term_seconds)
