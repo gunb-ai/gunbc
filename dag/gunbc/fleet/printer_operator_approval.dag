@@ -35,6 +35,7 @@ fn print_request(printer: PhysicalAssetIdentity, digest: String, version: String
     json_kv(key: "printer", value: json_string(s: printer as String)),
     json_kv(key: "project_sha256", value: json_string(s: digest)),
     json_kv(key: "credential_version", value: json_string(s: version)),
+    json_kv(key: "filament_feed", value: json_string(s: "ams-slot-1")),
     json_kv(key: "attempt", value: json_string(s: attempt)),
   ]))
   match sha256_hex_digest(hex: sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: subject)))) {
@@ -49,7 +50,7 @@ fn print_request(printer: PhysicalAssetIdentity, digest: String, version: String
       subject: subject,
       purpose: join(["Print one Altra mounting gauge on ", printer as String, ". Project SHA-256 ", digest,
         "; credential version ", version, "; batch ", attempt,
-        ". Bed reported clear. Uses the operator's one-hour token; no IAM or credential changes. One start only."], "") as NonEmptyStr,
+        ". AMS slot 1. Bed reported clear. Uses the operator's one-hour token; no IAM or credential changes. One start only."], "") as NonEmptyStr,
       attempt: attempt as AttemptIdentity,
       intent_hash: as_content_hash_cryptographic(digest: hash),
       destructive: false,

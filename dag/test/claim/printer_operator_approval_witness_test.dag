@@ -1,5 +1,7 @@
 module test.claim.printer_operator_approval_witness_test
 
+import test.claim.printer_job_start_witness_test { the_start_payload_selects_ams_slot_one }
+
 import extdeps.shell.exec { ProcessObservation }
 import extdeps.tools.mosquitto_pub { mosquitto_pub_help_observation_admitted }
 
@@ -46,4 +48,9 @@ test fn help_exit_one_needs_the_actual_supported_version_banner() -> Bool {
 
 test fn approval_submission_follows_the_store_writer() -> Bool {
   submit_and_status_urls_follow_the_writer_cutover()
+}
+
+
+test fn operator_batch_uses_confirmed_ams_slot() -> Bool {
+  the_start_payload_selects_ams_slot_one()
 }

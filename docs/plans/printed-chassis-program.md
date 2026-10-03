@@ -201,8 +201,8 @@ The shared approval client now follows the declared writer cutover to the approv
 approval polling. Four operator-route witnesses passed, including all three writer postures.
 Fresh read-only reports showed printer-01 IDLE/error 0 and printer-02 IDLE/error 83902511.
 Both reported PLA in AMS tray 0 (physical slot 1), while the existing start command selects the
-external spool. Execution is held before upload pending confirmation of filament feed and the
-printer-02 screen error. No start marker, physical start, or RUNNING observation is claimed.
+external spool. The initial executions were stopped before upload to resolve that mismatch.
+No start marker, physical start, or RUNNING observation was claimed at that point.
 
 ### Local preparation environment
 
@@ -1050,3 +1050,16 @@ node pitch (which decides upright versus flat-on-riser, and the riser makes it a
 aux power connector type and sustained draw against the node supply and stack distribution · whether
 a mixed stack is allowed at all, since a uniform GPU stack and a mixed stack have different sidewall
 answers.
+
+### Batch follow-up: AMS and printer-02 storage
+
+On 2026-10-03 the operator confirmed AMS physical slot 1 on both printers and identified
+printer-02 error 83902511 (0x0500402f) as a microSD error. The operator was unsure whether
+that card was in use. This LAN route uploads to SD storage and starts a `file:///sdcard/`
+project, so the error remains a start blocker; it is not suppressed. No formatting or deletion
+of printer storage is authorized or performed. The start payload now selects AMS and maps
+the single project filament to tray 0; the signed operator request includes this feed choice.
+
+The operator subsequently reported formatting printer-02’s card locally. A fresh no-error
+report is still required before its start. Remote formatting was requested as a future capability;
+the current modeled workflow has no format operation, and support on these printers is unverified.
