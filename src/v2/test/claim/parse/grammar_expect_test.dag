@@ -1,7 +1,7 @@
 module v2.test.parse.grammar_expect
 
+import std.types { List }
 import v2.compiler.parse { ParseArtifact, parse_module }
-import v2.std.collection { List }
 import v2.std.compilers.lexing { Token, token_stream_new }
 import v2.std.diagnostic {
   Accepted,

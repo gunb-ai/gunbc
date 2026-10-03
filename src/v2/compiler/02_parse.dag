@@ -1,5 +1,6 @@
 module v2.compiler.parse
 
+import std.types { List }
 import v2.compiler.parse_diagnostic {
   NonEmptyParseStageDiagnostics,
   non_empty_parse_stage_diagnostics_from_overlap_roster,
@@ -80,7 +81,6 @@ import v2.std.provenance {
   span_index_record
 }
 import v2.std.collection {
-  List,
   Map,
   empty_map,
   list_at_optional,
@@ -1307,7 +1307,7 @@ fn parse_wrap_production_captured(
 }
 
 fn parse_flatten_diag_batches(batches: List<List<Diagnostic>>) -> List<Diagnostic> {
-  fold_list(
+  list_reverse(xs: fold_list(
     xs: batches,
     empty: std.algebra.Empty,
     cons: fn(acc, batch) {
@@ -1317,7 +1317,7 @@ fn parse_flatten_diag_batches(batches: List<List<Diagnostic>>) -> List<Diagnosti
         cons: fn(inner_acc, d) { Cons { head: d, tail: inner_acc } }
       )
     }
-  ).reverse()
+  ))
 }
 
 fn parse_tokens_drop_one(tokens: List<Token>) -> List<Token> {
@@ -4682,7 +4682,7 @@ fn parse_expr_repeat(
   ParseExprAccepted {
     remaining: result.remaining,
     captured: stamped.node,
-    diagnostics: parse_flatten_diag_batches(batches: result.acc_diags.reverse()),
+    diagnostics: parse_flatten_diag_batches(batches: list_reverse(xs: result.acc_diags)),
     prov: stamped.prov,
     table: result.table
   }

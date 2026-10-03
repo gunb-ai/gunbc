@@ -7,6 +7,9 @@ import extdeps.securities { Securities }
 import extdeps.vendor { Vendor }
 import extdeps.vendor.cloudflare { cloudflare }
 import extdeps.cloudflare.r2 { R2Jurisdiction, R2JurisdictionDefault }
+import extdeps.cloudflare.r2_lifecycle { R2LifecycleRule }
+import std.measure { second_count }
+import gunbc.fabric.fabric_blob_placement { fabric_cache_blob_prefix, fabric_cache_release }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
@@ -85,6 +88,7 @@ fn fleet_cloudflare_account_standing() -> FleetCloudflareAccountStanding {
 type OriginAdmission
   = FabricCommitManifestsAndContentAddressedOutputs {}
   | DigestKeyedBootArtifacts {}
+  | KeyAddressedCacheBlobs {}
 
 // A CREDENTIAL FOR THE ORIGIN IS TWO FACTS AND A STANDING. The S3 access key id IS the Cloudflare
 // token id (extdeps.cloudflare.r2 R2S3AccessPair, cited) and is not a secret: it is what the
@@ -104,6 +108,10 @@ type OriginAdmission
 // OriginCredentialMintEntryUnbuilt: no mint entry exists for this credential yet; secret_id is where
 // its token will be stored once one does. Distinct from OriginCredentialUnminted so mint_entry keeps
 // one meaning: an entry to run.
+//
+// EVERY ARM NAMES ITS CUSTODY SECRET, because the mint derives where it stores a token FROM THIS
+// STANDING (gunbc.cloudflare.r2_token_mint_run, per BucketPurpose). An Unminted arm that named only
+// its entry would force the mint to keep a second roster of secret ids beside the one declared here.
 type OriginCredentialStanding
   = OriginCredentialPinned {
       access_key_id: NonEmptyStr
@@ -111,6 +119,7 @@ type OriginCredentialStanding
     }
   | OriginCredentialUnminted {
       mint_entry: DeclarationRef
+      secret_id: NonEmptyStr
     }
   | OriginCredentialMintEntryUnbuilt {
       secret_id: NonEmptyStr
@@ -148,9 +157,17 @@ type R2OriginBucket {
 // THE BOOT ORIGIN IS A SECOND PURPOSE, NOT A WIDENING OF THE FIRST. The durable origin is private and byte-owning for commit readback; the
 // boot origin is read by machines over a public custom domain. Admitting boot bytes into the durable
 // bucket would make it public, and the durable origin's read token would become a boot reader's.
+//
+// THE CACHE-BLOB PLACEMENT IS A THIRD PURPOSE, NOT A THIRD STORE. It holds the fabric blob plane's
+// cache population (std.fabric_blob, laid out by gunbc.fabric.fabric_blob_placement): whole-object
+// blobs under exact keys, released by age. It is a separate bucket because it is the one purpose
+// whose objects EXPIRE -- a lifecycle rule on a shared bucket would be one prefix typo away from
+// expiring durable history -- and because its writer (the canonical publisher) is a different
+// principal from the durable origin's committer.
 type BucketPurpose
   = FabricDurableOrigin {}
   | FabricBootOrigin {}
+  | FabricCacheBlobs {}
 
 type R2BucketAllocation {
   purpose: BucketPurpose
@@ -161,6 +178,7 @@ fn bucket_purpose_key(purpose: BucketPurpose) -> String {
   match purpose {
     FabricDurableOrigin {} => "fabric-durable-origin"
     FabricBootOrigin {} => "fabric-boot-origin"
+    FabricCacheBlobs {} => "fabric-cache-blobs"
   }
 }
 
@@ -170,6 +188,7 @@ fn bucket_purpose_admission(purpose: BucketPurpose) -> OriginAdmission {
   match purpose {
     FabricDurableOrigin {} => FabricCommitManifestsAndContentAddressedOutputs {}
     FabricBootOrigin {} => DigestKeyedBootArtifacts {}
+    FabricCacheBlobs {} => KeyAddressedCacheBlobs {}
   }
 }
 
@@ -180,6 +199,7 @@ fn origin_admission_is_create_only(admission: OriginAdmission) -> Bool {
   match admission {
     FabricCommitManifestsAndContentAddressedOutputs {} => true
     DigestKeyedBootArtifacts {} => true
+    KeyAddressedCacheBlobs {} => true
   }
 }
 
@@ -189,6 +209,7 @@ fn bucket_purpose_admits_public_read(purpose: BucketPurpose) -> Bool {
   match purpose {
     FabricDurableOrigin {} => false
     FabricBootOrigin {} => true
+    FabricCacheBlobs {} => false
   }
 }
 
@@ -212,6 +233,10 @@ data gunbc_fleet_r2_bucket_allocations: List<R2BucketAllocation> = [
   R2BucketAllocation {
     purpose: FabricBootOrigin {},
     bucket_name: "gunbai-fabric-boot",
+  },
+  R2BucketAllocation {
+    purpose: FabricCacheBlobs {},
+    bucket_name: "gunbai-fabric-cache",
   },
 ]
 
@@ -251,6 +276,17 @@ data fabric_durable_origin_write_access_key_id: NonEmptyStr = "f70d656b5e9d20044
 // AN UNALLOCATED PURPOSE HAS NO BUCKET, AND THAT IS AN ARM RATHER THAN A DEFAULT. Reconstructing a
 // name at this seam is the derivation the roster exists to forbid, and returning an empty one would
 // address the account's root instead of a bucket.
+// THE CUSTODY SECRET A CREDENTIAL STANDING NAMES, total over its arms. A pinned credential names it
+// through its locus; the other two carry it. This is the only place the mint learns where a
+// purpose's token lives.
+fn origin_credential_secret_id(credential: OriginCredentialStanding) -> NonEmptyStr {
+  match credential {
+    OriginCredentialPinned { access_key_id: _, token_value: locus } => locus.secret
+    OriginCredentialUnminted { mint_entry: _, secret_id: secret_id } => secret_id
+    OriginCredentialMintEntryUnbuilt { secret_id: secret_id } => secret_id
+  }
+}
+
 type R2OriginStanding
   = R2OriginAllocated { bucket: R2OriginBucket }
   | R2OriginUnallocated { purpose: BucketPurpose }
@@ -358,9 +394,10 @@ fn fleet_cloudflare_bootstrap_custody() -> BootstrapCustodyStanding {
 
 // THE BOOT ORIGIN'S TWO CUSTODY LOCI, disjoint from the durable origin's and from each other. The
 // read token is held by whatever verifies publication; the write token only by the publisher. Neither
-// is minted yet: gunbc.cloudflare.r2_token_mint_run mints per R2OriginTokenProfile against the durable
-// bucket only, so until it is parameterized by BucketPurpose both arms are Unminted and every boot
-// PUT refuses at the standing, before any network call. Accessor rows in
+// is minted yet: gunbc.cloudflare.r2_token_mint_run run_boot_object_read / run_boot_object_write mint
+// them (the mint is parameterized by BucketPurpose), so both arms are Unminted naming those entries
+// and every boot PUT refuses at the standing, before any network call, until a run's stored version
+// is pinned here by a reviewed row change. Accessor rows in
 // gunbc.auth.fleet_secret_accessor_roster land with the minted versions, never before: a row whose
 // secret does not exist would stop that roster's fold for every other lane.
 data fabric_boot_origin_read_secret_id: NonEmptyStr = "cloudflare-r2-boot-origin-read-token"
@@ -376,8 +413,14 @@ fn fabric_boot_origin_standing() -> R2OriginStanding {
           bucket_name: name,
           jurisdiction: R2JurisdictionDefault,
           purpose: FabricBootOrigin {},
-          read_credential: OriginCredentialMintEntryUnbuilt { secret_id: fabric_boot_origin_read_secret_id },
-          write_credential: OriginCredentialMintEntryUnbuilt { secret_id: fabric_boot_origin_write_secret_id },
+          read_credential: OriginCredentialUnminted {
+            mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint_run", decl_name: "run_boot_object_read"),
+            secret_id: fabric_boot_origin_read_secret_id,
+          },
+          write_credential: OriginCredentialUnminted {
+            mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint_run", decl_name: "run_boot_object_write"),
+            secret_id: fabric_boot_origin_write_secret_id,
+          },
         }
       }
   }
@@ -391,6 +434,58 @@ fn bucket_purpose_origin_standing(purpose: BucketPurpose) -> R2OriginStanding {
   match purpose {
     FabricDurableOrigin {} => fabric_durable_origin_standing()
     FabricBootOrigin {} => fabric_boot_origin_standing()
+    FabricCacheBlobs {} => fabric_cache_blobs_standing()
+  }
+}
+
+// WHICH OBJECTS A PURPOSE'S BUCKET RELEASES BY AGE, DERIVED FROM THE PLACEMENT THAT OWNS THE
+// INTERVAL rather than restated: the cache's one rule is gunbc.fabric.fabric_blob_placement's
+// release over its blob prefix. The durable and boot origins declare no lifecycle
+// rule, and an empty list here is that declaration -- their objects are released never.
+fn bucket_purpose_lifecycle_rules(purpose: BucketPurpose) -> List<R2LifecycleRule> {
+  match purpose {
+    FabricDurableOrigin {} => []
+    FabricBootOrigin {} => []
+    FabricCacheBlobs {} => [
+      R2LifecycleRule {
+        id: "fabric-cache-blobs-release",
+        enabled: true,
+        prefix: fabric_cache_blob_prefix as String,
+        delete_after_age_seconds: second_count(s: fabric_cache_release()),
+      },
+    ]
+  }
+}
+
+// THE CACHE'S READER AND ITS PUBLISHER HOLD DIFFERENT TOKENS. The read token is held by every
+// consumer that serves from the cache (hw boot, fleet, heal); the write token only by the canonical
+// publisher, and it is create-only by admission. A merge-group run holds neither. Neither is minted
+// yet: gunbc.cloudflare.r2_token_mint_run run_cache_object_read / run_cache_object_write mint them, so
+// both are Unminted naming those entries and every cache transfer refuses at this standing, typed and
+// before any network call, until a run's stored version is pinned here by a reviewed row change.
+data fabric_cache_blobs_read_secret_id: NonEmptyStr = "cloudflare-r2-cache-blobs-read-token"
+
+data fabric_cache_blobs_write_secret_id: NonEmptyStr = "cloudflare-r2-cache-blobs-write-token"
+
+fn fabric_cache_blobs_standing() -> R2OriginStanding {
+  match allocated_bucket_name(purpose: FabricCacheBlobs {}) {
+    Absent => R2OriginUnallocated { purpose: FabricCacheBlobs {} }
+    Present { value: name } =>
+      R2OriginAllocated {
+        bucket: R2OriginBucket {
+          bucket_name: name,
+          jurisdiction: R2JurisdictionDefault,
+          purpose: FabricCacheBlobs {},
+          read_credential: OriginCredentialUnminted {
+            mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint_run", decl_name: "run_cache_object_read"),
+            secret_id: fabric_cache_blobs_read_secret_id,
+          },
+          write_credential: OriginCredentialUnminted {
+            mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint_run", decl_name: "run_cache_object_write"),
+            secret_id: fabric_cache_blobs_write_secret_id,
+          },
+        }
+      }
   }
 }
 

@@ -1,0 +1,44 @@
+module gunbc.fabric.fabric_blob_placement
+
+import std.types { String, NonEmptyStr, List }
+import std.measure { Second, second, seconds_per_day, ByteSize, byte_size }
+import std.cache_interface { ProviderRetention, ReleasedAfterInterval, CapacityUnobserved }
+import std.fabric_blob { FabricBlobAddress, fabric_blob_object_name }
+
+// WHERE THE FABRIC CACHE'S BLOBS LIVE, HOW LARGE ONE MAY BE, AND HOW LONG ONE IS HELD. This is the
+// POLICY fact of the blob plane (DESIGN 3): std.fabric_blob is the interface, gunbc.fabric.
+// fabric_blob_r2 and the emitted workflow shell are its transports, and these rows are which prefix,
+// which bound and which release. The bucket itself is allocated where every fleet bucket is, as the
+// FabricCacheBlobs purpose in gunbc.cloudflare.r2_origin; this module names only what lives in it.
+//
+// THE CACHE IS FOR WARMING, SO THE STORE RELEASES BY AGE. An object is deleted by the bucket's
+// lifecycle rule a week after it was written. That is PHYSICAL RELEASE (std.cache_interface
+// ReleasedAfterInterval), not a freshness window: an exact-key object stays a valid hit for as long
+// as it is present and verifies, no client rejects one because its own clock says a week passed, and
+// the deleted object is an established absence -- an ordinary miss.
+//
+// THE RELEASE BOUNDS AN OBJECT'S AGE AND NOTHING ELSE. Peak bytes and cost are the object size times
+// the publication rate times the interval; neither factor is measured, so capacity is stated
+// unobserved rather than implied by the interval.
+//
+// THE OBJECT BOUND IS THIS FLEET'S BUDGET FOR ONE WHOLE-OBJECT TRANSFER, a policy choice and not an
+// upstream limit: it is what this rung admits before multipart transfer exists (fabric-storage step
+// 5). An object above it refuses before upload.
+
+data fabric_cache_blob_prefix: NonEmptyStr = "blobs/"
+
+fn fabric_cache_release() -> Second {
+  second(count: 7 * seconds_per_day())
+}
+
+fn fabric_cache_retention() -> ProviderRetention {
+  ProviderRetention { release_policy: ReleasedAfterInterval { after_write: fabric_cache_release() }, capacity: CapacityUnobserved }
+}
+
+fn fabric_cache_object_bound() -> ByteSize {
+  byte_size(count: 4 * 1024 * 1024 * 1024)
+}
+
+fn fabric_cache_blob_key(address: FabricBlobAddress) -> NonEmptyStr {
+  concat(fabric_cache_blob_prefix as String, fabric_blob_object_name(address: address) as String) as NonEmptyStr
+}

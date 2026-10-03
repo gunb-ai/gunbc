@@ -555,28 +555,6 @@ fn decls_parse_only_from_inventory(
     Ok((out, module_count))
 }
 
-/// Measurement harness (`floor_prepared_toll_receipt` bin): wall time for pool-root parse-only
-/// decl extraction. `inventory` selects the floor prepared path; `None` is the legacy disk walk.
-pub fn pool_decl_parse_wall_ms(
-    pool_roots: &[String],
-    want_kinds: &[ItemKind],
-    inventory: Option<&[crate::cli_run::PreparedSourceView]>,
-) -> Result<(u128, usize), String> {
-    let started = std::time::Instant::now();
-    let (_, module_count) = if let Some(inv) = inventory {
-        decls_parse_only_from_inventory(
-            inv,
-            pool_roots,
-            &[],
-            want_kinds,
-            "pool_decl_parse_wall_ms",
-        )?
-    } else {
-        decls_parse_only_from_disk(pool_roots, &[], want_kinds, "pool_decl_parse_wall_ms")?
-    };
-    Ok((started.elapsed().as_millis(), module_count))
-}
-
 fn decls_parse_only_from_disk(
     roots: &[String],
     files: &[String],
