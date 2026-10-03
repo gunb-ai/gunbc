@@ -9448,28 +9448,30 @@ pub(crate) fn unimported_bare_provider_judgment(
             // constructor, a builtin) is not a read of a same-spelled declaration outside this file's
             // closure: call inference never binds an out-of-scope declarer, and this file's import
             // lines switch the global-bare fallback off. The predicate is the compiler's own
-            // (`v1.compiler.infer_method` `bare_call_has_non_declaration_binding`), not a list here.
+            // (`v1.compiler.infer_method` `bare_call_non_declaration_binding`), not a list here, and the
+            // frontier counters are split by its own arms, so they cannot drift from it.
             // Before it, positional `map_get(m, k)` calls were reported as unimported reads of
             // v2.std.collection's `map_get`, a different contract, and the refusal told the author
             // to add the import that would rebind the call to it (gunbc#12951).
             if provider != file && !closure.contains(provider) {
-                use crate::v1_compiler_infer_method as method;
-                if method::bare_call_has_non_declaration_binding(name.to_string()) {
-                    if method::is_empty_map_constructor(name.to_string())
-                        || method::is_empty_set_constructor(name.to_string())
-                        || method::builtin_signature(name.to_string()).is_some()
-                    {
+                use crate::v1_compiler_infer_method::NonDeclarationBinding as B;
+                match crate::v1_compiler_infer_method::bare_call_non_declaration_binding(
+                    name.to_string(),
+                ) {
+                    B::EmptyCollectionConstructor | B::BuiltinFunction => {
                         suppressed_builtin += 1;
-                    } else {
+                    }
+                    B::KernelMethodOnly => {
                         suppressed_kernel_method_only += 1;
                     }
-                } else {
-                    out.insert(UnimportedBareProvider {
-                        file: file.clone(),
-                        name: name.to_string(),
-                        provider_module: module.to_string(),
-                        provider: provider.to_string(),
-                    });
+                    B::DeclarationOnly => {
+                        out.insert(UnimportedBareProvider {
+                            file: file.clone(),
+                            name: name.to_string(),
+                            provider_module: module.to_string(),
+                            provider: provider.to_string(),
+                        });
+                    }
                 }
             }
             Ok(())
