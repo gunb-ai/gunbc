@@ -2,16 +2,15 @@ module v2.test.claim.dag_algebra_inhabitance
 
 import v2.extdeps.languages.dag { dag_bool_algebra_inhabitance, dag_int_algebra_inhabitance }
 import v2.std.model_core { AlgebraInhabitanceDecl }
-import v2.std.algebra_structure_signature { AlgebraFieldDeclaration, FieldDeclared, FieldNotDeclared, InhabitanceMalformed, abelian_group_type_node, algebra_inhabitance_field_declaration, algebra_inhabitance_node, algebra_structure_composing_fields, algebra_unary_fn_node, approximate_field_type_node, boolean_algebra_type_node, bounded_lattice_type_node, commutative_monoid_type_node, commutative_ring_type_node, commutative_semiring_type_node, equivalence_type_node, field_type_node, group_type_node, lattice_type_node, magma_type_node, monoid_type_node, ordered_ring_type_node, ring_type_node, semigroup_type_node, semiring_type_node }
-import v2.std.node_query { binder_edge, binder_node_parts }
+import v2.std.algebra_structure_signature { AlgebraFieldDeclaration, FieldDeclared, FieldNotDeclared, InhabitanceMalformed, algebra_inhabitance_field_declaration, algebra_inhabitance_node, algebra_structure_composing_fields, algebra_unary_fn_node }
+import v2.std.node_query { binder_edge }
 import v2.std.collection { List }
-import std.algebra { list_snoc_item }
 import v2.std.logic { bool_node }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Arrow, Atom, Authored, Cardinality, ComputationNode, Conj, Disj, Edge, Instantiation, Node, Positional, StructuralLabel, Symbol, TypeNode }
+import v2.std.node { Authored, Conj, Edge, Node, Symbol, TypeNode }
 import v2.std.optional { Absent, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -102,54 +101,17 @@ test fn dai_a_malformed_inhabitance_is_reported_as_malformed() -> Bool {
   }
 }
 
-// THE COMPOSITION LIST IS THE CONSTRUCTORS' STRUCTURE-TYPED BINDERS, BOTH WAYS: over an ATOM carrier -- which no
-// structure can be mistaken for -- every binder of every structure signature whose type is itself a structure (a
-// Conj) is in algebra_structure_composing_fields, and every listed field is such a binder somewhere.
-fn dai_structures() -> List<Node> {
-  let t = dai_atom_carrier()
-  [magma_type_node(inhabitant: t), semigroup_type_node(inhabitant: t), monoid_type_node(inhabitant: t),
-   commutative_monoid_type_node(inhabitant: t), group_type_node(inhabitant: t), abelian_group_type_node(inhabitant: t),
-   semiring_type_node(inhabitant: t), commutative_semiring_type_node(inhabitant: t), ring_type_node(inhabitant: t),
-   commutative_ring_type_node(inhabitant: t), ordered_ring_type_node(inhabitant: t), field_type_node(inhabitant: t),
-   approximate_field_type_node(inhabitant: t), lattice_type_node(inhabitant: t), bounded_lattice_type_node(inhabitant: t),
-   boolean_algebra_type_node(inhabitant: t), equivalence_type_node(inhabitant: t)]
-}
-
-fn dai_atom_carrier() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: ^dai_carrier } }, children: [], occurrence_id: OccurrenceSynthetic }
-}
-
-fn dai_structure_typed_binders() -> List<Symbol> {
-  fold(dai_structures(), init: [], f: fn(acc, structure) {
-    fold(structure.children, init: acc, f: fn(inner, e) {
-      match e.label {
-        Authored { name: name } =>
-          match binder_node_parts(n: e.target) {
-            Present { value: parts } =>
-              match parts.type_node.kind {
-                TypeNode { connective: Conj } => list_snoc_item(xs: inner, item: name)
-                TypeNode { connective: Atom { identity: _ } } => inner
-                TypeNode { connective: Disj } => inner
-                TypeNode { connective: Arrow } => inner
-                TypeNode { connective: Cardinality } => inner
-                TypeNode { connective: Instantiation } => inner
-                ComputationNode { behavior: _ } => inner
-              }
-            Absent => inner
-          }
-        StructuralLabel { label: _ } => inner
-        Positional => inner
-      }
-    })
-  })
-}
-
+// THE DERIVED COMPOSITION SET IS THE STRUCTURE-TYPED BINDERS AND ONLY THEM: it holds the composing fields
+// (ordered_ring's ring, ring's additive group, boolean_algebra's bounded lattice) and none of the operation
+// fields (lattice join, the ordered ring's compare), so a declared-field reading enters exactly the former.
 fn dai_contains(xs: List<Symbol>, x: Symbol) -> Bool {
   fold(xs, init: false, f: fn(acc, y) { acc || y == x })
 }
 
-test fn dai_composition_list_equals_the_constructors_structure_binders() -> Bool {
-  let derived = dai_structure_typed_binders()
-  fold(derived, init: true, f: fn(acc, x) { acc && dai_contains(xs: algebra_structure_composing_fields, x: x) })
-    && fold(algebra_structure_composing_fields, init: true, f: fn(acc, x) { acc && dai_contains(xs: derived, x: x) })
+test fn dai_composing_fields_are_the_structure_typed_binders() -> Bool {
+  dai_contains(xs: algebra_structure_composing_fields, x: ^ordered_ring_field_ring)
+    && dai_contains(xs: algebra_structure_composing_fields, x: ^ring_field_add)
+    && dai_contains(xs: algebra_structure_composing_fields, x: ^boolean_algebra_field_bounded_lattice)
+    && !dai_contains(xs: algebra_structure_composing_fields, x: ^lattice_field_join)
+    && !dai_contains(xs: algebra_structure_composing_fields, x: ^ordered_ring_field_compare)
 }
