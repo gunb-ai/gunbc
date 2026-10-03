@@ -22,19 +22,27 @@ test fn seed_growth_roster_mechanical_checks_hold() -> Bool {
 
 // THE JOIN IS SPLIT AND THE SPLIT IS THE ASSERTION. Under the single-candidate-set form these two
 // calls were one, so the population that found an unjustified addition was the same one that
-// declared every untouched roster row stale. Here the SAME candidate list goes to both functions
-// and they must answer differently: the rogue is an unjustified addition, and passing it as the live
+// declared every untouched roster row stale. Here the SAME candidate goes to both functions and
+// they must answer differently: the rogue is an unjustified addition, and passing it as the live
 // population makes every real roster row stale rather than none. A reimplementation that collapsed
-// them again reds on the second conjunct.
-test fn seed_growth_join_refuses_unknown_declaration() -> Bool {
-  let rogue = DeclarationRef {
+// them again reds on the second claim. The two answers are independent, so they are two claims
+// rather than one conjunction paying both under one budget (DESIGN section 3, a witness
+// discriminates at one interface).
+fn seed_growth_rogue_declaration() -> DeclarationRef {
+  DeclarationRef {
     module_path: "v1_compiler.cli_run",
     decl_name: "totally_unjustified_hand_rust_symbol",
     field: WholeDeclaration
   }
-  length(xs: seed_growth_unjustified_additions(added: [rogue])) == 1
-    && length(xs: seed_growth_stale_justifications(live_items: [rogue]))
-      == length(xs: seed_growth_roster_all_declarations())
+}
+
+test fn seed_growth_join_refuses_unknown_declaration() -> Bool {
+  length(xs: seed_growth_unjustified_additions(added: [seed_growth_rogue_declaration()])) == 1
+}
+
+test fn an_unknown_live_population_reports_every_roster_row_stale() -> Bool {
+  length(xs: seed_growth_stale_justifications(live_items: [seed_growth_rogue_declaration()]))
+    == length(xs: seed_growth_roster_all_declarations())
 }
 
 // A ROSTER ROW THAT STILL NAMES A LIVE ITEM IS NOT STALE. Without this control the staleness
