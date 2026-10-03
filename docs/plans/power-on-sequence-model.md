@@ -85,6 +85,8 @@ These are self-observed facts.
 
 The *mechanism* of the restart, and the *meaning* of the `CP:` word's fields, come from proprietary or disassembly-derived sources. Both stay in gunbc-private. The public model treats a `CP:` word as an opaque 32-bit value. Its observed order is compared against our own observed reference sequences, which are self-observed and public. The public fold may say "progress stopped after `00001a0a`; the reference continues with `00001a0b`; the restart cadence observed is ~22–26 s". It may not say why.
 
+Private evidence is referenced by name only: gunbc-private, after #202 lands.
+
 ## 3. The fold: `BootUnderstanding`
 
 The fold is one fold, `boot_understanding(host: ManagedHost, evidence: BootEvidence) -> BootUnderstanding`, with this shape:
@@ -110,19 +112,21 @@ BootUnderstanding {
 BootEnding =
     ReachedCensus { verdict }                              // no error found at any stage
   | StoppedWithStatedFailure { stage, error: DecodedBootError }
-  | StoppedWithoutStatedFailure {                      // what #13041 calls PostDdrProgressLost
+  | ResetWithObservedCadence {                        // console silent, a restart cadence IS observed; what #13041 calls PostDdrProgressLost
         at: StageEstablished,                             // located at the sub-step, e.g. DdrTraining @ last CP 00001a0a
         last_checkpoint?: CheckpointWord, reference_next?: CheckpointWord,   // compared opaquely
-        console_error_lines: ObservedCount,               // 0 observed, not "unread"
+        restart_cadence: std.measure Second,              // observed ~25.8 s; no timeout values in public
+        console_errors: Nat,                              // observed 0, not "unread"
         power_during_silence: ChassisPowerReading,
-        restart: RestartObservation,                      // SEL S5 + System Restart, cadence
-        reset_cause: ResetCauseStanding }                 // see below
+        restart: RestartObservation,                      // SEL S5 + System Restart
+        reset_cause: ResetCauseObservation }
+  | StoppedSilently { at: StageEstablished, last_checkpoint?: CheckpointWord, console_errors: Nat }   // silent, no cadence observed
 
-ResetCauseStanding =
-    ResetCauseUnobserved { searched: List<EvidenceCitation>, would_close: EvidenceCarrier }
-    // The SCP keeps a reset-cause record, but no public register window reaches it:
-    // the 0x00-0xFF SMpro sweep found none. The decoded enum and its semantics are PRIVATE.
-    // Public carries only this slot and its unobserved standing. A private fold may refine it.
+ResetCauseObservation =
+    Unobserved { searched: List<EvidenceCitation>, would_close: EvidenceCarrier }
+  | Observed { cause: ResetCauseWord, raw: Word }
+ResetCauseWord = ResetCauseUndefined { raw }       // public carries the raw word only; the decoded enum is PRIVATE (gunbc-private, after #202)
+    // Today: Unobserved. No public register window reaches the SCP's reset-cause record (the 0x00-0xFF SMpro sweep found none).
   | EndingUnobservable { missing: List<EvidenceCarrier> }  // we cannot say where it ended
 
 DecodedBootError =
@@ -144,12 +148,12 @@ These laws are enforced in the fold and each one gets a discriminating witness:
 2. **Every refused or contradictory reading becomes an open question.** One example is socket 1's `CUR=0x0001` with `BOOTSTAGE=0x03ff`. Another is a GPI-gated error record whose gate reads `GpiUnavailable`. Neither may be dropped or coerced.
 3. **No pass/fail projection is exported.** The receipt renders the whole understanding. Exit status stays the existing terminal verdict, and that verdict is no longer the carrier of the diagnosis.
 4. **Independent findings stay independent.** The fold reports a `StageStanding` for every stage the evidence touches, not just one chain ending. Socket 0's progress gives the `ending`. A finding on another stage is its own standing and is not merged into the ending's story. The motivating case: socket 1's `CUR=0x0001` / `BOOTSTAGE=0x03ff` pair and the CCIX `ERR_CCIX_RCA_LINKUP_FAIL` record belong to `InterSocketLink`, and the private trace shows they are a separate finding from the DDR-training stall. Hence `BootUnderstanding` also carries `stages: List<StageStanding>`, where `StageStanding = { stage, standing: Reached | StatedFailure{error} | Anomalous{readings} | Unobserved }`.
-5. **Retry state is a first-class unknown.** `OpenQuestionKind.RetryStateSurvivesReset` asks whether any retry or failsafe state survives the reset. Its answer decides between bounded retries and an infinite loop. It is open on every `StoppedWithoutStatedFailure` ending until evidence closes it.
+5. **Retry state is a first-class unknown.** `OpenQuestionKind.RetryStatePersistence` asks whether any retry or failsafe state survives the reset. Its answer decides between bounded retries and an infinite loop. It is open on every `ResetWithObservedCadence` ending (public standing: unanswered) until evidence closes it.
 6. **"Why" stays private.** `OpenQuestionKind` includes `RestartMechanismNotPubliclyModeled` and `CheckpointMeaningNotPubliclyModeled`. They are honest standing unknowns in the public repo. A gunbc-private fold may consume `BootUnderstanding` and close them. The public repo never imports private.
 
 ### Relation to PR #13041 `HostBootObservation`
 
-`PostDdrProgressLost{last_checkpoint, soc_silent, chassis_power_on_while_silent, next_cycle_logged_s5_and_system_restart, …}` is the same fact as `BootEnding.StoppedWithoutStatedFailure`, but it is *authored* rather than derived. Two types for one fact would be a §3 fork. Proposal: once this lands, `HostBootObservation` becomes a projection of `BootUnderstanding`, or is replaced by it. #13041's authored 2026-10-03 datum is then derived from the committed capture excerpt instead of typed in by hand. **Review question R1**: should #13041 land first and be cut over, or rebase onto this?
+`PostDdrProgressLost{last_checkpoint, soc_silent, chassis_power_on_while_silent, next_cycle_logged_s5_and_system_restart, …}` is the same fact as `BootEnding.ResetWithObservedCadence`, but it is *authored* rather than derived. Two types for one fact would be a §3 fork. Proposal: once this lands, `HostBootObservation` becomes a projection of `BootUnderstanding`, or is replaced by it. #13041's authored 2026-10-03 datum is then derived from the committed capture excerpt instead of typed in by hand. **Review question R1**: should #13041 land first and be cut over, or rebase onto this?
 
 ## 4. Consumption (§3c): what the fold replaces
 
@@ -178,7 +182,7 @@ The column differences, once verified on the second platform, are the onboarding
 
 ## 7. Implementation slices (child PRs)
 
-1. **A: the chain, the `CP:` and EFI-stub readers, and the fold, consumed by the bundle and the receipt.** This uses only what is on main: the SMpro stage, the DRAM block, the summary, GRUB, modules, SEL (including `oem_sel`) and chassis. It deletes the string findings in the same PR. It commits public-safe excerpts from the `mtcollins1-captures-2026-10-03` evidence branch as `artifacts/bmc/` fixtures. Witnesses: the step1, step2 and step2b captures each fold to `StoppedWithoutStatedFailure{DdrTraining @ 00001a0a, console_error_lines 0, reset_cause Unobserved}` plus an independent `InterSocketLink` `Anomalous` standing; the 2026-09-13 two-socket good boot folds to `ReachedCensus`; run 37069907299 folds to `StoppedWithStatedFailure{InitrdLoadFailed}`. A deleted-carrier control yields `EndingUnobservable`, not a stage.
+1. **A: the chain, the `CP:` and EFI-stub readers, and the fold, consumed by the bundle and the receipt.** This uses only what is on main: the SMpro stage, the DRAM block, the summary, GRUB, modules, SEL (including `oem_sel`) and chassis. It deletes the string findings in the same PR. It commits public-safe excerpts from the `mtcollins1-captures-2026-10-03` evidence branch as `artifacts/bmc/` fixtures. Witnesses: the step1, step2 and step2b captures each fold to `ResetWithObservedCadence{DdrTraining @ 00001a0a, console_errors 0, reset_cause Unobserved}` plus an independent `InterSocketLink` `Anomalous` standing; the 2026-09-13 two-socket good boot folds to `ReachedCensus`; run 37069907299 folds to `StoppedWithStatedFailure{InitrdLoadFailed}`. A deleted-carrier control yields `EndingUnobservable`, not a stage.
 2. **B: SMpro/PMpro error records into the fold.** This is gated on #13058 landing. It adds the `InterSocketLink` stage's stated failure and gate standing.
 3. **C: NVPARAM as stage-8 context.** This is gated on #13059.
 4. **D: `ManagedHost` parameterisation.** This is gated on #13055. If #13055 lands first, it folds into A.
@@ -189,4 +193,5 @@ The column differences, once verified on the second platform, are the onboarding
 - **R1.** #13041's `HostBootObservation`: land it, then cut it over (E), or have #13041 consume `BootEnding` directly?
 - **R2.** Is a public `CP:` reader that treats words as opaque values, compared against self-observed reference sequences, inside the public/private line? I believe yes, because the words and their order are our own console observations and no field is decoded.
 - **R3 (resolved by review, 2026-10-03).** `InterSocketLink` owns the socket 1 pair and the CCIX record, as a finding independent of the DDR stall (law 4).
+- **Naming (deliberate departure from the proposal).** The operator's session proposed `ResetByPlatformWatchdog`. The plan names the arm `ResetWithObservedCadence`, because a public arm named for a watchdog asserts the restart mechanism. That mechanism is disassembly-derived and private, and the public evidence shows only the cadence (§4d). A private fold may refine it.
 - **R4 (resolved).** Reset cause is an explicit slot, `ResetCauseUnobserved` today. Retry-state survival is a typed open question. "No stated failure" is grounded in an observed zero-error-line count.
