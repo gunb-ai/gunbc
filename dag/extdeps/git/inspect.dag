@@ -1,7 +1,6 @@
 module extdeps.git.inspect
 
 import std.types { Bool, CommitSha, FilePath, GitRef, Int, Unit }
-import std.string_type { String }
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -171,6 +170,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // every observer of that release and never removed (PR #10696).
 service git.Inspect {
   operation Toplevel {
+    requires none
     input {}
     output { path: FilePath from "stdout" }
     readonly
@@ -185,6 +185,7 @@ service git.Inspect {
   }
 
   operation HeadCommit {
+    requires none
     input {}
     output {
       sha: CommitSha from "stdout"
@@ -199,6 +200,7 @@ service git.Inspect {
   }
 
   operation WorkingTreeStatus {
+    requires opaque
     input { repository_path: String }
     output {
       entries_nul: String from "stdout"
@@ -217,6 +219,7 @@ service git.Inspect {
   }
 
   operation HeadCommitIn {
+    requires none
     input { repository_path: String }
     output {
       sha: String from "stdout"
@@ -235,6 +238,7 @@ service git.Inspect {
   }
 
   operation ReadTreeIntoIndex {
+    requires opaque
     input { repository_path: String, revision_hex: String, index_path: String }
     output {
       success: Bool from "exit_success"
@@ -251,6 +255,7 @@ service git.Inspect {
   }
 
   operation StatusAgainstIndex {
+    requires opaque
     input { repository_path: String, index_path: String }
     output {
       entries_nul: String from "stdout"
@@ -269,6 +274,7 @@ service git.Inspect {
   }
 
   operation IgnoredAgainstIndex {
+    requires opaque
     input { repository_path: String, index_path: String }
     output {
       paths_nul: String from "stdout"
@@ -287,6 +293,7 @@ service git.Inspect {
   }
 
   operation IgnoredFiles {
+    requires opaque
     input {}
     output {
       paths_nul: String from "stdout"
@@ -305,6 +312,7 @@ service git.Inspect {
   }
 
   operation MergeBase {
+    requires opaque
     input { repository_path: String, left: GitRef, right: GitRef }
     output {
       sha: CommitSha from "stdout"
@@ -322,6 +330,7 @@ service git.Inspect {
   }
 
   operation ListTreePathsAtRevision {
+    requires opaque
     input { ref: GitRef }
     output {
       paths_nul: String from "stdout"
@@ -337,6 +346,7 @@ service git.Inspect {
   }
 
   operation ListTreeEntriesAtRevision {
+    requires opaque
     input { ref: GitRef }
     output {
       entries_nul: String from "stdout"
@@ -352,6 +362,7 @@ service git.Inspect {
   }
 
   operation GrepMatchesAtRevision {
+    requires opaque
     input { pattern: String, ref: GitRef, pathspec: String }
     output {
       matches: String from "stdout"
@@ -368,6 +379,7 @@ service git.Inspect {
   }
 
   operation ResolveRefCommit {
+    requires opaque
     input { ref: GitRef }
     output {
       sha: CommitSha from "stdout"
@@ -383,6 +395,7 @@ service git.Inspect {
   }
 
   operation GrepFixedAtRevision {
+    requires opaque
     input { pattern: String, ref: GitRef }
     output {
       paths: String from "stdout"
@@ -399,6 +412,7 @@ service git.Inspect {
   }
 
   operation ShowTree {
+    requires opaque
     input { ref: GitRef }
     output {
       tree: String from "stdout"
@@ -414,6 +428,7 @@ service git.Inspect {
   }
 
   operation ConfigGet {
+    requires none
     input { key: String }
     output {
       value: String from "stdout"
@@ -430,6 +445,7 @@ service git.Inspect {
   }
 
   operation MergeTreeWriteTree {
+    requires opaque
     input { left: GitRef, right: GitRef }
     output {
       stdout: String from "stdout"

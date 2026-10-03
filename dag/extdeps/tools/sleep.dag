@@ -3,7 +3,6 @@ module extdeps.tools.sleep
 import extdeps.exec.program { ProgramIdentity, cataloged_program }
 
 import std.types { NonEmptyStr, Bool, Unit, List }
-import std.string_type { String }
 import std.measure { Second, second_count }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -69,6 +68,7 @@ fn sleep_seconds_argv(duration: Second) -> SleepArgvRendering {
 
 service sleep.Delay {
   operation Seconds {
+    requires none
     input { seconds: NonEmptyStr }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["sleep", "{seconds}"] }

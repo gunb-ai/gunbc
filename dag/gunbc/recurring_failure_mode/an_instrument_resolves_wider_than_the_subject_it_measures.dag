@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.an_instrument_resolves_wider_than_the_subject_it_measures
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data an_instrument_resolves_wider_than_the_subject_it_measures: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_instrument_resolves_wider_than_the_subject_it_measures" as NonEmptyStr,
+
+  receipts: [
+    "**an instrument whose setup resolves a POPULATION dies measuring one member of it, because the resolution scope is the instrument's architecture rather than the measurement's question.** The subject of the measurement is one witness; the instrument resolves every entry upfront and pays a whole-tree warm index per process, so the cost of asking about one claim scales with the TREE. On a host sized like the answer, the instrument is killed — OOM or timeout — before it produces a verdict, and the recount the debt process requires becomes impossible on every affordable machine. INVALID STATE: a measuring tool whose setup cost is proportional to a population while its measurement's subject is a single member, with nothing in the tool scoping the resolve to the question.",
+
+    "DISTINGUISHING IT FROM ITS NEAREST NEIGHBOUR, which is about the SENTENCE around a count, not the instrument's reach. `a_census_is_cited_wider_than_the_closure_its_instrument_compiles` has a reading that is present, specific and correct, whose stated scope is inflated in prose. This row's defect is upstream of any sentence: the instrument never reaches a verdict at all, and the death scales with the tree, not with the subject. The two can co-occur — a died instrument is also cited loosely — but the repair of one does not touch the other.",
+
+    "MEASURED SPECIMEN, 2026-10-01/02, the gunbc witness-cost recount, runner host 6 cores / 7.2 GB RAM. `claim_batch` resolves all entries of a dispatch upfront before evaluating any of them: a ten-identity batch was SIGKILLed before any verdict, and a prepared forty-four-identity batch was never launched. Split to one identity per process, each single-identity process ran its twelve-minute slot to rc=124 with zero output four times in a row — the verdict prints only at completion, so the slot expired silent. Instrumented once more with no inner timeout, the bare-reference-edge-index-warm phase completed at cpu_ms=44548 wall_ms=44556 rss_growth_bytes=2400509952 over source_files=7222 (provenance=built-by-preparation), and the one identity's resolve was then SIGKILLed by the host OOM killer (rc=137). Every number here is a measured run artifact, not a transcription: the warm phase reports itself, and the kills are exit codes.",
+
+    "HARM, TWOFOLD. First, the recount that §6's discipline demands — measure with the named instrument, never transcribe — is exactly what the defect forecloses: the instrument that owns the number cannot run on the host the question fits, and the pressure is to copy the standing figure forward, which is the rot §6 names. Second, the death is SILENT: rc=137 and rc=124 carry no partial verdict, so a lane can log 'no data' and move on, and the corpus never learns that its recount instrument is dead — the absence of a reading renders as a reading.",
+
+    "RUNG FOUND AT: mitigatable — the measurement is recoverable by host sizing or by splitting the question, and the containment (one process per identity) was found and applied in this same recount. CEILING: mechanically preventable, not structural. The resolve scope is a modeled fact: an instrument can resolve exactly the closure its subject needs and print `resolve_scope=<n files>` beside every verdict, the way the warm phases already print their own provenance and grain. It cannot be made structurally impossible, because 'which population does this tool resolve' is an authored choice in the tool's setup, not a property a type can carry.",
+
+    "NEXT-RUNG TRIGGER, NAMED AS A CAPABILITY: every census-shaped instrument resolves only the closure its measured subject needs, and states that scope in its own output beside the verdict — so a host pays for the question asked, a citation that names the instrument carries the scope with it, and a dead run is distinguishable from a small one by the tool's own lines rather than by an exit code alone. NOT satisfied by a lane remembering to split its dispatch, which is what contained this specimen.",
+
+    "NOT CLAIMED HERE: that the required floor's native runner shares the defect. Its CI lane measured 384 identities inside 90 minutes, which is evidence its accounting is native rather than interpreted; nothing here enumerated its per-process setup against the same standard, and that enumeration is the honest next measurement for any lane citing the floor as the recount instrument.",
+  ],
+
+  evidence: [],
+}

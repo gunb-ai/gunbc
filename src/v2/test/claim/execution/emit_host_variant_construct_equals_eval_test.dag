@@ -33,7 +33,6 @@ import v2.std.optional {
   optional_present,
   optional_absent
 }
-import v2.std.node { match_arm_body }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -54,10 +53,12 @@ import v2.std.node {
   Edge,
   Node,
   Symbol,
-  TypeNode
+  TypeNode,
+  MatchArmBodyEdge,
 }
 import v2.std.node_query {
-  find_named_child
+  find_named_child,
+  find_core_child,
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -260,7 +261,7 @@ fn emit_variant_construct_eval_nth_arm_wire(node: Node, wanted: Int) -> Outcome<
 }
 
 fn emit_variant_construct_eval_arm_body_node(arm_wire: Node) -> Outcome<Node> {
-  match find_named_child(root: arm_wire, name: match_arm_body) {
+  match find_core_child(root: arm_wire, marker: MatchArmBodyEdge) {
     Accepted { value: body, diagnostics: _ } => outcome_accepted(value: body)
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }

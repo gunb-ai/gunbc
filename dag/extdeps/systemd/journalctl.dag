@@ -1,7 +1,6 @@
 module extdeps.systemd.journalctl
 
 import std.types { NonEmptyStr, Bool, Unit, List }
-import std.string_type { String }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -45,6 +44,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // journal daemon adds, not one the logging process can set. (man7.org, read 2026-09-23.)
 service systemd.Journalctl {
   operation UnitLog {
+    requires none
     input { unit: NonEmptyStr }
     output {
       stdout: String from "stdout"
@@ -65,6 +65,7 @@ service systemd.Journalctl {
   }
 
   operation UnitInvocationLog {
+    requires none
     input { unit: NonEmptyStr, invocation_id: NonEmptyStr }
     output {
       stdout: String from "stdout"

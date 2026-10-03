@@ -93,47 +93,62 @@ fn sfk_key() -> Node {
   runtime_value_conj_node(children: Empty)
 }
 
-fn sfk_count_under_key(o: Outcome<ResolvedTree>) -> Int {
+// ONE INFER PER FIXTURE, READ BY EVERY ROW THAT ASKS IT. Each fixture's entries are produced ONCE, by a
+// nullary producer the floor serves warm (v2.workflow.floor_pure_producer_share), and the rows read the
+// decided counts: whether infer produced any entry, how many entries stand under the synthetic key, and how
+// many of those are derived. Nothing is supplied -- the producer runs the real assemble -> resolve ->
+// infer path -- so the rows keep their reds; the counts are the old per-row folds over one entry list.
+type SfkCounts {
+  produced: Bool
+  under_key: Int
+  derived_under_key: Int
+}
+
+fn sfk_counts(o: Outcome<ResolvedTree>) -> SfkCounts {
   match sfk_entries(o: o) {
-    Absent => 0
+    Absent => SfkCounts { produced: false, under_key: 0, derived_under_key: 0 }
     Present { value: entries } =>
-      fold_list(
-        xs: entries,
-        empty: 0,
-        cons: fn(rest, entry) { if entry.node == sfk_key() { rest + 1 } else { rest } }
-      )
+      SfkCounts {
+        produced: sfk_nonempty(entries: entries),
+        under_key: fold_list(
+          xs: entries,
+          empty: 0,
+          cons: fn(rest, entry) { if entry.node == sfk_key() { rest + 1 } else { rest } }
+        ),
+        derived_under_key: fold_list(
+          xs: entries,
+          empty: 0,
+          cons: fn(rest, entry) {
+            if entry.node == sfk_key() {
+              if inferred_facts_grounding_derived(facts: entry.facts) { rest + 1 } else { rest }
+            } else {
+              rest
+            }
+          }
+        )
+      }
   }
 }
 
-fn sfk_count_derived_under_key(o: Outcome<ResolvedTree>) -> Int {
-  match sfk_entries(o: o) {
-    Absent => 0
-    Present { value: entries } =>
-      fold_list(
-        xs: entries,
-        empty: 0,
-        cons: fn(rest, entry) {
-          if entry.node == sfk_key() {
-            if inferred_facts_grounding_derived(facts: entry.facts) { rest + 1 } else { rest }
-          } else {
-            rest
-          }
-        }
-      )
+fn sfk_nonempty(entries: List<InferredFactsEntry>) -> Bool {
+  match entries {
+    Cons { head: _, tail: _ } => true
+    Empty => false
   }
+}
+
+fn sfk_cref_source_counts() -> SfkCounts {
+  sfk_counts(o: cref_source())
+}
+
+fn sfk_bool_pair_counts() -> SfkCounts {
+  sfk_counts(o: cref_bool_pair_source())
 }
 
 // THE POSITIVE CONTROL FOR THE INSTRUMENT: infer produces entries for this program at all, so a zero
 // count below is a shared key and not a failed inference.
 test fn sfk_infer_produces_entries_holds() -> Bool {
-  match sfk_entries(o: cref_source()) {
-    Absent => false
-    Present { value: entries } =>
-      match entries {
-        Cons { head: _, tail: _ } => true
-        Empty => false
-      }
-  }
+  sfk_cref_source_counts().produced
 }
 
 // THE KEY IS NO LONGER SHARED, AND THESE THREE ROWS ARE THE FLIPPED EVIDENCE OF THAT CLIMB. This file's
@@ -155,15 +170,16 @@ test fn sfk_infer_produces_entries_holds() -> Bool {
 // keeps the row non-vacuous, because a fixture that stopped producing the node at all would answer 0 and a
 // `<= 1` row would stay green while testing nothing.
 test fn sfk_exactly_one_entry_stands_under_the_key_holds() -> Bool {
-  sfk_count_under_key(o: cref_source()) == 1
+  sfk_cref_source_counts().under_key == 1
 }
 
 // AND THAT ENTRY IS GROUNDED, which is the half of the original pair that still says something about
 // quality rather than about cardinality: separation would be worthless if the surviving entry were
 // underived.
 test fn sfk_the_single_entry_under_the_key_is_derived_holds() -> Bool {
-  let total = sfk_count_under_key(o: cref_source())
-  let derived = sfk_count_derived_under_key(o: cref_source())
+  let counts = sfk_cref_source_counts()
+  let total = counts.under_key
+  let derived = counts.derived_under_key
   (total == 1) && (derived == total)
 }
 
@@ -172,7 +188,8 @@ test fn sfk_the_single_entry_under_the_key_is_derived_holds() -> Bool {
 // relation over ordinary programs. It now reaches the same separation, so the property still holds of the
 // relation and not of one text.
 test fn sfk_the_separation_is_not_specific_to_one_fixture_holds() -> Bool {
-  let total = sfk_count_under_key(o: cref_bool_pair_source())
-  let derived = sfk_count_derived_under_key(o: cref_bool_pair_source())
+  let counts = sfk_bool_pair_counts()
+  let total = counts.under_key
+  let derived = counts.derived_under_key
   (total == 1) && (derived == total)
 }

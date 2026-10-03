@@ -31,7 +31,7 @@ import v2.std.node {
   ComputationNode,
   Edge,
   Hash,
-  Named,
+  Authored,
   Node,
   Positional,
   Symbol,
@@ -41,7 +41,10 @@ import v2.std.node {
   canonicalize_node_for_content_hash,
   content_hash,
   node_subtree_nodes,
-  well_formed
+  well_formed,
+  ArrowSignatureOrderEdge,
+  edge_is_core,
+  StructuralLabel,
 }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.node_query { node_positional_child_targets }
@@ -158,18 +161,14 @@ fn dpo_with_order(arrow: Node, labels: List<Symbol>, keep: Bool) -> Node {
   Node {
     kind: arrow.kind,
     children: fold(arrow.children, init: [], f: fn(acc, e) {
-      match e.label {
-        Named { name: sym } =>
-          if sym == ^arrow_signature_order_edge {
-            if keep {
-              concat(acc, [Edge { label: e.label, target: dpo_order_list(labels: labels) }])
-            } else {
-              acc
-            }
-          } else {
-            concat(acc, [e])
-          }
-        Positional => concat(acc, [e])
+      if edge_is_core(e: e, marker: ArrowSignatureOrderEdge) {
+        if keep {
+          concat(acc, [Edge { label: e.label, target: dpo_order_list(labels: labels) }])
+        } else {
+          acc
+        }
+      } else {
+        concat(acc, [e])
       }
     }),
     occurrence_id: arrow.occurrence_id
@@ -198,13 +197,14 @@ type DpoDomainWalk {
 fn dpo_canonical_domain(arrow: Node) -> Node {
   let seen = fold(arrow.children, init: DpoDomainWalk { done: false, edges: [] }, f: fn(acc, e) {
     match e.label {
+      StructuralLabel { label: _ } => DpoDomainWalk { done: acc.done, edges: concat(acc.edges, [e]) }
       Positional =>
         if acc.done {
           DpoDomainWalk { done: true, edges: concat(acc.edges, [e]) }
         } else {
           DpoDomainWalk { done: true, edges: concat(acc.edges, [Edge { label: Positional, target: canonicalize_node_for_content_hash(n: e.target) }]) }
         }
-      Named { name: _ } => DpoDomainWalk { done: acc.done, edges: concat(acc.edges, [e]) }
+      Authored { name: _ } => DpoDomainWalk { done: acc.done, edges: concat(acc.edges, [e]) }
     }
   })
   Node { kind: arrow.kind, children: seen.edges, occurrence_id: arrow.occurrence_id }
@@ -384,15 +384,7 @@ test fn dpo_an_order_label_does_not_bind_to_a_name_in_scope() -> Bool {
 
 fn dpo_order_atoms_are_bare(arrow: Node) -> Bool {
   fold(arrow.children, init: false, f: fn(acc, e) {
-    match e.label {
-      Named { name: sym } =>
-        if sym == ^arrow_signature_order_edge {
-          dpo_list_elements_bare(list: e.target)
-        } else {
-          acc
-        }
-      Positional => acc
-    }
+    if edge_is_core(e: e, marker: ArrowSignatureOrderEdge) { dpo_list_elements_bare(list: e.target) } else { acc }
   })
 }
 

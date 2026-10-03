@@ -19,7 +19,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.algebra { fold_list, length }
 import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
-import v2.std.compilers.lexing { ModeledLexRules, TokenRule, TriviaRule, AnnotationRule, VoidLexRules }
+import v2.std.compilers.lexing { ModeledLexRules, VoidLexRules, lex_rule_set_token_class_map }
 import v2.std.diagnostic {
   Accepted,
   ByteRange,
@@ -37,7 +37,7 @@ import v2.std.diagnostic {
 import v2.compiler.normalize { normalize }
 import v2.std.language_model { LanguageModel }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Named, Node, Positional, Symbol, TypeNode, symbol_lexeme }
+import v2.std.node { Atom, Authored, StructuralLabel, Node, Positional, Symbol, TypeNode, symbol_lexeme }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.provenance { SpanIndex, span_index_resolve_textual_locus }
 import v2.std.text { String }
@@ -290,18 +290,7 @@ fn authored_atom_from_identity(
 fn declared_token_classes(lm: LanguageModel) -> Map<Symbol, Bool> {
   match lm.lex {
     VoidLexRules => empty_map()
-    ModeledLexRules { root: rule_set } =>
-      fold_list(
-        xs: rule_set.rules,
-        empty: empty_map(),
-        cons: fn(acc, rule) {
-          match rule {
-            TokenRule { token_class: c, pattern: _ } => map_insert(m: acc, key: c, value: true)
-            TriviaRule { pattern: _ } => acc
-            AnnotationRule { annotation_class: _, pattern: _ } => acc
-          }
-        }
-      )
+    ModeledLexRules { root: rule_set } => lex_rule_set_token_class_map(rules: rule_set)
   }
 }
 
@@ -736,7 +725,8 @@ fn rebuilt_spelling_pool(acc: Map<Symbol, Int>, node: Node) -> Map<Symbol, Int> 
   }
   fold(node.children, init: here, f: fn(inner, edge) {
     let labelled = match edge.label {
-      Named { name: name } => pool_add(pool: inner, sym: pool_key_of_label(label: name))
+      Authored { name: name } => pool_add(pool: inner, sym: pool_key_of_label(label: name))
+      StructuralLabel { label: _ } => inner
       Positional => inner
     }
     rebuilt_spelling_pool(acc: labelled, node: edge.target)
@@ -755,7 +745,8 @@ fn named_child_optional(node: Node, label: Symbol) -> Optional<Node> {
       Present { value: _ } => acc
       Absent =>
         match edge.label {
-          Named { name: name } => if name == label { optional_present(value: edge.target) } else { acc }
+          Authored { name: name } => if name == label { optional_present(value: edge.target) } else { acc }
+          StructuralLabel { label: _ } => acc
           Positional => acc
         }
     }
@@ -787,8 +778,9 @@ fn declaration_pools(tree: NormalizedTree, module_qn: Outcome<FreeMonoid<Symbol>
         Present { value: body } =>
           fold(body.children, init: empty_map(), f: fn(acc, edge) {
             match edge.label {
-              Named { name: name } =>
+              Authored { name: name } =>
                 map_insert(m: acc, key: name, value: rebuilt_spelling_pool(acc: pool_add(pool: empty_map(), sym: name), node: edge.target))
+              StructuralLabel { label: _ } => acc
               Positional => acc
             }
           })

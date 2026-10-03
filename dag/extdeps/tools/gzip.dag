@@ -2,7 +2,6 @@ module extdeps.tools.gzip
 
 import extdeps.exec.program { ProgramIdentity, cataloged_program }
 import std.types { Bool, Int, NonEmptyStr, Unit }
-import std.string_type { String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -43,6 +42,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // disk is never modified (--stdout).
 service gzip.Gzip {
   operation DecodeToStdout {
+    requires none
     input { path: NonEmptyStr }
     output {
       text: String from "stdout"

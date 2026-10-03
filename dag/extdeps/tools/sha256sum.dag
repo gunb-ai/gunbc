@@ -1,7 +1,6 @@
 module extdeps.tools.sha256sum
 
 import std.types { NonEmptyStr, Bool, Unit, List }
-import std.string_type { String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceCoreutils }
@@ -51,6 +50,7 @@ data sha256sum_cli_tool: CliTool = CliTool {
 // DigestStdin uses the no-file-operand mode to digest the supplied content.
 service sha256sum.Sha256 {
   operation DigestFile {
+    requires none
     input { path: NonEmptyStr }
     output {
       line: String from "stdout"
@@ -65,6 +65,7 @@ service sha256sum.Sha256 {
   }
 
   operation DigestStdin {
+    requires none
     input { content: String }
     output {
       line: String from "stdout"
@@ -82,6 +83,7 @@ service sha256sum.Sha256 {
   }
 
   operation CheckFile {
+    requires none
     input { checksum_file: NonEmptyStr }
     output { matches: Bool from "exit_success" }
     readonly

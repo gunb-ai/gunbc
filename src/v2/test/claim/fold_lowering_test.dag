@@ -212,7 +212,7 @@ fn with_duplicate_carrier_edge(n: Node, binder: Node) -> Node {
     n: n,
     children: list_snoc_item(
       xs: n.children,
-      item: Edge { label: Named { name: ^loop_carrier_edge }, target: binder }
+      item: Edge { label: core_edge_label(marker: LoopCarrierEdge), target: binder }
     )
   )
 }

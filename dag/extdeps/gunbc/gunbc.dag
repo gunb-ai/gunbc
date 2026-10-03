@@ -1,7 +1,6 @@
 module extdeps.gunbc
 
 import std.types { FilePath, Unit }
-import std.string_type { String }
 import std.shell_stream_capture { WitnessStderrCapturePolicy, BoundedTail }
 import std.measure { byte_size }
 import extdeps.external_authority { ExternalAuthority }
@@ -94,6 +93,7 @@ data packages: List<WorkspacePackage> = [
 
 service gunbc.WitnessBin {
   operation Run {
+    requires opaque
     input {
       workdir: FilePath
       bin_path: FilePath

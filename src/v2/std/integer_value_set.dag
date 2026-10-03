@@ -16,7 +16,7 @@ import v2.std.diagnostic {
   Unavailable
 }
 import v2.std.integer { integer_interval_spec_node_contains }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
+import v2.std.node { Atom, Conj, Edge, Authored, Node, Symbol, TypeNode, well_formed }
 import v2.std.node_query { find_named_child }
 
 type IntegerValueSet
@@ -36,7 +36,7 @@ fn integer_unbounded_value_set_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^integer_value_set_field_kind },
+        label: Authored { name: ^integer_value_set_field_kind },
         target: integer_value_set_atom(id: ^integer_value_set_kind_unbounded)
       }
     ],
@@ -49,11 +49,11 @@ fn integer_interval_value_set_node(interval: Node) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^integer_value_set_field_kind },
+        label: Authored { name: ^integer_value_set_field_kind },
         target: integer_value_set_atom(id: ^integer_value_set_kind_interval)
       },
       Edge {
-        label: Named { name: ^integer_value_set_field_interval },
+        label: Authored { name: ^integer_value_set_field_interval },
         target: interval
       }
     ],
