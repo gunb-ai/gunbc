@@ -8,12 +8,13 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // Seed-growth obligation for the floor's memory instrumentation (gunbc#12774): the per-phase beat
 // transcription the floor-memory-qualification instrument hands to gunbc.floor_demand, and the
 // structure census and byte attribution read over the typed graph at the floor's seams.
+// (FLOOR_BYTE_ATTRIBUTION_ARMED, CROSS_CLAIM_LAST_STORE_DIGEST were thread_local! stores: macro-declared,
+//  gunbc.rust_item_scan MacroScope cannot name them at item grain, so they carry no citation here; a changed line inside the block refuses unattributed instead.)
 data floor_memory_instrumentation_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
     DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "floor_retention_census", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "wiring_identity", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "process_resolve_store_graphs", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "FLOOR_BYTE_ATTRIBUTION_ARMED", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "arm_floor_byte_attribution", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "floor_heap_in_use", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "typed_graph_byte_attribution", field: WholeDeclaration },
@@ -27,7 +28,6 @@ data floor_memory_instrumentation_seed_growth_justification: SeedGrowthJustifica
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "WarmFrameSlot", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "order_warm_modules", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "floor_warm_row_identity", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "CROSS_CLAIM_LAST_STORE_DIGEST", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "take_cross_claim_store_digest", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "TypedModuleClass", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "ExclusiveBytesReading", field: WholeDeclaration },

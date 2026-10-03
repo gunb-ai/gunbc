@@ -1,7 +1,6 @@
 module gunbc.cli_services
 
 import std.types { FilePath, Unit }
-import std.string_type { String }
 import gunbc.cli_invoke {
   claim_executor_verify_artifacts_transport_argv,
   gunbc_run_transport_argv
@@ -9,6 +8,7 @@ import gunbc.cli_invoke {
 
 service gunbc.Cli {
   operation Run {
+    requires opaque
     input {
       workdir: FilePath
       bin_path: FilePath
@@ -47,6 +47,7 @@ service gunbc.Cli {
 
 service claim_executor.Executor {
   operation VerifyBuildArtifacts {
+    requires opaque
     input { workdir: FilePath, bin_path: FilePath, artifact_paths: List<String> }
     output {
       success: Bool from "exit_success"

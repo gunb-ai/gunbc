@@ -11,7 +11,8 @@ pub use crate::std_algebra::AlgebraProfile;
 use crate::std_algebra::AlgebraProfile::{
     ApproximateFieldProfile, BooleanAlgebraProfile, FinitePowerSetProfile,
     FinitelySupportedFunctionProfile, FreeMonoidCollectionProfile, FreeMonoidScalarProfile,
-    OrderedRingProfile, PartialFunctionProfile, PointwisePowerCollectionProfile,
+    OrderedRingProfile, OrderedSemiringProfile, PartialFunctionProfile,
+    PointwisePowerCollectionProfile,
 };
 pub use crate::std_termination::positive_descent_count;
 use crate::std_termination::DescentEvidence::DescentUnknown;
@@ -231,6 +232,7 @@ pub fn algebra_profile_to_dimension(profile: AlgebraProfile) -> Option<Iteration
         AlgebraProfile::PointwisePowerCollectionProfile => std::option::Option::None,
         AlgebraProfile::PartialFunctionProfile => std::option::Option::None,
         AlgebraProfile::OrderedRingProfile => Some(IterationDimension::ArithmeticRepeat),
+        AlgebraProfile::OrderedSemiringProfile => Some(IterationDimension::ArithmeticRepeat),
         AlgebraProfile::ApproximateFieldProfile => Some(IterationDimension::ArithmeticRepeat),
         AlgebraProfile::BooleanAlgebraProfile => std::option::Option::None,
     }
