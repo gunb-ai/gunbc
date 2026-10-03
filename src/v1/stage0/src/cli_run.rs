@@ -47305,3 +47305,42 @@ mod collect_node_values_depth_tests {
         super::collect_node_values(&value, &ctx, &mut out);
     }
 }
+
+#[cfg(test)]
+mod warm_route_bytes_probe {
+    //! PROBE (calm-pike-525): what the WARM typed-snapshot route holds that a cold resolve does not.
+    //! One entry closure goes through the indexed route with `Ephemeral` (no memo keeps the graph);
+    //! run it once cold to populate GUNBC_TYPED_STORE_PERSIST, then again warm in a fresh process.
+    //! Each run prints the live heap with the graph held, then the existing sequential per-class drop
+    //! (`typed_graph_byte_attribution`, which splits TypeEnv into its maps first). Run with --ignored.
+    use super::*;
+
+    #[test]
+    #[ignore]
+    fn warm_route_byte_attribution() {
+        let roots = vec!["dag".to_string(), "src/v2".to_string()];
+        let entry =
+            std::env::var("GUNBC_M3_ENTRY").unwrap_or_else(|_| "dag/std/decision.dag".to_string());
+        let label = std::env::var("GUNBC_M3_LABEL").unwrap_or_else(|_| "m3".to_string());
+        let index = super::process_shared_index(&roots);
+        let sources = super::load_sources_for_entry_with_pool(&index, &entry).expect("entry loads");
+        let n = sources.len();
+        let (graph, _si, _diags) = super::resolved_graph_from_sources_with_index(
+            &index,
+            sources,
+            super::ResolveTypecheckGate::Strict,
+            &entry,
+            super::ResolvedGraphMemoShare::Ephemeral,
+        )
+        .expect("indexed resolve");
+        // SAFETY: mallinfo2 reads allocator bookkeeping and changes nothing.
+        let heap = unsafe { libc::mallinfo2() };
+        eprintln!(
+            "[m3-done] label={label} entry={entry} sources={n} graph={} heap_in_use={}",
+            graph.modules.len(),
+            heap.uordblks + heap.hblkhd
+        );
+        super::arm_floor_byte_attribution();
+        super::typed_graph_byte_attribution(&label, graph);
+    }
+}
