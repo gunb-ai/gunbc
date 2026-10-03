@@ -1,0 +1,260 @@
+module v2.test.claim.variant_field_infer_probe
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer, inferred_facts_resolved_type }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_last_segment }
+import v2.std.witness { Holds, Violates }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, None, Outcome, Rejected, Some }
+import v2.std.algebra { contains, list_map }
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  CoreMarker,
+  Match,
+  MatchArmBodyEdge,
+  Node,
+  StructuralLabel,
+  Symbol,
+  TypeNode
+}
+import v2.compiler.inferred_tree { ObligatedInferredTree }
+import v2.std.node_query { construct_tag_optional, construct_tag_path_optional }
+import v2.std.qualified_name { qualified_name_init }
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.text { String }
+import v2.std.collection { List }
+
+data vfp_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^variant_field_infer_probe_artifact,
+  file_path: "src/v2/pilot/variant_field_infer_probe_pilot.dag"
+}
+
+fn vfp_assemble(src: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: src, fidelity: Lossless },
+        artifact: vfp_artifact,
+        compilation_unit: ^variant_field_infer_probe_cu,
+        source_root: V2Tree
+      },
+      tail: Empty
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn vfp_reasons(r: NonEmptyDiagnostics) -> List<Symbol> {
+  Cons { head: r.head.reason, tail: list_map(xs: r.tail, f: fn(d) { d.reason }) }
+}
+
+fn vfp_last(xs: List<Symbol>) -> Symbol {
+  fold(xs, init: ^vfp_no_reason, f: fn(acc, x) { x })
+}
+
+fn vfp_find_match(n: Node) -> Optional<Node> {
+  match n.kind {
+    ComputationNode { behavior: Match } => Present { value: n }
+    _ => fold(n.children, init: Absent, f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => vfp_find_match(n: e.target)
+      }
+    })
+  }
+}
+
+fn vfp_find_construction(n: Node) -> Optional<Node> {
+  match construct_tag_optional(node: n) {
+    Present { value: _ } => Present { value: n }
+    Absent => fold(n.children, init: Absent, f: fn(acc, e) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => vfp_find_construction(n: e.target)
+      }
+    })
+  }
+}
+
+fn vfp_first_arm_body_of(m: Node) -> Optional<Node> {
+  fold(m.children, init: Absent, f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match e.label {
+          StructuralLabel { label: CoreMarker { marker: MatchArmBodyEdge } } => Present { value: e.target }
+          _ => Absent
+        }
+    }
+  })
+}
+
+fn vfp_type_name(t: Node) -> Symbol {
+  match declaration_reference_path_optional(node: t) {
+    Present { value: path } =>
+      match qualified_name_last_segment(qn: path) {
+        Present { value: s } => s
+        Absent => ^vfp_empty_path
+      }
+    Absent =>
+      match t.kind {
+        TypeNode { connective: Atom { identity: s } } => s
+        _ => ^vfp_type_not_named
+      }
+  }
+}
+
+fn vfp_construction_tag_carrier(n: Node) -> Symbol {
+  match construct_tag_path_optional(node: n) {
+    Absent => ^vfp_tag_unresolved
+    Present { value: p } =>
+      match qualified_name_last_segment(qn: qualified_name_init(qn: p)) {
+        Present { value: s } => s
+        Absent => ^vfp_tag_no_carrier
+      }
+  }
+}
+
+fn vfp_fact_in(inferred: ObligatedInferredTree, subject: Optional<Node>) -> Symbol {
+  match subject {
+    Absent => ^vfp_subject_absent
+    Present { value: s } =>
+      match inferred.facts.lookup(s) {
+        Absent => ^vfp_no_facts
+        Present { value: facts } =>
+          match inferred_facts_resolved_type(facts: facts) {
+            Violates { diagnostic: _ } => ^vfp_underived
+            Holds { value: t } => vfp_type_name(t: t)
+          }
+      }
+  }
+}
+
+fn vfp_reports(reading: VfpReading, reason: Symbol) -> Bool {
+  contains(xs: reading.reasons, item: reason, eq: fn(a, b) { a == b })
+}
+
+fn vfp_infers(reading: VfpReading) -> Bool {
+  match reading.reasons {
+    Cons { head: h, tail: _ } => h == ^infers
+    Empty => false
+  }
+}
+
+// WHAT THE FIXTURE ESTABLISHES, decided once per program by one nullary producer enrolled WARM in
+// v2.workflow.floor_pure_producer_share. `reasons` is the whole chain in order: a resolve or infer
+// refusal's reasons, or `^infers` followed by the accepted inference's advisories. A FACT field is
+// the picked node's resolved type name on an accepted inference, or the sentinels where the route
+// stops: ^vfp_subject_absent when the finder found nothing, ^vfp_no_facts when the node carries no
+// facts, ^vfp_underived when the facts do not resolve, or the refusal's reason (the head at resolve,
+// the last at infer).
+type VfpReading {
+  reasons: List<Symbol>
+  construction_fact: Symbol
+  construction_tag_carrier: Symbol
+  match_fact: Symbol
+  arm_body_fact: Symbol
+}
+
+// THE ROUND-TRIP FIXTURE, the enrolled variant_field_native_binding claims' own shape: a positional
+// construction, a variant-scrutinee match, and a binder read from the variant's payload field "0".
+// make_boxed stands BEFORE seal_unbox so the first construct-tagged node in preorder is the
+// construction, not an arm pattern.
+fn vfp_round_trip_reading() -> VfpReading { vfp_reading(src: vfp_round_trip_src) }
+
+// THE EXHAUSTIVENESS CONTROL: the same carrier with one arm dropped, so the match must refuse for
+// want of coverage -- decided by the single inhabitance relation, which surfaces the established
+// non-exhaustive reason (the same one the inline count it replaced reported).
+fn vfp_partial_reading() -> VfpReading { vfp_reading(src: vfp_partial_src) }
+
+data vfp_round_trip_src: String = "module p\n\ntype Seal = Boxed(Int) | Held { value: Int }\n\nfn make_boxed() -> Seal {\n  Boxed(41)\n}\n\nfn seal_unbox(s: Seal) -> Int {\n  match s {\n    Boxed(v) => v\n    Held { value: w } => w\n  }\n}"
+
+data vfp_partial_src: String = "module p\n\ntype Seal = Boxed(Int) | Held { value: Int }\n\nfn partial(s: Seal) -> Int {\n  match s {\n    Boxed(v) => v\n  }\n}"
+
+fn vfp_reading(src: String) -> VfpReading {
+  match vfp_assemble(src: src) {
+    Rejected { diagnostics: r } => VfpReading {
+      reasons: vfp_reasons(r: r),
+      construction_fact: r.head.reason,
+      construction_tag_carrier: ^vfp_refused_at_resolve,
+      match_fact: r.head.reason,
+      arm_body_fact: r.head.reason
+    }
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: r } => VfpReading {
+          reasons: vfp_reasons(r: r),
+          construction_fact: vfp_last(xs: vfp_reasons(r: r)),
+          construction_tag_carrier: vfp_construction_tag_carrier(
+            n: vfp_find_construction(n: resolved.root)
+          ),
+          match_fact: vfp_last(xs: vfp_reasons(r: r)),
+          arm_body_fact: vfp_last(xs: vfp_reasons(r: r))
+        }
+        Accepted { value: inferred, diagnostics: d } => VfpReading {
+          reasons: match d {
+            None => [^infers]
+            Some { diagnostics: r } => Cons { head: ^infers, tail: vfp_reasons(r: r) }
+          },
+          construction_fact: vfp_fact_in(
+            inferred: inferred,
+            subject: vfp_find_construction(n: resolved.root)
+          ),
+          construction_tag_carrier: vfp_construction_tag_carrier(
+            n: vfp_find_construction(n: resolved.root)
+          ),
+          match_fact: vfp_fact_in(
+            inferred: inferred,
+            subject: vfp_find_match(n: resolved.root)
+          ),
+          arm_body_fact: vfp_fact_in(
+            inferred: inferred,
+            subject: match vfp_find_match(n: resolved.root) {
+              Absent => Absent
+              Present { value: m } => vfp_first_arm_body_of(m: m)
+            }
+          )
+        }
+      }
+  }
+}
+
+// THE CLAIMS OVER THE ROUND-TRIP FIXTURE: the construction derives the carrier, its tag resolves to
+// the carrier's declaration, the match types from its arms, and the arm's binder types from the
+// variant's payload field. Together they are the positive control for the native route's
+// variant-scrutinee inference: each names one stage, so a regression lands on one row, not four.
+test fn vfp_the_round_trip_fixture_infers_holds() -> Bool {
+  vfp_infers(reading: vfp_round_trip_reading())
+}
+
+test fn vfp_the_construction_types_as_its_carrier_holds() -> Bool {
+  vfp_round_trip_reading().construction_fact == ^Seal
+}
+
+test fn vfp_the_construction_tag_resolves_to_its_carrier_holds() -> Bool {
+  vfp_round_trip_reading().construction_tag_carrier == ^Seal
+}
+
+test fn vfp_the_match_types_from_its_arms_holds() -> Bool {
+  vfp_round_trip_reading().match_fact == ^Int
+}
+
+test fn vfp_the_arm_binder_types_from_the_payload_field_holds() -> Bool {
+  vfp_round_trip_reading().arm_body_fact == ^Int
+}
+
+// THE COVERAGE CONTROL: a one-arm match over a two-variant carrier must refuse, and the refusal must
+// be the non-exhaustive reason the coverage obligation reports on the inhabitance relation's refusal.
+test fn vfp_the_partial_match_refuses_as_not_covering_the_carrier_holds() -> Bool {
+  vfp_reports(reading: vfp_partial_reading(), reason: ^infer_match_non_exhaustive)
+}
