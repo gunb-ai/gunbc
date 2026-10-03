@@ -1,0 +1,282 @@
+module std.checkpointed_workspace
+
+import std.types { String, NonEmptyStr, Int, Bool, List }
+import v2.std.optional { Present, Absent }
+import std.algebra { Cons, Empty }
+import std.measure { ByteSize, measure_count }
+import std.fabric_blob { FabricBlobAddress, fabric_blob_object_name }
+import std.fabric_storage {
+  FabricObject, FabricObjectRef,
+  FabricHeadExpectation, ExpectHeadAbsent, ExpectHeadAt,
+  FabricHeadReading,
+  FabricHeadAdvance, FabricHeadAdvanced, FabricHeadMoved, FabricHeadAdvanceRefused,
+  FabricStorageFault,
+}
+
+// THE CHECKPOINTED WORKSPACE: ONE PERSISTENT SURFACE, COMMITTED BY REVISION, FENCED BY EPOCH.
+//
+// The contract is the private plan row volume-durability-contract (recoverable_workspace_ruling,
+// operator 2026-10-02): writes are acknowledged by a volatile local working copy; a checkpoint
+// uploads changed content-addressed chunks and then an immutable manifest naming the complete
+// revision; the revision is COMMITTED only when the head accepts it for the current writer epoch;
+// restore always selects the last committed revision. This module is the shape of that contract and
+// nothing else. It mints no store (DESIGN 3b): chunks are std.fabric_blob objects addressed by their
+// own SHA-256, the manifest is a std.fabric_storage object, and the committed-revision head is one
+// std.fabric_storage head, whose compare-and-set is the only linearization the contract needs.
+//
+// THE EPOCH IS FENCED BY THE SAME COMPARE-AND-SET THAT COMMITS, NOT BY A SECOND READ. A writer that
+// checked "is my epoch current" against a separate epoch record and then advanced the head would
+// race the revocation between the two steps -- a stale writer could commit after being fenced. So
+// revocation is itself an advance of the workspace head: the control plane publishes a fence entry
+// carrying the new epoch, linked to the last committed revision. Every writer advances with the
+// expectation "the head is at the entry I built on", so a fenced writer's advance observes the moved
+// head and is refused; the observed entry's epoch says whether the loss was a race inside one epoch
+// or a stale epoch. One head, one CAS, no window between the check and the commit.
+//
+// STORE-VISIBLE LINKS. A revision links its parent head entry (a revision or a fence) through
+// FabricObject.links, so a closure read from the head reaches every committed revision in one
+// store-side walk. Chunk addresses live in the body: they name blob-plane objects, which are not
+// metadata-plane objects and so are not links the metadata store may walk (std.fabric_blob).
+
+type WorkspaceWriterEpoch {
+  workspace: NonEmptyStr
+  epoch: Int
+}
+
+// One file of the revision: its path inside the workspace, the blob holding its bytes (the chunk's
+// own SHA-256, so the fetch verifies the reading's digest equals the address), and its size. Whole
+// files are one chunk until docs/plans/fabric-storage.md step 5 (chunked objects); a file larger than
+// the placement's whole-object bound is refused by fabric_blob_put_plan, never split here.
+type WorkspaceEntry {
+  path: NonEmptyStr
+  chunk: FabricBlobAddress
+  size: ByteSize
+}
+
+// What the head points at. A revision is a complete manifest committed under an epoch; a fence
+// carries a new epoch and the revision it inherits, and commits no content.
+type WorkspaceHeadEntry
+  = WorkspaceRevision { writer: WorkspaceWriterEpoch, parent: FabricObjectRef?, entries: List<WorkspaceEntry> }
+  | WorkspaceFence { writer: WorkspaceWriterEpoch, parent: FabricObjectRef? }
+
+fn workspace_head_entry_epoch(entry: WorkspaceHeadEntry) -> Int {
+  match entry {
+    WorkspaceRevision { writer: w, parent: _, entries: _ } => w.epoch
+    WorkspaceFence { writer: w, parent: _ } => w.epoch
+  }
+}
+
+// The head the workspace commits on. The name carries the workspace identity, so heads shard by
+// workspace as fabric-storage.md step 5 anticipates.
+fn workspace_head_name(workspace: NonEmptyStr) -> NonEmptyStr {
+  join(["workspace.", workspace as String, ".committed"], "") as NonEmptyStr
+}
+
+fn workspace_parent_links(parent: FabricObjectRef?) -> List<FabricObjectRef> {
+  match parent {
+    Present { value: p } => [p]
+    Absent => []
+  }
+}
+
+fn workspace_entry_line(entry: WorkspaceEntry) -> String {
+  join(["F", to_string(length(entry.path as String)), ":", entry.path as String, " ",
+        fabric_blob_object_name(address: entry.chunk) as String, " ", to_string(measure_count(m: entry.size)), ";"], "")
+}
+
+// The canonical body: kind, workspace, epoch, then every entry length-prefixed in order, so no two
+// distinct entries share a body.
+fn workspace_head_entry_object(entry: WorkspaceHeadEntry) -> FabricObject {
+  match entry {
+    WorkspaceRevision { writer: w, parent: p, entries: es } => FabricObject {
+      links: workspace_parent_links(parent: p),
+      body: join(["workspace.revision;", w.workspace as String, ";epoch=", to_string(w.epoch), ";",
+                  fold(es, init: "", f: (acc, e) => join([acc, workspace_entry_line(entry: e)], ""))], "") as NonEmptyStr,
+    }
+    WorkspaceFence { writer: w, parent: p } => FabricObject {
+      links: workspace_parent_links(parent: p),
+      body: join(["workspace.fence;", w.workspace as String, ";epoch=", to_string(w.epoch), ";"], "") as NonEmptyStr,
+    }
+  }
+}
+
+// WHAT A WRITER ASKS THE HEAD FOR: the object to put, and the expectation to advance under. The
+// expectation is the head entry the writer built on -- absent only for the first revision of a new
+// workspace -- so the epoch fence above is the expectation itself.
+type WorkspaceAdvancePlan {
+  object: FabricObject
+  expected: FabricHeadExpectation
+}
+
+fn workspace_advance_plan(entry: WorkspaceHeadEntry, built_on: FabricObjectRef?) -> WorkspaceAdvancePlan {
+  WorkspaceAdvancePlan {
+    object: workspace_head_entry_object(entry: entry),
+    expected: match built_on {
+      Present { value: b } => ExpectHeadAt { object: b }
+      Absent => ExpectHeadAbsent
+    },
+  }
+}
+
+// THE COMMIT OUTCOME, CLASSIFIED FROM THE HEAD ADVANCE. A moved head whose entry carries a later
+// epoch is a stale writer: it must stop writing, its pending writes are not the workspace's, and it
+// must never retry. A moved head inside the writer's own epoch is a lost race against itself (a
+// duplicate checkpointer) and is retried by rebuilding on the observed head. The observed entry is
+// supplied decoded, because only the store's closure read can say what the moved head holds.
+type WorkspaceCommit
+  = WorkspaceCommitted { revision: FabricObjectRef }
+  | WorkspaceCommitStaleEpoch { writer_epoch: Int, current_epoch: Int }
+  | WorkspaceCommitRaced { observed: FabricHeadReading }
+  | WorkspaceCommitFailed { fault: FabricStorageFault }
+
+fn workspace_commit_classify(writer: WorkspaceWriterEpoch, advance: FabricHeadAdvance, observed_entry: WorkspaceHeadEntry?) -> WorkspaceCommit {
+  match advance {
+    FabricHeadAdvanced { object: o, generation: _ } => WorkspaceCommitted { revision: o }
+    FabricHeadAdvanceRefused { fault: f } => WorkspaceCommitFailed { fault: f }
+    FabricHeadMoved { expected: _, observed: seen } => match observed_entry {
+      Present { value: e } =>
+        if workspace_head_entry_epoch(entry: e) > writer.epoch {
+          WorkspaceCommitStaleEpoch { writer_epoch: writer.epoch, current_epoch: workspace_head_entry_epoch(entry: e) }
+        } else {
+          WorkspaceCommitRaced { observed: seen }
+        }
+      Absent => WorkspaceCommitRaced { observed: seen }
+    }
+  }
+}
+
+// RESTORE SELECTS THE LAST COMMITTED REVISION: walking newest first from the head, skip fences
+// (they commit no content) and take the first revision. A workspace with no revision restores empty;
+// it is never restored from anything but a committed entry, so uncommitted uploads -- chunks put
+// without a head advance -- are never read.
+type WorkspaceRestorePoint
+  = WorkspaceRestoreRevision { revision: FabricObjectRef, entries: List<WorkspaceEntry> }
+  | WorkspaceRestoreEmpty
+
+fn workspace_restore_point(newest_first: List<WorkspaceHeadEntry>, refs: List<FabricObjectRef>) -> WorkspaceRestorePoint {
+  match newest_first {
+    Empty => WorkspaceRestoreEmpty
+    Cons { head: e, tail: rest } => match refs {
+      Empty => WorkspaceRestoreEmpty
+      Cons { head: r, tail: rrest } => match e {
+        WorkspaceRevision { writer: _, parent: _, entries: es } => WorkspaceRestoreRevision { revision: r, entries: es }
+        WorkspaceFence { writer: _, parent: _ } => workspace_restore_point(newest_first: rest, refs: rrest)
+      }
+    }
+  }
+}
+
+// ── COVERAGE: THE RECOVERY-POINT INVARIANT IS COVERAGE, NOT FRESHNESS ──────────────────────────
+//
+// Times are seconds on the writer's monotonic clock; only differences are read. Clean means every
+// acknowledged write is in a committed revision. Dirty carries the time of the oldest acknowledged
+// write no committed revision contains, so its age is zero while clean and an idle workspace owes
+// no commit.
+type WorkspaceCoverage
+  = WorkspaceClean
+  | WorkspaceDirty { oldest_uncommitted_write_at: Int }
+
+fn oldest_uncommitted_write_age(coverage: WorkspaceCoverage, now: Int) -> Int {
+  match coverage {
+    WorkspaceClean => 0
+    WorkspaceDirty { oldest_uncommitted_write_at: t } => now - t
+  }
+}
+
+// An acknowledged write starts the age only if none is pending; it never resets an older one.
+fn workspace_coverage_after_write(coverage: WorkspaceCoverage, at: Int) -> WorkspaceCoverage {
+  match coverage {
+    WorkspaceClean => WorkspaceDirty { oldest_uncommitted_write_at: at }
+    WorkspaceDirty { oldest_uncommitted_write_at: t } => WorkspaceDirty { oldest_uncommitted_write_at: t }
+  }
+}
+
+// A commit covers every write acknowledged before its snapshot. Writes acknowledged after the
+// snapshot remain pending, so the age is advanced to the first of them, or cleared.
+fn workspace_coverage_after_commit(first_write_after_snapshot: Int?) -> WorkspaceCoverage {
+  match first_write_after_snapshot {
+    Present { value: t } => WorkspaceDirty { oldest_uncommitted_write_at: t }
+    Absent => WorkspaceClean
+  }
+}
+
+// The three published numbers' timing pair, kept apart: the internal checkpoint target while dirty,
+// the deadline by which a still-failing commit becomes a declared outage, and the published window.
+// The values are the operator's to ratify from the stage-0 measurement; none is authored here.
+type WorkspaceDurabilityPolicy {
+  checkpoint_target: Int
+  outage_deadline: Int
+  window: Int
+}
+
+type WorkspacePolicyRefusal
+  = PolicyTargetNotBeforeDeadline { target: Int, deadline: Int }
+  | PolicyDeadlineNotBeforeWindow { deadline: Int, window: Int }
+
+fn workspace_policy_refusal(policy: WorkspaceDurabilityPolicy) -> WorkspacePolicyRefusal? {
+  if policy.checkpoint_target >= policy.outage_deadline {
+    Present { value: PolicyTargetNotBeforeDeadline { target: policy.checkpoint_target, deadline: policy.outage_deadline } }
+  } else {
+    if policy.outage_deadline >= policy.window {
+      Present { value: PolicyDeadlineNotBeforeWindow { deadline: policy.outage_deadline, window: policy.window } }
+    } else {
+      none
+    }
+  }
+}
+
+// THE DECLARED STORAGE OUTAGE: entered when the oldest pending write reaches the outage deadline
+// with no commit having covered it. The commit is attempted first (WorkspaceCommitDue from the
+// target on); the outage refuses FURTHER writes and makes nothing already pending recoverable, which
+// is why it is declared and receipted rather than silent.
+type DeclaredStorageOutage {
+  workspace: NonEmptyStr
+  declared_at: Int
+  oldest_uncommitted_write_at: Int
+}
+
+type WorkspaceWriteStanding
+  = WorkspaceWritable
+  | WorkspaceCommitDue { age: Int }
+  | WorkspaceStorageOutage { outage: DeclaredStorageOutage }
+
+fn workspace_write_standing(policy: WorkspaceDurabilityPolicy, workspace: NonEmptyStr, coverage: WorkspaceCoverage, now: Int) -> WorkspaceWriteStanding {
+  match coverage {
+    WorkspaceClean => WorkspaceWritable
+    WorkspaceDirty { oldest_uncommitted_write_at: t } =>
+      if now - t >= policy.outage_deadline {
+        WorkspaceStorageOutage { outage: DeclaredStorageOutage { workspace: workspace, declared_at: now, oldest_uncommitted_write_at: t } }
+      } else {
+        if now - t >= policy.checkpoint_target { WorkspaceCommitDue { age: now - t } } else { WorkspaceWritable }
+      }
+  }
+}
+
+// ── LOSS OF THE VOLATILE COPY: ORDINARY RECOVERY OR THE NAMED COMPOUND FAILURE ─────────────────
+//
+// Losing the host, drive or rack loses the working copy. Restoring the last committed revision is
+// the ORDINARY recovery when every write it loses is younger than the window. Losing the sole copy
+// while coverage could not be kept -- during a declared outage, or with a pending write already past
+// the window before one was entered -- is the COMPOUND FAILURE: outside the ordinary guarantee,
+// typed and receipted with its billing disposition (failure-billing-semantics), never reported as an
+// ordinary recovery.
+type WorkspaceCompoundCause
+  = LostDuringDeclaredOutage { outage: DeclaredStorageOutage }
+  | CoverageLapsedBeforeOutage { oldest_uncommitted_write_age: Int, window: Int }
+
+type WorkspaceLoss
+  = WorkspaceLossWithinWindow { uncovered_age: Int }
+  | WorkspaceCompoundFailure { cause: WorkspaceCompoundCause, uncovered_age: Int }
+
+fn workspace_loss_classify(policy: WorkspaceDurabilityPolicy, standing: WorkspaceWriteStanding, coverage: WorkspaceCoverage, lost_at: Int) -> WorkspaceLoss {
+  let age = oldest_uncommitted_write_age(coverage: coverage, now: lost_at)
+  match standing {
+    WorkspaceStorageOutage { outage: o } => WorkspaceCompoundFailure { cause: LostDuringDeclaredOutage { outage: o }, uncovered_age: age }
+    WorkspaceWritable =>
+      if age >= policy.window { WorkspaceCompoundFailure { cause: CoverageLapsedBeforeOutage { oldest_uncommitted_write_age: age, window: policy.window }, uncovered_age: age } }
+      else { WorkspaceLossWithinWindow { uncovered_age: age } }
+    WorkspaceCommitDue { age: _ } =>
+      if age >= policy.window { WorkspaceCompoundFailure { cause: CoverageLapsedBeforeOutage { oldest_uncommitted_write_age: age, window: policy.window }, uncovered_age: age } }
+      else { WorkspaceLossWithinWindow { uncovered_age: age } }
+  }
+}

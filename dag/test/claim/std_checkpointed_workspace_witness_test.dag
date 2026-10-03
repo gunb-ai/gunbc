@@ -1,0 +1,136 @@
+module test.claim.std_checkpointed_workspace
+
+import std.types { String, NonEmptyStr, Int, Bool, List }
+import v2.std.optional { Present, Absent }
+import std.algebra { Cons, Empty }
+import std.measure { byte_size }
+import std.content_hash { sha256_hex_digest, Sha256Digest }
+import std.durable_compare_and_set { cas_generation_first }
+import std.fabric_blob { FabricBlobAddress }
+import std.fabric_storage {
+  FabricObject, FabricObjectRef, fabric_object_ref_of, fabric_object_ref_eq,
+  ExpectHeadAbsent, ExpectHeadAt, FabricHeadAbsent, FabricHeadAt,
+  FabricHeadAdvanced, FabricHeadMoved, FabricHeadAdvanceRefused, FabricStoreUnreachable,
+}
+import std.checkpointed_workspace {
+  WorkspaceWriterEpoch, WorkspaceEntry, WorkspaceHeadEntry, WorkspaceRevision, WorkspaceFence,
+  workspace_head_entry_object, workspace_advance_plan, workspace_head_name,
+  WorkspaceCommitted, WorkspaceCommitStaleEpoch, WorkspaceCommitRaced, WorkspaceCommitFailed, workspace_commit_classify,
+  WorkspaceRestoreRevision, WorkspaceRestoreEmpty, workspace_restore_point,
+  WorkspaceCoverage, WorkspaceClean, WorkspaceDirty, oldest_uncommitted_write_age,
+  workspace_coverage_after_write, workspace_coverage_after_commit,
+  WorkspaceDurabilityPolicy, workspace_policy_refusal, PolicyTargetNotBeforeDeadline, PolicyDeadlineNotBeforeWindow,
+  WorkspaceWritable, WorkspaceCommitDue, WorkspaceStorageOutage, workspace_write_standing,
+  WorkspaceLossWithinWindow, WorkspaceCompoundFailure, LostDuringDeclaredOutage, CoverageLapsedBeforeOutage, workspace_loss_classify,
+}
+
+// Supplied values at the interface this module owns (DESIGN 3 witness rule): the head advance and
+// the observed entry are what the store returns, constructed here. The real store path is
+// demo stage 1's restore entry, the named consumer this model lands for.
+
+data chunk_hex: String = "89427e487454c1b5b3cafc50013e056c2d496587b9922f4e8600a3b3c7e3be4f"
+data empty_hex: String = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+fn digest_of(hex: String) -> Sha256Digest {
+  match sha256_hex_digest(hex: hex) {
+    Present { value: d } => d
+    Absent => digest_of(hex: empty_hex)
+  }
+}
+
+fn epoch(n: Int) -> WorkspaceWriterEpoch { WorkspaceWriterEpoch { workspace: "ops", epoch: n } }
+
+fn one_entry() -> List<WorkspaceEntry> {
+  [WorkspaceEntry { path: "src/main.rs", chunk: FabricBlobAddress { key: digest_of(hex: chunk_hex) }, size: byte_size(count: 12) }]
+}
+
+fn rev1() -> WorkspaceHeadEntry { WorkspaceRevision { writer: epoch(n: 1), parent: none, entries: one_entry() } }
+fn ref_of(e: WorkspaceHeadEntry) -> FabricObjectRef { fabric_object_ref_of(object: workspace_head_entry_object(entry: e)) }
+fn fence2() -> WorkspaceHeadEntry { WorkspaceFence { writer: epoch(n: 2), parent: Present { value: ref_of(e: rev1()) } } }
+
+fn policy() -> WorkspaceDurabilityPolicy { WorkspaceDurabilityPolicy { checkpoint_target: 10, outage_deadline: 45, window: 60 } }
+
+test fn a_revision_links_its_parent_and_a_first_revision_expects_no_head() -> Bool {
+  let o = workspace_head_entry_object(entry: fence2())
+  let linked = match o.links { Cons { head: p, tail: _ } => fabric_object_ref_eq(a: p, b: ref_of(e: rev1()))  Empty => false }
+  let first = match workspace_advance_plan(entry: rev1(), built_on: none).expected { ExpectHeadAbsent => true  ExpectHeadAt { object: _ } => false }
+  linked && first && (workspace_head_name(workspace: "ops") as String) == "workspace.ops.committed"
+}
+
+test fn a_moved_head_at_a_later_epoch_is_a_stale_writer_not_a_race() -> Bool {
+  let moved = FabricHeadMoved { expected: ExpectHeadAt { object: ref_of(e: rev1()) }, observed: FabricHeadAt { object: ref_of(e: fence2()), generation: cas_generation_first() } }
+  let stale = match workspace_commit_classify(writer: epoch(n: 1), advance: moved, observed_entry: Present { value: fence2() }) {
+    WorkspaceCommitStaleEpoch { writer_epoch: w, current_epoch: c } => w == 1 && c == 2
+    _ => false
+  }
+  let race = match workspace_commit_classify(writer: epoch(n: 2), advance: moved, observed_entry: Present { value: fence2() }) {
+    WorkspaceCommitRaced { observed: _ } => true
+    _ => false
+  }
+  let ok = match workspace_commit_classify(writer: epoch(n: 1), advance: FabricHeadAdvanced { object: ref_of(e: rev1()), generation: cas_generation_first() }, observed_entry: none) {
+    WorkspaceCommitted { revision: r } => fabric_object_ref_eq(a: r, b: ref_of(e: rev1()))
+    _ => false
+  }
+  let failed = match workspace_commit_classify(writer: epoch(n: 1), advance: FabricHeadAdvanceRefused { fault: FabricStoreUnreachable { detail: "down" } }, observed_entry: none) {
+    WorkspaceCommitFailed { fault: _ } => true
+    _ => false
+  }
+  stale && race && ok && failed
+}
+
+test fn restore_skips_fences_to_the_last_committed_revision() -> Bool {
+  let through_fence = match workspace_restore_point(newest_first: [fence2(), rev1()], refs: [ref_of(e: fence2()), ref_of(e: rev1())]) {
+    WorkspaceRestoreRevision { revision: r, entries: es } => fabric_object_ref_eq(a: r, b: ref_of(e: rev1())) && length(es) == 1
+    WorkspaceRestoreEmpty => false
+  }
+  let only_fence = match workspace_restore_point(newest_first: [fence2()], refs: [ref_of(e: fence2())]) {
+    WorkspaceRestoreEmpty => true
+    WorkspaceRestoreRevision { revision: _, entries: _ } => false
+  }
+  through_fence && only_fence
+}
+
+test fn the_age_is_zero_while_clean_and_starts_at_the_first_pending_write() -> Bool {
+  let dirty = workspace_coverage_after_write(coverage: workspace_coverage_after_write(coverage: WorkspaceClean, at: 100), at: 105)
+  oldest_uncommitted_write_age(coverage: WorkspaceClean, now: 1000) == 0
+    && oldest_uncommitted_write_age(coverage: dirty, now: 110) == 10
+    && oldest_uncommitted_write_age(coverage: workspace_coverage_after_commit(first_write_after_snapshot: Present { value: 108 }), now: 110) == 2
+    && oldest_uncommitted_write_age(coverage: workspace_coverage_after_commit(first_write_after_snapshot: none), now: 110) == 0
+}
+
+test fn an_idle_workspace_stays_writable_and_a_stuck_one_declares_an_outage() -> Bool {
+  let idle = match workspace_write_standing(policy: policy(), workspace: "ops", coverage: WorkspaceClean, now: 100000) { WorkspaceWritable => true  _ => false }
+  let due = match workspace_write_standing(policy: policy(), workspace: "ops", coverage: WorkspaceDirty { oldest_uncommitted_write_at: 0 }, now: 12) { WorkspaceCommitDue { age: a } => a == 12  _ => false }
+  let outage = match workspace_write_standing(policy: policy(), workspace: "ops", coverage: WorkspaceDirty { oldest_uncommitted_write_at: 0 }, now: 45) { WorkspaceStorageOutage { outage: o } => o.oldest_uncommitted_write_at == 0  _ => false }
+  idle && due && outage
+}
+
+test fn loss_during_an_outage_or_past_the_window_is_the_compound_failure() -> Bool {
+  let d = WorkspaceDirty { oldest_uncommitted_write_at: 0 }
+  let within = match workspace_loss_classify(policy: policy(), standing: workspace_write_standing(policy: policy(), workspace: "ops", coverage: d, now: 20), coverage: d, lost_at: 20) {
+    WorkspaceLossWithinWindow { uncovered_age: a } => a == 20
+    _ => false
+  }
+  let during = match workspace_loss_classify(policy: policy(), standing: workspace_write_standing(policy: policy(), workspace: "ops", coverage: d, now: 50), coverage: d, lost_at: 50) {
+    WorkspaceCompoundFailure { cause: LostDuringDeclaredOutage { outage: _ }, uncovered_age: _ } => true
+    _ => false
+  }
+  let lapsed = match workspace_loss_classify(policy: policy(), standing: WorkspaceWritable, coverage: d, lost_at: 70) {
+    WorkspaceCompoundFailure { cause: CoverageLapsedBeforeOutage { oldest_uncommitted_write_age: a, window: w }, uncovered_age: _ } => a == 70 && w == 60
+    _ => false
+  }
+  within && during && lapsed
+}
+
+test fn a_policy_must_order_target_deadline_and_window() -> Bool {
+  let ok = match workspace_policy_refusal(policy: policy()) { Absent => true  Present { value: _ } => false }
+  let bad_target = match workspace_policy_refusal(policy: WorkspaceDurabilityPolicy { checkpoint_target: 50, outage_deadline: 45, window: 60 }) {
+    Present { value: PolicyTargetNotBeforeDeadline { target: _, deadline: _ } } => true
+    _ => false
+  }
+  let bad_window = match workspace_policy_refusal(policy: WorkspaceDurabilityPolicy { checkpoint_target: 10, outage_deadline: 60, window: 60 }) {
+    Present { value: PolicyDeadlineNotBeforeWindow { deadline: _, window: _ } } => true
+    _ => false
+  }
+  ok && bad_target && bad_window
+}
