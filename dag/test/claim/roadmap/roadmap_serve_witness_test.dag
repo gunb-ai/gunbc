@@ -1072,13 +1072,13 @@ test fn a_planted_header_list_reads_as_absent_single_or_repeated() -> Bool {
     ) == ServeRequestHeaderRepeated { occurrences: 2 }
 }
 
-fn witness_session_route_over_headers(headers: List<ServeRequestHeader>) -> ServeWireResponse {
+fn witness_assignment_context_over_headers(headers: List<ServeRequestHeader>) -> ServeWireResponse {
   roadmap_serve_handle_over(
     instance: srv2_preview_dashboard_instance(),
     plan: fn() { caller_supplied_plan_fixture() },
     daily_body: DailyBodyRenderedUnderThisPlan,
     method: "GET",
-    path: "/auth/session",
+    path: "/issue/demo-node/assignment",
     body: "",
     tailscale_identity: "",
     request_headers: headers,
@@ -1086,24 +1086,27 @@ fn witness_session_route_over_headers(headers: List<ServeRequestHeader>) -> Serv
   )
 }
 
-// THE SERVED ENTRY, declared request headers to wire record, on the real /auth/session route. A
-// request with no Cookie field and one whose Cookie field carries no session both answer the
-// absent standing; a malformed session cookie answers its typed standing, so the value reached the
-// cookie decode; two Cookie fields answer 400 before any route runs. Deleting the header reading
-// from the entry, or handing it a field other than Cookie, makes this fail.
+// THE SERVED ENTRY, declared request headers to wire record, on the real assignment-context
+// route. That route answers from the authentication evidence alone when no human session is
+// present, so the claim performs no host read: no Cookie field and a Cookie field carrying no
+// session both answer the signed-out 401; a malformed session cookie answers the invalid-session
+// 401, so the field's VALUE reached the cookie decode; two Cookie fields answer 400 before any
+// route runs. Deleting the header reading from the entry, or handing it a field other than
+// Cookie, makes this fail.
 test fn the_served_entry_reads_the_cookie_field_from_its_declared_request_headers() -> Bool {
-  let absent = witness_session_route_over_headers(headers: [ServeRequestHeader { name: "accept", value: "application/json" }])
-  let other = witness_session_route_over_headers(headers: [ServeRequestHeader { name: "cookie", value: "theme=dark" }])
-  let malformed = witness_session_route_over_headers(headers: [ServeRequestHeader { name: "cookie", value: "gunbc_session=a; gunbc_session=b" }])
-  let repeated = witness_session_route_over_headers(headers: [
+  let absent = witness_assignment_context_over_headers(headers: [ServeRequestHeader { name: "accept", value: "application/json" }])
+  let other = witness_assignment_context_over_headers(headers: [ServeRequestHeader { name: "cookie", value: "theme=dark" }])
+  let malformed = witness_assignment_context_over_headers(headers: [ServeRequestHeader { name: "cookie", value: "gunbc_session=a; gunbc_session=b" }])
+  let repeated = witness_assignment_context_over_headers(headers: [
     ServeRequestHeader { name: "cookie", value: "gunbc_session=a" },
     ServeRequestHeader { name: "cookie", value: "gunbc_session=b" },
   ])
-  absent.status == 200
-    && string_contains(s: absent.body, pattern: "no session cookie was presented")
+  absent.status == 401
+    && absent.body == "Sign in to assign this issue."
+    && other.status == 401
     && other.body == absent.body
-    && malformed.status == 200
-    && string_contains(s: malformed.body, pattern: "malformed")
+    && malformed.status == 401
+    && malformed.body == "Your session has expired or is unavailable. Sign in again."
     && repeated.status == 400
     && repeated.body == "bad request: duplicate cookie header\n"
 }
