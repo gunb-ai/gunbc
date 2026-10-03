@@ -233,7 +233,8 @@ fn claim_resolved_call_tree(
       callee_path: callee_path,
       params: params
     ),
-    lexical_bindings: empty_map()
+    lexical_bindings: empty_map(),
+    unavailable_providers: []
   }
 }
 
@@ -292,7 +293,8 @@ fn claim_resolved_projection_tree(
       callee_path: fn_path,
       params: [param]
     ),
-    lexical_bindings: empty_map()
+    lexical_bindings: empty_map(),
+    unavailable_providers: []
   }
 }
 
