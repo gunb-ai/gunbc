@@ -1,0 +1,98 @@
+module v2.test.parse.else_less_if_value_category
+
+import v2.compiler.body_lowering_fold { body_lower_else_less_if_parts_optional }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex, parse_production_emitted_identity_optional }
+import v2.std.diagnostic { Accepted, DeclarationLocus, InvariantPortLocus, Locus, NodeLocus, Outcome, Rejected, SourcePortLocus, Textual, bind_outcome, diagnostics_fatal }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.optional { Absent, Present }
+import v2.test.parse.supplied_token_stream_support { supplied_parsed_normalize }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// AN ELSE-LESS `if` PARSES ONE WAY AND HAS NO VALUE (operator ruling 2026-10-03, for this case
+// only; v2.extdeps.languages.dag dag_grammar_if_expr_expr). The three controls the ruling names:
+// the statement-position guard is accepted; the same `if` where a value is owed refuses as
+// body_lowering_reason_else_less_if_unlowered, located at that `if`; and both inputs parse to the
+// one if_expr route with its else slot empty -- the route, not only the verdict.
+data elif_guard_source: String = "module probe.elif_guard\nfn f(x: Int) -> Int {\n  if x == 0 { return 1 }\n  x\n}\n"
+data elif_value_source: String = "module probe.elif_value\nfn f(x: Int) -> Int {\n  let y = if x == 0 { 1 }\n  y\n}\n"
+
+fn elif_parse(text: String, file: Symbol) -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(text: text, file: file, rules: dag_lex()),
+        f: fn(token_stream) {
+          match parse_module_prepared(tokens: token_stream, prepared: prepared, validation_residue: residue) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } => Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
+fn elif_is_else_less_if(node: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      if id == ^dag_surface_if_expr {
+        match body_lower_else_less_if_parts_optional(if_shell: node) {
+          Present { value: _ } => true
+          Absent => false
+        }
+      } else {
+        false
+      }
+    Absent => false
+  }
+}
+
+fn elif_count_else_less_ifs(root: Node) -> Int {
+  let here = if elif_is_else_less_if(node: root) { 1 } else { 0 }
+  fold(root.children, init: here, f: fn(acc, e) { acc + elif_count_else_less_ifs(root: e.target) })
+}
+
+fn elif_parses_to_one_else_less_if(text: String, file: Symbol) -> Bool {
+  match elif_parse(text: text, file: file) {
+    Accepted { value: tree, diagnostics: _ } => elif_count_else_less_ifs(root: tree) == 1
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn statement_guard_and_value_if_each_parse_to_one_else_less_if_route() -> Bool {
+  elif_parses_to_one_else_less_if(text: elif_guard_source, file: ^elif_guard)
+    && elif_parses_to_one_else_less_if(text: elif_value_source, file: ^elif_value)
+}
+
+test fn statement_position_guard_is_accepted() -> Bool {
+  match supplied_parsed_normalize(parsed: elif_parse(text: elif_guard_source, file: ^elif_guard)) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn elif_locus_is_the_if(at: Locus) -> Bool {
+  match at {
+    NodeLocus { anchor: anchor } => elif_is_else_less_if(node: anchor.at)
+    SourcePortLocus { anchor: _, file: _, extent: _ } => false
+    Textual { file: _, extent: _ } => false
+    InvariantPortLocus { anchor: _, invariant: _ } => false
+    DeclarationLocus { declaration: _ } => false
+  }
+}
+
+test fn value_position_else_less_if_refuses_at_the_if() -> Bool {
+  match supplied_parsed_normalize(parsed: elif_parse(text: elif_value_source, file: ^elif_value)) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      let fatal = diagnostics_fatal(d: d)
+      fatal.reason == ^body_lowering_reason_else_less_if_unlowered && elif_locus_is_the_if(at: fatal.at)
+  }
+}

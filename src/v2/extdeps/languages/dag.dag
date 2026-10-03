@@ -1208,23 +1208,6 @@ fn dag_grammar_stmt_seq_expr() -> GrammarExpr {
   dag_grammar_repeat(element: dag_grammar_nonterminal(production: ^dag_production_stmt))
 }
 
-// An `if` with no `else` is a STATEMENT, never a value: `if count(parts) != 2 { return Malformed {..} }`
-// (extdeps.uri_path), the guard form v1.compiler.parse admits. Its meaning is an early exit -- the
-// branch leaves the function, otherwise execution falls through to the rest of the block -- which
-// the v2 core has no lowering for, so body_lower_after_children refuses this production with the
-// typed, located, counted body_lowering_reason_else_less_if_unlowered rather than dropping or
-// rewriting it. It is tried AFTER expr, so an `if` that has an `else` is the ordinary if-expression
-// and never reaches this row.
-fn dag_grammar_else_less_if_stmt_expr() -> GrammarExpr {
-  dag_grammar_sequence(
-    left: dag_grammar_terminal(token_class: ^dag_token_kw_if),
-    right: dag_grammar_sequence(
-      left: dag_grammar_nonterminal(production: ^dag_production_expr),
-      right: dag_grammar_nonterminal(production: ^dag_production_fn_body)
-    )
-  )
-}
-
 // AN EXPRESSION STATEMENT NEVER BEGINS WITH A LET SPELLING. `name =` and `node name` head the two
 // let_sugar forms (dag_grammar_let_sugar_expr) and begin no expression, so the expression
 // alternative is guarded by exactly those heads: the two alternatives are disjoint by construction
@@ -1251,12 +1234,9 @@ fn dag_grammar_stmt_expr() -> GrammarExpr {
     ),
     right: dag_grammar_choice(
       left: dag_grammar_nonterminal(production: ^dag_production_let_expr),
-      right: dag_grammar_choice(
-        left: dag_grammar_sequence(
-          left: grammar_expr_not_predicate(element: dag_grammar_let_sugar_head_expr()),
-          right: dag_grammar_nonterminal(production: ^dag_production_expr)
-        ),
-        right: dag_grammar_nonterminal(production: ^dag_production_else_less_if_stmt)
+      right: dag_grammar_sequence(
+        left: grammar_expr_not_predicate(element: dag_grammar_let_sugar_head_expr()),
+        right: dag_grammar_nonterminal(production: ^dag_production_expr)
       )
     )
   )
@@ -1937,39 +1917,44 @@ fn dag_grammar_field_pattern_expr() -> GrammarExpr {
   )
 }
 
-fn dag_grammar_if_block_expr() -> GrammarExpr {
+// ONE `if`, ITS HEAD READ ONCE. `if cond` is shared by the two forms, so it is the production's
+// prefix and the forms are the choice after it: `then` begins the expression form, a block the
+// block form, so the next token decides (they were two alternatives repeating the head, an overlap
+// no bounded lookahead decides).
+//
+// THE BLOCK FORM'S `else` IS OPTIONAL, and an `if` without one has no value. That is a fact about
+// the value category, not an ambiguity deferred past the parser: the parse is unique either way
+// (operator ruling 2026-10-03, for this case only). At statement position, where no value is owed,
+// an else-less `if` whose block ends in a return is the early-return guard
+// (v2.compiler.body_lowering_fold body_lower_admitted_guard_optional); wherever a value is required
+// it refuses at lowering, typed and located, as body_lowering_reason_else_less_if_unlowered. A tree
+// with an else is the one the two-form grammar built: a present optional and a choice each pass
+// their element through.
+fn dag_grammar_if_else_tail_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_terminal(token_class: ^dag_token_kw_if),
-    right: dag_grammar_sequence(
-      left: dag_grammar_nonterminal(production: ^dag_production_expr),
-      right: dag_grammar_sequence(
-        left: dag_grammar_nonterminal(production: ^dag_production_fn_body),
-        right: dag_grammar_sequence(
-          left: dag_grammar_terminal(token_class: ^dag_token_kw_else),
-          right: dag_grammar_choice(
-            left: dag_grammar_nonterminal(production: ^dag_production_if_expr),
-            right: dag_grammar_nonterminal(production: ^dag_production_fn_body)
-          )
-        )
-      )
+    left: dag_grammar_terminal(token_class: ^dag_token_kw_else),
+    right: dag_grammar_choice(
+      left: dag_grammar_nonterminal(production: ^dag_production_if_expr),
+      right: dag_grammar_nonterminal(production: ^dag_production_fn_body)
     )
   )
 }
 
-fn dag_grammar_if_then_expr() -> GrammarExpr {
+fn dag_grammar_if_block_form_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_terminal(token_class: ^dag_token_kw_if),
+    left: dag_grammar_nonterminal(production: ^dag_production_fn_body),
+    right: dag_grammar_optional(element: dag_grammar_if_else_tail_expr())
+  )
+}
+
+fn dag_grammar_if_then_form_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: ^dag_token_kw_then),
     right: dag_grammar_sequence(
       left: dag_grammar_nonterminal(production: ^dag_production_expr),
       right: dag_grammar_sequence(
-        left: dag_grammar_terminal(token_class: ^dag_token_kw_then),
-        right: dag_grammar_sequence(
-          left: dag_grammar_nonterminal(production: ^dag_production_expr),
-          right: dag_grammar_sequence(
-            left: dag_grammar_terminal(token_class: ^dag_token_kw_else),
-            right: dag_grammar_nonterminal(production: ^dag_production_expr)
-          )
-        )
+        left: dag_grammar_terminal(token_class: ^dag_token_kw_else),
+        right: dag_grammar_nonterminal(production: ^dag_production_expr)
       )
     )
   )
@@ -1983,9 +1968,15 @@ fn dag_grammar_loop_expr_expr() -> GrammarExpr {
 }
 
 fn dag_grammar_if_expr_expr() -> GrammarExpr {
-  dag_grammar_choice(
-    left: dag_grammar_if_then_expr(),
-    right: dag_grammar_if_block_expr()
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: ^dag_token_kw_if),
+    right: dag_grammar_sequence(
+      left: dag_grammar_nonterminal(production: ^dag_production_expr),
+      right: dag_grammar_choice(
+        left: dag_grammar_if_then_form_expr(),
+        right: dag_grammar_if_block_form_expr()
+      )
+    )
   )
 }
 
@@ -3296,11 +3287,6 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_field_decl_block_expr(),
     emitted: ^dag_surface_field_decl_block
   )
-  let else_less_if_stmt = dag_grammar_production(
-    name: ^dag_production_else_less_if_stmt,
-    expression: dag_grammar_else_less_if_stmt_expr(),
-    emitted: ^dag_surface_else_less_if_stmt
-  )
   let default_value = dag_grammar_production(
     name: ^dag_production_default_value,
     expression: dag_grammar_default_value_expr(),
@@ -3495,7 +3481,6 @@ fn dag_grammar_root() -> GrammarRoot {
       uses_clause,
       uses_entry,
       admit_callers_clause,
-      else_less_if_stmt,
       fn_body,
       stmt_seq,
       stmt,

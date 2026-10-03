@@ -8264,6 +8264,13 @@ fn body_lower_try_if_from_captured(captured: Node) -> Outcome<Optional<Node>> {
 }
 
 fn body_lower_if_expr(shell: Node) -> Outcome<Node> {
+  match body_lower_else_less_if_parts_optional(if_shell: shell) {
+    Present { value: _ } => body_lower_else_less_if_reject(shell: shell)
+    Absent => body_lower_if_expr_valued(shell: shell)
+  }
+}
+
+fn body_lower_if_expr_valued(shell: Node) -> Outcome<Node> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent =>
       outcome_rejected(
@@ -10690,40 +10697,88 @@ fn body_lower_return_statement_expr_optional(stmt: Node) -> Optional<Node> {
   }
 }
 
-// A GUARD'S PARTS, read positionally: dag_grammar_else_less_if_stmt_expr is
-// seq(`if`, seq(expr, fn_body)). It is admitted only when its arm's last statement is a return, so
-// the guard exits exactly when it is taken; an arm that falls through (`if c { log() }`) is not a
-// guard and keeps refusing else_less_if_unlowered.
+// AN ELSE-LESS `if`'S PARTS, read positionally: dag_grammar_if_expr_expr's block form without its
+// optional else captures seq(`if`, seq(condition, seq(fn_body, <empty>))). The expression form and a
+// block form with an else do not have that shape, so this reader answers exactly the `if` that has
+// no value (operator ruling 2026-10-03). At statement position it is a guard when its arm's last
+// statement is a return (body_lower_admitted_guard_optional), so the guard exits exactly when it is
+// taken; an arm that falls through (`if c { log() }`) is not a guard and refuses else_less_if_unlowered,
+// as does every else-less `if` where a value is owed.
 type BodyLowerGuard {
   shell: Node
   condition: Node
   arm: Node
 }
 
-fn body_lower_guard_optional(stmt: Node) -> Optional<BodyLowerGuard> {
-  let inner = match parse_production_captured_child_optional(node: stmt) {
-    Present { value: c } => c
-    Absent => stmt
+fn body_lower_else_less_if_parts_optional(if_shell: Node) -> Optional<BodyLowerGuard> {
+  match body_lower_unwrap_captured(shell: if_shell) {
+    Absent => optional_absent()
+    Present { value: captured } =>
+      match sugar_sequence_pair_optional(node: body_lower_unwrap_surface_shell(node: captured)) {
+        Absent => optional_absent()
+        Present { value: if_rest } =>
+          match sugar_sequence_pair_optional(node: body_lower_unwrap_surface_shell(node: if_rest.right)) {
+            Absent => optional_absent()
+            Present { value: cond_tail } =>
+              match sugar_sequence_pair_optional(node: body_lower_unwrap_surface_shell(node: cond_tail.right)) {
+                Absent => optional_absent()
+                Present { value: arm_else } =>
+                  if body_lower_is_fn_body_shell(node: arm_else.left)
+                    && is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: arm_else.right)) {
+                    optional_present(value: BodyLowerGuard { shell: if_shell, condition: cond_tail.left, arm: arm_else.left })
+                  } else {
+                    optional_absent()
+                  }
+              }
+          }
+      }
   }
-  match parse_production_emitted_identity_optional(node: inner) {
+}
+
+fn body_lower_is_fn_body_shell(node: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_surface_fn_body
+    Absent => false
+  }
+}
+
+// The `if` a statement IS, when the whole statement is one `if`: the statement's production shells
+// and the operator spines whose tail is empty are passed through, as body_lower_exit_walk passes
+// them; anything else -- an `if` that is an operand, a call, a literal -- is not one.
+fn body_lower_statement_sole_if_optional(node: Node) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } =>
-      if id == ^dag_surface_else_less_if_stmt {
-        match body_lower_unwrap_captured(shell: inner) {
+      if id == ^dag_surface_if_expr {
+        optional_present(value: node)
+      } else if body_lower_is_pass_through_emitted(emitted: id) || (id == ^dag_surface_primary_expr) {
+        match parse_production_captured_child_optional(node: node) {
+          Present { value: captured } => body_lower_statement_sole_if_optional(node: captured)
           Absent => optional_absent()
-          Present { value: captured } =>
-            match sugar_sequence_pair_optional(node: body_lower_unwrap_surface_shell(node: captured)) {
-              Absent => optional_absent()
-              Present { value: if_rest } =>
-                match sugar_sequence_pair_optional(node: body_lower_unwrap_surface_shell(node: if_rest.right)) {
-                  Absent => optional_absent()
-                  Present { value: cond_arm } =>
-                    optional_present(value: BodyLowerGuard { shell: inner, condition: cond_arm.left, arm: cond_arm.right })
-                }
-            }
         }
       } else {
         optional_absent()
       }
+    Absent =>
+      let peeled = body_lower_deep_unwrap_optional(node: node)
+      if peeled != node {
+        body_lower_statement_sole_if_optional(node: peeled)
+      } else {
+        match sugar_sequence_pair_optional(node: node) {
+          Present { value: pair } =>
+            if is_empty_conj_root(n: body_lower_deep_unwrap_optional(node: pair.right)) {
+              body_lower_statement_sole_if_optional(node: pair.left)
+            } else {
+              optional_absent()
+            }
+          Absent => optional_absent()
+        }
+      }
+  }
+}
+
+fn body_lower_guard_optional(stmt: Node) -> Optional<BodyLowerGuard> {
+  match body_lower_statement_sole_if_optional(node: stmt) {
+    Present { value: if_shell } => body_lower_else_less_if_parts_optional(if_shell: if_shell)
     Absent => optional_absent()
   }
 }
@@ -10824,8 +10879,6 @@ fn body_lower_exit_walk(node: Node, tail: Bool, arm_tail: Bool) -> Optional<Outc
             }
           Absent => body_lower_exit_walk_children(node: node, tail: tail, arm_tail: false)
         }
-      } else if id == ^dag_surface_else_less_if_stmt {
-        body_lower_exit_refused(reason: ^body_lowering_reason_else_less_if_unlowered, at: node)
       } else if id == ^dag_surface_stmt_seq {
         match body_lower_unwrap_captured(shell: node) {
           Present { value: spine } => body_lower_exit_walk_spine(spine: spine, tail: tail)
@@ -10884,6 +10937,13 @@ fn body_lower_match_arm_stripped(arm: Node) -> Node {
 // An `if`: its condition is not a tail; each arm is the if's own tail. The three reads cover the
 // whole if -- the rest of it is keywords -- and an if they cannot read is walked with no tail.
 fn body_lower_exit_walk_if(shell: Node, tail: Bool) -> Optional<Outcome<Node>> {
+  match body_lower_else_less_if_parts_optional(if_shell: shell) {
+    Present { value: _ } => body_lower_exit_refused(reason: ^body_lowering_reason_else_less_if_unlowered, at: shell)
+    Absent => body_lower_exit_walk_if_valued(shell: shell, tail: tail)
+  }
+}
+
+fn body_lower_exit_walk_if_valued(shell: Node, tail: Bool) -> Optional<Outcome<Node>> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent => body_lower_exit_walk_children(node: shell, tail: false, arm_tail: false)
     Present { value: captured } =>
@@ -10969,15 +11029,11 @@ fn body_lower_after_children(folded: Node, fn_body_pass_through: Bool) -> Outcom
     match parse_production_emitted_identity_optional(node: folded) {
       Absent => body_lowering_lowered(o: outcome_accepted(value: folded))
       Present { value: emitted } =>
-        if emitted == ^dag_surface_else_less_if_stmt {
-          body_lowering_lowered(o: body_lower_else_less_if_reject(shell: folded))
-        } else {
-          body_lower_production_emitted(
-            shell: folded,
-            emitted: emitted,
-            fn_body_pass_through: fn_body_pass_through
-          )
-        }
+        body_lower_production_emitted(
+          shell: folded,
+          emitted: emitted,
+          fn_body_pass_through: fn_body_pass_through
+        )
     }
   }
 }
