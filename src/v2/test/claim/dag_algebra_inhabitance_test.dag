@@ -148,3 +148,33 @@ fn dai_is_malformed(d: AlgebraFieldDeclaration) -> Bool {
     InhabitanceMalformed { cause: _ } => true
   }
 }
+
+// A DECLARED FIELD DOES NOT EXCUSE A LATER MALFORMED MEMBER: every member is classified before an answer is given,
+// with InhabitanceMalformed taking precedence over FieldDeclared -- here a valid ^ring_field_add binder followed by
+// a member that is not a binder.
+test fn dai_a_declared_field_before_a_malformed_member_is_malformed() -> Bool {
+  let carrier = bool_node()
+  let structure = Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      binder_edge(name: ^ring_field_add, type_node: carrier),
+      Edge { label: Authored { name: ^ring_field_mul }, target: carrier }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+  dai_is_malformed(d: algebra_inhabitance_field_declaration(inhabitance: algebra_inhabitance_node(algebra: structure, inhabitant: carrier), field: ^ring_field_add))
+}
+
+// The same with the later malformed member a composing field over a non-structure.
+test fn dai_a_declared_field_before_a_malformed_composing_field_is_malformed() -> Bool {
+  let carrier = bool_node()
+  let structure = Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      binder_edge(name: ^lattice_field_join, type_node: carrier),
+      binder_edge(name: ^ordered_ring_field_ring, type_node: carrier)
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+  dai_is_malformed(d: algebra_inhabitance_field_declaration(inhabitance: algebra_inhabitance_node(algebra: structure, inhabitant: carrier), field: ^lattice_field_join))
+}
