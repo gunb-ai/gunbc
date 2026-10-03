@@ -269,13 +269,13 @@ type DashboardAdmittedRevisionSource {
   ref_name: GitRef
 }
 
-// The fleet's authority, unchanged: origin advertises refs/fleet/desired. Named here rather than
-// spelled at each instance so that the fleet answer stays one value across every fleet host.
 // THE INSTANCE'S RISK CLASS, derived through the one switchable row. Nothing else may answer it.
 fn dashboard_instance_risk_class(instance: HostDashboardInstance) -> DeploymentRiskClass {
   deployment_risk_class(selection: prod_role_selection, deployment: instance.deployment)
 }
 
+// The fleet's authority, unchanged: origin advertises refs/fleet/desired. Named here rather than
+// spelled at each instance so that the fleet answer stays one value across every fleet host.
 data fleet_admitted_revision_source: DashboardAdmittedRevisionSource = DashboardAdmittedRevisionSource {
   remote: "origin",
   ref_name: fleet_desired_ref_name,
@@ -815,8 +815,8 @@ data macbook_local_codex_home: FilePath = codex_account_state_root(
 // development checkout is unmodeled. This row makes the machine nameable; it does not answer for
 // what may be launched on it.
 fn macbook_local_dashboard_instance() -> HostDashboardInstance {
-    deployment: macbook_local_deployment,
   HostDashboardInstance {
+    deployment: macbook_local_deployment,
     instance_id: macbook_local_dashboard_id,
     host_identity: "macbook" as NonEmptyStr,
     provision_parent_root: "/Users/briansrls/.local/share" as FilePath,
