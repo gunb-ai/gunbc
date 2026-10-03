@@ -3593,14 +3593,37 @@ fn typed_argv_outcome_to_shell_exec(typed: TypedArgvExecOutcome) -> ShellExecObs
   }
 }
 
+// THE LOCALSHELL DECOMPOSITION, AS A PURE FUNCTION (DESIGN 3: the witness discriminates at this
+// interface, and the values are supplied -- no process, no exec). An ArgvCommand is one typed value;
+// shell.Exec.RunArgv / RunArgvStdin take the program and its arguments as DISTINCT parameters, and
+// the split is where the program can be doubled: argv_words(command) already starts with the
+// program, so passing it as the argument words hands the op the program twice (the double-sudo shape
+// the side chat measured on this very fold). Both wet LocalShell arms delegate here, and the
+// witness supplies commands and pins the discriminating property -- the program is the `program`
+// parameter and does NOT appear among the argument words. The printf receipts that used to exec
+// printf locally are gone: the floor runs changed witnesses hermetically and never reaches an exec,
+// so a receipt that needs a real process is not a floor claim.
+type RunArgvParameters {
+  program: String
+  arguments: List<String>
+}
+
+fn run_argv_parameters_of(command: ArgvCommand) -> RunArgvParameters {
+  RunArgvParameters {
+    program: command.program.invocation,
+    arguments: process_argv_expansion(surface: cli_surface_of_literal_words(words: command.arguments)),
+  }
+}
+
 // THE HOST-EFFECT TRANSPORT TAKES TYPED ARGV. This is run_shell_transport's typed sibling: an
 // ArgvCommand already built by cited extdeps builders, run over the same HostEffectTransport arms.
 // LocalShell runs shell.Exec.RunArgv -- the program word and the argument words as DISTINCT
-// parameters, the state-space collapse the RunArgv op exists to close. The ARGUMENT words are
-// command.arguments, NOT argv_words(command): argv_words re-prepends the program, and passing it
-// here would hand RunArgv the program twice (execve with argv[1] = the program path, the
-// double-sudo shape). cli_surface_of_literal_words makes each word its own literal argument, never
-// re-quoted into a string. SshShell routes through typed_argv_exec_over_ssh, which owns both the
+// parameters, the state-space collapse the RunArgv op exists to close. The split is factored into
+// run_argv_parameters_of (both LocalShell arms delegate), because that split is where the program
+// can be doubled: the argument words are command.arguments, NOT argv_words(command) -- argv_words
+// re-prepends the program, and passing it here would hand RunArgv the program twice (execve with
+// argv[1] = the program path, the double-sudo shape) -- and the witness discriminates at the pure
+// function, not at an exec. SshShell routes through typed_argv_exec_over_ssh, which owns both the
 // shaping (shape_ssh_shell_exec: host, `--`, words -- the one arm where argv_words is correct,
 // because the remote vector starts with the program) and the portable-word wall, so a word the
 // remote shell would re-parse refuses here before any ssh leg; there is no empty-script refusal
@@ -3619,10 +3642,8 @@ fn typed_argv_outcome_to_shell_exec(typed: TypedArgvExecOutcome) -> ShellExecObs
 fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffectTransport) -> ShellExecObserved {
   match transport {
     LocalShell => {
-      let result = shell.Exec.RunArgv(
-        program: command.program.invocation,
-        arguments: process_argv_expansion(surface: cli_surface_of_literal_words(words: command.arguments)),
-      )
+      let params = run_argv_parameters_of(command: command)
+      let result = shell.Exec.RunArgv(program: params.program, arguments: params.arguments)
       ShellExecObserved {
         exit_code: result.exit_code,
         success: result.exit_code == 0,
@@ -3664,9 +3685,10 @@ fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffe
 fn run_argv_stdin_over_host_effect_transport(command: ArgvCommand, stdin_payload: String, transport: HostEffectTransport) -> ShellExecObserved {
   match transport {
     LocalShell => {
+      let params = run_argv_parameters_of(command: command)
       let result = shell.Exec.RunArgvStdin(
-        program: command.program.invocation,
-        arguments: process_argv_expansion(surface: cli_surface_of_literal_words(words: command.arguments)),
+        program: params.program,
+        arguments: params.arguments,
         stdin_payload: stdin_payload,
       )
       ShellExecObserved {

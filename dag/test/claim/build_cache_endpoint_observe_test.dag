@@ -6,13 +6,14 @@ import extdeps.systemd.unit_file { systemd_unit_file_lines }
 import v2.std.algebra { filter }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.tools.gnu_coreutils { printf_command }
-import gunbc.host_effect { LocalShell, SshShell }
+import gunbc.host_effect { SshShell }
 import gunbc.compile_pool_ensure { compile_pool_slice_unit_file }
 import gunbc.typed_argv_exec { typed_argv_shell_safe_refusal_argv }
 import std.realization_reconcile { Converged, NotConverged }
 import gunbc.host_effect_realize {
   compile_pool_slice_install_staging,
   compile_pool_install_failed_step_result,
+  run_argv_parameters_of,
   run_argv_over_host_effect_transport,
   run_argv_stdin_over_host_effect_transport,
   provision_build_cache_arch_unknown_intent_fixture,
@@ -789,37 +790,39 @@ test fn compile_pool_install_staging_refuses_a_path_unit_name_before_any_operati
   }
 }
 
-// THE DECOMPOSED RECEIPT, NOT THE FLAT VECTOR. compile_pool_install_staging_preserves_install_semantics
-// pins argv_words -- the full vector -- and that pin CANNOT see the transport's decomposition, because
-// the transport splits the vector back into program and arguments before it execve's: the LocalShell
-// arm could pin the right flat vector and still hand shell.Exec.RunArgv the program twice (once as
-// the `program:` parameter, once as argv[1]) -- exactly the double-sudo shape the side chat measured
-// (`/usr/bin/sudo /usr/bin/sudo -n dd ...`), which the flat pin reads as clean because argv_words is
-// the vector the STAGING names, not the vector the PROCESS receives. The two receipts below run the
-// transport's LocalShell arms against printf(1), whose argv interpretation makes the decomposition
-// observable: with the program handed once, printf's FORMAT is `[%s]` and it renders `[x]`; with the
-// program doubled, printf's FORMAT is the program name itself -- `printf`, carrying no conversion --
-// and it renders `printf`. One string, wet, distinguishes `arguments = command.arguments` from
-// `arguments = argv_words(command)` at the seam where the split happens, on both run arms. This is
-// the same decomposition command_runner's LocalShell arms make and command_runner_local_argv_receipt
-// witnesses by hand; here it is enrolled, because the compile-pool fold is the transport's only
-// consumer that moves root-owned bytes and a doubled program there is a refused fold on every real
-// host (sudo would treat the second program word as the command to run).
-test fn witness_local_shell_transport_hands_the_program_exactly_once() -> Bool {
-  let observed = run_argv_over_host_effect_transport(
-    command: printf_command(format: "[%s]", values: ["x"]),
-    transport: LocalShell,
-  )
-  observed.success && observed.stdout == "[x]"
+// THE DECOMPOSED LOCALSHELL CALL, HERMETIC (DESIGN 3: the witness discriminates at one interface,
+// and the values are supplied). The first cut of this receipt ran printf(1) locally through the
+// transport and read its stdout -- wet local exec, which the floor's hermetic route never reaches
+// (a changed witness that plans an exec gets no terminal verdict, so it is not a floor claim). The
+// split the receipt was after is factored into run_argv_parameters_of, a pure function from
+// ArgvCommand to the (program, arguments) pair both LocalShell arms hand the op, and the witness
+// supplies commands and pins the discriminating property: the program is the `program` parameter
+// and does NOT appear among the argument words. The argv_words form -- the exact defect this
+// pins, the double-sudo shape the side chat measured -- puts the program in argv[1], so pinning
+// its absence is the red: revert the decomposition to argv_words(command) and this goes false.
+// The designed command's own words must also arrive, one per argument, so the pin cannot be
+// satisfied by an empty or mangled split.
+test fn witness_local_shell_decomposition_hands_the_program_exactly_once() -> Bool {
+  let command = printf_command(format: "[%s]", values: ["x"])
+  let params = run_argv_parameters_of(command: command)
+  params.program == command.program.invocation
+    && !string_list_contains(xs: params.arguments, wanted: command.program.invocation)
+    && string_list_contains(xs: params.arguments, wanted: "[%s]")
+    && string_list_contains(xs: params.arguments, wanted: "x")
 }
 
-test fn witness_local_shell_stdin_transport_hands_the_program_exactly_once() -> Bool {
-  let observed = run_argv_stdin_over_host_effect_transport(
-    command: printf_command(format: "[%s]", values: ["x"]),
-    stdin_payload: "unused: printf reads no stdin, the receipt is the argv",
-    transport: LocalShell,
-  )
-  observed.success && observed.stdout == "[x]"
+// Same decomposition, stdin command form: the stdin payload is DATA and is not what the split
+// judges -- the pair handed to RunArgvStdin is the same (program, arguments) function's answer, so
+// one supplied command pins the arm-independent property. This witness exists as its own name so
+// the two run arms each have a named claim over the shared decomposition; the property and the red
+// are the non-stdin witness's.
+test fn witness_local_shell_stdin_decomposition_hands_the_program_exactly_once() -> Bool {
+  let command = printf_command(format: "[%s]", values: ["x"])
+  let params = run_argv_parameters_of(command: command)
+  params.program == command.program.invocation
+    && !string_list_contains(xs: params.arguments, wanted: command.program.invocation)
+    && string_list_contains(xs: params.arguments, wanted: "[%s]")
+    && string_list_contains(xs: params.arguments, wanted: "x")
 }
 
 // THE WALL HOLDS AT THE TRANSPORT EDGE, NOT ONLY WHERE IT LIVES. gunbc.typed_argv_exec owns the
