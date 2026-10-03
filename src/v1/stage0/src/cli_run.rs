@@ -47354,6 +47354,41 @@ mod warm_route_bytes_probe {
             heap.uordblks + heap.hblkhd
         );
         eprintln!("[m4] label={label} point=after_resolve in_use={}", in_use());
+        if std::env::var("GUNBC_M6_GRAIN").is_ok() {
+            struct Count(u64);
+            impl std::io::Write for Count {
+                fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                    self.0 += b.len() as u64;
+                    Ok(b.len())
+                }
+                fn flush(&mut self) -> std::io::Result<()> {
+                    Ok(())
+                }
+            }
+            for m in graph.modules.iter() {
+                let mut seen: std::collections::HashSet<
+                    *const crate::v1_compiler_infer_env::TypeEnv,
+                > = Default::default();
+                let mut stack = vec![m.type_env.clone(), m.interface.env.clone()];
+                while let Some(e) = stack.pop() {
+                    if seen.insert(Rc::as_ptr(&e)) {
+                        stack.extend(e.parents.iter().cloned());
+                    }
+                }
+                let mut env_only = Count(0);
+                let _ = serde_json::to_writer(&mut env_only, &*m.type_env);
+                let mut whole = Count(0);
+                let _ = serde_json::to_writer(&mut whole, &**m);
+                eprintln!(
+                    "[m6] label={label} module={} reachable_envs={} direct_parents={} type_env_bytes={} typed_module_bytes={}",
+                    m.name,
+                    seen.len(),
+                    m.type_env.parents.len(),
+                    env_only.0,
+                    whole.0
+                );
+            }
+        }
         let pc = crate::shared_typecheck_store::persistent_typed_store_counters_snapshot();
         eprintln!(
             "[m5] label={label} persist_hit={} persist_miss={} persist_read_bytes={} persist_write_bytes={} persist_rejected={} occupancy_entries={} occupancy_bytes={}",
