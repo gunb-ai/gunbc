@@ -101,9 +101,11 @@ fn fabric_blob_shell_target() -> FabricBlobShellTarget {
                     read_key_id: rk, read_token: rt,
                     write_key_id: wk, write_token: wt,
                   }
-                _ => FabricBlobShellUnreachable { cause: standing_cause(direction: "WRITE", c: b.write_credential) }
+                OriginCredentialUnminted { mint_entry: _ } => FabricBlobShellUnreachable { cause: standing_cause(direction: "WRITE", c: b.write_credential) }
+                OriginCredentialMintEntryUnbuilt { secret_id: _ } => FabricBlobShellUnreachable { cause: standing_cause(direction: "WRITE", c: b.write_credential) }
               }
-            _ => FabricBlobShellUnreachable { cause: standing_cause(direction: "READ", c: b.read_credential) }
+            OriginCredentialUnminted { mint_entry: _ } => FabricBlobShellUnreachable { cause: standing_cause(direction: "READ", c: b.read_credential) }
+            OriginCredentialMintEntryUnbuilt { secret_id: _ } => FabricBlobShellUnreachable { cause: standing_cause(direction: "READ", c: b.read_credential) }
           }
       }
   }
