@@ -281,6 +281,46 @@ jobs:
         env:
           REQUIRED_CI_INSTRUMENT_BUILD_OUTCOME: ${{ steps.build_witness_fold.outcome }}
         if: always() && !cancelled()
+      - name: Upload the floor's admission roster
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: required-floor-disposition
+          path: required_floor_disposition.tsv
+          if-no-files-found: error
+          retention-days: 14
+        if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
+      - name: Upload the expected-red roster join
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: expected-red-roster-join
+          path: expected_red_roster_join.tsv
+          if-no-files-found: error
+          retention-days: 14
+        if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
+      - name: Upload the long-home storage agreement
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: long-home-storage-agreement
+          path: long_home_storage_agreement.tsv
+          if-no-files-found: error
+          retention-days: 14
+        if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
+      - name: Upload the floor's per-claim cost receipt
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: required-floor-claim-cost
+          path: required_floor_claim_cost.tsv
+          if-no-files-found: error
+          retention-days: 14
+        if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
+      - name: Upload the floor's cross-claim demand census
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: required-floor-cross-claim-demand
+          path: required_floor_cross_claim_demand.tsv
+          if-no-files-found: error
+          retention-days: 14
+        if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
     env:
       MALLOC_ARENA_MAX: "2"
       GUNBC_EXPECTED_RED_ROSTER_JOIN: expected_red_roster_join.tsv

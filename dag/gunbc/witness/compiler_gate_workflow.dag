@@ -119,6 +119,7 @@ import gunbc.witness_floor_workflow {
   required_floor_claim_cost_path,
   required_floor_cross_claim_demand_path,
   required_ci_measurement_bound_steps,
+  witness_floor_tsv_upload_bound_steps,
   required_ci_measurement_scripts_are_renderable,
   WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused
 }
@@ -603,7 +604,7 @@ fn compiler_gate_floor_bound_steps() -> List<CompilerGateBoundStep> {
       role: consumes_only(capabilities: [RustfmtCapability]),
       step_name: "Nominal witnesses (one prepared subject, one fold)",
     },
-  ], compiler_gate_floor_measurement_bound_steps()))
+  ], concat(compiler_gate_floor_measurement_bound_steps(), compiler_gate_floor_tsv_upload_bound_steps())))
 }
 
 // THE PRELUDE BOTH FLEET JOBS NEED, ONE LIST RATHER THAN TWO COPIES: the head checkout, isolated
@@ -701,6 +702,16 @@ fn compiler_gate_generated_bound_steps() -> List<CompilerGateBoundStep> {
 fn compiler_gate_floor_measurement_bound_steps() -> List<CompilerGateBoundStep> {
   list_map(
     xs: required_ci_measurement_bound_steps(),
+    f: fn(b) { CompilerGateBoundStep { step: b.step, role: b.role, step_name: b.step_name } },
+  )
+}
+
+// THE FLOOR'S TSV ARTIFACTS, RE-BOUND FROM THE SAME AUTHORITY AS THE RECEIPT. This job runs the
+// floor and sets the env var naming each TSV, so it owes the uploads too; without them
+// gunbc.floor_cost_distribution_instrument has no required_floor_claim_cost.tsv to read.
+fn compiler_gate_floor_tsv_upload_bound_steps() -> List<CompilerGateBoundStep> {
+  list_map(
+    xs: witness_floor_tsv_upload_bound_steps(),
     f: fn(b) { CompilerGateBoundStep { step: b.step, role: b.role, step_name: b.step_name } },
   )
 }
