@@ -47190,6 +47190,49 @@ mod stale4_probe {
                     .iter()
                     .map(|p| workspace_relative_repo_path(p))
                     .collect();
+            let pred = crate::v1_compiler_infer_method::bare_call_has_non_declaration_binding(
+                nm.to_string(),
+            );
+            let builtin =
+                crate::v1_compiler_infer_method::builtin_signature(nm.to_string()).is_some();
+            let declarers: Vec<String> = index
+                .source_files
+                .values()
+                .filter(|o| {
+                    o.content.lines().any(|l| {
+                        let l = l.trim_start();
+                        let l = l.strip_prefix("pub ").unwrap_or(l);
+                        [
+                            format!("fn {nm}("),
+                            format!("fn {nm}<"),
+                            format!("type {nm} "),
+                            format!("type {nm}\n"),
+                            format!("| {nm}"),
+                            format!("= {nm}"),
+                        ]
+                        .iter()
+                        .any(|p| {
+                            l.starts_with(p.as_str())
+                                || l == format!("type {nm}")
+                                || l.contains(&format!("| {nm} "))
+                                || l.ends_with(&format!("| {nm}"))
+                                || l.contains(&format!("= {nm} "))
+                                || l.ends_with(&format!("= {nm}"))
+                        })
+                    })
+                })
+                .map(|o| workspace_relative_repo_path(&o.path))
+                .collect();
+            for d in &declarers {
+                eprintln!(
+                    "[s5] {file} {nm} declarer={d} in_closure={}",
+                    closure.contains(d.as_str()) || d == &file
+                );
+            }
+            eprintln!(
+                "[s5] {file} {nm} pred={pred} builtin={builtin} declarers={}",
+                declarers.len()
+            );
             let mut visited = false;
             let r = visit_bare_reference_providers(
                 sf,
