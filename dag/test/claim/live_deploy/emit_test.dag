@@ -360,14 +360,16 @@ fn witness_sudoers_stage_visudo_check_text() -> String {
   shell_command_text_of_node(stmt: deploy_sudoers_elevated(command: [ci_runner_sudo_binary_path(b: SudoVisudo) as String, "-cf"], tail: []))
 }
 
-// THE TWO PROBE NEGATIVES THIS CLAIM CARRIED ARE DELETED, NOT RE-SPELLED. They banned
+// THE TWO PROBE NEGATIVES IN THE APPLY CLAIM ARE PERMANENTLY TRUE AND ARE NOT RE-SPELLED. They banned
 // `sudo -n /usr/sbin/visudo -V` and `sudo -n -l /usr/bin/tailscale` -- the bootstrap preflight's
 // probes. Under the quoting serializer neither spelling can occur, so both were permanently true and
 // carried nothing. Re-spelling them in the quoted form would be WRONG rather than merely redundant:
 // since #12168 those exact probes are emitted on purpose AFTER the drop-in lands
 // (gunbc.ci_deploy_sudoers deploy_sudoers_post_install_roster_probe_stmts). Their ORDER is the
-// safety fact, and test.claim.deploy_mutation_gate_witness owns it; what this claim keeps is that
-// no embedded preflight block exists, by its markers.
+// safety fact, and test.claim.deploy_mutation_gate_witness owns it. They stay in the apply claim for
+// now only because v2.workflow.floor_cost_debt_edit's removal walk does not yet recognise a NEGATED
+// conjunct (`&& !call(...)`) as a removal, so deleting them would re-judge this cost-debt claim as
+// new work. They go when that walk admits a negated conjunct.
 //
 // THE STAGED-FILE VALIDATION IS NOT RE-ASSERTED HERE. The apply script is built from
 // deploy_apply_preamble_steps, the same steps witness_retract_preamble_acknowledges_shared_sudoers_install
@@ -378,6 +380,8 @@ test fn witness_apply_emits_no_embedded_preflight_and_only_sudoers() -> Bool {
   let sh = witness_apply_script()
   !string_contains(s: sh, pattern: "deploy-access-bootstrap-preflight")
     && !string_contains(s: sh, pattern: "whoami")
+    && !string_contains(s: sh, pattern: "sudo -n -l /usr/bin/tailscale >/dev/null 2>&1")
+    && !string_contains(s: sh, pattern: "sudo -n /usr/sbin/visudo -V >/dev/null")
     && !string_contains(s: sh, pattern: "deploy-access-preflight: PASS")
     && string_contains(s: sh, pattern: "/etc/sudoers.d/gunbc-deploy")
     && !string_contains(s: sh, pattern: "gunbc-deploy-privileged")
