@@ -1,5 +1,6 @@
 module gunbc.spark.v41_group_a_launch
 
+import gunbc.spark.pair_serving_d0_door { StandingGrantRowNotOnMain }
 import std.types { String, Bool, Int, List, NonEmptyStr, Port, FilePath }
 import std.algebra { trim }
 import v2.std.optional { Present, Absent }
@@ -512,7 +513,8 @@ fn v41_group_a_launch_admission(
     group: FabricGroupA, purpose: v41_group_a_purpose, plan: v41_arm_plan(p: plan),
     authority: authority, successor: v41_successor(candidate: candidate),
     arm_causes: v41_runtime_key_causes(plan: plan, candidate: candidate),
-    held: held, occupancy: occupancy, incumbent: NoIncumbentDeclared)
+    held: held, occupancy: occupancy, incumbent: NoIncumbentDeclared,
+    grant_row: StandingGrantRowNotOnMain { cause: "V4.1 launches only under a D0 suspension for its candidate, never under the standing grant" })
 }
 
 // THE ADMISSION AGAINST THE LIVE AUTHORITY LOG, read-only, shared by the dry run and the wet entry.

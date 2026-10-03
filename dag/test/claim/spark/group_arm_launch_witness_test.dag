@@ -19,6 +19,7 @@ import gunbc.spark.group_arm_launch {
   group_arm_released_launch_causes,
 }
 import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, ReleasedToFleet }
+import gunbc.spark.pair_serving_d0_door { StandingGrantRowOnMain, StandingGrantRowNotOnMain }
 import gunbc.spark.glm53_arm_staircase {
   Glm53StaircaseStep, Glm53Fp8Step, Glm53Nvfp4Step, Fp8Seats8, Fp8Seats24, Nvfp4Seats8, Nvfp4Seats32,
   SupersedePreviousStep,
@@ -124,8 +125,15 @@ test fn w_the_glm_fp8_eight_seat_step_takes_the_one_path_and_admits_on_the_relea
             authority: Present { value: w_released(h: ck) },
             successor: group_arm_row_successor(inputs: i), arm_causes: [],
             held: fabric_group_hosts(g: FabricGroupA), occupancy: w_vacant_a(),
-            incumbent: NoIncumbentDeclared)
-          length(ls) == 4 && prof.max_num_seqs == 8 && prof.guaranteed_cold_seqs == 8
+            incumbent: NoIncumbentDeclared, grant_row: StandingGrantRowOnMain)
+          let off_main = group_arm_launch_admission(
+            group: FabricGroupA, purpose: i.purpose, plan: GroupArmLaunchPlanned { lines: ls, profile: prof, master_endpoint: "witness" as NonEmptyStr },
+            authority: Present { value: w_released(h: ck) },
+            successor: group_arm_row_successor(inputs: i), arm_causes: [],
+            held: fabric_group_hosts(g: FabricGroupA), occupancy: w_vacant_a(),
+            incumbent: NoIncumbentDeclared, grant_row: StandingGrantRowNotOnMain { cause: "witness: the row differs from origin/main's" })
+          w_refused_with(a: off_main, fragment: "the standing grant is not honored")
+            && length(ls) == 4 && prof.max_num_seqs == 8 && prof.guaranteed_cold_seqs == 8
             && (match a { GroupArmLaunchAdmitted => true  GroupArmLaunchAdmissionRefused { causes: _ } => false })
         }
       }
@@ -140,16 +148,16 @@ test fn w_the_glm_fp8_eight_seat_step_takes_the_one_path_and_admits_on_the_relea
 // grant cause (and by the host wall), never admits.
 test fn w_a_released_group_refuses_a_launch_the_grant_does_not_cover() -> Bool {
   let a_hosts = fabric_group_hosts(g: FabricGroupA)
-  length(group_arm_released_launch_causes(group: FabricGroupA, hosts: a_hosts)) == 0
-    && length(group_arm_released_launch_causes(group: FabricGroupA, hosts: concat(a_hosts, ["srv9" as HostIdentity]))) == 1
-    && length(group_arm_released_launch_causes(group: FabricGroupB, hosts: fabric_group_hosts(g: FabricGroupB))) == 1
-    && length(group_arm_released_launch_causes(group: FabricGroupA, hosts: [] as List<HostIdentity>)) == 1
+  length(group_arm_released_launch_causes(group: FabricGroupA, hosts: a_hosts, grant_row: StandingGrantRowOnMain)) == 0
+    && length(group_arm_released_launch_causes(group: FabricGroupA, hosts: concat(a_hosts, ["srv9" as HostIdentity]), grant_row: StandingGrantRowOnMain)) == 1
+    && length(group_arm_released_launch_causes(group: FabricGroupB, hosts: fabric_group_hosts(g: FabricGroupB), grant_row: StandingGrantRowOnMain)) == 1
+    && length(group_arm_released_launch_causes(group: FabricGroupA, hosts: [] as List<HostIdentity>, grant_row: StandingGrantRowOnMain)) == 1
     && with_w_plan(f: fn(p, rk, ck) {
       w_refused_with(a: group_arm_launch_admission(
           group: FabricGroupB, purpose: "witness" as NonEmptyStr, plan: v41_arm_plan(p: p),
           authority: Present { value: ReleasedToFleet { group: FabricGroupB, release_receipt: ck } },
           successor: ArmSuccessorKeyed { key: ck }, arm_causes: [],
-          held: fabric_group_hosts(g: FabricGroupB), occupancy: w_vacant_a(), incumbent: NoIncumbentDeclared),
+          held: fabric_group_hosts(g: FabricGroupB), occupancy: w_vacant_a(), incumbent: NoIncumbentDeclared, grant_row: StandingGrantRowOnMain),
         fragment: "no standing grant covers an arm launch")
     })
 }
@@ -182,7 +190,7 @@ fn w_admit(p: GroupArmLaunchPlan, ck: ContentHash, occupancy: List<GroupArmHostO
     group: FabricGroupA, purpose: "the witness launch" as NonEmptyStr, plan: p,
     authority: Present { value: w_suspended_for(successor: ck, stale: false) },
     successor: ArmSuccessorKeyed { key: ck }, arm_causes: [],
-    held: fabric_group_hosts(g: FabricGroupA), occupancy: occupancy, incumbent: incumbent)
+    held: fabric_group_hosts(g: FabricGroupA), occupancy: occupancy, incumbent: incumbent, grant_row: StandingGrantRowNotOnMain { cause: "witness: a suspension, so the grant is not read" })
 }
 
 data w_old_unit: NonEmptyStr = "gunbc-spark-pair-head.service" as NonEmptyStr

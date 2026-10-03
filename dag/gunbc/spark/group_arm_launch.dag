@@ -2,6 +2,7 @@ module gunbc.spark.group_arm_launch
 
 import gunbc.auth.standing_operator_grant { standing_grant_covers, StandingArmLaunch }
 import gunbc.spark.pair_serving_d0 { d0_standing_grants }
+import gunbc.spark.pair_serving_d0_door { StandingGrantRowStanding, StandingGrantRowOnMain, StandingGrantRowNotOnMain, standing_grant_row_standing }
 import std.types { String, Bool, List, NonEmptyStr }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { zip_map }
@@ -276,7 +277,17 @@ fn content_hash_text(h: ContentHash) -> String {
 // (gunbc.spark.pair_serving_d0 d0_standing_grants). It covers the launch only when a grant names
 // this group, the ArmLaunch effect and EVERY planned host; anything less refuses. The successor must
 // still be keyed, and every other wall (arm, hosts, incumbent, occupancy, memory) still applies.
-fn group_arm_released_launch_causes(group: FabricGroup, hosts: List<HostIdentity>) -> List<String> {
+// THE GRANT COUNTS ONLY AS THE OPERATOR MERGED IT, exactly as D0's door honors it (gunbc.spark.
+// pair_serving_d0_door standing_grant_row_standing, review 74677): a grant row that is not byte-identical to
+// origin/main's covers nothing, and the launch refuses with the read's cause.
+fn group_arm_released_launch_causes(group: FabricGroup, hosts: List<HostIdentity>, grant_row: StandingGrantRowStanding) -> List<String> {
+  match grant_row {
+    StandingGrantRowNotOnMain { cause: c } => [join([group_label(g: group), " has been released to the fleet, and the standing grant is not honored: ", c], "")]
+    StandingGrantRowOnMain => group_arm_released_launch_coverage_causes(group: group, hosts: hosts)
+  }
+}
+
+fn group_arm_released_launch_coverage_causes(group: FabricGroup, hosts: List<HostIdentity>) -> List<String> {
   if any(d0_standing_grants, g => standing_grant_covers(g: g, group: group, effect: StandingArmLaunch, hosts: hosts)) {
     [] as List<String>
   } else {
@@ -284,7 +295,7 @@ fn group_arm_released_launch_causes(group: FabricGroup, hosts: List<HostIdentity
   }
 }
 
-fn group_arm_authority_causes(group: FabricGroup, hosts: List<HostIdentity>, authority: PairServingGroupAuthority?, successor: ArmSuccessorStanding) -> List<String> {
+fn group_arm_authority_causes(group: FabricGroup, hosts: List<HostIdentity>, authority: PairServingGroupAuthority?, successor: ArmSuccessorStanding, grant_row: StandingGrantRowStanding) -> List<String> {
   let label = group_label(g: group)
   match successor {
     ArmSuccessorUnkeyed { causes: c } => map(c, x => join(["the launching arm has no keyed successor realization: ", x], ""))
@@ -299,7 +310,7 @@ fn group_arm_authority_causes(group: FabricGroup, hosts: List<HostIdentity>, aut
               [join([label, "'s suspension is still pending reconciliation; D0 has not settled it to an authorized successor"], "")]
             FencedRefusal { group: _, hosts: _, cause: c, disposition_authority: _ } =>
               [join([label, " is fenced (", c as String, "); only cleanup may proceed"], "")]
-            ReleasedToFleet { group: _, release_receipt: _ } => group_arm_released_launch_causes(group: group, hosts: hosts)
+            ReleasedToFleet { group: _, release_receipt: _ } => group_arm_released_launch_causes(group: group, hosts: hosts, grant_row: grant_row)
             SuspendedForAuthorizedSuccessor { group: _, hosts: _, authorization: _, exact_candidate_realization: r, lease: _, cleanup: _ } =>
               concat(
                 if pair_serving_successor_may_launch(a: a) { [] as List<String> } else { ["the successor authorization's lease is not running as expected, so it may not START a launch (cleanup still may)"] },
@@ -389,13 +400,14 @@ fn group_arm_launch_admission(
   held: List<HostIdentity>,
   occupancy: List<GroupArmHostOccupancy>,
   incumbent: ArmDeclaredIncumbent,
+  grant_row: StandingGrantRowStanding,
 ) -> GroupArmLaunchAdmission {
   match plan {
     GroupArmLaunchRefused { causes: c } => GroupArmLaunchAdmissionRefused { causes: map(c, x => join(["the plan refused: ", x], "")) }
     GroupArmLaunchPlanned { lines: ls, profile: _, master_endpoint: _ } => {
       let hosts = map(ls, l => l.node.host)
       let causes = concat(concat(concat(concat(
-        group_arm_authority_causes(group: group, hosts: hosts, authority: authority, successor: successor),
+        group_arm_authority_causes(group: group, hosts: hosts, authority: authority, successor: successor, grant_row: grant_row),
         arm_causes),
         group_arm_host_causes(group: group, hosts: hosts, held: held)),
         group_arm_incumbent_roster_causes(hosts: hosts, incumbent: incumbent)),
@@ -421,6 +433,7 @@ fn group_arm_launch_admission_live(
   incumbent: ArmDeclaredIncumbent,
 ) -> GroupArmLaunchAdmission {
   let held = spark_serving_admissible_hosts(subject: PairServingUnitOn { group: group })
+  let grant_row = standing_grant_row_standing()
   match observe_executor_reach() {
     ExecutorReachUnknown { cause: c } => GroupArmLaunchAdmissionRefused { causes: [join(["the executor could not be identified, so the group's authority log could not be read: ", c], "")] }
     ExecutorReachKnown { short_hostname: executor, path: _ } =>
@@ -428,13 +441,13 @@ fn group_arm_launch_admission_live(
         Absent => GroupArmLaunchAdmissionRefused { causes: ["the clock could not be read, so the authority's lease standing cannot be derived"] }
         Present { value: at } =>
           match current_authority_for(current: current_pair_serving_authorities(short_hostname: executor, at: at), group: group) {
-            Absent => group_arm_launch_admission(group: group, purpose: purpose, plan: plan, authority: none, successor: successor, arm_causes: arm_causes, held: held, occupancy: occupancy, incumbent: incumbent)
+            Absent => group_arm_launch_admission(group: group, purpose: purpose, plan: plan, authority: none, successor: successor, arm_causes: arm_causes, held: held, occupancy: occupancy, incumbent: incumbent, grant_row: grant_row)
             Present { value: c } =>
               match c {
                 CurrentAuthorityUnread { group: _, step: _, reason: _ } =>
                   GroupArmLaunchAdmissionRefused { causes: [join(["the group's serving authority could not be read: ", current_authority_wire(c: c)], "")] }
                 CurrentAuthorityRead { authority: a, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } =>
-                  group_arm_launch_admission(group: group, purpose: purpose, plan: plan, authority: Present { value: a }, successor: successor, arm_causes: arm_causes, held: held, occupancy: occupancy, incumbent: incumbent)
+                  group_arm_launch_admission(group: group, purpose: purpose, plan: plan, authority: Present { value: a }, successor: successor, arm_causes: arm_causes, held: held, occupancy: occupancy, incumbent: incumbent, grant_row: grant_row)
               }
           }
       }
