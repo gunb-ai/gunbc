@@ -1,5 +1,6 @@
 module v2.compiler.fold_lowering
 
+import std.types { List }
 import v2.extdeps.languages.dag {
   dag_call_named_arg_value_optional,
   dag_call_positional_arg_value_optional,
@@ -40,7 +41,7 @@ import std.algebra {
 import v2.std.compilers.body_lowering { lower_bind }
 import v2.std.grammar { node_atom_identity_optional }
 import std.algebra { Cons, Empty }
-import v2.std.collection { List, list_at_optional }
+import v2.std.collection { list_at_optional }
 import v2.std.node {
   Atom,
   Bind,

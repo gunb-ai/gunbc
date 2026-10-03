@@ -82,13 +82,12 @@ import v2.std.anonymous_binder { DeclaredParameterList, anonymous_binder_mint_pa
 import v2.std.node { content_hash }
 import v2.std.algebra { fold_list, list_map, length, zip_eq }
 import v2.std.collection {
-  List,
   empty_map,
   list_at_optional,
   map_insert,
   map_lookup
 }
-import std.types { Map }
+import std.types { Map, List }
 import std.resource_contract { ResourceKind, ResourceMode }
 import v2.std.resource_declaration { resource_kind_of_label, resource_mode_of_label }
 import v2.std.optional {

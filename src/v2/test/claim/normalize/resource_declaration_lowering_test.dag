@@ -15,7 +15,7 @@ import v2.std.integer { Int }
 import v2.std.node { Node, Symbol, node_subtree_nodes, symbol_intern_lexeme }
 import v2.std.text { String }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
-import v2.std.collection { List }
+import std.types { List }
 
 // DECLARATION-GRADE RESOURCE LOWERING (v2.compiler.body_lowering_fold body_lower_resource_decl). A
 // resource lowers to a service's shape -- its capabilities are operation Arrows of its payload -- and
