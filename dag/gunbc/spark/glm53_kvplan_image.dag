@@ -10,7 +10,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { argv_words }
 import extdeps.vllm.source_build { VllmContainerBuildRecipe, vllm_8d09804_sm121_recipe }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
-import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, spark_remote_run, RemoteRan, RemoteUnreachable, SnapshotAcquisitionExecutor }
+import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, spark_remote_run, RemoteRan, RemoteUnreachable }
 import gunbc.spark.vllm_runtime_image_build { VllmImageBuilt, VllmImageBuildRefused, converge_vllm_image_for_recipe, vllm_image_receipt_line, SparkBuildHostWork, converge_glm53_kvplan_image, glm53_kvplan_patch_path, glm53_kvplan_package_dir }
 import gunbc.spark.group_image_produce { GroupImageProduction, ProducedImageHeld }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
@@ -147,8 +147,3 @@ fn glm53_kvplan_produced_image_held() -> ProducedImageHeld? {
   none
 }
 
-// THE HUB CLI EXECUTOR THE CHECKPOINT MATERIALIZE RUNS INSIDE: the produced image (by configuration
-// digest) and the CLI path its probe read. Absent until the production receipt is recorded above.
-fn glm53_kvplan_hub_cli_executor() -> SnapshotAcquisitionExecutor? {
-  none
-}

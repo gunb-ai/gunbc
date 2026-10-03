@@ -1215,9 +1215,26 @@ data fleet_converge_spark_native_serving_apply_step_if: String = fleet_converge_
 // happened to name -- two dispatches for two Group A hosts must queue behind each other, and behind
 // D0 and the pair apply. `spark_runtime_image_probe` stays in the executor's domain because it is a
 // read: it pulls a pinned image and reports what is inside it, changing nothing on the host.
+//
+// THE GENERIC GROUP A PRODUCE AND MATERIALIZE MODES ARE KEYED BY THEIR TARGET, NOT THE ARM (operator
+// ruling relayed by valiant-crab-775, 2026-10-03). `spark_runtime_image_produce` and
+// `spark_arm_checkpoint_materialize` each occupy ONE named Spark for hours and change nothing on any
+// other, so a download on srv5 may run while srv7 builds. What fences them is not this group: it is
+// the per-host claim inside each mode (gunbc.spark.host_commitment `admit_host_held_by_subject` and
+// the placement fences it reads), which refuses a host another effect holds whatever queue the
+// dispatch sat in. Two dispatches for the SAME target still share a key and queue. The launch, the
+// load, D0, the pair apply and the distribution stay on the shared Group A key.
+//
+// A READ-ONLY OBSERVE SITS IN NO QUEUE AT ALL. GitHub keeps one pending run per group and a newer
+// pending CANCELS the older, so an observe that shared the srv1 key was cancelled by an unrelated
+// dispatch queueing behind it -- which lost the readback of Group A's release (run 37100651736):
+// the absorbing kind of loss, a reading that silently never happens. It mutates nothing, so it takes
+// a group keyed by its own run and is never serialized or superseded.
 type FleetMutationDomain
   = ArmDomain { group: String }
   | ExecutorDomain
+  | TargetHostDomain
+  | ReadOnlyOwnRun
 
 fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> FleetMutationDomain {
   match mode {
@@ -1244,10 +1261,10 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     SparkV41RowStoreEncode => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
     SparkV41RowStoreReadback => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
     SparkV41EngramDifferential => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
-    SparkRuntimeImageProduce => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
+    SparkRuntimeImageProduce => TargetHostDomain
     SparkRuntimeImageDistribute => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
-    SparkArmCheckpointMaterialize => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
-    SparkArmGroupObserve => ExecutorDomain
+    SparkArmCheckpointMaterialize => TargetHostDomain
+    SparkArmGroupObserve => ReadOnlyOwnRun
     SparkArmGroupLaunchPlan => ExecutorDomain
     SparkArmGroupLoad => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
     SparkArmGroupLaunch => ArmDomain { group: fleet_arm_mutation_group_deepseek_group_a }
@@ -1289,18 +1306,25 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
   }
 }
 
-// The group a dispatch lands in, for a mode and the executor it named.
-fn fleet_converge_mutation_group_for(mode: FleetConvergeWorkflowMode, host: String) -> String {
+data fleet_read_only_group_prefix: String = "gunbc-read-only-"
+
+// The group a dispatch lands in, for a mode, the executor it named, the target it named and its run.
+fn fleet_converge_mutation_group_for(mode: FleetConvergeWorkflowMode, host: String, target: String, run_id: String) -> String {
   match fleet_converge_mode_mutation_domain(mode: mode) {
     ArmDomain { group: g } => g
     ExecutorDomain => join([fleet_host_mutation_group_prefix, host], "")
+    TargetHostDomain => join([fleet_host_mutation_group_prefix, target], "")
+    ReadOnlyOwnRun => join([fleet_read_only_group_prefix, run_id], "")
   }
 }
 
 fn fleet_converge_arm_domain_clause(mode: FleetConvergeWorkflowMode) -> String {
+  let when = join(["github.event.inputs.mode == '", fleet_converge_workflow_mode_wire(mode: mode), "' && "], "")
   match fleet_converge_mode_mutation_domain(mode: mode) {
-    ArmDomain { group: g } => join(["github.event.inputs.mode == '", fleet_converge_workflow_mode_wire(mode: mode), "' && '", g, "' || "], "")
+    ArmDomain { group: g } => join([when, "'", g, "' || "], "")
     ExecutorDomain => ""
+    TargetHostDomain => join([when, "format('", fleet_host_mutation_group_prefix, "{0}', github.event.inputs.target) || "], "")
+    ReadOnlyOwnRun => join([when, "format('", fleet_read_only_group_prefix, "{0}', github.run_id) || "], "")
   }
 }
 
@@ -3382,14 +3406,15 @@ fn fleet_converge_arm_group_launch_env() -> List<YamlKeyValue> {
 // incumbent is recorded when nobody can hand it over.
 // THE ARM'S CHECKPOINT ON THE TARGET SPARK (gunbc.spark.group_checkpoint_materialize): the snapshot the
 // checkpoint's row names, adopted if it verifies in the host's Hub cache, else fetched by the Hub CLI
-// inside the produced runtime image and verified. The checkpoint is a closed dispatch input.
+// inside a recorded runtime image the host holds (the closed runtime_image input; never pulled) and
+// verified. The checkpoint is a closed dispatch input.
 fn fleet_converge_spark_arm_checkpoint_materialize_step() -> Step {
   RunStep {
     name: Present { value: "Spark arm checkpoint materialize (the checkpoint named by the closed checkpoint input, adopted or fetched into the target Spark's Hub cache and verified)" },
     id: Present { value: "spark_arm_checkpoint_materialize" },
     run: gunbc_ci_spark_arm_checkpoint_materialize_invoke(),
     shell: none,
-    env: Present { value: concat(fleet_converge_arm_group_launch_env(), [kv(key: arm_checkpoint_env as String, value: yaml_string(s: "${{ github.event.inputs.checkpoint }}"))]) },
+    env: Present { value: concat(fleet_converge_arm_group_launch_env(), [kv(key: arm_checkpoint_env as String, value: yaml_string(s: "${{ github.event.inputs.checkpoint }}")), kv(key: runtime_image_env as String, value: yaml_string(s: "${{ github.event.inputs.runtime_image }}"))]) },
     working_directory: none,
     if_condition: Present { value: fleet_converge_spark_arm_checkpoint_materialize_step_if },
     continue_on_error: none,

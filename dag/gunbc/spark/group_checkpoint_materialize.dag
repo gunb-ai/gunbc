@@ -11,9 +11,11 @@ import gunbc.spark.fabric_switch_observed { FabricGroup }
 import gunbc.spark.serving_subject { PairServingUnitOn }
 import gunbc.spark.host_commitment { admit_host_held_by_subject }
 import gunbc.spark.serving_arm { ServingCheckpoint, serving_checkpoint_row, serving_checkpoint_wire }
-import gunbc.spark.model_snapshot_acquisition { ModelSnapshotDesired, ModelSnapshotPinned, SnapshotSeed }
-import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, SnapshotAcquisitionExecutor, spark_materialize_member, SparkMaterialized, SparkMaterializeUnpinned, SparkMaterializeRefused }
-import gunbc.spark.vllm_runtime_image_build { SparkBuildHostWork, with_spark_build_host, SparkBuildHostRefused, SparkBuildHostRan }
+import gunbc.spark.model_snapshot_acquisition { ModelSnapshotDesired, ModelSnapshotPinned, SnapshotSeed, LocalDirectoryPlacement, HubCachePlacement }
+import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, SnapshotAcquisitionExecutor, ContainerizedCli, spark_materialize_member, SparkMaterialized, SparkMaterializeUnpinned, SparkMaterializeRefused, spark_remote_run, RemoteRan, RemoteUnreachable }
+import gunbc.spark.vllm_runtime_image_build { SparkBuildHostWork, with_spark_build_host, SparkBuildHostRefused, SparkBuildHostRan, VllmImageDistributionSubject }
+import extdeps.container.oci.digest { render_oci_content_digest_wire }
+import extdeps.docker.cli { docker_image_inspect_id_from_stdout, DockerImageInspectId, DockerImageInspectIdUnreadable }
 
 // ── ONE ENTRY FOR MATERIALIZING A SERVING CHECKPOINT ON A HOST OF ITS GROUP (deforking cut 8c) ──────
 //
@@ -31,13 +33,67 @@ import gunbc.spark.vllm_runtime_image_build { SparkBuildHostWork, with_spark_bui
 // cache -- a host that still holds the FP8 snapshot from Group A's old serve verifies it and moves nothing.
 //
 // THE HUB CLI RUNS INSIDE A RUNTIME IMAGE, because no Spark has it on the host (the executor's own
-// record). The image and the CLI's path inside it are the caller's: they are the produced GLM image's,
-// read by its probe, so the materialize cannot start before that image is held on the host.
+// record). WHICH image is the caller's: any produced image whose receipt is recorded (its tag and its
+// configuration digest), because downloading a checkpoint needs only the CLI, not the serving runtime the
+// checkpoint will later run under. So the FP8 download may run inside the V4.1 image Group A already holds
+// while the GLM image is still being built.
+//
+// THE IMAGE IS NEVER PULLED AND ITS CLI PATH IS NEVER SPELLED. Before any acquisition the host is asked
+// for the image under the recorded tag and its Id must be the recorded configuration digest -- an absent
+// or different image refuses, so `docker run` never reaches a registry; then the image itself is asked
+// where its Hub CLI is (`command -v hf` inside it), and only an absolute path it answers is used.
 type CheckpointMaterialization {
   title: NonEmptyStr
   group: FabricGroup
   checkpoint: ServingCheckpoint
-  executor: SnapshotAcquisitionExecutor
+  image: VllmImageDistributionSubject
+}
+
+type HeldImageExecutor
+  = HeldImageExecutorRead { executor: SnapshotAcquisitionExecutor, receipt: String }
+  | HeldImageExecutorRefused { cause: String }
+
+fn checkpoint_host_path(c: ServingCheckpoint) -> NonEmptyStr? {
+  match serving_checkpoint_row(c: c) {
+    Absent => none
+    Present { value: row } =>
+      match row.placement {
+        LocalDirectoryPlacement { host_path: p } => Present { value: p }
+        HubCachePlacement { cache_root: root } => Present { value: root }
+      }
+  }
+}
+
+fn held_image_hub_cli_executor(ctx: SparkMaterializeContext, image: VllmImageDistributionSubject, host_path: NonEmptyStr) -> HeldImageExecutor {
+  let want = render_oci_content_digest_wire(d: image.config)
+  match spark_remote_run(ctx: ctx, argv: ["docker", "image", "inspect", image.tag as String]) {
+    RemoteUnreachable { cause: c } => HeldImageExecutorRefused { cause: join(["the image inspect leg did not run: ", c], "") }
+    RemoteRan { exit_code: code, stdout: out, stderr: err } =>
+      if code != 0 {
+        HeldImageExecutorRefused { cause: join(["the executor image ", image.tag as String, " is not held on ", ctx.host as String, " (docker image inspect exited ", to_string(code), ": ", err, "); it is never pulled"], "") }
+      } else {
+        match docker_image_inspect_id_from_stdout(stdout: out) {
+          DockerImageInspectIdUnreadable { cause: c } => HeldImageExecutorRefused { cause: join(["the executor image's Id is unreadable: ", c], "") }
+          DockerImageInspectId { id: id } =>
+            if (id as String) != want {
+              HeldImageExecutorRefused { cause: join(["the image under ", image.tag as String, " on ", ctx.host as String, " is ", id as String, ", not the recorded ", want], "") }
+            } else {
+              match spark_remote_run(ctx: ctx, argv: ["docker", "run", "--rm", "--pull", "never", "--entrypoint", "sh", image.tag as String, "-c", "command -v hf"]) {
+                RemoteUnreachable { cause: c } => HeldImageExecutorRefused { cause: join(["the CLI read leg did not run: ", c], "") }
+                RemoteRan { exit_code: c2, stdout: path, stderr: e2 } =>
+                  if c2 != 0 || !starts_with(s: path, prefix: "/") || string_contains(s: path, pattern: "\n") {
+                    HeldImageExecutorRefused { cause: join(["the image ", want, " answered no Hub CLI path (exit ", to_string(c2), ", stdout `", path, "`, stderr `", e2, "`)"], "") }
+                  } else {
+                    HeldImageExecutorRead {
+                      executor: ContainerizedCli { image: image.tag, cli_path: path as NonEmptyStr, host_path: host_path, container_path: "/out" as NonEmptyStr },
+                      receipt: join(["executor image ", image.tag as String, " held as ", want, "; its Hub CLI read inside it at ", path, "\n"], ""),
+                    }
+                  }
+              }
+            }
+        }
+      }
+  }
 }
 
 fn checkpoint_snapshot(c: ServingCheckpoint) -> ModelSnapshotDesired? {
@@ -53,7 +109,7 @@ fn checkpoint_snapshot(c: ServingCheckpoint) -> ModelSnapshotDesired? {
   }
 }
 
-fn with_executor(ctx: SparkMaterializeContext, executor: SnapshotAcquisitionExecutor) -> SparkMaterializeContext {
+fn with_executor_ctx(ctx: SparkMaterializeContext, executor: SnapshotAcquisitionExecutor) -> SparkMaterializeContext {
   SparkMaterializeContext {
     host: ctx.host,
     trust: ctx.trust,
@@ -84,10 +140,18 @@ fn checkpoint_materialize_work(m: CheckpointMaterialization, ctx: SparkMateriali
   match checkpoint_snapshot(c: m.checkpoint) {
     Absent => SparkBuildHostWork { receipt: "REFUSED: the checkpoint has no row, so no snapshot subject exists to acquire\n", converged: false }
     Present { value: snapshot } =>
-      match spark_materialize_member(ctx: with_executor(ctx: ctx, executor: m.executor), role: SnapshotSeed, snapshot: snapshot) {
-        SparkMaterializeRefused { host: _, cause: c } => SparkBuildHostWork { receipt: join(["REFUSED: ", c as String, "\n"], ""), converged: false }
-        SparkMaterializeUnpinned { host: _ } => SparkBuildHostWork { receipt: "REFUSED: the snapshot carries no pinned revision\n", converged: false }
-        SparkMaterialized { host: _, outcome: o } => SparkBuildHostWork { receipt: acquisition_outcome_line(o: o), converged: acquisition_converged(o: o) }
+      match checkpoint_host_path(c: m.checkpoint) {
+        Absent => SparkBuildHostWork { receipt: "REFUSED: the checkpoint has no row, so no host path exists to mount\n", converged: false }
+        Present { value: host_path } =>
+          match held_image_hub_cli_executor(ctx: ctx, image: m.image, host_path: host_path) {
+            HeldImageExecutorRefused { cause: c } => SparkBuildHostWork { receipt: join(["REFUSED: ", c, "\n"], ""), converged: false }
+            HeldImageExecutorRead { executor: executor, receipt: r } =>
+              match spark_materialize_member(ctx: with_executor_ctx(ctx: ctx, executor: executor), role: SnapshotSeed, snapshot: snapshot) {
+                SparkMaterializeRefused { host: _, cause: c } => SparkBuildHostWork { receipt: join([r, "REFUSED: ", c as String, "\n"], ""), converged: false }
+                SparkMaterializeUnpinned { host: _ } => SparkBuildHostWork { receipt: join([r, "REFUSED: the snapshot carries no pinned revision\n"], ""), converged: false }
+                SparkMaterialized { host: _, outcome: o } => SparkBuildHostWork { receipt: join([r, acquisition_outcome_line(o: o)], ""), converged: acquisition_converged(o: o) }
+              }
+          }
       }
   }
 }

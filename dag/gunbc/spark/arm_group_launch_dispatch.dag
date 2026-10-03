@@ -8,7 +8,7 @@ import gunbc.spark.group_arm_launch { ArmDryPlan, ArmWetSession, group_arm_dry_p
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA }
 import gunbc.spark.serving_arm { Glm53NativeFp8, Glm53FlashNvidiaNvfp4 }
 import gunbc.spark.group_checkpoint_materialize { CheckpointMaterialization, checkpoint_materialize_wet }
-import gunbc.spark.glm53_kvplan_image { glm53_kvplan_hub_cli_executor }
+import gunbc.spark.runtime_image_produce_dispatch { runtime_image_env, runtime_image_options, runtime_image_choice_of_wire, runtime_image_held_of }
 import gunbc.spark.glm53_staircase_load { glm53_step_load, Glm53StepLoadReady, Glm53StepLoadRefused, glm53_step_load_session }
 import gunbc.spark.vllm_runtime_image_build { with_spark_build_host, SparkBuildHostRefused, SparkBuildHostRan }
 import gunbc.fleet_multi_principal_probe { spark_converge_target_selection, SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused }
@@ -171,15 +171,19 @@ fn arm_checkpoint_materialize_ci() -> ProcessExit {
   if arm != arm_group_launch_arm_glm53 {
     exit_failure(reason: join([arm_group_launch_arm_env as String, "=`", arm, "`: only the ", arm_group_launch_arm_glm53, " arm materializes through this mode; V4.1 has its own (spark_v41_checkpoint_materialize)"], ""))
   } else {
-    match glm53_kvplan_hub_cli_executor() {
-      Absent => exit_failure(reason: "the GLM checkpoints are acquired by the Hub CLI inside the produced GLM image, and no production of that image is recorded yet (mode spark_runtime_image_produce, runtime_image glm53-kvplan-v2-gb10)")
-      Present { value: executor } =>
-        if word == arm_checkpoint_glm53_fp8 {
-          checkpoint_materialize_wet(m: CheckpointMaterialization { title: "glm53 checkpoint materialize" as NonEmptyStr, group: FabricGroupA, checkpoint: Glm53NativeFp8, executor: executor }, receipt_path: arm_checkpoint_receipt_path)
-        } else if word == arm_checkpoint_glm53_nvfp4 {
-          checkpoint_materialize_wet(m: CheckpointMaterialization { title: "glm53 checkpoint materialize" as NonEmptyStr, group: FabricGroupA, checkpoint: Glm53FlashNvidiaNvfp4, executor: executor }, receipt_path: arm_checkpoint_receipt_path)
-        } else {
-          exit_failure(reason: join([arm_checkpoint_env as String, "=`", word, "` is not a checkpoint of this arm; the checkpoints are ", join(arm_checkpoint_options(), ", ")], ""))
+    match runtime_image_choice_of_wire(word: env_word(name: runtime_image_env)) {
+      Absent => exit_failure(reason: join([runtime_image_env as String, " names the image the Hub CLI runs in, and must be one of ", join(runtime_image_options(), ", ")], ""))
+      Present { value: choice } =>
+        match runtime_image_held_of(c: choice) {
+          Absent => exit_failure(reason: "that image has no recorded production, so no tag and configuration digest exist to run the Hub CLI in; produce it first (mode spark_runtime_image_produce) or name a recorded one")
+          Present { value: held } =>
+            if word == arm_checkpoint_glm53_fp8 {
+              checkpoint_materialize_wet(m: CheckpointMaterialization { title: "glm53 checkpoint materialize" as NonEmptyStr, group: FabricGroupA, checkpoint: Glm53NativeFp8, image: held.subject }, receipt_path: arm_checkpoint_receipt_path)
+            } else if word == arm_checkpoint_glm53_nvfp4 {
+              checkpoint_materialize_wet(m: CheckpointMaterialization { title: "glm53 checkpoint materialize" as NonEmptyStr, group: FabricGroupA, checkpoint: Glm53FlashNvidiaNvfp4, image: held.subject }, receipt_path: arm_checkpoint_receipt_path)
+            } else {
+              exit_failure(reason: join([arm_checkpoint_env as String, "=`", word, "` is not a checkpoint of this arm; the checkpoints are ", join(arm_checkpoint_options(), ", ")], ""))
+            }
         }
     }
   }
