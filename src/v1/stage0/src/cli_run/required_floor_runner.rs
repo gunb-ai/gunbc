@@ -464,7 +464,7 @@ pub fn run_claim_measured(
     function: &str,
 ) -> (ClaimOutcome, v1_interpreter::PerformanceReceipt) {
     let subject_key =
-        crate::resolved_graph_cache::witness_work_subject_key(closure_subject_digest, function);
+        crate::closure_identity::witness_work_subject_key(closure_subject_digest, function);
     v1_interpreter::eval_profile_reset();
     v1_interpreter::eval_subject_set(subject_key.clone());
     // PER-CLAIM, NOT PER-RUN: reach is a fact about THIS claim's evaluation, so it is cleared

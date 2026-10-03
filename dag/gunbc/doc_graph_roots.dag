@@ -412,7 +412,6 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
     slug: "cli-run-reconcile-defork",
     primary_work: DeclarationRef { module_path: "v2.lens.module_graph", decl_name: "import_closure_live", field: WholeDeclaration },
     additional_works: [
-      DeclarationRef { module_path: "extdeps.cache", decl_name: "resolved_graph_cache", field: WholeDeclaration },
       DeclarationRef { module_path: "extdeps.cache.types", decl_name: "CacheInterfaceCatalogFacts", field: WholeDeclaration },
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject import_closure_live describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
@@ -471,7 +470,6 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
     slug: "cross-worker-typecheck-share-design",
     primary_work: DeclarationRef { module_path: "v2.workflow.module_resolution_plan", decl_name: "module_resolution_store_value_note", field: WholeDeclaration },
     additional_works: [
-      DeclarationRef { module_path: "extdeps.cache", decl_name: "resolved_graph_cache", field: WholeDeclaration },
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject module_resolution_store_value_note describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
@@ -691,7 +689,6 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
     slug: "func-env-sigs-single-authority",
     primary_work: DeclarationRef { module_path: "v2.compiler.resolve", decl_name: "ResolvedTree", field: WholeDeclaration },
     additional_works: [
-      DeclarationRef { module_path: "extdeps.cache", decl_name: "resolved_graph_cache", field: WholeDeclaration },
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject ResolvedTree describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
@@ -1036,7 +1033,6 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
     slug: "seed-shrink-census",
     primary_work: DeclarationRef { module_path: "v2.std.node", decl_name: "content_hash", field: WholeDeclaration },
     additional_works: [
-      DeclarationRef { module_path: "extdeps.cache", decl_name: "resolved_graph_cache", field: WholeDeclaration },
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject content_hash describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
