@@ -1292,7 +1292,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/frontier_ingestion_probe.dag::take_census_over" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/frontier_ingestion_probe.dag::verify_roster" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/json_parse_ladder.dag::weight_map_members" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/merge_admission_walk.dag::merge_target_refresh" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/native_app_attest.dag::chain_untrusted" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/native_app_attest.dag::counter_refusal_is" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/instruments/publication_publisher.dag::newly_public_subject_receipt_refusal" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },

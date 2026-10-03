@@ -1198,7 +1198,7 @@ fn body_lower_type_variant_children_with_where(
 // record (BodyLowerTypedParam): the binder atom keeps its token's occurrence, and the field Edge is the
 // record's projection.
 fn body_lower_field_decl_optional(item: Node) -> Optional<BodyLowerTypedParam> {
-  body_lower_typed_param_optional(param_capture: body_lower_deep_unwrap_optional(node: item))
+  body_lower_field_decl_head_optional(capture: body_lower_deep_unwrap_optional(node: item))
 }
 
 // Every field item of a list, each read as its field and its `[from "key"] [= default]` tail, or
@@ -2514,8 +2514,16 @@ fn body_lower_binder_name_behind_shell_optional(node: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_typed_param_optional(param_capture: Node) -> Optional<BodyLowerTypedParam> {
-  match sugar_sequence_pair_optional(node: param_capture) {
+// `name: <after colon>`, the head a typed parameter and a field declaration share: the binder atom,
+// its name, and what follows the colon, which each reader below reads by its own grammar.
+type BodyLowerTypedHead {
+  binder: Node,
+  name: Symbol,
+  after_colon: Node,
+}
+
+fn body_lower_typed_head_optional(capture: Node) -> Optional<BodyLowerTypedHead> {
+  match sugar_sequence_pair_optional(node: capture) {
     Absent => Absent
     Present { value: pair } =>
       match body_lower_param_binding_atom_optional(node: pair.left) {
@@ -2527,35 +2535,54 @@ fn body_lower_typed_param_optional(param_capture: Node) -> Optional<BodyLowerTyp
               match sugar_sequence_pair_optional(node: pair.right) {
                 Absent => Absent
                 Present { value: after_colon } =>
-                  body_lower_typed_param_after_colon_optional(binder: binder, binding: binding, after_colon: after_colon.right)
+                  Present { value: BodyLowerTypedHead { binder: binder, name: binding, after_colon: after_colon.right } }
               }
           }
       }
   }
 }
 
-// WHAT FOLLOWS A PARAMETER'S COLON: its type, or -- for `name: T = v` -- the sequence of its type and a
-// tail holding the default production (v2.extdeps.languages.dag dag_grammar_typed_param_expr). The default
-// is kept RAW here and lowered by body_lower_binder_edge_read, so it reaches the binder (XL-2 PR2c-ii)
-// rather than being refused or dropped. A where-clause refinement is refused before this reader runs
-// (body_lower_param_refinement_refusal_optional), so a tail here carries only a default.
-fn body_lower_typed_param_after_colon_optional(binder: Node, binding: Symbol, after_colon: Node) -> Optional<BodyLowerTypedParam> {
-  match body_lower_find_production_shell_optional(root: after_colon, emitted: ^dag_surface_default_value) {
-    Absent =>
-      match body_lower_type_expr_lowered_optional(node: after_colon) {
-        Absent => Absent
-        Present { value: type_node } =>
-          Present { value: BodyLowerTypedParam { binder: binder, name: binding, type_node: type_node, default: Absent } }
-      }
-    Present { value: default_shell } =>
-      match sugar_sequence_pair_optional(node: after_colon) {
+// A TYPED PARAMETER: `name: T` then an optional tail (v2.extdeps.languages.dag
+// dag_grammar_typed_param_expr, left-factored), so what follows the colon is always the pair of the
+// type and the tail. An empty tail is a plain parameter; a tail holding the default production is a
+// defaulted one, its default kept RAW and lowered by body_lower_binder_edge_read, so it reaches the
+// binder (XL-2 PR2c-ii) rather than being refused or dropped. A where-clause refinement is refused
+// before this reader runs (body_lower_param_refinement_refusal_optional), so a tail here carries only
+// a default.
+fn body_lower_typed_param_optional(param_capture: Node) -> Optional<BodyLowerTypedParam> {
+  match body_lower_typed_head_optional(capture: param_capture) {
+    Absent => Absent
+    Present { value: head } =>
+      match sugar_sequence_pair_optional(node: head.after_colon) {
         Absent => Absent
         Present { value: type_and_tail } =>
           match body_lower_type_expr_lowered_optional(node: type_and_tail.left) {
             Absent => Absent
             Present { value: type_node } =>
-              Present { value: BodyLowerTypedParam { binder: binder, name: binding, type_node: type_node, default: Present { value: default_shell } } }
+              Present {
+                value: BodyLowerTypedParam {
+                  binder: head.binder,
+                  name: head.name,
+                  type_node: type_node,
+                  default: body_lower_find_production_shell_optional(root: type_and_tail.right, emitted: ^dag_surface_default_value)
+                }
+              }
           }
+      }
+  }
+}
+
+// A FIELD DECLARATION is `name: T` with nothing after the type (dag_grammar_field_decl_expr; a field's
+// `[from "key"] [= default]` tail sits beside it, read by body_lower_io_item_optional), so what follows
+// the colon is the type.
+fn body_lower_field_decl_head_optional(capture: Node) -> Optional<BodyLowerTypedParam> {
+  match body_lower_typed_head_optional(capture: capture) {
+    Absent => Absent
+    Present { value: head } =>
+      match body_lower_type_expr_lowered_optional(node: head.after_colon) {
+        Absent => Absent
+        Present { value: type_node } =>
+          Present { value: BodyLowerTypedParam { binder: head.binder, name: head.name, type_node: type_node, default: Absent } }
       }
   }
 }
@@ -3915,11 +3942,11 @@ fn body_lower_fn_decl_named_member_wrap(arrow: Node, fn_name: Symbol, source: No
 }
 
 // A `test fn` declaration lowers to the SAME named-member arrow a plain `fn` lowers to: the
-// production is the contextual `sequence(ident("test"), fn_decl)` (see dag_grammar_test_fn_decl_expr
-// for why `test` is not a reserved keyword), the fold has already lowered the nested fn_decl child
-// by the time this shell reduces, and this arm lifts the member out of the sequence's right
-// projection after checking the marker lexeme really is "test". A non-"test" marker is a typed
-// refusal, never a retained wrapper. The TEST-NESS marker is deliberately not reified into the
+// production is the contextual `sequence(test, fn_decl)`, its marker the grammar's exact word `test`
+// (see dag_grammar_test_fn_decl_expr for why `test` is not a reserved keyword), the fold has already
+// lowered the nested fn_decl child by the time this shell reduces, and this arm lifts the member out
+// of the sequence's right projection. Another marker word never reaches this arm: it refuses at parse
+// (DeclarationMarkerNotTest), so there is no spelling to check here. The TEST-NESS marker is deliberately not reified into the
 // member node: it rides its own channel beside the semantic tree (the DESIGN section 4c shape),
 // v2.compiler.test_marker_capture over the same parse tree, so the semantic member stays identical
 // to a plain fn's.
@@ -3937,25 +3964,9 @@ fn body_lower_test_fn_decl_to_member(shell: Node) -> Outcome<BodyLowering> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent => body_lower_wrapper_retained_shell(shell: shell)
     Present { value: captured } =>
-      match body_lower_seq_child(node: captured, name: ^grammar_sequence_left_node_projection) {
+      match body_lower_seq_child(node: captured, name: ^grammar_sequence_right_node_projection) {
         Absent => body_lower_wrapper_retained_shell(shell: shell)
-        Present { value: marker_node } =>
-          match dag_binding_branded_atom_identity(node: marker_node) {
-            Present { value: marker } =>
-              if marker == ^test {
-                match body_lower_seq_child(node: captured, name: ^grammar_sequence_right_node_projection) {
-                  Absent => body_lower_wrapper_retained_shell(shell: shell)
-                  Present { value: member } => body_lowering_lowered(o: outcome_accepted(value: member))
-                }
-              } else {
-                body_lowering_lowered(
-                  o: outcome_rejected(
-                    d: body_lower_diagnostic(reason: ^body_lowering_reason_test_marker_not_test, n: marker_node)
-                  )
-                )
-              }
-            Absent => body_lower_wrapper_retained_shell(shell: shell)
-          }
+        Present { value: member } => body_lowering_lowered(o: outcome_accepted(value: member))
       }
   }
 }
@@ -4038,7 +4049,7 @@ fn body_lower_first_signature_refusal_optional(captured: Node) -> Optional<Outco
 // (gunbc.recurring_failure_mode parameter_refinement_has_no_carrier). The clause is searched only
 // inside this declaration's own param_list.
 // A parameter's DEFAULT is not refused here any more: it lowers onto the parameter's binder
-// (body_lower_typed_param_after_colon_optional, body_lower_binder_edge_read; XL-2 PR2c-ii).
+// (body_lower_typed_param_optional, body_lower_binder_edge_read; XL-2 PR2c-ii).
 fn body_lower_param_list_refusal_optional(captured: Node) -> Optional<Outcome<Node>> {
   match body_lower_find_captured(root: captured, emitted: ^dag_surface_param_list) {
     ParseSubtreeAbsent => optional_absent()
@@ -6555,6 +6566,9 @@ fn body_lower_pattern_reject<T>(pattern_capture: Node) -> Outcome<T> {
   )
 }
 
+// A field pattern is ONE shape, `(name, optional(: pattern))` (v2.extdeps.languages.dag
+// dag_grammar_field_pattern_expr, left-factored): an empty suffix is the pun `name`, which binds the
+// field to the binder of the same name.
 fn body_lower_field_pattern_edge(item: Node) -> Outcome<Edge> {
   let stripped = body_lower_deep_unwrap_optional(node: item)
   let captured = match parse_production_captured_child_optional(node: stripped) {
@@ -6562,29 +6576,29 @@ fn body_lower_field_pattern_edge(item: Node) -> Outcome<Edge> {
     Absent => stripped
   }
   match sugar_sequence_pair_optional(node: captured) {
-    Absent =>
-      match body_lower_param_binding_optional(node: captured) {
-        Present { value: field_name } =>
-          outcome_accepted(
-            value: Edge {
-              label: Authored { name: field_name },
-              target: body_lower_param_ref_atom(source: captured, identity: field_name)
-            }
-          )
-        Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_pattern_unlowered, n: item))
-      }
+    Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_pattern_unlowered, n: item))
     Present { value: pair } =>
       match body_lower_param_binding_optional(node: pair.left) {
         Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_pattern_unlowered, n: item))
         Present { value: field_name } =>
-          match sugar_sequence_pair_optional(node: pair.right) {
-            Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_pattern_unlowered, n: item))
-            Present { value: after_colon } =>
-              match body_lower_pattern_lowered(pattern_capture: after_colon.right) {
-                Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                Accepted { value: sub, diagnostics: d } =>
-                  Accepted { value: Edge { label: Authored { name: field_name }, target: sub }, diagnostics: d }
+          let suffix = body_lower_deep_unwrap_optional(node: pair.right)
+          if is_empty_conj_root(n: suffix) {
+            outcome_accepted(
+              value: Edge {
+                label: Authored { name: field_name },
+                target: body_lower_param_ref_atom(source: pair.left, identity: field_name)
               }
+            )
+          } else {
+            match sugar_sequence_pair_optional(node: suffix) {
+              Absent => outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_pattern_unlowered, n: item))
+              Present { value: after_colon } =>
+                match body_lower_pattern_lowered(pattern_capture: after_colon.right) {
+                  Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                  Accepted { value: sub, diagnostics: d } =>
+                    Accepted { value: Edge { label: Authored { name: field_name }, target: sub }, diagnostics: d }
+                }
+            }
           }
       }
   }

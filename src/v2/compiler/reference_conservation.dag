@@ -168,7 +168,6 @@ type ReferenceConservationReport {
   role_reader_refused: Int
   refused: Int
   import_channel: Int
-  test_marker_channel: Int
   dropped: FreeMonoid<DroppedReference>
   unmeasured: FreeMonoid<ReferenceConservationUnmeasured>
   advisories: Diagnostics
@@ -188,7 +187,6 @@ fn report_with_advisories(report: ReferenceConservationReport, advisories: Diagn
     role_reader_refused: report.role_reader_refused,
     refused: report.refused,
     import_channel: report.import_channel,
-    test_marker_channel: report.test_marker_channel,
     dropped: report.dropped,
     unmeasured: report.unmeasured,
     advisories: advisories
@@ -222,7 +220,6 @@ fn reference_conservation_admitted(report: ReferenceConservationReport) -> Bool 
 type AuthoredAtomPopulation {
   atoms: FreeMonoid<AuthoredAtom>
   import_channel: Int
-  test_marker_channel: Int
   unreadable: FreeMonoid<ReferenceConservationUnmeasured>
   items: Int
   item_names: Map<Int, Symbol>
@@ -235,7 +232,7 @@ type PopulationFrame {
 }
 
 fn authored_atom_population_empty() -> AuthoredAtomPopulation {
-  AuthoredAtomPopulation { atoms: Empty, import_channel: 0, test_marker_channel: 0, unreadable: Empty, items: 0, item_names: empty_map() }
+  AuthoredAtomPopulation { atoms: Empty, import_channel: 0, unreadable: Empty, items: 0, item_names: empty_map() }
 }
 
 fn node_atom_identity_of(node: Node) -> Optional<Symbol> {
@@ -249,7 +246,6 @@ fn population_snoc_unreadable(acc: AuthoredAtomPopulation, item: ReferenceConser
   AuthoredAtomPopulation {
     atoms: acc.atoms,
     import_channel: acc.import_channel,
-    test_marker_channel: acc.test_marker_channel,
     unreadable: list_snoc_item(xs: acc.unreadable, item: item),
     items: acc.items,
     item_names: acc.item_names
@@ -320,19 +316,10 @@ fn declared_token_classes(lm: LanguageModel) -> Map<Symbol, Bool> {
   }
 }
 
-// THE TEST MARKER IS A CHANNEL, LIKE AN IMPORT. `test` is lexed as an identifier and stamped with
-// its lexeme (v2.extdeps.languages.dag dag_grammar_test_fn_decl_expr), and v2.compiler.normalize
-// normalize consumes it into NormalizedTree.test_markers, whose rows carry no occurrence. It is the
-// only authored atom the test_fn_decl production holds directly -- the declaration it marks is a
-// nested fn_decl / data_decl -- so "innermost production is test_fn_decl" names exactly it. Counted
-// as `test_marker_channel`, never folded into `conserved`.
-fn population_atom_is_test_marker(frame: PopulationFrame) -> Bool {
-  frame.innermost == ^dag_surface_test_fn_decl
-}
-
 // An item's declaring name is its first authored atom: every declaration production writes its
-// binder before anything else it holds, and keywords and marker words are class-stamped (or, for
-// `test`, routed to its channel above), so they never compete for it.
+// binder before anything else it holds, and keywords and marker words -- `test` among them, an exact
+// word of the grammar (v2.extdeps.languages.dag dag_grammar_test_fn_decl_expr) -- are class-stamped,
+// so they never compete for it.
 fn population_name_item(acc: AuthoredAtomPopulation, frame: PopulationFrame, identity: Symbol) -> Map<Int, Symbol> {
   if frame.item >= 0 {
     match map_lookup(m: acc.item_names, key: frame.item) {
@@ -358,7 +345,6 @@ fn population_observe_atom(
       AuthoredAtomPopulation {
         atoms: acc.atoms,
         import_channel: acc.import_channel,
-        test_marker_channel: acc.test_marker_channel,
         unreadable: list_snoc_item(xs: acc.unreadable, item: AtomExtentUnreadable { occurrence: id }),
         items: acc.items,
         item_names: acc.item_names
@@ -367,24 +353,12 @@ fn population_observe_atom(
       match authored_atom_from_identity(node: node, id: id, identity: identity, locus: locus, token_classes: token_classes, frame: frame) {
         Absent => acc
         Present { value: atom } =>
-          if population_atom_is_test_marker(frame: frame) {
-            AuthoredAtomPopulation {
-              atoms: acc.atoms,
-              import_channel: acc.import_channel,
-              test_marker_channel: acc.test_marker_channel + 1,
-              unreadable: acc.unreadable,
-              items: acc.items,
-              item_names: acc.item_names
-            }
-          } else {
-            AuthoredAtomPopulation {
-              atoms: list_snoc_item(xs: acc.atoms, item: atom),
-              import_channel: acc.import_channel,
-              test_marker_channel: acc.test_marker_channel,
-              unreadable: acc.unreadable,
-              items: acc.items,
-              item_names: population_name_item(acc: acc, frame: frame, identity: identity)
-            }
+          AuthoredAtomPopulation {
+            atoms: list_snoc_item(xs: acc.atoms, item: atom),
+            import_channel: acc.import_channel,
+            unreadable: acc.unreadable,
+            items: acc.items,
+            item_names: population_name_item(acc: acc, frame: frame, identity: identity)
           }
       }
   }
@@ -403,7 +377,6 @@ fn population_count_item(acc: AuthoredAtomPopulation, emitted: Symbol) -> Author
     AuthoredAtomPopulation {
       atoms: acc.atoms,
       import_channel: acc.import_channel,
-      test_marker_channel: acc.test_marker_channel,
       unreadable: acc.unreadable,
       items: acc.items + 1,
       item_names: acc.item_names
@@ -434,7 +407,6 @@ fn population_walk(
         AuthoredAtomPopulation {
           atoms: acc.atoms,
           import_channel: acc.import_channel + length(xs: inner.atoms),
-          test_marker_channel: acc.test_marker_channel,
           unreadable: fold_list(xs: inner.unreadable, empty: acc.unreadable, cons: fn(u, row) { list_snoc_item(xs: u, item: row) }),
           items: acc.items,
           item_names: acc.item_names
@@ -621,7 +593,6 @@ fn report_from_population(path: String, population: AuthoredAtomPopulation) -> R
     role_reader_refused: 0,
     refused: 0,
     import_channel: population.import_channel,
-    test_marker_channel: population.test_marker_channel,
     dropped: Empty,
     unmeasured: population.unreadable,
     advisories: None
@@ -640,7 +611,6 @@ fn report_snoc_drop(report: ReferenceConservationReport, atom: AuthoredAtom, cau
     role_reader_refused: report.role_reader_refused,
     refused: report.refused,
     import_channel: report.import_channel,
-    test_marker_channel: report.test_marker_channel,
     dropped: list_snoc_item(xs: report.dropped, item: DroppedReference { atom: atom, cause: cause }),
     unmeasured: report.unmeasured,
     advisories: report.advisories
@@ -659,7 +629,6 @@ fn report_count_conserved(report: ReferenceConservationReport) -> ReferenceConse
     role_reader_refused: report.role_reader_refused,
     refused: report.refused,
     import_channel: report.import_channel,
-    test_marker_channel: report.test_marker_channel,
     dropped: report.dropped,
     unmeasured: report.unmeasured,
     advisories: report.advisories
@@ -678,7 +647,6 @@ fn report_count_refused(report: ReferenceConservationReport) -> ReferenceConserv
     role_reader_refused: report.role_reader_refused,
     refused: report.refused + 1,
     import_channel: report.import_channel,
-    test_marker_channel: report.test_marker_channel,
     dropped: report.dropped,
     unmeasured: report.unmeasured,
     advisories: report.advisories
@@ -697,7 +665,6 @@ fn report_count_locus_erased(report: ReferenceConservationReport) -> ReferenceCo
     role_reader_refused: report.role_reader_refused,
     refused: report.refused,
     import_channel: report.import_channel,
-    test_marker_channel: report.test_marker_channel,
     dropped: report.dropped,
     unmeasured: report.unmeasured,
     advisories: report.advisories
@@ -981,7 +948,6 @@ fn report_with_channels(report: ReferenceConservationReport, role_excluded: Int,
     role_reader_refused: report.role_reader_refused,
     refused: report.refused,
     import_channel: report.import_channel,
-    test_marker_channel: report.test_marker_channel,
     dropped: report.dropped,
     unmeasured: report.unmeasured,
     advisories: report.advisories
@@ -1011,7 +977,6 @@ fn report_with_role_gaps(report: ReferenceConservationReport, roles: OccurrenceR
     role_reader_refused: map_int_total(m: roles.reader_refused, keys: productions) + roles.unminted,
     refused: report.refused,
     import_channel: report.import_channel,
-    test_marker_channel: report.test_marker_channel,
     dropped: report.dropped,
     unmeasured: report.unmeasured,
     advisories: report.advisories
@@ -1103,7 +1068,6 @@ fn reference_conservation_unmeasured(path: String, diagnostics: NonEmptyDiagnost
     role_reader_refused: 0,
     refused: 0,
     import_channel: 0,
-    test_marker_channel: 0,
     dropped: Empty,
     unmeasured: Cons { head: TokenizeOrParseRefused { diagnostics: diagnostics }, tail: Empty },
     advisories: None
@@ -1167,7 +1131,6 @@ fn reference_conservation_role_table_unadmitted(path: String, unlisted: List<Sym
     role_reader_refused: 0,
     refused: 0,
     import_channel: 0,
-    test_marker_channel: 0,
     dropped: Empty,
     unmeasured: Cons { head: OccurrenceRoleTableUnadmitted { unlisted: unlisted, unknown: unknown, unkeyed: unkeyed }, tail: Empty },
     advisories: None
@@ -1227,7 +1190,6 @@ fn report_snoc_unmeasured(report: ReferenceConservationReport, item: ReferenceCo
     role_reader_refused: report.role_reader_refused,
     refused: report.refused,
     import_channel: report.import_channel,
-    test_marker_channel: report.test_marker_channel,
     dropped: report.dropped,
     unmeasured: list_snoc_item(xs: report.unmeasured, item: item),
     advisories: report.advisories
@@ -1307,7 +1269,7 @@ fn dropped_reference_line(path: String, row: DroppedReference) -> String {
 // the accepted subject carried, in chain order: the census's per-path record of what an accepted
 // module's front end attached without refusing.
 fn reference_conservation_report_lines(report: ReferenceConservationReport) -> FreeMonoid<String> {
-  let summary = "module " + report.path + " authored=" + integer_int_to_decimal_string(value: report.authored) + " conserved=" + integer_int_to_decimal_string(value: report.conserved) + " locus_erased=" + integer_int_to_decimal_string(value: report.locus_erased) + " role_excluded=" + integer_int_to_decimal_string(value: report.role_excluded) + " header_channel=" + integer_int_to_decimal_string(value: report.header_channel) + " role_not_yet_read=" + integer_int_to_decimal_string(value: report.role_not_yet_read) + " role_reader_refused=" + integer_int_to_decimal_string(value: report.role_reader_refused) + " refused=" + integer_int_to_decimal_string(value: report.refused) + " import_channel=" + integer_int_to_decimal_string(value: report.import_channel) + " test_marker_channel=" + integer_int_to_decimal_string(value: report.test_marker_channel) + " dropped=" + integer_int_to_decimal_string(value: length(xs: report.dropped)) + " unmeasured=" + integer_int_to_decimal_string(value: length(xs: report.unmeasured))
+  let summary = "module " + report.path + " authored=" + integer_int_to_decimal_string(value: report.authored) + " conserved=" + integer_int_to_decimal_string(value: report.conserved) + " locus_erased=" + integer_int_to_decimal_string(value: report.locus_erased) + " role_excluded=" + integer_int_to_decimal_string(value: report.role_excluded) + " header_channel=" + integer_int_to_decimal_string(value: report.header_channel) + " role_not_yet_read=" + integer_int_to_decimal_string(value: report.role_not_yet_read) + " role_reader_refused=" + integer_int_to_decimal_string(value: report.role_reader_refused) + " refused=" + integer_int_to_decimal_string(value: report.refused) + " import_channel=" + integer_int_to_decimal_string(value: report.import_channel) + " dropped=" + integer_int_to_decimal_string(value: length(xs: report.dropped)) + " unmeasured=" + integer_int_to_decimal_string(value: length(xs: report.unmeasured))
   let with_dropped = fold_list(
     xs: report.dropped,
     empty: Cons { head: summary, tail: Empty },
