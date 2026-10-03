@@ -342,7 +342,7 @@ fn grammar_coverage_roster_contains_path(
     xs: roster,
     empty: false,
     cons: fn(acc, p) {
-      acc || string_eq(a: p, b: path)
+      acc || p == path
     }
   )
 }
