@@ -62,14 +62,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE SAME-SPELLING SIBLINGS, all REAL declarations (the cited-declaration gate refuses a citation
 // of a declaration that does not exist, so the "another module declaring Symbol" falsifier is
-// asked of the declarations the corpus actually has two of): v2.std.text String and std.string_type
-// String beside the kernel String row, v2.std.logic Bool beside std.types Bool (which HAS an exact
+// asked of the declarations the corpus actually has two of): v2.std.text String beside the kernel
+// String row, v2.std.logic Bool beside std.types Bool (which HAS an exact
 // row), and v2.std.node Hash, declared in Symbol's own module one line below it. None may receive a
 // binding authored for a different declaration -- module-path and decl-name discrimination both.
 fn sibling_declarations_without_bindings() -> List<DeclarationRef> {
   [
     decl_ref(module_path: "v2.std.text", decl_name: "String"),
-    decl_ref(module_path: "std.string_type", decl_name: "String"),
     decl_ref(module_path: "v2.std.logic", decl_name: "Bool"),
     decl_ref(module_path: "v2.std.node", decl_name: "Hash")
   ]

@@ -1,0 +1,43 @@
+module v2.test.claim.body_lowering.nested_if_else_eval
+
+// THE EVALUATED FORM OF THE NESTED-IF ELSE ARM (gunbc.recurring_failure_mode
+// else_arm_lowered_as_an_if_nested_inside_it, capture side). The outer condition is false, so the
+// program's value is the OUTER else, 3. The searching else reader took the nested if's `else { 2 }` as
+// the outer if's else, so a body lowered through it answers 2: the dropped arm changes the evaluated
+// result, not only the atom count v2.test.claim.body_lowering.if_arm_position measures. Import-free on
+// purpose, so the native route prepares it cheaply: the floor evaluates it through the seed, and the
+// native lane evaluates it through the emitted compiler's own body lowering, where it is the
+// discriminating red for the arm readers.
+fn nested_if_else_value() -> Int {
+  if false {
+    if true {
+      1
+    } else {
+      2
+    }
+  } else {
+    3
+  }
+}
+
+// THE MIRROR: the outer condition is true, so the value is the nested if's own else, 2. It holds under
+// either reader, so it is the control that the subject's red is the dropped OUTER else and nothing else.
+fn nested_if_then_value() -> Int {
+  if true {
+    if false {
+      1
+    } else {
+      2
+    }
+  } else {
+    3
+  }
+}
+
+test fn the_outer_else_of_an_if_nested_in_the_then_arm_is_the_value_holds() -> Bool {
+  nested_if_else_value() == 3
+}
+
+test fn the_nested_else_inside_the_then_arm_is_the_value_control_holds() -> Bool {
+  nested_if_then_value() == 2
+}

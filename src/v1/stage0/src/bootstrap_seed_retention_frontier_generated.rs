@@ -12,7 +12,7 @@ pub const SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES: &[&str] = &[
     "data_initializer_identity.rs",
     "declaration_index.rs",
     "namespace_baseline.rs",
-    "resolved_graph_cache.rs",
+    "closure_identity.rs",
     "shared_typecheck_store.rs",
     "recorded_fixture.rs",
     "phase_profile.rs",

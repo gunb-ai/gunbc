@@ -58,7 +58,7 @@ A nullary Arrow, an Atom type, and a payload-free variant keep their hashes.
 ## Defaults (XL-2 PR2c-ii)
 
 - **Lowering.** Every default lowers onto its binder through `v2.compiler.body_lowering_fold` `body_lower_binder_edge_read` (`binder_edge_with_default`):
-  - a fn or pattern parameter's from its own tail (`body_lower_typed_param_after_colon_optional`);
+  - a fn or pattern parameter's from its own tail (`body_lower_typed_param_optional`);
   - a record field's and a service io field's from the field tail (`body_lower_io_field_default_optional`).
 
   The value lowers through the one value reader (`body_lower_value_read`) and refuses at the value under that reader's cause. `body_lowering_reason_default_value_unmodeled` has no producer and is deleted. A field's **wire key** is a realization fact and still refuses (records) or is set aside (io blocks) until the realization binding (XL-2 PR3).
