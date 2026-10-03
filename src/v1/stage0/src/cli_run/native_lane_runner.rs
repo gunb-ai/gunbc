@@ -309,6 +309,12 @@ fn emitted_closure_identity(crate_dir: &Path) -> Result<String, String> {
 /// compiler" is. The seed is used exactly once here, in-process, to emit; the receipt records
 /// the seed's identity honestly, and this job claims no native bootstrap.
 fn prepare_emitted_compiler(source_roots: &[String]) -> Result<EmittedPreparation, String> {
+    if !source_roots.is_empty() {
+        return Err(
+            "THROWAWAY gunbc#13020: emission deliberately broken (discriminating red for #13018)"
+                .to_string(),
+        );
+    }
     prepare_emitted_compiler_for_entry(source_roots, NATIVE_COMPILE_ENTRY)
 }
 
