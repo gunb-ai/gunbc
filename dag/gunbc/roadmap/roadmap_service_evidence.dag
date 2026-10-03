@@ -13,7 +13,7 @@ import std.materialization_provider { wire_content_hash_to_hex }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.roadmap_dispatch_actuator { dispatch_attempt_launch_path_for_instance }
-import std.measure { kibibyte_count }
+import std.measure { Kibibyte, kibibyte_count }
 import gunbc.roadmap_session_placement {
   SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign,
   SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign,
@@ -224,11 +224,11 @@ fn refused_reading(reason: String) -> ServiceEvidenceReading {
 // than the binding are refused. None of them can produce an observed reading.
 type SessionPlacementFact = PlacementFact | WorkloadClassFact | ResourceRequestFact
 
-fn session_placement_fact_value(fact: SessionPlacementFact, host: String, partition: String, unit: String, class_grant: String, amount_kib: Int) -> String {
+fn session_placement_fact_value(fact: SessionPlacementFact, host: String, partition: String, unit: String, class_grant: String, amount: Kibibyte) -> String {
   match fact {
     PlacementFact => join(["host ", host, ", partition ", partition, ", unit ", unit], "")
     WorkloadClassFact => class_grant
-    ResourceRequestFact => join([to_string(amount_kib), " KiB granted"], "")
+    ResourceRequestFact => join([to_string(kibibyte_count(k: amount)), " KiB granted"], "")
   }
 }
 
@@ -249,7 +249,7 @@ fn session_placement_reading(i: SessionPlacementInput, binding: AttemptBinding, 
                 refused_reading(reason: join(["the session grant record names ", record.node_id, " attempt ", record.attempt_key, ", not the bound attempt"], ""))
               } else {
                 EvidenceObserved {
-                  value: session_placement_fact_value(fact: fact, host: record.host, partition: record.partition, unit: record.unit, class_grant: record.class_grant, amount_kib: kibibyte_count(k: record.amount)),
+                  value: session_placement_fact_value(fact: fact, host: record.host, partition: record.partition, unit: record.unit, class_grant: record.class_grant, amount: record.amount),
                   source: SessionPlacementReader,
                 }
               }
