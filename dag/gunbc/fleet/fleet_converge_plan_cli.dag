@@ -18,9 +18,10 @@ import gunbc.fabric_storage_binding { fabric_state_storage_binding }
 import gunbc.workspace_allocation_convergence { workspace_convergence_observe, WorkspaceConvergenceObserved, WorkspaceConvergenceUnobserved }
 import gunbc.workspace_allocation_launch_directive { workspace_launch_directive_from_text, WorkspaceLaunchDirectiveReady, WorkspaceLaunchDirectiveRefused }
 import gunbc.workspace_allocation_store { workspace_allocation_json, workspace_record_preparation_wait, WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused }
-import gunbc.workspace_request_consumer { workspace_consumer_reconcile_owner, WorkspaceConsumerIdle, WorkspaceConsumerRefused, WorkspaceConsumerRetire, WorkspaceConsumerPrepare, WorkspaceConsumerRoute, WorkspaceConsumerSettled, WorkspaceConsumerRetry }
-import gunbc.workspace_allocation_policy { workspace_operator_principal }
-import gunbc.principal_projection { principal_ref_eq }
+import gunbc.workspace_request_consumer { workspace_consumer_reconcile_enrolled, WorkspaceConsumerIdle, WorkspaceConsumerRefused, WorkspaceConsumerRetire, WorkspaceConsumerPrepare, WorkspaceConsumerRoute, WorkspaceConsumerSettled, WorkspaceConsumerRetry }
+import gunbc.workspace_allocation_policy { workspace_authorization_policy }
+import gunbc.workspace_allocation_admission { workspace_owner_enrollment, workspace_enrolled_owners }
+import gunbc.principal_projection { PrincipalRef }
 
 import extdeps.languages.json.emit { serialize_json }
 
@@ -1582,7 +1583,7 @@ fn observe_fleet_converge_request_from_plan_wet(scope_wire: String, host: NonEmp
         Absent => FleetConvergeRequestUnobserved { reason: "workspace plan launch directive is absent" }
         Present { value: row } => match workspace_launch_directive_from_text(text: substring(s: row, start: string_length(s: marker), end: string_length(s: row))) {
           WorkspaceLaunchDirectiveRefused { reason: detail } => FleetConvergeRequestUnobserved { reason: detail }
-          WorkspaceLaunchDirectiveReady { directive: planned } => if !principal_ref_eq(a: planned.allocation.request.owner, b: workspace_operator_principal()) {
+          WorkspaceLaunchDirectiveReady { directive: planned } => if !(match workspace_owner_enrollment(policy: workspace_authorization_policy(), owner: planned.allocation.request.owner) { Present { value: _ } => true Absent => false }) {
             FleetConvergeRequestUnobserved { reason: "workspace plan owner is not authorized by the installed allocation policy" }
           } else { match workspace_convergence_observe(
             store: fabric_state_storage_binding(),
@@ -1606,8 +1607,8 @@ fn observe_fleet_converge_request_from_plan_wet(scope_wire: String, host: NonEmp
 fn observe_workspace_allocation_plan_request_wet(host: NonEmptyStr) -> FleetConvergeRequestObservation {
   match clock_now_probed_at() {
     Absent => FleetConvergeRequestUnobserved { reason: "workspace consumer clock is unavailable" }
-    Present { value: now } => match workspace_consumer_reconcile_owner(store: fabric_state_storage_binding(),
-      owner: workspace_operator_principal(), observed_at: now as String) {
+    Present { value: now } => match workspace_consumer_reconcile_enrolled(store: fabric_state_storage_binding(),
+      owners: workspace_enrolled_owners(policy: workspace_authorization_policy()), observed_at: now as String) {
       WorkspaceConsumerIdle => FleetConvergeRequestUnobserved { reason: "no outstanding workspace request" }
       WorkspaceConsumerRefused { reason: detail } => FleetConvergeRequestUnobserved { reason: detail }
       WorkspaceConsumerRetry => FleetConvergeRequestUnobserved { reason: "workspace owner changed concurrently; reconcile again" }
@@ -1622,16 +1623,16 @@ fn observe_workspace_allocation_plan_request_wet(host: NonEmptyStr) -> FleetConv
         }
       }
       WorkspaceConsumerRoute { allocation: allocation } => observe_workspace_prepared_plan_request_wet(
-        request_key: allocation.request.idempotency_key, host: host)
+        owner: allocation.request.owner, request_key: allocation.request.idempotency_key, host: host)
     }
   }
 }
 
 // Local authorities are read only after the existing selected-host check. Apply still obtains
 // its identity and installed artifact from the hash-admitted plan, never from this environment.
-fn observe_workspace_prepared_plan_request_wet(request_key: NonEmptyStr, host: NonEmptyStr) -> FleetConvergeRequestObservation {
+fn observe_workspace_prepared_plan_request_wet(owner: PrincipalRef, request_key: NonEmptyStr, host: NonEmptyStr) -> FleetConvergeRequestObservation {
   match workspace_convergence_observe(store: fabric_state_storage_binding(),
-    owner: workspace_operator_principal(), idempotency_key: request_key) {
+    owner: owner, idempotency_key: request_key) {
     WorkspaceConvergenceUnobserved { reason: detail } => FleetConvergeRequestUnobserved { reason: detail }
     WorkspaceConvergenceObserved { basis: selected } => if selected.host != host {
       FleetConvergeRequestUnobserved { reason: "workspace plan request is executing on a different host" }

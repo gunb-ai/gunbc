@@ -1,11 +1,16 @@
 module gunbc.workspace_allocation_policy
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
+import extdeps.ssh { ssh_public_key_line }
+import gunbc.fleet_ssh_access { operator_ssh_principal }
 import gunbc.principal_projection { PrincipalRef }
-import gunbc.workspace_allocation_admission { WorkspaceAuthorizationPolicy }
+import gunbc.workspace_allocation_admission { WorkspaceAuthorizationPolicy, WorkspaceOwnerEnrollment }
+import gunbc.workspace_microvm { WorkspacePublicKey }
 
+// Enrollment is administrator-authored and lands as a reviewed row; the installed release is the
+// root-owned authority the controller reads, so no request, browser or guest can add a row.
 // The operator explicitly confirmed this subject from the existing verified Google session.
-// Email is presentation; this stable subject is the authorization identity for the demo.
+// Email is presentation; this stable subject is the authorization identity.
 fn workspace_operator_principal() -> PrincipalRef {
   PrincipalRef {
     authority: "google-oidc" as NonEmptyStr,
@@ -14,6 +19,22 @@ fn workspace_operator_principal() -> PrincipalRef {
   }
 }
 
+data workspace_operator_public_key_ref: NonEmptyStr = "gunbc.fleet_ssh_access.operator_ssh_principal"
+
 fn workspace_authorization_policy() -> WorkspaceAuthorizationPolicy {
-  WorkspaceAuthorizationPolicy { principals: [workspace_operator_principal()] }
+  WorkspaceAuthorizationPolicy { enrollments: [
+    WorkspaceOwnerEnrollment { principal: workspace_operator_principal(), public_key_ref: workspace_operator_public_key_ref },
+  ] }
+}
+
+// Each reference names exactly one enrolled ed25519 line. The operator's guest key reuses the
+// existing fleet SSH principal's public key; a customer's row carries that customer's own key,
+// and a reference is never shared between owners.
+fn workspace_public_key_catalog() -> List<WorkspacePublicKey> {
+  [
+    WorkspacePublicKey {
+      reference: workspace_operator_public_key_ref,
+      line: ssh_public_key_line(k: operator_ssh_principal.public_key) as NonEmptyStr,
+    },
+  ]
 }

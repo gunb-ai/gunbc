@@ -1,0 +1,70 @@
+module test.claim.runner.workspace_owner_access_witness_test
+
+import std.types { Bool, NonEmptyStr, List }
+import gunbc.principal_projection { PrincipalRef }
+import gunbc.workspace_allocation_admission { WorkspaceAuthorizationPolicy, WorkspaceOwnerEnrollment }
+import gunbc.workspace_allocation_policy { workspace_authorization_policy, workspace_public_key_catalog, workspace_operator_principal, workspace_operator_public_key_ref }
+import gunbc.workspace_microvm { WorkspacePublicKey, workspace_owner_public_key, WorkspacePublicKeyAdmitted, WorkspacePublicKeyNotAdmitted }
+
+fn alice() -> PrincipalRef { PrincipalRef { authority: "google-oidc", namespace: "accounts", subject: "alice-test" } }
+fn bob() -> PrincipalRef { PrincipalRef { authority: "google-oidc", namespace: "accounts", subject: "bob-test" } }
+
+fn two_owner_policy() -> WorkspaceAuthorizationPolicy {
+  WorkspaceAuthorizationPolicy { enrollments: [
+    WorkspaceOwnerEnrollment { principal: alice(), public_key_ref: "alice-key" },
+    WorkspaceOwnerEnrollment { principal: bob(), public_key_ref: "bob-key" },
+  ] }
+}
+
+fn two_owner_catalog() -> List<WorkspacePublicKey> {
+  [
+    WorkspacePublicKey { reference: "alice-key", line: "ssh-ed25519 AAAAALICE alice" },
+    WorkspacePublicKey { reference: "bob-key", line: "ssh-ed25519 AAAABOB bob" },
+  ]
+}
+
+// Positive control: each owner's guest receives exactly that owner's enrolled line.
+test fn each_owner_guest_receives_its_own_enrolled_key() -> Bool {
+  (match workspace_owner_public_key(policy: two_owner_policy(), catalog: two_owner_catalog(), owner: alice(), reference: "alice-key") {
+    WorkspacePublicKeyAdmitted { key: k } => (k.line as String) == "ssh-ed25519 AAAAALICE alice"
+    WorkspacePublicKeyNotAdmitted { reason: _ } => false
+  }) && (match workspace_owner_public_key(policy: two_owner_policy(), catalog: two_owner_catalog(), owner: bob(), reference: "bob-key") {
+    WorkspacePublicKeyAdmitted { key: k } => (k.line as String) == "ssh-ed25519 AAAABOB bob"
+    WorkspacePublicKeyNotAdmitted { reason: _ } => false
+  })
+}
+
+// Discriminating RED: a slot whose incarnation N belonged to alice is reused as N+1 for bob.
+// A launch carrying alice's reference for bob's reservation is refused, so the key that reached
+// N cannot be installed into N+1; an unenrolled owner and an ambiguous catalog are refused too.
+test fn a_stale_or_foreign_key_reference_cannot_reach_another_owners_guest() -> Bool {
+  let stale = match workspace_owner_public_key(policy: two_owner_policy(), catalog: two_owner_catalog(), owner: bob(), reference: "alice-key") {
+    WorkspacePublicKeyNotAdmitted { reason: _ } => true
+    WorkspacePublicKeyAdmitted { key: _ } => false
+  }
+  let unenrolled = match workspace_owner_public_key(policy: WorkspaceAuthorizationPolicy { enrollments: [] }, catalog: two_owner_catalog(), owner: alice(), reference: "alice-key") {
+    WorkspacePublicKeyNotAdmitted { reason: _ } => true
+    WorkspacePublicKeyAdmitted { key: _ } => false
+  }
+  let ambiguous = match workspace_owner_public_key(policy: two_owner_policy(),
+    catalog: concat(two_owner_catalog(), [WorkspacePublicKey { reference: "alice-key", line: "ssh-ed25519 AAAAOTHER other" }]), owner: alice(), reference: "alice-key") {
+    WorkspacePublicKeyNotAdmitted { reason: _ } => true
+    WorkspacePublicKeyAdmitted { key: _ } => false
+  }
+  let optioned = match workspace_owner_public_key(policy: two_owner_policy(),
+    catalog: [WorkspacePublicKey { reference: "alice-key", line: "command=\"sh\" ssh-ed25519 AAAAALICE" }], owner: alice(), reference: "alice-key") {
+    WorkspacePublicKeyNotAdmitted { reason: _ } => true
+    WorkspacePublicKeyAdmitted { key: _ } => false
+  }
+  stale && unenrolled && ambiguous && optioned
+}
+
+// Inhabitance of the installed route: the production policy and catalog the controller reads
+// resolve the operator's enrolled reference to exactly one admitted guest key.
+test fn installed_policy_resolves_the_operator_enrollment() -> Bool {
+  match workspace_owner_public_key(policy: workspace_authorization_policy(), catalog: workspace_public_key_catalog(),
+    owner: workspace_operator_principal(), reference: workspace_operator_public_key_ref) {
+    WorkspacePublicKeyAdmitted { key: k } => (k.reference as String) == (workspace_operator_public_key_ref as String)
+    WorkspacePublicKeyNotAdmitted { reason: _ } => false
+  }
+}

@@ -36,12 +36,13 @@ import gunbc.workspace_allocation_acquisition { workspace_apply_recorded_plan }
 import gunbc.workspace_allocation_lifecycle { workspace_complete_teardown, workspace_recover_release }
 import gunbc.runner_attempt_launch { LaunchWithdrawn }
 import gunbc.workspace_microvm { workspace_retirement_identity }
-import gunbc.workspace_allocation_policy { workspace_operator_principal }
+import gunbc.workspace_allocation_policy { workspace_authorization_policy, workspace_public_key_catalog }
+import gunbc.workspace_allocation_admission { workspace_owner_enrollment }
 import gunbc.workspace_allocation { WorkspaceReservation }
 import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceReleased, WorkspaceWanted, workspace_read_owner, WorkspaceStoreReadOk, WorkspaceStoreUnreadable }
 import gunbc.workspace_reservation_record { workspace_reservation_plan_reservation }
 import gunbc.workspace_guest_image { workspace_installed_image, WorkspaceImageVerified, WorkspaceImageRefused }
-import gunbc.workspace_microvm { bind_workspace_launch, workspace_fleet_operator_public_key, WorkspaceLaunchBound, WorkspaceLaunchRefused }
+import gunbc.workspace_microvm { bind_workspace_launch, workspace_owner_public_key, WorkspacePublicKeyAdmitted, WorkspacePublicKeyNotAdmitted, WorkspaceLaunchBound, WorkspaceLaunchRefused }
 import gunbc.workspace_gateway { WorkspaceGateway, workspace_fleet_gateway }
 import gunbc.runner_microvm_attempt { microvm_attempt, MicroVmAttemptAccepted, MicroVmAttemptRefused, attempt_segment_refusal_text }
 import gunbc.fabric_required_build_cell { observe_required_build_cell_for_identity }
@@ -822,13 +823,18 @@ fn workspace_slot_dispatch_launch(text: String, instance: String, release_dir: S
         MicrovmHostBindingRefused { cause: c } => SlotControllerRefused { refusal: SlotHostBindingRefused { cause: c } }
         MicrovmHostBound { spec: _, host: _ } => {
           let store = fabric_state_storage_binding()
-          match workspace_read_owner(store: store, owner: workspace_operator_principal()) {
-            WorkspaceStoreUnreadable { reason } => workspace_slot_refused(reason: reason)
-            WorkspaceStoreReadOk { snapshot: ledger } =>
-              if workspace_launch_directive_matches(directive: directive, observed: ledger, authorized_owner: workspace_operator_principal(),
-                host: slot.host as NonEmptyStr, slot_instance: instance as NonEmptyStr, release_dir: release_dir as NonEmptyStr, fabric_root: fabric_control_plane_store_root()) {
-                workspace_slot_apply_if_needed(allocation: directive.allocation, slot: slot, store: store, release_dir: release_dir, invocation_id: invocation_id)
-              } else { workspace_slot_refused(reason: "workspace invocation contradicts its planned owner revision, allocation, host, slot or installed artifact") }
+          // The directive names its owner; only an enrolled owner's ledger is reread, and the
+          // reread ledger -- not the directive -- must carry the planned allocation.
+          match workspace_owner_enrollment(policy: workspace_authorization_policy(), owner: directive.allocation.request.owner) {
+            Absent => workspace_slot_refused(reason: "workspace directive owner is not enrolled by the installed allocation policy")
+            Present { value: enrollment } => match workspace_read_owner(store: store, owner: enrollment.principal) {
+              WorkspaceStoreUnreadable { reason } => workspace_slot_refused(reason: reason)
+              WorkspaceStoreReadOk { snapshot: ledger } =>
+                if workspace_launch_directive_matches(directive: directive, observed: ledger, authorized_owner: enrollment.principal,
+                  host: slot.host as NonEmptyStr, slot_instance: instance as NonEmptyStr, release_dir: release_dir as NonEmptyStr, fabric_root: fabric_control_plane_store_root()) {
+                  workspace_slot_apply_if_needed(allocation: directive.allocation, slot: slot, store: store, release_dir: release_dir, invocation_id: invocation_id)
+                } else { workspace_slot_refused(reason: "workspace invocation contradicts its planned owner revision, allocation, host, slot or installed artifact") }
+            }
           }
         }
       }
@@ -940,9 +946,12 @@ fn workspace_slot_launch_under_exclusion(reservation: WorkspaceReservation, live
     WorkspaceImageRefused { reason } => workspace_slot_refused(reason: reason)
     WorkspaceImageVerified { image } => match microvm_attempt(slot: reservation.slot, attempt_id: reservation.grant.attempt.key as String) {
       MicroVmAttemptRefused { refusal } => workspace_slot_refused(reason: attempt_segment_refusal_text(r: refusal))
-      MicroVmAttemptAccepted { attempt } => match clock_unix_millis_read() {
+      MicroVmAttemptAccepted { attempt } => match workspace_owner_public_key(policy: workspace_authorization_policy(),
+        catalog: workspace_public_key_catalog(), owner: reservation.request.owner, reference: reservation.request.public_key_ref) {
+      WorkspacePublicKeyNotAdmitted { reason } => workspace_slot_refused(reason: reason)
+      WorkspacePublicKeyAdmitted { key: owner_key } => match clock_unix_millis_read() {
         ClockUnixMillisObserved { millis } => match bind_workspace_launch(reservation: reservation, snapshot: live, attempt: attempt,
-          image: image, public_key: workspace_fleet_operator_public_key(), now_unix: epoch_secs_of_millis(millis: millis)) {
+          image: image, public_key: owner_key, now_unix: epoch_secs_of_millis(millis: millis)) {
           WorkspaceLaunchRefused { reason } => workspace_slot_refused(reason: reason)
           WorkspaceLaunchBound { binding } => match workspace_fleet_gateway(slot: reservation.slot) {
             Absent => workspace_slot_refused(reason: "fleet tailnet gateway is unconfigured")
@@ -952,6 +961,7 @@ fn workspace_slot_launch_under_exclusion(reservation: WorkspaceReservation, live
           }
         }
         ClockUnixMillisRefused { detail: _ } => workspace_slot_refused(reason: "workspace launch clock is unreadable")
+      }
       }
     }
   } }

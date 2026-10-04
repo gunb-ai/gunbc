@@ -1,6 +1,7 @@
 module gunbc.workspace_allocation_admission
 
 import std.types { NonEmptyStr, String, Timestamp, List }
+import v2.std.optional { Optional, Absent, Present }
 import gunbc.workspace_allocation { WorkspaceRequest, WorkspaceAllocationId, workspace_profile_parse, workspace_policy_ref, workspace_lease_bound_seconds }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
 import std.access { AccessDecision, Permit, Deny, AccessActionNotGranted, decision_meet }
@@ -13,7 +14,21 @@ import gunbc.auth.request_authentication { RequestAccessPath,
 }
 
 // Enrollment is stable-principal policy supplied by the administrator, never email comparison.
-type WorkspaceAuthorizationPolicy { principals: List<PrincipalRef> }
+// Each enrolled owner carries the server-side reference of the one guest public key enrolled for
+// it. The reference resolves through gunbc.workspace_allocation_policy's catalog; a request names
+// no key, path or OpenSSH option, so a customer cannot redirect guest access to other key bytes.
+type WorkspaceOwnerEnrollment { principal: PrincipalRef, public_key_ref: NonEmptyStr }
+type WorkspaceAuthorizationPolicy { enrollments: List<WorkspaceOwnerEnrollment> }
+
+fn workspace_owner_enrollment(policy: WorkspaceAuthorizationPolicy, owner: PrincipalRef) -> Optional<WorkspaceOwnerEnrollment> {
+  first(filter(policy.enrollments, e => principal_ref_eq(a: e.principal, b: owner)))
+}
+
+// Owner discovery is the enrolled roster: the consumer and controller reread exactly these
+// ledgers, never a principal named by a plan or a directive that the policy does not enroll.
+fn workspace_enrolled_owners(policy: WorkspaceAuthorizationPolicy) -> List<PrincipalRef> {
+  map(policy.enrollments, e => e.principal)
+}
 
 fn workspace_owner_admission(
   security: RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence>,
@@ -27,7 +42,7 @@ fn workspace_owner_admission(
     human_authentication_decision(route_path: route_path, action: action, security: security, observed_at: observed_at),
     match security.authentication {
       GoogleOidcSession { session } =>
-        if principal_ref_eq(a: session.principal, b: owner) && any(policy.principals, p => principal_ref_eq(a: p, b: session.principal)) { Permit }
+        if principal_ref_eq(a: session.principal, b: owner) && any(policy.enrollments, e => principal_ref_eq(a: e.principal, b: session.principal)) { Permit }
         else { write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "workspace owner and explicit allocation authorization required" }) }
       FabricServiceEvidence { kind: _, authenticated_at: _ } => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "workspace requires authenticated owner" })
       SessionStandingInvalid { standing: _ } => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "workspace requires authenticated owner" })
@@ -80,7 +95,7 @@ fn workspace_request_admit(
   policy: WorkspaceAuthorizationPolicy, deployment_policy: DeploymentAccessPolicy,
   observed_at: Timestamp, expires_at: Timestamp, csrf_presented: String,
   idempotency_key: WorkspaceAllocationId, profile_wire: String,
-  pinned_image: NonEmptyStr, enrolled_public_key_ref: NonEmptyStr,
+  pinned_image: NonEmptyStr,
 ) -> WorkspaceRequestAdmission {
   match security.authentication {
     GoogleOidcSession { session } => {
@@ -93,11 +108,14 @@ fn workspace_request_admit(
           else if utc_instant_seconds_after(later: expires_at, earlier: observed_at) <= 0 || utc_instant_seconds_after(later: expires_at, earlier: observed_at) > workspace_lease_bound_seconds() { WorkspaceRequestPolicyRefused { reason: "workspace lease must be positive and at most sixty minutes" } }
           else { match workspace_profile_parse(value: profile_wire) {
             Absent => WorkspaceRequestPolicyRefused { reason: "choose a supported workspace profile" }
-            Present { value: selected_profile } => WorkspaceRequestAdmitted { request: WorkspaceRequest {
-              owner: session.principal, idempotency_key: idempotency_key.value,
-              profile: selected_profile, image: pinned_image, public_key_ref: enrolled_public_key_ref,
-              expires_at: expires_at, policy: workspace_policy_ref(),
-            } }
+            Present { value: selected_profile } => match workspace_owner_enrollment(policy: policy, owner: session.principal) {
+              Absent => WorkspaceRequestPolicyRefused { reason: "owner has no enrolled guest public key" }
+              Present { value: enrollment } => WorkspaceRequestAdmitted { request: WorkspaceRequest {
+                owner: session.principal, idempotency_key: idempotency_key.value,
+                profile: selected_profile, image: pinned_image, public_key_ref: enrollment.public_key_ref,
+                expires_at: expires_at, policy: workspace_policy_ref(),
+              } }
+            }
           } }
         Deny { refusal: r } => WorkspaceRequestAdmissionRefused { decision: Deny { refusal: r } }
       }
