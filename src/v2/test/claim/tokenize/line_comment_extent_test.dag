@@ -1,7 +1,6 @@
 module v2.test.tokenize.line_comment_extent
 
 import v2.std.text { String }
-import v2.std.logic { Bool }
 import v2.std.algebra { fold_list }
 import v2.std.compilers.lexing { lex_artifact_annotations, lex_artifact_semantic_tokens, token_stream_all }
 import v2.compiler.tokenize { lex_walk_artifact }
