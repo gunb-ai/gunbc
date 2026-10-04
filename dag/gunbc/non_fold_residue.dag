@@ -455,25 +455,7 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   },
   FrontierRow {
     subject: PathSubject { path: "src/v2/lens/enforcement/complexity_contract_subject.dag::complexity_optimality_claim_eq" },
-    reason: nfr_reason_structural_eq_mint,
-    dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/lens/cost/expr.dag::cost_loop_expr" },
-    reason: nfr_reason_cost_loop_zero_body_fold,
-    dissolution: nfr_dissolve_wildcard_total,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/lens/cost/expr.dag::cost_expr_seq" },
-    reason: nfr_reason_cost_expr_zero_absorbing_compose,
-    dissolution: nfr_dissolve_wildcard_total,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "src/v2/lens/cost/expr.dag::cost_expr_par" },
-    reason: nfr_reason_cost_expr_zero_absorbing_compose,
-    dissolution: nfr_dissolve_wildcard_total,
-  },
-  FrontierRow {
+    reason: nfr_reason_structural_eq_mint,  FrontierRow {
     subject: PathSubject { path: "src/v2/lens/cost/valuation.dag::multiply_evaluations" },
     reason: nfr_reason_cost_valuation_zero_annihilator,
     dissolution: nfr_dissolve_wildcard_total,
@@ -517,13 +499,7 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "src/v2/std/probe_selector.dag::diagnostic_interface_kind_eq" },
     reason: nfr_reason_structural_eq_mint,
     dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/observation_ci_render.dag::ci_hold_cause_text" },
-    reason: nfr_reason_observation_hold_cause,
-    dissolution: nfr_dissolve_wildcard_total,
-  },
-  FrontierRow {
+  },  FrontierRow {
     subject: PathSubject { path: "dag/std/occurrence_binding_resolve.dag::occurrence_category_binding_verdict" },
     reason: nfr_reason_trait_derive_shape_table,
     dissolution: unbound_dissolution(description: "DISSOLVE-ON: OccurrenceCategory×OccurrenceCategory compatibility becomes a total derived table (or inhabitance-derived admissibility) and the nested wildcard arms delete with the row"),
@@ -546,19 +522,7 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/repo/repo_local_git_config.dag::apply_repo_local_git_config_action_at_repo" },
     reason: nfr_reason_legacy_slice1_bridge,
-    dissolution: unbound_dissolution(description: "DISSOLVE-ON: membership apply dispatch derives off-variant noop from MemberAction inhabitance (MemberRemoved/MemberRemovalRefused are construction-unreachable for Ensured bindings) and the wildcard arm deletes with the row"),
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/ci/ci_materialization.dag::warm_without_provider_receipt" },
-    reason: nfr_reason_resolve_realization_predicate,
-    dissolution: nfr_dissolve_wildcard_total,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/ci/ci_materialization.dag::cold_without_resolve_receipt" },
-    reason: nfr_reason_resolve_realization_predicate,
-    dissolution: nfr_dissolve_wildcard_total,
-  },
-  FrontierRow {
+    dissolution: unbound_dissolution(description: "DISSOLVE-ON: membership apply dispatch derives off-variant noop from MemberAction inhabitance (MemberRemoved/MemberRemovalRefused are construction-unreachable for Ensured bindings) and the wildcard arm deletes with the row"),  FrontierRow {
     subject: PathSubject { path: "dag/gunbc/host/host_standup.dag::assimilation_complete_input_eq" },
     reason: nfr_reason_structural_eq_backfill,
     dissolution: nfr_dissolve_derived_equality,
@@ -587,13 +551,7 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "src/v2/workflow/floor_discovery_transport.dag::floor_discovery_transport_observe" },
     reason: nfr_reason_floor_discovery_transport,
     dissolution: nfr_dissolve_floor_discovery_transport,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/emit_summary_map_consumer_partition.dag::collision_row_is_pool_measured" },
-    reason: nfr_reason_collision_population_predicate,
-    dissolution: nfr_dissolve_wildcard_total,
-  },
-  FrontierRow {
+  },  FrontierRow {
     subject: PathSubject { path: "dag/gunbc/live_deploy/repository_convergence.dag::git_text_or_empty" },
     reason: nfr_reason_git_text_observation_projection,
     dissolution: nfr_dissolve_git_text_observation_projection,
