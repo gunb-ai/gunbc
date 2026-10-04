@@ -3,6 +3,9 @@ module tools.self_host_module_behavioral_transport_roster
 import std.types { List }
 import tools.self_host_curated_seed_linked_harness {
   CuratedSeedLinkedClaimRun,
+  CsslWitnessDriver,
+  HandDriverFile,
+  EmittedContractDriver,
   CsslReceiptOutcome,
   CsslBehaviorHeld,
   CsslBehaviorDiverged,
@@ -17,7 +20,6 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.logic { Bool }
 import v2.std.subject_evidence {
   EvidenceInstrumentRefused,
   EvidenceSubjectUnreached,
@@ -34,7 +36,9 @@ import v2.std.text { String }
 // 01_tokenize, 02_parse, 03_body_producer, 03_ingest, 03_normalize, 03_resolve, 04_infer,
 // 07_target_carriers, discovery_enumeration, materialization_carriers, parse_engine_hooks
 // (since deleted with its module), program_assembly, program_partition, source_authority, use_site_verdict). Each row is config data
-// only (module path, driver path, pass marker, supplementary claim-runs); the hand shim paths the
+// only (module path, witness driver, pass marker, supplementary claim-runs). A row's driver is either
+// a hand-written Rust file or, for a migrated row, the .dag contract the harness emits beside the
+// subject and renders its driver from (CsslWitnessDriver); the hand shim paths the
 // rows once carried are deleted with the fields that held them (see
 // gunbc.recurring_failure_mode hand_shim_shadows_an_emitted_module), so every row links the whole
 // emitted closure. The emit/assemble/cargo/witness execution stays entirely in the shared kernel
@@ -48,7 +52,7 @@ import v2.std.text { String }
 
 type ModuleBehavioralTransportConfig {
   module_path: String
-  driver_rel: String
+  driver: CsslWitnessDriver
   pass_marker: String
   claim_runs: List<CuratedSeedLinkedClaimRun>
 }
@@ -56,25 +60,25 @@ type ModuleBehavioralTransportConfig {
 data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransportConfig> = [
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/00_compile.dag",
-    driver_rel: "dag/gunbc/instruments/self_host_00_compile_shims/witness_main.rs",
+    driver: HandDriverFile { driver_rel: "dag/gunbc/instruments/self_host_00_compile_shims/witness_main.rs" },
     pass_marker: "SELF_HOST_00_COMPILE_BEHAVIORAL_RECEIPT: PASS",
     claim_runs: []
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/01_tokenize.dag",
-    driver_rel: "dag/gunbc/instruments/self_host_01_tokenize_shims/witness_main.rs",
+    driver: HandDriverFile { driver_rel: "dag/gunbc/instruments/self_host_01_tokenize_shims/witness_main.rs" },
     pass_marker: "SELF_HOST_01_TOKENIZE_BEHAVIORAL_RECEIPT: PASS",
     claim_runs: []
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/02_parse.dag",
-    driver_rel: "dag/gunbc/instruments/self_host_02_parse_shims/witness_main.rs",
+    driver: HandDriverFile { driver_rel: "dag/gunbc/instruments/self_host_02_parse_shims/witness_main.rs" },
     pass_marker: "SELF_HOST_02_PARSE_BEHAVIORAL_RECEIPT: PASS",
     claim_runs: []
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/03_body_producer.dag",
-    driver_rel: "dag/gunbc/instruments/self_host_body_producer_shims/witness_main.rs",
+    driver: HandDriverFile { driver_rel: "dag/gunbc/instruments/self_host_body_producer_shims/witness_main.rs" },
     pass_marker: "SELF_HOST_BODY_PRODUCER_BEHAVIORAL_RECEIPT: PASS",
     claim_runs: [
       CuratedSeedLinkedClaimRun {
@@ -85,25 +89,29 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/03_ingest.dag",
-    driver_rel: "dag/gunbc/instruments/self_host_03_ingest_shims/witness_main.rs",
+    driver: HandDriverFile { driver_rel: "dag/gunbc/instruments/self_host_03_ingest_shims/witness_main.rs" },
     pass_marker: "SELF_HOST_03_INGEST_BEHAVIORAL_RECEIPT: PASS",
     claim_runs: []
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/03_normalize.dag",
-    driver_rel: "dag/gunbc/instruments/self_host_03_normalize_shims/witness_main.rs",
+    driver: HandDriverFile { driver_rel: "dag/gunbc/instruments/self_host_03_normalize_shims/witness_main.rs" },
     pass_marker: "SELF_HOST_03_NORMALIZE_BEHAVIORAL_RECEIPT: PASS",
     claim_runs: []
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/03_resolve.dag",
-    driver_rel: "dag/gunbc/instruments/self_host_03_resolve_shims/witness_main.rs",
+    driver: HandDriverFile { driver_rel: "dag/gunbc/instruments/self_host_03_resolve_shims/witness_main.rs" },
     pass_marker: "SELF_HOST_03_RESOLVE_BEHAVIORAL_RECEIPT: PASS",
     claim_runs: []
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/04_infer.dag",
-    driver_rel: "dag/gunbc/instruments/self_host_04_infer_shims/witness_main.rs",
+    driver: EmittedContractDriver {
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/infer_emitted_contract_test.dag",
+      contract_module: "v2.test.claim.self_host_contract.infer_emitted_contract",
+      contract_function: "infer_emitted_contract_holds"
+    },
     pass_marker: "SELF_HOST_04_INFER_BEHAVIORAL_RECEIPT: PASS",
     claim_runs: [
       CuratedSeedLinkedClaimRun {
@@ -114,7 +122,11 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/07_target_carriers.dag",
-    driver_rel: "dag/gunbc/instruments/self_host_target_carriers_shims/witness_main.rs",
+    driver: EmittedContractDriver {
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/target_carriers_emitted_contract_test.dag",
+      contract_module: "v2.test.claim.self_host_contract.target_carriers_emitted_contract",
+      contract_function: "target_carriers_emitted_contract_holds"
+    },
     pass_marker: "SELF_HOST_TARGET_CARRIERS_BEHAVIORAL_RECEIPT: PASS",
     claim_runs: [
       CuratedSeedLinkedClaimRun {
@@ -125,7 +137,7 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/discovery_enumeration.dag",
-    driver_rel: "dag/gunbc/instruments/self_host_discovery_enumeration_shims/witness_main.rs",
+    driver: HandDriverFile { driver_rel: "dag/gunbc/instruments/self_host_discovery_enumeration_shims/witness_main.rs" },
     pass_marker: "SELF_HOST_DISCOVERY_ENUMERATION_BEHAVIORAL_RECEIPT: PASS",
     claim_runs: [
       CuratedSeedLinkedClaimRun {
@@ -136,31 +148,35 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/materialization_carriers.dag",
-    driver_rel: "dag/gunbc/instruments/self_host_materialization_carriers_shims/witness_main.rs",
+    driver: HandDriverFile { driver_rel: "dag/gunbc/instruments/self_host_materialization_carriers_shims/witness_main.rs" },
     pass_marker: "SELF_HOST_MATERIALIZATION_CARRIERS_BEHAVIORAL_RECEIPT: PASS",
     claim_runs: []
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/program_assembly.dag",
-    driver_rel: "dag/gunbc/instruments/self_host_program_assembly_shims/witness_main.rs",
+    driver: HandDriverFile { driver_rel: "dag/gunbc/instruments/self_host_program_assembly_shims/witness_main.rs" },
     pass_marker: "SELF_HOST_PROGRAM_ASSEMBLY_BEHAVIORAL_RECEIPT: PASS",
     claim_runs: []
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/program_partition.dag",
-    driver_rel: "dag/gunbc/instruments/self_host_program_partition_shims/witness_main.rs",
+    driver: EmittedContractDriver {
+      contract_entry_rel: "src/v2/test/claim/self_host_contract/program_partition_emitted_contract_test.dag",
+      contract_module: "v2.test.claim.self_host_contract.program_partition_emitted_contract",
+      contract_function: "program_partition_emitted_contract_holds"
+    },
     pass_marker: "SELF_HOST_PROGRAM_PARTITION_BEHAVIORAL_RECEIPT: PASS",
     claim_runs: []
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/source_authority.dag",
-    driver_rel: "dag/gunbc/instruments/self_host_source_authority_shims/witness_main.rs",
+    driver: HandDriverFile { driver_rel: "dag/gunbc/instruments/self_host_source_authority_shims/witness_main.rs" },
     pass_marker: "SELF_HOST_SOURCE_AUTHORITY_BEHAVIORAL_RECEIPT: PASS",
     claim_runs: []
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/use_site_verdict.dag",
-    driver_rel: "dag/gunbc/instruments/self_host_use_site_verdict_shims/witness_main.rs",
+    driver: HandDriverFile { driver_rel: "dag/gunbc/instruments/self_host_use_site_verdict_shims/witness_main.rs" },
     pass_marker: "SELF_HOST_USE_SITE_VERDICT_BEHAVIORAL_RECEIPT: PASS",
     claim_runs: [
       CuratedSeedLinkedClaimRun {
@@ -237,7 +253,7 @@ fn compiler_module_behavioral_receipt_evidence(
   match module_behavioral_transport_config_for(module_path: module_path) {
     Present { value: cfg } => match cssl_seed_linked_behavioral_receipt(
       source_rel: cfg.module_path,
-      driver_rel: cfg.driver_rel,
+      driver: cfg.driver,
       pass_marker: cfg.pass_marker,
       claim_runs: cfg.claim_runs
     ) {

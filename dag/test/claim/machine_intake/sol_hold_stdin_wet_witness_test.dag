@@ -694,17 +694,28 @@ test fn a_publication_failure_stops_even_a_term_ignoring_child() -> Bool {
 
 // THE THIRD OUTCOME: a record that exists but cannot be read is UNOBSERVABLE (2), not ended (1), for the
 // owned check and for the release alike, so an unreadable record never reads as a clean release.
+//
+// ITS PREMISE IS CHECKED, NOT ASSUMED: mode 000 makes the record unreadable only to a user without
+// CAP_DAC_OVERRIDE. Run as root, the "1 1" record READS, and the release script then judges -- and may
+// signal -- pid 1, the runner's init (the BuildBuddy VM died on every attempt). So the scripts run
+// only once `test -r` confirms the record is unreadable; where it is not, the claim is RED without
+// touching any process -- an environment that cannot host this claim, never a pass.
+// The class is gunbc.recurring_failure_mode wet_witness_stand_in_process_is_the_init_it_signals.
 test fn an_unreadable_record_is_unobservable_not_ended() -> Bool {
   let dir = scratch_dir()
   let record = concat(dir, "/rec.pid")
   let _w = Filesystem.Write(path: record, content: "1 1\n").success
   let locked = shell.Exec.RunArgv(program: "chmod", arguments: ["000", record]).exit_code == 0
-  let unreadable = shell.Exec.RunArgv(program: "bash", arguments: ["-c", mtcollins1_sol_hold_owned_check_script, "sol-owned", record]).exit_code
-  let absent = shell.Exec.RunArgv(program: "bash", arguments: ["-c", mtcollins1_sol_hold_owned_check_script, "sol-owned", concat(dir, "/none.pid")]).exit_code
-  let release_unreadable = shell.Exec.RunArgv(program: "bash", arguments: ["-c", mtcollins1_sol_hold_release_script, "sol-release", record]).exit_code
+    && shell.Exec.RunArgv(program: "test", arguments: ["-r", record]).exit_code != 0
+  let held = if locked {
+    let unreadable = shell.Exec.RunArgv(program: "bash", arguments: ["-c", mtcollins1_sol_hold_owned_check_script, "sol-owned", record]).exit_code
+    let absent = shell.Exec.RunArgv(program: "bash", arguments: ["-c", mtcollins1_sol_hold_owned_check_script, "sol-owned", concat(dir, "/none.pid")]).exit_code
+    let release_unreadable = shell.Exec.RunArgv(program: "bash", arguments: ["-c", mtcollins1_sol_hold_release_script, "sol-release", record]).exit_code
+    unreadable == 2 && absent == 1 && release_unreadable == 2
+  } else { false }
   let _unlock = shell.Exec.RunArgv(program: "chmod", arguments: ["600", record]).exit_code
   let _removed = shell.Remove.RecursiveForce(path: dir)
-  locked && unreadable == 2 && absent == 1 && release_unreadable == 2
+  locked && held
 }
 
 // A CHILD STILL PRESENT AFTER THE CLEANUP BOUNDS IS RESIDUE, AND THE SUPERVISOR RETURNS. The supervisor
@@ -713,15 +724,30 @@ test fn an_unreadable_record_is_unobservable_not_ended() -> Bool {
 // termination stays unconfirmed (a launched child cannot be made to survive SIGKILL without privilege).
 // pf is a directory, so publication fails. The body must finish within its bounds, record the residue
 // line with the pid, and record NO "collector exited" line, because no exit was observed.
+//
+// THE STAND-IN IS ONLY UNSIGNALABLE WHERE THIS USER CANNOT SIGNAL PID 1, so that is checked first and
+// never assumed. As root, or as the user that owns a container's pid 1, the supervisor's `kill` and
+// `kill -9` land on init: a BuildBuddy VM died on every attempt and a session container restarted. So
+// the body runs only once `kill -0 1` is refused; where it is not, the claim is RED without signalling
+// anything -- an environment that cannot host this claim, never a pass.
+// The class is gunbc.recurring_failure_mode wet_witness_stand_in_process_is_the_init_it_signals.
+fn pid_one_unsignalable() -> Bool {
+  shell.Exec.RunArgv(program: "bash", arguments: ["-c", "kill -0 1 2>/dev/null"]).exit_code != 0
+}
+
 test fn an_unconfirmed_termination_is_residue_and_the_supervisor_returns() -> Bool {
-  let dir = scratch_dir()
-  let diag = concat(dir, "/client")
-  let _d = Filesystem.Write(path: diag, content: "").success
-  let script = concat("p=1; pf=\"$1\"; diag=\"$2\"\n", mtcollins1_sol_hold_supervisor_script)
-  let run = shell.Exec.RunArgv(program: "timeout", arguments: ["30", "bash", "-c", script, "sol-supervisor", dir, diag])
-  let client = read_or_empty(path: diag)
-  let _removed = shell.Remove.RecursiveForce(path: dir)
-  run.exit_code == 0
-    && string_contains(s: client, pattern: concat(sol_hold_pid_not_published_unstopped_line, " pid=1"))
-    && !string_contains(s: client, pattern: sol_hold_exit_record_prefix)
+  if !pid_one_unsignalable() {
+    false
+  } else {
+    let dir = scratch_dir()
+    let diag = concat(dir, "/client")
+    let _d = Filesystem.Write(path: diag, content: "").success
+    let script = concat("p=1; pf=\"$1\"; diag=\"$2\"\n", mtcollins1_sol_hold_supervisor_script)
+    let run = shell.Exec.RunArgv(program: "timeout", arguments: ["30", "bash", "-c", script, "sol-supervisor", dir, diag])
+    let client = read_or_empty(path: diag)
+    let _removed = shell.Remove.RecursiveForce(path: dir)
+    run.exit_code == 0
+      && string_contains(s: client, pattern: concat(sol_hold_pid_not_published_unstopped_line, " pid=1"))
+      && !string_contains(s: client, pattern: sol_hold_exit_record_prefix)
+  }
 }
