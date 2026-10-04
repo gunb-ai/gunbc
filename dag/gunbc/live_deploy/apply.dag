@@ -73,6 +73,7 @@ import gunbc.host_effect {
 import gunbc.host_effect_realize { host_effect_apply_gated }
 import gunbc.live_deploy.member_observe { deployment_effect_plan, deployment_identity_readback, IdentityReadbackConverged, IdentityReadbackDrift, IdentityReadbackRefused }
 import gunbc.live_deploy.member_identity { EffectsDerived, EffectsRefused, decision_label }
+import gunbc.live_deploy.apply_warrant { warrant_live_deploy_apply }
 import gunbc.live_deploy.role_singleton_convergence {
   assess_and_admit, role_singleton_refusal_detail, admitted_spec, admitted_decision,
   RoleSingletonAdmission, RoleSingletonAdmitted, RoleSingletonNotAdmitted,
@@ -156,7 +157,7 @@ import gunbc.running_release_identity {
 // gated step exists to install. Every other effect installs nothing and is gated on the full roster.
 fn live_deploy_pre_mutation_access(effect: HostEffect, access: DeployAccess) -> DeployAccess {
   match effect {
-    LiveDeployApply { spec: _, candidate: _, plan: _ } => deploy_access_sudoers_install_scope(access: access)
+    LiveDeployApply { warrant: _ } => deploy_access_sudoers_install_scope(access: access)
     LiveDeployRetract { spec: _ } => deploy_access_sudoers_install_scope(access: access)
     _ => access
   }
@@ -302,7 +303,9 @@ fn live_deploy_apply_member_plan_via_transport(
   candidate: CandidateRelease,
   transport: HostEffectTransport,
   access: DeployAccess
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> admit_callers: [
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_mutation_via_transport"),
+] {
   match deployment_effect_plan(spec: spec, candidate: candidate, transport: transport) {
     EffectsRefused { refusals } =>
       NotConverged {
@@ -312,7 +315,7 @@ fn live_deploy_apply_member_plan_via_transport(
     EffectsDerived { plan } =>
       live_deploy_fold(
         spec: spec,
-        effect: LiveDeployApply { spec: spec, candidate: candidate, plan: plan },
+        effect: LiveDeployApply { warrant: warrant_live_deploy_apply(spec: spec, candidate: candidate, plan: plan) },
         transport: transport,
         access: access,
         fixture_actor: Absent,

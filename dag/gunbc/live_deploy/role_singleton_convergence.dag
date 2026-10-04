@@ -24,10 +24,21 @@ import gunbc.live_deploy.spec {
   deployment_fabric_storage_unit_path,
   gunbc_approval_broker_unit_path,
 }
-import gunbc.fabric_storage_placement { fabric_storage_ownership_marker_path, fabric_storage_ownership_marker_content }
+import gunbc.fabric_storage_placement { FabricStorageOwnershipMarkerSpec, FabricStorageMarkerReading, FabricStorageMarkerExact, FabricStorageMarkerMismatched, fabric_storage_ownership_marker_spec, fabric_storage_marker_verdict }
+import extdeps.access.posix { file_mode_octal }
+import extdeps.shell
+import std.algebra { trim }
+import std.types { FilePath }
 import gunbc.live_deploy.desired { DesiredDeployment, desired_deployment_roster, prod_role_actuated_realization }
 import gunbc.live_deploy.member_observe {
   ObservationArm,
+  OnTheHostItself,
+  OverTransport,
+  Leg,
+  LegOut,
+  LegRefused,
+  remote_leg,
+  unit_document_leg,
   observation_arm,
   entry_presence,
   EntryPresence,
@@ -74,6 +85,7 @@ type RoleSingletonMember
 type RoleSingletonSighting
   = SightedDeploymentMember { host: NonEmptyStr, deployment: DeploymentId, member: RoleSingletonMember }
   | SightedBroker { host: NonEmptyStr }
+  | SightedMismatchedMarker { host: NonEmptyStr, deployment: DeploymentId, field: NonEmptyStr, expected: String, observed: String }
 
 type HostRoleSingletonReading
   = HostRoleSingletonsRead { host: NonEmptyStr, sightings: List<RoleSingletonSighting> }
@@ -99,7 +111,8 @@ type RoleSingletonRefusal
   | RoleSingletonTwoOnOneHost { host: NonEmptyStr, deployments: List<DeploymentId> }
   | RoleSingletonBrokerWithoutStore { host: NonEmptyStr }
   | RoleSingletonPartial { deployment: DeploymentId, host: NonEmptyStr, missing: List<RoleSingletonMember> }
-  | RoleSingletonUnmarked { deployment: DeploymentId, host: NonEmptyStr, marker_path: NonEmptyStr, marker_content: NonEmptyStr }
+  | RoleSingletonUnmarked { deployment: DeploymentId, host: NonEmptyStr, marker: FabricStorageOwnershipMarkerSpec }
+  | RoleSingletonMarkerMismatched { deployment: DeploymentId, host: NonEmptyStr, field: NonEmptyStr, expected: String, observed: String }
   | RoleSingletonStaleSpec { instance_id: NonEmptyStr, detail: String }
 
 // ── What is decided ─────────────────────────────────────────────────────────────────────────────
@@ -140,6 +153,7 @@ fn deployment_sightings(readings: List<HostRoleSingletonReading>) -> List<RoleSi
     HostRoleSingletonsRead { host: _, sightings } => sightings |> filter(s => match s {
       SightedDeploymentMember { host: _, deployment: _, member: _ } => true
       SightedBroker { host: _ } => false
+      SightedMismatchedMarker { host: _, deployment: _, field: _, expected: _, observed: _ } => false
     })
     HostRoleSingletonsUnobservable { host: _, cause: _ } => []
   })
@@ -149,6 +163,7 @@ fn sighting_host(s: RoleSingletonSighting) -> NonEmptyStr {
   match s {
     SightedDeploymentMember { host, deployment: _, member: _ } => host
     SightedBroker { host } => host
+    SightedMismatchedMarker { host, deployment: _, field: _, expected: _, observed: _ } => host
   }
 }
 
@@ -156,6 +171,7 @@ fn sighting_deployment(s: RoleSingletonSighting) -> DeploymentId? {
   match s {
     SightedDeploymentMember { host: _, deployment, member: _ } => Present { value: deployment }
     SightedBroker { host: _ } => none
+    SightedMismatchedMarker { host: _, deployment, field: _, expected: _, observed: _ } => Present { value: deployment }
   }
 }
 
@@ -163,6 +179,7 @@ fn sighting_member(s: RoleSingletonSighting) -> RoleSingletonMember {
   match s {
     SightedDeploymentMember { host: _, deployment: _, member } => member
     SightedBroker { host: _ } => BrokerUnitMember
+    SightedMismatchedMarker { host: _, deployment: _, field: _, expected: _, observed: _ } => StoreMarkerMember
   }
 }
 
@@ -170,6 +187,7 @@ fn broker_hosts(readings: List<HostRoleSingletonReading>) -> List<NonEmptyStr> {
   readings |> flat_map(r => match r {
     HostRoleSingletonsRead { host: _, sightings } => sightings |> flat_map(s => match s {
       SightedBroker { host } => [host]
+      SightedMismatchedMarker { host: _, deployment: _, field: _, expected: _, observed: _ } => []
       SightedDeploymentMember { host: _, deployment: _, member: _ } => []
     })
     HostRoleSingletonsUnobservable { host: _, cause: _ } => []
@@ -201,6 +219,14 @@ fn role_singleton_observation_of(readings: List<HostRoleSingletonReading>, rows:
     HostRoleSingletonsUnobservable { host, cause } => [RoleSingletonHostUnobservable { host: host, cause: cause }]
     HostRoleSingletonsRead { host: _, sightings: _ } => []
   })
+  let mismatched = readings |> flat_map(r => match r {
+    HostRoleSingletonsRead { host: _, sightings: ss } => ss |> flat_map(x => match x {
+      SightedMismatchedMarker { host, deployment, field, expected, observed } => [RoleSingletonMarkerMismatched { deployment: deployment, host: host, field: field, expected: expected, observed: observed }]
+      SightedDeploymentMember { host: _, deployment: _, member: _ } => []
+      SightedBroker { host: _ } => []
+    })
+    HostRoleSingletonsUnobservable { host: _, cause: _ } => []
+  })
   let sightings = deployment_sightings(readings: readings)
   let ids = sighted_ids(sightings: sightings)
   let two_hosts = ids |> flat_map(d => if count(hosts_of(sightings: sightings, deployment: d)) > 1 { [RoleSingletonRealizedOnTwoHosts { deployment: d, hosts: hosts_of(sightings: sightings, deployment: d) }] } else { [] })
@@ -215,7 +241,7 @@ fn role_singleton_observation_of(readings: List<HostRoleSingletonReading>, rows:
   })
   let brokers = broker_hosts(readings: readings)
   let broker_alone = brokers |> flat_map(h => if any(store_hosts, s => (s as String) == (h as String)) { [] } else { [RoleSingletonBrokerWithoutStore { host: h }] })
-  let first_refusal = concat(concat(concat(unobservable, two_hosts), concat(misplaced, two_on_one)), concat(if count(ids) > 1 { [RoleSingletonHoldersAmbiguous { observed: ids }] } else { [] }, broker_alone)) |> first
+  let first_refusal = concat(concat(concat(concat(unobservable, mismatched), two_hosts), concat(misplaced, two_on_one)), concat(if count(ids) > 1 { [RoleSingletonHoldersAmbiguous { observed: ids }] } else { [] }, broker_alone)) |> first
   match first_refusal {
     Present { value: c } => RoleSingletonObservationRefused { cause: c }
     Absent => RoleSingletonsObserved { realizations: ids |> flat_map(d => hosts_of(sightings: sightings, deployment: d) |> map(h => ObservedRealization {
@@ -271,8 +297,7 @@ fn role_singleton_convergence(desired: ProdRoleRealization, observed: RoleSingle
               RoleSingletonRefused { cause: RoleSingletonUnmarked {
                 deployment: r.deployment,
                 host: r.host,
-                marker_path: fabric_storage_ownership_marker_path(instance: holder.instance),
-                marker_content: fabric_storage_ownership_marker_content(instance: holder.instance),
+                marker: fabric_storage_ownership_marker_spec(instance: holder.instance),
               } }
             } else {
               RoleSingletonRefused { cause: RoleSingletonPartial { deployment: r.deployment, host: r.host, missing: missing } }
@@ -385,8 +410,10 @@ fn role_singleton_refusal_detail(cause: RoleSingletonRefusal) -> String {
       join(["role singletons refused: the approval broker is present on ", host as String, " but no store is realized there"], "")
     RoleSingletonPartial { deployment, host, missing } =>
       join(["role singletons refused: ", deployment.name as String, " on ", host as String, " is partial (missing ", to_string(count(missing)), " member(s)); an interrupted install or a store without its broker is not adopted"], "")
-    RoleSingletonUnmarked { deployment, host, marker_path, marker_content } =>
-      join(["role singletons refused: ", deployment.name as String, " on ", host as String, " has its broker and fabric store unit but no store ownership marker, so whether that store is this holder's cannot be established. The operator's one-time disposition: on ", host as String, " write ", marker_path as String, " (mode 0644, owner briansrls) with exactly this content: ", marker_content as String], "")
+    RoleSingletonUnmarked { deployment, host, marker } =>
+      join(["role singletons refused: ", deployment.name as String, " on ", host as String, " has its broker and fabric store unit but no store ownership marker, so whether that store is this holder's cannot be established. The operator's one-time disposition: on ", host as String, " write ", marker.path as String, " with mode ", file_mode_octal(mode: marker.mode), ", owner ", marker.owner as String, ", group ", marker.group as String, " and exactly this content: ", marker.content as String], "")
+    RoleSingletonMarkerMismatched { deployment, host, field, expected, observed } =>
+      join(["role singletons refused: the store ownership marker for ", deployment.name as String, " on ", host as String, " does not match its row: ", field as String, " is '", observed, "', expected '", expected, "'; a marker that differs in any field is not the marker"], "")
     RoleSingletonStaleSpec { instance_id, detail } =>
       join(["role singletons refused: spec ", instance_id as String, " is not admitted: ", detail], "")
   }
@@ -420,22 +447,82 @@ fn presence_cause(p: EntryPresence) -> String? {
   }
 }
 
+// THE MARKER IS READ BACK, NOT ONLY SEEN: its bytes, its mode, its owner and its group, each through
+// the same observation arm, against the one marker row (gunbc.fabric_storage_placement
+// fabric_storage_ownership_marker_spec). Only an exact match is the marker; any differing field is a
+// distinct sighting the adjudication refuses, and a field that cannot be read makes the host
+// unobservable rather than reading as either.
+fn stat_leg(arm: ObservationArm, path: String, format: String, leg: String) -> Leg {
+  match arm {
+    OnTheHostItself => {
+      let r = if format == "%a" { shell.Stat.ModeOf(path: path as FilePath) } else if format == "%U" { shell.Stat.OwnerOf(path: path as FilePath) } else { shell.Stat.GroupOf(path: path as FilePath) }
+      if r.success { LegOut { stdout: r.stdout } } else { LegRefused { cause: join([leg, " failed: ", r.stderr], "") } }
+    }
+    OverTransport { transport } => remote_leg(transport: transport, argv: ["stat", "-c", format, "--", path], leg: leg)
+  }
+}
+
+type MarkerRead
+  = MarkerReadBack { reading: FabricStorageMarkerReading }
+  | MarkerReadRefused { cause: String }
+
+fn read_marker(arm: ObservationArm, path: NonEmptyStr) -> MarkerRead {
+  match unit_document_leg(arm: arm, path: path as String) {
+    LegRefused { cause } => MarkerReadRefused { cause: cause }
+    LegOut { stdout: content } => match stat_leg(arm: arm, path: path as String, format: "%a", leg: "reading the marker's mode") {
+      LegRefused { cause } => MarkerReadRefused { cause: cause }
+      LegOut { stdout: mode } => match stat_leg(arm: arm, path: path as String, format: "%U", leg: "reading the marker's owner") {
+        LegRefused { cause } => MarkerReadRefused { cause: cause }
+        LegOut { stdout: owner } => match stat_leg(arm: arm, path: path as String, format: "%G", leg: "reading the marker's group") {
+          LegRefused { cause } => MarkerReadRefused { cause: cause }
+          LegOut { stdout: group } => MarkerReadBack { reading: FabricStorageMarkerReading { path: path, content: content, mode: trim(s: mode), owner: owner, group: group } }
+        }
+      }
+    }
+  }
+}
+
+type MarkerSighting
+  = MarkerSightingAbsent
+  | MarkerSightingOf { sighting: RoleSingletonSighting }
+  | MarkerSightingUnobservable { cause: String }
+
+fn marker_sighting(host: NonEmptyStr, r: DesiredDeployment, arm: ObservationArm) -> MarkerSighting {
+  let spec = fabric_storage_ownership_marker_spec(instance: r.instance)
+  match entry_presence(arm: arm, path: spec.path as String) {
+    EntryPresenceIndeterminate { cause } => MarkerSightingUnobservable { cause: cause }
+    EntryAbsent => MarkerSightingAbsent
+    EntryPresent => match read_marker(arm: arm, path: spec.path) {
+      MarkerReadRefused { cause } => MarkerSightingUnobservable { cause: cause }
+      MarkerReadBack { reading } => match fabric_storage_marker_verdict(spec: spec, reading: reading) {
+        FabricStorageMarkerExact => MarkerSightingOf { sighting: SightedDeploymentMember { host: host, deployment: r.instance.deployment, member: StoreMarkerMember } }
+        FabricStorageMarkerMismatched { field, expected, observed } => MarkerSightingOf { sighting: SightedMismatchedMarker { host: host, deployment: r.instance.deployment, field: field, expected: expected, observed: observed } }
+      }
+    }
+  }
+}
+
 fn host_role_singleton_reading(host: NonEmptyStr, rows: List<DesiredDeployment>, arm: ObservationArm) -> HostRoleSingletonReading {
   let probes = concat(
     [MemberProbe { deployment: none, member: BrokerUnitMember, presence: entry_presence(arm: arm, path: gunbc_approval_broker_unit_path() as String) }],
-    rows |> flat_map(r => [
-      MemberProbe { deployment: Present { value: r.instance.deployment }, member: FabricUnitMember, presence: entry_presence(arm: arm, path: deployment_fabric_storage_unit_path(names: r.names) as String) },
-      MemberProbe { deployment: Present { value: r.instance.deployment }, member: StoreMarkerMember, presence: entry_presence(arm: arm, path: fabric_storage_ownership_marker_path(instance: r.instance) as String) },
-    ]),
+    rows |> map(r => MemberProbe { deployment: Present { value: r.instance.deployment }, member: FabricUnitMember, presence: entry_presence(arm: arm, path: deployment_fabric_storage_unit_path(names: r.names) as String) }),
   )
-  match probes |> flat_map(p => match presence_cause(p: p.presence) { Present { value: c } => [c]  Absent => [] }) |> first {
+  let markers = rows |> map(r => marker_sighting(host: host, r: r, arm: arm))
+  let causes = concat(
+    probes |> flat_map(p => match presence_cause(p: p.presence) { Present { value: c } => [c]  Absent => [] }),
+    markers |> flat_map(m => match m { MarkerSightingUnobservable { cause } => [cause]  MarkerSightingAbsent => []  MarkerSightingOf { sighting: _ } => [] }),
+  )
+  match causes |> first {
     Present { value: cause } => HostRoleSingletonsUnobservable { host: host, cause: cause }
     Absent => HostRoleSingletonsRead {
       host: host,
-      sightings: probes |> filter(p => presence_seen(p: p.presence)) |> map(p => match p.deployment {
-        Present { value: d } => SightedDeploymentMember { host: host, deployment: d, member: p.member }
-        Absent => SightedBroker { host: host }
-      }),
+      sightings: concat(
+        probes |> filter(p => presence_seen(p: p.presence)) |> map(p => match p.deployment {
+          Present { value: d } => SightedDeploymentMember { host: host, deployment: d, member: p.member }
+          Absent => SightedBroker { host: host }
+        }),
+        markers |> flat_map(m => match m { MarkerSightingOf { sighting } => [sighting]  MarkerSightingAbsent => []  MarkerSightingUnobservable { cause: _ } => [] }),
+      ),
     }
   }
 }

@@ -533,8 +533,8 @@ fn resolve_host_os_effect_cell_after_direct_arms(n: ComputeHost, effect: HostEff
       CodexSupervisedWorkerTurnOnHost { node: n, intent: i, lease_key: k }
     HostIdentityShortHostnameRead =>
       HostnameReadOnHost { node: n }
-    LiveDeployApply { spec: s, candidate: c, plan: p } =>
-      LiveDeployApplyOnHost { node: n, spec: s, candidate: c, plan: p }
+    LiveDeployApply { warrant: w } =>
+      LiveDeployApplyOnHost { node: n, spec: w.spec, candidate: w.candidate, plan: w.plan }
     LiveDeployRetract { spec: s } =>
       LiveDeployRetractOnHost { node: n, spec: s }
     LiveDeployApprovalBrokerDarkInstall { spec: s, candidate: c } =>
@@ -613,7 +613,7 @@ fn resolve_bmc_controller_effect_cell_after_direct_arms(n: ComputeHost, effect: 
       IncompatibleCell { reason: "host_effect: SudoNopasswdGrantListProbe is in-band (typed sudo grant-list probe) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
     HostIdentityShortHostnameRead =>
       IncompatibleCell { reason: "host_effect: HostIdentityShortHostnameRead is in-band (shell hostname -s) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-    LiveDeployApply { spec: _, candidate: _, plan: _ } =>
+    LiveDeployApply { warrant: _ } =>
       IncompatibleCell { reason: "host_effect: LiveDeployApply is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
     LiveDeployRetract { spec: _ } =>
       IncompatibleCell { reason: "host_effect: LiveDeployRetract is in-band (actuator host shell mutation) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
@@ -675,7 +675,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         Srv3BootOnceReadBackSleep => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         Srv3ReceiptEmit { lines: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         HostIdentityShortHostnameRead => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
-        LiveDeployApply { spec: _, candidate: _, plan: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+        LiveDeployApply { warrant: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         LiveDeployRetract { spec: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         LiveDeployApprovalBrokerDarkInstall { spec: _, candidate: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
         LiveDeployMicrovmControllerInstall { candidate: _ } => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
@@ -712,8 +712,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           BmcwebSessionLoginOnHost { node: n }
         Srv3BmcwebTokenExtract =>
           BmcwebTokenExtractOnHost { node: n }
-        LiveDeployApply { spec: s, candidate: c, plan: p } =>
-          LiveDeployApplyOnHost { node: n, spec: s, candidate: c, plan: p }
+        LiveDeployApply { warrant: w } =>
+          LiveDeployApplyOnHost { node: n, spec: w.spec, candidate: w.candidate, plan: w.plan }
         LiveDeployRetract { spec: s } =>
           LiveDeployRetractOnHost { node: n, spec: s }
         LiveDeployApprovalBrokerDarkInstall { spec: s, candidate: c } =>
@@ -776,7 +776,7 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
         Srv3BootOnceReadBackSleep => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         Srv3ReceiptEmit { lines: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         HostIdentityShortHostnameRead => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
-        LiveDeployApply { spec: _, candidate: _, plan: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
+        LiveDeployApply { warrant: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         LiveDeployRetract { spec: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         LiveDeployApprovalBrokerDarkInstall { spec: _, candidate: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
         LiveDeployMicrovmControllerInstall { candidate: _ } => resolve_bmc_controller_effect_cell_after_direct_arms(n: n, effect: effect)
@@ -1619,7 +1619,7 @@ fn realize_provision_codex_runtime(
     Srv3BootOnceReadBackSleep => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     Srv3ReceiptEmit { lines: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     HostIdentityShortHostnameRead => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
-    LiveDeployApply { spec: _, candidate: _, plan: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
+    LiveDeployApply { warrant: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     LiveDeployRetract { spec: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     LiveDeployApprovalBrokerDarkInstall { spec: _, candidate: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
     LiveDeployMicrovmControllerInstall { candidate: _ } => realize_provision_codex_runtime_wrong_effect(effect_intent: effect_intent)
@@ -3441,7 +3441,7 @@ fn realize_provision_build_cache(
     Srv3BootOnceReadBackSleep => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     Srv3ReceiptEmit { lines: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     HostIdentityShortHostnameRead => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
-    LiveDeployApply { spec: _, candidate: _, plan: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
+    LiveDeployApply { warrant: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     LiveDeployRetract { spec: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     LiveDeployApprovalBrokerDarkInstall { spec: _, candidate: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)
     LiveDeployMicrovmControllerInstall { candidate: _ } => realize_provision_build_cache_wrong_effect(effect_intent: effect_intent)

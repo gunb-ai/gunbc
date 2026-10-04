@@ -18,7 +18,8 @@ import gunbc.managed_directory {
 }
 import gunbc.fleet_posix_accounts { fleet_posix_ci_runner_user }
 import gunbc.fabric_storage_file_store { FabricStorageFileRoot, fabric_storage_file_root, fabric_storage_file_root_with }
-import extdeps.access.posix { FileMode, file_mode_bits }
+import extdeps.access.posix { FileMode, PermissionBits, file_mode_bits, file_mode_octal, file_mode_of_octal_text }
+import std.algebra { trim }
 
 // WHERE THE FABRIC DB IS: one host holds the store's files and answers the endpoint. This is the
 // POLICY fact of the three (DESIGN 3) -- std.fabric_storage is the interface, the file store and the
@@ -87,11 +88,73 @@ fn fabric_storage_ownership_marker_path(instance: HostDashboardInstance) -> NonE
   dashboard_ownership_marker_in(root: dashboard_instance_fabric_storage_root(instance: instance), instance_id: instance.instance_id) as String as NonEmptyStr
 }
 
-// THE MARKER'S CONTENT names whose store it is: the deployment and the host. The install writes it,
-// and the refusal for an unmarked realization quotes it verbatim, so the operator's one-time disposition
-// writes exactly what an install would have.
+// THE MARKER'S CONTENT names whose store it is: the deployment and the host.
 fn fabric_storage_ownership_marker_content(instance: HostDashboardInstance) -> NonEmptyStr {
   join(["deployment=", instance.deployment.name as String, "\nhost=", instance.host_identity as String, "\n"], "") as NonEmptyStr
+}
+
+// THE MARKER'S ONE AUTHORITY: path, exact content, mode, owner and group, in one row derived from the
+// instance. The holder spec installs it from this row (owner, group and mode applied, not defaulted),
+// the observer reads every field back and admits a marker only on an exact match, and the refusal for
+// an unmarked realization quotes this row -- so the install, the readback and the operator's one-time
+// disposition cannot disagree. The owner and group are the store's service principal, the one writer
+// of the store (fabric_storage_directory).
+type FabricStorageOwnershipMarkerSpec {
+  path: NonEmptyStr
+  content: NonEmptyStr
+  mode: FileMode
+  owner: NonEmptyStr
+  group: NonEmptyStr
+}
+
+data fabric_storage_ownership_marker_mode: FileMode = FileMode {
+  owner: PermissionBits { read: true, write: true, execute: false },
+  group: PermissionBits { read: true, write: false, execute: false },
+  other: PermissionBits { read: true, write: false, execute: false },
+  setuid: false,
+  setgid: false,
+  sticky: false,
+}
+
+fn fabric_storage_ownership_marker_spec(instance: HostDashboardInstance) -> FabricStorageOwnershipMarkerSpec {
+  FabricStorageOwnershipMarkerSpec {
+    path: fabric_storage_ownership_marker_path(instance: instance),
+    content: fabric_storage_ownership_marker_content(instance: instance),
+    mode: fabric_storage_ownership_marker_mode,
+    owner: srv1_dashboard_service_principal().name,
+    group: srv1_dashboard_service_principal().name,
+  }
+}
+
+// WHAT A READBACK OF THE MARKER SAW, field for field, and whether it is exactly the row. Absent is not
+// a reading (the observer reports it as no marker); a reading that differs in ANY field is a mismatch,
+// named by its first differing field, and is never admitted as the marker.
+type FabricStorageMarkerReading {
+  path: NonEmptyStr
+  content: String
+  mode: String
+  owner: String
+  group: String
+}
+
+type FabricStorageMarkerVerdict
+  = FabricStorageMarkerExact
+  | FabricStorageMarkerMismatched { field: NonEmptyStr, expected: String, observed: String }
+
+fn fabric_storage_marker_mode_matches(spec: FileMode, observed: String) -> Bool {
+  match file_mode_of_octal_text(text: observed) {
+    Present { value: m } => file_mode_octal(mode: m) == file_mode_octal(mode: spec)
+    Absent => false
+  }
+}
+
+fn fabric_storage_marker_verdict(spec: FabricStorageOwnershipMarkerSpec, reading: FabricStorageMarkerReading) -> FabricStorageMarkerVerdict {
+  if !((reading.path as String) == (spec.path as String)) { FabricStorageMarkerMismatched { field: "path", expected: spec.path as String, observed: reading.path as String } }
+  else if !(reading.content == (spec.content as String)) { FabricStorageMarkerMismatched { field: "content", expected: spec.content as String, observed: reading.content } }
+  else if !fabric_storage_marker_mode_matches(spec: spec.mode, observed: reading.mode) { FabricStorageMarkerMismatched { field: "mode", expected: file_mode_octal(mode: spec.mode), observed: reading.mode } }
+  else if !(trim(s: reading.owner) == (spec.owner as String)) { FabricStorageMarkerMismatched { field: "owner", expected: spec.owner as String, observed: reading.owner } }
+  else if !(trim(s: reading.group) == (spec.group as String)) { FabricStorageMarkerMismatched { field: "group", expected: spec.group as String, observed: reading.group } }
+  else { FabricStorageMarkerExact }
 }
 
 fn fabric_storage_endpoint_for(host: HostIdentity) -> NonEmptyStr? {

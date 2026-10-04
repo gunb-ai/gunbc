@@ -82,6 +82,8 @@ import gunbc.live_deploy.role_singleton_convergence {
   RoleSingletonBrokerWithoutStore,
   RoleSingletonPartial,
   RoleSingletonUnmarked,
+  RoleSingletonMarkerMismatched,
+  SightedMismatchedMarker,
   role_singleton_refusal_detail,
   RoleSingletonStaleSpec,
   RoleSingletonSighting,
@@ -111,6 +113,12 @@ import gunbc.fabric_storage_placement {
   fabric_storage_door_socket,
   fabric_storage_ownership_marker_path,
   fabric_storage_ownership_marker_content,
+  fabric_storage_ownership_marker_spec,
+  fabric_storage_marker_verdict,
+  FabricStorageOwnershipMarkerSpec,
+  FabricStorageMarkerReading,
+  FabricStorageMarkerExact,
+  FabricStorageMarkerMismatched,
 }
 import gunbc.auth.approval_request_client {
   ApprovalLoopbackOriginResolved,
@@ -349,7 +357,8 @@ fn refused_with(c: RoleSingletonConvergence, label: String) -> Bool {
       RoleSingletonTwoOnOneHost { host: _, deployments: _ } => label == "two-on-one"
       RoleSingletonBrokerWithoutStore { host: _ } => label == "broker-alone"
       RoleSingletonPartial { deployment: _, host: _, missing: _ } => label == "partial"
-      RoleSingletonUnmarked { deployment: _, host: _, marker_path: _, marker_content: _ } => label == "unmarked"
+      RoleSingletonUnmarked { deployment: _, host: _, marker: _ } => label == "unmarked"
+      RoleSingletonMarkerMismatched { deployment: _, host: _, field: _, expected: _, observed: _ } => label == "marker-mismatch"
       RoleSingletonStaleSpec { instance_id: _, detail: _ } => label == "stale"
     }
     RoleSingletonNoop => false
@@ -582,7 +591,7 @@ fn units_without_marker_on(host: String, d: DeploymentId) -> List<RoleSingletonS
 fn spec_marker_content(spec: DeploymentSpec) -> List<String> {
   spec.steps |> flat_map(s => match s {
     Dependency { step } => match step.subject {
-      EnsuredOwnershipMarker { path: _, owner: _, content } => [content as String]
+      EnsuredOwnershipMarker { marker } => [marker.content as String]
       _ => []
     }
     ArtifactStep { step: _ } => []
@@ -597,9 +606,10 @@ test fn an_unmarked_legacy_store_refuses_naming_the_operators_disposition() -> B
   let decision = decide(desired: real, readings: [read_on(host: "srv1", sightings: units_without_marker_on(host: "srv1", d: srv1_daily_workspace_deployment)), read_on(host: "srv2", sightings: [])])
   let names_it = match decision {
     RoleSingletonRefused { cause } => match cause {
-      RoleSingletonUnmarked { deployment, host, marker_path, marker_content } =>
+      RoleSingletonUnmarked { deployment, host, marker } =>
         deployment == srv1_daily_workspace_deployment && (host as String) == "srv1"
-          && (marker_path as String) == want_path && (marker_content as String) == want_content
+          && (marker.path as String) == want_path && (marker.content as String) == want_content
+          && (marker.owner as String) == "briansrls" && (marker.group as String) == "briansrls"
           && string_contains(s: role_singleton_refusal_detail(cause: cause), pattern: want_path)
           && string_contains(s: role_singleton_refusal_detail(cause: cause), pattern: want_content)
       _ => false
@@ -622,6 +632,14 @@ data forged_admission_source: String = "module probe_forged_role_singleton_admis
 
 data obtained_admission_source: String = "module probe_obtained_role_singleton_admission\nimport gunbc.live_deploy.role_singleton_convergence { assess_and_admit, RoleSingletonAdmissionResult }\nimport gunbc.live_deploy.desired { deployment_spec_srv1 }\nimport gunbc.host_effect { LocalShell }\nfn obtain() -> RoleSingletonAdmissionResult { assess_and_admit(spec: deployment_spec_srv1(), own: LocalShell) }\n"
 
+data outside_member_plan_source: String = "module probe_outside_member_plan\nimport gunbc.live_deploy.apply { live_deploy_apply_member_plan_via_transport }\nimport gunbc.live_deploy.desired { deployment_spec_srv1 }\nimport gunbc.live_deploy.candidate_identity { CandidateRelease }\nimport gunbc.host_effect { LocalShell }\nimport gunbc.ci_deploy_access { DeployAccess }\nfn bypass(c: CandidateRelease, a: DeployAccess) -> Bool { let r = live_deploy_apply_member_plan_via_transport(spec: deployment_spec_srv1(), candidate: c, transport: LocalShell, access: a)\n true }\n"
+
+data outside_warrant_mint_source: String = "module probe_outside_warrant_mint\nimport gunbc.live_deploy.apply_warrant { warrant_live_deploy_apply, AdmittedLiveDeployApply }\nimport gunbc.live_deploy.desired { deployment_spec_srv1 }\nimport gunbc.live_deploy.candidate_identity { CandidateRelease }\nimport gunbc.live_deploy.member_identity { ReleaseEffectPlan }\nfn forge(c: CandidateRelease, p: ReleaseEffectPlan) -> AdmittedLiveDeployApply { warrant_live_deploy_apply(spec: deployment_spec_srv1(), candidate: c, plan: p) }\n"
+
+data outside_warrant_literal_source: String = "module probe_outside_warrant_literal\nimport gunbc.live_deploy.apply_warrant { AdmittedLiveDeployApply }\nimport gunbc.host_effect { HostEffect, LiveDeployApply }\nimport gunbc.live_deploy.desired { deployment_spec_srv1 }\nimport gunbc.live_deploy.candidate_identity { CandidateRelease }\nimport gunbc.live_deploy.member_identity { ReleaseEffectPlan }\nfn forge(c: CandidateRelease, p: ReleaseEffectPlan) -> HostEffect { LiveDeployApply { warrant: AdmittedLiveDeployApply { spec: deployment_spec_srv1(), candidate: c, plan: p } } }\n"
+
+data canonical_apply_source: String = "module probe_canonical_apply\nimport gunbc.live_deploy.apply { live_deploy_apply_with_access }\nimport gunbc.live_deploy.desired { deployment_spec_srv1 }\nimport gunbc.live_deploy.candidate_identity { CandidateRelease }\nimport gunbc.ci_deploy_access { DeployAccess }\nfn act(c: CandidateRelease, a: DeployAccess) -> Bool { let r = live_deploy_apply_with_access(spec: deployment_spec_srv1(), access: a, candidate: c)\n true }\n"
+
 data replayed_admission_source: String = "module probe_replayed_role_singleton_admission\nimport gunbc.live_deploy.role_singleton_convergence { RoleSingletonAdmission, admitted_spec }\nimport gunbc.live_deploy.spec { DeploymentSpec }\nfn replay(a: RoleSingletonAdmission) -> DeploymentSpec { admitted_spec(admission: a) }\n"
 
 fn admission_refusals_in(source: String) -> Int {
@@ -635,4 +653,54 @@ test fn no_outside_module_can_mint_obtain_or_replay_an_admission() -> Bool {
   admission_refusals_in(source: forged_admission_source) >= 1
     && admission_refusals_in(source: obtained_admission_source) >= 1
     && admission_refusals_in(source: replayed_admission_source) >= 1
+}
+
+fn sole_constructor_refusals_in(source: String) -> Int {
+  match census_blocking_count_for_class(census: compile_dag_diagnostic_census(source), wanted: "SoleConstructorViolation") {
+    Present { value: n } => n
+    Absent => 0
+  }
+}
+
+// THE EFFECT DESTINATION IS CLOSED. (a) an outside call to the member-plan step and (b) an outside
+// warrant -- minted or written as a literal inside a LiveDeployApply -- are each refused at compile
+// time; (c) the canonical assess-and-act entry still compiles with no admission refusal.
+test fn the_realizer_receives_an_apply_only_through_the_assessed_composition() -> Bool {
+  admission_refusals_in(source: outside_member_plan_source) >= 1
+    && admission_refusals_in(source: outside_warrant_mint_source) >= 1
+    && sole_constructor_refusals_in(source: outside_warrant_literal_source) >= 1
+    && admission_refusals_in(source: canonical_apply_source) == 0
+}
+
+// ── The marker has one authority, and only an exact readback is the marker ─────────────────────
+// Each field mutated alone -- path, content, mode, owner, group -- is a mismatch named by that field;
+// the unmutated reading is exact; and a mismatched marker sighted on the holder's host refuses as
+// RoleSingletonMarkerMismatched, distinct from an absent one (RoleSingletonUnmarked).
+fn exact_reading(m: FabricStorageOwnershipMarkerSpec) -> FabricStorageMarkerReading {
+  FabricStorageMarkerReading { path: m.path, content: m.content as String, mode: "644", owner: m.owner as String, group: m.group as String }
+}
+
+fn mismatched_on(m: FabricStorageOwnershipMarkerSpec, r: FabricStorageMarkerReading, field: String) -> Bool {
+  match fabric_storage_marker_verdict(spec: m, reading: r) {
+    FabricStorageMarkerMismatched { field: f, expected: _, observed: _ } => (f as String) == field
+    FabricStorageMarkerExact => false
+  }
+}
+
+test fn every_marker_field_is_read_back_and_any_mismatch_refuses() -> Bool {
+  let m = fabric_storage_ownership_marker_spec(instance: srv1_live_dashboard_instance())
+  let r = exact_reading(m: m)
+  let exact = match fabric_storage_marker_verdict(spec: m, reading: r) { FabricStorageMarkerExact => true  _ => false }
+  let mismatch_world = [read_on(host: "srv1", sightings: [
+    SightedDeploymentMember { host: "srv1" as NonEmptyStr, deployment: srv1_daily_workspace_deployment, member: FabricUnitMember },
+    SightedBroker { host: "srv1" as NonEmptyStr },
+    SightedMismatchedMarker { host: "srv1" as NonEmptyStr, deployment: srv1_daily_workspace_deployment, field: "owner", expected: "briansrls", observed: "root" },
+  ]), read_on(host: "srv2", sightings: [])]
+  exact
+    && mismatched_on(m: m, r: FabricStorageMarkerReading { path: "/opt/gunbc/fabric-storage/elsewhere" as NonEmptyStr, content: r.content, mode: r.mode, owner: r.owner, group: r.group }, field: "path")
+    && mismatched_on(m: m, r: FabricStorageMarkerReading { path: r.path, content: "deployment=someone-else\nhost=srv1\n", mode: r.mode, owner: r.owner, group: r.group }, field: "content")
+    && mismatched_on(m: m, r: FabricStorageMarkerReading { path: r.path, content: r.content, mode: "600", owner: r.owner, group: r.group }, field: "mode")
+    && mismatched_on(m: m, r: FabricStorageMarkerReading { path: r.path, content: r.content, mode: r.mode, owner: "root", group: r.group }, field: "owner")
+    && mismatched_on(m: m, r: FabricStorageMarkerReading { path: r.path, content: r.content, mode: r.mode, owner: r.owner, group: "root" }, field: "group")
+    && refused_with(c: decide(desired: prod_role_actuated_realization(), readings: mismatch_world), label: "marker-mismatch")
 }

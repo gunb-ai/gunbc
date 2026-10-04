@@ -1,5 +1,6 @@
 module gunbc.live_deploy.emit
 
+import extdeps.access.posix { file_mode_octal }
 import gunbc.workspace_commissioning_dispatch_operations { workspace_dispatch_grant_path, workspace_dispatch_grant_content }
 
 import gunbc.live_deploy.release_environment { installed_release_environment, installed_release_unit }
@@ -1437,9 +1438,9 @@ fn ensure_dependency_steps(dep: DeploymentDependencyStep, privileged: Bool) -> L
     EnsuredManagedHostDirectory { admission } =>
       concat([deploy_raw(command: ensure_managed_directory_command(admission: admission))],
         map(managed_directory_entry_repair_commands(admission: admission), c => deploy_raw(command: c)))
-    EnsuredOwnershipMarker { path, owner: _, content } => [
-      deploy_raw(command: deploy_stage_write_command(stage_name: "store-ownership-marker", content: content as String)),
-      deploy_raw(command: deploy_stage_install_command(stage_name: "store-ownership-marker", mode: install_file_shared_mode, dest: path as String)),
+    EnsuredOwnershipMarker { marker } => [
+      deploy_raw(command: deploy_stage_write_command(stage_name: "store-ownership-marker", content: marker.content as String)),
+      deploy_raw(command: deploy_stage_install_owned_command(stage_name: "store-ownership-marker", mode: file_mode_octal(mode: marker.mode) as NonEmptyStr, owner: marker.owner, group: marker.group, dest: marker.path as String)),
     ]
   }
 }

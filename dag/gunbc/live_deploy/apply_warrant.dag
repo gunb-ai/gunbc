@@ -1,0 +1,25 @@
+module gunbc.live_deploy.apply_warrant
+
+import std.decl_ref { decl_ref }
+import gunbc.live_deploy.spec { DeploymentSpec }
+import gunbc.live_deploy.candidate_identity { CandidateRelease }
+import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
+
+// THE ONLY WAY A DEPLOY REACHES THE HOST-EFFECT REALIZER. gunbc.host_effect LiveDeployApply carries this
+// warrant rather than a raw (spec, candidate, plan), and the warrant is sole_constructor with one mint,
+// sealed to the member-plan step of the admitted apply (gunbc.live_deploy.apply
+// live_deploy_apply_member_plan_via_transport), which is itself sealed to the admitted mutation. So a
+// spec the role-singleton assessment did not admit cannot be planned, warranted or realized: the
+// realizer receives an apply only through the composition that assessed it. A leaf module, so the
+// effect vocabulary (gunbc.host_effect) can name the warrant without importing the assessment.
+type AdmittedLiveDeployApply sole_constructor {
+  spec: DeploymentSpec
+  candidate: CandidateRelease
+  plan: ReleaseEffectPlan
+}
+
+fn warrant_live_deploy_apply(spec: DeploymentSpec, candidate: CandidateRelease, plan: ReleaseEffectPlan) -> AdmittedLiveDeployApply admit_callers: [
+  decl_ref(module_path: "gunbc.live_deploy.apply", decl_name: "live_deploy_apply_member_plan_via_transport"),
+] {
+  AdmittedLiveDeployApply { spec: spec, candidate: candidate, plan: plan }
+}
