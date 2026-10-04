@@ -13397,7 +13397,8 @@ mod pure_producer_share_tests {
                    measurement: String\n\
                    next_trigger: String\n\
                  }}\n\
-                 data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
+                 data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n\
+                 fn floor_cross_claim_runtime_identity_residual_producers() -> List<String> {{ [] }}\n",
                 dependence = dependence,
                 dependence_input = "v2.workflow.floor_pure_producer_share.carrier_a",
             ),
@@ -13608,7 +13609,8 @@ mod pure_producer_share_tests {
                measurement: String\n\
                next_trigger: String\n\
              }\n\
-             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
+             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n\
+             fn floor_cross_claim_runtime_identity_residual_producers() -> List<String> { [] }\n",
         )]);
         let err = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
             .expect_err("a row naming an unprepared input must stop the line");
@@ -13663,7 +13665,8 @@ mod pure_producer_share_tests {
                measurement: String\n\
                next_trigger: String\n\
              }\n\
-             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n",
+             data floor_cross_claim_refused_candidates: List<RefusedShareCandidate> = []\n\
+             fn floor_cross_claim_runtime_identity_residual_producers() -> List<String> { [] }\n",
         )]);
         let err = install_pure_producer_share(&prepared, &fixture_corpus(&[]))
             .expect_err("a non-nullary acquisition must stop the line");
