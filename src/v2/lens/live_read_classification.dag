@@ -136,12 +136,12 @@ fn path_pattern_eq(a: PathPattern, b: PathPattern) -> Bool {
   match a {
     LiteralPath { path: pa } =>
       match b {
-        LiteralPath { path: pb } => string_eq(a: pa, b: pb)
+        LiteralPath { path: pb } => pa == pb
         _ => false
       }
     ParamRef { name: na } =>
       match b {
-        ParamRef { name: nb } => string_eq(a: na, b: nb)
+        ParamRef { name: nb } => na == nb
         _ => false
       }
     UnknownPath =>
@@ -166,7 +166,7 @@ fn live_read_carrier_eq(a: LiveReadCarrier, b: LiveReadCarrier) -> Bool {
       }
     DeclFactsReflection { home: ha } =>
       match b {
-        DeclFactsReflection { home: hb } => string_eq(a: ha, b: hb)
+        DeclFactsReflection { home: hb } => ha == hb
         _ => false
       }
   }
@@ -191,7 +191,7 @@ fn carrier_for_callee_text(
   args: List<Symbol>,
   param_names: List<String>
 ) -> LiveReadCarrier {
-  if string_eq(a: callee_text, b: "filesystem_read") {
+  if callee_text == "filesystem_read" {
     match list_head(xs: args) {
       HeadFound { value: arg } =>
         FilesystemReadPath {
@@ -202,10 +202,10 @@ fn carrier_for_callee_text(
         }
       HeadAbsent => FilesystemReadPath { path_pattern: UnknownPath }
     }
-  } else if string_eq(a: callee_text, b: "module_declaration_facts")
-    || string_eq(a: callee_text, b: "module_declaration_facts_live") {
+  } else if callee_text == "module_declaration_facts"
+    || callee_text == "module_declaration_facts_live" {
     ModuleDeclarationFactsScan
-  } else if string_eq(a: callee_text, b: "decl_facts") {
+  } else if callee_text == "decl_facts" {
     DeclFactsReflection { home: "v2.std.decl_index" }
   } else {
     FilesystemReadPath { path_pattern: UnknownPath }
@@ -726,7 +726,7 @@ fn classification_has_literal_path(
     RuntimeRead { carriers: carriers } =>
       any(xs: carriers, predicate: fn(carrier) {
         match carrier {
-          FilesystemReadPath { path_pattern: LiteralPath { path: p } } => string_eq(a: p, b: path)
+          FilesystemReadPath { path_pattern: LiteralPath { path: p } } => p == path
           FilesystemReadPath { path_pattern: _ } => false
           ModuleDeclarationFactsScan => false
           DeclFactsReflection { home: _ } => false
@@ -850,13 +850,13 @@ type G2RootBinding
 
 fn module_facts_for_path(path: String, nodes: List<ModuleDeclarationFact>) -> List<ModuleDeclarationFact> {
   fold_list(xs: nodes, empty: empty_module_declaration_fact_list, cons: fn(acc, n) {
-    if string_eq(a: n.path, b: path) { list_snoc_item(xs: acc, item: n) } else { acc }
+    if n.path == path { list_snoc_item(xs: acc, item: n) } else { acc }
   })
 }
 
 fn decls_with_qualified_name(qualified: String, decls: List<FnArrowDecl>) -> List<FnArrowDecl> {
   fold_list(xs: decls, empty: empty_decl_list, cons: fn(acc, d) {
-    if string_eq(a: d.qualified_name, b: qualified) { list_snoc_item(xs: acc, item: d) } else { acc }
+    if d.qualified_name == qualified { list_snoc_item(xs: acc, item: d) } else { acc }
   })
 }
 

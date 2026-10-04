@@ -125,6 +125,7 @@ type SystemdUnitDirective
   | Wants { target: NonEmptyStr }
   | Requires { target: NonEmptyStr }
   | StartLimitIntervalSec { duration: NonEmptyStr }
+  | StartLimitBurst { count: NonEmptyStr }
   | SuccessAction { action: SystemdUnitStateAction }
   | FailureAction { action: SystemdUnitStateAction }
 
@@ -288,6 +289,7 @@ type SystemdServiceDirective
   | ServiceStandardError { stream: SystemdOutputStream }
   | Restart { policy: NonEmptyStr }
   | Environment { assignment: NonEmptyStr }
+  | LoadCredential { identifier: NonEmptyStr, source: NonEmptyStr }
   | EnvironmentFile { path: NonEmptyStr }
   | EnvironmentFileIfPresent { path: NonEmptyStr }
   | WorkingDirectory { path: NonEmptyStr }
@@ -297,6 +299,7 @@ type SystemdServiceDirective
   | ServiceNice { priority: Int }
   | ServiceIoSchedulingClass { scheduling_class: SystemdIoSchedulingClass }
   | TimeoutStartSec { duration: NonEmptyStr }
+  | RuntimeMaxSec { duration: NonEmptyStr }
   | ServiceExitType { exit_type: SystemdExitType }
   | ServiceKillMode { mode: SystemdKillMode }
   | RestartSec { duration: NonEmptyStr }
@@ -370,11 +373,22 @@ type SystemdIoSchedulingClass
 // built on would be broken by putting it where the restart policy reads more naturally. A unit whose
 // normal operation is to exit after each unit of work and be restarted will trip the default limit
 // (five starts in ten seconds) and be left FAILED, so a service of that shape has to say so.
+// `StartLimitBurst=` is the other half of that limiter -- the interval says how long the rate
+// window is, and the burst says how many starts the window admits -- and a one-shot unit states
+// burst one so that even an operator hammering `systemctl start` cannot turn it into a retry loop.
 //
 // `RestartSec=` is the delay before the restart and `TimeoutStopSec=` is how long a stop is given
 // before systemd escalates to SIGKILL. They are two durations at opposite ends of a unit's life and
 // are two variants for the reason every pair in this module is: one value carrying both would put
 // the difference between "wait before starting again" and "wait before killing" into a position.
+//
+// `RuntimeMaxSec=` is the TOTAL-runtime bound, the one a bounded experiment exists for: systemd
+// terminates the unit once the duration elapses, which is how a one-shot measurement cannot become
+// an indefinitely running service even when its exit code says nothing. `TimeoutStartSec=` bounds
+// only the START, and leaving start unbounded while bounding the whole run is the shape an engine
+// unit needs -- startup is a multi-minute weight load, but once running the experiment has an
+// admitted maximum. Every rank unit of one experiment carries the same value, so the bound stops
+// ALL the ranks together rather than whichever of them an operator remembered.
 //
 // They take `NonEmptyStr` rather than a modeled duration, following `TimeoutStartSec=`'s established
 // precedent here. systemd's timespan grammar admits bare seconds and suffixed units ("5", "5min"),
@@ -703,6 +717,7 @@ fn systemd_unit_directive_line(directive: SystemdUnitDirective) -> String {
     Wants { target: v } => join(["Wants=", v as String], "")
     Requires { target: v } => join(["Requires=", v as String], "")
     StartLimitIntervalSec { duration: v } => join(["StartLimitIntervalSec=", v as String], "")
+    StartLimitBurst { count: v } => join(["StartLimitBurst=", v as String], "")
     SuccessAction { action: a } => join(["SuccessAction=", systemd_unit_state_action_wire(action: a)], "")
     FailureAction { action: a } => join(["FailureAction=", systemd_unit_state_action_wire(action: a)], "")
   }
@@ -724,6 +739,7 @@ fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String 
       join(["StandardError=", systemd_output_stream_wire(stream: v)], "")
     Restart { policy: v } => join(["Restart=", v as String], "")
     Environment { assignment: v } => join(["Environment=", v as String], "")
+    LoadCredential { identifier: id, source: source } => join(["LoadCredential=", id as String, ":", source as String], "")
     EnvironmentFile { path: v } => join(["EnvironmentFile=", v as String], "")
     EnvironmentFileIfPresent { path: v } => join(["EnvironmentFile=-", v as String], "")
     WorkingDirectory { path: v } => join(["WorkingDirectory=", v as String], "")
@@ -734,6 +750,7 @@ fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String 
     ServiceIoSchedulingClass { scheduling_class: v } =>
       join(["IOSchedulingClass=", systemd_io_scheduling_class_wire(scheduling_class: v)], "")
     TimeoutStartSec { duration: v } => join(["TimeoutStartSec=", v as String], "")
+    RuntimeMaxSec { duration: v } => join(["RuntimeMaxSec=", v as String], "")
     ServiceExitType { exit_type: v } => join(["ExitType=", systemd_exit_type_wire(exit_type: v)], "")
     ServiceKillMode { mode: v } => join(["KillMode=", systemd_kill_mode_wire(mode: v)], "")
     RestartSec { duration: v } => join(["RestartSec=", v as String], "")

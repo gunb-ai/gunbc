@@ -9,7 +9,7 @@ import gunbc.fleet_converge_cli {
   ConvergeCliReceipt,
   fleet_converge_receipt_path,
 }
-import gunbc.host_converge { ConvergeVerdict, VerdictConverged, Drifted, Absent, converge_verdict_label }
+import gunbc.host_converge { ConvergeVerdict, VerdictConverged, Drifted, VerdictAbsent, converge_verdict_label }
 import gunbc.typed_argv_exec {
   typed_argv_probe_over_ssh,
   TypedArgvExecOutcome,
@@ -128,7 +128,7 @@ fn parse_converge_verdict_label(label: String) -> ConvergeVerdict? {
       Present { value: Drifted }
     } else {
       if label == "absent" {
-        Present { value: Absent }
+        Present { value: VerdictAbsent }
       } else {
         none
       }
@@ -191,7 +191,7 @@ fn classify_receipt_stdout(host: String, raw: String) -> CollectedHostReceipt {
                 Absent => ReceiptConvergedUnbacked { host: host, line: line }
               }
             Drifted => ReceiptCollected { host: host, receipt: receipt }
-            Absent => ReceiptCollected { host: host, receipt: receipt }
+            VerdictAbsent => ReceiptCollected { host: host, receipt: receipt }
           }
         Absent => ReceiptUnparseable { host: host, line: line }
       }

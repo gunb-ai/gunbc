@@ -62,17 +62,47 @@ Once these carriers exist, `InterfaceMemberUnmodeled` has no producer for modifi
 
 ### Realization: a sibling node, never inside the interface
 
-Per DESIGN §3, transport is one of N handlers bound to the interface shape, and "the dispatch that selects a realization is itself realization". So the realization members lower into **one sibling node per service**, `^service_realization_binding`, emitted beside the service node in the same module:
+Per DESIGN §3, transport is one of N handlers bound to the interface shape, and "the dispatch that selects a realization is itself realization". So the realization members lower into a **sibling** of the service, never into its interface.
 
-- It is keyed per operation by the operation's resolved identity, the shape `v2.std.operation_argv` `OperationRef` (`path`, `service`, `operation`) that `v2.std.operation_realization` `OperationBinding` and the grant's `HandlerBinding` selection already key on. No new identity is minted.
-- `transport` / `config` lower onto the transport's existing config record (`extdeps.transports.shell` `ShellTransportConfig`, `extdeps.transports.rest` `RestTransportConfig`, `extdeps.transports.file`). A transport kind with no config record refuses located (`body_lowering_reason_service_transport_unmodeled`). It is never coerced to a neighbour.
-- `exit` / `response` lower as the operation's output projection: expressions over the transport's observation fields, lowered through the ordinary value reader so their references reach the census.
-- `from "key"` lowers as one row of that projection (declared output field ← wire key). That is where it belongs: it is meaningful only relative to the transport whose observation it decodes.
-- `mock_response` lowers onto `std.hermetic_replay` `PublishedMockCase` rows, keyed by the same `OperationRef`.
+**Correction (PR3a, 2026-10-02).** The first draft said `transport` / `config` lower "onto the transport's existing config record" (`ShellTransportConfig`, `RestTransportConfig`, `FileTransportConfig`). They cannot. Those records are the host's runtime configuration (working directory and environment; base URL, credentials and TLS posture; base path). No operation authors them, and none carries what an operation does author: shell `argv` / `stdin`, rest `method` / `path` / `query` / `headers` / `body`, file `path` / `verb`. Lowering onto them would be a meaning fork. `PublishedMockCase` is a key with no body. The rulings (XL-2 manager, 2026-10-02):
 
-The interface node never references the sibling. The sibling references the interface through `OperationRef`. That direction is the acyclic one: an interface is complete without any realization, and a realization is meaningless without its interface.
+1. PR3 splits into 3a (model), 3b (lowering) and 3c (cut).
+2. Declared bindings live per kind in `extdeps.transports.<kind>`, and the runtime configs are not forked.
+3. Infer typing of exit, response and mock arms against the declared outputs comes later. In PR3, infer refuses at the sibling under its own owned cause.
+4. The sibling attaches by **MIRROR**.
 
-**What the full route does with the sibling.** Resolution resolves its references, which is what puts them in the census. Infer types the projection expressions against the declared outputs. Eval and emission select a binding through the existing `HandlerBinding`. A stage that cannot yet consume the sibling **refuses at the sibling under its own stage cause**, so the old blanket `service_realization_unreachable` becomes a set of per-stage located causes. Once no member is set aside, `ServiceSetAside` and both set-aside reasons are deleted.
+**MIRROR.** Each service emits, beside its interface:
+
+```
+<realization> -> <namespace body> { shell -> <namespace body> { Find -> LEAF } }
+LEAF  = Conj { Run -> ENTRY, ..., <realization-config> -> CONFIG? }
+ENTRY = Conj { <realization-transport> -> TRANSPORT, <status-arms> -> ARMS?, <mock-arms> -> ARMS?, <projection> -> ROWS? }
+```
+
+- **The mirror keys each entry by the operation's path, structurally.** That is the same path `v2.std.operation_argv` `OperationRef` names at run time, so no second identity is minted.
+- **Prefix segments reuse the spine's marked namespace bodies.** Services sharing a prefix therefore merge through the spine's one merge rule, with no new graft rule.
+- **The root is unspellable, so no source can name an entry.** `v2.compiler.symbol_index_fill` indexes nothing beneath it, so an entry is not a declaration and can neither collide with nor shadow its operation (ruling condition 1).
+- **Each operation has at most one entry, and an entry names a declared operation** (ruling condition 2, enforced by the wall). That an operation authoring realization facts has an entry is the lowering's obligation (3b).
+
+**3a grounding: what each vocabulary reuses rather than mints.**
+
+| Fact | Home | Reused or added |
+| --- | --- | --- |
+| transport kind | `std.fidelity` `TransportClass` (`ShellLocal`, `RestNetwork`, `FileBoundary`, `LocalDirect`) | reused; `local` has no declared binding and refuses as unmodeled |
+| response status code | `std.types` `HttpStatus` (100–599) | reused |
+| response status class (`5xx`) | `extdeps.ietf.http_semantics` `HttpStatusClass`, RFC 9110 §15 | added beside `HttpMethod`; the IETF fact, not the transport's |
+| exit status | an integer (`extdeps.process.posix_exit` rows); `extdeps.transports.shell_declared` `ShellExitPattern` = `ShellExitCode { code }` \| `ShellExitNonzero` | an exit status is never passed through an HTTP type |
+| shell `from` key | `extdeps.transports.shell_declared` `ShellOutputChannel` | completed: it had no consumer and lacked `exit_code` (135 rows); transcribed from the seed's `ShellResultChannel` / `shell_result_channel_of_key` |
+| file `from` key | `extdeps.transports.file_declared` `FileOutputChannel` | added; transcribed from the seed's `FileResultChannel` / `file_result_channel_of_key` |
+| rest `from` key | open (RFC 8259 member names) | no closed vocabulary |
+| declared binding fields | `ShellBindingField`, `RestBindingField`, `FileBindingField` in each kind's module | added; closed by the corpus, and an unknown field refuses |
+| HTTP method | `extdeps.ietf.http_semantics` `HttpMethod` | reused |
+
+**What the full route does with the sibling.**
+- **Resolution** resolves its references, which is what puts them in the census.
+- **Each stage that cannot yet consume the sibling** refuses at it under its own cause. The old blanket `service_realization_unreachable` therefore becomes per-stage located causes, and once no member is set aside, `ServiceSetAside` and both set-aside reasons are deleted (3c).
+
+**3b depends on an unrecorded language gap**, now `gunbc.recurring_failure_mode` `string_interpolation_read_as_literal_text_by_v2`. Most transport strings interpolate an input (`"{repository_path}"`), and v2 reads that as literal text. Until v2 lowers interpolation, 3b refuses each interpolating transport string, located.
 
 ### `uses`: no carrier (ruled: follow D13), with a prerequisite
 
@@ -107,7 +137,9 @@ Resolution of this half:
 | 2a | Arrow contract edges (`^arrow_effect_claims_edge`, `^arrow_execution_mode_claim_edge`) and their conformance in `v2.std.node`. **DESIGN §3c declared frontier** (see below) | — | substrate only |
 | 2b | the one binder representation with an optional default: a replacement migration of every binder producer and reader, measured first | — | yes |
 | 2c | lowering of modifiers and io defaults onto 2a and 2b; discriminating red per refusal row above | the 3 interface-only services | yes |
-| 3 | `^service_realization_binding` sibling lowering of transport / config / exit / response / mock_response / `from`; delete `ServiceSetAside` and both set-aside reasons; per-stage located causes for any stage that cannot yet consume the sibling | the 111 realization-bearing services, up to the next stage's refusal | yes |
+| 3a | the realization sibling's model: per-kind declared-binding vocabularies, `HttpStatusClass`, the MIRROR shape and its conformance wall (`v2.compiler.service_realization`), and the symbol-index arm. **DESIGN §3c declared frontier** (trigger: 3b) | — | substrate only |
+| 3b | lowering of transport / config / exit / response / mock_response / `from` into the sibling; the wall runs on every lowered service | the realization-bearing services whose strings do not interpolate, up to the next stage's refusal | yes |
+| 3c | delete `ServiceSetAside` and both set-aside reasons; per-stage located causes for any stage that cannot yet consume the sibling | — | yes |
 | 4 | flip `service_interface_member_has_no_carrier` and the cause-ownership rows; re-measure the census on the CI population | — | ledger only |
 | `uses` (separate lane) | first the resource-keyed `DependencyDemand` carrier (the rung drop's restoration trigger); only then retire restatement rows by D13's criterion, measured by resolution | up to 30 modules, and none before the carrier lands | carrier, then source rows deleted |
 

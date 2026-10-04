@@ -54,16 +54,30 @@ The backend binds 127.0.0.1 and is reached only through `tailscale serve` on srv
 
 **Declared gap:** no principal is refused. Any tailnet member that reaches the listener may append. Restricting appends needs a modeled roster of fabric writer principals, one sufficient for the handler to refuse a login outside it. That roster is the next rung.
 
-## Steps 4–5 (the program, not this change)
+## Two planes
 
-4. **R2 durability tier.** A second realization of the same interface, with objects replicated to Cloudflare R2. This needs:
-   - conditional-write modeling in `extdeps.cloudflare.r2`: `If-None-Match: *` for write-once objects, and an ETag-conditioned put for a head. `extdeps.object_storage` has no conditional writes today, so R2 cannot hold a head until they are modeled.
-   - a minted write credential with the scope that implies.
+The fabric stores two kinds of thing, and they get two interfaces over one placement policy and one transport family:
 
-   The file store stays the linearization point. R2 holds objects, and eventually heads once a conditional put can serve as the compare-and-set.
-5. **Colossus-like growth.** Chunked objects for large payloads, replication across hosts with an explicit metadata authority (which host linearizes which head), and failover that preserves one linearization point per head.
+- **Metadata plane:** `std.fabric_storage`. Small structured immutable objects whose preimage travels inside one request, links the store walks, compare-and-set heads, durable history. An object body is `NonEmptyStr`; it does not grow a binary constructor, because fusing bulk bytes into this wire would push every existing client through a binary rewrite.
+- **Blob plane:** `std.fabric_blob`. Opaque files that live on disk on both sides of a transfer, under an exact address (an admitted cryptographic key, not the content digest). A read stages the bytes in a directory the transfer minted and mints a sealed `FabricBlobReading` (SHA-256 and byte size derived from the staged file); whatever owns the bytes' meaning verifies them from that reading. Publication is create-if-absent; there is no listing, no prefix fallback, no overwrite and no delete on the publisher's surface. Objects are whole, up to a bound the placement declares, and an object over it refuses before upload.
 
-   The interface already leaves room: object refs are `ContentHash` (a family change is a new mint, not a new type), heads are per name (so heads can shard by name), and every failure a replicated store adds (an unreachable replica, a stale read) has an existing arm to land in.
+`std.cache_interface` already distinguishes `StructuredArtifact` from `RawBytes`, `TarArchive` and `FileTree`; the metadata plane carries the first, the blob plane the others.
+
+## Steps 4–5 (the program)
+
+**4A. Whole-object R2 blob realization (the build cache is its first consumer).**
+
+- The R2 staged-file transfer is `gunbc.cloudflare.r2_staged_transfer`, extracted below the durable origin's provenance. The durable origin (`gunbc.cloudflare.r2_origin_object`, which alone mints `OriginReading`) and the blob plane (`gunbc.fabric.fabric_blob_r2`, which mints `FabricBlobReading`) both consume it; neither shares the other's provenance carrier.
+- Create-if-absent object writes are **not** missing: `extdeps.tools.curl` sends a signed `If-None-Match: *` and the transfer classifies stored / already present / refused / outcome-unknown. What is still missing is the ETag-conditioned put a head needs (4B).
+- Placement: the cache is a third private bucket, the `FabricCacheBlobs` purpose in `gunbc.cloudflare.r2_origin`, because its writer (one canonical publisher), its readers and its retention differ from the durable and boot buckets. It is a placement, not a third store: the interface is `std.fabric_blob`. Its layout, object bound and release are `gunbc.fabric.fabric_blob_placement`.
+- Retention is physical release by age (`std.cache_interface` `ReleasedAfterInterval`), realized by an R2 lifecycle rule (`extdeps.cloudflare.r2_lifecycle`) that `gunbc.cloudflare.r2_bucket_ensure` converges with readback. It is not a freshness window: a present object stays a valid hit, and a released one is an established miss. It bounds object age only; peak bytes and cost stay unestablished until pack size and publication rate are measured.
+- A run that has not built `gunbc` reaches the blob plane through emitted workflow shell that realizes the same operation plans (key, size bound, conditional write, verdicts); it does not respell them.
+
+**4B. R2 durability for the metadata plane.** Replicate immutable metadata objects to R2; the srv1 file store stays the head linearization point. R2 holds heads only once an ETag-conditioned put is modeled and can serve as the compare-and-set.
+
+**5. Colossus-like growth.** Multipart and chunked blobs (lifting 4A's whole-object bound), chunk manifests, resumable transfer, replication across hosts with an explicit metadata authority (which host linearizes which head), failover that preserves one linearization point per head, and collection of unreachable chunks.
+
+The metadata interface already leaves room: object refs are `ContentHash` (a family change is a new mint, not a new type), heads are per name (so heads can shard by name), and every failure a replicated store adds (an unreachable replica, a stale read) has an existing arm to land in. The blob interface leaves the same room: an address and a reading do not change when an object is carried in chunks.
 
 ## Known limits of the first realization
 

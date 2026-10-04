@@ -22,7 +22,6 @@ import gunbc.target_invocation {
   TargetInvocationRouted,
   TargetInvocationRouteRefused
 }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.algebra { fold_list, length }

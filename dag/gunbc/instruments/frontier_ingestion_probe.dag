@@ -1,13 +1,11 @@
 module gunbc.tools.frontier_ingestion_probe
 
 import v2.std.text { String }
-import v2.std.logic { Bool }
 import v2.std.integer { Int }
 import v2.std.algebra { fold_list }
-import v2.std.collection { List }
 import v2.std.node { Symbol }
 import std.content_hash { ContentHash, content_hash_atom, content_hash_combine_structural, as_content_hash_structural }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 import v2.std.grammar { ParseTree }
 import v2.std.diagnostic { Diagnostic, Diagnostics, NonEmptyDiagnostics, Accepted, Rejected, None }
 import v2.std.compilers.lexing { lex_artifact_semantic_tokens, LexRuleSet, LexArtifact }

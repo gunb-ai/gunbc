@@ -9,7 +9,6 @@ import v2.std.compilers.semantic_decl_emission {
 import v2.std.compilers.lexing { LexRules }
 import v2.std.compilers.target_model { lex_rules_literal_for_class }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 
 fn lex_pair_matches(token_class: Symbol) -> Bool {

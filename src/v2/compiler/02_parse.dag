@@ -1,5 +1,6 @@
 module v2.compiler.parse
 
+import std.types { List }
 import v2.compiler.parse_diagnostic {
   NonEmptyParseStageDiagnostics,
   non_empty_parse_stage_diagnostics_from_overlap_roster,
@@ -80,7 +81,6 @@ import v2.std.provenance {
   span_index_record
 }
 import v2.std.collection {
-  List,
   Map,
   empty_map,
   list_at_optional,
@@ -1307,7 +1307,7 @@ fn parse_wrap_production_captured(
 }
 
 fn parse_flatten_diag_batches(batches: List<List<Diagnostic>>) -> List<Diagnostic> {
-  fold_list(
+  list_reverse(xs: fold_list(
     xs: batches,
     empty: std.algebra.Empty,
     cons: fn(acc, batch) {
@@ -1317,7 +1317,7 @@ fn parse_flatten_diag_batches(batches: List<List<Diagnostic>>) -> List<Diagnosti
         cons: fn(inner_acc, d) { Cons { head: d, tail: inner_acc } }
       )
     }
-  ).reverse()
+  ))
 }
 
 fn parse_tokens_drop_one(tokens: List<Token>) -> List<Token> {
@@ -1912,7 +1912,7 @@ fn flatten_choice_exprs(expr: GrammarExpr) -> List<GrammarExpr> {
     LiteralTerminal { token_class: _, lexeme: _ } => Cons { head: expr, tail: std.algebra.Empty }
     Nonterminal { production: _ } => Cons { head: expr, tail: std.algebra.Empty }
     Sequence { left: _, right: _ } => Cons { head: expr, tail: std.algebra.Empty }
-    Optional { element: _ } => Cons { head: expr, tail: std.algebra.Empty }
+    v2.std.grammar.Optional { element: _ } => Cons { head: expr, tail: std.algebra.Empty }
     Repeat { element: _ } => Cons { head: expr, tail: std.algebra.Empty }
     Expect { element: _, reason: _ } => Cons { head: expr, tail: std.algebra.Empty }
     RefuseOnMatch { element: _, reason: _ } => Cons { head: expr, tail: std.algebra.Empty }
@@ -2332,6 +2332,854 @@ fn expr_first_fold_from_prepared(
   }
 }
 
+// THE CHOICE-OVERLAP PROOF READS A DECLARED k TOKENS OF LOOKAHEAD, AND A GUARD COUNTS ONLY WHERE IT
+// IS PROVED TO COVER. (operator zero_ambiguity_ruling 2026-10-02, stern-bear-500 ruling A.) A
+// single-token FIRST overlap is the candidate row; the row is removed only when the k-prefix sets of
+// the alternative and of every alternative after it are disjoint. A leading not-predicate `!G X`
+// subtracts from X's prefixes exactly the prefixes every string of which begins with a string of G,
+// and only when G is a PLAIN guard (lookahead_guard_strings): a finite set of token strings whose PEG
+// success is membership. Where one position of a prefix is a whole token class and G names one word
+// of it, the class is narrowed to the class less that word -- the k=1 shape
+// `!('none' | 'opaque') type_list`. The guard is also carried on the prefixes it heads, and a pair of
+// prefixes is disjoint when one alternative's prefix is covered by the other's guard: the guarded
+// alternative then fails on every input that prefix denotes, however short its own prefix is (the
+// `name: e | !(name :) e` shape, whose positional side can be one token). Every undecidable arm -- a cycle without consumption, a missing
+// production, a guard that is not plain, a guard string longer than the prefix it would cover --
+// answers by subtracting nothing or by LookaheadUnknown, and Unknown keeps the row. So the proof
+// removes rows and never widens: a guard that misses one prefix is the near miss that keeps its row.
+// THE DECLARED LOOKAHEAD: every candidate site is read at the base depth, and a site whose
+// alternatives still share a prefix there is read again only as deep as its own longest proved-plain
+// guard, never past the cap. Depth is therefore the guard's own claim, made where it is authored: an
+// unguarded site pays two tokens, and a guard of three tokens (`{ name :` against a block, `( name ,`
+// against a grouped expression) buys exactly the read that can prove it. Read at the cap everywhere,
+// the walk tripled the grammar's preparation, paid at every unguarded site that could not use it.
+fn grammar_choice_lookahead_depth() -> Int { 2 }
+
+fn grammar_choice_lookahead_depth_cap() -> Int { 3 }
+
+// `honour_guards`: a not-predicate narrows the prefixes it heads only where it heads one of the
+// SITE'S OWN alternatives -- the only place a guard decides that site. Inside a production the walk
+// expands, a guard is read as what it consumes (nothing) and narrows nothing: that keeps more
+// prefixes, so it can only keep a row, never clear one wrongly. Honouring nested guards re-derived
+// every guard of `expr` and `stmt` at each of their many expansions and dominated the analysis.
+type LookaheadContext {
+  productions: Map<Symbol, GrammarProduction>
+  nullable_set: List<Symbol>
+  first_rows: Map<Symbol, List<FirstKey>>
+  honour_guards: Bool
+  follow: Optional<List<FirstKey>>
+}
+
+fn lookahead_context_nested(ctx: LookaheadContext) -> LookaheadContext {
+  LookaheadContext { productions: ctx.productions, nullable_set: ctx.nullable_set, first_rows: ctx.first_rows, honour_guards: false, follow: ctx.follow }
+}
+
+// `follow` restricts the token AFTER the site's first one, and only while the walk is still at the
+// site's first position: consuming a token hands it over as the next head and clears it.
+fn lookahead_context_with_follow(ctx: LookaheadContext, follow: Optional<List<FirstKey>>) -> LookaheadContext {
+  LookaheadContext { productions: ctx.productions, nullable_set: ctx.nullable_set, first_rows: ctx.first_rows, honour_guards: ctx.honour_guards, follow: follow }
+}
+
+fn lookahead_context_consumed(ctx: LookaheadContext) -> LookaheadContext {
+  lookahead_context_with_follow(ctx: ctx, follow: Absent)
+}
+
+fn lookahead_head_after(ctx: LookaheadContext, used: Int) -> Optional<List<FirstKey>> {
+  if used == 1 { ctx.follow } else { lookahead_keys_unrestricted() }
+}
+
+fn lookahead_keys_unrestricted() -> Optional<List<FirstKey>> { Absent }
+
+// One position of a prefix: the FirstKey it reads, less the exact words of its class a proved
+// guard removed. `excluded` is empty unless `key` is FirstAnyOfClass.
+type LookaheadKey {
+  key: FirstKey
+  excluded: List<Symbol>
+}
+
+// `complete`: the alternative can END after `keys`, so a following sequence element extends it.
+// `guards`: the strings of the proved-plain not-predicates standing at the prefix's first token. An
+// input that begins with one of them is refused by this alternative, whatever follows.
+type LookaheadPrefix {
+  keys: List<LookaheadKey>
+  complete: Bool
+  guards: List<List<FirstKey>>
+}
+
+type LookaheadPrefixes
+  = LookaheadKnown { prefixes: List<LookaheadPrefix> }
+  | LookaheadUnknown
+
+type GuardCoverage
+  = GuardCoversAll
+  | GuardCoversButOneWord { keys: List<LookaheadKey> }
+  | GuardMisses
+
+fn lookahead_prefix_keys(p: LookaheadPrefix) -> List<LookaheadKey> { p.keys }
+fn lookahead_prefix_complete(p: LookaheadPrefix) -> Bool { p.complete }
+fn lookahead_prefix_guards(p: LookaheadPrefix) -> List<List<FirstKey>> { p.guards }
+fn lookahead_production_expression(p: GrammarProduction) -> GrammarExpr { p.expression }
+
+fn lookahead_none() -> LookaheadPrefixes { LookaheadKnown { prefixes: std.algebra.Empty } }
+
+fn lookahead_empty_only() -> LookaheadPrefixes {
+  LookaheadKnown {
+    prefixes: Cons { head: LookaheadPrefix { keys: std.algebra.Empty, complete: true, guards: std.algebra.Empty }, tail: std.algebra.Empty }
+  }
+}
+
+fn lookahead_union(left: LookaheadPrefixes, right: LookaheadPrefixes) -> LookaheadPrefixes {
+  match left {
+    LookaheadUnknown => LookaheadUnknown
+    LookaheadKnown { prefixes: l } =>
+      match right {
+        LookaheadUnknown => LookaheadUnknown
+        LookaheadKnown { prefixes: r } => LookaheadKnown { prefixes: list_append(left: l, right: r) }
+      }
+  }
+}
+
+fn lookahead_head_admits(head_keys: Optional<List<FirstKey>>, key: FirstKey) -> Bool {
+  match head_keys {
+    Absent => true
+    Present { value: keys } => any(xs: keys, predicate: fn(k) { first_key_overlaps(left: k, right: key) })
+  }
+}
+
+fn lookahead_token(key: FirstKey, head_keys: Optional<List<FirstKey>>) -> LookaheadPrefixes {
+  if lookahead_head_admits(head_keys: head_keys, key: key) {
+    LookaheadKnown {
+      prefixes: Cons {
+        head: LookaheadPrefix {
+          keys: Cons { head: LookaheadKey { key: key, excluded: std.algebra.Empty }, tail: std.algebra.Empty },
+          complete: true,
+          guards: std.algebra.Empty
+        },
+        tail: std.algebra.Empty
+      }
+    }
+  } else {
+    lookahead_none()
+  }
+}
+
+// One token left and no head restriction: the production's FIRST row already answers it.
+fn lookahead_from_first(first: List<FirstKey>, nullable: Bool) -> LookaheadPrefixes {
+  let singles = fold_list(
+    xs: first,
+    empty: std.algebra.Empty,
+    cons: fn(acc, k) {
+      list_snoc_item(
+        xs: acc,
+        item: LookaheadPrefix {
+          keys: Cons { head: LookaheadKey { key: k, excluded: std.algebra.Empty }, tail: std.algebra.Empty },
+          complete: false,
+          guards: std.algebra.Empty
+        }
+      )
+    }
+  )
+  let known = LookaheadKnown { prefixes: singles }
+  if nullable { lookahead_union(left: known, right: lookahead_empty_only()) } else { known }
+}
+
+fn lookahead_prefixes(
+  expr: GrammarExpr,
+  depth: Int,
+  head_keys: Optional<List<FirstKey>>,
+  visiting: List<Symbol>,
+  ctx: LookaheadContext
+) -> LookaheadPrefixes {
+  match expr {
+    Terminal { token_class: c, stamp: _ } => lookahead_token(key: FirstAnyOfClass { token_class: c }, head_keys: head_keys)
+    LiteralTerminal { token_class: c, lexeme: w } =>
+      lookahead_token(key: FirstExactWord { token_class: c, lexeme: w }, head_keys: head_keys)
+    Nonterminal { production: name } =>
+      lookahead_nonterminal(name: name, depth: depth, head_keys: head_keys, visiting: visiting, ctx: ctx)
+    Sequence { left: left, right: right } =>
+      lookahead_sequence(left: left, right: right, depth: depth, head_keys: head_keys, visiting: visiting, ctx: ctx)
+    Choice { left: left, right: right } =>
+      lookahead_union(
+        left: lookahead_prefixes(expr: left, depth: depth, head_keys: head_keys, visiting: visiting, ctx: ctx),
+        right: lookahead_prefixes(expr: right, depth: depth, head_keys: head_keys, visiting: visiting, ctx: ctx)
+      )
+    v2.std.grammar.Optional { element: element } =>
+      lookahead_union(
+        left: lookahead_prefixes(expr: element, depth: depth, head_keys: head_keys, visiting: visiting, ctx: ctx),
+        right: lookahead_empty_only()
+      )
+    Repeat { element: element } =>
+      lookahead_repeat(element: element, depth: depth, head_keys: head_keys, visiting: visiting, ctx: ctx)
+    Expect { element: element, reason: _ } =>
+      lookahead_prefixes(expr: element, depth: depth, head_keys: head_keys, visiting: visiting, ctx: ctx)
+    RefuseOnMatch { element: element, reason: _ } =>
+      lookahead_prefixes(expr: element, depth: depth, head_keys: head_keys, visiting: visiting, ctx: ctx)
+    AfterLineBreak { element: element } =>
+      lookahead_prefixes(expr: element, depth: depth, head_keys: head_keys, visiting: visiting, ctx: ctx)
+    NotPredicate { element: _ } => lookahead_empty_only()
+  }
+}
+
+// A production re-entered before any token is consumed is a cycle the bounded walk cannot decide.
+fn lookahead_nonterminal(
+  name: Symbol,
+  depth: Int,
+  head_keys: Optional<List<FirstKey>>,
+  visiting: List<Symbol>,
+  ctx: LookaheadContext
+) -> LookaheadPrefixes {
+  let nullable = symbol_list_contains(xs: ctx.nullable_set, item: name)
+  let first = production_first_row_lookup(rows: ctx.first_rows, name: name)
+  match head_keys {
+    Present { value: keys } =>
+      if !nullable && is_empty(xs: first_list_intersect(left: first, right: keys)) {
+        lookahead_none()
+      } else {
+        lookahead_nonterminal_expand(name: name, depth: depth, head_keys: head_keys, visiting: visiting, ctx: ctx)
+      }
+    Absent =>
+      if depth == 1 {
+        lookahead_from_first(first: first, nullable: nullable)
+      } else {
+        lookahead_nonterminal_expand(name: name, depth: depth, head_keys: head_keys, visiting: visiting, ctx: ctx)
+      }
+  }
+}
+
+fn lookahead_nonterminal_expand(
+  name: Symbol,
+  depth: Int,
+  head_keys: Optional<List<FirstKey>>,
+  visiting: List<Symbol>,
+  ctx: LookaheadContext
+) -> LookaheadPrefixes {
+  if symbol_list_contains(xs: visiting, item: name) {
+    LookaheadUnknown
+  } else {
+    match map_lookup(m: ctx.productions, key: name) {
+      Present { value: p } =>
+        lookahead_prefixes(
+          expr: lookahead_production_expression(p: p),
+          depth: depth,
+          head_keys: head_keys,
+          visiting: Cons { head: name, tail: visiting },
+          ctx: lookahead_context_nested(ctx: ctx)
+        )
+      Absent => LookaheadUnknown
+    }
+  }
+}
+
+fn lookahead_leading_guard(expr: GrammarExpr) -> Optional<GrammarExpr> {
+  match expr {
+    NotPredicate { element: guard } => Present { value: guard }
+    Terminal { token_class: _, stamp: _ } => Absent
+    LiteralTerminal { token_class: _, lexeme: _ } => Absent
+    Nonterminal { production: _ } => Absent
+    Sequence { left: _, right: _ } => Absent
+    Choice { left: _, right: _ } => Absent
+    v2.std.grammar.Optional { element: _ } => Absent
+    Repeat { element: _ } => Absent
+    Expect { element: _, reason: _ } => Absent
+    RefuseOnMatch { element: _, reason: _ } => Absent
+    AfterLineBreak { element: _ } => Absent
+  }
+}
+
+fn lookahead_sequence(
+  left: GrammarExpr,
+  right: GrammarExpr,
+  depth: Int,
+  head_keys: Optional<List<FirstKey>>,
+  visiting: List<Symbol>,
+  ctx: LookaheadContext
+) -> LookaheadPrefixes {
+  match lookahead_leading_guard(expr: left) {
+    Present { value: guard } =>
+      if ctx.honour_guards {
+        lookahead_subtract_guard(
+          prefixes: lookahead_prefixes(expr: right, depth: depth, head_keys: head_keys, visiting: visiting, ctx: ctx),
+          guard: guard,
+          ctx: ctx
+        )
+      } else {
+        lookahead_prefixes(expr: right, depth: depth, head_keys: head_keys, visiting: visiting, ctx: ctx)
+      }
+    Absent =>
+      lookahead_extend(
+        prefixes: lookahead_prefixes(expr: left, depth: depth, head_keys: head_keys, visiting: visiting, ctx: ctx),
+        right: right,
+        depth: depth,
+        head_keys: head_keys,
+        visiting: visiting,
+        ctx: ctx
+      )
+  }
+}
+
+fn lookahead_prepend(keys: List<LookaheadKey>, guards: List<List<FirstKey>>, prefixes: LookaheadPrefixes) -> LookaheadPrefixes {
+  match prefixes {
+    LookaheadUnknown => LookaheadUnknown
+    LookaheadKnown { prefixes: ps } =>
+      LookaheadKnown {
+        prefixes: fold_list(
+          xs: ps,
+          empty: std.algebra.Empty,
+          cons: fn(acc, q) {
+            list_snoc_item(
+              xs: acc,
+              item: LookaheadPrefix {
+                keys: list_append(left: keys, right: lookahead_prefix_keys(p: q)),
+                complete: lookahead_prefix_complete(p: q),
+                guards: guards
+              }
+            )
+          }
+        )
+      }
+  }
+}
+
+fn lookahead_truncated(prefix: LookaheadPrefix) -> LookaheadPrefixes {
+  LookaheadKnown {
+    prefixes: Cons { head: LookaheadPrefix { keys: prefix.keys, complete: false, guards: prefix.guards }, tail: std.algebra.Empty }
+  }
+}
+
+// Extend each prefix that ended early by the prefixes of what follows. The head restriction and the
+// cycle set hold only while nothing has been consumed.
+fn lookahead_extend_one(
+  prefix: LookaheadPrefix,
+  right: GrammarExpr,
+  depth: Int,
+  head_keys: Optional<List<FirstKey>>,
+  visiting: List<Symbol>,
+  ctx: LookaheadContext
+) -> LookaheadPrefixes {
+  let used = length(xs: prefix.keys)
+  if prefix.complete && used < depth {
+    if used == 0 {
+      lookahead_prefixes(expr: right, depth: depth, head_keys: head_keys, visiting: visiting, ctx: ctx)
+    } else {
+      lookahead_prepend(
+        keys: prefix.keys,
+        guards: prefix.guards,
+        prefixes: lookahead_prefixes(expr: right, depth: depth - used, head_keys: lookahead_head_after(ctx: ctx, used: used), visiting: std.algebra.Empty, ctx: lookahead_context_consumed(ctx: ctx))
+      )
+    }
+  } else {
+    lookahead_truncated(prefix: prefix)
+  }
+}
+
+fn lookahead_extend(
+  prefixes: LookaheadPrefixes,
+  right: GrammarExpr,
+  depth: Int,
+  head_keys: Optional<List<FirstKey>>,
+  visiting: List<Symbol>,
+  ctx: LookaheadContext
+) -> LookaheadPrefixes {
+  match prefixes {
+    LookaheadUnknown => LookaheadUnknown
+    LookaheadKnown { prefixes: ps } =>
+      fold_list(
+        xs: ps,
+        empty: lookahead_none(),
+        cons: fn(acc, p) {
+          lookahead_union(
+            left: acc,
+            right: lookahead_extend_one(prefix: p, right: right, depth: depth, head_keys: head_keys, visiting: visiting, ctx: ctx)
+          )
+        }
+      )
+  }
+}
+
+// Zero or more: the empty prefix, and each consuming iteration extended by the repeat again. An
+// iteration that consumed nothing adds nothing the empty prefix does not already say.
+fn lookahead_repeat(
+  element: GrammarExpr,
+  depth: Int,
+  head_keys: Optional<List<FirstKey>>,
+  visiting: List<Symbol>,
+  ctx: LookaheadContext
+) -> LookaheadPrefixes {
+  match lookahead_prefixes(expr: element, depth: depth, head_keys: head_keys, visiting: visiting, ctx: ctx) {
+    LookaheadUnknown => LookaheadUnknown
+    LookaheadKnown { prefixes: ps } =>
+      fold_list(
+        xs: ps,
+        empty: lookahead_empty_only(),
+        cons: fn(acc, p) {
+          lookahead_union(left: acc, right: lookahead_repeat_one(prefix: p, element: element, depth: depth, ctx: ctx))
+        }
+      )
+  }
+}
+
+fn lookahead_repeat_one(prefix: LookaheadPrefix, element: GrammarExpr, depth: Int, ctx: LookaheadContext) -> LookaheadPrefixes {
+  let used = length(xs: prefix.keys)
+  if used == 0 {
+    lookahead_none()
+  } else {
+    if prefix.complete && used < depth {
+      lookahead_prepend(
+        keys: prefix.keys,
+        guards: prefix.guards,
+        prefixes: lookahead_repeat(element: element, depth: depth - used, head_keys: lookahead_head_after(ctx: ctx, used: used), visiting: std.algebra.Empty, ctx: lookahead_context_consumed(ctx: ctx))
+      )
+    } else {
+      lookahead_truncated(prefix: prefix)
+    }
+  }
+}
+
+// A PLAIN GUARD'S STRINGS. A guard is plain when its PEG success is exactly "the input begins with one
+// of these token strings": a token, a choice of plain guards, or a single-token set followed by a
+// plain guard. A choice that is not last in a sequence is not plain -- `(x / x y) z` fails on
+// `x y z` under ordered choice -- so it answers Absent and the guard subtracts nothing.
+fn lookahead_guard_strings(expr: GrammarExpr, visiting: List<Symbol>, ctx: LookaheadContext) -> Optional<List<List<FirstKey>>> {
+  match expr {
+    Terminal { token_class: c, stamp: _ } =>
+      Present { value: Cons { head: Cons { head: FirstAnyOfClass { token_class: c }, tail: std.algebra.Empty }, tail: std.algebra.Empty } }
+    LiteralTerminal { token_class: c, lexeme: w } =>
+      Present { value: Cons { head: Cons { head: FirstExactWord { token_class: c, lexeme: w }, tail: std.algebra.Empty }, tail: std.algebra.Empty } }
+    Choice { left: left, right: right } =>
+      match lookahead_guard_strings(expr: left, visiting: visiting, ctx: ctx) {
+        Absent => Absent
+        Present { value: l } =>
+          match lookahead_guard_strings(expr: right, visiting: visiting, ctx: ctx) {
+            Absent => Absent
+            Present { value: r } => Present { value: list_append(left: l, right: r) }
+          }
+      }
+    Sequence { left: left, right: right } =>
+      match lookahead_guard_token_set(expr: left, visiting: visiting, ctx: ctx) {
+        Absent => Absent
+        Present { value: heads } =>
+          match lookahead_guard_strings(expr: right, visiting: std.algebra.Empty, ctx: ctx) {
+            Absent => Absent
+            Present { value: tails } =>
+              Present {
+                value: fold_list(
+                  xs: heads,
+                  empty: std.algebra.Empty,
+                  cons: fn(acc, h) {
+                    list_append(
+                      left: acc,
+                      right: fold_list(
+                        xs: tails,
+                        empty: std.algebra.Empty,
+                        cons: fn(inner, t) { list_snoc_item(xs: inner, item: Cons { head: h, tail: t }) }
+                      )
+                    )
+                  }
+                )
+              }
+          }
+      }
+    Nonterminal { production: name } =>
+      if symbol_list_contains(xs: visiting, item: name) {
+        Absent
+      } else {
+        match map_lookup(m: ctx.productions, key: name) {
+          Present { value: p } =>
+            lookahead_guard_strings(expr: lookahead_production_expression(p: p), visiting: Cons { head: name, tail: visiting }, ctx: ctx)
+          Absent => Absent
+        }
+      }
+    v2.std.grammar.Optional { element: _ } => Absent
+    Repeat { element: _ } => Absent
+    Expect { element: _, reason: _ } => Absent
+    RefuseOnMatch { element: _, reason: _ } => Absent
+    AfterLineBreak { element: _ } => Absent
+    NotPredicate { element: _ } => Absent
+  }
+}
+
+// A set of single tokens, each alternative consuming exactly one token.
+fn lookahead_guard_token_set(expr: GrammarExpr, visiting: List<Symbol>, ctx: LookaheadContext) -> Optional<List<FirstKey>> {
+  match expr {
+    Terminal { token_class: c, stamp: _ } => Present { value: Cons { head: FirstAnyOfClass { token_class: c }, tail: std.algebra.Empty } }
+    LiteralTerminal { token_class: c, lexeme: w } =>
+      Present { value: Cons { head: FirstExactWord { token_class: c, lexeme: w }, tail: std.algebra.Empty } }
+    Choice { left: left, right: right } =>
+      match lookahead_guard_token_set(expr: left, visiting: visiting, ctx: ctx) {
+        Absent => Absent
+        Present { value: l } =>
+          match lookahead_guard_token_set(expr: right, visiting: visiting, ctx: ctx) {
+            Absent => Absent
+            Present { value: r } => Present { value: list_append(left: l, right: r) }
+          }
+      }
+    Nonterminal { production: name } =>
+      if symbol_list_contains(xs: visiting, item: name) {
+        Absent
+      } else {
+        match map_lookup(m: ctx.productions, key: name) {
+          Present { value: p } =>
+            lookahead_guard_token_set(expr: lookahead_production_expression(p: p), visiting: Cons { head: name, tail: visiting }, ctx: ctx)
+          Absent => Absent
+        }
+      }
+    Sequence { left: _, right: _ } => Absent
+    v2.std.grammar.Optional { element: _ } => Absent
+    Repeat { element: _ } => Absent
+    Expect { element: _, reason: _ } => Absent
+    RefuseOnMatch { element: _, reason: _ } => Absent
+    AfterLineBreak { element: _ } => Absent
+    NotPredicate { element: _ } => Absent
+  }
+}
+
+fn lookahead_subtract_guard(prefixes: LookaheadPrefixes, guard: GrammarExpr, ctx: LookaheadContext) -> LookaheadPrefixes {
+  match prefixes {
+    LookaheadUnknown => LookaheadUnknown
+    LookaheadKnown { prefixes: ps } =>
+      match lookahead_guard_strings(expr: guard, visiting: std.algebra.Empty, ctx: ctx) {
+        Absent => LookaheadKnown { prefixes: ps }
+        Present { value: strings } =>
+          lookahead_attach_guards(
+            prefixes: fold_list(
+              xs: strings,
+              empty: ps,
+              cons: fn(acc, g) { lookahead_subtract_string(prefixes: acc, guard: g) }
+            ),
+            strings: strings
+          )
+      }
+  }
+}
+
+fn lookahead_attach_guards(prefixes: List<LookaheadPrefix>, strings: List<List<FirstKey>>) -> LookaheadPrefixes {
+  LookaheadKnown {
+    prefixes: fold_list(
+      xs: prefixes,
+      empty: std.algebra.Empty,
+      cons: fn(acc, p) {
+        list_snoc_item(
+          xs: acc,
+          item: LookaheadPrefix {
+            keys: lookahead_prefix_keys(p: p),
+            complete: lookahead_prefix_complete(p: p),
+            guards: list_append(left: lookahead_prefix_guards(p: p), right: strings)
+          }
+        )
+      }
+    )
+  }
+}
+
+fn lookahead_subtract_string(prefixes: List<LookaheadPrefix>, guard: List<FirstKey>) -> List<LookaheadPrefix> {
+  fold_list(
+    xs: prefixes,
+    empty: std.algebra.Empty,
+    cons: fn(acc, p) {
+      match lookahead_guard_coverage(keys: lookahead_prefix_keys(p: p), guard: guard) {
+        GuardCoversAll => acc
+        GuardCoversButOneWord { keys: narrowed } =>
+          list_snoc_item(
+            xs: acc,
+            item: LookaheadPrefix { keys: narrowed, complete: lookahead_prefix_complete(p: p), guards: lookahead_prefix_guards(p: p) }
+          )
+        GuardMisses => list_snoc_item(xs: acc, item: p)
+      }
+    }
+  )
+}
+
+// Every string the prefix denotes begins with the guard string (GuardCoversAll), or does so exactly
+// when one class position holds one named word (GuardCoversButOneWord, that word excluded). A guard
+// string longer than the prefix covers nothing the bounded walk can see.
+fn lookahead_guard_coverage(keys: List<LookaheadKey>, guard: List<FirstKey>) -> GuardCoverage {
+  match list_head(xs: guard) {
+    HeadAbsent => GuardCoversAll
+    HeadFound { value: g } =>
+      match list_head(xs: keys) {
+        HeadAbsent => GuardMisses
+        HeadFound { value: k } =>
+          lookahead_guard_coverage_at(
+            key: k,
+            guard_key: g,
+            rest: lookahead_guard_coverage(keys: lookahead_list_rest(xs: keys), guard: lookahead_list_rest(xs: guard)),
+            keys_rest: lookahead_list_rest(xs: keys)
+          )
+      }
+  }
+}
+
+fn lookahead_list_rest<T>(xs: List<T>) -> List<T> {
+  match list_tail(xs: xs) {
+    TailFound { tail: rest } => rest
+    TailAbsent => std.algebra.Empty
+  }
+}
+
+fn lookahead_guard_coverage_at(key: LookaheadKey, guard_key: FirstKey, rest: GuardCoverage, keys_rest: List<LookaheadKey>) -> GuardCoverage {
+  if lookahead_guard_key_covers(guard_key: guard_key, key: key.key) {
+    match rest {
+      GuardCoversAll => GuardCoversAll
+      GuardCoversButOneWord { keys: narrowed } => GuardCoversButOneWord { keys: Cons { head: key, tail: narrowed } }
+      GuardMisses => GuardMisses
+    }
+  } else {
+    match lookahead_guard_word_of_class(guard_key: guard_key, key: key.key) {
+      Absent => GuardMisses
+      Present { value: word } =>
+        match rest {
+          GuardCoversAll =>
+            GuardCoversButOneWord {
+              keys: Cons {
+                head: LookaheadKey { key: key.key, excluded: set_symbol_insert(s: key.excluded, item: word) },
+                tail: keys_rest
+              }
+            }
+          GuardCoversButOneWord { keys: _ } => GuardMisses
+          GuardMisses => GuardMisses
+        }
+    }
+  }
+}
+
+// The guard key matches every token the prefix key admits.
+fn lookahead_guard_key_covers(guard_key: FirstKey, key: FirstKey) -> Bool {
+  match guard_key {
+    FirstAnyOfClass { token_class: gc } => first_key_class(key: key) == gc
+    FirstExactWord { token_class: _, lexeme: _ } => first_key_eq(left: guard_key, right: key)
+  }
+}
+
+// The guard names one word of a class the prefix admits whole.
+fn lookahead_guard_word_of_class(guard_key: FirstKey, key: FirstKey) -> Optional<Symbol> {
+  match guard_key {
+    FirstAnyOfClass { token_class: _ } => Absent
+    FirstExactWord { token_class: gc, lexeme: w } =>
+      match key {
+        FirstAnyOfClass { token_class: kc } => lookahead_word_if_same_class(word: w, guard_class: gc, key_class: kc)
+        FirstExactWord { token_class: _, lexeme: _ } => Absent
+      }
+  }
+}
+
+fn lookahead_word_if_same_class(word: Symbol, guard_class: Symbol, key_class: Symbol) -> Optional<Symbol> {
+  if guard_class == key_class { lookahead_word_present(word: word) } else { lookahead_word_absent() }
+}
+
+fn lookahead_word_present(word: Symbol) -> Optional<Symbol> { Present { value: word } }
+fn lookahead_word_absent() -> Optional<Symbol> { Absent }
+
+fn lookahead_key_excludes(key: LookaheadKey, other: FirstKey) -> Bool {
+  match other {
+    FirstExactWord { token_class: _, lexeme: w } => symbol_list_contains(xs: key.excluded, item: w)
+    FirstAnyOfClass { token_class: _ } => false
+  }
+}
+
+fn lookahead_key_overlaps(left: LookaheadKey, right: LookaheadKey) -> Bool {
+  first_key_overlaps(left: left.key, right: right.key)
+    && !lookahead_key_excludes(key: left, other: right.key)
+    && !lookahead_key_excludes(key: right, other: left.key)
+}
+
+// Two prefixes overlap when every position both read could be one token. A shorter prefix overlaps
+// any longer one it agrees with, so a short alternative is never proved disjoint by its brevity.
+fn lookahead_prefix_keys_overlap(left: List<LookaheadKey>, right: List<LookaheadKey>) -> Bool {
+  match list_head(xs: left) {
+    HeadAbsent => true
+    HeadFound { value: l } =>
+      match list_head(xs: right) {
+        HeadAbsent => true
+        HeadFound { value: r } =>
+          lookahead_key_overlaps(left: l, right: r)
+            && lookahead_prefix_keys_overlap(left: lookahead_list_rest(xs: left), right: lookahead_list_rest(xs: right))
+      }
+  }
+}
+
+// One alternative's prefix is refused by the other's guard when a guard string covers it: every
+// input that begins with the prefix begins with that string. This is the ruling's direction -- the
+// guarded alternative fails on every input the other alternative's prefix denotes -- and it holds
+// whatever length the guarded alternative's own prefix has.
+fn lookahead_prefix_refused_by(prefix: LookaheadPrefix, guards: List<List<FirstKey>>) -> Bool {
+  any(
+    xs: guards,
+    predicate: fn(g) {
+      match lookahead_guard_coverage(keys: lookahead_prefix_keys(p: prefix), guard: g) {
+        GuardCoversAll => true
+        GuardCoversButOneWord { keys: _ } => false
+        GuardMisses => false
+      }
+    }
+  )
+}
+
+// The empty prefix (a nullable alternative) is the both-nullable row's question, not this one's, so
+// it is not compared here -- exactly as the single-token FIRST check never counted it.
+fn lookahead_prefix_pair_overlaps(left: LookaheadPrefix, right: LookaheadPrefix) -> Bool {
+  !is_empty(xs: lookahead_prefix_keys(p: left))
+    && !is_empty(xs: lookahead_prefix_keys(p: right))
+    && lookahead_prefix_keys_overlap(left: lookahead_prefix_keys(p: left), right: lookahead_prefix_keys(p: right))
+    && !lookahead_prefix_refused_by(prefix: left, guards: lookahead_prefix_guards(p: right))
+    && !lookahead_prefix_refused_by(prefix: right, guards: lookahead_prefix_guards(p: left))
+}
+
+fn lookahead_alternatives_overlap(
+  left: GrammarExpr,
+  rest: List<GrammarExpr>,
+  head_keys: List<FirstKey>,
+  ctx: LookaheadContext
+) -> Bool {
+  let base = grammar_choice_lookahead_depth()
+  match lookahead_alternatives_overlap_at(left: left, rest: rest, head_keys: head_keys, depth: base, ctx: ctx) {
+    SiteDisjoint => false
+    SiteUnknown => true
+    SiteOverlaps { heads: heads, follow: follow } =>
+      let guarded = fold_list(
+        xs: Cons { head: left, tail: rest },
+        empty: base,
+        cons: fn(acc, alt) { lookahead_max_int(a: acc, b: lookahead_leading_guard_length(expr: alt, ctx: ctx)) }
+      )
+      let depth = lookahead_min_int(a: guarded, b: grammar_choice_lookahead_depth_cap())
+      if depth > base {
+        match lookahead_alternatives_overlap_at(left: left, rest: rest, head_keys: heads, depth: depth, ctx: lookahead_context_with_follow(ctx: ctx, follow: follow)) {
+          SiteDisjoint => false
+          SiteUnknown => true
+          SiteOverlaps { heads: _, follow: _ } => true
+        }
+      } else {
+        true
+      }
+  }
+}
+
+// A SITE'S READ AT ONE DEPTH, and the first and second tokens of the prefix pairs that overlapped
+// there. A deeper read is restricted to them: a prefix whose first two tokens begin no overlapping
+// pair cannot overlap at any greater depth, so walking its continuations changes no answer. Measured on
+// the dag grammar, restarting the deeper read from the site's whole head set cost most of the
+// grammar's preparation (the `expr` site re-walked every identifier-led binary expression).
+type LookaheadSiteRead
+  = SiteDisjoint
+  | SiteOverlaps { heads: List<FirstKey>, follow: Optional<List<FirstKey>> }
+  | SiteUnknown
+
+fn lookahead_max_int(a: Int, b: Int) -> Int { if a > b { a } else { b } }
+
+fn lookahead_min_int(a: Int, b: Int) -> Int { if a < b { a } else { b } }
+
+// The longest string of an alternative's leading proved-plain guard; 0 when it has none.
+fn lookahead_leading_guard_length(expr: GrammarExpr, ctx: LookaheadContext) -> Int {
+  match expr {
+    Sequence { left: left, right: _ } =>
+      match lookahead_leading_guard(expr: left) {
+        Present { value: guard } =>
+          match lookahead_guard_strings(expr: guard, visiting: std.algebra.Empty, ctx: ctx) {
+            Present { value: strings } =>
+              fold_list(xs: strings, empty: 0, cons: fn(acc, g) { lookahead_max_int(a: acc, b: length(xs: g)) })
+            Absent => 0
+          }
+        Absent => 0
+      }
+    Terminal { token_class: _, stamp: _ } => 0
+    LiteralTerminal { token_class: _, lexeme: _ } => 0
+    Nonterminal { production: _ } => 0
+    Choice { left: _, right: _ } => 0
+    v2.std.grammar.Optional { element: _ } => 0
+    Repeat { element: _ } => 0
+    Expect { element: _, reason: _ } => 0
+    RefuseOnMatch { element: _, reason: _ } => 0
+    AfterLineBreak { element: _ } => 0
+    NotPredicate { element: _ } => 0
+  }
+}
+
+fn lookahead_alternatives_overlap_at(
+  left: GrammarExpr,
+  rest: List<GrammarExpr>,
+  head_keys: List<FirstKey>,
+  depth: Int,
+  ctx: LookaheadContext
+) -> LookaheadSiteRead {
+  let restrict = Present { value: head_keys }
+  let left_prefixes = lookahead_prefixes(expr: left, depth: depth, head_keys: restrict, visiting: std.algebra.Empty, ctx: ctx)
+  let right_prefixes = fold_list(
+    xs: rest,
+    empty: lookahead_none(),
+    cons: fn(acc, alt) {
+      lookahead_union(
+        left: acc,
+        right: lookahead_prefixes(expr: alt, depth: depth, head_keys: restrict, visiting: std.algebra.Empty, ctx: ctx)
+      )
+    }
+  )
+  match left_prefixes {
+    LookaheadUnknown => SiteUnknown
+    LookaheadKnown { prefixes: l } =>
+      match right_prefixes {
+        LookaheadUnknown => SiteUnknown
+        LookaheadKnown { prefixes: r } => lookahead_site_read_of(left: l, right: r)
+      }
+  }
+}
+
+fn lookahead_site_read_of(left: List<LookaheadPrefix>, right: List<LookaheadPrefix>) -> LookaheadSiteRead {
+  let acc = fold_list(
+    xs: left,
+    empty: LookaheadOverlapAcc { heads: grammar_empty_terminal_list(), follow: grammar_empty_terminal_list(), bounded: true },
+    cons: fn(outer, l) {
+      fold_list(
+        xs: right,
+        empty: outer,
+        cons: fn(inner, r) {
+          if lookahead_prefix_pair_overlaps(left: l, right: r) {
+            lookahead_overlap_add(acc: lookahead_overlap_add(acc: inner, prefix: l), prefix: r)
+          } else {
+            inner
+          }
+        }
+      )
+    }
+  )
+  lookahead_site_read_of_acc(acc: acc)
+}
+
+// The first and second tokens of the overlapping prefixes. A prefix shorter than two leaves the
+// second position unrestricted (`bounded` false): a deeper read may not narrow it.
+type LookaheadOverlapAcc {
+  heads: List<FirstKey>
+  follow: List<FirstKey>
+  bounded: Bool
+}
+
+fn lookahead_site_read_of_acc(acc: LookaheadOverlapAcc) -> LookaheadSiteRead {
+  if is_empty(xs: acc.heads) {
+    SiteDisjoint
+  } else {
+    SiteOverlaps { heads: acc.heads, follow: if acc.bounded { lookahead_keys_restricted(keys: acc.follow) } else { lookahead_keys_unrestricted() } }
+  }
+}
+
+fn lookahead_keys_restricted(keys: List<FirstKey>) -> Optional<List<FirstKey>> { Present { value: keys } }
+
+fn lookahead_overlap_add(acc: LookaheadOverlapAcc, prefix: LookaheadPrefix) -> LookaheadOverlapAcc {
+  let keys = lookahead_prefix_keys(p: prefix)
+  let heads = match list_head(xs: keys) {
+    HeadFound { value: k } => first_list_union(left: acc.heads, right: Cons { head: lookahead_key_first(key: k), tail: std.algebra.Empty })
+    HeadAbsent => acc.heads
+  }
+  match list_at_optional(xs: keys, index: 1) {
+    Present { value: second } =>
+      LookaheadOverlapAcc {
+        heads: heads,
+        follow: first_list_union(left: acc.follow, right: Cons { head: lookahead_key_first(key: second), tail: std.algebra.Empty }),
+        bounded: acc.bounded
+      }
+    Absent => LookaheadOverlapAcc { heads: heads, follow: acc.follow, bounded: false }
+  }
+}
+
+fn lookahead_key_first(key: LookaheadKey) -> FirstKey { key.key }
+
 fn ordered_backtrack_row(
   production: Symbol,
   alts: List<PreparedExprFold>
@@ -2358,7 +3206,17 @@ fn ordered_backtrack_emit(alts: List<PreparedExprFold>) -> PreparedChoicePlan {
   ChoiceOrderedBacktrack { alternatives: choice_alt_trees(alts: alts) }
 }
 
-fn authored_choice_site_residue(alts: List<PreparedExprFold>, production: Symbol) -> List<GrammarChoiceAmbiguityRow> {
+// A ROW STANDS UNLESS THE DECLARED LOOKAHEAD PROVES THE ALTERNATIVES DISJOINT. The single-token
+// overlap is the candidate; a candidate is dropped only when the k-prefix sets of the alternative
+// and of the alternatives after it share no prefix (lookahead_alternatives_overlap). Every arm of
+// that proof that cannot decide answers "overlap", so the proof can remove a row and never adds
+// a route: a guard that does not cover keeps its row, and an ordering never stands for a proof.
+fn authored_choice_site_residue(
+  alts: List<PreparedExprFold>,
+  raw_alts: List<GrammarExpr>,
+  production: Symbol,
+  ctx: LookaheadContext
+) -> List<GrammarChoiceAmbiguityRow> {
   match list_tail(xs: alts) {
     TailAbsent => std.algebra.Empty
     TailFound { tail: rest } =>
@@ -2366,16 +3224,51 @@ fn authored_choice_site_residue(alts: List<PreparedExprFold>, production: Symbol
         std.algebra.Empty
       } else {
         let row = ordered_backtrack_row(production: production, alts: alts)
-        let here = if !is_empty(xs: row.overlap_terminals) || row.both_nullable {
+        let raw_rest = match list_tail(xs: raw_alts) {
+          TailFound { tail: r } => r
+          TailAbsent => std.algebra.Empty
+        }
+        let stands = row.both_nullable || (
+          !is_empty(xs: row.overlap_terminals)
+            && lookahead_site_overlaps(alts: alts, raw_alts: raw_alts, raw_rest: raw_rest, ctx: ctx)
+        )
+        let here = if stands {
           Cons { head: row, tail: std.algebra.Empty }
         } else {
           std.algebra.Empty
         }
         list_append(
           left: here,
-          right: authored_choice_site_residue(alts: rest, production: production)
+          right: authored_choice_site_residue(alts: rest, raw_alts: raw_rest, production: production, ctx: ctx)
         )
       }
+  }
+}
+
+fn lookahead_site_overlaps(
+  alts: List<PreparedExprFold>,
+  raw_alts: List<GrammarExpr>,
+  raw_rest: List<GrammarExpr>,
+  ctx: LookaheadContext
+) -> Bool {
+  let empty_first = GrammarExprFirstFold { terminals: grammar_empty_terminal_list(), nullable: false }
+  let left_first = match list_head(xs: alts) {
+    HeadFound { value: alt } => prepared_expr_fold_first(alt: alt)
+    HeadAbsent => empty_first
+  }
+  let right_first = match list_tail(xs: alts) {
+    TailFound { tail: rest } => choice_alts_union_first_from(alts: rest, acc: empty_first)
+    TailAbsent => empty_first
+  }
+  match list_head(xs: raw_alts) {
+    HeadAbsent => true
+    HeadFound { value: left } =>
+      lookahead_alternatives_overlap(
+        left: left,
+        rest: raw_rest,
+        head_keys: first_list_intersect(left: left_first.terminals, right: right_first.terminals),
+        ctx: ctx
+      )
   }
 }
 
@@ -2546,6 +3439,7 @@ fn prepare_grammar_expr(
   expr: GrammarExpr,
   nullable_set: List<Symbol>,
   first_rows: Map<Symbol, List<FirstKey>>,
+  productions: Map<Symbol, GrammarProduction>,
   production: Symbol,
   token_dispatch: Bool
 ) -> PreparedExprFold {
@@ -2569,8 +3463,8 @@ fn prepare_grammar_expr(
         residue: std.algebra.Empty
       }
     Sequence { left: left, right: right } =>
-      let left_prepared = prepare_grammar_expr(expr: left, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
-      let right_prepared = prepare_grammar_expr(expr: right, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
+      let left_prepared = prepare_grammar_expr(expr: left, nullable_set: nullable_set, first_rows: first_rows, productions: productions, production: production, token_dispatch: token_dispatch)
+      let right_prepared = prepare_grammar_expr(expr: right, nullable_set: nullable_set, first_rows: first_rows, productions: productions, production: production, token_dispatch: token_dispatch)
       PreparedExprFold {
         tree: PreparedSequence { left: left_prepared.tree, right: right_prepared.tree },
         first: expr_first_fold_sequence(left: left_prepared.first, right: right_prepared.first),
@@ -2584,7 +3478,7 @@ fn prepare_grammar_expr(
         cons: fn(acc, alt) {
           list_snoc_item(
             xs: acc,
-            item: prepare_grammar_expr(expr: alt, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
+            item: prepare_grammar_expr(expr: alt, nullable_set: nullable_set, first_rows: first_rows, productions: productions, production: production, token_dispatch: token_dispatch)
           )
         }
       )
@@ -2603,46 +3497,51 @@ fn prepare_grammar_expr(
         first: union_first,
         residue: list_append(
           left: concat_prepared_alt_residue(alts: prepared_alts),
-          right: authored_choice_site_residue(alts: prepared_alts, production: production)
+          right: authored_choice_site_residue(
+            alts: prepared_alts,
+            raw_alts: alts,
+            production: production,
+            ctx: LookaheadContext { productions: productions, nullable_set: nullable_set, first_rows: first_rows, honour_guards: true, follow: Absent }
+          )
         )
       }
-    Optional { element: element } =>
-      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
+    v2.std.grammar.Optional { element: element } =>
+      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows, productions: productions, production: production, token_dispatch: token_dispatch)
       PreparedExprFold {
         tree: PreparedOptional { element: element_prepared.tree },
         first: expr_first_fold_optional(element: element_prepared.first),
         residue: element_prepared.residue
       }
     Repeat { element: element } =>
-      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
+      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows, productions: productions, production: production, token_dispatch: token_dispatch)
       PreparedExprFold {
         tree: PreparedRepeat { element: element_prepared.tree },
         first: expr_first_fold_repeat(element: element_prepared.first),
         residue: element_prepared.residue
       }
     Expect { element: element, reason: reason } =>
-      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
+      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows, productions: productions, production: production, token_dispatch: token_dispatch)
       PreparedExprFold {
         tree: PreparedExpect { element: element_prepared.tree, reason: reason },
         first: element_prepared.first,
         residue: element_prepared.residue
       }
     RefuseOnMatch { element: element, reason: reason } =>
-      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
+      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows, productions: productions, production: production, token_dispatch: token_dispatch)
       PreparedExprFold {
         tree: PreparedRefuseOnMatch { element: element_prepared.tree, reason: reason },
         first: element_prepared.first,
         residue: element_prepared.residue
       }
     AfterLineBreak { element: element } =>
-      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
+      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows, productions: productions, production: production, token_dispatch: token_dispatch)
       PreparedExprFold {
         tree: PreparedAfterLineBreak { element: element_prepared.tree },
         first: element_prepared.first,
         residue: element_prepared.residue
       }
     NotPredicate { element: element } =>
-      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
+      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows, productions: productions, production: production, token_dispatch: token_dispatch)
       PreparedExprFold {
         tree: PreparedNotPredicate { element: element_prepared.tree, first: element_prepared.first },
         first: expr_first_fold_predicate(),
@@ -2673,6 +3572,7 @@ fn parse_table_prepared_expr(table: ParseTable, production: GrammarProduction) -
         expr: production.expression,
         nullable_set: table.nullable_set,
         first_rows: table.first_rows,
+        productions: empty_map(),
         production: production.name,
         token_dispatch: parse_table_token_dispatch(table: table, production: production.name)
       ).tree
@@ -2681,6 +3581,7 @@ fn parse_table_prepared_expr(table: ParseTable, production: GrammarProduction) -
         expr: production.expression,
         nullable_set: table.nullable_set,
         first_rows: table.first_rows,
+        productions: empty_map(),
         production: production.name,
         token_dispatch: parse_table_token_dispatch(table: table, production: production.name)
       ).tree
@@ -2697,6 +3598,7 @@ fn compute_grammar_first_analysis_given(
   nullable_set: List<Symbol>
 ) -> GrammarFirstAnalysis {
   let first_rows = compute_production_first_rows(root: root, nullable_set: nullable_set)
+  let productions = grammar_production_index(productions: root.productions)
   let prep = fold_list(
     xs: root.productions,
     empty: AnalysisPrepAcc { prepared_exprs: empty_map(), residue: std.algebra.Empty },
@@ -2705,6 +3607,7 @@ fn compute_grammar_first_analysis_given(
         expr: p.expression,
         nullable_set: nullable_set,
         first_rows: first_rows,
+        productions: productions,
         production: p.name,
         token_dispatch: true
       )
@@ -2719,7 +3622,7 @@ fn compute_grammar_first_analysis_given(
     first_rows: first_rows,
     prepared_exprs: prep.prepared_exprs,
     grammar_digest: parse_grammar_digest(validated: ValidatedGrammarRoot { root: root }),
-    productions_by_name: grammar_production_index(productions: root.productions),
+    productions_by_name: productions,
     choice_residue: prep.residue,
     memo_recurrence: parse_memo_recurrence_census(root: root, nullable_set: nullable_set)
   }
@@ -3779,7 +4682,7 @@ fn parse_expr_repeat(
   ParseExprAccepted {
     remaining: result.remaining,
     captured: stamped.node,
-    diagnostics: parse_flatten_diag_batches(batches: result.acc_diags.reverse()),
+    diagnostics: parse_flatten_diag_batches(batches: list_reverse(xs: result.acc_diags)),
     prov: stamped.prov,
     table: result.table
   }
@@ -4122,6 +5025,7 @@ fn parse_expr(
       expr: expr,
       nullable_set: table.nullable_set,
       first_rows: table.first_rows,
+      productions: empty_map(),
       production: root.start,
       token_dispatch: parse_table_token_dispatch(table: table, production: root.start)
     ).tree,
@@ -4200,6 +5104,13 @@ fn parse_production_prepared_measured(
   )
 }
 
+// THE ENTRY PRODUCTION IS READ OFF THE PREPARED GRAMMAR, never re-derived per parse: its lookup is
+// the analysis's productions_by_name index and its prepared tree (choice plans, FIRST unions) is the
+// analysis's prepared_exprs row, exactly as every nested nonterminal already reads it
+// (parse_nonterminal_memoized). Routing the entry through parse_expr re-ran prepare_grammar_expr --
+// choice-plan compilation plus the authored-choice overlap residue, which the parse then discarded --
+// and an O(P) non-short-circuiting fold over every production, on EVERY parse, re-deriving a
+// property of the grammar that prepare_grammar already computed once.
 fn parse_production_prepared_measured_seeded(
   tokens: List<Token>,
   validated: ValidatedGrammarRoot,
@@ -4210,18 +5121,18 @@ fn parse_production_prepared_measured_seeded(
   materialization: Materialization
 ) -> ParseProductionMeasured {
   let root = validated.root
-  match grammar_lookup_production(root: root, name: production_name) {
+  let table = parse_table_for_stream_analyzed(
+    validated: validated,
+    analysis: analysis,
+    layout: layout,
+    all_tokens: tokens,
+    materialization: materialization
+  )
+  match grammar_lookup_production_indexed(table: table, name: production_name) {
     Holds { value: production } =>
       let prov = parse_prov_seeded(seed: seed)
-      let table = parse_table_for_stream_analyzed(
-        validated: validated,
-        analysis: analysis,
-        layout: layout,
-        all_tokens: tokens,
-        materialization: materialization
-      )
-      let parsed = parse_expr(
-        expr: production.expression,
+      let parsed = parse_expr_with_first(
+        expr: parse_table_prepared_expr(table: table, production: production),
         tokens: tokens,
         all_tokens: tokens,
         root: root,

@@ -3,7 +3,6 @@ module extdeps.posix.getconf
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
 import std.types { Bool, Int, Unit }
-import std.string_type { String }
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

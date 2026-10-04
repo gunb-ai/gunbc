@@ -98,7 +98,7 @@ fn run_clean_tree_compile() -> GateReceipt {
 
 data perturb_module_source: String = "module test.perturb_compile_clean_red\nfn probe() -> String? {\n  match Present { value: \"x\" } {\n    Some { value: s } => Some { value: s }\n    None => none\n  }\n}"
 
-data cross_tree_green_module_source: String = "module test.perturb_compile_clean_cross_tree_green\nimport v2.std.logic { Bool }\nfn probe() -> Bool { True }"
+data cross_tree_green_module_source: String = "module test.perturb_compile_clean_cross_tree_green\nimport std.types { Bool }\nfn probe() -> Bool { True }"
 
 data dag_shell_primary_module_source: String = "module test.perturb_compile_clean_dag_shell_primary\nimport extdeps.shell\nfn probe() -> String? {\n  shell.Env.Get(name: \"PATH\")\n}"
 

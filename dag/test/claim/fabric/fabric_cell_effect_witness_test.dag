@@ -1,7 +1,7 @@
 module test.claim.fabric_cell_effect_witness
 
 import std.types { Bool, String, NonEmptyStr, Int, List, list_length }
-import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.fleet_host_identity { operator_host_srv3 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.membership_reconcile {
   MemberAction, MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused,

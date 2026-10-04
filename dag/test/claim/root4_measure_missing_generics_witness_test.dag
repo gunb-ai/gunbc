@@ -42,6 +42,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // (the E0107 class), and both exclusions -- 'Nat<Magnitude>' and 'Nat<' -- are unchanged and still
 // hold, with the native spelling satisfying bareness at least as strongly. If a future cut makes
 // Nat structural again this row flips back, and that flip is a real signal rather than noise.
+//
+// THE REQUIRED SPELLING MOVED AGAIN AT THE Nat DE-FORK (operator ruling A, 2026-09-30), and for the
+// reason above rather than a new one. std.nat Nat is now the inductive declaration realized as the
+// kernel integer, no longer an alias, and a refined alias over a declaration renders the
+// declaration's own name on its right-hand side -- which std_nat.rs declares as `pub type Nat =
+// i64;`. Nat is NOT structural: its declaration still emits as the machine integer, so this is the
+// equivalent-spelling move the paragraph above describes, not the flip it warns about. The subject
+// holds unchanged: the RHS is bare, and both exclusions still hold.
 
 // ONE WITNESS PER SUBJECT, WHERE THERE USED TO BE ONE CONJUNCTION OVER FIVE.
 //
@@ -120,7 +128,7 @@ test fn w_positive_int_refined_alias_rhs_stays_bare_nat() -> Bool {
   compile_dag_rust_emit_check(
     "module std.integer_positive_int_probe\nimport std.nat { Nat }\ntype PositiveInt = Nat where gt_zero\n",
     "src/std_integer_positive_int_probe.rs",
-    ["pub type PositiveInt = i64;"],
+    ["pub type PositiveInt = Nat;"],
     ["Nat<Magnitude>", "Nat<"]
   )
 }

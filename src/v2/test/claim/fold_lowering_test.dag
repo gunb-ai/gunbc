@@ -217,14 +217,26 @@ fn with_duplicate_carrier_edge(n: Node, binder: Node) -> Node {
   )
 }
 
-test fn lowered_loop_binds_carrier_binder() -> Bool {
+// THE CARRIER IS A GENERATED SLOT, NOT THE AUTHORED BINDER, AND THIS ROW IS WHERE THAT IS ASSERTED. It
+// read `sym == ^acc` -- the step's own first binder -- which was true while
+// v2.compiler.fold_lowering spelled the Bind's binder and the carrier edge with
+// operands.carrier. That made the lowered tree hold TWO VISIBLE BINDERS WITH ONE NAME, the persistent slot
+// and the step Arrow's freshly-bound formal, and v2.compiler.resolve's value-binder admission refused the
+// inner one. The slot now comes from v2.std.anonymous_binder fresh_fold_carrier.
+//
+// WHAT IT ASSERTS NOW IS THE SEPARATION ITSELF, in both directions, because either half alone is
+// satisfiable by an accident: the carrier IS a fold-carrier binder (so the row fails if the mint is
+// bypassed and some other symbol appears), and it is NOT the authored binder (so the row fails if the
+// constructor goes back to borrowing `acc`). A row asserting only the first would still pass if the mint
+// were keyed on the authored name.
+test fn lowered_loop_carrier_is_a_generated_slot_not_the_authored_binder() -> Bool {
   match lowered_fixture_loop() {
     Absent => false
     Present { value: lp } =>
       match carrier_binder_of(n: lp) {
         Found { target: binder } =>
           match node_atom_identity_optional(node: binder) {
-            Present { value: sym } => sym == ^acc
+            Present { value: sym } => is_fold_carrier_binder(sym: sym) && !(sym == ^acc)
             Absent => false
           }
         Ambiguous => false

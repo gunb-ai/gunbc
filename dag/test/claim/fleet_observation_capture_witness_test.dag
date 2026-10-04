@@ -1,7 +1,6 @@
 module test.claim.fleet_observation_capture_witness
 
 import std.types { Bool, NonEmptyStr }
-import std.string_type { String }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size, ObservationInstant, ClockDomain, ProcessMonotonic, SharedMonotonic, ClockBasis, WallClock }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

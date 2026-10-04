@@ -1,7 +1,6 @@
 module extdeps.systemd.journalctl
 
 import std.types { NonEmptyStr, Bool, Unit, List }
-import std.string_type { String }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -93,4 +92,10 @@ service systemd.Journalctl {
 // Filtering lines is a fold over stdout in the consumer, never a grep spliced in here.
 fn journalctl_kernel_current_boot_argv() -> List<String> {
   ["journalctl", "-k", "-b", "--no-pager", "-o", "short-unix"]
+}
+
+// ONE UNIT'S JOURNAL FOR THE CURRENT BOOT, AS AN ARGV. journalctl(1): `-u` (`--unit`) shows messages
+// for the named unit; `-b` the current boot. Same consumer-side filtering rule as above.
+fn journalctl_unit_current_boot_argv(unit: NonEmptyStr) -> List<String> {
+  ["journalctl", "-u", unit as String, "-b", "--no-pager", "-o", "short-unix"]
 }

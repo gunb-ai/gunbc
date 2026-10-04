@@ -1,12 +1,14 @@
 module v2.std.type_binder
 
+import std.types { List }
 import std.algebra { Cons, Empty, list_snoc_item }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
+import v2.std.algebra { zip_map }
 import v2.std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import v2.std.arrow_contract { arrow_contract_conforms }
+import v2.std.arrow_signature { signature_order_edge, arrow_signature_order_head_is_list_introduction }
 import v2.std.node_query { binder_node_parts }
 import v2.std.node {
+  MatchArmScopeExitEdge,
   arrow_named_edge_is_non_binder,
   arrow_first_positional_target,
   FirstPositionalFound,
@@ -38,6 +40,12 @@ import v2.std.node {
   TypeAnnotationEdge,
   TypeBodyEdge,
   TypeParamsEdge,
+  BinderTypeEdge,
+  arrow_signature_order_read,
+  OrderAbsent,
+  OrderLabels,
+  OrderUnreadable,
+  edge_is_core,
   core_edge_label,
   ArrowBodyEdge,
   ArrowSignatureOrderEdge,
@@ -133,8 +141,9 @@ fn type_alias_wrapper(binders: Node, aliased: Node) -> Node {
 
 // `type MachineWidth<bits>` declares binders and no body: Conj { <type-parameters>: Conj { bits: bits } }.
 // Not an empty member: an empty Conj body would assert a record with no fields, a different fact. The
-// binders are carried because a use's arity (`MachineWidth<64>`) is checked against them. THE ONE
-// PRODUCER of the opaque wrapper.
+// binders are carried because a use (`MachineWidth<64>`) is checked against them -- arity and kind --
+// by type_application_conformance at v2.compiler.resolve resolve_type_application. Until that consumer
+// landed this sentence claimed a check nothing performed. THE ONE PRODUCER of the opaque wrapper.
 fn type_opaque_wrapper(binders: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
@@ -248,10 +257,146 @@ fn type_param_names(n: Node) -> List<Symbol> {
   }
 }
 
+// THE KIND A TYPE PARAMETER DECLARES, read off its binder Atom: `bits: WidthResolution` lowers its
+// binder to Atom{bits} carrying one BinderTypeEdge -> WidthResolution (v2.std.node
+// type_binder_conforms admits exactly that child). Absent for an unkinded parameter.
+fn type_param_kind_optional(binder: Node) -> Optional<Node> {
+  fold(binder.children, init: optional_absent(), f: fn(acc, e) {
+    if edge_is_core(e: e, marker: BinderTypeEdge) { optional_present(value: e.target) } else { acc }
+  })
+}
+
+// WHETHER AN APPLIED TYPE ARGUMENT INHABITS A PARAMETER'S KIND, as the caller can establish it. The
+// judgment needs the declarations the kind and argument resolve to, which only resolve holds, so it
+// is supplied; the PAIRING it is applied over is decided here and nowhere else. ArgumentLiteralUnjudged
+// is the language-level Nat literal rule: a literal is admitted in any kinded position and is NOT
+// judged against the kind's roster. ArgumentTypeParameterUnjudged is an argument that is itself a type
+// parameter of an enclosing declaration (`MachineWidth<bits>` inside a generic over bits): its
+// instances are judged where that declaration is applied, not here. Both ADMIT without crediting
+// inhabitance, and this module records no count of them: nothing would consume one. The honest
+// record of what stays unjudged is the declared frontier std.machine_constraints
+// machine_width_literal_roster_frontier, which states the rung this position sits at.
+type KindInhabitance
+  = ArgumentInhabitsKind
+  | ArgumentLiteralUnjudged
+  | ArgumentTypeParameterUnjudged
+  | ArgumentOutsideKind
+  | KindUnresolved
+
+// A TYPE APPLICATION AGAINST ITS DECLARATION'S BINDERS. Exact bijection first: arguments pair with
+// binders by position only once their counts agree, so a kind is never judged against an argument an
+// arity error has shifted. Then each kinded binder's argument is judged in order and the first that
+// is not inhabited refuses AT THAT ARGUMENT. An unkinded binder admits any argument, as before.
+type TypeApplicationConformance
+  = TypeApplicationConforms
+  | TypeApplicationArityMismatch { declared: Int, supplied: Int }
+  | TypeApplicationKindNotInhabited { argument: Node, kind: Node }
+  | TypeApplicationKindUnresolved { argument: Node, kind: Node }
+  | TypeApplicationBinderOrderMalformed
+
+// THE ONE AUTHORITY for checking an applied type against the binders it instantiates, consumed by
+// v2.compiler.resolve at the head->declaration join (resolve_type_application_conformance). Before it,
+// this module's wrapper notes said a use's arity "is checked against" the binders while nothing
+// performed the check.
+fn type_application_conformance(
+  binders: Node,
+  arguments: List<Node>,
+  inhabits: fn(Node, Node) -> KindInhabitance
+) -> TypeApplicationConformance {
+  match type_param_order(binders: binders) {
+    TypeParamOrderMalformed => TypeApplicationBinderOrderMalformed
+    TypeParamOrderDeclared { labels: labels } =>
+      if count(labels) != count(arguments) {
+        TypeApplicationArityMismatch { declared: count(labels), supplied: count(arguments) }
+      } else {
+        fold(zip_map(a: labels, b: arguments, f: fn(l, arg) { TypeParamArgument { name: l, argument: arg } }),
+          init: TypeApplicationConforms,
+          f: fn(acc, pa) { type_application_step(acc: acc, binders: binders, pa: pa, inhabits: inhabits) })
+      }
+  }
+}
+
+type TypeParamArgument {
+  name: Symbol
+  argument: Node
+}
+
+fn type_application_step(acc: TypeApplicationConformance, binders: Node, pa: TypeParamArgument, inhabits: fn(Node, Node) -> KindInhabitance) -> TypeApplicationConformance {
+  match acc {
+    TypeApplicationConforms =>
+      match type_binder_target_of(binders: binders, name: pa.name) {
+        Absent => TypeApplicationBinderOrderMalformed
+        Present { value: binder } =>
+          match type_param_kind_optional(binder: binder) {
+            Absent => acc
+            Present { value: kind } =>
+              match inhabits(pa.argument, kind) {
+                ArgumentInhabitsKind => acc
+                ArgumentLiteralUnjudged => acc
+                ArgumentTypeParameterUnjudged => acc
+                ArgumentOutsideKind => TypeApplicationKindNotInhabited { argument: pa.argument, kind: kind }
+                KindUnresolved => TypeApplicationKindUnresolved { argument: pa.argument, kind: kind }
+              }
+          }
+      }
+    TypeApplicationArityMismatch { declared: _, supplied: _ } => acc
+    TypeApplicationKindNotInhabited { argument: _, kind: _ } => acc
+    TypeApplicationKindUnresolved { argument: _, kind: _ } => acc
+    TypeApplicationBinderOrderMalformed => acc
+  }
+}
+
+// THE DECLARED ORDER OF A BINDER SET, read once. A set binds its names in AUTHORED order, carried by
+// the set's one ^arrow_signature_order_edge (v2.std.node type_binder_conj_conforms) -- never by the
+// stored sequence of its labelled edges, which content hashing sorts. A set binding no name has the
+// empty order. Malformed is a set v2.std.node refuses; resolve refuses it before any reader runs
+// (type_binder_labels_conform), so a reader meeting it here answers nothing rather than guessing.
+type TypeParamOrder
+  = TypeParamOrderDeclared { labels: List<Symbol> }
+  | TypeParamOrderMalformed
+
+fn type_param_order(binders: Node) -> TypeParamOrder {
+  if !type_binder_conj_conforms(t: binders) {
+    TypeParamOrderMalformed
+  } else {
+    match arrow_signature_order_read(children: binders.children) {
+      OrderAbsent => TypeParamOrderDeclared { labels: Empty }
+      OrderUnreadable => TypeParamOrderMalformed
+      OrderLabels { labels: labels } =>
+        if arrow_signature_order_head_is_list_introduction(arrow: binders) { TypeParamOrderDeclared { labels: labels } } else { TypeParamOrderMalformed }
+    }
+  }
+}
+
+// The names a binder set declares, IN DECLARED ORDER: every positional reader of type parameters
+// (an application's pairing, an alias renaming, infer's instance zip through
+// v2.std.symbol_index symbol_index_declared_type_params_at) reads them here.
 fn binder_conj_names(conj: Node) -> List<Symbol> {
-  fold(conj.children, init: Empty, f: fn(acc, e) {
+  match type_param_order(binders: conj) {
+    TypeParamOrderDeclared { labels: labels } => labels
+    TypeParamOrderMalformed => Empty
+  }
+}
+
+// THE ONE MINT OF A BINDER SET'S EDGES: the binder edges as authored, plus -- when any name is bound --
+// the order edge built from those same edges by the declared-signature carrier
+// (v2.std.arrow_signature signature_order_edge), so the set and its order are one fact from one list.
+// The caller wraps the result in its own located Conj.
+fn type_binder_set_children(binders: List<Edge>, source: Node) -> List<Edge> {
+  let names = fold(binders, init: Empty, f: fn(acc, e) {
     match e.label {
       Authored { name: sym } => list_snoc_item(xs: acc, item: sym)
+      StructuralLabel { label: _ } => acc
+      Positional => acc
+    }
+  })
+  if count(names) == 0 { binders } else { list_snoc_item(xs: binders, item: signature_order_edge(order: names, source: source)) }
+}
+
+fn type_binder_target_of(binders: Node, name: Symbol) -> Optional<Node> {
+  fold(binders.children, init: optional_absent(), f: fn(acc, e) {
+    match e.label {
+      Authored { name: sym } => if sym == name { optional_present(value: e.target) } else { acc }
       StructuralLabel { label: _ } => acc
       Positional => acc
     }
@@ -320,13 +465,28 @@ fn type_annotation_optional(n: Node) -> Optional<Node> {
   }
 }
 
-// A BIND'S NAMED EDGE IS ITS LET ANNOTATION AND NOTHING ELSE: every Named edge on a Bind carries the
-// <type-annotation> marker, and v2.std.node's shape for a Bind (PositionalPlusOneNamedEdges) makes that
-// at most one, wherever it stands.
+// A BIND'S NAMED EDGES ARE ITS MARKERS AND NOTHING ELSE: its let annotation (the <type-annotation>
+// marker) and v2.std.node MatchArmScopeExitEdge, each at most once, wherever they stand
+// (v2.std.node PositionalPlusNamedMarkerEdges bounds the count; this states the labels).
 fn bind_named_labels_conform(n: Node) -> Bool {
-  fold(n.children, init: true, f: fn(acc, e) {
-    acc && (is_positional(e: e) || edge_is_type_annotation(e: e))
+  let walk = fold(n.children, init: BindMarkerWalk { annotations: 0, scope_exits: 0, other: 0 }, f: fn(acc, e) {
+    if is_positional(e: e) {
+      acc
+    } else if edge_is_type_annotation(e: e) {
+      BindMarkerWalk { annotations: acc.annotations + 1, scope_exits: acc.scope_exits, other: acc.other }
+    } else if edge_is_core(e: e, marker: MatchArmScopeExitEdge) {
+      BindMarkerWalk { annotations: acc.annotations, scope_exits: acc.scope_exits + 1, other: acc.other }
+    } else {
+      BindMarkerWalk { annotations: acc.annotations, scope_exits: acc.scope_exits, other: acc.other + 1 }
+    }
   })
+  (walk.annotations <= 1) && (walk.scope_exits <= 1) && (walk.other == 0)
+}
+
+type BindMarkerWalk {
+  annotations: Int
+  scope_exits: Int
+  other: Int
 }
 
 // WHICH NAMED LABELS A BEHAVIOR ADMITS. v2.std.node states the SHAPE of a Transform's children

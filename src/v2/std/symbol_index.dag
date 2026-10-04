@@ -1,6 +1,7 @@
 module v2.std.symbol_index
 
 
+import std.types { List }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import v2.std.algebra {
   HeadAbsent,
@@ -26,9 +27,8 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
-import v2.std.type_binder { AliasRenaming, NotARenaming, PureRenamingOf, type_alias_renaming }
+import v2.std.type_binder { AliasRenaming, NotARenaming, PureRenamingOf, binder_conj_names, type_alias_renaming }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_init,
@@ -86,8 +86,9 @@ type SymbolIndex {
   bound_declarings: Map<QualifiedName, FreeMonoid<QualifiedName>>
   declared_payloads: Map<QualifiedName, DeclaredPayloadKind>
   renaming_aliases: Map<QualifiedName, Symbol>
-  declared_type_params: Map<QualifiedName, List<Symbol>>
+  declared_type_params: Map<QualifiedName, Node>
   declared_resources: Map<QualifiedName, ResourceDeclared>
+  namespace_bodies: Map<QualifiedName, NamespaceBodyDeclared>
 }
 
 // WHICH KIND OF DECLARED PAYLOAD A PATH DENOTES, stored as the map's value so the map cannot hold a
@@ -113,6 +114,17 @@ type DeclaredPayloadKind
 // v2.test.claim.normalize.operation_requires_edge.
 type ResourceDeclared {}
 
+// A PATH THAT BINDS A SERVICE NAMESPACE BODY: a prefix segment of a dotted service name
+// (`service shell.Find` binds `<module>.shell` to a marked namespace body; v2.compiler.body_lowering_fold
+// body_lower_service_node). Stored as the map's value for the reason ResourceDeclared is. Written by
+// v2.compiler.symbol_index_fill, which can tell a marked body from its mark; read by
+// symbol_index_lexical_collect. A namespace body is a PATH SEGMENT, NEVER A LEXICAL FRAME (ruling
+// 2026-10-01, the operator's nesting ban): its members stay reachable by their qualified paths, but
+// the unqualified ancestor walk neither collects names declared inside it nor answers with it. The
+// module's own body is never an entry (it is the root the fill starts from), so this marks only the
+// service spine. General lexical ascent is XL-5's namespace cut; this boundary is scoped to the spine.
+type NamespaceBodyDeclared {}
+
 fn empty_symbol_index() -> SymbolIndex {
   SymbolIndex {
     entries: empty_map(),
@@ -121,7 +133,8 @@ fn empty_symbol_index() -> SymbolIndex {
     declared_payloads: empty_map(),
     renaming_aliases: empty_map(),
     declared_type_params: empty_map(),
-    declared_resources: empty_map()
+    declared_resources: empty_map(),
+    namespace_bodies: empty_map()
   }
 }
 
@@ -199,7 +212,8 @@ fn symbol_index_track_global_bare(
               declared_payloads: index.declared_payloads,
               renaming_aliases: index.renaming_aliases,
               declared_type_params: index.declared_type_params,
-              declared_resources: index.declared_resources
+              declared_resources: index.declared_resources,
+              namespace_bodies: index.namespace_bodies
             }
           Present { value: GlobalBareUnique { node: existing, path: existing_path } } =>
             if existing_path == qualified_path && existing == resolved {
@@ -218,7 +232,8 @@ fn symbol_index_track_global_bare(
                 declared_payloads: index.declared_payloads,
                 renaming_aliases: index.renaming_aliases,
                 declared_type_params: index.declared_type_params,
-                declared_resources: index.declared_resources
+                declared_resources: index.declared_resources,
+                namespace_bodies: index.namespace_bodies
               }
             }
           Absent =>
@@ -233,7 +248,8 @@ fn symbol_index_track_global_bare(
               declared_payloads: index.declared_payloads,
               renaming_aliases: index.renaming_aliases,
               declared_type_params: index.declared_type_params,
-              declared_resources: index.declared_resources
+              declared_resources: index.declared_resources,
+              namespace_bodies: index.namespace_bodies
             }
         }
         Rejected { diagnostics: _ } => index
@@ -263,7 +279,8 @@ fn symbol_index_insert(index: SymbolIndex, qualified_path: QualifiedName, resolv
       NotARenaming => index.renaming_aliases
     },
     declared_type_params: index.declared_type_params,
-    declared_resources: index.declared_resources
+    declared_resources: index.declared_resources,
+    namespace_bodies: index.namespace_bodies
   }
   symbol_index_track_global_bare(
     index: with_entry,
@@ -292,7 +309,8 @@ fn symbol_index_mark_declared_payload(index: SymbolIndex, qualified_path: Qualif
     declared_payloads: map_insert(m: index.declared_payloads, key: qualified_path, value: kind),
     renaming_aliases: index.renaming_aliases,
     declared_type_params: index.declared_type_params,
-    declared_resources: index.declared_resources
+    declared_resources: index.declared_resources,
+    namespace_bodies: index.namespace_bodies
   }
 }
 
@@ -322,7 +340,28 @@ fn symbol_index_mark_declared_resource(index: SymbolIndex, qualified_path: Quali
     declared_payloads: index.declared_payloads,
     renaming_aliases: index.renaming_aliases,
     declared_type_params: index.declared_type_params,
-    declared_resources: map_insert(m: index.declared_resources, key: qualified_path, value: ResourceDeclared {})
+    declared_resources: map_insert(m: index.declared_resources, key: qualified_path, value: ResourceDeclared {}),
+    namespace_bodies: index.namespace_bodies
+  }
+}
+
+fn symbol_index_mark_namespace_body(index: SymbolIndex, qualified_path: QualifiedName) -> SymbolIndex {
+  SymbolIndex {
+    entries: index.entries,
+    global_bare: index.global_bare,
+    bound_declarings: index.bound_declarings,
+    declared_payloads: index.declared_payloads,
+    renaming_aliases: index.renaming_aliases,
+    declared_type_params: index.declared_type_params,
+    declared_resources: index.declared_resources,
+    namespace_bodies: map_insert(m: index.namespace_bodies, key: qualified_path, value: NamespaceBodyDeclared {})
+  }
+}
+
+fn symbol_index_binds_namespace_body_at(index: SymbolIndex, qualified_path: QualifiedName) -> Bool {
+  match map_lookup(m: index.namespace_bodies, key: qualified_path) {
+    Present { value: _ } => true
+    Absent => false
   }
 }
 
@@ -333,7 +372,7 @@ fn symbol_index_declares_resource_at(index: SymbolIndex, qualified_path: Qualifi
   }
 }
 
-fn symbol_index_mark_declared_type_params(index: SymbolIndex, qualified_path: QualifiedName, params: List<Symbol>) -> SymbolIndex {
+fn symbol_index_mark_declared_type_params(index: SymbolIndex, qualified_path: QualifiedName, params: Node) -> SymbolIndex {
   SymbolIndex {
     entries: index.entries,
     global_bare: index.global_bare,
@@ -341,15 +380,22 @@ fn symbol_index_mark_declared_type_params(index: SymbolIndex, qualified_path: Qu
     declared_payloads: index.declared_payloads,
     renaming_aliases: index.renaming_aliases,
     declared_type_params: map_insert(m: index.declared_type_params, key: qualified_path, value: params),
-    declared_resources: index.declared_resources
+    declared_resources: index.declared_resources,
+    namespace_bodies: index.namespace_bodies
   }
 }
 
 fn symbol_index_declared_type_params_at(index: SymbolIndex, qualified_path: QualifiedName) -> List<Symbol> {
-  match map_lookup(m: index.declared_type_params, key: qualified_path) {
-    Present { value: params } => params
+  match symbol_index_declared_binders_at(index: index, qualified_path: qualified_path) {
+    Present { value: binders } => binder_conj_names(conj: binders)
     Absent => Empty
   }
+}
+
+// THE BINDER CONJ A DECLARATION BINDS, kinds included (v2.std.type_binder type_param_kind_optional).
+// Absent for a declaration that binds no type parameters.
+fn symbol_index_declared_binders_at(index: SymbolIndex, qualified_path: QualifiedName) -> Optional<Node> {
+  map_lookup(m: index.declared_type_params, key: qualified_path)
 }
 
 fn symbol_index_global_unique_lookup(index: SymbolIndex, name: Symbol) -> GlobalBareLookup {
@@ -460,7 +506,8 @@ fn symbol_index_bind_at(
       declared_payloads: index.declared_payloads,
       renaming_aliases: index.renaming_aliases,
       declared_type_params: index.declared_type_params,
-      declared_resources: index.declared_resources
+      declared_resources: index.declared_resources,
+      namespace_bodies: index.namespace_bodies
     }
     if is_empty(xs: prior) {
       SymbolIndex {
@@ -470,7 +517,8 @@ fn symbol_index_bind_at(
         declared_payloads: recorded.declared_payloads,
         renaming_aliases: recorded.renaming_aliases,
         declared_type_params: recorded.declared_type_params,
-        declared_resources: recorded.declared_resources
+        declared_resources: recorded.declared_resources,
+        namespace_bodies: recorded.namespace_bodies
       }
     } else {
       recorded
@@ -533,17 +581,27 @@ fn symbol_index_candidates_at(
   }
 }
 
+// A SERVICE NAMESPACE IS A LOOKUP BOUNDARY (symbol_index_binds_namespace_body_at): a position that binds
+// one contributes no candidates, and a candidate that binds one is never an answer, so from inside
+// `shell.Find.Run` neither a sibling service `Env` nor the prefix `shell` binds bare. The walk still
+// ascends past it to the module, whose own names stay in scope.
 fn symbol_index_lexical_collect(
   index: SymbolIndex,
   position: QualifiedName,
   name: Symbol,
   acc: FreeMonoid<LexicalBindingCandidate>
 ) -> FreeMonoid<LexicalBindingCandidate> {
-  let with_current = fold_list(
-    xs: symbol_index_candidates_at(index: index, position: position, name: name),
-    empty: acc,
-    cons: fn(a, candidate) { list_snoc_item(xs: a, item: candidate) }
-  )
+  let with_current = if symbol_index_binds_namespace_body_at(index: index, qualified_path: position) {
+    acc
+  } else {
+    fold_list(
+      xs: symbol_index_candidates_at(index: index, position: position, name: name),
+      empty: acc,
+      cons: fn(a, candidate) {
+        if symbol_index_binds_namespace_body_at(index: index, qualified_path: candidate.path) { a } else { list_snoc_item(xs: a, item: candidate) }
+      }
+    )
+  }
   if is_empty(xs: position) {
     with_current
   } else {

@@ -54,7 +54,9 @@ import v2.std.diagnostic {
   bind_outcome,
   bind_outcome_accepted,
   diagnostics_singleton,
+  rejected_with_pending,
   outcome_accepted,
+  outcome_with_diagnostics,
   outcome_rejected
 }
 import v2.std.node { Node }
@@ -105,7 +107,8 @@ type ProgramAssemblyLocatedFoldState
       located: FreeMonoid<LocatedNormalizedTree>,
       index: SourceRootIndex,
       alloc: OccurrenceIdAllocator,
-      spans: SpanIndex
+      spans: SpanIndex,
+      advisories: Diagnostics
     }
   | ProgramAssemblyLocatedFoldFailed {
       diagnostics: NonEmptyDiagnostics,
@@ -126,7 +129,7 @@ fn program_assembly_fold_state_from_located(
   match state {
     ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: _ } =>
       ProgramAssemblyFoldFailed { diagnostics: d }
-    ProgramAssemblyLocatedFoldOk { located: located, index: idx, alloc: _, spans: _ } =>
+    ProgramAssemblyLocatedFoldOk { located: located, index: idx, alloc: _, spans: _, advisories: _ } =>
       ProgramAssemblyFoldOk {
         roots: list_map(xs: located, f: fn(item) { item.tree }),
         index: idx
@@ -278,9 +281,14 @@ fn program_assembly_measured_outcome(measured: ParseProductionMeasured) -> Outco
 // over the ingest seeds the next file's parse from it: lowering allocates every image member an id
 // (v2.compiler.normalize normalize_scoped), and the next file's authored ids must start above those.
 // A refused parse or normalize returns the seed unchanged.
+// `spans` is THIS FILE'S OWN span index (the parse artifact's), carried so a refusal's node loci
+// can be resolved against the file that produced them before anything retains them; empty when
+// the parse itself refused, whose diagnostics are already Textual. Same field, same meaning, as
+// `ProgramAssemblySeededReadResult` `spans` on the composed door.
 type ProgramAssemblyNormalizedPhase {
   outcome: Outcome<NormalizedTree>
   alloc: OccurrenceIdAllocator
+  spans: SpanIndex
 }
 
 fn program_assembly_phase_normalize_seeded(
@@ -289,15 +297,16 @@ fn program_assembly_phase_normalize_seeded(
   scope: Fnv1a64Structural
 ) -> ProgramAssemblyNormalizedPhase {
   match parsed {
-    Rejected { diagnostics: d } => ProgramAssemblyNormalizedPhase { outcome: Rejected { diagnostics: d }, alloc: seed }
+    Rejected { diagnostics: d } => ProgramAssemblyNormalizedPhase { outcome: Rejected { diagnostics: d }, alloc: seed, spans: span_index_empty() }
     Accepted { value: artifact, diagnostics: od } =>
       match normalize_scoped(parse_tree: artifact.tree, allocator: scoped_occurrence_allocator(alloc: seed, scope: scope)) {
         Rejected { diagnostics: d } =>
-          ProgramAssemblyNormalizedPhase { outcome: bind_outcome_accepted(od: od, inner: Rejected { diagnostics: d }), alloc: seed }
+          ProgramAssemblyNormalizedPhase { outcome: bind_outcome_accepted(od: od, inner: Rejected { diagnostics: d }), alloc: seed, spans: artifact.span_index }
         Accepted { value: scoped, diagnostics: nd } =>
           ProgramAssemblyNormalizedPhase {
             outcome: bind_outcome_accepted(od: od, inner: Accepted { value: scoped.tree, diagnostics: nd }),
-            alloc: scoped.allocator.alloc
+            alloc: scoped.allocator.alloc,
+            spans: artifact.span_index
           }
       }
   }
@@ -309,6 +318,10 @@ fn program_assembly_normalized_outcome(phase: ProgramAssemblyNormalizedPhase) ->
 
 fn program_assembly_normalized_alloc(phase: ProgramAssemblyNormalizedPhase) -> OccurrenceIdAllocator {
   phase.alloc
+}
+
+fn program_assembly_normalized_spans(phase: ProgramAssemblyNormalizedPhase) -> SpanIndex {
+  phase.spans
 }
 
 // The ingest scope as an Outcome, for a caller outside the modeled fold (the emitted driver loop),
@@ -424,6 +437,45 @@ fn program_assembly_read_to_normalized_root_seeded(
 // or graft is exactly the file whose diagnostic needs locating, and its index would otherwise be
 // dropped one step before the renderer asked for it. Both refusing arms below -- the read's own
 // refusal and the module-name derivation's -- carry it, so neither loses what was recorded.
+// AN ACCEPTED FILE'S ADVISORIES JOIN THE INGEST'S CHAIN WITHOUT RE-COPYING IT. diagnostics_merge
+// rebuilds the accumulated chain on every call (list_append is O(n) per call), so folding it once
+// per file made the ingest quadratic in its total advisory count (DESIGN section 6, bare minimum
+// cost). The new file's diagnostics are pushed one at a time onto the accumulated tail
+// (list_snoc_item, amortized O(log n)); the chain's order is unchanged -- earlier files first, each
+// file's own order kept.
+fn program_assembly_advisories_extend(acc: Diagnostics, more: Diagnostics) -> Diagnostics {
+  match more {
+    None => acc
+    Some { diagnostics: m } =>
+      match acc {
+        None => more
+        Some { diagnostics: a } =>
+          Some {
+            diagnostics: NonEmptyDiagnostics {
+              head: a.head,
+              tail: fold_list(
+                xs: m.tail,
+                empty: list_snoc_item(xs: a.tail, item: m.head),
+                cons: fn(t, x) { list_snoc_item(xs: t, item: x) }
+              )
+            }
+          }
+      }
+  }
+}
+
+// THE ONE TRANSITION FROM AN ACCEPTED FOLD TO A REFUSED ONE. The advisories the ingest accumulated
+// before the refusing file stay on the refusal, ahead of it, in the order rejected_with_pending gives
+// any pending chain (the fatal cause stays the refusal's own, the last element). Both refusing arms of
+// the fold step go through here, so they cannot disagree about it; building the failed state from the
+// refusal alone dropped every earlier file's advisories.
+fn program_assembly_fold_failed(pending: Diagnostics, refused: NonEmptyDiagnostics, spans: SpanIndex) -> ProgramAssemblyLocatedFoldState {
+  ProgramAssemblyLocatedFoldFailed {
+    diagnostics: rejected_with_pending(pending: pending, rejected: refused),
+    spans: spans
+  }
+}
+
 fn program_assembly_fold_step(
   state: ProgramAssemblyLocatedFoldState,
   read: DagSourceReadWitness,
@@ -435,7 +487,7 @@ fn program_assembly_fold_step(
   match state {
     ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: spans } =>
       ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: spans }
-    ProgramAssemblyLocatedFoldOk { located: acc, index: idx, alloc: seed, spans: spans } =>
+    ProgramAssemblyLocatedFoldOk { located: acc, index: idx, alloc: seed, spans: spans, advisories: advised } =>
       let result = program_assembly_read_to_normalized_root_seeded(
         read: read,
         lm: lm,
@@ -446,7 +498,7 @@ fn program_assembly_fold_step(
       )
       let carried = span_index_merge(base: spans, incoming: result.spans)
       match result.produced {
-        Accepted { value: tree, diagnostics: _ } =>
+        Accepted { value: tree, diagnostics: file_advisories } =>
           match qualified_name_from_module_node(root: tree.root) {
             Accepted { value: qn, diagnostics: _ } =>
               ProgramAssemblyLocatedFoldOk {
@@ -456,13 +508,18 @@ fn program_assembly_fold_step(
                 ),
                 index: source_root_index_insert(index: idx, module: qn, root: read.source_root),
                 alloc: result.alloc,
-                spans: carried
+                spans: carried,
+                advisories: program_assembly_advisories_extend(acc: advised, more: file_advisories)
               }
             Rejected { diagnostics: d } =>
-              ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: carried }
+              program_assembly_fold_failed(
+                pending: program_assembly_advisories_extend(acc: advised, more: file_advisories),
+                refused: d,
+                spans: carried
+              )
           }
         Rejected { diagnostics: d } =>
-          ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: carried }
+          program_assembly_fold_failed(pending: advised, refused: d, spans: carried)
       }
   }
 }
@@ -519,7 +576,8 @@ fn program_assembly_fold_ingest_located(
         located: program_assembly_empty_located_roots(),
         index: source_root_index_empty(),
         alloc: occurrence_id_allocator_initial(),
-        spans: span_index_empty()
+        spans: span_index_empty(),
+        advisories: None
       }
     _ =>
       match prepare_grammar(grammar: lm.grammar) {
@@ -539,7 +597,8 @@ fn program_assembly_fold_ingest_located(
                   located: program_assembly_empty_located_roots(),
                   index: source_root_index_empty(),
                   alloc: occurrence_id_allocator_initial(),
-                  spans: span_index_empty()
+                  spans: span_index_empty(),
+                  advisories: None
                 },
                 cons: fn(state, read) {
                   program_assembly_fold_step(state: state, read: read, lm: lm, prepared: prepared, residue: residue, scope: scope)
@@ -564,8 +623,8 @@ fn located_module_roots_from_source_root_ingest(
   lm: LanguageModel
 ) -> Outcome<FreeMonoid<LocatedNormalizedTree>> {
   match program_assembly_fold_ingest_located(ingest: ingest, lm: lm) {
-    ProgramAssemblyLocatedFoldOk { located: located, index: _, alloc: _, spans: _ } =>
-      outcome_accepted(value: located)
+    ProgramAssemblyLocatedFoldOk { located: located, index: _, alloc: _, spans: _, advisories: advised } =>
+      outcome_with_diagnostics(value: located, diagnostics: advised)
     ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: _ } =>
       Rejected { diagnostics: d }
   }
@@ -586,8 +645,8 @@ fn located_roots_and_spans_from_source_root_ingest(
   lm: LanguageModel
 ) -> Outcome<LocatedIngestRoots> {
   match program_assembly_fold_ingest_located(ingest: ingest, lm: lm) {
-    ProgramAssemblyLocatedFoldOk { located: located, index: _, alloc: _, spans: spans } =>
-      outcome_accepted(value: LocatedIngestRoots { located: located, spans: spans })
+    ProgramAssemblyLocatedFoldOk { located: located, index: _, alloc: _, spans: spans, advisories: advised } =>
+      outcome_with_diagnostics(value: LocatedIngestRoots { located: located, spans: spans }, diagnostics: advised)
     ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: _ } =>
       Rejected { diagnostics: d }
   }
@@ -597,10 +656,10 @@ fn module_roots_from_source_root_ingest(
   ingest: SourceRootIngest,
   lm: LanguageModel
 ) -> Outcome<FreeMonoid<NormalizedTree>> {
-  match program_assembly_fold_ingest(ingest: ingest, lm: lm) {
-    ProgramAssemblyFoldOk { roots: roots, index: _ } =>
-      outcome_accepted(value: roots)
-    ProgramAssemblyFoldFailed { diagnostics: d } =>
+  match program_assembly_fold_ingest_located(ingest: ingest, lm: lm) {
+    ProgramAssemblyLocatedFoldOk { located: located, index: _, alloc: _, spans: _, advisories: advised } =>
+      outcome_with_diagnostics(value: list_map(xs: located, f: fn(item) { item.tree }), diagnostics: advised)
+    ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: _ } =>
       Rejected { diagnostics: d }
   }
 }
@@ -647,10 +706,10 @@ fn assemble_program_from_ingest_located(
   match program_assembly_fold_ingest_located(ingest: ingest, lm: lm) {
     ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: spans } =>
       IngestAssembly { spans: spans, program: Rejected { diagnostics: d } }
-    ProgramAssemblyLocatedFoldOk { located: located, index: idx, alloc: _, spans: spans } =>
+    ProgramAssemblyLocatedFoldOk { located: located, index: idx, alloc: _, spans: spans, advisories: advised } =>
       IngestAssembly {
         spans: spans,
-        program: bind_outcome(
+        program: bind_outcome_accepted(od: advised, inner: bind_outcome(
           o: validate_module_roots(roots: list_map(xs: located, f: fn(item) { item.tree })),
           f: fn(validated_roots) {
             resolve_with_admission_grounded(
@@ -661,7 +720,7 @@ fn assemble_program_from_ingest_located(
               active_roots: source_root_set_from_ingest(ingest: ingest)
             )
           }
-        )
+        ))
       }
   }
 }

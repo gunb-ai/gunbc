@@ -4,10 +4,12 @@ import std.termination {
   DescentEvidence, DescentUnknown, RankingDimension,
   PositiveDescentAmount, OneStep, AdditionalStep,
   ProportionalDivisor, DivideByTwo, StrictlyLarger,
-  positive_descent_count
+  positive_descent_count,
+  NonIncreasing,
+  Strict
 }
 import std.algebra {
-  AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
+  AlgebraProfile, OrderedRingProfile, OrderedSemiringProfile, ApproximateFieldProfile,
   BooleanAlgebraProfile, FinitePowerSetProfile,
   PointwisePowerCollectionProfile,
   FreeMonoidScalarProfile, FreeMonoidCollectionProfile,
@@ -119,10 +121,14 @@ fn size_bound_param(bound: SizeBound) -> String? {
 
 fn is_constant_bound(bound: SizeBound) -> Bool {
   match bound {
+    CollectionSize { param: _ }        => false
+    ParserStreamSize { witness: _ }    => false
+    WorklistDrainSize { element: _ }   => false
+    SubtreeSize { param: _ }           => false
+    ArithmeticParam { param: _ }       => false
     ExplicitCountZero => true
     ExplicitCountPositive { steps: _ } => true
     Forever                => true
-    _                      => false
   }
 }
 
@@ -130,10 +136,14 @@ fn forever_iteration_bound() -> Int { 9223372036854775807 }
 
 fn constant_bound_value(bound: SizeBound) -> Int? {
   match bound {
+    CollectionSize { param: _ }        => none
+    ParserStreamSize { witness: _ }    => none
+    WorklistDrainSize { element: _ }   => none
+    SubtreeSize { param: _ }           => none
+    ArithmeticParam { param: _ }       => none
     ExplicitCountZero => Present { value: 0 }
     ExplicitCountPositive { steps: s } => Present { value: positive_descent_count(s) }
     Forever                    => Present { value: forever_iteration_bound() }
-    _                          => none
   }
 }
 
@@ -157,6 +167,7 @@ fn algebra_profile_to_dimension(profile: AlgebraProfile) -> IterationDimension? 
     PointwisePowerCollectionProfile    => none
     PartialFunctionProfile             => none
     OrderedRingProfile                 => Present { value: ArithmeticRepeat }
+    OrderedSemiringProfile             => Present { value: ArithmeticRepeat }
     ApproximateFieldProfile            => Present { value: ArithmeticRepeat }
     BooleanAlgebraProfile              => none
   }

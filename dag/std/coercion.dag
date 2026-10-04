@@ -111,6 +111,25 @@ type TypeDeclarationProvenance
   | KernelMinted { minted_name: String }
   | DeclarationIdentityAbsent
 
+// THE TWO REPRESENTATIONS OF TEXT (operator Ruling 3, 2026-07-15; XL-0T ruling B). Kernel String is
+// HOST TEXT; a FreeMonoid<Char> declared in the corpus is a CODE-POINT SEQUENCE. One type, two
+// representations, and the only declared route between them is the literal homomorphism
+// (gunbc.structural_realization_bindings literal_homomorphism_rows UnicodeScalarSequenceUnfold). A
+// value of one representation at a position of the other is therefore a crossing with no route,
+// and the type-compatibility relation refuses it rather than matching the two by spelling.
+// NotText is every other type: this classification says nothing about it.
+type TextRepresentation = HostText | CodePointSequence | NotText | TextRepresentationUnidentified
+
+// TextRepresentationUnidentified: the node's declaration could not be read by identity (no declaring
+// span in the global index, no resolvable qualified name, an alias chain that cycles or exceeds its
+// bound). It is never read as NotText, and it is not refused either: a boundary where one side is
+// unidentified is UNJUDGED by the text wall. text_representations_cross answers false for it, the
+// wall adds no verdict, base type compatibility decides exactly as before, and the site emits only
+// the non-blocking TextRepresentationUnidentifiedAtBoundary advisory, located. That population is
+// the declared drop gunbc.rung_drop text_boundary_identity_wall, whose restoration trigger is the
+// capability: the resolver records declaration identity on every type reference; zero unidentified
+// in the self-host and dag closures.
+
 // WHICH STATE A TYPE REFERENCE IS IN WHEN ITS DECLARATION IS ASKED FOR -- the split of the one arm
 // the reference-site read used to answer for two states. v1.std.core type_reference_provenance
 // falls back to the reference node's OWN span whenever no Resolved node is bound, so `this node IS
@@ -315,4 +334,226 @@ fn dag_can_cast(source_type: String, target_type: String) -> Bool {
 
 fn is_dag_cast_domain_type(name: String) -> Bool {
   dag_cast_rules |> any(r => r.from_type == name || r.to_type == name)
+}
+
+// NAMED CONVERSION PLANS (DESIGN section 4, operator ruling 2026-09-26: an author crosses a
+// representation boundary implicit coercion refuses ONLY by selecting a named conversion plan, and
+// every phase of it stays represented). A plan joins the two authorities that already exist rather
+// than minting a third: the explicit-cast surface above (which says a re-typing is legal, keyed on
+// spellings, and names no route) and std.literal_elaboration LiteralUnfolding (the declared routes,
+// until now applied to literals only). Each phase cites a declared route; nothing in a plan is
+// free text, so a realization reads which route to run and never decides whether the crossing is
+// legal. Endpoints are DECLARATIONS, keyed exactly as literal_homomorphism_rows key theirs, so an
+// alias or a foreign caller's re-resolved spelling presents the same key after the peel.
+//
+// The inverse of an unfold is lawful because every LiteralUnfolding is a bijection onto its
+// carrier: the Unicode scalar unfold maps host text to FreeMonoid<std.types.Char> one scalar per
+// element, and std.types Char is branded unicode_scalar, so every sequence folds back to exactly
+// one host text. A future unfold that is not injective must not receive an inverse row.
+//
+// A PLAN HAS EXACTLY ONE PHASE BY CONSTRUCTION. Every row today is one declared route, so a plan
+// with no phase is not a state to refuse but a state with no constructor (DESIGN section 5,
+// construction over validation). A composite plan -- several phases whose consecutive endpoints must
+// meet -- is the trigger for a non-empty phase sequence and the judgment of its chaining; neither
+// exists until a row needs it.
+type ConversionPhase
+  = UnfoldPhase { row: LiteralHomomorphism }
+  | InverseUnfoldPhase { row: LiteralHomomorphism }
+
+// A PLAN ENDPOINT IS A CARRIER, AND THE KERNEL'S HOST TEXT IS NOT A CORPUS DECLARATION. The kernel
+// String is minted by the seed with no declaring module (TypeDeclarationProvenance KernelMinted
+// above), so it has no DeclarationRef to cite; a code-point sequence is the corpus declaration
+// std.algebra FreeMonoid over std.types Char, the post-peel key literal_homomorphism_rows uses. Each
+// endpoint therefore names the carrier the way that carrier is actually identified.
+type ConversionEndpoint
+  = KernelMintedCarrier { minted_name: NonEmptyStr }
+  | DeclaredCarrier { declaration: DeclarationRef, element: DeclarationRef? }
+
+// THE PHASE IS THE ONLY SOURCE OF THE ENDPOINTS, AND THE ROUTE IS THE ONLY NAME (calm-boar-904's
+// #13143 objection, the correlated-field class of #13060). A plan stored route, endpoints and phase
+// independently while the judgment checked only the endpoints, so an unfold route carrying an inverse
+// phase was admitted with every control green. Now a phase carries the full declared literal
+// homomorphism row, the endpoints are DERIVED from it -- the unfold runs from the row's kernel literal
+// carrier to its destination, the inverse reverses exactly those -- and the plan's name is its route
+// function's declared name (O5: the function IS the plan). No field can disagree with another,
+// because there is no second field to disagree.
+type ConversionPlan {
+  route: DeclarationRef
+  phase: ConversionPhase
+}
+
+fn conversion_plan_identity(plan: ConversionPlan) -> NonEmptyStr {
+  plan.route.decl_name
+}
+
+// The kernel carrier a literal of each source kind is minted as -- the unfold's starting side.
+fn kernel_carrier_of_literal_source(kind: LiteralSourceKind) -> ConversionEndpoint {
+  match kind {
+    KernelIntLiteral => KernelMintedCarrier { minted_name: "Int" as NonEmptyStr }
+    KernelStringLiteral => KernelMintedCarrier { minted_name: "String" as NonEmptyStr }
+    KernelFloatLiteral => KernelMintedCarrier { minted_name: "Float" as NonEmptyStr }
+    KernelBoolLiteral => KernelMintedCarrier { minted_name: "Bool" as NonEmptyStr }
+    KernelSymbolLiteral => KernelMintedCarrier { minted_name: "Symbol" as NonEmptyStr }
+    KernelNullLiteral => KernelMintedCarrier { minted_name: "Null" as NonEmptyStr }
+  }
+}
+
+fn literal_homomorphism_destination(row: LiteralHomomorphism) -> ConversionEndpoint {
+  DeclaredCarrier { declaration: row.destination, element: row.element }
+}
+
+fn conversion_plan_source(plan: ConversionPlan) -> ConversionEndpoint {
+  match plan.phase {
+    UnfoldPhase { row: r } => kernel_carrier_of_literal_source(kind: r.source_kind)
+    InverseUnfoldPhase { row: r } => literal_homomorphism_destination(row: r)
+  }
+}
+
+fn conversion_plan_target(plan: ConversionPlan) -> ConversionEndpoint {
+  match plan.phase {
+    UnfoldPhase { row: r } => literal_homomorphism_destination(row: r)
+    InverseUnfoldPhase { row: r } => kernel_carrier_of_literal_source(kind: r.source_kind)
+  }
+}
+
+// HOW A SITE NAMES A PLAN (operator ruling O5, 2026-10-03, applied by sharp-raven-357): with no
+// grammar change. Each plan row names an ORDINARY DECLARED FUNCTION by its declaration identity
+// (route), the author calls that function, and the call is admitted as the named route BECAUSE a
+// row names the callee. The judgment is therefore keyed on the callee's declaration, never on a
+// spelling the site supplies.
+//
+// What a crossing site that names a plan is answered with. Only ConversionPlanAdmitted admits;
+// every other arm is a located refusal at the site that named the plan. A crossing that names NO
+// plan never reaches this judgment and is refused by the text wall as before.
+type ConversionPlanJudgment
+  = ConversionPlanAdmitted { plan: ConversionPlan }
+  | ConversionPlanAbsent { route: DeclarationRef }
+  | ConversionPlanAmbiguous { route: DeclarationRef, row_count: Int }
+  | ConversionPlanEndpointMismatch { plan: ConversionPlan }
+  | ConversionPlanEndpointNotText { source: TextRepresentation, target: TextRepresentation }
+
+fn conversion_plan_element_eq(a: DeclarationRef?, b: DeclarationRef?) -> Bool {
+  match a {
+    Present { value: ae } =>
+      match b {
+        Present { value: be } => declaration_ref_eq(a: ae, b: be)
+        Absent => false
+      }
+    Absent => match b { Present { value: _ } => false  Absent => true }
+  }
+}
+
+fn conversion_endpoint_eq(a: ConversionEndpoint, b: ConversionEndpoint) -> Bool {
+  match a {
+    KernelMintedCarrier { minted_name: an } =>
+      match b {
+        KernelMintedCarrier { minted_name: bn } => an == bn
+        DeclaredCarrier { declaration: _, element: _ } => false
+      }
+    DeclaredCarrier { declaration: ad, element: ae } =>
+      match b {
+        KernelMintedCarrier { minted_name: _ } => false
+        DeclaredCarrier { declaration: bd, element: be } => declaration_ref_eq(a: ad, b: bd) && conversion_plan_element_eq(a: ae, b: be)
+      }
+  }
+}
+
+// The site presents the callee it resolved and the two carriers at its boundary (already peeled,
+// as for literal elaboration). Zero or several rows naming the callee refuse rather than pick; a
+// found plan whose endpoints are not the site's refuses rather than being reread in the other
+// direction (the inverse is its own row).
+fn judge_conversion_plan(
+  rows: List<ConversionPlan>,
+  route: DeclarationRef,
+  source: ConversionEndpoint,
+  target: ConversionEndpoint
+) -> ConversionPlanJudgment {
+  let named = rows |> filter(r => declaration_ref_eq(a: r.route, b: route))
+  let n = named |> count
+  if n == 0 {
+    ConversionPlanAbsent { route: route }
+  } else if n > 1 {
+    ConversionPlanAmbiguous { route: route, row_count: n }
+  } else {
+    match named |> first {
+      Absent => ConversionPlanAbsent { route: route }
+      Present { value: plan } =>
+        if conversion_endpoint_eq(a: conversion_plan_source(plan: plan), b: source) && conversion_endpoint_eq(a: conversion_plan_target(plan: plan), b: target) {
+          ConversionPlanAdmitted { plan: plan }
+        } else {
+          ConversionPlanEndpointMismatch { plan: plan }
+        }
+    }
+  }
+}
+
+// CONSUMER, A DECLARED FRONTIER (DESIGN section 3c). The judgment's consumer is the KERNEL-CROSSING
+// WALL in v1.compiler.infer: a call to the kernel scalar reader or writer (chars / chars_to_string)
+// is admitted only inside a function whose declaration a conversion_plan_rows row names as its route,
+// judged here against the two text readings at that kernel call; everywhere else it refuses with
+// TextCrossingHasNoImplicitRoute naming the route to call. calm-boar-904 ruled that wall the LAST
+// step of the text-boundary lane, so it lands with no backlog: its trigger is that every kernel
+// chars / chars_to_string caller outside the two route functions has been switched to a route call
+// or rostered with a typed reason. Until then the route functions are admitted by their signatures
+// alone and nothing on the acceptance path runs this judgment.
+//
+// THE CROSSING SITE'S HALF, AS THE CHECKER WILL ASK IT. The checker already classifies each side of a
+// boundary by declaration identity (v1.compiler.infer text_representation_by_identity, the same
+// reading text_crossing_by_identity refuses bare crossings with); a site that names a plan presents
+// those two readings here and is judged against the plan rows. Each text representation has exactly
+// one carrier -- host text is the kernel-minted String, a code-point sequence is std.algebra
+// FreeMonoid over std.types Char -- so the endpoint is derived from the reading rather than re-read
+// from a spelling. A side that is not text, or whose declaration could not be identified, has no
+// endpoint and refuses: a plan is never selected for a crossing the checker could not identify.
+fn host_text_endpoint() -> ConversionEndpoint {
+  KernelMintedCarrier { minted_name: "String" as NonEmptyStr }
+}
+
+fn code_point_sequence_endpoint() -> ConversionEndpoint {
+  DeclaredCarrier { declaration: decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid"), element: Present { value: decl_ref(module_path: "std.types", decl_name: "Char") } }
+}
+
+type TextPlanEndpoint
+  = TextPlanEndpointKeyed { endpoint: ConversionEndpoint }
+  | TextPlanEndpointUnkeyed
+
+fn text_plan_endpoint(rep: TextRepresentation) -> TextPlanEndpoint {
+  match rep {
+    HostText => TextPlanEndpointKeyed { endpoint: host_text_endpoint() }
+    CodePointSequence => TextPlanEndpointKeyed { endpoint: code_point_sequence_endpoint() }
+    NotText => TextPlanEndpointUnkeyed
+    TextRepresentationUnidentified => TextPlanEndpointUnkeyed
+  }
+}
+
+fn judge_text_conversion_plan(
+  rows: List<ConversionPlan>,
+  route: DeclarationRef,
+  source: TextRepresentation,
+  target: TextRepresentation
+) -> ConversionPlanJudgment {
+  match text_plan_endpoint(rep: source) {
+    TextPlanEndpointUnkeyed => ConversionPlanEndpointNotText { source: source, target: target }
+    TextPlanEndpointKeyed { endpoint: se } =>
+      match text_plan_endpoint(rep: target) {
+        TextPlanEndpointUnkeyed => ConversionPlanEndpointNotText { source: source, target: target }
+        TextPlanEndpointKeyed { endpoint: te } =>
+          judge_conversion_plan(rows: rows, route: route, source: se, target: te)
+      }
+  }
+}
+
+// THE TWO DECLARED ROUTE FUNCTIONS the conversion_plan_rows name. Each body is the realization of its
+// row's one phase and nothing else: the unfold reads host text's Unicode scalars (the kernel scalar
+// decomposition v1.compiler.infer unfold_scalar_sequence_image also uses for literals), and the fold
+// writes them back as host text through the kernel's linear slice writer. A .dag fold over
+// from_code_point and concat would re-express the inverse with a copied accumulator, quadratic in the
+// text length, so the kernel writer stays the realization (DESIGN section 6, bare minimum cost).
+// These are the ONLY sanctioned callers of those two kernel operations for a text crossing.
+fn unicode_scalar_unfold(s: String) -> FreeMonoid<Char> {
+  chars(s)
+}
+
+fn unicode_scalar_fold(xs: FreeMonoid<Char>) -> String {
+  chars_to_string(chars: xs, start: 0, end: xs |> count)
 }

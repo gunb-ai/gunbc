@@ -1,0 +1,1759 @@
+module gunbc.spark.arm_memory_experiment_observed
+
+import std.types { Bool, NonEmptyStr, List }
+import gunbc.spark.glm_group_b_launch { glm_group_b_deployment_env }
+import std.nat { Nat, nat_max, nat_min, nat_range_inclusive }
+import std.checked_arithmetic { nat_magnitude }
+import std.measure {
+  ByteSize, byte_size, byte_size_count,
+  TokenCount, token_count, token_count_value,
+  AllocatorBlockCount,
+  gibibyte_scale_factor_bytes, concurrent_request_hundredths, basis_point,
+}
+import v2.std.optional { Present, Absent }
+import extdeps.vllm.runtime_defaults { Vllm8d09804, defaults_source_revision }
+import extdeps.vllm.log_lines {
+  VllmStartupReading, vllm_startup_reading, GpuKvCacheSize, MaximumConcurrency,
+}
+import extdeps.vllm.engine_args { IndexerKvDtypeOmitted, PrefixCachingExplicit, KvFp8, EngramConfigOmitted, ModalityOmitted }
+import extdeps.vllm.kv_cache { VllmObservedKvPool, VllmKvPoolAdmission, KvPoolAdmitted, KvPoolRefused, vllm_observed_kv_pool_from_reading }
+import extdeps.vllm.kv_layout {
+  VllmReportedCapacity, ReportedCapacityAdmitted, ReportedCapacityRefused, vllm_reported_capacity,
+}
+import extdeps.vllm.sparse_prefill_transient { sparse_topk_indices_buffer_bytes }
+import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_hybrid_shape }
+import gunbc.spark.serving_arm {
+  glm53_native_launch_policy,
+  Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4,
+  serving_checkpoint_wire, serving_runtime_wire, serving_topology_wire,
+  ServingLaunchProfile,
+}
+import gunbc.spark.serving_capacity_intent {
+  uniform_cold_seats, profile_for_envelope, envelope_at_cold_floor,
+  ServingCapacityIntentAdmitted, ServingCapacityIntentRefused,
+}
+import gunbc.spark.arm_memory_fit {
+  MemoryProofSubject, MemoryProofSubjectMint, MemoryProofSubjectReady, MemoryProofSubjectRefused,
+  memory_proof_subject_for_launch,
+  MemoryTerm, MemoryScalingLaw, MemoryScalingStaticResidency, MemoryScalingPhaseTransient,
+  MemoryPlacementLaw, MemoryPlacementCheckpointPlacement, MemoryPlacementPhaseWorkspace,
+  MemoryPlacementRankResident, MemoryPlacementAllocatorCarve,
+  MemoryLifetime, MemoryLifetimeProcess, MemoryLifetimeLaunch, MemoryLifetimePhase,
+  ArmMemoryComponent, ArmCheckpointResidency, ArmActivationWorkspace, ArmGraphCapture, ArmKvCache,
+  ArmComponentBound, ComponentBoundOpen, ComponentBoundExact, ComponentBoundInterval, ComponentBoundCeiling,
+  component_bound_interval, ArmComponentBoundReady, ArmComponentBoundRefused,
+  ArmPhaseModelLoad, ArmPhaseProfiling, ArmPhaseGraphCapture, ArmPhaseIdleServing,
+  ArmWetStanding, ArmWetObservedInterval, ArmWetObservationOnly, ArmWetCompositeObservation,
+  ArmWetGraphAttributionUnestablished, ArmWetBindingAdmission,
+  ArmWetReceiptBinding, arm_admit_wet_binding,
+  ArmRankCacheSupply,
+  ArmRankDemand, ArmSupplyDeductions,
+  ArmLoaderTransform, ArmFragmentationAllowance,
+  ArmMemoryExperimentAdmission, ArmMemoryExperimentAdmitted, ArmMemoryExperimentRefused,
+  ArmServingLivenessVerdict, ArmServingLivenessProved, ArmServingLivenessRefused, ArmServingLivenessUnestablished,
+  arm_memory_fit_experiment_plan,
+  CacheCapacityCandidate, cache_capacity_candidate,
+}
+import v2.std.algebra { length }
+
+// ── THE WET RECEIPT BUNDLE OF 2026-09-25 ─────────────────────────────────────────────────────────
+//
+// ONE BOUNDED EXPERIMENT'S MEMORY READINGS, bound per the MoA doctrine (docs/plans/
+// moa-memory-modeling.md, owner directive 2026-09-25). The experiment: the group B bounded run --
+// one 65536-token seat, 2048 batched tokens, fp8 KV, decided utilization 8567 basis points -- on
+// the NoPE-derived GB10 runtime (engine self-report v0.1.dev1+g8d09804c8) across four Sparks,
+// TP0 srv9, TP1 srv10, TP2 srv12, TP3 srv11. THE HEAD printed "GPU KV cache size: 1,805,689
+// tokens" and "Maximum concurrency for 65,536 tokens per request: 27.55x"; the ranks carried the
+// memory breakdown below, read at two decimal places of GiB. TP3 (srv11) is the limiting rank of
+// that launch: the smallest pool, the smallest envelope, the smallest KV arena.
+//
+// THIS MODULE OWNS THE OBSERVATION, not the law. Every figure below is raw, dated, host-keyed
+// evidence; the standings each figure is admitted to, the subject they bind to, and the walls they
+// hit are gunbc.spark.arm_memory_fit's vocabulary, imported here and applied in
+// arm_experiment_2026_09_25_bindings and arm_experiment_2026_09_25_admit below. The binding
+// decisions the doctrine prescribes are written where the figures live so a figure and its
+// standing cannot drift apart: pools and KV arenas are OBSERVED INTERVALS at the reporter's
+// rounding unit (a reading at two decimal places is an interval, and it bounds nothing until a
+// bounding protocol promotes it); weights+nontorch is a COMPOSITE observation -- rank-specific
+// model/runtime residency at the experiment phase, NOT a checkpoint-placement receipt; the
+// activation figures are observations valid ONLY at the 64Kx1 / 2048-batched subject; TP1's
+// -2.54 GiB graph figure is preserved raw and admitted as GraphAttributionUnestablished -- lower
+// bound 0, upper open, never a credit -- and the positive graph figures are plain observations.
+//
+// THE SUBJECT THE BUNDLE WAS MEASURED ON is the launch's own, and it is bound to the workload the
+// experiment RAN -- one 65536-token seat at a 2048 batch ceiling, as the head's own printed line
+// records -- minted below from the experiment's own workload and the launch generation wire, NOT
+// from whatever the declared restoration intent currently says: a receipt about a 64Kx1 run is
+// evidence about a 64Kx1 subject, and the declared intent moving (the owner's call) does not
+// retroactively move this experiment. A consumer on another subject admits the bindings through
+// arm_memory_fit's compatibility law, which is where a 64Kx1 receipt meets the move to 262Kx6 --
+// not here.
+data arm_experiment_2026_09_25_engine_self_report: NonEmptyStr = "v0.1.dev1+g8d09804c8" as NonEmptyStr
+
+data arm_experiment_2026_09_25_kv_pool_tokens: Nat = 1805689
+
+data arm_experiment_2026_09_25_max_concurrency_hundredths: Nat = 2755
+
+// THE READINGS, one record per rank, hundredths of GiB exactly as reported (the graph figure
+// carries its sign; TP1's is the negative one). The host names are part of the observation: a
+// rank reading is meaningless without the unit it was read from, and TP3's identity as srv11 is
+// what makes the limiting rank locatable.
+type ArmExperimentRankFigures {
+  rank: Nat
+  host: NonEmptyStr
+  pool_hundredths_gib: Nat
+  envelope_hundredths_gib: Nat
+  weights_nontorch_hundredths_gib: Nat
+  activation_hundredths_gib: Nat
+  graph_hundredths_gib: Int
+  kv_arena_hundredths_gib: Nat
+}
+
+data arm_experiment_2026_09_25_rank_figures: List<ArmExperimentRankFigures> = [
+  ArmExperimentRankFigures {
+    rank: 0, host: "srv9" as NonEmptyStr,
+    pool_hundredths_gib: 12169, envelope_hundredths_gib: 10425,
+    weights_nontorch_hundredths_gib: 7701, activation_hundredths_gib: 316,
+    graph_hundredths_gib: 2, kv_arena_hundredths_gib: 2408,
+  },
+  ArmExperimentRankFigures {
+    rank: 1, host: "srv10" as NonEmptyStr,
+    pool_hundredths_gib: 12169, envelope_hundredths_gib: 10425,
+    weights_nontorch_hundredths_gib: 8106, activation_hundredths_gib: 426,
+    graph_hundredths_gib: -254, kv_arena_hundredths_gib: 1893,
+  },
+  ArmExperimentRankFigures {
+    rank: 2, host: "srv12" as NonEmptyStr,
+    pool_hundredths_gib: 12169, envelope_hundredths_gib: 10425,
+    weights_nontorch_hundredths_gib: 8066, activation_hundredths_gib: 376,
+    graph_hundredths_gib: 7, kv_arena_hundredths_gib: 1984,
+  },
+  ArmExperimentRankFigures {
+    rank: 3, host: "srv11" as NonEmptyStr,
+    pool_hundredths_gib: 11969, envelope_hundredths_gib: 10254,
+    weights_nontorch_hundredths_gib: 8159, activation_hundredths_gib: 392,
+    graph_hundredths_gib: 9, kv_arena_hundredths_gib: 1703,
+  },
+]
+
+data arm_experiment_2026_09_25_limiting_rank: Nat = 3
+
+data arm_experiment_2026_09_25_generation: NonEmptyStr = "group-b/bounded-experiment-2026-09-25" as NonEmptyStr
+
+// ── THE SUBJECT ──────────────────────────────────────────────────────────────────────────────────
+//
+// THE EXPERIMENT'S OWN SUBJECT, minted from the workload the experiment RAN, not from whatever
+// the declared restoration intent currently says: the receipt records one 65,536-token seat at a
+// 2048 batch ceiling (the head printed "Maximum concurrency for 65,536 tokens per request"), the
+// allocator axis is the decision it ran at (8567 basis points, fp8 KV wire), and a receipt about
+// a 64Kx1 run is evidence about a 64Kx1 subject. THE DECLARED INTENT MOVING IS THE OWNER'S CALL
+// and does not retroactively move this experiment: the day the declared configuration changes,
+// this subject stays bound to the run that produced these readings, and the compatibility law in
+// gunbc.spark.arm_memory_fit is where the two subjects meet. Absent means the experiment's own
+// workload refuses to derive -- a state the bindings below cannot be claimed in.
+fn arm_experiment_2026_09_25_subject_mint() -> MemoryProofSubjectMint {
+  match uniform_cold_seats(each: token_count(count: 65536), seats: 1, max_batched_tokens: token_count(count: 2048)) {
+    ServingCapacityIntentRefused { cause: _ } =>
+      MemoryProofSubjectRefused { cause: "the experiment's own workload (one 65536-token seat at a 2048 batch ceiling) refused to derive, so the subject these readings bind to has no spelling" as NonEmptyStr }
+    ServingCapacityIntentAdmitted { intent: experiment_intent } =>
+      memory_proof_subject_for_launch(
+        runtime: GunbcGlm53NopeDerivedGb10,
+        topology: FourSparkTp4,
+        profile: profile_for_envelope(
+          envelope: envelope_at_cold_floor(cold: experiment_intent),
+          policy: glm53_native_launch_policy,
+          decided_gpu_memory_basis_points: basis_point(count: 8567),
+          serve_port: 30000,
+          served_alias: "glm-5.3-flash" as NonEmptyStr,
+          prefix_caching: PrefixCachingExplicit { enabled: true },
+        ),
+        launch_generation: arm_experiment_2026_09_25_generation,
+      )
+  }
+}
+
+fn arm_experiment_2026_09_25_subject() -> MemoryProofSubject? {
+  match arm_experiment_2026_09_25_subject_mint() {
+    MemoryProofSubjectReady { subject: s } => Present { value: s }
+    MemoryProofSubjectRefused { cause: _ } => none
+  }
+}
+
+// ── FIGURE TO BYTES: THE REPORTER'S ROUNDING UNIT IS THE INTERVAL WIDTH ──────────────────────────
+//
+// A reading at two decimal places of GiB is a rounding observation: the true value lies within
+// half a reporting unit of the printed figure, so a reading of h hundredths is an interval
+// [(2h-1)/200, (2h+1)/200) GiB -- width exactly the reporter's rounding unit, 0.01 GiB. The floor
+// form prices a point; the interval form preserves what the reading actually establishes. The
+// scale factor is std.measure's own (gibibyte_scale_factor_bytes = 2^30), not a local literal.
+fn arm_experiment_gib_hundredths_floor(hundredths: Nat) -> ByteSize {
+  byte_size(count: hundredths * gibibyte_scale_factor_bytes() / 100)
+}
+
+fn arm_experiment_gib_hundredths_lower(hundredths: Nat) -> ByteSize {
+  byte_size(count: (2 * hundredths - 1) * gibibyte_scale_factor_bytes() / 200)
+}
+
+fn arm_experiment_gib_hundredths_upper(hundredths: Nat) -> ByteSize {
+  byte_size(count: ((2 * hundredths + 1) * gibibyte_scale_factor_bytes() + 199) / 200)
+}
+
+// ── THE HEAD'S PRINTED CAPACITY, AS OBSERVED ─────────────────────────────────────────────────────
+//
+// The two startup lines exactly as the head EngineCore printed them, bound to the deployed
+// engine's self-reported revision (vllm@8d09804c8, resolved through the cited roster to
+// 8d09804c877c48165c6ba69bc9dc02d09bae0b83). Since the 2026-09-25 model-lane advance that full
+// sha IS ALSO the capacity-arithmetic revision kv_layout models (extdeps.vllm.server
+// vllm_source_revision_read); these readings were stamped with the engine's own self-report rather
+// than the then-current corpus pin, and the two spellings now agree — the agreement is quoted
+// here, not assumed, and a future pin move away from the engine that printed these lines moves
+// them apart again, which is exactly what the stamp is for. The pool figure is a
+// full-context-equivalent projection; dividing it by a context length yields only the candidate
+// below.
+fn arm_experiment_2026_09_25_pool_reading() -> VllmStartupReading {
+  vllm_startup_reading(
+    line: GpuKvCacheSize,
+    captured_text: "GPU KV cache size: 1,805,689 tokens" as NonEmptyStr,
+    observed_at_revision: defaults_source_revision(r: Vllm8d09804),
+  )
+}
+
+fn arm_experiment_2026_09_25_concurrency_reading() -> VllmStartupReading {
+  vllm_startup_reading(
+    line: MaximumConcurrency,
+    captured_text: "Maximum concurrency for 65,536 tokens per request: 27.55x" as NonEmptyStr,
+    observed_at_revision: defaults_source_revision(r: Vllm8d09804),
+  )
+}
+
+fn arm_experiment_2026_09_25_reported_capacity() -> VllmReportedCapacity? {
+  match vllm_observed_kv_pool_from_reading(
+    tokens: token_count(count: arm_experiment_2026_09_25_kv_pool_tokens),
+    reading: arm_experiment_2026_09_25_pool_reading(),
+  ) {
+    KvPoolRefused { cause: _ } => none
+    KvPoolAdmitted { pool: pool } =>
+      match vllm_reported_capacity(
+        pool: pool,
+        max_concurrency: concurrent_request_hundredths(count: arm_experiment_2026_09_25_max_concurrency_hundredths),
+        reading: arm_experiment_2026_09_25_concurrency_reading(),
+      ) {
+        ReportedCapacityRefused { cause: _ } => none
+        ReportedCapacityAdmitted { capacity: c } => Present { value: c }
+      }
+  }
+}
+
+// THE CANDIDATE THE WITHDRAWN MOVE ARRIVED AT: floor(1,805,689 / 262,144) = 6 seats. Carried as
+// exactly what it is -- a sizing hint from dividing a full-context-equivalent projection, with no
+// path into any verdict -- and the standing string it travels with says so.
+fn arm_experiment_2026_09_25_six_seat_candidate() -> CacheCapacityCandidate? {
+  cache_capacity_candidate(
+    printed_pool_tokens: token_count(count: arm_experiment_2026_09_25_kv_pool_tokens),
+    division_length: token_count(count: 262144),
+  )
+}
+
+// ── THE RANK BINDINGS: EVERY FIGURE BESIDE ITS DOCTRINE-STANDING ─────────────────────────────────
+//
+// SIXTEEN BINDINGS, four per rank: weights+nontorch, activation, graph, KV arena. The term each
+// figure binds to names the mechanism the figure was read from (the census authority for scaling
+// laws lives in gunbc.spark.arm_memory_fit; the derivations below are this observation's own
+// prose); the standing is the doctrine's assignment; the measured_on subject is the experiment's.
+// The term BOUND stays open in every binding -- a wet observation is not a bound, and the
+// standing carries what the reading establishes until a bounding protocol or a derivation
+// discharges the obligation.
+fn arm_experiment_2026_09_25_provenance(host: NonEmptyStr) -> NonEmptyStr {
+  join([
+    "2026-09-25 bounded experiment (1x65536, 2048 batched, fp8 KV, 8567 basis points, engine ",
+    arm_experiment_2026_09_25_engine_self_report as String, ") on ", host as String,
+    ", memory-profile breakdown at the experiment phase",
+  ], "") as NonEmptyStr
+}
+
+fn arm_experiment_2026_09_25_open_bound(obligation: NonEmptyStr) -> ArmComponentBound {
+  ComponentBoundOpen { obligation: obligation }
+}
+
+fn arm_experiment_2026_09_25_rank_bindings(figures: ArmExperimentRankFigures, measured_on: MemoryProofSubject) -> List<ArmWetReceiptBinding> {
+  let provenance = arm_experiment_2026_09_25_provenance(host: figures.host)
+  [
+    ArmWetReceiptBinding {
+      term: MemoryTerm {
+        component: ArmCheckpointResidency,
+        placement_law: MemoryPlacementCheckpointPlacement,
+        scaling_law: MemoryScalingStaticResidency,
+        phase: ArmPhaseModelLoad,
+        lifetime: MemoryLifetimeProcess,
+        bound: arm_experiment_2026_09_25_open_bound(obligation: "the composite reading bounds no placement term; per-rank checkpoint placement stays open until a CheckpointRankResidencyBound measurement mints it" as NonEmptyStr),
+        derivation: "weights+nontorch composite profile reading: checkpoint-resident bytes plus runtime-fixed, allocator, communication and other non-Torch allocations, read as one figure at the experiment phase" as NonEmptyStr,
+      },
+      rank: figures.rank,
+      standing: ArmWetCompositeObservation {
+        bytes: arm_experiment_gib_hundredths_floor(hundredths: figures.weights_nontorch_hundredths_gib),
+        receipt: provenance,
+        why: "composite: does not separate checkpoint tensors from runtime-fixed, allocator, communication or other non-Torch allocations, so it is admitted as evidence but can never discharge the checkpoint-placement obligation" as NonEmptyStr,
+      },
+      measured_on: measured_on,
+      provenance: provenance,
+    },
+    ArmWetReceiptBinding {
+      term: MemoryTerm {
+        component: ArmActivationWorkspace,
+        placement_law: MemoryPlacementPhaseWorkspace,
+        scaling_law: MemoryScalingPhaseTransient,
+        phase: ArmPhaseProfiling,
+        lifetime: MemoryLifetimePhase,
+        bound: arm_experiment_2026_09_25_open_bound(obligation: "one experiment's activation reading bounds nothing above; an ActivationWorkspaceBound measurement with a bounding protocol discharges it, and only at the subject it was read from" as NonEmptyStr),
+        derivation: "activation and per-batch workspaces at the profiled shape the experiment ran: one 65536-token seat, 2048 batched tokens" as NonEmptyStr,
+      },
+      rank: figures.rank,
+      standing: ArmWetObservationOnly {
+        bytes: arm_experiment_gib_hundredths_floor(hundredths: figures.activation_hundredths_gib),
+        receipt: provenance,
+        why: "single sample at the 64Kx1 / 2048-batched subject: valid only there, refused by the compatibility law on any other workload" as NonEmptyStr,
+      },
+      measured_on: measured_on,
+      provenance: provenance,
+    },
+    ArmWetReceiptBinding {
+      term: MemoryTerm {
+        component: ArmGraphCapture,
+        placement_law: MemoryPlacementRankResident,
+        scaling_law: MemoryScalingStaticResidency,
+        phase: ArmPhaseGraphCapture,
+        lifetime: MemoryLifetimeLaunch,
+        bound: arm_experiment_2026_09_25_open_bound(obligation: "the graph figure bounds no term: a positive single sample is an observation, and the negative one is an attribution refusal; a GraphCaptureBound measurement discharges the term" as NonEmptyStr),
+        derivation: "CUDA graph capture workspace reading at the experiment phase" as NonEmptyStr,
+      },
+      rank: figures.rank,
+      standing: arm_experiment_2026_09_25_graph_standing(figures: figures, provenance: provenance),
+      measured_on: measured_on,
+      provenance: provenance,
+    },
+    ArmWetReceiptBinding {
+      term: MemoryTerm {
+        component: ArmKvCache,
+        placement_law: MemoryPlacementAllocatorCarve,
+        scaling_law: MemoryScalingStaticResidency,
+        phase: ArmPhaseIdleServing,
+        lifetime: MemoryLifetimeLaunch,
+        bound: arm_experiment_2026_09_25_open_bound(obligation: "the observed carve bounds no demand term; the arena is supply evidence for the cache fold once a roster exists, and the cache subproof decides by the direct fold alone" as NonEmptyStr),
+        derivation: "admitted KV arena carve at the experiment's allocator decision (8567 basis points on the rank's pool): what the engine's profiling left for the cache, observed on this rank" as NonEmptyStr,
+      },
+      rank: figures.rank,
+      standing: ArmWetObservedInterval {
+        lower: arm_experiment_gib_hundredths_lower(hundredths: figures.kv_arena_hundredths_gib),
+        upper: arm_experiment_gib_hundredths_upper(hundredths: figures.kv_arena_hundredths_gib),
+        receipt: provenance,
+      },
+      measured_on: measured_on,
+      provenance: provenance,
+    },
+  ]
+}
+
+// THE GRAPH STANDING, signed per rank: the negative reading is preserved raw and admitted as the
+// attribution refusal (lower bound 0, upper open, never a credit); the positive readings are
+// plain observations. THE RAW VALUE IS NOT DISCARDED ANYWHERE: TP1's -254 rides in the standing
+// for the record; what it cannot do is improve a verdict.
+fn arm_experiment_2026_09_25_graph_standing(figures: ArmExperimentRankFigures, provenance: NonEmptyStr) -> ArmWetStanding {
+  match figures.graph_hundredths_gib < 0 {
+    true => ArmWetGraphAttributionUnestablished {
+      raw_hundredths_gib: figures.graph_hundredths_gib,
+      receipt: join([provenance as String, " -- graph figure negative: the profiler interval includes a release, so the interval cannot be attributed to the capture mechanism; preserved raw, admitted as lower bound 0, upper open"], "") as NonEmptyStr,
+    }
+    false => ArmWetObservationOnly {
+      bytes: arm_experiment_gib_hundredths_floor(hundredths: nat_magnitude(a: figures.graph_hundredths_gib)),
+      receipt: provenance,
+      why: "positive single sample at the experiment phase: an observation, not a bound" as NonEmptyStr,
+    }
+  }
+}
+
+// ALL SIXTEEN BINDINGS, or none while the subject refuses.
+fn arm_experiment_2026_09_25_bindings() -> List<ArmWetReceiptBinding> {
+  match arm_experiment_2026_09_25_subject() {
+    Absent => [] as List<ArmWetReceiptBinding>
+    Present { value: measured_on } =>
+      flat_map(arm_experiment_2026_09_25_rank_figures, f => arm_experiment_2026_09_25_rank_bindings(figures: f, measured_on: measured_on))
+  }
+}
+
+// ── THE SUPPLY READINGS: POOL AND ENVELOPE PER RANK ──────────────────────────────────────────────
+//
+// The device pool and the decided envelope as observations of the same launch. The envelope is
+// DERIVED here from the observed pool interval at the experiment's utilization decision -- the
+// engine prints its own envelope, and the bundle records that print beside the derivation so the
+// two are comparable: the printed figure lands inside the derived interval, which is the check
+// that the print and the pool describe one launch.
+type ArmExperimentPoolReading {
+  rank: Nat
+  host: NonEmptyStr
+  lower: ByteSize
+  upper: ByteSize
+  how: NonEmptyStr
+}
+
+type ArmExperimentEnvelopeReading {
+  rank: Nat
+  host: NonEmptyStr
+  printed_hundredths_gib: Nat
+  derived_lower: ByteSize
+  derived_upper: ByteSize
+  derivation: NonEmptyStr
+}
+
+fn arm_experiment_2026_09_25_pool_readings() -> List<ArmExperimentPoolReading> {
+  map(arm_experiment_2026_09_25_rank_figures, f => ArmExperimentPoolReading {
+    rank: f.rank,
+    host: f.host,
+    lower: arm_experiment_gib_hundredths_lower(hundredths: f.pool_hundredths_gib),
+    upper: arm_experiment_gib_hundredths_upper(hundredths: f.pool_hundredths_gib),
+    how: join([
+      "device pool read at the experiment phase on ", f.host as String,
+      " at two decimal places of GiB; the interval's width is the reporter's rounding unit, and the reading bounds nothing until a bounding protocol promotes it",
+    ], "") as NonEmptyStr,
+  })
+}
+
+fn arm_experiment_2026_09_25_envelope_readings() -> List<ArmExperimentEnvelopeReading> {
+  map(arm_experiment_2026_09_25_rank_figures, f => ArmExperimentEnvelopeReading {
+    rank: f.rank,
+    host: f.host,
+    printed_hundredths_gib: f.envelope_hundredths_gib,
+    derived_lower: byte_size(count: byte_size_count(b: arm_experiment_gib_hundredths_lower(hundredths: f.pool_hundredths_gib)) * 8567 / 10000),
+    derived_upper: byte_size(count: (byte_size_count(b: arm_experiment_gib_hundredths_upper(hundredths: f.pool_hundredths_gib)) * 8567 + 9999) / 10000),
+    derivation: "decided envelope derived from the observed pool interval at the experiment's 8567 basis-point utilization decision: pool lower x utilization floor for the lower endpoint, pool upper x utilization ceiling for the upper" as NonEmptyStr,
+  })
+}
+
+// THE ADMISSION OF THE WHOLE BUNDLE AGAINST A TARGET SUBJECT: every binding through the
+// compatibility law. On the experiment's own subject all sixteen admit (the composite readings as
+// evidence, the negative graph figure preserved raw with zero credit, the activation readings
+// scoped to the only workload they describe); on a 262Kx6 target the workload-sensitive bindings
+// refuse by name, the static ones transfer, and the composite ones still discharge nothing.
+fn arm_experiment_2026_09_25_admit(target: MemoryProofSubject) -> List<ArmWetBindingAdmission> {
+  map(arm_experiment_2026_09_25_bindings(), b => arm_admit_wet_binding(binding: b, target: target))
+}
+
+// ── THE WET RECEIPT BUNDLE OF 2026-09-26: THE COMPLETING 262144x6 RUN ────────────────────────────
+//
+// THE SECOND BOUNDED LAUNCH AT THE 262144x6 SUBJECT, and the one whose per-rank readback bracket
+// commit c542528314 added held the stop legs past EVERY rank's print. The experiment: the group B
+// bounded run -- six 262144-token seats, 2048 batched tokens, fp8 KV, decided utilization 8567
+// basis points, image derived-kvplan-20260925, engine self-report v0.1.dev1+g8d09804c8 -- across
+// four Sparks, TP0 srv9, TP1 srv10, TP2 srv12, TP3 srv11. The first launch at this subject
+// (2026-09-25) printed the KV_ALLOCATION_PLAN_JSON line the plan fold prices, but its one-head
+// readback released the stop legs ~35 seconds after the head's anchor, BEFORE ranks 1-3 printed
+// their own profile lines -- that launch's byte wall stood open on exactly those ranks (commit
+// 0fd1d463f5's verdict names them). THE COMPLETING LAUNCH RERAN THE SAME EXPERIMENT with one
+// readback leg per rank host, and all four rank profile lines (gpu_worker.py:867,
+// "Free memory on device", 2026-09-26T00:19:24Z) now stand in the one receipt
+// (target/spark-native-experiment-apply-receipt.txt): TP0/srv9 KV arena 23.45 GiB, TP1/srv10
+// 18.62 GiB, TP2/srv12 18.90 GiB, TP3/srv11 17.29 GiB -- TP3 (srv11) the limiting rank again:
+// the smallest pool (119.69 GiB against 121.69), the smallest envelope (102.54 against 104.25),
+// and the smallest arena.
+//
+// THIS MODULE OWNS THE OBSERVATION, not the law -- the 2026-09-25 bundle's standing rule applies
+// verbatim. WHAT THIS BUNDLE BINDS is the four KV arena readings, the rank-supply evidence the
+// completing run owed the cache fold: per-rank OBSERVED INTERVALS at the reporter's two-decimal
+// GiB rounding unit, same measurement standings as the 64K bundle (an observation bounds nothing
+// until a bounding protocol promotes it). The same profile lines' pool, envelope, weights+nontorch,
+// activation and graph figures are raw in the receipt and are NOT bound here: nothing in this
+// lane consumes them, and a reading bound without a consumer is a standing nobody reads. THE FIRST
+// 262144x6 LAUNCH'S LONE RANK-0 READING (22.59 GiB) IS NOT CARRIED EITHER: the completing
+// launch's four readings are the bundle this subject stands on, and one subject carries one
+// authority for a rank's arena.
+//
+// THESE READINGS SUPERSEDE NOTHING. The 2026-09-25 64Kx1 bundle above stays stamped at its own
+// subject -- a receipt about a 64Kx1 run is evidence about a 64Kx1 subject, and this bundle is a
+// different subject AND a different launch. Neither bundle amends, replaces, or demotes the other;
+// a consumer comparing them meets the compatibility law in gunbc.spark.arm_memory_fit, not here.
+//
+// THE CROSS-LAUNCH COMPOSITION, NAMED because the corpus names every composition: the demand side
+// of the cache fold is the ALLOCATION PLAN the FIRST 262144x6 launch printed (2026-09-25, committed
+// verbatim at test.fixture.kv_allocation_plan_emission); the supply side is the four arenas the
+// COMPLETING launch read (2026-09-26). One proof pricing a plan from one launch against arenas
+// from another is lawful here because the two launches ARE the same experiment -- same subject,
+// same configuration, same image, same engine revision, the second launch admitted only to capture
+// what the first one's early stop legs missed -- which is exactly the designed completion commit
+// 0fd1d463f5 pinned, not a pairing any consumer may generalize. THE RUN-TO-RUN VARIANCE the two
+// launches evidence (TP0 read 22.59 GiB on 2026-09-25 and 23.45 GiB on 2026-09-26 at one subject
+// and configuration) is named so it is never silently folded into a bound: what that variance
+// prices lives outside this subproof's terms, exactly as the 64K bundle's sensitivity note says.
+data arm_experiment_2026_09_26_engine_self_report: NonEmptyStr = "v0.1.dev1+g8d09804c8" as NonEmptyStr
+
+// THE FOUR ARENA READINGS, one record per rank, hundredths of GiB exactly as reported. The host
+// names are part of the observation: TP3's identity as srv11 is what makes the limiting rank
+// locatable, and a rank reading is meaningless without the unit it was read from.
+type ArmExperimentArenaReading {
+  rank: Nat
+  host: NonEmptyStr
+  kv_arena_hundredths_gib: Nat
+}
+
+data arm_experiment_2026_09_26_arena_readings: List<ArmExperimentArenaReading> = [
+  ArmExperimentArenaReading { rank: 0, host: "srv9" as NonEmptyStr, kv_arena_hundredths_gib: 2345 },
+  ArmExperimentArenaReading { rank: 1, host: "srv10" as NonEmptyStr, kv_arena_hundredths_gib: 1862 },
+  ArmExperimentArenaReading { rank: 2, host: "srv12" as NonEmptyStr, kv_arena_hundredths_gib: 1890 },
+  ArmExperimentArenaReading { rank: 3, host: "srv11" as NonEmptyStr, kv_arena_hundredths_gib: 1729 },
+]
+
+data arm_experiment_2026_09_26_limiting_rank: Nat = 3
+
+data arm_experiment_2026_09_26_generation: NonEmptyStr = "group-b/bounded-experiment-2026-09-26" as NonEmptyStr
+
+// ── THE SUBJECT ──────────────────────────────────────────────────────────────────────────────────
+//
+// THE COMPLETING RUN'S OWN SUBJECT, minted from the workload the experiment RAN -- six cold seats
+// at 262144 tokens, a 2048 batch ceiling -- which at this launch IS the declared group B
+// restoration workload (the bounded experiment launches the group B restoration executable). The
+// launch policy beside the workload is the arm's standing policy, spelled here exactly as the
+// 2026-09-25 bundle spells it (this module mints its subjects from its own runs, and the two
+// bundles agree on the policy values by quoting them, not by sharing an import the observation
+// layer has no business in). Absent means the workload refused to derive -- a state the bindings
+// below cannot be claimed in.
+fn arm_experiment_2026_09_26_subject_mint() -> MemoryProofSubjectMint {
+  match uniform_cold_seats(each: token_count(count: 262144), seats: 6, max_batched_tokens: token_count(count: 2048)) {
+    ServingCapacityIntentRefused { cause: _ } =>
+      MemoryProofSubjectRefused { cause: "the completing run's own workload (six 262144-token seats at a 2048 batch ceiling) refused to derive, so the subject these readings bind to has no spelling" as NonEmptyStr }
+    ServingCapacityIntentAdmitted { intent: experiment_intent } =>
+      memory_proof_subject_for_launch(
+        runtime: GunbcGlm53NopeDerivedGb10,
+        topology: FourSparkTp4,
+        profile: profile_for_envelope(
+          envelope: envelope_at_cold_floor(cold: experiment_intent),
+          policy: glm53_native_launch_policy,
+          decided_gpu_memory_basis_points: basis_point(count: 8567),
+          serve_port: 30000,
+          served_alias: "glm-5.3-flash" as NonEmptyStr,
+          prefix_caching: PrefixCachingExplicit { enabled: true },
+        ),
+        launch_generation: arm_experiment_2026_09_26_generation,
+      )
+  }
+}
+
+fn arm_experiment_2026_09_26_subject() -> MemoryProofSubject? {
+  match arm_experiment_2026_09_26_subject_mint() {
+    MemoryProofSubjectReady { subject: s } => Present { value: s }
+    MemoryProofSubjectRefused { cause: _ } => none
+  }
+}
+
+// ── THE ARENA BINDINGS: THE FOUR READINGS BESIDE THEIR DOCTRINE STANDING ─────────────────────────
+//
+// FOUR BINDINGS, one per rank: the KV arena against the ArmKvCache term, admitted as an OBSERVED
+// INTERVAL at the reporter's rounding unit -- the 64K bundle's standing unchanged. The term BOUND
+// stays open in every binding: a wet observation is not a bound, and the standing carries what
+// the reading establishes until a bounding protocol or a derivation discharges the obligation.
+fn arm_experiment_2026_09_26_provenance(host: NonEmptyStr) -> NonEmptyStr {
+  join([
+    "2026-09-26 completing bounded experiment (6x262144, 2048 batched, fp8 KV, 8567 basis points, engine ",
+    arm_experiment_2026_09_26_engine_self_report as String, ") on ", host as String,
+    ", per-rank memory-profile line at gpu_worker.py:867 captured by the experiment's per-rank readback bracket (receipt target/spark-native-experiment-apply-receipt.txt)",
+  ], "") as NonEmptyStr
+}
+
+fn arm_experiment_2026_09_26_open_bound(obligation: NonEmptyStr) -> ArmComponentBound {
+  ComponentBoundOpen { obligation: obligation }
+}
+
+fn arm_experiment_2026_09_26_arena_binding(reading: ArmExperimentArenaReading, measured_on: MemoryProofSubject) -> ArmWetReceiptBinding {
+  let provenance = arm_experiment_2026_09_26_provenance(host: reading.host)
+  ArmWetReceiptBinding {
+    term: MemoryTerm {
+      component: ArmKvCache,
+      placement_law: MemoryPlacementAllocatorCarve,
+      scaling_law: MemoryScalingStaticResidency,
+      phase: ArmPhaseIdleServing,
+      lifetime: MemoryLifetimeLaunch,
+      bound: arm_experiment_2026_09_26_open_bound(obligation: "the observed carve bounds no demand term; the arena is supply evidence for the cache fold once a roster exists, and the cache subproof decides by the direct fold alone" as NonEmptyStr),
+      derivation: "admitted KV arena carve at the experiment's allocator decision (8567 basis points on the rank's pool): what the engine's profiling left for the cache, observed on this rank by the completing launch's readback bracket" as NonEmptyStr,
+    },
+    rank: reading.rank,
+    standing: ArmWetObservedInterval {
+      lower: arm_experiment_gib_hundredths_lower(hundredths: reading.kv_arena_hundredths_gib),
+      upper: arm_experiment_gib_hundredths_upper(hundredths: reading.kv_arena_hundredths_gib),
+      receipt: provenance,
+    },
+    measured_on: measured_on,
+    provenance: provenance,
+  }
+}
+
+// ALL FOUR BINDINGS, or none while the subject refuses.
+fn arm_experiment_2026_09_26_bindings() -> List<ArmWetReceiptBinding> {
+  match arm_experiment_2026_09_26_subject() {
+    Absent => [] as List<ArmWetReceiptBinding>
+    Present { value: measured_on } =>
+      map(arm_experiment_2026_09_26_arena_readings, r => arm_experiment_2026_09_26_arena_binding(reading: r, measured_on: measured_on))
+  }
+}
+
+// ── THE RANK-SUPPLY PROJECTION: THE FORM THE CACHE FOLD CONSUMES ─────────────────────────────────
+//
+// THE FOLD'S SUPPLY VOCABULARY, projected from the readings: the arena at the hundredths FLOOR --
+// the conservative point of the observed interval, the same spelling the 2026-09-25-derived
+// supplies carried (commit 0fd1d463f5's witness priced rank 0's arena that way). The rounding
+// unit (0.01 GiB, about 10.7 MB) sits two orders of magnitude below the byte wall's worst-rank
+// headroom (about 18.44 GB), so floor-versus-interval cannot move the wall: the demand is 0.67%
+// even of the worst rank's floor. THE ALLOCATOR INVENTORY IS THE CALLER'S: the plan's 1035-block
+// figure is launch-level and arrives from the demand side, never from this observation layer.
+fn arm_experiment_2026_09_26_cache_supplies(allocator_blocks: AllocatorBlockCount) -> List<ArmRankCacheSupply> {
+  map(arm_experiment_2026_09_26_arena_readings, r => ArmRankCacheSupply {
+    rank: r.rank,
+    allocator_blocks: allocator_blocks,
+    admitted_kv_arena_bytes: arm_experiment_gib_hundredths_floor(hundredths: r.kv_arena_hundredths_gib),
+  })
+}
+
+// ── THE WET RECEIPT BUNDLE OF THE V2-PLAN LAUNCH (2026-09-26, ~05:42 UTC) ────────────────────────
+//
+// THE THIRD BOUNDED LAUNCH AT THE 262144x6 SUBJECT, and the one whose head printed the
+// kv-allocation-plan/v2 line the shared fixture carries (test.fixture.kv_allocation_plan_emission
+// .real_262144x6_v2_line). The experiment: the group B bounded run — six 262144-token seats, 2048
+// batched tokens, fp8 KV, decided utilization 8567 basis points, image derived-kvplan-v2-20260926,
+// engine self-report v0.1.dev1+g8d09804c8 — across four Sparks, TP0 srv9, TP1 srv10, TP2 srv12,
+// TP3 srv11; the per-rank profile lines (gpu_worker.py:867, 2026-09-26T05:42:33Z) stand in the
+// fleet's capture. TP3 (srv11) is the limiting rank of this launch too: the smallest pool (119.69
+// against 121.69 GiB), the smallest envelope (102.54 against 104.25), and the smallest arena.
+//
+// WHAT THIS BUNDLE BINDS is the four KV arena readings — the rank-supply evidence the v2 plan's
+// cache fold prices — admitted as per-rank OBSERVED INTERVALS at the reporter's two-decimal GiB
+// rounding unit, the 2026-09-26 bundle's standing unchanged (an observation bounds nothing until a
+// bounding protocol promotes it). WHAT IS DIFFERENT THIS LAUNCH, named in the data shape: the
+// arena is NOT a printed column of the profile line — it is DERIVED, envelope minus usage
+// (weights+nontorch, activation, graph), and the derivation inputs ride beside the derived figure
+// so the arithmetic is checkable in the suite rather than trusted. THE ARENA DERIVATION ITSELF is
+// a property of the observation: two-decimal GiB readings subtracted at two decimals, and the
+// bundle checks envelope − weights+nontorch − activation − graph == arena on every rank.
+//
+// THE RUN-TO-RUN VARIANCE against the 2026-09-26 bundle (the completing v1-image launch at this
+// same subject) is named, never silently folded: TP0/srv9 read 23.45 GiB there and 22.79 here
+// (−0.66), TP1/srv10 18.62 and 20.26 (+1.64), TP2/srv12 18.90 and 18.75 (−0.15), TP3/srv11 17.29
+// and 16.37 (−0.92) — four ranks, four different launches' allocator decisions (the plans
+// inventory 1035 and 1012 blocks respectively), and neither bundle amends, replaces, or demotes
+// the other. The v2 plan's fold prices THIS launch's arenas against THIS launch's plan; the
+// cross-launch comparison is the fleet's allocator-stability question, named here so it is never
+// read as one experiment.
+//
+// TP1's LOG ALSO CARRIES the CUDA-graph pool estimation line — "CUDA graph pool memory: 0.1 GiB
+// (actual), 1.82 GiB (estimated), difference: 1.71 GiB (1649.1%)" — an observation about the
+// envelope-minus-usage derivation's largest uncertain term, carried below as named data. It is the
+// candidate mechanism for the pool-construction slack the per-rank control reports at this launch
+// (gunbc.spark.arm_memory_fit's slack standing names it as a candidate, NOT an established
+// mechanism); the printed figures are carried verbatim (the engine's difference 1.71 does not
+// recompute from the rounded 1.82 − 0.10 = 1.72 — it was computed before rounding, which the
+// comment beside the data says rather than reconciles).
+data arm_experiment_kvplan_v2_2026_09_26_engine_self_report: NonEmptyStr = "v0.1.dev1+g8d09804c8" as NonEmptyStr
+
+// THE FOUR DERIVED ARENA READINGS, one record per rank, hundredths of GiB exactly as reported for
+// the inputs and derived for the arena. The host names are part of the observation: TP3's identity
+// as srv11 is what makes the limiting rank locatable, and a rank reading is meaningless without
+// the unit it was read from.
+type ArmExperimentEnvelopeDerivedArenaReading {
+  rank: Nat
+  host: NonEmptyStr
+  envelope_hundredths_gib: Nat
+  weights_nontorch_hundredths_gib: Nat
+  activation_hundredths_gib: Nat
+  graph_hundredths_gib: Nat
+  kv_arena_hundredths_gib: Nat
+}
+
+data arm_experiment_kvplan_v2_2026_09_26_arena_readings: List<ArmExperimentEnvelopeDerivedArenaReading> = [
+  ArmExperimentEnvelopeDerivedArenaReading {
+    rank: 0, host: "srv9" as NonEmptyStr,
+    envelope_hundredths_gib: 10425, weights_nontorch_hundredths_gib: 7762,
+    activation_hundredths_gib: 379, graph_hundredths_gib: 5,
+    kv_arena_hundredths_gib: 2279,
+  },
+  ArmExperimentEnvelopeDerivedArenaReading {
+    rank: 1, host: "srv10" as NonEmptyStr,
+    envelope_hundredths_gib: 10425, weights_nontorch_hundredths_gib: 8057,
+    activation_hundredths_gib: 332, graph_hundredths_gib: 10,
+    kv_arena_hundredths_gib: 2026,
+  },
+  ArmExperimentEnvelopeDerivedArenaReading {
+    rank: 2, host: "srv12" as NonEmptyStr,
+    envelope_hundredths_gib: 10425, weights_nontorch_hundredths_gib: 8163,
+    activation_hundredths_gib: 377, graph_hundredths_gib: 10,
+    kv_arena_hundredths_gib: 1875,
+  },
+  ArmExperimentEnvelopeDerivedArenaReading {
+    rank: 3, host: "srv11" as NonEmptyStr,
+    envelope_hundredths_gib: 10254, weights_nontorch_hundredths_gib: 8242,
+    activation_hundredths_gib: 365, graph_hundredths_gib: 10,
+    kv_arena_hundredths_gib: 1637,
+  },
+]
+
+data arm_experiment_kvplan_v2_2026_09_26_limiting_rank: Nat = 3
+
+data arm_experiment_kvplan_v2_2026_09_26_generation: NonEmptyStr = "group-b/bounded-experiment-kvplan-v2-2026-09-26" as NonEmptyStr
+
+// THE DERIVATION, CHECKED NOT TRUSTED: envelope − weights+nontorch − activation − graph == the
+// derived arena, on every rank, in the hundredths arithmetic the readings were reported at. A
+// bundle whose derived figure does not recompute from its own inputs is a fixture wearing a
+// receipt's name, so the check lives beside the data it checks.
+fn arm_experiment_kvplan_v2_2026_09_26_arena_derivation_holds() -> Bool {
+  all(arm_experiment_kvplan_v2_2026_09_26_arena_readings, r =>
+    r.envelope_hundredths_gib - r.weights_nontorch_hundredths_gib - r.activation_hundredths_gib - r.graph_hundredths_gib == r.kv_arena_hundredths_gib)
+}
+
+// TP1's CUDA-GRAPH POOL ESTIMATION LINE, the slack control's candidate mechanism, carried verbatim
+// at the reporter's rounding unit: the printed difference (171) does not recompute from the
+// rounded endpoints (182 − 10 = 172) — the engine subtracted before rounding, and the bundle
+// preserves the print rather than reconciling it. 1649.1% is the printed over-estimate percentage,
+// quoted in the provenance of every consumer that names this candidate.
+type ArmExperimentGraphPoolEstimateReading {
+  actual_hundredths_gib: Nat
+  estimated_hundredths_gib: Nat
+  difference_hundredths_gib: Nat
+}
+
+data arm_experiment_kvplan_v2_2026_09_26_tp1_graph_pool_estimate: ArmExperimentGraphPoolEstimateReading = ArmExperimentGraphPoolEstimateReading {
+  actual_hundredths_gib: 10,
+  estimated_hundredths_gib: 182,
+  difference_hundredths_gib: 171,
+}
+
+// ── THE SUBJECT ──────────────────────────────────────────────────────────────────────────────────
+//
+// THE V2-PLAN LAUNCH'S OWN SUBJECT, minted from the workload the launch RAN — six cold seats at
+// 262144 tokens, a 2048 batch ceiling — spelled exactly as the 2026-09-26 bundle spells it (this
+// module mints its subjects from its own runs, and the two 262144x6 bundles quote the same policy
+// values rather than sharing an import the observation layer has no business in). Absent means the
+// workload refused to derive — a state the bindings below cannot be claimed in.
+fn arm_experiment_kvplan_v2_2026_09_26_subject_mint() -> MemoryProofSubjectMint {
+  match uniform_cold_seats(each: token_count(count: 262144), seats: 6, max_batched_tokens: token_count(count: 2048)) {
+    ServingCapacityIntentRefused { cause: _ } =>
+      MemoryProofSubjectRefused { cause: "the v2-plan launch's own workload (six 262144-token seats at a 2048 batch ceiling) refused to derive, so the subject these readings bind to has no spelling" as NonEmptyStr }
+    ServingCapacityIntentAdmitted { intent: experiment_intent } =>
+      memory_proof_subject_for_launch(
+        runtime: GunbcGlm53NopeDerivedGb10,
+        topology: FourSparkTp4,
+        profile: profile_for_envelope(
+          envelope: envelope_at_cold_floor(cold: experiment_intent),
+          policy: glm53_native_launch_policy,
+          decided_gpu_memory_basis_points: basis_point(count: 8567),
+          serve_port: 30000,
+          served_alias: "glm-5.3-flash" as NonEmptyStr,
+          prefix_caching: PrefixCachingExplicit { enabled: true },
+        ),
+        launch_generation: arm_experiment_kvplan_v2_2026_09_26_generation,
+      )
+  }
+}
+
+fn arm_experiment_kvplan_v2_2026_09_26_subject() -> MemoryProofSubject? {
+  match arm_experiment_kvplan_v2_2026_09_26_subject_mint() {
+    MemoryProofSubjectReady { subject: s } => Present { value: s }
+    MemoryProofSubjectRefused { cause: _ } => none
+  }
+}
+
+// ── THE ARENA BINDINGS: THE FOUR DERIVED READINGS BESIDE THEIR DOCTRINE STANDING ──────────────────
+//
+// FOUR BINDINGS, one per rank: the derived KV arena against the ArmKvCache term, admitted as an
+// OBSERVED INTERVAL at the reporter's rounding unit — the 2026-09-26 bundle's standing unchanged,
+// with the derivation named in the provenance so a derived reading is never read as a printed one.
+// The term BOUND stays open in every binding: a wet observation is not a bound, and the standing
+// carries what the reading establishes until a bounding protocol or a derivation discharges the
+// obligation.
+fn arm_experiment_kvplan_v2_2026_09_26_provenance(host: NonEmptyStr) -> NonEmptyStr {
+  join([
+    "2026-09-26 v2-plan bounded experiment (6x262144, 2048 batched, fp8 KV, 8567 basis points, engine ",
+    arm_experiment_kvplan_v2_2026_09_26_engine_self_report as String, ") on ", host as String,
+    ", per-rank memory-profile line at gpu_worker.py:867 (2026-09-26T05:42:33Z); the arena is DERIVED as envelope minus weights+nontorch minus activation minus graph at two-decimal GiB, not read as a printed column",
+  ], "") as NonEmptyStr
+}
+
+fn arm_experiment_kvplan_v2_2026_09_26_open_bound(obligation: NonEmptyStr) -> ArmComponentBound {
+  ComponentBoundOpen { obligation: obligation }
+}
+
+fn arm_experiment_kvplan_v2_2026_09_26_arena_binding(reading: ArmExperimentEnvelopeDerivedArenaReading, measured_on: MemoryProofSubject) -> ArmWetReceiptBinding {
+  let provenance = arm_experiment_kvplan_v2_2026_09_26_provenance(host: reading.host)
+  ArmWetReceiptBinding {
+    term: MemoryTerm {
+      component: ArmKvCache,
+      placement_law: MemoryPlacementAllocatorCarve,
+      scaling_law: MemoryScalingStaticResidency,
+      phase: ArmPhaseIdleServing,
+      lifetime: MemoryLifetimeLaunch,
+      bound: arm_experiment_kvplan_v2_2026_09_26_open_bound(obligation: "the observed carve bounds no demand term; the arena is supply evidence for the cache fold once a roster exists, and the cache subproof decides by the direct fold alone" as NonEmptyStr),
+      derivation: "admitted KV arena carve derived at the experiment's allocator decision (8567 basis points on the rank's pool): envelope minus the profile line's weights+nontorch, activation and graph figures, the residue the engine's profiling left for the cache, derived on this rank from the v2-plan launch's profile line" as NonEmptyStr,
+    },
+    rank: reading.rank,
+    standing: ArmWetObservedInterval {
+      lower: arm_experiment_gib_hundredths_lower(hundredths: reading.kv_arena_hundredths_gib),
+      upper: arm_experiment_gib_hundredths_upper(hundredths: reading.kv_arena_hundredths_gib),
+      receipt: provenance,
+    },
+    measured_on: measured_on,
+    provenance: provenance,
+  }
+}
+
+// ALL FOUR BINDINGS, or none while the subject refuses.
+fn arm_experiment_kvplan_v2_2026_09_26_bindings() -> List<ArmWetReceiptBinding> {
+  match arm_experiment_kvplan_v2_2026_09_26_subject() {
+    Absent => [] as List<ArmWetReceiptBinding>
+    Present { value: measured_on } =>
+      map(arm_experiment_kvplan_v2_2026_09_26_arena_readings, r => arm_experiment_kvplan_v2_2026_09_26_arena_binding(reading: r, measured_on: measured_on))
+  }
+}
+
+// ── THE RANK-SUPPLY PROJECTION: THE FORM THE CACHE FOLD CONSUMES ─────────────────────────────────
+//
+// THE FOLD'S SUPPLY VOCABULARY, projected from the derived readings: the arena at the hundredths
+// FLOOR — the conservative point of the observed interval, the same spelling both 262144x6
+// bundles carry. The rounding unit (0.01 GiB, about 10.7 MB) sits orders of magnitude below the
+// slack the pool-construction control reports at this launch (~3.81 GB at the limiting rank's
+// floor), so floor-versus-interval cannot move that standing either. THE ALLOCATOR INVENTORY IS
+// THE CALLER'S: the v2 plan's 1012-block figure is launch-level and arrives from the demand side,
+// never from this observation layer.
+fn arm_experiment_kvplan_v2_2026_09_26_cache_supplies(allocator_blocks: AllocatorBlockCount) -> List<ArmRankCacheSupply> {
+  map(arm_experiment_kvplan_v2_2026_09_26_arena_readings, r => ArmRankCacheSupply {
+    rank: r.rank,
+    allocator_blocks: allocator_blocks,
+    admitted_kv_arena_bytes: arm_experiment_gib_hundredths_floor(hundredths: r.kv_arena_hundredths_gib),
+  })
+}
+
+
+// ── THE LAUNCH-WALL CARRIES AT THE 262144x6 SUBJECT ──────────────────────────────────────────────
+//
+// THE WHOLE-ARM VERDICT'S OPEN TERMS, discharged or carried honestly from THIS LAUNCH's own
+// evidence (docs/plans/moa-memory-modeling.md's three admissible uses of measurement: validate a
+// derived bound, fill a narrowly named underivable term, falsify the model). Every carry below is
+// built from the v2-plan bundle's own rows or the launch's own profile lines, and every carry's
+// text names what it establishes and what it deliberately leaves open. NOTHING here promotes the
+// whole arm: the loader transient and the fragmentation allowance stay open, and the composite
+// carries name their composite-ness wherever they lean on the weights+nontorch reading.
+//
+// THE BOOT READINGS the "Free memory on device" profile lines carried beside the usage figures
+// (gpu_worker.py:867, 2026-09-26T05:42:33Z, receipt target/spark-native-experiment-apply-receipt.txt):
+// the device's total and its free memory at startup. THE FOREIGN OCCUPANCY at boot is their
+// difference — 14.49 / 13.17 / 12.80 / 10.58 GiB across the four hosts, the "~11-15 GiB" the
+// deduction carry prices. THE FREE FIGURE'S PRECISION is the print's own: format_gib renders two
+// decimals and strips the trailing zero, so "107.2" is a 107.20-hundredths reading and rides at
+// the same reporter's unit as every other figure in this bundle.
+
+type ArmExperimentBootReading {
+  rank: Nat
+  host: NonEmptyStr
+  free_hundredths_gib: Nat
+  total_hundredths_gib: Nat
+}
+
+data arm_experiment_kvplan_v2_2026_09_26_boot_readings: List<ArmExperimentBootReading> = [
+  ArmExperimentBootReading { rank: 0, host: "srv9" as NonEmptyStr, free_hundredths_gib: 10720, total_hundredths_gib: 12169 },
+  ArmExperimentBootReading { rank: 1, host: "srv10" as NonEmptyStr, free_hundredths_gib: 10852, total_hundredths_gib: 12169 },
+  ArmExperimentBootReading { rank: 2, host: "srv12" as NonEmptyStr, free_hundredths_gib: 10889, total_hundredths_gib: 12169 },
+  ArmExperimentBootReading { rank: 3, host: "srv11" as NonEmptyStr, free_hundredths_gib: 10911, total_hundredths_gib: 11969 },
+]
+
+// THE BOOT DERIVATION, CHECKED NOT TRUSTED: foreign occupancy at boot = total - free in the
+// hundredths arithmetic the lines were reported at, and the observed foreign band names the whole
+// span the four hosts evidenced.
+fn arm_experiment_kvplan_v2_2026_09_26_boot_derivation_holds() -> Bool {
+  all(arm_experiment_kvplan_v2_2026_09_26_boot_readings, r =>
+    r.free_hundredths_gib <= r.total_hundredths_gib
+      && arm_experiment_kvplan_v2_2026_09_26_foreign_hundredths(r) == r.total_hundredths_gib - r.free_hundredths_gib)
+}
+
+fn arm_experiment_kvplan_v2_2026_09_26_foreign_hundredths(r: ArmExperimentBootReading) -> Nat {
+  r.total_hundredths_gib - r.free_hundredths_gib
+}
+
+// THE POOL CARVE THE LAUNCH CONSTRUCTED, carried with the plan-capture provenance: the v2
+// emission vouched allocator_blocks 1012 x physical_pool_bytes_per_block 13,602,816 =
+// 13,766,049,792 bytes (dag/test/fixture/kv_allocation_plan_emission real_262144x6_v2_line, the
+// engine's own startup line at this launch). The cache fold prices capacity against it; the
+// launch wall charges it as the persistent KV residency term, exact because the engine vouched it.
+data arm_experiment_kvplan_v2_2026_09_26_pool_carve_bytes: ByteSize = byte_size(count: 13766049792)
+
+// THE SHAPE CONSTANTS the persistent-residency derivation reads: the launch's batch ceiling (the
+// same 2048 every subject mint at this bundle spells) and the engine-pinned index_topk 2048
+// (FLASHINFER_MLA_SPARSE_SM120 requires it, flashinfer_mla_sparse.py lines 216-227 at 8d09804c8,
+// cited through extdeps.vllm.sparse_prefill_transient's term 3); the KPool interval is the
+// model's own (glm_5_3_flash_hybrid_shape.index_kpool).
+data arm_experiment_kvplan_v2_2026_09_26_max_num_batched_tokens: Nat = 2048
+data arm_experiment_kvplan_v2_2026_09_26_index_topk: Nat = 2048
+
+// THE INTERVAL MINT, localized: a reversed derived pair is an Open carrying the refusal cause,
+// never a silently swapped pair (std.interval's law, through gunbc.spark.arm_memory_fit's mint).
+fn arm_experiment_component_interval(lower: ByteSize, upper: ByteSize, how: NonEmptyStr) -> ArmComponentBound {
+  match component_bound_interval(lower: lower, upper: upper, how: how) {
+    ArmComponentBoundReady { bound: b } => b
+    ArmComponentBoundRefused { cause: c } => ComponentBoundOpen { obligation: c }
+  }
+}
+
+// THE IDENTITY WIRES every non-open carry names, as the fit subject's provenance check requires.
+fn arm_experiment_kvplan_v2_2026_09_26_carry_identity() -> NonEmptyStr {
+  join([
+    serving_checkpoint_wire(c: Glm53NativeFp8) as String, " x ",
+    serving_runtime_wire(r: GunbcGlm53NopeDerivedGb10) as String, " x ",
+    serving_topology_wire(t: FourSparkTp4) as String,
+  ], "") as NonEmptyStr
+}
+
+// ── TERM: CHECKPOINT PLACEMENT, CARRIED AS A DERIVED CONSERVATIVE INTERVAL ───────────────────────
+//
+// THE DOCTRINE'S FORBIDDEN-MOVE LAW (docs/plans/moa-memory-modeling.md): weights+nontorch is a
+// COMPOSITE profile term, NOT a checkpoint-placement receipt -- it does not separate checkpoint
+// tensors from runtime-fixed, allocator, communication or other non-Torch allocations, so it can
+// never discharge the placement obligation by itself. WHAT THE COMPOSITE OBSERVATION DOES
+// ESTABLISH, soundly: the rank's checkpoint residency is BOUNDED ABOVE by the composite floor
+// (every checkpoint byte is either a torch weight or a non-torch allocation at the profiling
+// phase, so checkpoint_r <= composite_r), and the rank-to-rank spread (77.62 / 80.57 / 81.63 /
+// 82.42 GiB at this launch) is the genuinely observational part: placement is NOT an even
+// quarter, and the carry's per-rank upper endpoints carry that asymmetry verbatim. THE LOWER
+// ENDPOINT IS ZERO, and that is the honest scalar: no positive per-rank lower bound is derivable
+// without the per-tensor safetensors index (the aggregate pigeonhole bounds only the MAX-loaded
+// rank, which the subject's checkpoint_total interval already carries). THE AGGREGATE GAP, named
+// because a reader will trip on it: the manifest's safetensors total (328,337,455,672 bytes at
+// revision eb9eb208, extdeps.zhipu.glm_5_3_flash glm_5_3_flash_native_manifest) EXCEEDS the sum of
+// the four composite floors (322.24 GiB) by ~6.1 GiB, so at least that many manifest bytes are not
+// resident in weights+nontorch at any rank at this launch -- an unloaded tower, index tensors, or
+// scales the composite cannot place. THE COMPLETING ACT, named: a per-tensor read of the
+// checkpoint's safetensors index (model.safetensors.index.json at /weights on any group B host)
+// lets the exact TP4 placement projection bound every rank's checkpoint residency from the
+// manifest x the loader's placement rules, replacing this carry.
+
+// THE CHECKPOINT TERM IS THE PROJECTION'S EXACT PER-RANK FIGURE: 83,237,158,776 bytes,
+// identical on every rank (every large tensor class shards or expert-splits across the four
+// ranks; only norms/router/parameters and the visual tower replicate -- and the visual tower
+// LOADS, config.json architectures Glm5NextForConditionalGeneration, the GLM4V-pattern
+// multimodal wrapper at model.py:963). The composite carry it replaces is retired: the
+// composite observation was the interim upper bound, and it now decomposes exactly -- composite
+// floor minus placement -- into the residue that prices runtime-fixed and collective below.
+fn arm_experiment_kvplan_v2_2026_09_26_checkpoint_projected() -> ArmComponentBound {
+  ComponentBoundExact {
+    bytes: glm_checkpoint_projection_per_rank_bytes(),
+    how: join([
+      "checkpoint residency DERIVED EXACT by the TP4 placement projection: the checkpoint's own index (76,108 tensors at revision eb9eb208) classified by the pinned source's placement rules (VocabParallel embed/lm_head; ColumnParallel q/k/v/b/f/g/q_b/kv_b/wk/conv1d and MergedColumn gate_up/shared_experts/in_proj; RowParallel down_proj/o_proj; FusedMoE expert bodies over the EP group, which IS the TP group at this launch; GateLinear router, norms, A_log/dt_bias/hc_/indexer wq_b/q_a and the loading visual tower replicated), byte-sized from the 62 shard headers -- vocab 2,537,553,920 + column 8,919,910,400 + row 3,599,034,368 + expert 311,729,651,712, over four ranks, plus the replicated population 1,540,621,176 on every rank = 83,237,158,776 bytes per rank, identical on all four. The conservation wall holds with slack zero: the four figures sum to 332,948,635,104 = the sharded-plus-expert bytes once plus the replicated bytes four times. Per-tensor shard padding rides as a named sub-block deviation, under one KiB per tensor class aggregate. Subject: ",
+      arm_experiment_kvplan_v2_2026_09_26_carry_identity() as String,
+    ], "") as NonEmptyStr,
+  }
+}
+
+// ── TERM: RUNTIME-FIXED, BOUNDED FROM THE PINNED SOURCE AND THE COMPOSITE DECOMPOSITION ──────────
+//
+// THE LOWER ENDPOINT IS DERIVED, not measured: the sparse-attention top-k index buffer,
+// (max_num_batched_tokens, buffer_width) int32 allocated ONCE at model init
+// (glm5next/nvidia/model.py lines 588-606 at 8d09804c8, cited through extdeps.vllm.
+// sparse_prefill_transient's term 3: buffer_width = round_up(index_topk + index_kpool - 1, 128) =
+// round_up(2048 + 4 - 1, 128) = 2176), rides in the persistent residency for the process life,
+// so runtime-fixed >= 2048 x 2176 x 4 = 17,825,792 bytes exactly. THE UPPER ENDPOINT is the
+// composite floor under the same decomposition the checkpoint carry names: runtime-fixed (engine
+// structures, allocator metadata) is a subset of the composite's non-checkpoint residue, and with
+// the checkpoint residency unseparated the sound scalar upper is the composite floor itself.
+// WHAT REMAINS OPEN, named: the full persistent-allocation census above the pinned buffer
+// (sampler buffers, logits reservations, allocator metadata) is not derived in this corpus; a
+// source walk at the pinned revision or a RuntimeFixedAllocationBound measurement tightens it.
+
+fn arm_experiment_kvplan_v2_2026_09_26_runtime_fixed_lower() -> ByteSize {
+  sparse_topk_indices_buffer_bytes(
+    max_num_batched_tokens: arm_experiment_kvplan_v2_2026_09_26_max_num_batched_tokens,
+    index_topk: arm_experiment_kvplan_v2_2026_09_26_index_topk,
+    index_kpool: glm_5_3_flash_hybrid_shape.index_kpool)
+}
+
+fn arm_experiment_kvplan_v2_2026_09_26_runtime_fixed_carry(r: ArmExperimentEnvelopeDerivedArenaReading) -> ArmComponentBound {
+  arm_experiment_component_interval(
+    lower: arm_experiment_kvplan_v2_2026_09_26_runtime_fixed_lower(),
+    upper: arm_experiment_kvplan_v2_2026_09_26_residue(r),
+    how: join([
+      "runtime-fixed bounded from the pinned source and the exact projection's residue: the sparse top-k index buffer (max_num_batched_tokens ", to_string(arm_experiment_kvplan_v2_2026_09_26_max_num_batched_tokens),
+      " x buffer_width 2176 int32, allocated once at model init per glm5next/nvidia/model.py lines 588-606 at 8d09804c8) is persistent residency, so the lower endpoint is exactly 17,825,792 bytes (extdeps.vllm.sparse_prefill_transient term 3); the upper endpoint is this rank's residue -- the composite floor at ", r.host as String,
+      " minus the exact per-rank placement 83,237,158,776 bytes -- because runtime-fixed (engine structures, allocator metadata) is a subset of the composite's non-checkpoint residue and the projection now separates the checkpoint out. Open above the pinned buffer: the full persistent-allocation census (sampler buffers, logits reservations, allocator metadata) awaits a source walk at the pinned revision or a RuntimeFixedAllocationBound measurement. Subject: ",
+      arm_experiment_kvplan_v2_2026_09_26_carry_identity() as String,
+    ], "") as NonEmptyStr)
+}
+
+// ── TERM: COLLECTIVE WORKSPACE, DISCHARGED BY INCLUSION WITH THE RESIDUAL NAMED ──────────────────
+//
+// THE PREFILL LANE'S DISCHARGE, VERIFIED AT THE LAUNCH WALL: the collective communication
+// workspace (NCCL's communicator buffers) is NON-TORCH memory, and the profiler's own
+// three-category accounting (vllm/utils/mem_utils.py lines 246-275 at 8d09804c8: category 3,
+// "memory used in the current vLLM instance, but not by torch", with NCCL named as the example)
+// lands it INSIDE the consumed (weights + non-torch) figure the composite observation reads. The
+// composite is resident at every phase from profiling onward -- the same reading the prefill
+// subproof deducted as persistent residency at this very launch -- so the launch-wall subject
+// prices the collective workspace by that inclusion: no second, separate NCCL figure exists to
+// charge, and charging the composite twice would double-count. THE RESIDUAL, named: the inclusion
+// bounds the collective workspace by the composite but does not SEPARATE it -- a per-rank
+// CollectiveWorkspaceBound measurement (or the same source walk) would price NCCL alone, and
+// until then the composite floor is the conservative scalar upper.
+
+fn arm_experiment_kvplan_v2_2026_09_26_collective_carry(r: ArmExperimentEnvelopeDerivedArenaReading) -> ArmComponentBound {
+  arm_experiment_component_interval(
+    lower: byte_size(count: 0),
+    upper: arm_experiment_kvplan_v2_2026_09_26_residue(r),
+    how: join([
+      "collective workspace discharged by inclusion and now priced inside the projection's residue: NCCL's communicator buffers are non-torch memory inside the profiler's consumed figure (vllm/utils/mem_utils.py lines 246-275 at 8d09804c8, category 3 with NCCL the named example), so the weights+nontorch composite observation at ", r.host as String,
+      " contains this launch's collective residency, and the exact placement subtracts out -- leaving this rank's residue (composite floor minus 83,237,158,776 bytes) as the sound scalar upper. The residue IS the collective's neighborhood: it grows from 106,681,602 bytes at rank 0 to 5,260,642,358 at rank 3, the rank-varying shape NCCL channel buffers wear. Residual, named: the inclusion does not SEPARATE NCCL from the residue -- a CollectiveWorkspaceBound measurement prices it alone; charging a separate NCCL figure on top of the composite would double-count. Subject: ",
+      arm_experiment_kvplan_v2_2026_09_26_carry_identity() as String,
+    ], "") as NonEmptyStr)
+}
+
+// ── TERM: ACTIVATION WORKSPACE, BOUNDED BY THE ENGINE'S OWN CONSERVATION ─────────────────────────
+//
+// THE DERIVATION: this launch's own arithmetic bounds the profiling-phase activation above. The
+// profile line's four usage figures sum with the constructed pool inside the decided envelope:
+// envelope - composite - activation - graph >= the pool carve (the arena derivation this bundle
+// checks row by row, and the pool-construction fit half proves the pool is admitted at every
+// arena). Solving for activation at conservative endpoints -- envelope HIGH, composite LOW,
+// graph LOW, the engine-vouched pool -- gives an activation upper that is SOUND regardless of
+// where the true readings sit inside their rounding bands. THE LOWER IS ZERO: the profiling
+// forward's transient peak is phase memory, not a residency floor.
+
+fn arm_experiment_kvplan_v2_2026_09_26_activation_upper(r: ArmExperimentEnvelopeDerivedArenaReading) -> ByteSize {
+  let envelope_high = byte_size_count(b: arm_experiment_gib_hundredths_upper(hundredths: r.envelope_hundredths_gib))
+  let composite_low = byte_size_count(b: arm_experiment_gib_hundredths_floor(hundredths: r.weights_nontorch_hundredths_gib))
+  let graph_low = byte_size_count(b: arm_experiment_gib_hundredths_floor(hundredths: r.graph_hundredths_gib))
+  let pool = byte_size_count(b: arm_experiment_kvplan_v2_2026_09_26_pool_carve_bytes)
+  byte_size(count: envelope_high - composite_low - graph_low - pool)
+}
+
+fn arm_experiment_kvplan_v2_2026_09_26_activation_carry(r: ArmExperimentEnvelopeDerivedArenaReading) -> ArmComponentBound {
+  arm_experiment_component_interval(
+    lower: byte_size(count: 0),
+    upper: arm_experiment_kvplan_v2_2026_09_26_activation_upper(r),
+    how: join([
+      "activation workspace bounded by the engine's own conservation at this launch: the profile line's arithmetic (envelope - composite - activation - graph = the derived arena, checked row by row in this bundle) keeps the constructed pool inside the envelope at every rank, so activation <= envelope high - composite low - graph low - the engine-vouched pool carve (13,766,049,792 bytes) -- sound wherever the true readings sit inside their rounding bands. Lower endpoint zero: the profiling transient is phase memory, not a residency floor. Observation, not yet a bound: the printed activation column (", to_string(r.activation_hundredths_gib),
+      " hundredths GiB at ", r.host as String,
+      ") is a single sample and bounds nothing until a bounding protocol promotes it -- the prefill transient subproof prices the serving-phase activation peak separately. Subject: ",
+      arm_experiment_kvplan_v2_2026_09_26_carry_identity() as String,
+    ], "") as NonEmptyStr)
+}
+
+// ── TERM: GRAPH CAPTURE, CARRIED AT THE REPORTER'S ROUNDING UNIT ─────────────────────────────────
+//
+// THE PRINTED GRAPH COLUMN (0.05 / 0.10 / 0.10 / 0.10 GiB at this launch) rides as an observed
+// interval at the reporter's two-decimal unit -- the same standing every bundle figure carries.
+// A single sample is not a bound (the measurement contract stands beside this), but the interval
+// is the conservative construction the demand fold prices, and the prefill lane's pinned fact
+// already absorbed the graph term into the printed activation's coverage.
+
+fn arm_experiment_kvplan_v2_2026_09_26_graph_carry(r: ArmExperimentEnvelopeDerivedArenaReading) -> ArmComponentBound {
+  arm_experiment_component_interval(
+    lower: arm_experiment_gib_hundredths_floor(hundredths: r.graph_hundredths_gib),
+    upper: arm_experiment_gib_hundredths_upper(hundredths: r.graph_hundredths_gib),
+    how: join([
+      "CUDA graph capture carried at the reporter's rounding unit from the profile line's graph column (", to_string(r.graph_hundredths_gib),
+      " hundredths GiB at ", r.host as String,
+      "): the observed interval, not a bounding-protocol measurement -- the prefill lane's pinned coverage fact (the printed peak activation contains the CUDA-graph estimate, which over-reserves the actual captured pool 1.82 GiB to 0.1 GiB) already prices the graph term inside the activation coverage, so this carry rides for the arm record's completeness. Subject: ",
+      arm_experiment_kvplan_v2_2026_09_26_carry_identity() as String,
+    ], "") as NonEmptyStr)
+}
+
+// ── TERM: THE POOL CARVE AS THE KV RESIDENCY, EXACT BECAUSE THE ENGINE VOUCHED IT ────────────────
+
+fn arm_experiment_kvplan_v2_2026_09_26_kv_carry() -> ArmComponentBound {
+  ComponentBoundExact {
+    bytes: arm_experiment_kvplan_v2_2026_09_26_pool_carve_bytes,
+    how: join([
+      "the persistent KV residency is the shared pool the engine constructed at this launch: allocator_blocks 1012 x physical_pool_bytes_per_block 13,602,816 = 13,766,049,792 bytes, vouched by the v2 allocation-plan emission (KV_ALLOCATION_PLAN_JSON, image derived-kvplan-v2-20260926, engine self-report v0.1.dev1+g8d09804c8); the cache subproof prices the six-seat demand against this pool at the block wall and the pool-construction controls verify its byte conservation. Subject: ",
+      arm_experiment_kvplan_v2_2026_09_26_carry_identity() as String,
+    ], "") as NonEmptyStr,
+  }
+}
+
+// ── TERMS LEFT OPEN, WITH THEIR COMPLETING ACTS NAMED ────────────────────────────────────────────
+
+fn arm_experiment_kvplan_v2_2026_09_26_fragmentation_obligation() -> NonEmptyStr {
+  join([
+    "allocator fragmentation under churn admits no conservative construction in this corpus and the churn-protocol measurement has not minted: the 2026-09-27 bracket's workload phase NEVER RAN -- the sixth-seat hang fired during the six concurrent prefills that precede the churn, and no sampling evidence exists. The completing act has two named paths: the hang resolved (the 2026-09-27 repro matrix, then the six-seat churn as planned), or the INTERIM five-seat churn protocol at the occupancy that run proved operationally safe -- which mints an AllocatorFragmentationBound at the admissible-occupancy level and is named what it is not: it does not price six-seat full occupancy, which stays open until the hang resolves. Subject: ",
+    arm_experiment_kvplan_v2_2026_09_26_carry_identity() as String,
+  ], "") as NonEmptyStr
+}
+
+// ── THE LAUNCH-WALL RANK RECORD, ONE ROW PER RANK, THE CENSUS COMPLETE ───────────────────────────
+
+fn arm_experiment_kvplan_v2_2026_09_26_launch_wall_rank(r: ArmExperimentEnvelopeDerivedArenaReading) -> ArmRankDemand {
+  ArmRankDemand {
+    rank: r.rank,
+    checkpoint_residency: arm_experiment_kvplan_v2_2026_09_26_checkpoint_projected(),
+    loader_transform: arm_experiment_kvplan_v2_2026_09_26_loader_carry(rank: r.rank, host: r.host),
+    runtime_fixed: arm_experiment_kvplan_v2_2026_09_26_runtime_fixed_carry(r),
+    collective_workspace: arm_experiment_kvplan_v2_2026_09_26_collective_carry(r),
+    activation_workspace: arm_experiment_kvplan_v2_2026_09_26_activation_carry(r),
+    graph_capture: arm_experiment_kvplan_v2_2026_09_26_graph_carry(r),
+    kv_cache: arm_experiment_kvplan_v2_2026_09_26_kv_carry(),
+    fragmentation_allowance: ComponentBoundOpen { obligation: arm_experiment_kvplan_v2_2026_09_26_fragmentation_obligation() },
+  }
+}
+
+fn arm_experiment_kvplan_v2_2026_09_26_launch_wall_ranks() -> List<ArmRankDemand> {
+  map(arm_experiment_kvplan_v2_2026_09_26_arena_readings, r => arm_experiment_kvplan_v2_2026_09_26_launch_wall_rank(r))
+}
+
+// ── THE SUPPLY DEDUCTIONS, CARRIED FROM THE CARVE AND THE BOOT READINGS ──────────────────────────
+//
+// THE HOST/OS RESERVE BASIS is the 0.8567 envelope's host-reserve carve: the engine's decided
+// envelope claims 8567 basis points of the pool, so the remaining 1433 basis points --
+// everything outside the envelope -- is host/OS/control-plane/co-tenant territory the arm does
+// not claim, and the deduction's upper endpoint is that carve at the pool span's HIGH reading.
+// THE TWO DEDUCTIONS ARE DEVICE-COUPLED on the real devices: at every host the carve splits into
+// the observed foreign occupancy plus a host residue, and the observed pairs (14.49/2.95,
+// 13.17/4.27, 12.80/4.64, 10.58/6.57 GiB) all sum back under the host's carve. A SUBJECT-LEVEL
+// SCALAR PAIR cannot express that per-device coupling, so the pair below carries foreign at its
+// observed band high (sound at every device) and host at carve-high minus foreign-low (sound:
+// every device's host residue is at most carve_high - that device's foreign, hence at most
+// carve_high - foreign_low); the scalar pair's sum exceeding any single device's carve is the
+// honest price of the coupling, and the launch wall's conservation obligation names it.
+
+fn arm_experiment_kvplan_v2_2026_09_26_carve_high(pool_high: ByteSize) -> ByteSize {
+  byte_size(count: byte_size_count(b: pool_high) * 1433 / 10000)
+}
+
+fn arm_experiment_kvplan_v2_2026_09_26_launch_wall_deductions(pool_high: ByteSize) -> ArmSupplyDeductions {
+  let foreign_readings = map(arm_experiment_kvplan_v2_2026_09_26_boot_readings, r => arm_experiment_kvplan_v2_2026_09_26_foreign_hundredths(r))
+  let foreign_high_hundredths = fold(foreign_readings, init: 0, f: (acc, h) => nat_max(acc, h))
+  let foreign_low_hundredths = fold(foreign_readings, init: 12169, f: (acc, h) => nat_min(acc, h))
+  let foreign_high = arm_experiment_gib_hundredths_upper(hundredths: foreign_high_hundredths)
+  let foreign_low = arm_experiment_gib_hundredths_lower(hundredths: foreign_low_hundredths)
+  ArmSupplyDeductions {
+    host_os_control_reserve: arm_experiment_component_interval(
+      lower: byte_size(count: 0),
+      upper: byte_size(count: byte_size_count(b: arm_experiment_kvplan_v2_2026_09_26_carve_high(pool_high: pool_high)) - byte_size_count(b: foreign_low)),
+      how: "the 0.8567 envelope's host-reserve carve: the engine claims 8567 basis points of the pool, so the remaining 1433 basis points are host/OS/control-plane/co-tenant territory the arm does not claim; the upper endpoint is the carve at the pool span's high reading minus the observed foreign floor -- every device's host residue (carve minus that device's foreign occupancy) is bounded above by carve_high - foreign_low, the observed per-device pairs summing back under each host's own carve. The scalar subject-level pair cannot express the per-device coupling; the launch wall's conservation obligation names the byte-exact pool producer as the resolver" as NonEmptyStr),
+    foreign_residency: arm_experiment_component_interval(
+      lower: byte_size(count: 0),
+      upper: foreign_high,
+      how: "observed foreign occupancy at this launch's own boot readings: device total minus free memory at the 'Free memory on device' profile lines (gpu_worker.py:867, 2026-09-26T05:42:33Z), 14.49 / 13.17 / 12.80 / 10.58 GiB across srv9/srv10/srv12/srv11; the upper endpoint is the observed band's high at the reporter's rounding unit, sound at every device the arm can land on" as NonEmptyStr),
+  }
+}
+
+
+// ── THE CHECKPOINT INDEX CENSUS AND THE TP4 PLACEMENT RULES ──────────────────────────────────────
+//
+// THE PER-TENSOR READ OF THE CHECKPOINT'S OWN INDEX (model.safetensors.index.json at the pinned
+// snapshot /home/briansrls/.cache/huggingface/hub/models--zai-org--GLM-5.3-Flash/snapshots/
+// eb9eb208eb0d988989d07a6a12d0fdeb5f52574a/, fetched to srv2 2026-09-26): the weight map names
+// every tensor's shard, and the metadata names the tensor-byte total -- the population census
+// below is parsed from it, not transcribed from the architecture. THE INDEX DOES NOT CARRY
+// SHAPES OR DTYPES (those live in each shard's safetensors header); the shard-header and
+// config.json fetches have since COMPLETED, and the byte projection they enabled is landed in
+// the section below -- everything the index itself vouches is landed here. THE TENSOR TOTAL IS
+// THE AUTHORITY ROW: 328,326,771,576 bytes of tensor data, against
+// the manifest module's 328,337,455,672 file bytes (glm_5_3_flash_native_manifest.safetensors_bytes)
+// -- the 10,684,096-byte difference is the 62 shards' own headers, named so no reader prices it
+// as weights.
+
+data glm_checkpoint_index_revision: NonEmptyStr = "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr
+
+data glm_checkpoint_index_file: NonEmptyStr = "model.safetensors.index.json" as NonEmptyStr
+
+data glm_checkpoint_index_tensor_count: Nat = 76108
+
+data glm_checkpoint_index_shard_count: Nat = 62
+
+data glm_checkpoint_index_tensor_bytes: ByteSize = byte_size(count: 328326771576)
+
+data glm_checkpoint_index_file_bytes: ByteSize = byte_size(count: 328337455672)
+
+// THE SHARD-HEADER OVERHEAD, derived not transcribed: file bytes minus tensor bytes.
+fn glm_checkpoint_index_header_overhead_bytes() -> ByteSize {
+  byte_size(count: byte_size_count(b: glm_checkpoint_index_file_bytes) - byte_size_count(b: glm_checkpoint_index_tensor_bytes))
+}
+
+// THE LAYER CENSUS, by attention mechanism (classified from the self_attn tensor names in the
+// weight map: kv_b_proj/indexer names mark MLA, A_log/conv1d names mark KDA). THE CHECKPOINT
+// CONFIRMS THE CORPUS SHAPE: 34 KDA + 11 sparse-MLA over the 45 base layers, and names the MTP
+// layer (index 45, MLA attention) the shape row does not carry. THE MLP AXIS IS SEPARATE FROM
+// THE ATTENTION AXIS: layers 0-2 carry a dense MLP (no experts); every layer from 3 through the
+// MTP carries MoE (288 routed experts + shared experts).
+data glm_checkpoint_index_sparse_base_layer_indices: List<Nat> = [3, 7, 11, 15, 19, 23, 27, 31, 35, 39, 43]
+
+data glm_checkpoint_index_mtp_layer_indices: List<Nat> = [45]
+
+data glm_checkpoint_index_kda_layer_indices: List<Nat> = [
+  0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14, 16, 17, 18, 20, 21, 22,
+  24, 25, 26, 28, 29, 30, 32, 33, 34, 36, 37, 38, 40, 41, 42, 44,
+]
+
+data glm_checkpoint_index_dense_mlp_layer_indices: List<Nat> = [0, 1, 2]
+
+data glm_checkpoint_index_routed_experts_per_layer: Nat = 288
+
+data glm_checkpoint_index_scale_tensor_count: Nat = 37338
+
+// THE VISION TOWER IS IN THE CHECKPOINT (24 blocks + patch embed + merger + downsample + post
+// norm): whether THIS LAUNCH loads it is a config.json architectures fact (Glm5NextForCausalLM
+// builds the text model; Glm5NextForConditionalGeneration, the GLM4V-pattern multimodal wrapper
+// at glm5next/nvidia/model.py:963, builds the visual tower too) -- config.json rides the same
+// fetch as the shard headers, and the projection plus the loaded-weight comparison settles it.
+data glm_checkpoint_index_visual_block_count: Nat = 24
+
+// THE CENSUS CONSISTENCY LAW, checked not trusted: the classification partitions the 45 base
+// layers, the MTP list is the 46th layer, the dense-MLP list is the first three KDA layers.
+fn glm_checkpoint_index_census_holds() -> Bool {
+  length(glm_checkpoint_index_sparse_base_layer_indices) == 11
+    && length(glm_checkpoint_index_kda_layer_indices) == 34
+    && length(glm_checkpoint_index_sparse_base_layer_indices) + length(glm_checkpoint_index_kda_layer_indices) == 45
+    && length(glm_checkpoint_index_mtp_layer_indices) == 1
+    && length(glm_checkpoint_index_dense_mlp_layer_indices) == 3
+    && glm_checkpoint_index_tensor_count > 0
+    && glm_checkpoint_index_scale_tensor_count > 0
+    && byte_size_count(b: glm_checkpoint_index_header_overhead_bytes()) == 10684096
+    && byte_size_count(b: glm_checkpoint_index_tensor_bytes) + byte_size_count(b: glm_checkpoint_index_header_overhead_bytes()) == byte_size_count(b: glm_checkpoint_index_file_bytes)
+}
+
+// ── THE TP4 PLACEMENT RULES, FROM THE PINNED SOURCE ──────────────────────────────────────────────
+//
+// THE AUTHORITY IS vllm@8d09804c8's OWN MODULE CONSTRUCTION (docs/plans/moa-memory-modeling.md:
+// placement derives from the checkpoint manifest x the loader's placement rules -- the rules are
+// the engine's, cited symbol-first below). AT THIS LAUNCH tensor parallelism is 4, expert
+// parallelism is unset, and the EP group IS the TP group for MoE models (distributed/
+// parallel_state.py:2085-2119 builds the ep group from the TP ranks when DP and PCP are 1), so
+// the expert population splits across the same four ranks. SEQUENCE PARALLELISM IS OFF (the
+// launch carries no such flag), so the Column/Row sharding below is the standard TP split, not
+// the sequence-parallel replication (Glm5NextMLP's disable_tp branch is not taken).
+//
+// EMBED_TOKENS IS VOCAB-SHARDED (VocabParallelEmbedding, model.py:603); LM_HEAD IS VOCAB-SHARDED
+// (ParallelLMHead, model.py:881). DENSE MLP: gate/up MERGED-COLUMN-SHARDED, down ROW-SHARDED
+// (Glm5NextMLP, model.py:116-128). MOE: THE ROUTER IS REPLICATED (GateLinear IS-A ReplicatedLinear,
+// model_executor/layers/fused_moe/router/gate_linear.py:18, with e_score_correction_bias a plain
+// parameter); THE EXPERT BODIES SPLIT OVER THE EP GROUP (FusedMoEFactory, model.py:226-246);
+// SHARED EXPERTS ARE THE DENSE-MLP SHARDING (model.py:196-208). MLA: q_a REPLICATED AND kv_a
+// COLUMN-SHARDED INSIDE THE FUSED QKV-A PROJ (DeepSeekV2FusedQkvAProjLinear, the fused branch this
+// checkpoint's q_a_proj + kv_a_proj_with_mqa names select), q_b/kv_b COLUMN-SHARDED, o_proj
+// ROW-SHARDED (attention.py:447-484). KDA: in_proj_qkvbfg_a MERGED-COLUMN (with the class's
+// replicated-shard exceptions), f_b/g_b/q/k/v COLUMN-SHARDED, o_proj ROW-SHARDED, A_log/dt_bias/
+// o_norm PARAMETERS REPLICATED (kda.py:181-256). INDEXER: wk COLUMN-SHARDED (MergedColumnParallel),
+// wq_b REPLICATED (attention.py:250-255,253). NORMS/LAYERNORMS/HC_* PARAMETERS REPLICATED.
+// VISION TOWER: THE GLM4V-PATTERN VISUAL ENCODER IS BUILT FROM PLAIN MODULES, NOT TP-WRAPPED --
+// REPLICATED WHEREVER IT LOADS (model.py:963 class note; settled by the loaded-weight comparison).
+
+type ArmCheckpointPlacementKind
+  = ArmPlacementVocabSharded
+  | ArmPlacementColumnSharded
+  | ArmPlacementRowSharded
+  | ArmPlacementExpertSplit
+  | ArmPlacementReplicated
+
+fn arm_checkpoint_placement_kind_wire(k: ArmCheckpointPlacementKind) -> String {
+  match k {
+    ArmPlacementVocabSharded => "vocab-sharded"
+    ArmPlacementColumnSharded => "column-sharded"
+    ArmPlacementRowSharded => "row-sharded"
+    ArmPlacementExpertSplit => "expert-split"
+    ArmPlacementReplicated => "replicated"
+  }
+}
+
+// Every rank holds a full copy of a replicated tensor; every other placement divides the tensor
+// across the ranks. The per-rank figure and the conservation check both read this partition.
+fn arm_placement_is_replicated(k: ArmCheckpointPlacementKind) -> Bool {
+  match k {
+    ArmPlacementVocabSharded => false
+    ArmPlacementColumnSharded => false
+    ArmPlacementRowSharded => false
+    ArmPlacementExpertSplit => false
+    ArmPlacementReplicated => true
+  }
+}
+
+// ONE PROJECTED TENSOR ROW: the tensor's checkpoint name, its placement kind, and its byte size.
+// `bytes` is OPTIONAL because the index does not carry shapes or dtypes: Absent names the
+// shard-header fetch as the completing read, and the folds below refuse to price an Absent row
+// rather than read it as a zero.
+type ArmCheckpointTensorRow {
+  name: NonEmptyStr
+  kind: ArmCheckpointPlacementKind
+  bytes: ByteSize?
+}
+
+// THE PER-RANK SHARE OF ONE ROW: sharded and expert-split kinds contribute bytes/rank_count to
+// every rank (modulo shard padding, priced when the shapes land); replicated contributes the
+// whole tensor to every rank. PADDING IS NAMED, NOT MODELED: vocab and dim sizes divide by 4 up
+// to a sub-block remainder, and the conservation law below absorbs it as a named deviation.
+fn arm_checkpoint_row_per_rank_bytes(row: ArmCheckpointTensorRow, rank_count: Nat) -> ByteSize? {
+  match row.bytes {
+    Absent => none
+    Present { value: b } =>
+      if arm_placement_is_replicated(k: row.kind) {
+        Present { value: b }
+      } else {
+        Present { value: byte_size(count: byte_size_count(b: b) / rank_count) }
+      }
+  }
+}
+
+// THE PER-RANK PLACEMENT FIGURES: one sum per rank over the row population. A row whose bytes
+// are Absent makes EVERY rank's figure Absent -- the projection has no spelling for an unpriced
+// tensor.
+fn arm_checkpoint_placement_rank_figures(rows: List<ArmCheckpointTensorRow>, rank_count: Nat) -> List<ByteSize?> {
+  map(nat_range_inclusive(lo: 1, hi: rank_count), rank =>
+    fold(rows, init: Present { value: byte_size(count: 0) }, f: (acc, row) =>
+      match acc {
+        Absent => none
+        Present { value: n } =>
+          match arm_checkpoint_row_per_rank_bytes(row: row, rank_count: rank_count) {
+            Absent => none
+            Present { value: share } => Present { value: byte_size(count: byte_size_count(b: n) + byte_size_count(b: share)) }
+          }
+      }))
+}
+
+// THE PLACEMENT CONSERVATION LAW: the per-rank figures sum back to the sharded and expert bytes
+// once plus the replicated bytes rank_count times -- the exactness wall the real projection must
+// pass. THE REAL PROJECTION'S INSTANCE: the sum must equal the index tensor bytes
+// 328,326,771,576 plus 3 x the replicated population minus the shard-padding remainder -- every
+// deviation named, none silent. A TENSOR MOVED TO A DIFFERENT SHARD CHANGES A RANK FIGURE by
+// kind-delta x bytes x (rank_count - 1)/rank_count, and this law is what makes that change
+// decidable instead of anecdotal.
+fn arm_checkpoint_placement_conserved(rows: List<ArmCheckpointTensorRow>, rank_count: Nat) -> Bool {
+  let sharded_and_expert = fold(rows, init: byte_size(count: 0), f: (acc, row) =>
+    match row.bytes {
+      Absent => acc
+      Present { value: b } =>
+        if arm_placement_is_replicated(k: row.kind) {
+          acc
+        } else {
+          byte_size(count: byte_size_count(b: acc) + byte_size_count(b: b))
+        }
+    })
+  let replicated = fold(rows, init: byte_size(count: 0), f: (acc, row) =>
+    match row.bytes {
+      Absent => acc
+      Present { value: b } =>
+        if arm_placement_is_replicated(k: row.kind) {
+          byte_size(count: byte_size_count(b: acc) + byte_size_count(b: b))
+        } else {
+          acc
+        }
+    })
+  let figures = arm_checkpoint_placement_rank_figures(rows: rows, rank_count: rank_count)
+  let figure_sum = fold(figures, init: Present { value: byte_size(count: 0) }, f: (acc, f2) =>
+    match acc {
+      Absent => none
+      Present { value: n } =>
+        match f2 {
+          Absent => none
+          Present { value: v } => Present { value: byte_size(count: byte_size_count(b: n) + byte_size_count(b: v)) }
+        }
+    })
+  match figure_sum {
+    Absent => false
+    Present { value: sum } =>
+      byte_size_count(b: sum) == byte_size_count(b: sharded_and_expert) + rank_count * byte_size_count(b: replicated)
+  }
+}
+
+// THE CATEGORY CLASSIFIER over the checkpoint's tensor-name shapes, in match order (the first
+// matching rule wins, so the population's exceptions precede its generalities): the language
+// model's projections by module class as cited above, the expert bodies by population, the
+// router/norms/parameters replicated, and the vision prefix replicated wherever it loads. A
+// name matching nothing explicit lands REPLICATED -- the conservative reading for the small
+// residual classes -- and the projection's conservation check against the composite readings is
+// the wall that exposes any misclassification.
+fn arm_checkpoint_classify(name: String) -> ArmCheckpointPlacementKind {
+  if string_contains(s: name, pattern: "model.visual.") {
+    ArmPlacementReplicated
+  } else if string_contains(s: name, pattern: "embed_tokens") {
+    ArmPlacementVocabSharded
+  } else if string_contains(s: name, pattern: "lm_head") {
+    ArmPlacementVocabSharded
+  } else if string_contains(s: name, pattern: "mlp.experts.") {
+    ArmPlacementExpertSplit
+  } else if string_contains(s: name, pattern: "mlp.gate.") {
+    ArmPlacementReplicated
+  } else if string_contains(s: name, pattern: "wq_b") {
+    ArmPlacementReplicated
+  } else if string_contains(s: name, pattern: "q_a_proj") {
+    ArmPlacementReplicated
+  } else if string_contains(s: name, pattern: "A_log") || string_contains(s: name, pattern: "dt_bias") || string_contains(s: name, pattern: "hc_") || string_contains(s: name, pattern: "e_score_correction_bias") || string_contains(s: name, pattern: "index_kpool_compress") {
+    ArmPlacementReplicated
+  } else if string_contains(s: name, pattern: "down_proj") {
+    ArmPlacementRowSharded
+  } else if string_contains(s: name, pattern: "o_proj") {
+    ArmPlacementRowSharded
+  } else if string_contains(s: name, pattern: "conv1d") {
+    ArmPlacementColumnSharded
+  } else if string_contains(s: name, pattern: "gate_proj") || string_contains(s: name, pattern: "up_proj") {
+    ArmPlacementColumnSharded
+  } else if string_contains(s: name, pattern: "kv_a_proj_with_mqa") || string_contains(s: name, pattern: "weights_proj") || string_contains(s: name, pattern: "q_b_proj") || string_contains(s: name, pattern: "kv_b_proj") || string_contains(s: name, pattern: "wk.weight") || string_contains(s: name, pattern: "q_proj") || string_contains(s: name, pattern: "k_proj") || string_contains(s: name, pattern: "v_proj") || string_contains(s: name, pattern: "b_proj") || string_contains(s: name, pattern: "f_a_proj") || string_contains(s: name, pattern: "f_b_proj") || string_contains(s: name, pattern: "g_a_proj") || string_contains(s: name, pattern: "g_b_proj") || string_contains(s: name, pattern: "eh_proj") {
+    ArmPlacementColumnSharded
+  } else {
+    ArmPlacementReplicated
+  }
+}
+
+// THE FETCHES, RECORDED AS COMPLETED: the 62 shards' safetensors headers (bounded 262,144-byte
+// windows at the pinned snapshot, every header complete, no shortfall) delivered every tensor's
+// shape and dtype, and config.json's architectures field
+// (["Glm5NextForConditionalGeneration"]) settled the vision tower: it LOADS. What remains open
+// at the launch wall after the projection are the two phase obligations the minted experiment
+// plans name -- the loader transient and the fragmentation churn -- each with its runbook row
+// below; the projection itself is landed (the byte census section above) and its Absent-row
+// fail-closed behavior stays as the machinery's exactness property.
+fn glm_checkpoint_projection_pending_obligation() -> NonEmptyStr {
+  "the shard headers and config.json fetches are COMPLETE: the byte census is landed (the projection section above reconstructs the index tensor total with slack zero) and config.json's architectures field settles the vision tower as loading; the launch wall's remaining completing acts are the two minted experiment plans -- the loader transient and the fragmentation churn, each with its runbook row below -- and the Absent-bytes fold behavior remains as the machinery's fail-closed exactness property, not a pending read" as NonEmptyStr
+}
+
+
+// ── THE BYTE CENSUS FROM THE SHARD HEADERS, AND THE EXACT PER-RANK PROJECTION ────────────────────
+//
+// THE 62 SHARD HEADERS (fetched 2026-09-26, 262,144 bytes per shard's opening, every header
+// complete -- no window shortfall) carry every tensor's shape and dtype; byte-sized and
+// classified, they reconstruct the index tensor total EXACTLY (328,326,771,576, slack zero) --
+// the exactness wall the aggregate carry could never pass. DTYPE POPULATION, named: 37,338
+// F8_E4M3 weight bodies beside 37,338 F32 weight_scale_inv block scales (128-block fp8), 1,141
+// BF16 unquantized projections (the MLA projections are BF16 in checkpoint per
+// glm5next/nvidia/attention.py:425), and the F32 parameter/residual population.
+
+data glm_checkpoint_projection_vocab_bytes: ByteSize = byte_size(count: 2537553920)
+
+data glm_checkpoint_projection_column_bytes: ByteSize = byte_size(count: 8919910400)
+
+data glm_checkpoint_projection_row_bytes: ByteSize = byte_size(count: 3599034368)
+
+data glm_checkpoint_projection_expert_bytes: ByteSize = byte_size(count: 311729651712)
+
+data glm_checkpoint_projection_replicated_bytes: ByteSize = byte_size(count: 1540621176)
+
+// THE VISUAL TOWER'S BYTES (1,127,254,016 across 347 tensors), a named subset of the replicated
+// population: config.json's architectures field reads ["Glm5NextForConditionalGeneration"], the
+// GLM4V-pattern multimodal wrapper (glm5next/nvidia/model.py:963) -- THE ENGINE BUILDS THE
+// VISUAL TOWER, so the tower LOADS at this launch, replicated on every rank. tie_word_embeddings
+// is false, so lm_head loads beside embed_tokens, consistent with the vocab-sharded class.
+data glm_checkpoint_projection_visual_bytes: ByteSize = byte_size(count: 1127254016)
+
+// THE PROJECTION CENSUS, checked not trusted: the five kind sums reconstruct the index tensor
+// total exactly, and the conservation law holds with slack zero -- four times the per-rank
+// figure equals the sharded-plus-expert bytes once plus the replicated bytes four times.
+fn glm_checkpoint_projection_census_holds() -> Bool {
+  byte_size_count(b: glm_checkpoint_projection_vocab_bytes)
+    + byte_size_count(b: glm_checkpoint_projection_column_bytes)
+    + byte_size_count(b: glm_checkpoint_projection_row_bytes)
+    + byte_size_count(b: glm_checkpoint_projection_expert_bytes)
+    + byte_size_count(b: glm_checkpoint_projection_replicated_bytes)
+    == byte_size_count(b: glm_checkpoint_index_tensor_bytes)
+    && 4 * byte_size_count(b: glm_checkpoint_projection_per_rank_bytes())
+    == byte_size_count(b: glm_checkpoint_projection_vocab_bytes)
+      + byte_size_count(b: glm_checkpoint_projection_column_bytes)
+      + byte_size_count(b: glm_checkpoint_projection_row_bytes)
+      + byte_size_count(b: glm_checkpoint_projection_expert_bytes)
+      + 4 * byte_size_count(b: glm_checkpoint_projection_replicated_bytes)
+}
+
+// THE EXACT PER-RANK PLACEMENT FIGURE: the sharded and expert classes over four ranks plus the
+// replicated population -- identical on every rank by construction, which is the projection's
+// structural finding: the checkpoint places EVENLY, and the composite readings' rank spread
+// (83.34 / 86.51 / 87.65 / 88.50 GiB floors) lives in the non-checkpoint residue.
+fn glm_checkpoint_projection_per_rank_bytes() -> ByteSize {
+  let sharded = byte_size_count(b: glm_checkpoint_projection_vocab_bytes)
+    + byte_size_count(b: glm_checkpoint_projection_column_bytes)
+    + byte_size_count(b: glm_checkpoint_projection_row_bytes)
+    + byte_size_count(b: glm_checkpoint_projection_expert_bytes)
+  byte_size(count: sharded / 4 + byte_size_count(b: glm_checkpoint_projection_replicated_bytes))
+}
+
+// THE NON-CHECKPOINT RESIDUE per rank: the composite observation's floor minus the exact
+// placement -- what runtime-fixed, collective, and any other non-checkpoint allocation share on
+// that rank. THE RESIDUE TABLE, pinned: 106,681,602 / 3,274,219,983 / 4,412,386,317 /
+// 5,260,642,358 bytes across TP0-TP3 -- the rank-varying shape collective workspace wears.
+fn arm_experiment_kvplan_v2_2026_09_26_residue(r: ArmExperimentEnvelopeDerivedArenaReading) -> ByteSize {
+  byte_size(count: byte_size_count(b: arm_experiment_gib_hundredths_floor(hundredths: r.weights_nontorch_hundredths_gib)) - byte_size_count(b: glm_checkpoint_projection_per_rank_bytes()))
+}
+
+// ── THE TWO COMPLETING WET ACTS, IN EXECUTABLE FORM ──────────────────────────────────────────────
+//
+// THE BRACKET'S EXPERIMENT PLANS, minted through the same wall the launch gate uses
+// (gunbc.spark.arm_memory_fit arm_memory_fit_experiment_plan): the subject tuple is the launch
+// wall's own, the envelope is the normal-serving decision (8567 basis points -- conservative
+// means no larger), each plan targets ONE open obligation, names the receipt kind the run must
+// mint, and carries the stop/cleanup contract and route-enrollment prohibition. THE RUNBOOK ROWS
+// beside each plan pin the anchor strings, the poll cadence, and the pass/fail bounds the
+// bracket executes against.
+
+fn arm_experiment_kvplan_v2_2026_09_26_workload() -> ServingCapacityIntent {
+  match uniform_cold_seats(each: token_count(count: 262144), seats: 6, max_batched_tokens: token_count(count: 2048)) {
+    ServingCapacityIntentAdmitted { intent: i } => i
+    ServingCapacityIntentRefused { cause: _ } => ServingCapacityIntent { cold_sequence_budgets: [], max_batched_tokens: token_count(count: 1) }
+  }
+}
+
+fn arm_experiment_kvplan_v2_2026_09_26_policy_profile() -> ServingLaunchProfile {
+  profile_for_envelope(
+    envelope: envelope_at_cold_floor(cold: arm_experiment_kvplan_v2_2026_09_26_workload()),
+    policy: glm53_native_launch_policy,
+    decided_gpu_memory_basis_points: basis_point(count: 8567),
+    serve_port: 30000,
+    served_alias: "glm-5.3-flash" as NonEmptyStr,
+    prefix_caching: PrefixCachingExplicit { enabled: true },
+  )
+}
+
+// THE LOADER-TRANSIENT PLAN: one bounded launch, the load phase bracketed per rank, the peak
+// over repeated loads the bound. Targets the loader-transform obligation; the receipt kind the
+// run must mint is CheckpointRankResidencyBound.
+fn arm_experiment_kvplan_v2_2026_09_26_loader_transient_plan() -> ArmMemoryExperimentAdmission {
+  arm_memory_fit_experiment_plan(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    workload: arm_experiment_kvplan_v2_2026_09_26_workload(),
+    policy_profile: arm_experiment_kvplan_v2_2026_09_26_policy_profile(),
+    targets: [ArmLoaderTransform], deployment_env: glm_group_b_deployment_env())
+}
+
+type ArmExperimentRunbookRow {
+  plan: NonEmptyStr
+  anchor_start: NonEmptyStr
+  anchor_end: NonEmptyStr
+  poll_seconds: Nat
+  runs: Nat
+  pass_bound: NonEmptyStr
+  fail_bound: NonEmptyStr
+  receipt_kind: NonEmptyStr
+}
+
+data arm_experiment_kvplan_v2_2026_09_26_loader_runbook: ArmExperimentRunbookRow = ArmExperimentRunbookRow {
+  plan: "loader-transient" as NonEmptyStr,
+  anchor_start: "engine container start on the rank (the load transient begins with the first checkpoint byte read)" as NonEmptyStr,
+  anchor_end: "the rank's gpu_worker.py:867 'Free memory on device' profile line (load, profile and capture all inside the bracket)" as NonEmptyStr,
+  poll_seconds: 2,
+  runs: 3,
+  pass_bound: "the peak-over-loads ceiling per rank, minted as a CheckpointRankResidencyBound receipt, closes the loader-transform obligation at all four ranks when priced into the launch wall" as NonEmptyStr,
+  fail_bound: "a rank's load-phase peak above its envelope floor (102.54-104.25 GiB at this launch) falsifies the model: the engine's own accounting would refuse the load" as NonEmptyStr,
+  receipt_kind: "CheckpointRankResidencyBound" as NonEmptyStr,
+}
+
+// THE FRAGMENTATION-CHURN PLAN: the warm engine driven through six cold full-window prefills
+// and a bounded mixed-length churn window, the allocator's unreclaimable gap the bound. Targets
+// the fragmentation-allowance obligation; the receipt kind is AllocatorFragmentationBound.
+fn arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan() -> ArmMemoryExperimentAdmission {
+  arm_memory_fit_experiment_plan(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    workload: arm_experiment_kvplan_v2_2026_09_26_workload(),
+    policy_profile: arm_experiment_kvplan_v2_2026_09_26_policy_profile(),
+    targets: [ArmFragmentationAllowance], deployment_env: glm_group_b_deployment_env())
+}
+
+data arm_experiment_kvplan_v2_2026_09_26_fragmentation_runbook: ArmExperimentRunbookRow = ArmExperimentRunbookRow {
+  plan: "fragmentation-churn" as NonEmptyStr,
+  anchor_start: "the rank's gpu_worker.py:867 profile line (engine warm, pool constructed, serving state)" as NonEmptyStr,
+  anchor_end: "churn window expiry, then the bracket's stop contract: engine stopped on every rank and the container removed before the observer preserves receipts" as NonEmptyStr,
+  poll_seconds: 5,
+  runs: 1,
+  pass_bound: "the window's peak unreclaimable allocator gap (allocated minus reserved headroom beyond the engine's block accounting), minted as an AllocatorFragmentationBound receipt, keeps the peak-serving mandatory demand within supply at all four ranks when priced into the launch wall" as NonEmptyStr,
+  fail_bound: "a peak unreclaimable gap that pushes the peak-serving demand lower past a rank's conservative supply refuses the six-seat point: the service intent must re-price at 262144 before normal serving" as NonEmptyStr,
+  receipt_kind: "AllocatorFragmentationBound" as NonEmptyStr,
+}
+
+
+// ── THE LOADER-TRANSIENT RECEIPTS, MINTED FROM THE EXECUTED BRACKET ──────────────────────────────
+//
+// THE RUN EXECUTED (parent, 2026-09-26): three consecutive bounded experiment launches at this
+// subject (image derived-kvplan-v2-20260926, the per-rank readback bracket), ALL converged,
+// zero failed legs -- the falsification pass/fail (any rank OOM / the launch failing its own
+// accounting) recorded NONE. Per-rank host-pool traces (MemAvailable kB at 2-second cadence,
+// whole load-to-ready window) stand in /tmp/loader-transient-run{1,2,3}.jsonl; the minima below
+// are read from them at the reporter's precision.
+//
+// THE INTERPRETATION LAW, stated once and binding on every receipt minted from these traces:
+// MemAvailable is the HOST view of the GB10's unified pool -- it counts RECLAIMABLE page-cache
+// pressure from reading the 305.8 GiB checkpoint alongside engine-pinned demand, so a receipt
+// minted from it is an OUTER bound on load-phase host pressure (page cache counted as consumed),
+// NEVER engine-pinned device demand alone. The page-cache component is named as the mechanism
+// to refine later IF the bound is ever the pinch -- and at the conservative supply spelling it
+// is (see below), so the refinement (the engine's own byte-exact load accounting, or a
+// drop-caches rerun) is carried as the completing act, named.
+data arm_loader_trace_runs: Nat = 3
+
+data arm_loader_trace_cadence_seconds: Nat = 2
+
+data arm_loader_trace_converged: Nat = 3
+
+data arm_loader_trace_failed_legs: Nat = 0
+
+// THE MINIMA, per host, at the hundredths floor of the raw kB readings (peak-over-loads takes
+// the worst run per host): srv9 7.70 / srv10 8.14 / srv11 7.86 / srv12 8.19 GiB. Host-to-rank
+// mapping is the bundle's (TP0 srv9, TP1 srv10, TP2 srv12, TP3 srv11).
+data arm_loader_trace_min_hundredths_gib: List<Nat> = [770, 814, 819, 786]
+
+// THE BOUND per rank: the host's pool reading (hundredths, from the boot rows) minus the worst
+// observed MemAvailable floor -- the load-phase peak pressure of the unified pool, page cache
+// included, at the conservative floor spelling.
+fn arm_loader_trace_pool_hundredths(rank: Nat) -> Nat {
+  if rank == 3 { 11969 } else { 12169 }
+}
+
+fn arm_loader_trace_host_floor_hundredths(rank: Nat) -> Nat {
+  if rank == 0 { 770 } else if rank == 1 { 814 } else if rank == 2 { 819 } else { 786 }
+}
+
+fn arm_loader_trace_bound(rank: Nat) -> ByteSize {
+  arm_experiment_gib_hundredths_floor(hundredths: arm_loader_trace_pool_hundredths(rank: rank) - arm_loader_trace_host_floor_hundredths(rank: rank))
+}
+
+// THE ADMISSION GATE, typed: a trace reading enters the model ONLY as the named outer bound --
+// the receipt text must name the page-cache mechanism, the conservative direction, the
+// peak-over-loads protocol, and this subject's identity, or the gate is false and the term
+// stays open. A trace reading claimed as ENGINE-PINNED DEVICE DEMAND is refused here, which is
+// the RED the doctrine's weaker-evidence rule requires: an observation whose soft component is
+// not named cannot bound a harder quantity.
+fn arm_loader_trace_receipt_admitted(bytes: ByteSize, receipt: NonEmptyStr) -> Bool {
+  byte_size_count(b: bytes) > 0
+    && string_contains(s: receipt as String, pattern: "page cache")
+    && string_contains(s: receipt as String, pattern: "OUTER bound")
+    && string_contains(s: receipt as String, pattern: "peak over ")
+    && string_contains(s: receipt as String, pattern: serving_checkpoint_wire(c: Glm53NativeFp8) as String)
+    && string_contains(s: receipt as String, pattern: serving_topology_wire(t: FourSparkTp4) as String)
+}
+
+fn arm_loader_trace_receipt(rank: Nat, host: NonEmptyStr) -> NonEmptyStr {
+  join([
+    "loader-transient host-pool trace, 2026-09-26 bracket: three consecutive bounded experiment launches at this subject (image derived-kvplan-v2-20260926, per-rank readback bracket), all converged, zero failed legs; MemAvailable kB at ", to_string(arm_loader_trace_cadence_seconds),
+    "-second cadence across the load-to-ready window, peak over ", to_string(arm_loader_trace_runs), " runs on ", host as String,
+    ": worst MemAvailable floor ", to_string(arm_loader_trace_host_floor_hundredths(rank: rank)), " hundredths GiB against the host pool ", to_string(arm_loader_trace_pool_hundredths(rank: rank)), " hundredths. INTERPRETATION LAW: the trace is the HOST view of the unified pool and INCLUDES reclaimable page-cache pressure from reading the 305.8 GiB checkpoint -- this receipt is an OUTER bound on load-phase host pressure (page cache counted as consumed), NOT engine-pinned device demand; the page-cache component is the named mechanism to refine (engine byte-exact load accounting or a drop-caches rerun) if this bound is ever the pinch. Subject: ",
+    arm_experiment_kvplan_v2_2026_09_26_carry_identity() as String,
+  ], "") as NonEmptyStr
+}
+
+// THE MINT: the loader-transform term carries the gated ceiling -- the gate passes (the receipt
+// names the mechanism), so the four open loader obligations CLOSE and the term bounds the
+// load-phase pressure whole, checkpoint double-count NAMED as the conservative direction: the
+// ceiling bounds the phase total including the resident checkpoint, and the phase fold also
+// charges checkpoint residency -- the over-count is the price of an unsplittable trace, stated
+// here rather than silently absorbed.
+fn arm_experiment_kvplan_v2_2026_09_26_loader_carry(rank: Nat, host: NonEmptyStr) -> ArmComponentBound {
+  let receipt = arm_loader_trace_receipt(rank: rank, host: host)
+  let bytes = arm_loader_trace_bound(rank: rank)
+  if arm_loader_trace_receipt_admitted(bytes: bytes, receipt: receipt) {
+    ComponentBoundCeiling { bytes: bytes, receipt: receipt }
+  } else {
+    ComponentBoundOpen { obligation: "the loader-transient trace reading was not admitted: a host-pool trace enters the model only as the named outer bound (page-cache mechanism, conservative direction, peak-over-loads protocol, subject identity) -- an unnamed reading cannot bound the loader term, and the term stays open until a receipt passes the gate" as NonEmptyStr }
+  }
+}
+
+
+// ── THE 2026-09-27 CHURN RUN: THE SIXTH-SEAT HANG, AN OPEN LIVENESS OBLIGATION ───────────────────
+//
+// THE RUN (parent, 2026-09-27, the fragmentation-churn bracket at this subject, image
+// derived-kvplan-v2-20260926, engine 0.1.dev1+g8d09804c8, TP4): the readiness gate PASSED; the
+// token-exact construction SERVED (no 400s); FIVE of six concurrent ~262144-token prefills
+// completed 200 OK; THE SIXTH HUNG INDEFINITELY -- engine log 'Running: 1 reqs, Waiting: 0' at
+// 0.0 tokens/s for minutes, KV cache usage peaked 6.1% (no memory pressure), until the client's
+// 1800-second timeout; the bracket tore down cleanly. THE FINDING'S CLASS: a SCHEDULER/LIVENESS
+// defect -- the cache fits with room (CacheFitProved, 738 of 1012 blocks), the prefill transient
+// is proved, and still the engine under full occupancy stopped making progress on one request.
+// THE INTENT STAYS SIX: this is not a memory-grounds re-price, and the memory verdict is
+// untouched; the standing gains the liveness subproof's obligation, and the whole-arm fit waits
+// on it exactly as on a memory obligation.
+
+data arm_experiment_2026_09_27_churn_run_image: NonEmptyStr = "derived-kvplan-v2-20260926" as NonEmptyStr
+
+data arm_experiment_2026_09_27_churn_run_engine: NonEmptyStr = "v0.1.dev1+g8d09804c8" as NonEmptyStr
+
+data arm_experiment_2026_09_27_churn_run_readiness_gate_passed: Bool = true
+
+data arm_experiment_2026_09_27_churn_run_token_exact_no_400s: Bool = true
+
+data arm_experiment_2026_09_27_churn_run_completed_prefills: Nat = 5
+
+data arm_experiment_2026_09_27_churn_run_hung_prefills: Nat = 1
+
+data arm_experiment_2026_09_27_churn_run_kv_peak_percent: Nat = 6
+
+data arm_experiment_2026_09_27_churn_run_client_timeout_seconds: Nat = 1800
+
+// THE LIVENESS VERDICT at the launch wall's subject: Unestablished, carrying the obligation. THE
+// COMPLETING ACTS it names: the minimal-repro matrix below (each variant discriminating one axis
+// of the hang), the stall-captured stack dump localizing the defect, and -- for the fragmentation
+// obligations the churn was meant to mint -- either the hang resolved or the interim 5-seat
+// churn protocol (the hang fired during prefill occupancy, BEFORE the churn phase ever ran: no
+// sampling evidence exists, and none can until one of those paths lands).
+fn arm_experiment_2026_09_27_serving_liveness() -> ArmServingLivenessVerdict {
+  ArmServingLivenessUnestablished {
+    seats: 6,
+    length: token_count(count: 262144),
+    obligations: [
+      join([
+        "six-seat full-window concurrency is unestablished at this subject: the 2026-09-27 churn run passed the readiness gate and served token-exact construction (no 400s), completed five of six concurrent ~262144-token prefills 200 OK, and the sixth hung indefinitely -- engine 'Running: 1 reqs, Waiting: 0' at 0.0 tokens/s, KV cache usage peaked 6.1%, no memory pressure -- until the client's 1800-second timeout: a scheduler/liveness defect class, not a memory term, and the intent stays six while it is open. Completing acts: the minimal-repro matrix (six concurrent full-window as the deterministic repro; five concurrent separating occupancy from length; six concurrent at 65536 separating length from occupancy; six sequential separating concurrency from occupancy), each variant's discriminating outcome named; the stall-captured py-spy stack dump on the hung worker localizing the defect before teardown; then a bounded liveness protocol at six seats mints the proof arm's protocol row. The fragmentation obligations' evidence path rides the same resolution: the hang fired in prefill occupancy BEFORE the churn phase ran -- no sampling evidence exists -- so the churn mint needs the hang resolved, or the interim five-seat churn protocol run as the admissible-occupancy bound.",
+        arm_experiment_kvplan_v2_2026_09_26_carry_identity() as String,
+      ], "") as NonEmptyStr,
+    ],
+  }
+}
+
+// ── THE MINIMAL-REPRO MATRIX, typed: each variant spells its workload and the discriminating
+// outcome per result, so the parent's wet run reads the table and the suite pins it. THE
+// INSTRUMENT ROW is the variant that must ride every hang: stall detection (no throughput for
+// the named window) triggers the py-spy dump on the hung engine worker BEFORE teardown, so the
+// hang is localized, not just reproduced.
+
+type ArmLivenessReproRow {
+  variant: NonEmptyStr
+  workload: NonEmptyStr
+  if_completes: NonEmptyStr
+  if_hangs: NonEmptyStr
+}
+
+data arm_experiment_2026_09_27_liveness_repro_matrix: List<ArmLivenessReproRow> = [
+  ArmLivenessReproRow {
+    variant: "a-repro-six-full-window" as NonEmptyStr,
+    workload: "six concurrent ~262144-token prefills, token-exact construction, readiness gate, per the 2026-09-27 configuration" as NonEmptyStr,
+    if_completes: "the defect is NOT deterministic at the subject -- the original hang had an incidental trigger (racing admission or scheduling), and the repro must add the original run's exact timing/ordering perturbations" as NonEmptyStr,
+    if_hangs: "the defect is deterministic at six-seat full-window occupancy -- proceed to the stack-captured run and the occupancy/length splits" as NonEmptyStr,
+  },
+  ArmLivenessReproRow {
+    variant: "b-five-concurrent-full-window" as NonEmptyStr,
+    workload: "five concurrent ~262144-token prefills, identical construction and gates" as NonEmptyStr,
+    if_completes: "the hang needs SIX-WAY occupancy -- a full-occupancy scheduler interaction (the sixth seat's admission against the pool's block accounting or the batch scheduler's ready-set) -- and five seats is operationally safe at the full window" as NonEmptyStr,
+    if_hangs: "the hang is not occupancy-count-specific -- length or content is implicated instead; run variant c" as NonEmptyStr,
+  },
+  ArmLivenessReproRow {
+    variant: "c-six-concurrent-short-window" as NonEmptyStr,
+    workload: "six concurrent 65536-token prefills, identical construction and gates" as NonEmptyStr,
+    if_completes: "the hang is LENGTH-DEPENDENT -- implicating the full-window indexing/chunking path (the sparse-indexer gather at 262144, the chunked prefill boundary, or the KPool tail) rather than pure concurrency" as NonEmptyStr,
+    if_hangs: "the hang is length-independent -- pure concurrency at six-way occupancy; the scheduler's simultaneous-prefill interaction is the defect" as NonEmptyStr,
+  },
+  ArmLivenessReproRow {
+    variant: "d-six-sequential-full-window" as NonEmptyStr,
+    workload: "six ~262144-token prefills issued sequentially (each awaited before the next), identical gates" as NonEmptyStr,
+    if_completes: "CONCURRENCY is necessary -- a batching/scheduler interaction under simultaneous prefills, consistent with the 'Running: 1 reqs' log (the engine saw one running request and stopped scheduling it)" as NonEmptyStr,
+    if_hangs: "a sequential hang would implicate single-request forward progress at the full window itself (a 262144-token decode/step liveness defect) -- the most severe reading, and the stack capture is decisive" as NonEmptyStr,
+  },
+  ArmLivenessReproRow {
+    variant: "e-stall-captured-six-full-window" as NonEmptyStr,
+    workload: "the six concurrent ~262144-token prefills of variant a plus the instrument: stall detection (no output tokens for 120 seconds on the in-flight request) triggers py-spy dump -- or the engine's own stack dump if present -- on the hung engine worker AND the head process, captured to the receipt before the bracket's teardown" as NonEmptyStr,
+    if_completes: "no hang this run -- the captured-empty result still refines the trigger's nondeterminism; the dump infrastructure is proven for the hanging variants" as NonEmptyStr,
+    if_hangs: "the dump localizes the hang -- scheduler loop, attention/indexer kernel, or collective wait -- converting the defect class into a located cause and directing the fix; THIS VARIANT MUST RIDE EVERY HANGING RUN" as NonEmptyStr,
+  },
+]
+
+// ── THE INTERIM FRAGMENTATION PROTOCOL AT FIVE SEATS ─────────────────────────────────────────────
+//
+// THE CHURN'S EVIDENCE PATH, named: the 2026-09-27 bracket's workload phase never ran -- the hang
+// fired during the six concurrent prefills that PRECEDE the churn. The fragmentation obligations
+// therefore stay open with two named paths: the hang resolved (repro matrix, then the six-seat
+// churn as planned), or THE INTERIM FIVE-SEAT CHURN -- the same runbook at five concurrent
+// seats, admissible at the occupancy the 2026-09-27 run PROVED operationally safe (five of five
+// prefills completed). What the interim mints: an AllocatorFragmentationBound at the
+// admissible-occupancy level -- a real, minted ceiling the launch wall can price. What it cannot
+// mint, named: fragmentation under SIX-seat full occupancy -- the unproven occupancy -- stays
+// open until the hang resolves; weaker evidence cannot price the behavior the hang left unread.
+
+data arm_experiment_kvplan_v2_2026_09_27_fragmentation_runbook_five_seat: ArmExperimentRunbookRow = ArmExperimentRunbookRow {
+  plan: "fragmentation-churn-five-seat-interim" as NonEmptyStr,
+  anchor_start: "the rank's gpu_worker.py:867 profile line (engine warm, pool constructed), then FIVE concurrent cold 262144-token prefills -- the occupancy the 2026-09-27 run proved operationally safe" as NonEmptyStr,
+  anchor_end: "churn window expiry at five seats, then the bracket's stop contract: engine stopped on every rank and the container removed before the observer preserves receipts" as NonEmptyStr,
+  poll_seconds: 5,
+  runs: 1,
+  pass_bound: "the window's peak unreclaimable allocator gap mints an AllocatorFragmentationBound receipt at the ADMISSIBLE-OCCUPANCY level (five seats), priced into the launch wall's fragmentation allowance" as NonEmptyStr,
+  fail_bound: "a peak unreclaimable gap that pushes the peak-serving demand lower past a rank's conservative supply refuses the priced occupancy; and the receipt is named WHAT IT IS NOT: it does not price six-seat full occupancy -- that stays open until the hang resolves, and no consumer may read the five-seat ceiling as the six-seat bound" as NonEmptyStr,
+  receipt_kind: "AllocatorFragmentationBound" as NonEmptyStr,
+}

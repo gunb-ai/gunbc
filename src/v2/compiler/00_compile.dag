@@ -36,12 +36,16 @@ import extdeps.bazel.target_pattern {
   SingleTarget, PackageTargets, SubtreeTargets,
   parse_target_pattern, target_pattern_matches, target_pattern_refusal_text, render_target_pattern
 }
-import v2.std.logic { Bool }
 import v2.std.integer { integer_int_to_decimal_string }
 import v2.compiler.emit { emit }
 import v2.compiler.eval { eval, eval_node, eval_default_interpretation, inputs_root_only }
 import v2.compiler.infer { InferredTree }
+import gunbc.instruments.type_declaration_use_census {
+  TypeCensusContribution, AsTypedBy, AsUntyped, type_census_contribution, type_census_unreached
+}
 import v2.compiler.name_resolve {
+  resolution_context_namespace,
+  closure_declarations_demand,
   Admission,
   ResolutionSubject,
   ResolutionContext,
@@ -50,7 +54,7 @@ import v2.compiler.name_resolve {
   resolve_in_context,
   resolve_with_admission
 }
-import std.occurrence_identity { OccurrenceIdAllocator, occurrence_id_allocator_initial }
+import std.occurrence_identity { OccurrenceIdAllocator, occurrence_id_allocator_initial, scoped_occurrence_allocator }
 import v2.std.dependency { DataDependsOn, DependencyRelation }
 import v2.std.demand_engine {
   DemandAdmitted,
@@ -74,6 +78,8 @@ import v2.std.demand_engine {
   demand_identity_key
 }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.provenance { SpanIndex, node_occurrence_id_optional, span_index_empty, span_index_textual_locus_optional }
+import v2.std.source_position { source_line_col_at_byte }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural }
 import std.judgment_contract {
   DeclaredInput,
@@ -93,6 +99,7 @@ import std.cache_identity {
 import std.materialization_ladder { DemandNature }
 import v2.compiler.program_assembly {
   program_assembly_ingest_scope_outcome,
+  program_assembly_phase_tokenize,
   program_assembly_read_to_normalized_root_seeded,
   assemble_program_from_ingest,
   program_assembly_fold_ingest,
@@ -106,7 +113,17 @@ import v2.compiler.source_authority {
   source_root_set_from_ingest
 }
 import v2.compiler.native_test_vocabulary {
+  NativeTestFileAdvisories,
   NativeTestFileRefusal,
+  FileRefusalLink,
+  FileRefusalAt,
+  FileRefusalAtLine,
+  FileRefusalAtWholeFile,
+  FileRefusalAtOtherFile,
+  FileRefusalAtInvariant,
+  FileRefusalAtDeclaration,
+  FileRefusalAtUnresolvedNode,
+  native_test_file_advisories,
   NativeTestObservation,
   NativeTestPassed,
   NativeTestRefused,
@@ -121,10 +138,29 @@ import v2.compiler.native_test_vocabulary {
   native_test_refused_after,
   native_test_refused_located
 }
-import v2.compiler.normalize { normalize }
+import v2.compiler.normalize { normalize, normalize_scoped }
+import v2.compiler.dependency_demand { FunctionFact, OperationFact }
+import v2.compiler.dependency_demand_census {
+  AuthoredRowReading,
+  AuthoredTypeUnresolved,
+  AuthoredUsesFunction,
+  DemandCensusAuthoredReading,
+  DemandCensusModuleStanding,
+  DemandCensusReport,
+  DemandModuleResolveRefused,
+  DemandModuleResolved,
+  demand_census_authored_readings,
+  demand_census_exit,
+  demand_census_lines,
+  demand_census_module_facts,
+  demand_census_report,
+  demand_census_strip
+}
 import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_import_bindings }
-import v2.compiler.parse { parse, prepare_grammar, PreparedGrammar }
+import v2.compiler.parse { parse, parse_module_prepared_seeded, prepare_grammar, PreparedGrammar }
 import v2.compiler.resolve {
+  ResolveContext,
+  resolve_ctx_init,
   ObservationComplete,
   ObservationIncomplete,
   ObservationCompleteness,
@@ -162,12 +198,11 @@ import v2.lens.unit_modeling { unit_modeling_gate }
 import v2.lens.lifecycle_carrier { lifecycle_carrier_gate }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import std.content_hash { Fnv1a64Structural, content_hash_of_value, serialize_content_hash }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 import std.algebra { Cons, Empty, FreeMonoid, trim, list_append, list_snoc_item }
 import v2.std.algebra { any, contains, fold_list, is_empty, length, list_find_first, list_reverse }
-import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.diagnostic {
   UserInputBoundary,
   Accepted,
@@ -180,6 +215,12 @@ import v2.std.diagnostic {
   Some,
   Textual,
   WholeFile,
+  ByteRange,
+  Extent,
+  NodeLocus,
+  SourcePortLocus,
+  InvariantPortLocus,
+  DeclarationLocus,
   declaration_locus,
   diagnostics_fatal_reason,
   invariant_port_locus,
@@ -190,13 +231,14 @@ import v2.std.diagnostic {
   diagnostics_singleton,
   outcome_accepted,
   outcome_rejected,
-  outcome_with_diagnostics
+  outcome_with_diagnostics,
+  diagnostics_fatal
 }
 import v2.std.node { Arrow, Atom, ComputationNode, Edge, Node, NodeFold, NodeKind, Positional, Symbol, TypeNode, fold_node, symbol_intern_lexeme, symbol_lexeme, Authored, StructuralLabel }
 import v2.compiler.inferred_tree { AuthoredOccurrenceCollision, authored_occurrence_collisions }
 import v2.std.node_query { find_arrow_body_child, find_named_child }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_init, qualified_name_snoc }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_init, qualified_name_snoc, qualified_name_to_dotted_string }
 import v2.std.cross_tree.import_model { SourceRootRef }
 import v2.std.cross_tree.resolution {
   SourceRootIndex,
@@ -777,7 +819,7 @@ fn apply_compile_lens_introspect(
       outcome_with_diagnostics(value: w, diagnostics: od)
     Rejected { diagnostics: d } =>
       outcome_with_diagnostics(
-        value: witness_violates(diagnostic: d.head),
+        value: witness_violates(diagnostic: diagnostics_fatal(d: d)),
         diagnostics: Some { diagnostics: d }
       )
   }
@@ -1300,6 +1342,7 @@ fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcom
 type NativeTestContext {
   resolution: Outcome<ResolutionContext>
   file_refusals: FreeMonoid<NativeTestFileRefusal>
+  accepted_file_advisories: FreeMonoid<NativeTestFileAdvisories>
 }
 
 type NativeTestPreparedModule {
@@ -1322,6 +1365,7 @@ type NativeTestContextFoldState {
   roots: FreeMonoid<NormalizedTree>
   index: SourceRootIndex
   file_refusals: FreeMonoid<NativeTestFileRefusal>
+  accepted_file_advisories: FreeMonoid<NativeTestFileAdvisories>
   alloc: OccurrenceIdAllocator
 }
 
@@ -1336,12 +1380,62 @@ fn native_refused_file_module(content: String) -> Optional<QualifiedName> {
   }
 }
 
-fn native_test_file_refusal(path: Symbol, module: Optional<QualifiedName>, d: NonEmptyDiagnostics) -> NativeTestFileRefusal {
+fn native_test_file_refusal(path: Symbol, module: Optional<QualifiedName>, d: NonEmptyDiagnostics, spans: SpanIndex, text: String) -> NativeTestFileRefusal {
   NativeTestFileRefusal {
     path: path,
     module: module,
     head_reason: d.head.reason,
-    fatal_reason: diagnostics_fatal_reason(d: d)
+    fatal_reason: diagnostics_fatal_reason(d: d),
+    chain: fold_list(xs: d.tail, empty: [native_file_refusal_link(d: d.head, path: path, spans: spans, text: text)], cons: fn(acc, diag) {
+      list_snoc_item(xs: acc, item: native_file_refusal_link(d: diag, path: path, spans: spans, text: text))
+    })
+  }
+}
+
+// ONE LINK, RESOLVED HERE AND NOWHERE LATER. A node locus goes through THIS file's span index to
+// its textual extent; a textual extent in THIS file becomes a line and byte column against THIS
+// file's text (v2.std.source_position, which walks UTF-8 octets, never characters). Everything
+// else keeps its own typed reason for having no line.
+fn native_file_refusal_link(d: Diagnostic, path: Symbol, spans: SpanIndex, text: String) -> FileRefusalLink {
+  FileRefusalLink { reason: d.reason, at: native_file_refusal_at(at: d.at, path: path, spans: spans, text: text) }
+}
+
+fn native_file_refusal_at(at: Locus, path: Symbol, spans: SpanIndex, text: String) -> FileRefusalAt {
+  match at {
+    Textual { file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, text: text)
+    SourcePortLocus { anchor: _, file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, text: text)
+    InvariantPortLocus { anchor: _, invariant: inv } => FileRefusalAtInvariant { invariant: inv }
+    DeclarationLocus { declaration: q } => FileRefusalAtDeclaration { declaration: q }
+    NodeLocus { anchor: a } =>
+      match node_occurrence_id_optional(node: a.at) {
+        Absent => FileRefusalAtUnresolvedNode
+        Present { value: id } =>
+          match span_index_textual_locus_optional(index: spans, id: id) {
+            Absent => FileRefusalAtUnresolvedNode
+            Present { value: resolved } =>
+              match resolved {
+                Textual { file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, text: text)
+                SourcePortLocus { anchor: _, file: f, extent: e } => native_file_refusal_textual(file: f, extent: e, path: path, text: text)
+                NodeLocus { anchor: _ } => FileRefusalAtUnresolvedNode
+                InvariantPortLocus { anchor: _, invariant: inv } => FileRefusalAtInvariant { invariant: inv }
+                DeclarationLocus { declaration: q } => FileRefusalAtDeclaration { declaration: q }
+              }
+          }
+      }
+  }
+}
+
+fn native_file_refusal_textual(file: Symbol, extent: Extent, path: Symbol, text: String) -> FileRefusalAt {
+  if file == path {
+    match extent {
+      WholeFile => FileRefusalAtWholeFile
+      ByteRange { start: st, end: _ } => {
+        let lc = source_line_col_at_byte(text: text, offset: st)
+        FileRefusalAtLine { line: lc.line, byte_column: lc.byte_column }
+      }
+    }
+  } else {
+    FileRefusalAtOtherFile { file: file }
   }
 }
 
@@ -1382,7 +1476,8 @@ fn native_test_context_absorb(
   state: NativeTestContextFoldState,
   read: DagSourceReadWitness,
   root_outcome: Outcome<NormalizedTree>,
-  alloc: OccurrenceIdAllocator
+  alloc: OccurrenceIdAllocator,
+  spans: SpanIndex
 ) -> NativeTestContextFoldState {
   match root_outcome {
     Rejected { diagnostics: d } =>
@@ -1391,11 +1486,12 @@ fn native_test_context_absorb(
         index: state.index,
         file_refusals: list_snoc_item(
           xs: state.file_refusals,
-          item: native_test_file_refusal(path: read.compilation_unit, module: native_refused_file_module(content: read.source.carried), d: d)
+          item: native_test_file_refusal(path: read.compilation_unit, module: native_refused_file_module(content: read.source.carried), d: d, spans: spans, text: read.source.carried)
         ),
+        accepted_file_advisories: state.accepted_file_advisories,
         alloc: alloc
       }
-    Accepted { value: root, diagnostics: _ } =>
+    Accepted { value: root, diagnostics: advisories } =>
       match qualified_name_from_module_node(root: root.root) {
         Rejected { diagnostics: d } =>
           NativeTestContextFoldState {
@@ -1403,8 +1499,9 @@ fn native_test_context_absorb(
             index: state.index,
             file_refusals: list_snoc_item(
               xs: state.file_refusals,
-              item: native_test_file_refusal(path: read.compilation_unit, module: native_refused_file_module(content: read.source.carried), d: d)
+              item: native_test_file_refusal(path: read.compilation_unit, module: native_refused_file_module(content: read.source.carried), d: d, spans: spans, text: read.source.carried)
             ),
+            accepted_file_advisories: state.accepted_file_advisories,
             alloc: alloc
           }
         Accepted { value: qn, diagnostics: _ } =>
@@ -1412,9 +1509,27 @@ fn native_test_context_absorb(
             roots: list_snoc_item(xs: state.roots, item: root),
             index: source_root_index_insert(index: state.index, module: qn, root: read.source_root),
             file_refusals: state.file_refusals,
+            accepted_file_advisories: native_test_accepted_advisories_absorb(
+              rows: state.accepted_file_advisories,
+              path: read.compilation_unit,
+              advisories: advisories
+            ),
             alloc: alloc
           }
       }
+  }
+}
+
+// The module-name projection is a pure read of the accepted root and mints no advisory of its own;
+// the file's advisories are the front end's, on `root_outcome`.
+fn native_test_accepted_advisories_absorb(
+  rows: FreeMonoid<NativeTestFileAdvisories>,
+  path: Symbol,
+  advisories: Diagnostics
+) -> FreeMonoid<NativeTestFileAdvisories> {
+  match advisories {
+    None => rows
+    Some { diagnostics: d } => list_snoc_item(xs: rows, item: native_test_file_advisories(path: path, d: d))
   }
 }
 
@@ -1438,7 +1553,8 @@ fn native_test_context_fold_step(
     state: state,
     read: read,
     root_outcome: result.produced,
-    alloc: result.alloc
+    alloc: result.alloc,
+    spans: result.spans
   )
 }
 
@@ -1476,6 +1592,7 @@ fn native_test_context_state_empty() -> NativeTestContextFoldState {
     roots: Empty,
     index: source_root_index_empty(),
     file_refusals: Empty,
+    accepted_file_advisories: Empty,
     alloc: occurrence_id_allocator_initial()
   }
 }
@@ -1493,7 +1610,8 @@ fn native_test_context_finish(
       active_roots: source_root_set_from_ingest(ingest: ingest),
       policy: v2.std.resolution_policy.default_name_resolution_policy()
     ),
-    file_refusals: state.file_refusals
+    file_refusals: state.file_refusals,
+    accepted_file_advisories: state.accepted_file_advisories
   }
 }
 
@@ -1536,7 +1654,8 @@ fn native_test_context_from_ingest(ingest: SourceRootIngest) -> Outcome<NativeTe
 fn native_test_context_with_resolution(context: NativeTestContext, resolution: Outcome<ResolutionContext>) -> NativeTestContext {
   NativeTestContext {
     resolution: resolution,
-    file_refusals: context.file_refusals
+    file_refusals: context.file_refusals,
+    accepted_file_advisories: context.accepted_file_advisories
   }
 }
 
@@ -2084,6 +2203,8 @@ type NativeLaneUniverse {
 type NativeDriverVerb
   = NativeDriverCensus { source_roots: FreeMonoid<String> }
   | NativeDriverCensusResolve { source_roots: FreeMonoid<String> }
+  | NativeDriverCensusInfer { source_roots: FreeMonoid<String> }
+  | NativeDriverDemandCensus { source_roots: FreeMonoid<String> }
   | NativeDriverAdjudicate { facts_path: String, pattern: TargetPattern, source_roots: FreeMonoid<String> }
 
 type NativeDriverPlan
@@ -2094,9 +2215,16 @@ data native_driver_verb_census: String = "census"
 
 data native_driver_verb_census_resolve: String = "census-resolve"
 
+// THE FOURTH MODE, ITS OWN WORD: resolve AND infer every ingested module (native_census_module_inference),
+// for the folds that read inferred trees. Not census-resolve widened -- that verb's cost and meaning
+// stay part 1's (docs/plans/census-part-2-inference-design.md section 2a).
+data native_driver_verb_census_infer: String = "census-infer"
+
+data native_driver_verb_demand_census: String = "demand-census"
+
 data native_driver_verb_adjudicate: String = "adjudicate"
 
-data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> <target-pattern> <source-root>... | census <source-root>... | census-resolve <source-root>..."
+data native_driver_usage: String = "REFUSED: no mode given -- usage: adjudicate <host-facts.tsv> <target-pattern> <source-root>... | census <source-root>... | census-resolve <source-root>... | census-infer <source-root>... | demand-census <source-root>..."
 
 data native_driver_adjudicate_needs_facts: String = "REFUSED: adjudicate takes a host facts file before the source roots"
 
@@ -2121,6 +2249,8 @@ type NativeDriverParseState
   = DriverSeekVerb
   | DriverCensusRoots { roots: FreeMonoid<String> }
   | DriverCensusResolveRoots { roots: FreeMonoid<String> }
+  | DriverCensusInferRoots { roots: FreeMonoid<String> }
+  | DriverDemandCensusRoots { roots: FreeMonoid<String> }
   | DriverAdjudicateSeekFacts
   | DriverAdjudicateSeekPattern { facts_path: String }
   | DriverAdjudicateRoots { facts_path: String, pattern: TargetPattern, roots: FreeMonoid<String> }
@@ -2129,7 +2259,7 @@ type NativeDriverParseState
 fn native_driver_unknown_verb_detail(word: String) -> String {
   concat(
     concat("REFUSED: unknown mode ", word),
-    " -- expected adjudicate, census or census-resolve"
+    " -- expected adjudicate, census, census-resolve, census-infer or demand-census"
   )
 }
 
@@ -2145,6 +2275,10 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
         DriverCensusRoots { roots: [] }
       } else if word == native_driver_verb_census_resolve {
         DriverCensusResolveRoots { roots: [] }
+      } else if word == native_driver_verb_census_infer {
+        DriverCensusInferRoots { roots: [] }
+      } else if word == native_driver_verb_demand_census {
+        DriverDemandCensusRoots { roots: [] }
       } else if word == native_driver_verb_adjudicate {
         DriverAdjudicateSeekFacts
       } else {
@@ -2157,6 +2291,10 @@ fn native_driver_parse_step(state: NativeDriverParseState, word: String) -> Nati
       DriverCensusRoots { roots: list_snoc_item(xs: roots, item: word) }
     DriverCensusResolveRoots { roots: roots } =>
       DriverCensusResolveRoots { roots: list_snoc_item(xs: roots, item: word) }
+    DriverCensusInferRoots { roots: roots } =>
+      DriverCensusInferRoots { roots: list_snoc_item(xs: roots, item: word) }
+    DriverDemandCensusRoots { roots: roots } =>
+      DriverDemandCensusRoots { roots: list_snoc_item(xs: roots, item: word) }
     DriverAdjudicateSeekFacts =>
       DriverAdjudicateSeekPattern { facts_path: word }
     DriverAdjudicateSeekPattern { facts_path: facts_path } =>
@@ -2199,6 +2337,10 @@ fn native_driver_parse_finish(state: NativeDriverParseState) -> NativeDriverPlan
       NativeDriverPlanned { verb: NativeDriverCensus { source_roots: roots } }
     DriverCensusResolveRoots { roots: roots } =>
       NativeDriverPlanned { verb: NativeDriverCensusResolve { source_roots: roots } }
+    DriverCensusInferRoots { roots: roots } =>
+      NativeDriverPlanned { verb: NativeDriverCensusInfer { source_roots: roots } }
+    DriverDemandCensusRoots { roots: roots } =>
+      NativeDriverPlanned { verb: NativeDriverDemandCensus { source_roots: roots } }
     DriverAdjudicateSeekPattern { facts_path: _ } =>
       NativeDriverPlanRefused {
         reason: ^native_driver_adjudicate_without_pattern,
@@ -2228,6 +2370,8 @@ fn native_driver_plan_source_roots(plan: NativeDriverPlan) -> FreeMonoid<String>
       match verb {
         NativeDriverCensus { source_roots: roots } => roots
         NativeDriverCensusResolve { source_roots: roots } => roots
+        NativeDriverCensusInfer { source_roots: roots } => roots
+        NativeDriverDemandCensus { source_roots: roots } => roots
         NativeDriverAdjudicate { facts_path: _, pattern: _, source_roots: roots } => roots
       }
   }
@@ -3217,10 +3361,28 @@ type NativeModuleResolveVerdict
 
 // The walk ran under context.resolution's index, so that index is minted beside the root. An
 // accepted walk implies an accepted context; the Rejected arm states the refusal it would be.
+// `import_attribution` IS THE ANSWER THE VERDICT WAS DECIDED FROM, CARRIED rather than re-asked:
+// the census needs the arm the verdict collapses -- an import graph it could not read is not the
+// same fact as one it read and found clean (census C) -- and re-running the lookup to recover it
+// would be the same demand paid twice (DESIGN section 2).
 type NativeModuleResolveStep {
   verdict: NativeModuleResolveVerdict
   context: NativeTestContext
+  import_attribution: NativeImportTargetAttribution
 }
+
+// WHETHER A REFUSED MODULE'S REFUSAL IS ATTRIBUTABLE TO AN IMPORT TARGET THE CONTEXT REFUSED. Three
+// answers and a not-asked arm, because "no refused target" and "could not read the imports" are
+// different facts: the second is a completeness gap, and reading it as the first would silently
+// make a cascade member its own root (census C; the #13019 design rule).
+// ATTRIBUTION IS INGEST-ONLY, SO A ROOT IS ONE HOP AWAY BY CONSTRUCTION. The target is looked up in
+// context.file_refusals, and a file refusal's fatal reason is a front-end reason -- never an
+// import-target refusal -- so the target this names is already the root of its cascade.
+type NativeImportTargetAttribution
+  = NativeImportTargetRefused { target: NativeTestFileRefusal }
+  | NativeImportTargetsAdmitted
+  | NativeImportTargetsUnreadable { reason: Symbol }
+  | NativeImportTargetNotAsked
 
 // A MODULE WHOSE IMPORT TARGET WAS REFUSED AT INGEST IS TOLD SO. When a file the context refused
 // declares a module this one imports, none of that module's declarations entered the index, so the
@@ -3232,26 +3394,28 @@ type NativeModuleResolveStep {
 // The import targets are read from the module's own captured import rows
 // (v2.compiler.normalized_tree NormalizedTree import_bindings), and a row's target module is its path
 // less the imported name. The refused module is the one the refused file's header declares.
-fn native_import_target_file_refusal(context: NativeTestContext, module: QualifiedName) -> Optional<NativeTestFileRefusal> {
+fn native_import_target_attribution(context: NativeTestContext, module: QualifiedName) -> NativeImportTargetAttribution {
   match context.resolution {
-    Rejected { diagnostics: _ } => optional_absent()
+    Rejected { diagnostics: _ } => NativeImportTargetsUnreadable { reason: ^native_import_target_context_refused }
     Accepted { value: shared, diagnostics: _ } =>
       match map_lookup(m: shared.roots.by_name, key: module) {
-        Absent => optional_absent()
+        Absent => NativeImportTargetsUnreadable { reason: ^native_import_target_module_not_indexed }
         Present { value: tree } =>
-          fold_list(xs: context.file_refusals, empty: optional_absent(), cons: fn(found, refusal) {
+          fold_list(xs: context.file_refusals, empty: NativeImportTargetsAdmitted, cons: fn(found, refusal) {
             match found {
-              Present { value: _ } => found
-              Absent =>
+              NativeImportTargetRefused { target: _ } => found
+              NativeImportTargetsUnreadable { reason: _ } => found
+              NativeImportTargetNotAsked => found
+              NativeImportTargetsAdmitted =>
                 match refusal.module {
-                  Absent => optional_absent()
+                  Absent => found
                   Present { value: refused_module } =>
                     if any(xs: normalized_tree_import_bindings(tree: tree), predicate: fn(row) {
                       qualified_name_init(qn: row.target) == refused_module
                     }) {
-                      optional_present(value: refusal)
+                      NativeImportTargetRefused { target: refusal }
                     } else {
-                      optional_absent()
+                      found
                     }
                 }
             }
@@ -3271,6 +3435,8 @@ fn native_import_target_refusal_diagnostics(target: NativeTestFileRefusal, resol
   }
 }
 
+// THE CLOSURE INDEX IS DEMANDED ON THE SHARED CONTEXT AND CARRIED FORWARD on the returned step, so the
+// next module of the lane reads it instead of re-resolving the closure (review 74212).
 fn native_module_resolve_verdict(
   context: NativeTestContext,
   refusal_index: Map<Symbol, NativeTestFileRefusal>,
@@ -3279,33 +3445,64 @@ fn native_module_resolve_verdict(
 ) -> NativeModuleResolveStep {
   match native_lane_file_refusal_for_path(index: refusal_index, path: path) {
     Present { value: fr } =>
-      NativeModuleResolveStep { verdict: NativeModuleResolveFileRefused { refusal: fr }, context: context }
+      NativeModuleResolveStep {
+        verdict: NativeModuleResolveFileRefused { refusal: fr },
+        context: context,
+        import_attribution: NativeImportTargetNotAsked
+      }
     Absent =>
       let step = native_test_resolve_module_walk(
         context: context,
         module: qualified_name_from_dotted_string(dotted: module)
       )
-      NativeModuleResolveStep {
-        verdict: match step.walk {
-          ResolveWalkRefused { first: f, rest: r, observation: o } =>
-            match native_import_target_file_refusal(context: step.context, module: qualified_name_from_dotted_string(dotted: module)) {
-              Present { value: target } =>
+      match step.walk {
+        ResolveWalkRefused { first: f, rest: r, observation: o } =>
+          let attribution = native_import_target_attribution(
+            context: step.context,
+            module: qualified_name_from_dotted_string(dotted: module)
+          )
+          NativeModuleResolveStep {
+            verdict: match attribution {
+              NativeImportTargetRefused { target: target } =>
                 NativeModuleResolveImportTargetFileRefused { target: target, first: f, rest: r, observation: o }
-              Absent => NativeModuleResolveRefused { first: f, rest: r, observation: o }
-            }
-          ResolveWalkAccepted { value: resolved, diagnostics: _, lexical: lexical } =>
-            match step.context.resolution {
-              Accepted { value: shared, diagnostics: _ } =>
-                NativeModuleResolveAccepted { resolved: resolved_tree_of(root: resolved, symbol_index: shared.symbol_index, lexical: lexical) }
-              Rejected { diagnostics: r } =>
-                NativeModuleResolveRefused {
+              NativeImportTargetsAdmitted => NativeModuleResolveRefused { first: f, rest: r, observation: o }
+              NativeImportTargetsUnreadable { reason: _ } => NativeModuleResolveRefused { first: f, rest: r, observation: o }
+              NativeImportTargetNotAsked => NativeModuleResolveRefused { first: f, rest: r, observation: o }
+            },
+            context: step.context,
+            import_attribution: attribution
+          }
+        ResolveWalkAccepted { value: resolved, diagnostics: _, lexical: lexical } =>
+          match step.context.resolution {
+            Accepted { value: shared, diagnostics: d } =>
+              let closure = closure_declarations_demand(shared: shared)
+              NativeModuleResolveStep {
+                verdict: NativeModuleResolveAccepted {
+                  resolved: resolved_tree_of(
+                    root: resolved,
+                    symbol_index: shared.symbol_index,
+                    closure_declarations: closure.declarations,
+                    unavailable_providers: closure.refused,
+                    lexical: lexical
+                  )
+                },
+                context: native_test_context_with_resolution(
+                  context: step.context,
+                  resolution: Accepted { value: closure.context, diagnostics: d }
+                ),
+                import_attribution: NativeImportTargetNotAsked
+              }
+            Rejected { diagnostics: r } =>
+              NativeModuleResolveStep {
+                verdict: NativeModuleResolveRefused {
                   first: r,
                   rest: [],
                   observation: ObservationIncomplete { reason: ^resolve_observation_context_refused }
-                }
-            }
-        },
-        context: step.context
+                },
+                context: step.context,
+                import_attribution: NativeImportTargetsUnreadable { reason: ^native_import_target_context_refused }
+              }
+          }
       }
   }
 }
@@ -3486,6 +3683,198 @@ fn native_lane_identity_row(
 // those facts bundle four per-file scans, one of which is the floor's discovery fold, and a census
 // asks for none of them but the module header. Over the whole tree that bundle is paid 6k times to
 // read one line each time. This reuses the same module-name authority the facts record reuses.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// D13 DEPENDENCY-DEMAND CENSUS: THE WHOLE-CLOSURE ROUTE (`demand-census`)
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// WHY A FRONT END OF ITS OWN, ENTERED PHASE BY PHASE. Production lowering refuses every fn with a
+// `uses` clause, and native_test_context_absorb drops a refused file from the roots and the source
+// root index -- so in the production context a uses fn's module is absent, and so are the
+// operations and fns it declares. A census that stripped one module at a time would read every edge
+// into such a module as outside the closure. So this route folds the whole ingest once with the
+// clause elided (v2.compiler.dependency_demand_census demand_census_strip, between parse and
+// normalize) and absorbs each root through the SAME native_test_context_absorb the production fold
+// uses: the only difference from native_test_context_fold_step is the strip, which is why that step
+// is entered phase by phase here rather than through program_assembly_read_to_normalized_root_seeded.
+//
+// THE CONTEXT NEVER LEAVES THIS ROUTE. native_demand_census_report returns a DemandCensusReport --
+// rows of authored rows, derived demand and verdicts -- and no tree, context or prepared module, so
+// nothing the elided front end produced can reach infer, eval or emission. Its one caller is the
+// emitted driver's `demand-census` verb, run by `gunbc test //gunbc/instruments:dependency-demand-census`.
+
+type NativeDemandCensusFoldState {
+  context: NativeTestContextFoldState
+  authored: List<AuthoredUsesFunction>
+  file_refused: List<AuthoredUsesFunction>
+  unreadable: Int
+}
+
+fn native_demand_census_snoc_all(xs: List<AuthoredUsesFunction>, ys: List<AuthoredUsesFunction>) -> List<AuthoredUsesFunction> {
+  fold_list(xs: ys, empty: xs, cons: fn(acc, y) { list_snoc_item(xs: acc, item: y) })
+}
+
+fn native_demand_census_read(
+  state: NativeDemandCensusFoldState,
+  read: DagSourceReadWitness,
+  front: NativeTestFrontEnd,
+  scope: Fnv1a64Structural
+) -> NativeDemandCensusFoldState {
+  let module_qn = match native_refused_file_module(content: read.source.carried) {
+    Present { value: qn } => qn
+    Absent => Empty
+  }
+  match bind_outcome(
+    o: program_assembly_phase_tokenize(read: read, lm: front.lm),
+    f: fn(tokens) {
+      parse_module_prepared_seeded(tokens: tokens, prepared: front.prepared, validation_residue: front.residue, seed: state.context.alloc)
+    }
+  ) {
+    Rejected { diagnostics: d } =>
+      NativeDemandCensusFoldState {
+        context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: state.context.alloc, spans: span_index_empty()),
+        authored: state.authored,
+        file_refused: state.file_refused,
+        unreadable: state.unreadable + 1
+      }
+    Accepted { value: artifact, diagnostics: _ } =>
+      let stripped = demand_census_strip(tree: artifact.tree, owner: module_qn)
+      match normalize_scoped(parse_tree: stripped.tree, allocator: scoped_occurrence_allocator(alloc: artifact.alloc, scope: scope)) {
+        Rejected { diagnostics: d } =>
+          NativeDemandCensusFoldState {
+            context: native_test_context_absorb(state: state.context, read: read, root_outcome: Rejected { diagnostics: d }, alloc: artifact.alloc, spans: artifact.span_index),
+            authored: state.authored,
+            file_refused: native_demand_census_snoc_all(xs: state.file_refused, ys: stripped.authored),
+            unreadable: state.unreadable
+          }
+        Accepted { value: scoped, diagnostics: _ } =>
+          NativeDemandCensusFoldState {
+            context: native_test_context_absorb(state: state.context, read: read, root_outcome: outcome_accepted(value: scoped.tree), alloc: scoped.allocator.alloc, spans: artifact.span_index),
+            authored: native_demand_census_snoc_all(xs: state.authored, ys: stripped.authored),
+            file_refused: state.file_refused,
+            unreadable: state.unreadable
+          }
+      }
+  }
+}
+
+type NativeDemandCensusWalk {
+  context: NativeTestContext
+  functions: List<FunctionFact>
+  operations: List<OperationFact>
+  audited: List<QualifiedName>
+  standings: List<DemandCensusModuleStanding>
+}
+
+// The module's root scope, as resolution itself built it for the module just resolved: the namespace
+// provider answers from its cache, so this produces no second namespace.
+fn native_demand_census_module_ctx(context: NativeTestContext, module_qn: QualifiedName) -> Optional<ResolveContext> {
+  match context.resolution {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: shared, diagnostics: validate_diag } =>
+      match resolution_context_namespace(shared: shared, validate_diag: validate_diag, admission: native_test_module_admission(module: module_qn)).admitted {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: admitted, diagnostics: _ } =>
+          optional_present(value: resolve_ctx_init(namespace: admitted.namespace, lm: shared.lm, policy: shared.policy))
+      }
+  }
+}
+
+fn native_demand_census_readings(context: NativeTestContext, module_qn: QualifiedName, authored: AuthoredUsesFunction) -> List<AuthoredRowReading> {
+  match native_demand_census_module_ctx(context: context, module_qn: module_qn) {
+    Present { value: ctx } => demand_census_authored_readings(ctx: ctx, authored: authored)
+    Absent => fold_list(xs: authored.types, empty: Empty, cons: fn(acc, t) { list_snoc_item(xs: acc, item: AuthoredTypeUnresolved) })
+  }
+}
+
+fn native_demand_census_module(w: NativeDemandCensusWalk, root: NormalizedTree, authored: List<AuthoredUsesFunction>) -> NativeDemandCensusWalk {
+  match qualified_name_from_module_node(root: root.root) {
+    Rejected { diagnostics: _ } => w
+    Accepted { value: module_qn, diagnostics: _ } =>
+      let mine = fold_list(xs: authored, empty: Empty, cons: fn(acc, a) { if a.owner == module_qn { list_snoc_item(xs: acc, item: a) } else { acc } })
+      let step = native_test_resolve_module(context: w.context, module: module_qn)
+      match step.resolved {
+        Rejected { diagnostics: _ } =>
+          NativeDemandCensusWalk {
+            context: step.context,
+            functions: w.functions,
+            operations: w.operations,
+            audited: w.audited,
+            standings: list_snoc_item(xs: w.standings, item: DemandModuleResolveRefused { authored: mine })
+          }
+        Accepted { value: resolved, diagnostics: _ } =>
+          let facts = demand_census_module_facts(resolved: resolved, module_qn: module_qn)
+          NativeDemandCensusWalk {
+            context: step.context,
+            functions: fold_list(xs: facts.functions, empty: w.functions, cons: fn(acc, f) { list_snoc_item(xs: acc, item: f) }),
+            operations: fold_list(xs: facts.operations, empty: w.operations, cons: fn(acc, o) { list_snoc_item(xs: acc, item: o) }),
+            audited: fold_list(xs: facts.audited, empty: w.audited, cons: fn(acc, a) { list_snoc_item(xs: acc, item: a) }),
+            standings: list_snoc_item(xs: w.standings, item: DemandModuleResolved {
+              readings: fold_list(xs: mine, empty: Empty, cons: fn(acc, a) {
+                list_snoc_item(xs: acc, item: DemandCensusAuthoredReading {
+                  authored: a,
+                  readings: native_demand_census_readings(context: step.context, module_qn: module_qn, authored: a)
+                })
+              })
+            })
+          }
+      }
+  }
+}
+
+fn native_demand_census_report(ingest: SourceRootIngest) -> Outcome<DemandCensusReport> {
+  bind_outcome(o: native_test_front_end_prepare(), f: fn(front) {
+    bind_outcome(o: program_assembly_ingest_scope_outcome(ingest: ingest), f: fn(scope) {
+      let folded = fold_list(
+        xs: ingest,
+        empty: NativeDemandCensusFoldState { context: native_test_context_state_empty(), authored: Empty, file_refused: Empty, unreadable: 0 },
+        cons: fn(state, read) { native_demand_census_read(state: state, read: read, front: front, scope: scope) }
+      )
+      let walked = fold_list(
+        xs: folded.context.roots,
+        empty: NativeDemandCensusWalk {
+          context: native_test_context_finish(state: folded.context, front: front, ingest: ingest),
+          functions: Empty,
+          operations: Empty,
+          audited: Empty,
+          standings: Empty
+        },
+        cons: fn(w, root) { native_demand_census_module(w: w, root: root, authored: folded.authored) }
+      )
+      outcome_accepted(value: demand_census_report(
+        uses_functions: length(xs: folded.authored) + length(xs: folded.file_refused),
+        functions: walked.functions,
+        operations: walked.operations,
+        audited: walked.audited,
+        standings: walked.standings,
+        file_refused: folded.file_refused,
+        file_refusals: length(xs: folded.context.file_refusals),
+        unreadable_files: folded.unreadable
+      ))
+    })
+  })
+}
+
+// THE VERB'S WHOLE ANSWER: the lines to print and the exit, decided by
+// v2.compiler.dependency_demand_census demand_census_exit -- held (0), a census whose rows do not account
+// for every uses fn read (1), or no observation (2): a read refused before authorship, or a context that
+// would not build, whose diagnostics are the line.
+type NativeDemandCensusOutput {
+  lines: List<String>
+  exit: Int
+}
+
+fn native_demand_census_output(ingest: SourceRootIngest) -> NativeDemandCensusOutput {
+  match native_demand_census_report(ingest: ingest) {
+    Rejected { diagnostics: d } =>
+      NativeDemandCensusOutput { lines: [concat("[demand-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
+    Accepted { value: report, diagnostics: _ } =>
+      NativeDemandCensusOutput {
+        lines: demand_census_lines(r: report),
+        exit: demand_census_exit(r: report)
+      }
+  }
+}
+
 type NativeCensusModule {
   module: String
   path: Symbol
@@ -3538,9 +3927,13 @@ type NativeCensusModuleOutcome
     }
   | NativeCensusModuleResolved
 
+// `cascade` SAYS WHETHER THE OUTCOME IS A SYMPTOM OF ANOTHER FILE'S REFUSAL. It is read off the
+// verdict's carried attribution, never re-asked; a refused module whose imports could not be read
+// is Unattributed with the reason, NOT None -- None would make it a root of its own (census C).
 type NativeCensusModuleStep {
   outcome: NativeCensusModuleOutcome
   context: NativeTestContext
+  cascade: NativeCensusCascade
 }
 
 fn native_census_module_resolution(
@@ -3563,7 +3956,95 @@ fn native_census_module_resolution(
         NativeCensusModuleResolveRefused { first: f, rest: r, observation: o }
       NativeModuleResolveAccepted { resolved: _ } => NativeCensusModuleResolved
     },
+    context: step.context,
+    cascade: match step.import_attribution {
+      NativeImportTargetRefused { target: t } => NativeCensusCascadeMemberOf { root: t.path, root_reason: t.fatal_reason }
+      NativeImportTargetsUnreadable { reason: r } => NativeCensusCascadeUnattributed { reason: r }
+      NativeImportTargetsAdmitted => NativeCensusCascadeNone
+      NativeImportTargetNotAsked => NativeCensusCascadeNone
+    }
+  }
+}
+
+// THE census-infer SUBJECT: ONE MODULE RESOLVED, THEN INFERRED. Shared by two folds, by agreement
+// (docs/plans/census-part-2-inference-design.md section 2a; the nominal-type plan's M0,
+// docs/plans/nominal-type-declaration-plan.md section 2): census part 2 reads the refused arm, one row
+// per chain; gunbc.instruments.type_declaration_use_census reads the resolved tree on BOTH infer arms
+// (declarations are resolve-level facts) and the inferred tree on the accepted one. It is the same
+// per-module infer the adjudicating lane demands (native_test_infer_resolved), so there is one infer
+// walk, not two. Unlike native_census_module_resolution it HOLDS the module's trees -- the folds need
+// them -- for the duration of one call; the loop keeps none of them past it.
+type NativeInferCensusOutcome
+  = NativeInferCensusFileRefused
+  | NativeInferCensusResolveRefused {
+      first: NonEmptyDiagnostics
+      rest: List<NonEmptyDiagnostics>
+      observation: ObservationCompleteness
+    }
+  | NativeInferCensusInferred { resolved: ResolvedTree, inferred: InferredTree }
+  | NativeInferCensusInferRefused { resolved: ResolvedTree, chain: NonEmptyDiagnostics }
+
+type NativeInferCensusStep {
+  outcome: NativeInferCensusOutcome
+  context: NativeTestContext
+}
+
+fn native_census_module_inference(
+  context: NativeTestContext,
+  refusal_index: Map<Symbol, NativeTestFileRefusal>,
+  entry: NativeCensusModule
+) -> NativeInferCensusStep {
+  let step = native_module_resolve_verdict(
+    context: context,
+    refusal_index: refusal_index,
+    module: entry.module,
+    path: entry.path
+  )
+  NativeInferCensusStep {
+    outcome: match step.verdict {
+      NativeModuleResolveFileRefused { refusal: _ } => NativeInferCensusFileRefused
+      NativeModuleResolveImportTargetFileRefused { target: _, first: f, rest: r, observation: o } =>
+        NativeInferCensusResolveRefused { first: f, rest: r, observation: o }
+      NativeModuleResolveRefused { first: f, rest: r, observation: o } =>
+        NativeInferCensusResolveRefused { first: f, rest: r, observation: o }
+      NativeModuleResolveAccepted { resolved: resolved } =>
+        match native_test_infer_resolved(module: qualified_name_from_dotted_string(dotted: entry.module), resolved: resolved) {
+          Accepted { value: prepared, diagnostics: _ } =>
+            NativeInferCensusInferred { resolved: resolved, inferred: prepared.inferred }
+          Rejected { diagnostics: d } =>
+            NativeInferCensusInferRefused { resolved: resolved, chain: d }
+        }
+    },
     context: step.context
+  }
+}
+
+// THE TYPE-DECLARATION CENSUS'S FOLD, DISPATCHED FROM THE census-infer WALK (the nominal-type plan's
+// M0, gunbc.instruments.type_declaration_use_census). A module the context refused or that did not
+// resolve has no reference index and is UNREACHED with its stage and fatal reason; one that resolved
+// contributes its declarations, and its casts are typed by its inferred tree or, where infer refused,
+// counted undecided under the infer cause.
+fn native_census_infer_type_contribution(
+  context: NativeTestContext,
+  entry: NativeCensusModule,
+  outcome: NativeInferCensusOutcome
+) -> TypeCensusContribution {
+  match outcome {
+    NativeInferCensusFileRefused =>
+      type_census_unreached(module: entry.module, stage: "front_end", cause: "file refused by the context")
+    NativeInferCensusResolveRefused { first: f, rest: _, observation: _ } =>
+      type_census_unreached(module: entry.module, stage: "resolve", cause: symbol_lexeme(sym: diagnostics_fatal_reason(d: f)))
+    NativeInferCensusInferred { resolved: r, inferred: i } =>
+      type_census_contribution(module: entry.module, resolved: r, normalized: native_census_normalized_tree(context: context, module: entry.module), typing: AsTypedBy { tree: i, resolved: r })
+    NativeInferCensusInferRefused { resolved: r, chain: c } =>
+      type_census_contribution(module: entry.module, resolved: r, normalized: native_census_normalized_tree(context: context, module: entry.module), typing: AsUntyped { cause: "module did not infer: " + symbol_lexeme(sym: diagnostics_fatal_reason(d: c)) })
+  }
+}
+
+fn native_census_normalized_tree(context: NativeTestContext, module: String) -> Optional<NormalizedTree> {
+  match context.resolution {
+    Accepted { value: shared, diagnostics: _ } => map_get(shared.roots.by_name, qualified_name_from_dotted_string(dotted: module))
+    Rejected { diagnostics: _ } => optional_absent()
   }
 }
 
@@ -3620,6 +4101,455 @@ fn native_census_residual_rows(
       }
     )
   )
+}
+
+// THE CENSUS IS GROUPED BY THE CAUSE THAT FIRED, NEVER BY THE ONE THAT CAME FIRST. A refusal's
+// diagnostic list PREPENDS the advisories that were pending when the refusal fired
+// (rejected_with_pending), so its head is whatever advisory was queued first -- on the dag grammar
+// that is the overlap-residue advisory every file carries -- and grouping by it files every refusal
+// under one advisory that refused nothing. v2.std.diagnostic diagnostics_fatal is the one authority
+// for which element fired: a file refusal already carries its answer as `fatal_reason`
+// (native_test_file_refusal), and a resolve chain is asked the same question here. The head stays on
+// the member as `head_reason` so the reader still sees what rode along; it is a field, not a key.
+// BOTH POPULATIONS LAND IN ONE GROUPING because they are one question -- what refused, and where --
+// asked at two stages, and the stage is a field on the member rather than a second roster.
+type NativeCensusCauseStage
+  = NativeCensusCauseFrontEnd
+  | NativeCensusCauseResolve
+
+// CENSUS C: A CASCADE IS COLLAPSED TO ITS ROOT, ON THE SAME ROW. A module that refused because an
+// import target's FILE was refused is a symptom: it is filed ONCE (one member per module, not one
+// per failure chain -- its chains are all the same missing index) under the ROOT's fatal reason,
+// naming the root. The root's own front-end member carries the cascade's size.
+// ROOTS ARE ONE HOP AWAY BY CONSTRUCTION: attribution reads only ingest refusals
+// (native_import_target_attribution), whose fatal reasons are never import-target refusals.
+// `None` is a refusal that is its own root (or a front-end member before C's fields apply); a
+// cascade member whose imports could not be read is `Unattributed`, a typed completeness gap,
+// never silently a root.
+type NativeCensusCascade
+  = NativeCensusCascadeNone
+  | NativeCensusCascadeMemberOf { root: Symbol, root_reason: Symbol }
+  | NativeCensusCascadeUnattributed { reason: Symbol }
+  | NativeCensusCascadeRoot {
+      closure_fan_out: NativeCensusClosureFanOut
+      resolve_refused_importers: Optional<Int>
+    }
+
+// TWO COUNTS, BECAUSE THEY ARE TWO FACTS (parent ruling on census C, option A).
+// `closure_fan_out` is how many DISTINCT modules have the root in their import closure -- what fixing
+// the root unblocks. Those modules are BLOCKED, not refused: in c -> b -> a with a refused, resolve
+// refuses b (its imports are unbound) and ACCEPTS c, because b's declarations are indexed; c still
+// cannot compile as a program while a is refused. Distinct modules, never paths: a diamond counts
+// its apex once.
+// `resolve_refused_importers` is the directly observed fact beside it: how many modules' resolve
+// refusals this census attributed to the root. Absent means resolve was not run (the `census` verb),
+// not zero.
+// A REFUSED FILE'S OWN IMPORTS ARE UNREAD (it has no tree), so when any OTHER refused file declares
+// a module it may import the root and hide that edge -- c -> b -> a with a AND b refused loses
+// b -> a, and a would read an exact 0 (review 75118). The count over the edges that WERE read is
+// then a LOWER BOUND, typed as one with the number of refused files whose imports went unread;
+// it is Counted, an exact answer, only when no other refused file could be a hidden importer.
+type NativeCensusClosureFanOut
+  = NativeCensusClosureFanOutCounted { modules: Int }
+  | NativeCensusClosureFanOutAtLeast { modules: Int, unread_refused_files: Int }
+  | NativeCensusClosureFanOutUnavailable { reason: Symbol }
+
+type NativeCensusCauseMember {
+  stage: NativeCensusCauseStage
+  path: Symbol
+  module: Optional<QualifiedName>
+  head_reason: Symbol
+  cascade: NativeCensusCascade
+}
+
+type NativeCensusCauseGroup {
+  fatal_reason: Symbol
+  members: FreeMonoid<NativeCensusCauseMember>
+}
+
+// THE REVERSE IMPORT GRAPH, READ ONCE PER CENSUS: a module name to the modules that import it.
+// Edges come from the ACCEPTED trees' captured import rows (a refused file has no tree, and needs
+// none: it is a root, and a root's own imports cannot unblock anything). A roster module that is
+// neither file-refused nor indexed has imports nobody can read, so the graph is INCOMPLETE and every
+// fan-out over it is refused with that reason -- an undercount would be the silent arm.
+type NativeCensusClosureIndex
+  = NativeCensusClosureIndexRead { importers_of: Map<String, List<String>>, modules: Int, refused_modules: Int }
+  | NativeCensusClosureIndexUnavailable { reason: Symbol }
+
+type NativeCensusClosureIndexStep {
+  importers_of: Map<String, List<String>>
+  unread: Int
+}
+
+fn native_census_closure_index(
+  context: NativeTestContext,
+  refusal_index: Map<Symbol, NativeTestFileRefusal>,
+  modules: List<NativeCensusModule>
+) -> NativeCensusClosureIndex {
+  match context.resolution {
+    Rejected { diagnostics: _ } =>
+      NativeCensusClosureIndexUnavailable { reason: ^native_census_closure_context_refused }
+    Accepted { value: shared, diagnostics: _ } =>
+      let read = fold_list(
+        xs: modules,
+        empty: NativeCensusClosureIndexStep { importers_of: empty_map(), unread: 0 },
+        cons: fn(acc, entry) {
+          match map_lookup(m: shared.roots.by_name, key: qualified_name_from_dotted_string(dotted: entry.module)) {
+            Absent =>
+              match native_lane_file_refusal_for_path(index: refusal_index, path: entry.path) {
+                Present { value: _ } => acc
+                Absent => NativeCensusClosureIndexStep { importers_of: acc.importers_of, unread: acc.unread + 1 }
+              }
+            Present { value: tree } =>
+              NativeCensusClosureIndexStep {
+                importers_of: fold_list(
+                  xs: normalized_tree_import_bindings(tree: tree),
+                  empty: acc.importers_of,
+                  cons: fn(index, row) {
+                    let target = qualified_name_to_dotted_string(qn: qualified_name_init(qn: row.target))
+                    match map_lookup(index, target) {
+                      Absent => map_insert(index, target, [entry.module])
+                      Present { value: importers } =>
+                        map_insert(index, target, Cons { head: entry.module, tail: importers })
+                    }
+                  }
+                ),
+                unread: acc.unread
+              }
+          }
+        }
+      )
+      if read.unread > 0 {
+        NativeCensusClosureIndexUnavailable { reason: ^native_census_closure_import_graph_unread }
+      } else {
+        NativeCensusClosureIndexRead {
+          importers_of: read.importers_of,
+          modules: length(xs: modules),
+          refused_modules: fold_list(xs: context.file_refusals, empty: 0, cons: fn(n, r) {
+            match r.module {
+              Absent => n
+              Present { value: _ } => n + 1
+            }
+          })
+        }
+      }
+  }
+}
+
+// THE SAME REACHABILITY WALK THE LANE'S CLOSURE USES (native_lane_module_reachable), run over the
+// reverse graph from the root: one walk, two directions, no second closure fold. Its budget is the
+// roster size plus one, which bounds the rounds of any walk over that roster; exhaustion refuses.
+fn native_census_closure_fan_out(index: NativeCensusClosureIndex, root: NativeTestFileRefusal) -> NativeCensusClosureFanOut {
+  match index {
+    NativeCensusClosureIndexUnavailable { reason: r } => NativeCensusClosureFanOutUnavailable { reason: r }
+    NativeCensusClosureIndexRead { importers_of: importers_of, modules: modules, refused_modules: refused_modules } =>
+      match root.module {
+        Absent => NativeCensusClosureFanOutUnavailable { reason: ^native_census_closure_root_declares_no_module }
+        Present { value: qn } =>
+          let seed = [qualified_name_to_dotted_string(qn: qn)]
+          match native_lane_module_reachable(
+            index: importers_of,
+            frontier: seed,
+            seen: seed,
+            seen_set: map_insert(empty_map(), qualified_name_to_dotted_string(qn: qn), true),
+            fuel: modules + 1,
+            budget: modules + 1
+          ) {
+            Rejected { diagnostics: _ } =>
+              NativeCensusClosureFanOutUnavailable { reason: ^native_census_closure_walk_exhausted }
+            Accepted { value: reached, diagnostics: _ } =>
+              if refused_modules > 1 {
+                NativeCensusClosureFanOutAtLeast { modules: length(xs: reached) - 1, unread_refused_files: refused_modules - 1 }
+              } else {
+                NativeCensusClosureFanOutCounted { modules: length(xs: reached) - 1 }
+              }
+          }
+      }
+  }
+}
+
+// KEYED BY THE FATAL REASON, ORDERED BY FIRST APPEARANCE. Members are prepended per group and each
+// group is reversed once when read, so adding a member costs one lookup and one cons rather than a
+// walk of its group -- the quadratic append DESIGN section 6 fixes regardless of n.
+// `importers` COUNTS THE RESOLVE REFUSALS ATTRIBUTED TO EACH ROOT, keyed by the root's path. It is
+// Absent when the census does not resolve, so a root member reads "not observed", not zero.
+type NativeCensusCauseGroups {
+  order: FreeMonoid<Symbol>
+  by_reason: Map<Symbol, FreeMonoid<NativeCensusCauseMember>>
+  importers: Optional<Map<Symbol, Int>>
+}
+
+fn native_census_cause_groups_empty(resolves: Bool) -> NativeCensusCauseGroups {
+  NativeCensusCauseGroups {
+    order: Empty,
+    by_reason: empty_map(),
+    importers: if resolves { optional_present(value: empty_map()) } else { optional_absent() }
+  }
+}
+
+fn native_census_cause_groups_add(
+  groups: NativeCensusCauseGroups,
+  fatal_reason: Symbol,
+  member: NativeCensusCauseMember
+) -> NativeCensusCauseGroups {
+  match map_lookup(groups.by_reason, fatal_reason) {
+    Absent =>
+      NativeCensusCauseGroups {
+        order: Cons { head: fatal_reason, tail: groups.order },
+        by_reason: map_insert(groups.by_reason, fatal_reason, Cons { head: member, tail: Empty }),
+        importers: groups.importers
+      }
+    Present { value: members } =>
+      NativeCensusCauseGroups {
+        order: groups.order,
+        by_reason: map_insert(groups.by_reason, fatal_reason, Cons { head: member, tail: members }),
+        importers: groups.importers
+      }
+  }
+}
+
+fn native_census_cause_groups_add_file_refusal(
+  groups: NativeCensusCauseGroups,
+  closure: NativeCensusClosureIndex,
+  refusal: NativeTestFileRefusal
+) -> NativeCensusCauseGroups {
+  native_census_cause_groups_add(
+    groups: groups,
+    fatal_reason: refusal.fatal_reason,
+    member: NativeCensusCauseMember {
+      stage: NativeCensusCauseFrontEnd,
+      path: refusal.path,
+      module: refusal.module,
+      head_reason: refusal.head_reason,
+      cascade: NativeCensusCascadeRoot {
+        closure_fan_out: native_census_closure_fan_out(index: closure, root: refusal),
+        resolve_refused_importers: optional_absent()
+      }
+    }
+  )
+}
+
+// A RESOLVE ROW THAT IS ITS OWN ROOT, OR WHOSE ATTRIBUTION COULD NOT BE READ. A cascade member is
+// NOT added here: it goes through native_census_cause_groups_add_cascade_member, once per module.
+fn native_census_cause_groups_add_residual(
+  groups: NativeCensusCauseGroups,
+  cascade: NativeCensusCascade,
+  row: NativeCensusResidualRow
+) -> NativeCensusCauseGroups {
+  native_census_cause_groups_add(
+    groups: groups,
+    fatal_reason: diagnostics_fatal_reason(d: row.chain),
+    member: NativeCensusCauseMember {
+      stage: NativeCensusCauseResolve,
+      path: row.path,
+      module: optional_present(value: qualified_name_from_dotted_string(dotted: row.module)),
+      head_reason: row.chain.head.reason,
+      cascade: cascade
+    }
+  )
+}
+
+// ONE MEMBER PER CASCADED MODULE, FILED UNDER ITS ROOT'S FATAL REASON, and one count on the root.
+fn native_census_cause_groups_add_cascade_member(
+  groups: NativeCensusCauseGroups,
+  entry: NativeCensusModule,
+  root: Symbol,
+  root_reason: Symbol
+) -> NativeCensusCauseGroups {
+  let added = native_census_cause_groups_add(
+    groups: groups,
+    fatal_reason: root_reason,
+    member: NativeCensusCauseMember {
+      stage: NativeCensusCauseResolve,
+      path: entry.path,
+      module: optional_present(value: qualified_name_from_dotted_string(dotted: entry.module)),
+      head_reason: ^native_prepare_reason_import_target_file_refused,
+      cascade: NativeCensusCascadeMemberOf { root: root, root_reason: root_reason }
+    }
+  )
+  NativeCensusCauseGroups {
+    order: added.order,
+    by_reason: added.by_reason,
+    importers: match added.importers {
+      Absent => optional_absent()
+      Present { value: counts } =>
+        optional_present(value: map_insert(counts, root, match map_lookup(counts, root) {
+          Absent => 1
+          Present { value: n } => n + 1
+        }))
+    }
+  }
+}
+
+fn native_census_cause_groups_add_chains(
+  groups: NativeCensusCauseGroups,
+  entry: NativeCensusModule,
+  first: NonEmptyDiagnostics,
+  rest: List<NonEmptyDiagnostics>,
+  cascade: NativeCensusCascade
+) -> NativeCensusCauseGroups {
+  fold_list(
+    xs: native_census_residual_rows(entry: entry, first: first, rest: rest),
+    empty: groups,
+    cons: fn(acc, row) { native_census_cause_groups_add_residual(groups: acc, cascade: cascade, row: row) }
+  )
+}
+
+// ONE CENSUS MODULE'S CONTRIBUTION TO THE GROUPS, decided here rather than in the emitted main: a
+// cascade member is filed once under its root; any other resolve refusal files every chain.
+fn native_census_cause_groups_add_module(
+  groups: NativeCensusCauseGroups,
+  entry: NativeCensusModule,
+  step: NativeCensusModuleStep
+) -> NativeCensusCauseGroups {
+  match step.outcome {
+    NativeCensusModuleResolveRefused { first: f, rest: r, observation: _ } =>
+      match step.cascade {
+        NativeCensusCascadeMemberOf { root: root, root_reason: root_reason } =>
+          native_census_cause_groups_add_cascade_member(groups: groups, entry: entry, root: root, root_reason: root_reason)
+        NativeCensusCascadeNone => native_census_cause_groups_add_chains(groups: groups, entry: entry, first: f, rest: r, cascade: step.cascade)
+        NativeCensusCascadeUnattributed { reason: _ } => native_census_cause_groups_add_chains(groups: groups, entry: entry, first: f, rest: r, cascade: step.cascade)
+        NativeCensusCascadeRoot { closure_fan_out: _, resolve_refused_importers: _ } => native_census_cause_groups_add_chains(groups: groups, entry: entry, first: f, rest: r, cascade: step.cascade)
+      }
+    NativeCensusModuleFileRefused => groups
+    NativeCensusModuleResolved => groups
+  }
+}
+
+fn native_census_cause_groups_from_file_refusals(
+  refusals: FreeMonoid<NativeTestFileRefusal>,
+  closure: NativeCensusClosureIndex,
+  resolves: Bool
+) -> NativeCensusCauseGroups {
+  fold_list(
+    xs: refusals,
+    empty: native_census_cause_groups_empty(resolves: resolves),
+    cons: fn(acc, r) { native_census_cause_groups_add_file_refusal(groups: acc, closure: closure, refusal: r) }
+  )
+}
+
+// A ROOT MEMBER IS READ WITH ITS OBSERVED IMPORTER COUNT; every other member is read as filed.
+fn native_census_cause_member_read(groups: NativeCensusCauseGroups, member: NativeCensusCauseMember) -> NativeCensusCauseMember {
+  match member.cascade {
+    NativeCensusCascadeRoot { closure_fan_out: fan_out, resolve_refused_importers: _ } =>
+      NativeCensusCauseMember {
+        stage: member.stage,
+        path: member.path,
+        module: member.module,
+        head_reason: member.head_reason,
+        cascade: NativeCensusCascadeRoot {
+          closure_fan_out: fan_out,
+          resolve_refused_importers: match groups.importers {
+            Absent => optional_absent()
+            Present { value: counts } =>
+              match map_lookup(counts, member.path) {
+                Absent => optional_present(value: 0)
+                Present { value: n } => optional_present(value: n)
+              }
+          }
+        }
+      }
+    NativeCensusCascadeNone => member
+    NativeCensusCascadeMemberOf { root: _, root_reason: _ } => member
+    NativeCensusCascadeUnattributed { reason: _ } => member
+  }
+}
+
+// `order` IS NEWEST-FIRST, so consing each group onto the accumulator while walking it yields
+// first-appearance order in one pass: no snoc onto a cons list, and no reverse of the order
+// (review 74382; DESIGN section 6 bare minimum cost). Each group's members are reversed and read
+// in that same single pass.
+fn native_census_cause_group_rows(groups: NativeCensusCauseGroups) -> List<NativeCensusCauseGroup> {
+  fold_list(
+    xs: groups.order,
+    empty: Empty,
+    cons: fn(acc, reason) {
+      match map_lookup(groups.by_reason, reason) {
+        Absent => acc
+        Present { value: members } =>
+          Cons {
+            head: NativeCensusCauseGroup {
+              fatal_reason: reason,
+              members: fold_list(
+                xs: members,
+                empty: Empty,
+                cons: fn(read, m) { Cons { head: native_census_cause_member_read(groups: groups, member: m), tail: read } }
+              )
+            },
+            tail: acc
+          }
+      }
+    }
+  )
+}
+
+// THE ROOTS, RANKED BY CLOSURE FAN-OUT, highest first; a lower bound (AtLeast) ranks by its bound
+// and keeps its arm on the row, and a root whose fan-out is Unavailable ranks after every counted
+// one rather than reading as zero. Same member rows as the groups -- this is an
+// ORDER over them, not a second format. Bucketed by count so ranking is linear in roots plus the
+// largest count, never an insertion sort (DESIGN section 6).
+type NativeCensusRootBuckets {
+  by_count: Map<Int, FreeMonoid<NativeCensusCauseMember>>
+  top: Int
+  unavailable: FreeMonoid<NativeCensusCauseMember>
+}
+
+fn native_census_roots_ranked(rows: List<NativeCensusCauseGroup>) -> List<NativeCensusCauseMember> {
+  let buckets = fold_list(
+    xs: rows,
+    empty: NativeCensusRootBuckets { by_count: empty_map(), top: 0, unavailable: Empty },
+    cons: fn(acc, group) {
+      fold_list(xs: group.members, empty: acc, cons: fn(b, m) {
+        match m.cascade {
+          NativeCensusCascadeRoot { closure_fan_out: fan_out, resolve_refused_importers: _ } =>
+            match fan_out {
+              NativeCensusClosureFanOutUnavailable { reason: _ } =>
+                NativeCensusRootBuckets { by_count: b.by_count, top: b.top, unavailable: Cons { head: m, tail: b.unavailable } }
+              NativeCensusClosureFanOutAtLeast { modules: n, unread_refused_files: _ } =>
+                native_census_root_buckets_add(buckets: b, member: m, count: n)
+              NativeCensusClosureFanOutCounted { modules: n } =>
+                native_census_root_buckets_add(buckets: b, member: m, count: n)
+            }
+          NativeCensusCascadeNone => b
+          NativeCensusCascadeMemberOf { root: _, root_reason: _ } => b
+          NativeCensusCascadeUnattributed { reason: _ } => b
+        }
+      })
+    }
+  )
+  native_census_roots_from_buckets(buckets: buckets, count: 0, ranked: list_reverse(xs: buckets.unavailable))
+}
+
+fn native_census_root_buckets_add(buckets: NativeCensusRootBuckets, member: NativeCensusCauseMember, count: Int) -> NativeCensusRootBuckets {
+  NativeCensusRootBuckets {
+    by_count: map_insert(buckets.by_count, count, match map_lookup(buckets.by_count, count) {
+      Absent => Cons { head: member, tail: Empty }
+      Present { value: ms } => Cons { head: member, tail: ms }
+    }),
+    top: if buckets.top < count { count } else { buckets.top },
+    unavailable: buckets.unavailable
+  }
+}
+
+// WALKS THE COUNTS UPWARD, consing each bucket in front, so the highest count ends first. Within a
+// count the roots keep first-appearance order. Descent: top - count strictly decreases.
+fn native_census_roots_from_buckets(
+  buckets: NativeCensusRootBuckets,
+  count: Int,
+  ranked: List<NativeCensusCauseMember>
+) -> List<NativeCensusCauseMember> {
+  if count > buckets.top {
+    ranked
+  } else {
+    native_census_roots_from_buckets(
+      buckets: buckets,
+      count: count + 1,
+      ranked: match map_lookup(buckets.by_count, count) {
+        Absent => ranked
+        Present { value: ms } => fold_list(xs: ms, empty: ranked, cons: fn(acc, m) { Cons { head: m, tail: acc } })
+      }
+    )
+  }
 }
 
 // THE LIVE-VERDICT CONTROLS, EXECUTED BY THE SAME ROUTE AS EVERY MEMBER. They sit outside the

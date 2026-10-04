@@ -291,11 +291,12 @@ fn minimal_id_token() -> OidcIdTokenClaims {
     acr: none,
     amr: none,
     azp: none,
-    session_id: none,
+    session_id: none, hosted_domain: none,
     standard: OidcStandardClaims {
       email: none,
       email_verified: none,
       name: none,
+      picture: none,
     },
   }
 }

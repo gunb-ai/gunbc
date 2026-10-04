@@ -1,7 +1,7 @@
 module test.claim.module_impact_query_witness_test
 
+import std.types { List }
 import v2.std.algebra { any, contains, count_where }
-import v2.std.collection { List }
 import v2.std.text { String }
 import gunbc.namespace_reference_derived_closure_admission {
   ReferenceDerivedClosureAdmission,

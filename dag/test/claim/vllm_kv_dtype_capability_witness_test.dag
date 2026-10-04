@@ -1,0 +1,140 @@
+module test.claim.vllm_kv_dtype_capability_witness_test
+
+import std.types { Bool, List, String, NonEmptyStr }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import v2.std.algebra { any }
+import extdeps.vllm.engine_args {
+  VllmKvCacheDtypeRequest, KvAuto, KvFp8, KvBf16, KvFp8DsMla,
+  VllmIndexerKvDtypeRequest, IndexerKvDtypeOmitted, IndexerKvDtypeExplicit, IndexerKvMxfp4, IndexerKvBf16, IndexerKvFp8,
+}
+import extdeps.vllm.kv_dtype_capability {
+  KvCapabilitySubject, VllmKvBackend, DeepseekV4FlashInferMlaSparse, FlashInferMlaSparseSm120, DsaSparseIndexer, VllmIndexerKind,
+  kv_capability_verdict, upstream_kv_main_dtype_rows, deepseek_v4_sparse_mla_sm12_row, kv_runtime,
+  KvCombinationAdmitted, KvCombinationRefused, KvCombinationUnanswered,
+  KvBasisUpstreamSource, KvBasisObservedOnBuild,
+}
+import extdeps.vllm.deepseek_v4_1_sm12 { v41_sm12_admitted_kv_cache_dtypes, v41_sm10_admitted_kv_cache_dtypes }
+import extdeps.vllm.server { vllm_source_revision_read }
+import extdeps.vllm.source_build { vllm_deepseek_v4_1_sm12_revision }
+import gunbc.spark.serving_arm {
+  glm_native_kv_cache_dtype_admission, GlmNativeEngineDerived8d09804, glm_native_engine_build_image,
+  GlmNativeKvCacheDtypeAdmitted, GlmNativeKvCacheDtypeRefused, glm_derived_flashinfer_sm120_row,
+}
+
+// THE SUBJECT IS ONE CAPABILITY JOIN ANSWERING FOR BOTH MODELS: (backend, device major) -> admitted
+// main-KV requests, plus the sparse indexer's own dtype rule, each answer carrying its basis. Rows
+// are supplied per witness where the claim is about the join rather than about upstream's figures.
+// THE V4.1 BACKEND'S ROWS ARE READ AT ITS SM12 REVISION, so the subject names that revision; a subject at
+// another revision is unanswered (w_a_row_answers_only_for_its_own_runtime).
+fn w_subject(backend: VllmKvBackend, major: Nat, main: VllmKvCacheDtypeRequest, indexer: VllmIndexerKvDtypeRequest) -> KvCapabilitySubject {
+  KvCapabilitySubject { backend: backend, runtime: kv_runtime(image: none, source: vllm_deepseek_v4_1_sm12_revision), device_major: major, main: main, indexer_kind: Absent, indexer: indexer }
+}
+
+fn w_admitted(backend: VllmKvBackend, major: Nat, main: VllmKvCacheDtypeRequest, indexer: VllmIndexerKvDtypeRequest) -> Bool {
+  match kv_capability_verdict(subject: w_subject(backend: backend, major: major, main: main, indexer: indexer), rows: upstream_kv_main_dtype_rows) {
+    KvCombinationAdmitted { bases: _ } => true
+    KvCombinationRefused { cause: _, basis: _ } => false
+    KvCombinationUnanswered { obligation: _ } => false
+  }
+}
+
+// THE TWO MAJORS DISAGREE IN BOTH DIRECTIONS, which is what makes the major part of the key.
+test fn w_the_v41_backend_admits_by_device_major() -> Bool {
+  w_admitted(backend: DeepseekV4FlashInferMlaSparse, major: 12, main: KvFp8DsMla, indexer: IndexerKvDtypeOmitted)
+    && !w_admitted(backend: DeepseekV4FlashInferMlaSparse, major: 12, main: KvAuto, indexer: IndexerKvDtypeOmitted)
+    && w_admitted(backend: DeepseekV4FlashInferMlaSparse, major: 10, main: KvAuto, indexer: IndexerKvDtypeOmitted)
+    && !w_admitted(backend: DeepseekV4FlashInferMlaSparse, major: 10, main: KvFp8DsMla, indexer: IndexerKvDtypeOmitted)
+}
+
+test fn w_a_refusal_cites_the_upstream_row() -> Bool {
+  match kv_capability_verdict(subject: w_subject(backend: DeepseekV4FlashInferMlaSparse, major: 12, main: KvBf16, indexer: IndexerKvDtypeOmitted), rows: upstream_kv_main_dtype_rows) {
+    KvCombinationRefused { cause: _, basis: b } =>
+      match b {
+        KvBasisUpstreamSource { revision: r, locator: _ } => (r.full_revision as String) == "07b75534651a0dd584c6f3be75d8c62fb8426397"
+        KvBasisObservedOnBuild { build: _, observation: _ } => false
+      }
+    KvCombinationAdmitted { bases: _ } => false
+    KvCombinationUnanswered { obligation: _ } => false
+  }
+}
+
+// ABSENCE IS NOT ADMISSION: a backend/major with no row, and a key with two rows, both stay unanswered.
+test fn w_no_row_and_two_rows_are_both_unanswered() -> Bool {
+  (match kv_capability_verdict(subject: w_subject(backend: DeepseekV4FlashInferMlaSparse, major: 9, main: KvFp8, indexer: IndexerKvDtypeOmitted), rows: upstream_kv_main_dtype_rows) {
+    KvCombinationUnanswered { obligation: _ } => true
+    KvCombinationAdmitted { bases: _ } => false
+    KvCombinationRefused { cause: _, basis: _ } => false
+  })
+  && (match kv_capability_verdict(subject: w_subject(backend: DeepseekV4FlashInferMlaSparse, major: 12, main: KvFp8, indexer: IndexerKvDtypeOmitted), rows: [deepseek_v4_sparse_mla_sm12_row, deepseek_v4_sparse_mla_sm12_row]) {
+    KvCombinationUnanswered { obligation: _ } => true
+    KvCombinationAdmitted { bases: _ } => false
+    KvCombinationRefused { cause: _, basis: _ } => false
+  })
+}
+
+// THE INDEXER IS ITS OWN AXIS: mxfp4 is upstream's sm_10x-only path, and a GB10 is major 12.
+// THE INDEXER RULE IS READ AT 8d09804 AND ANSWERS ONLY THERE: the GLM derived build (built from it)
+// is judged on it; mxfp4 refuses on sm_12x.
+fn w_glm_indexer_admitted(indexer: VllmIndexerKvDtypeRequest) -> Bool {
+  match kv_capability_verdict(
+    subject: KvCapabilitySubject { backend: FlashInferMlaSparseSm120, runtime: kv_runtime(image: Present { value: glm_native_engine_build_image(build: GlmNativeEngineDerived8d09804) }, source: vllm_source_revision_read), device_major: 12, main: KvFp8, indexer_kind: Present { value: DsaSparseIndexer }, indexer: indexer },
+    rows: [glm_derived_flashinfer_sm120_row]) {
+    KvCombinationAdmitted { bases: _ } => true
+    KvCombinationRefused { cause: _, basis: _ } => false
+    KvCombinationUnanswered { obligation: _ } => false
+  }
+}
+
+test fn w_the_indexer_dtype_is_judged_on_its_own_rule() -> Bool {
+  w_glm_indexer_admitted(indexer: IndexerKvDtypeExplicit { dtype: IndexerKvFp8 })
+    && !w_glm_indexer_admitted(indexer: IndexerKvDtypeExplicit { dtype: IndexerKvMxfp4 })
+    && !w_glm_indexer_admitted(indexer: IndexerKvDtypeExplicit { dtype: IndexerKvBf16 })
+}
+
+// A ROW ANSWERS ONLY FOR ITS OWN RUNTIME: the V4.1 rows (read at the sm12 revision) do not answer for the
+// same backend at another revision, and the GLM observed row does not answer for another image.
+test fn w_a_row_answers_only_for_its_own_runtime() -> Bool {
+  (match kv_capability_verdict(
+    subject: KvCapabilitySubject { backend: DeepseekV4FlashInferMlaSparse, runtime: kv_runtime(image: none, source: vllm_source_revision_read), device_major: 12, main: KvFp8DsMla, indexer_kind: Absent, indexer: IndexerKvDtypeOmitted },
+    rows: upstream_kv_main_dtype_rows) {
+    KvCombinationUnanswered { obligation: _ } => true
+    KvCombinationAdmitted { bases: _ } => false
+    KvCombinationRefused { cause: _, basis: _ } => false
+  })
+  && (match kv_capability_verdict(
+    subject: KvCapabilitySubject { backend: FlashInferMlaSparseSm120, runtime: kv_runtime(image: Present { value: "another@sha256:0" as NonEmptyStr }, source: vllm_source_revision_read), device_major: 12, main: KvFp8, indexer_kind: Absent, indexer: IndexerKvDtypeOmitted },
+    rows: [glm_derived_flashinfer_sm120_row]) {
+    KvCombinationUnanswered { obligation: _ } => true
+    KvCombinationAdmitted { bases: _ } => false
+    KvCombinationRefused { cause: _, basis: _ } => false
+  })
+}
+
+
+// THE V4.1 WIRE LISTS ARE THE ROW'S PROJECTION, and they say what they said before the table existed.
+test fn w_the_v41_wire_lists_project_the_rows_unchanged() -> Bool {
+  v41_sm12_admitted_kv_cache_dtypes == ["fp8" as NonEmptyStr, "fp8_e4m3" as NonEmptyStr, "fp8_ds_mla" as NonEmptyStr]
+    && v41_sm10_admitted_kv_cache_dtypes == ["auto" as NonEmptyStr, "bfloat16" as NonEmptyStr, "fp8" as NonEmptyStr, "fp8_e4m3" as NonEmptyStr]
+}
+
+// THE GLM ARM IS ANSWERED BY THE SAME JOIN, through its observed row: the same admissions as the
+// per-build table it replaced, and the observation is the basis.
+test fn w_the_glm_derived_build_is_answered_by_the_shared_join() -> Bool {
+  (match glm_native_kv_cache_dtype_admission(build: GlmNativeEngineDerived8d09804, dtype: KvFp8) {
+    GlmNativeKvCacheDtypeAdmitted { dtype: _ } => true
+    GlmNativeKvCacheDtypeRefused { dtype: _, cause: _ } => false
+  })
+  && (match glm_native_kv_cache_dtype_admission(build: GlmNativeEngineDerived8d09804, dtype: KvBf16) {
+    GlmNativeKvCacheDtypeRefused { dtype: _, cause: _ } => true
+    GlmNativeKvCacheDtypeAdmitted { dtype: _ } => false
+  })
+  && (match kv_capability_verdict(subject: KvCapabilitySubject { backend: FlashInferMlaSparseSm120, runtime: kv_runtime(image: Present { value: glm_native_engine_build_image(build: GlmNativeEngineDerived8d09804) }, source: vllm_source_revision_read), device_major: 12, main: KvFp8, indexer_kind: Absent, indexer: IndexerKvDtypeOmitted }, rows: [glm_derived_flashinfer_sm120_row]) {
+    KvCombinationAdmitted { bases: bs } => any(bs, b => match b {
+      KvBasisObservedOnBuild { build: _, observation: _ } => true
+      KvBasisUpstreamSource { revision: _, locator: _ } => false
+    })
+    KvCombinationRefused { cause: _, basis: _ } => false
+    KvCombinationUnanswered { obligation: _ } => false
+  })
+}

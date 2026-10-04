@@ -27,6 +27,8 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
 }
 
@@ -40,6 +42,8 @@ fn accepted_node(base: RoadmapNode) -> RoadmapNode {
     execution: base.execution,
     owner: base.owner,
     signoff: SignedOff { by: "operator", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true },
+    parent: none,
+    centering: none,
   }
 }
 
@@ -53,6 +57,8 @@ fn rejected_node(base: RoadmapNode) -> RoadmapNode {
     execution: base.execution,
     owner: base.owner,
     signoff: SignedOff { by: "operator", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackNotDelivered, as_expected: true },
+    parent: none,
+    centering: none,
   }
 }
 
@@ -66,6 +72,8 @@ fn undispatchable_derivable(id: String, prs: List<Int>, title: String) -> Roadma
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
 }
 
@@ -228,6 +236,8 @@ fn superseded_node(id: String, by: String, content: String) -> RoadmapNode {
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
 }
 
@@ -255,6 +265,8 @@ test fn witness_superseded_control_open_parent_still_gates() -> Bool {
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
+    parent: none,
+    centering: none,
   }
   let node_child = sized_derivable(id: "sp-child", prs: [200], title: "Child Node")
   let edges = [RoadmapEdge { child: roadmap_spawner_nid(s: "sp-child"), parent: roadmap_spawner_nid(s: "sp-old") }]

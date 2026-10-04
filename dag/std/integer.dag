@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.machine_constraints { Compose, MachineWidth, PointerWidth }
 import std.measure { bit_width, bit_width_count, bits_per_byte }
 import std.induction { int_pow_bounded }
-import std.types { gt_zero }
+import std.types { gt_zero, List }
 
 type Int8 = Compose<Int, MachineWidth<8>>
 type Int16 = Compose<Int, MachineWidth<16>>
@@ -215,18 +215,10 @@ type IntegerOverflowSemantics<E>
 // dissolve-on routes language overflow facts through this type and retires OverflowDisposition.
 // Parallel authority is tracked debt with a named trigger, not permission to drift independently.
 
-// PR1 Signedness lift imports std.nat here, co-resolving std.nat with v2.std.nat in whole-tree
-// compile-clean closures. Known two-std-trees fork: std.nat.Nat = CommutativeSemiring<Magnitude>
-// with std.nat.nat_compare versus v2.std.nat.Nat = Zero|Succ with v2.std.nat.nat_compare — not
-// consolidated in this PR. Per nat-grounding-unification-design (census complete 2026-08-01):
-// DESIGN READY; IMPLEMENTATION LARGE/ATOMIC sequenced with integer+float repoint after bounded P3b
-// PR2 overflow on std.integer (#7511 merged first). Dissolve-on: two-std-trees consolidation lands
-// a single Nat authority and retires the parallel compare fns; until then ambiguous bare references
-// must qualify by containment path (namespace-resolution-design section 13). The bound on the
-// deferral: until the wave lands, a bare reference to Nat or nat_compare in a closure containing
-// both authorities is ambiguous by construction and must be qualified — no consumer may assume a
-// bare name resolves, and the two Nat types are not interchangeable at any call site even where the
-// name matches.
+// std.nat Nat is the ONE declaration of the naturals (operator ruling A, 2026-09-30): the
+// inductive carrier, realized as the kernel integer. The second declaration v2.std.nat carried, and
+// the parallel nat_compare beside it, are gone, so a bare reference to Nat or nat_compare names one
+// thing in every closure.
 
 type IntPlatform  = Compose<Int,  MachineWidth<PointerWidth>>
 type UIntPlatform = Compose<UInt, MachineWidth<PointerWidth>>

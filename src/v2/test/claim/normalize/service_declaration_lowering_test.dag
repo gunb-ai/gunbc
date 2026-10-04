@@ -9,7 +9,6 @@ import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_looku
 import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, NonEmptyDiagnostics, Outcome, Rejected, Some, bind_outcome, diagnostics_fatal_reason }
 import v2.std.algebra { fold_list }
 import v2.std.optional { Absent, Present }
-import v2.std.logic { Bool }
 import v2.std.integer { Int }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme }
 import v2.std.text { String }
@@ -27,8 +26,8 @@ import std.algebra { Cons, Empty, FreeMonoid }
 
 data posix_service_source: String = "module m\nservice a.P {\n  operation R {\n    output { o: Int = 1 }\n    readonly\n    transport shell {}\n  }\n}\n"
 
-// Two services sharing a prefix in one module, the dag/extdeps/shell.dag shape: each is
-// ONE label spelled as declared, so they stay distinct at the module.
+// Two services sharing a prefix in one module, the dag/extdeps/shell.dag shape: each lowers under the
+// shared namespace segment `s`, and their operations stay distinct at m.s.F.R and m.s.E.R.
 data shared_prefix_source: String = "module m\nservice s.F {\n  operation R {}\n}\nservice s.E {\n  operation R {}\n}\n"
 
 // The discriminating RED: an operation declaring its input twice has no single domain, so the
@@ -54,6 +53,18 @@ data repeated_operation_source: String = "module m\nservice S {\n  operation Op 
 
 fn index_of(t: CensusTree) -> SymbolIndex {
   symbol_index_fill_module_roots(index: empty_symbol_index(), roots: Cons { head: census_tree_binding_source(t: t), tail: Empty })
+}
+
+// A service's operation is indexed at <module>.<service segments...>.<operation> (the service spine):
+// `service a.P` puts R at m.a.P.R, never at a dotted segment m.'a.P'.R.
+fn declares_at(index: SymbolIndex, path: FreeMonoid<String>) -> Bool {
+  match symbol_index_lookup(
+    index: index,
+    qualified_path: Cons { head: ^m, tail: path |> map(s => symbol_intern_lexeme(lexeme: s)) }
+  ) {
+    Absent => false
+    Present { value: _ } => true
+  }
 }
 
 fn declares(index: SymbolIndex, service: String, member: String) -> Bool {
@@ -82,19 +93,23 @@ fn carries(ne: NonEmptyDiagnostics, reason: Symbol) -> Bool {
   reason_count(d: Some { diagnostics: ne }, reason: reason) > 0
 }
 
-// The posix fixture's census outcome, computed ONCE as a nullary value enrolled WARM in
-// v2.workflow.floor_pure_producer_share; the two census claims below read it rather than each
-// re-running the census over the same stream (DESIGN section 3, a witness discriminates at one
-// interface: their subject is the outcome, not the parse that produced it).
+// The two fixtures' census outcomes, each computed ONCE as a nullary value enrolled WARM in
+// v2.workflow.floor_pure_producer_share; the census claims read them rather than each re-running the
+// census over the same stream (DESIGN section 3, a witness discriminates at one interface: their
+// subject is the outcome, not the parse that produced it).
 fn sdl_posix_census() -> Outcome<CensusTree> {
   census_of_stream(tokens: posix_service_stream())
+}
+
+fn sdl_shared_prefix_census() -> Outcome<CensusTree> {
+  census_of_stream(tokens: shared_prefix_stream())
 }
 
 test fn census_admits_the_posix_service_and_indexes_its_operation_holds() -> Bool {
   match sdl_posix_census() {
     Rejected { diagnostics: _ } => false
     Accepted { value: t, diagnostics: _ } =>
-      declares(index: index_of(t: t), service: "a.P", member: "R")
+      declares_at(index: index_of(t: t), path: ["a", "P", "R"])
   }
 }
 
@@ -123,11 +138,11 @@ test fn full_door_refuses_a_service_with_a_set_aside_realization_holds() -> Bool
 }
 
 test fn two_services_sharing_a_prefix_admit_with_distinct_labels_holds() -> Bool {
-  match census_of_stream(tokens: shared_prefix_stream()) {
+  match sdl_shared_prefix_census() {
     Rejected { diagnostics: _ } => false
     Accepted { value: t, diagnostics: _ } =>
-      declares(index: index_of(t: t), service: "s.F", member: "R")
-        && declares(index: index_of(t: t), service: "s.E", member: "R")
+      declares_at(index: index_of(t: t), path: ["s", "F", "R"])
+        && declares_at(index: index_of(t: t), path: ["s", "E", "R"])
   }
 }
 

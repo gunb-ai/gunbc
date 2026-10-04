@@ -336,17 +336,24 @@ fn ci_floor_wet_witness_row_outcome_receipt_if() -> PipelineStep {
   }
 }
 
+// THE POST SURFACE IS THE CALIBRATION READ ONLY. The floor's component receipts (phase journal,
+// wet-witness row outcomes) are their own pipeline: they share no step with the peak read, and
+// carrying them here made every claim about the calibration surface pay for two unrelated blocks.
 fn ci_floor_peak_post_pipeline() -> Pipeline {
   Pipeline {
-    steps: concat(
-      [
-        ci_floor_peak_do(command: ci_floor_phase_journal_runner_scaffold_comment),
-        ci_floor_phase_journal_if(),
-        ci_floor_peak_do(command: ci_floor_wet_witness_row_outcome_receipt_runner_scaffold_comment),
-        ci_floor_wet_witness_row_outcome_receipt_if()
-      ],
-      concat(ci_floor_peak_cgroup_locate_with_scaffold_steps(), [ci_floor_peak_post_peak_if()])
-    ),
+    steps: concat(ci_floor_peak_cgroup_locate_with_scaffold_steps(), [ci_floor_peak_post_peak_if()]),
+    on_failure: FailFast
+  }
+}
+
+fn ci_floor_component_receipts_pipeline() -> Pipeline {
+  Pipeline {
+    steps: [
+      ci_floor_peak_do(command: ci_floor_phase_journal_runner_scaffold_comment),
+      ci_floor_phase_journal_if(),
+      ci_floor_peak_do(command: ci_floor_wet_witness_row_outcome_receipt_runner_scaffold_comment),
+      ci_floor_wet_witness_row_outcome_receipt_if()
+    ],
     on_failure: FailFast
   }
 }
@@ -361,4 +368,8 @@ fn ci_floor_peak_pre_script() -> String {
 
 fn ci_floor_peak_post_script() -> String {
   ci_floor_peak_emit_pipeline(p: ci_floor_peak_post_pipeline())
+}
+
+fn ci_floor_component_receipts_script() -> String {
+  ci_floor_peak_emit_pipeline(p: ci_floor_component_receipts_pipeline())
 }

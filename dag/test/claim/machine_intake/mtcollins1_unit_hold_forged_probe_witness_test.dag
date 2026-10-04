@@ -38,7 +38,7 @@ fn blocking_count_for_class_and_subject(c: CompileDiagnosticCensus, wanted: Stri
   }
 }
 
-data harness_control_source: String = "module probe_unit_hold_harness_control\nimport std.types { NonEmptyStr }\nimport gunbc.machine_intake_mtcollins1_maintenance_hold { mtcollins1_unit_hold_key }\nfn key() -> NonEmptyStr { mtcollins1_unit_hold_key }\n"
+data harness_control_source: String = "module probe_unit_hold_harness_control\nimport std.types { NonEmptyStr }\nimport gunbc.managed_host_unit_hold { unit_hold_store_root }\nfn root() -> NonEmptyStr { unit_hold_store_root }\n"
 
 fn blocking_count_for_class(c: CompileDiagnosticCensus, wanted: String) -> Int {
   match c {

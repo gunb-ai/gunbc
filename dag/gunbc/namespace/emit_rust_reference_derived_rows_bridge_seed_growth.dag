@@ -28,22 +28,22 @@ data emit_rust_reference_derived_rows_bridge_seed_growth_justification: SeedGrow
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_interpreter",
+      module_path: "v1_compiler.v1_interpreter",
       decl_name: "reference_derived_candidate_rows_value",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_interpreter",
+      module_path: "v1_compiler.v1_interpreter",
       decl_name: "reference_derived_candidate_disposition_value",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_interpreter",
+      module_path: "v1_compiler.v1_interpreter",
       decl_name: "occurrence_transport_value",
       field: WholeDeclaration
     },
     DeclarationRef {
-      module_path: "v1_interpreter",
+      module_path: "v1_compiler.v1_interpreter",
       decl_name: "xl1_primary_root_tap_value",
       field: WholeDeclaration
     }

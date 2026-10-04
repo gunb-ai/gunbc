@@ -1,9 +1,10 @@
 module v2.compiler.namespace_graft
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
-import v2.std.algebra { fold_list, fold_list_right }
-import v2.std.collection { Absent, List, Present, optional_absent, optional_present }
+import v2.std.algebra { fold_list, fold_list_right, list_reverse }
+import v2.std.collection { Absent, Map, Optional, Present, empty_map, map_insert, map_lookup, optional_absent, optional_present }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -13,10 +14,10 @@ import v2.std.diagnostic {
   Unavailable,
   UserInputBoundary,
   node_locus,
+  bind_outcome,
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.logic { Bool }
 import v2.std.node {
   close_lowered_image,
   Atom,
@@ -34,7 +35,6 @@ import v2.std.node {
 }
 import v2.std.qualified_name { QualifiedName }
 import v2.compiler.parse { parse_tree_projection_edge }
-import v2.std.node_query { repeated_name_edges }
 import v2.std.grammar {
   GrammarExpr,
   GrammarExprFold,
@@ -50,6 +50,8 @@ import v2.extdeps.languages.dag {
   namespace_graft_already_grafted,
   namespace_graft_has_module_header,
   namespace_graft_module_body_marker_node,
+  namespace_graft_namespace_body_members_onto,
+  namespace_graft_namespace_body_node,
   namespace_graft_node_is_module_body,
   namespace_graft_spine_body_optional,
   namespace_graft_unwrap_module_working_root,
@@ -445,13 +447,17 @@ fn namespace_graft_partition_decl_units(units: List<Node>) -> NamespaceGraftDecl
 
 // Flatten keeps Named members that are not parse machinery: a lowered record
 // (`Conj { R: payload }`), a where-alias, an Atom -- the graft-shape fixture is
-// two Named atoms.
+// two Named atoms -- and a service prefix's marked NAMESPACE BODY, which carries the module-body
+// identity and so must be kept before the production-shell test, which reads any identity as parse
+// machinery and would drop it.
 fn namespace_graft_keep_flattened_member_edge(edge: Edge) -> Bool {
   match edge.label {
     StructuralLabel { label: _ } => false
     Authored { name: sym } =>
       if parse_tree_projection_edge(name: sym) {
         false
+      } else if namespace_graft_node_is_module_body(node: edge.target) {
+        true
       } else if namespace_graft_target_is_production_shell(edge: edge) {
         false
       } else {
@@ -594,19 +600,7 @@ fn namespace_graft_subtree_count_emitted(n: Node, sym: Symbol) -> Int {
 // would attribute a compiler-internal node to a span the author wrote, which is the plausible guess
 // DESIGN section 5 forbids rather than a preserved fact.
 fn namespace_graft_build_body_conj(edges: List<Edge>, source: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: concat(
-      [
-        dag_named_edge(
-          name: ^grammar_production_identity_node_projection,
-          target: namespace_graft_module_body_marker_node()
-        )
-      ],
-      edges
-    ),
-    occurrence_id: source.occurrence_id
-  }
+  namespace_graft_namespace_body_node(edges: edges, source: source)
 }
 
 fn namespace_graft_wrap_segment(segment: Symbol, inner: Node, source: Node) -> Node {
@@ -711,11 +705,110 @@ fn namespace_graft_dual_position_refused(root: Node) -> Bool {
 // built the Conj anyway and normalize's recursive well_formed gate refused the whole module at its
 // root with no locus (gen-two census: two `data fixture_v3_tick_wire` in
 // test.claim.roadmap.roadmap_launch_deployment_observe_witness). A repeated name is also a §3 fork --
-// the seed answers it last-write-wins, so the first declaration was dead. The offending edge comes
-// from v2.std.node_query repeated_name_edges, which is empty exactly when v2.std.node
-// all_names_distinct holds; the locus is the member node of the first name seen a second time,
-// which carries its declaration's occurrence. The refusal is a match on that edge, so it has no
-// locus fallback to reach.
+// the seed answers it last-write-wins, so the first declaration was dead. The repeat is found by the
+// keyed grouping below (namespace_graft_merge_namespace_bodies), and a group that does not merge refuses
+// at its second edge (namespace_graft_repeated_name_refusal), located at that member node, which carries
+// its declaration's occurrence.
+// SAME-NAMED NAMESPACE BODIES MERGE; ANY OTHER REPEATED NAME REFUSES (XL-2 service spine; ruling
+// 2026-10-01). Two services under one prefix (`shell.Find`, `shell.Env`) each lower to
+// `shell -> <namespace body>` (v2.extdeps.languages.dag namespace_graft_namespace_body_node); those two
+// bodies are one namespace, so their members are merged into one body -- recursively, so a deeper shared
+// prefix merges too. Only MARKED bodies merge: two same-named declarations, or a marked body and an
+// unmarked declaration, are a repeated name and refuse at the second, exactly as before; and a member
+// repeated inside a merged body (two `shell.Find`) refuses the same way. Merging grants no scope: a body
+// is a path segment, not a lexical frame (v2.compiler.resolve never opens one).
+// ONE KEYED PASS (DESIGN 6, bare minimum cost; review on #12949): edges are grouped by name in a Map
+// with their first-seen order, both accumulated by prepending and reversed once, so the pass is linear
+// in the body's edges and nothing re-scans or rebuilds an accumulator per edge. Each group is then
+// resolved once: a single edge is kept; a group whose edges are all marked namespace bodies merges into
+// one body over their members (recursively, for a deeper shared prefix); any other repeat refuses at its
+// second edge.
+type NamespaceGraftGroups {
+  order: List<Symbol>,
+  groups: Map<Symbol, List<Edge>>,
+  positional: List<Edge>,
+}
+
+fn namespace_graft_merge_namespace_bodies(edges: List<Edge>) -> Outcome<List<Edge>> {
+  let grouped = fold(edges, init: NamespaceGraftGroups { order: Empty, groups: empty_map(), positional: Empty }, f: fn(acc, e) {
+    namespace_graft_group_step(acc: acc, e: e)
+  })
+  bind_outcome(
+    o: fold(list_reverse(xs: grouped.order), init: outcome_accepted(value: Empty), f: fn(acc, name) {
+      bind_outcome(o: acc, f: fn(resolved) {
+        match namespace_graft_group_of(groups: grouped.groups, name: name) {
+          Empty => outcome_accepted(value: resolved)
+          Cons { head: first, tail: rest } =>
+            bind_outcome(o: namespace_graft_resolve_group(name: name, first: first, rest: rest), f: fn(edge) {
+              outcome_accepted(value: Cons { head: edge, tail: resolved })
+            })
+        }
+      })
+    }),
+    f: fn(resolved) { outcome_accepted(value: list_append(left: list_reverse(xs: resolved), right: list_reverse(xs: grouped.positional))) }
+  )
+}
+
+fn namespace_graft_group_step(acc: NamespaceGraftGroups, e: Edge) -> NamespaceGraftGroups {
+  match e.label {
+    Positional => NamespaceGraftGroups { order: acc.order, groups: acc.groups, positional: Cons { head: e, tail: acc.positional } }
+    StructuralLabel { label: _ } => NamespaceGraftGroups { order: acc.order, groups: acc.groups, positional: Cons { head: e, tail: acc.positional } }
+    Authored { name: sym } =>
+      match map_lookup(acc.groups, sym) {
+        Absent => NamespaceGraftGroups { order: Cons { head: sym, tail: acc.order }, groups: map_insert(acc.groups, sym, Cons { head: e, tail: Empty }), positional: acc.positional }
+        Present { value: seen } => NamespaceGraftGroups { order: acc.order, groups: map_insert(acc.groups, sym, Cons { head: e, tail: seen }), positional: acc.positional }
+      }
+  }
+}
+
+// A group's edges in authored order.
+fn namespace_graft_group_of(groups: Map<Symbol, List<Edge>>, name: Symbol) -> List<Edge> {
+  match map_lookup(groups, name) {
+    Present { value: reversed } => list_reverse(xs: reversed)
+    Absent => Empty
+  }
+}
+
+fn namespace_graft_resolve_group(name: Symbol, first: Edge, rest: List<Edge>) -> Outcome<Edge> {
+  match rest {
+    Empty => outcome_accepted(value: first)
+    Cons { head: second, tail: _ } =>
+      if namespace_graft_node_is_module_body(node: first.target) && namespace_graft_all_namespace_bodies(group: rest) {
+        bind_outcome(
+          o: namespace_graft_merge_namespace_bodies(edges: namespace_graft_group_members(group: Cons { head: first, tail: rest })),
+          f: fn(members) {
+            outcome_accepted(value: Edge { label: Authored { name: name }, target: namespace_graft_namespace_body_node(edges: members, source: first.target) })
+          }
+        )
+      } else {
+        namespace_graft_repeated_name_refusal(second: second)
+      }
+  }
+}
+
+// A repeated name that does not merge refuses at its second occurrence. Taking the edge as a declared
+// Edge keeps its field read typed wherever it was bound from (a list pattern binds its element generic).
+fn namespace_graft_repeated_name_refusal(second: Edge) -> Outcome<Edge> {
+  outcome_rejected(Diagnostic {
+    reason: ^namespace_graft_declaration_name_repeated,
+    at: node_locus(node: second.target),
+    correction: Unavailable { reason: UserInputBoundary }
+  })
+}
+
+fn namespace_graft_all_namespace_bodies(group: List<Edge>) -> Bool {
+  fold(group, init: true, f: fn(acc, e) { acc && namespace_graft_node_is_module_body(node: e.target) })
+}
+
+// Every group member's body members, in order: each body's members prepended onto one accumulator
+// (namespace_graft_namespace_body_members_onto) and the whole reversed once, so building it is linear in
+// the total member count rather than copying the growing result per body.
+fn namespace_graft_group_members(group: List<Edge>) -> List<Edge> {
+  list_reverse(xs: fold(group, init: Empty, f: fn(acc, e) {
+    namespace_graft_namespace_body_members_onto(body: e.target, acc: acc)
+  }))
+}
+
 fn module_header_containment_graft(root: Node) -> Outcome<Node> {
   if namespace_graft_already_grafted(root: root) {
     outcome_accepted(value: root)
@@ -747,19 +840,11 @@ fn module_header_containment_graft(root: Node) -> Outcome<Node> {
                 correction: Unavailable { reason: ExternalContractUnknown }
               })
             } else {
-              match first(repeated_name_edges(children: graft_body.edges)) {
-                Present { value: repeated } =>
-                  outcome_rejected(Diagnostic {
-                    reason: ^namespace_graft_declaration_name_repeated,
-                    at: node_locus(node: repeated.target),
-                    correction: Unavailable { reason: UserInputBoundary }
-                  })
-                Absent => {
-                  let body = namespace_graft_build_body_conj(edges: graft_body.edges, source: root)
-                  let spine = namespace_graft_fold_spine(qn: qn, body: body, source: root)
-                  outcome_accepted(value: namespace_graft_wrap_module_shell(captured: spine, source: root))
-                }
-              }
+              bind_outcome(o: namespace_graft_merge_namespace_bodies(edges: graft_body.edges), f: fn(members) {
+                let body = namespace_graft_build_body_conj(edges: members, source: root)
+                let spine = namespace_graft_fold_spine(qn: qn, body: body, source: root)
+                outcome_accepted(value: namespace_graft_wrap_module_shell(captured: spine, source: root))
+              })
             }
           }
         }

@@ -988,6 +988,67 @@ pub fn code_point(c: String) -> i64 {
     c.chars().next().map(|ch| ch as i64).unwrap_or(0)
 }
 
+// THE VALIDATED JSON UNESCAPE, ONE NATIVE PASS — the interpreted piece-walk this primitive
+// replaces cost ~155M interpreted steps over the 104 MB project envelope (~40 minutes at the
+// measured interpreter constant), which was the read's wall once every quadratic above it was
+// gone. The escape set is RFC 8259 section 7 exactly, so review 45642's refusal (an unknown
+// escape refuses before a value is built) holds at native speed. A \u high surrogate must be
+// followed by a \u low surrogate and the pair decodes to its one scalar (RFC 8259 section 7);
+// an unpaired surrogate of either half refuses. It used to decode through from_code_point,
+// whose empty string for a surrogate dropped every non-BMP character silently (DESIGN 5).
+// The caller owns the span: this kernel takes the already-scanned body and answers the
+// decoded value or None.
+pub fn json_unescape_checked(s: &str) -> Option<String> {
+    if !s.contains('\\') {
+        return Some(s.to_string());
+    }
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('"') => out.push('"'),
+            Some('\\') => out.push('\\'),
+            Some('/') => out.push('/'),
+            Some('b') => out.push('\x08'),
+            Some('f') => out.push('\x0c'),
+            Some('n') => out.push('\n'),
+            Some('r') => out.push('\r'),
+            Some('t') => out.push('\t'),
+            Some('u') => {
+                let cp = json_unescape_hex4(&mut chars)?;
+                if (0xD800..=0xDBFF).contains(&cp) {
+                    if chars.next() != Some('\\') || chars.next() != Some('u') {
+                        return None;
+                    }
+                    let lo = json_unescape_hex4(&mut chars)?;
+                    if !(0xDC00..=0xDFFF).contains(&lo) {
+                        return None;
+                    }
+                    out.push(char::from_u32(
+                        0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00),
+                    )?);
+                } else {
+                    out.push(char::from_u32(cp)?);
+                }
+            }
+            _ => return None,
+        }
+    }
+    Some(out)
+}
+
+fn json_unescape_hex4(chars: &mut std::str::Chars<'_>) -> Option<u32> {
+    let mut v: u32 = 0;
+    for _ in 0..4 {
+        v = v * 16 + chars.next()?.to_digit(16)?;
+    }
+    Some(v)
+}
+
 pub fn from_code_point(cp: i64) -> String {
     char::from_u32(cp as u32)
         .map(|c| c.to_string())
@@ -1323,6 +1384,10 @@ pub fn gunbc_file_write_create_new(
     let published = std::fs::hard_link(&staging_path, file_path);
     let _ = std::fs::remove_file(&staging_path);
     published
+}
+
+pub fn gunbc_file_link_create_new(source_path: &str, file_path: &str) -> std::io::Result<()> {
+    std::fs::hard_link(source_path, file_path)
 }
 
 #[derive(Debug, Clone)]

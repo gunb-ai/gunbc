@@ -20,7 +20,7 @@ import gunbc.compiler_frontend_program_interlock {
   NamespaceFixForwardComplete,
   NamespaceGrammarRetired,
   SelfHostCorpusEmitsCleanly,
-  SelfHostBehavioralEquivalenceReestablished,
+  SelfHostEmittedContractsHeld,
   SelfHostEmitterProducesEveryRetainedArtifact,
   SelfHostSuccessorPromotionAdmitted,
   SelfHostNativeRouteRequiredLane,
@@ -797,7 +797,7 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
           outstanding: [reason as String]
         ))
       }
-    SelfHostBehavioralEquivalenceReestablished =>
+    SelfHostEmittedContractsHeld =>
       match current_behavioral_equivalence_standing() {
         BehavioralEquivalenceLatest { latest: _, outstanding } => standing_from_evidence(e: observe_outstanding(
           subject: "self-host: rows of the latest deliberately taken behavioral-equivalence receipt, identity-joined to the behavioral transport roster" as NonEmptyStr,
@@ -1062,7 +1062,7 @@ data program_milestones: List<ProgramMilestone> = [
   NamespaceFixForwardComplete,
   NamespaceGrammarRetired,
   SelfHostCorpusEmitsCleanly,
-  SelfHostBehavioralEquivalenceReestablished,
+  SelfHostEmittedContractsHeld,
   SelfHostEmitterProducesEveryRetainedArtifact,
   SelfHostSuccessorPromotionAdmitted,
   SelfHostNativeRouteRequiredLane,

@@ -21,6 +21,7 @@ import gunbc.host_layout {
   srv1_dispatch_attempt_state_root,
   srv1_codex_bundled_executable,
 }
+import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap_dashboard_instance {
   fleet_admitted_revision_source,
   HostDashboardInstance,
@@ -31,6 +32,8 @@ import gunbc.roadmap_dashboard_instance {
   DashboardPrepareGitBundle,
   DashboardStageGitBundle,
   DashboardEnsureDirectory,
+  dashboard_auth_stores,
+  dashboard_instance_auth_store_root,
   DashboardEnsureProviderStateRoot,
   DashboardEnsureServeBinary,
   DashboardEnsureOwnershipMarker,
@@ -221,7 +224,8 @@ fn plan_binds_source_ref_translation(
 test fn dashboard_provision_plan_consumes_one_instance() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
-  count(plan) == 14
+  count(plan) == 18
+    && plan_ensures_every_auth_store_root(plan: plan, instance: lab)
     && plan_binds_instance_paths(plan: plan, instance: lab)
     && plan_binds_source_ref_translation(plan: plan, instance: lab)
 }
@@ -514,6 +518,7 @@ fn witness_synthetic_layout() -> GunbcHostLayout {
 
 fn witness_synthetic_instance() -> HostDashboardInstance {
   isolated_dashboard_instance(
+    deployment: deployment_id(name: "witness-synthetic" as NonEmptyStr),
     instance_id: "witness-synthetic" as NonEmptyStr,
     layout: witness_synthetic_layout(),
     root: "/witness/root" as FilePath,
@@ -617,12 +622,27 @@ test fn srv2_lab_owns_paths_disjoint_from_preview_and_production() -> Bool {
 test fn srv2_lab_has_a_provision_plan_bound_to_itself() -> Bool {
   let lab = srv2_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
-  count(plan) == 14
+  count(plan) == 18
+    && plan_ensures_every_auth_store_root(plan: plan, instance: lab)
     && plan_binds_instance_paths(plan: plan, instance: lab)
     && plan_binds_source_ref_translation(plan: plan, instance: lab)
 }
 
 // TWO PATHS THE PLAN VERIFIED WITHOUT EVER CREATING, both found by running the thing rather than reading it. The provider state root: DashboardVerifyProviderAuth reads it, nothing made it, so the only command that can populate it failed with 'that path does not exist' before any OAuth began — an operator hitting a CLI error instead of a typed refusal. The serve binary: instances used to BORROW production's, which is why no install step existed; making each instance own its own closed a retract hazard and left the install with no owner.\n\nBoth claims are stated as containment in the plan rather than as a count, because a count says the plan has sixteen things and nothing about whether the right two are among them. Each asserts the op targets the INSTANCE's own path — a plan that ensured some other instance's binary would satisfy a count and fail here.
+// THE AUTH STORES ARE PROVISIONED, stated as containment: every store the auth modules write
+// into has an ensure step for THIS instance's root. The profile store once had none, so every
+// login's profile publication was refused and the assignee surfaces rendered the raw principal.
+fn plan_ensures_every_auth_store_root(
+  plan: List<DashboardInstanceProvisionOp>,
+  instance: HostDashboardInstance,
+) -> Bool {
+  all(dashboard_auth_stores, store => any(plan, op => match op {
+    DashboardEnsureDirectory { path } =>
+      path == dashboard_instance_auth_store_root(instance: instance, store: store)
+    _ => false
+  }))
+}
+
 fn plan_ensures_provider_state_root(
   plan: List<DashboardInstanceProvisionOp>,
   instance: HostDashboardInstance,
@@ -737,6 +757,7 @@ fn witness_production_slot(
 ) -> HostDashboardInstance {
   let binary = dashboard_instance_child(root: root, child: "bin/gunbc")
   HostDashboardInstance {
+    deployment: deployment_id(name: instance_id),
     instance_id: instance_id,
     host_identity: host_identity,
     provision_parent_root: "/opt" as FilePath,
@@ -918,6 +939,7 @@ fn witness_endpoint_instance(
   listen_port: Port,
 ) -> HostDashboardInstance {
   isolated_dashboard_instance(
+    deployment: deployment_id(name: instance_id),
     instance_id: instance_id,
     layout: layout,
     root: dashboard_instance_child(
@@ -1050,6 +1072,7 @@ test fn declared_dashboard_instance_set_is_the_lookup_authority() -> Bool {
 
 fn outside_instance_at(root: FilePath) -> HostDashboardInstance {
   isolated_dashboard_instance(
+    deployment: deployment_id(name: "outside-repository-candidate" as NonEmptyStr),
     instance_id: "outside-repository-candidate" as NonEmptyStr,
     layout: srv1_host_layout(),
     root: root,
@@ -1094,6 +1117,7 @@ test fn an_outside_instance_on_a_public_root_is_refused() -> Bool {
 fn outside_instance_claiming_live_id_on_live_footprint() -> HostDashboardInstance {
   let live = srv1_live_dashboard_instance()
   HostDashboardInstance {
+    deployment: live.deployment,
     instance_id: live.instance_id,
     host_identity: live.host_identity,
     provision_parent_root: live.provision_parent_root,

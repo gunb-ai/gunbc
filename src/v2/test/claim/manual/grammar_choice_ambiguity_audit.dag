@@ -35,12 +35,54 @@ fn witness_dag_grammar_validate_accepts() -> Bool {
   }
 }
 
-fn witness_dag_first_choice_ambiguity_production() -> Symbol {
-  match list_at_optional(
+// THE RESIDUE ROSTER BY IDENTITY, not a count plus its first row. Two rosters of equal length can
+// differ in every row, so a count cannot show a row was removed and another added. One line per
+// row: `production#k: overlap=[..] left=[..] right=[..]`, in roster order.
+//
+// `#k` IS THE ROW'S OCCURRENCE AMONG ROWS OF THE SAME PRODUCTION, AND IT IS NAMED AS THE WEAK PART.
+// Production plus first sets does not separate the rows: a production with several choice sites
+// whose arms start alike (binary_expr's precedence levels) yields rows identical in every field the
+// row carries, because GrammarChoiceAmbiguityRow records no choice-site position. The ordinal makes
+// each line unique, but it is positional: adding or removing an earlier site of the same
+// production renumbers the later ones. A positional key is admissible for this instrument (it
+// diffs one grammar against itself across a change and its shifts are visible) and NOT for the
+// step-3 witness, which must match rows by a site key the producer mints
+// (v2.compiler.parse prepare_grammar_expr's choice path) -- that is its trigger.
+fn grammar_choice_terminals_text(xs: FreeMonoid<Symbol>) -> String {
+  string_join(
+    fields: fold_list(xs: xs, empty: [], cons: fn(acc, t) { list_snoc_item(xs: acc, item: symbol_lexeme(sym: t)) }),
+    separator: " "
+  )
+}
+
+fn grammar_choice_ambiguity_row_identity(row: GrammarChoiceAmbiguityRow, ordinal: Int) -> String {
+  symbol_lexeme(sym: row.production) + "#" + integer_int_to_decimal_string(value: ordinal)
+    + ": overlap=[" + grammar_choice_terminals_text(xs: row.overlap_terminals)
+    + "] left=[" + grammar_choice_terminals_text(xs: row.left_first_terminals)
+    + "] right=[" + grammar_choice_terminals_text(xs: row.right_first_terminals) + "]"
+}
+
+// `seen` is a per-production count, one map probe per row (DESIGN section 6: a quadratic fold is
+// fixed regardless of n, so the ordinal is never re-derived by rescanning the rows already seen).
+type AuditRosterFold {
+  seen: Map<Symbol, Int>
+  lines: FreeMonoid<String>
+}
+
+fn witness_dag_overlap_residue_row_identities() -> String {
+  let folded = fold_list(
     xs: grammar_choice_ambiguity_roster(root: dag_grammar_root()),
-    index: 0
-  ) {
-    Present { value: row } => row.production
-    Absent => ^grammar_choice_ambiguity_roster_empty
-  }
+    empty: AuditRosterFold { seen: empty_map(), lines: [] },
+    cons: fn(acc, row) {
+      let ordinal = match map_lookup(m: acc.seen, key: row.production) {
+        Present { value: n } => n
+        Absent => 0
+      }
+      AuditRosterFold {
+        seen: map_insert(m: acc.seen, key: row.production, value: ordinal + 1),
+        lines: list_snoc_item(xs: acc.lines, item: grammar_choice_ambiguity_row_identity(row: row, ordinal: ordinal))
+      }
+    }
+  )
+  string_join(fields: folded.lines, separator: "\n")
 }

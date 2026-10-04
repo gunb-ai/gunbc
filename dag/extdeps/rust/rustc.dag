@@ -1,7 +1,6 @@
 module extdeps.rustc
 
 import std.types { Bool, Int, Unit }
-import std.string_type { String }
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

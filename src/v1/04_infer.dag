@@ -14,12 +14,13 @@ import std.target_representation { VariantParentIdentity, VariantParentIdentifie
 import std.kernel_type_name { kernel_type_name, KernelTypeNameAdmitted, NotAKernelTypeName }
 import std.operator_realization { OperandDeclaration }
 import std.literal_elaboration {
-  LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold, BooleanUnfold, UnicodeScalarSequenceUnfold,
+  LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold,
   LiteralElaborationOutcome, DirectLiteral, ViaHomomorphism, LiteralElaborationRefused,
-  elaborate_literal_at, literal_source_kind_of, literal_elaboration_refusal_message
+  elaborate_literal_at, literal_source_kind_of, literal_elaboration_refusal_message,
+  KernelGrounding, KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous
 }
-import gunbc.structural_realization_bindings { literal_homomorphism_rows }
-import std.coercion { dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, SubtractionRefinementAmbiguous, KernelMinted, CorpusDeclared, DeclarationIdentityAbsent }
+import gunbc.structural_realization_bindings { literal_homomorphism_rows, kernel_grounding_rows }
+import std.coercion { dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, SubtractionRefinementAmbiguous, HostText, CodePointSequence, NotText, TextRepresentationUnidentified, KernelMinted, CorpusDeclared, DeclarationIdentityAbsent }
 import v1.compiler.type_head_exposure {
   TypeHeadView, KernelScalarHead, ApplicationHead, ProductHead, CoproductHead, CallableHead,
   TypeHeadExposure, ExposedTypeHead, OpaqueTypeHead, StuckTypeHead, MalformedApplicationHead,
@@ -53,7 +54,7 @@ import v1.std.core { Unmarked, declaration_provenance_of,
   ErrorNode, make_error_node, is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_span,
   AlgebraApplicationEvidenceUnavailable,
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
-  InternalError, TypeMismatch, TypeParameterInValuePosition, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse,
+  InternalError, TypeMismatch, TypeParameterInValuePosition, TextRepresentationUnidentifiedAtBoundary, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse,
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
   EqualityOnFunctionMember, EqualityMemberUnjudgeable,
   TypeArgumentArityMismatch,
@@ -77,7 +78,7 @@ import v1.std.core { Unmarked, declaration_provenance_of,
   Eq, Ne, Lt, Gt, Le, Ge,
   And, Or, NullCoalesce,
   UnaryOpKind, Not, Neg, unaryop_operand,
-  MatchPattern, Bind, VariantPattern, Wildcard, StringPart,
+  MatchPattern, Bind, VariantPattern, Wildcard, LitPattern, StringPart, variant_node_fields,
   make_field_binding_node, field_binding_name_at, field_binding_pattern,
   let_value, let_body, lambda_body,
   foreach_collection, foreach_body, method_receiver, method_arg_nodes,
@@ -97,6 +98,7 @@ import v1.std.core { Unmarked, declaration_provenance_of,
 }
 import v1.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v1.compiler.infer_types {
+  TextJudgment, TextJudgedIn, TextNotAsked, TextNotAskedInVariantFieldSummary, TextNotAskedForCallableComponentResidue,
   nominal_type_ref, make_container_type, make_callable_type, KernelTypeBuild,
   node_is_keyed_collection, node_is_element_collection, node_is_collection, node_is_set_collection, is_fully_resolved,
   kernel_profile_lookup,
@@ -115,11 +117,13 @@ import v1.compiler.infer_types {
   callable_return_type
 }
 import v1.compiler.infer_method {
-  builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type
+  builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type, builtin_host_text_param_names, builtin_param_names,
+  is_empty_map_constructor, is_empty_set_constructor
 }
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.coercion { provenance_realizes_natively }
 import v1.compiler.infer_env {
+  text_representation_by_identity, text_crossing_by_identity, text_representations_cross, text_representation_is_text_arm, text_representation_is_unidentified,
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
   str_bindings_from_bindings,
@@ -132,7 +136,7 @@ import v1.compiler.infer_env {
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, census_declaration_type_env, declaration_substitution_basis, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, lookup_binding_on_chain, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref,
+  lookup_binding_by_name, lookup_binding_on_chain, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref,
   listed_import_required_bare_call_blocked,
   effective_visible_binding, unit_variant_index_shadow_insert,
   build_unit_variant_index, UnitVariantContribution
@@ -213,7 +217,8 @@ import v1.compiler.infer_patterns {
   lookup_result_subject, pattern_binding_type,
   check_match_exhaustiveness,
   expand_scrut_type_for_variant_lookup,
-  pattern_matches_constructor
+  pattern_matches_constructor,
+  constructor_fields
 }
 import v1.compiler.infer_lookup {
   KnownMethodResolution,
@@ -267,11 +272,6 @@ type VariantFoldState {
 type VariantExportSurface {
   arm_owners: Map<String, Node>
   enum_items: Map<String, Node>
-}
-
-type TypeNameExportFacts {
-  exporter_count: Int
-  canonical_binding: TypeBinding?
 }
 
 type InferScope {
@@ -1571,7 +1571,22 @@ fn declared_type_kernel_inhabitance_mismatch_here_or_at_element(
 // set -- so this is consumption of the existing authority at a second declared-type position,
 // not a new relation (gunbc.recurring_failure_mode declared_type_wall_keyed_on_the_value_being_a_kernel,
 // specimen four).
+// IN declared_type_conformance_diags, A TEXT CROSSING IS PROVEN, NOT UNJUDGED: both sides' representations come from the one
+// classifier (v1.compiler.infer_env text_representation_by_identity), so a host-text value produced
+// where a code-point sequence is declared -- or the reverse -- is a real difference with no
+// alias or brand between the two, and these positions carry no unfold (only a call argument
+// does, v1.compiler.infer host_text_unfolded_at_code_point_boundary). gunbc.rung_drop
+// text_boundary_identity_wall.
 fn declared_type_conformance_diags(position: DeclaredTypePosition, subject: String, declared: Node, produced: Node, produced_by: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
+  concat(
+    text_unjudged_advisories(
+      a: text_representation_by_identity(n: declared, env: scope.type_env),
+      b: text_representation_by_identity(n: produced, env: scope.type_env),
+      position: "a declared type", span: span, module_name: scope.module_name),
+    declared_type_conformance_diags_core(position: position, subject: subject, declared: declared, produced: produced, produced_by: produced_by, span: span, scope: scope))
+}
+
+fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject: String, declared: Node, produced: Node, produced_by: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
   let si = scope.type_env.source_indices
   let both_ground = conformance_ground_type(n: declared, source_indices: si)
     && conformance_ground_type(n: produced, source_indices: si)
@@ -1582,6 +1597,14 @@ fn declared_type_conformance_diags(position: DeclaredTypePosition, subject: Stri
     produced_by: produced_by,
     scope: scope)
   if (cardinality_diags |> count) > 0 { cardinality_diags }
+  else if text_crossing_by_identity(left: declared, right: produced, env: scope.type_env) {
+    [type_mismatch_error(
+      expected: node_type_shape(n: declared, source_indices: si),
+      got: node_type_shape(n: produced, source_indices: si),
+      span: span,
+      module_name: scope.module_name
+    )]
+  }
   else if declared_type_kernel_inhabitance_mismatch_here_or_at_element(
       declared: declared, produced: produced, scope: scope) {
     [type_mismatch_error(
@@ -1636,7 +1659,7 @@ fn declared_type_conformance_diags(position: DeclaredTypePosition, subject: Stri
     )]
   }
   else if !both_ground { [] }
-  else if node_type_compatible(left: declared, right: produced, source_indices: si) { [] }
+  else if node_type_compatible(left: declared, right: produced, source_indices: si, text: TextJudgedIn { env: scope.type_env }) { [] }
   else {
     [type_mismatch_error(
       expected: node_type_shape(n: declared, source_indices: si),
@@ -2001,10 +2024,10 @@ fn set_element_type_is_concrete(elem: Node) -> Bool {
   }
 }
 
-fn set_element_types_mismatch(recv_elem: Node, operand_elem: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn set_element_types_mismatch(recv_elem: Node, operand_elem: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {
   set_element_type_is_concrete(elem: recv_elem)
     && set_element_type_is_concrete(elem: operand_elem)
-    && !node_type_compatible(left: recv_elem, right: operand_elem, source_indices: source_indices)
+    && !node_type_compatible(left: recv_elem, right: operand_elem, source_indices: source_indices, text: text)
 }
 
 fn node_admits_list_literal(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -2951,7 +2974,7 @@ fn match_arm_types_are_proven_disjoint(unified_arm_type: Node, arm_type: Node, s
     conformance_ground_type(n: unified_arm_type, source_indices: source_indices)
       && conformance_ground_type(n: arm_type, source_indices: source_indices)
       && node_type_compatible(
-        left: unified_arm_type, right: arm_type, source_indices: source_indices) == false
+        left: unified_arm_type, right: arm_type, source_indices: source_indices, text: TextJudgedIn { env: scope.type_env }) == false
   }
 }
 
@@ -3908,6 +3931,12 @@ fn foreign_concrete_coproduct_where_parent_required(
 // with this relation has not been measured on the corpus. So at these four the honest claim is one
 // verdict judged, not the position judged.
 //
+// PositionRecordLiteralField additionally consumes nominal_product_inhabitance_refusal -- the arm
+// the declared-return chain and the whole relation already consume -- for a NON-LITERAL field value
+// (gunbc.recurring_failure_mode record_field_admits_a_distinct_product_value). That is two verdicts
+// judged there through the shared authorities, still not the position judged: the trigger below
+// stands for it unchanged.
+//
 // NO PRODUCER: PositionMapValue, PositionVariantPayload, PositionCastTarget,
 // PositionParameterDefault, PositionCallableReturn. These occur solely in
 // declared_type_position_label's match, which renders a name and judges nothing.
@@ -4190,6 +4219,34 @@ fn refinement_inhabitance(declared: Node, produced: Node, scope: InferScope) -> 
 // them: coproduct_payload_where_parent_required already peels transparent aliases through
 // transparent_alias_identity_agrees, so alias identity is decided in exactly one place in the
 // tree and this relation inherits it instead of re-deriving a second answer.
+// A KERNEL-GROUNDED CARRIER IS INHABITED BY ITSELF AND BY ITS TRANSPARENT ALIASES. The carrier is
+// declared as a coproduct (std.nat Nat = Zero | Succ) and realized as the kernel integer, so the
+// structural judgments below -- which exist to tell a payload from its parent, a kernel value from a
+// structure, one nominal from another -- have no distinction to find between it and an alias that
+// names it: `type NonNegativeInt = Nat` IS Nat on every route. Measured on the Nat de-fork: without
+// this arm std.integer NonNegativeInt refused at every std.nat call (dag/extdeps/version/semver.dag,
+// dag/std/citation.dag); the same admission guards the call-argument check (direct_call_arg_type_mismatch),
+// whose nominal-brand arm refused the same pair. Both sides are read by declaration, not spelling: the declared name must
+// resolve to the grounded declaration, and the produced name must too, directly or through the one
+// alias hop an alias binding records in its `name` (see kernel_value_declared_type_mismatch). A
+// REFINEMENT of the carrier (PositiveInt = Nat where gt_zero) is not this arm's: it stays with
+// refinement_inhabitance, which decides the widen and the narrow.
+fn produced_is_kernel_grounded_carrier_or_its_alias(declared_name: String, produced_name: String, env: TypeEnv) -> Bool {
+  if !env_name_is_kernel_grounded_carrier(name: declared_name, env: env) {
+    false
+  } else if env_name_is_kernel_grounded_carrier(name: produced_name, env: env) {
+    true
+  } else {
+    match lookup_type_by_name(env: env, name: produced_name) {
+      Present { value: bound } =>
+        bound.connective == NoConnective && (bound.children |> count) == 0 && bound.type_annotation == none
+          && bound.name != "" && qualified_last_segment(name: bound.name) != qualified_last_segment(name: produced_name)
+          && env_name_is_kernel_grounded_carrier(name: bound.name, env: env)
+      Absent => false
+    }
+  }
+}
+
 fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferScope) -> InhabitanceVerdict {
   let declared = obligation.declared
   let produced = obligation.produced
@@ -4220,6 +4277,8 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
   } else if produced_name == "" {
     InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
   } else if carrier_verdict == Present { value: true } {
+    Inhabits
+  } else if produced_is_kernel_grounded_carrier_or_its_alias(declared_name: declared_name, produced_name: produced_name, env: scope.type_env) {
     Inhabits
   } else if carrier_verdict == Present { value: false } {
     InhabitanceRefused { reason: RefusedDistinctProductConstructor }
@@ -4471,8 +4530,8 @@ fn coproduct_at_record_declared_type(declared: Node, produced: Node, scope: Infe
 // diagnostic function would be the N-representation problem moved one layer down.
 // WHY A KERNEL LITERAL AT AN ALGEBRAICALLY-DECLARED NUMERIC IS ADMITTED, AND WHY THIS IS
 // CONSULTING AN AUTHORITY RATHER THAN WIDENING AN ARM. std.nat declares
-// `type Nat = CommutativeSemiring<Magnitude>` and std.integer declares
-// `type Int = AbelianGroup<GroupCompletion<Nat>>`: the canonical form of both is an algebraic
+// `type Nat = Zero | Succ { prev: Nat }` and std.integer declares
+// `type Int = AbelianGroup<GroupCompletion<Nat>>`: the canonical form of both is a declared
 // STRUCTURE while their values are authored as kernel integer literals. Read structurally that
 // is kernel-at-structured and the relation refused it -- measured, 33 of 50 sites at the
 // direct-call seam, every one correct code.
@@ -4486,7 +4545,7 @@ fn coproduct_at_record_declared_type(declared: Node, produced: Node, scope: Infe
 // THREE PROPERTIES THIS RELIES ON, none of them incidental:
 //   IDENTITY, NOT SPELLING. The authority is keyed on the resolved declaring module.
 //   numeric_realization_identity_note names the exact hazard: std.nat.Nat realizes natively
-//   while v2.std.nat.Nat is the Peano coproduct Zero|Succ and must NOT, so a bare-name rule
+//   while a user-declared type of the same spelling or shape must NOT, so a bare-name rule
 //   admits the wrong one. The enrolled RED for that pair is the regression control.
 //   FAIL-CLOSED ON UNKNOWN IDENTITY. provenance_realizes_natively answers false for
 //   DeclarationIdentityAbsent, which is what an unestablished identity yields -- an arm of the
@@ -4897,8 +4956,20 @@ fn applied_type_argument_is_nested_application(n: Node, scope: InferScope) -> Bo
 // So the test is structural rather than nominal, and it fails open twice over: an argument whose
 // name does not resolve, and an argument that resolves to something structureless (a bare alias,
 // a parameter), are both left unjudged.
+//
+// A KERNEL-GROUNDED CARRIER'S STRUCTURE IS A VIEW, NOT ITS REALIZATION (std.literal_elaboration
+// KernelGrounding: std.nat Nat is declared Zero | Succ and realized as the kernel integer), so it is
+// not counted as an argument whose identity this structural test establishes. That keeps the
+// judgment where it stood before the Nat de-fork (operator ruling A, 2026-09-30), when Nat was a
+// structureless alias and so unjudged here: `GoalAssessment<Nat, ..>` produced by `count(..)` at a
+// declared `GoalAssessment<Int, ..>` (gunbc.fleet.app_control_plane_inspection assess_app_hook)
+// stays admitted. Deciding whether a Nat argument inhabits an Int one is the covariance question
+// this arm does not answer for any argument; admitting it here is the existing unjudged state, not a
+// new widen.
 fn applied_type_argument_identity_known(name: String, scope: InferScope) -> Bool {
   if name == "" {
+    false
+  } else if env_name_is_kernel_grounded_carrier(name: name, env: scope.type_env) {
     false
   } else if is_kernel_type(name: name) {
     true
@@ -4991,6 +5062,13 @@ fn declared_type_obligation_diags(obligation: DeclaredTypeObligation, scope: Inf
   }
 }
 
+// A KERNEL-GROUNDED CARRIER IS NOT A CONCRETE COPRODUCT FOR THIS JUDGMENT. It is declared as a
+// coproduct and REALIZED as the kernel value its constructors denote (std.literal_elaboration
+// KernelGrounding), so it has no payload-versus-parent distinction to refuse: its successor's
+// payload and the carrier itself are one integer type. Without the exemption the carrier's own
+// transparent aliases (std.integer NonNegativeInt = Nat) read as "the payload type of Succ where
+// the parent Nat is required" and refused correct code (measured on the Nat de-fork at
+// dag/extdeps/version/semver.dag and dag/std/citation.dag).
 fn coproduct_payload_where_parent_required(
   formal: Node,
   actual: Node,
@@ -5022,6 +5100,7 @@ fn coproduct_payload_where_parent_required(
       match lookup_type_by_name(env: scope.type_env, name: formal_name) {
         Present { value: decl } =>
           let decl_is_concrete_coproduct = decl.connective == Disj && (decl.params |> count) == 0 && (decl.children |> count) > 0
+            && !env_name_is_kernel_grounded_carrier(name: formal_name, env: scope.type_env)
           let names_a_variant = has_child_named(n: decl, name: qualified_last_segment(name: actual_name), source_indices: source_indices) ||
             has_child_named(n: decl, name: qualified_last_segment(name: actual_rep), source_indices: source_indices)
           if decl_is_concrete_coproduct == false {
@@ -5906,7 +5985,7 @@ fn callable_component_ground_mismatch(
         || conformance_ground_type(n: instantiated, source_indices: source_indices)
     } else if conformance_ground_type(n: formal_part, source_indices: source_indices)
         && conformance_ground_type(n: instantiated, source_indices: source_indices) {
-      !node_type_compatible(left: formal_part, right: instantiated, source_indices: source_indices)
+      !node_type_compatible(left: formal_part, right: instantiated, source_indices: source_indices, text: TextNotAsked { reason: TextNotAskedForCallableComponentResidue })
     } else { false }
   }
 }
@@ -6059,8 +6138,13 @@ fn direct_call_arg_type_mismatch(
   }
   else if direct_call_formal_has_unbound_type_variable(n: substitution_basis) || direct_call_formal_has_unbound_type_variable(n: actual) { false }
   else if type_node_is_callable(n: formal) || type_node_is_callable(n: actual) { false }
+  else if produced_is_kernel_grounded_carrier_or_its_alias(
+      declared_name: authored_name_at(source_indices: source_indices, node: formal),
+      produced_name: authored_name_at(source_indices: source_indices, node: actual),
+      env: type_env) { false }
   else {
-    nominal_call_arg_brand_mismatch(formal: formal, actual: actual, type_env: type_env, source_indices: source_indices)
+    text_crossing_by_identity(left: formal, right: actual, env: type_env)
+      || nominal_call_arg_brand_mismatch(formal: formal, actual: actual, type_env: type_env, source_indices: source_indices)
       || container_element_nominal_brand_mismatch(
         formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices)
       || kernel_value_declared_type_mismatch(
@@ -6360,6 +6444,37 @@ data direct_call_shape_wall_note: String = "WALL (DESIGN §5) — the compile se
 
 // Record-literal actuals skip this path; handoff lives in
 // direct_call_structured_application_mismatch_diags (+ resolved-type legacy checks there).
+// A VALUE'S TEXT REPRESENTATION IS ITS RESOLVED TYPE'S DECLARATION IDENTITY
+// (v1.compiler.infer_env text_representation_by_identity). It is NOT re-read through
+// peel_nominal_alias_identity: that peel looks the spelling up by name in THIS scope, which is the
+// caller-re-resolution escape.
+fn argument_text_representation(value: Node, type_env: TypeEnv) -> TextRepresentation {
+  text_representation_by_identity(n: expression_value_type(e: value), env: type_env)
+}
+
+
+// THE UNJUDGED POPULATION IS COUNTED, NOT SILENT (gunbc.rung_drop text_boundary_identity_wall). Where
+// one side of a text boundary is identified text and the other has no readable declaration identity,
+// the text wall makes no verdict and base compatibility decides; this advisory records each such site,
+// located, so the whole-corpus compile's advisory census is the instrument that bounds the drop.
+fn text_unjudged_advisories(a: TextRepresentation, b: TextRepresentation, position: String, span: SourceSpan, module_name: String) -> List<ErrorNode> {
+  if (text_representation_is_text_arm(r: a) && text_representation_is_unidentified(r: b))
+    || (text_representation_is_text_arm(r: b) && text_representation_is_unidentified(r: a)) {
+    [make_error_node(diagnostic: TextRepresentationUnidentifiedAtBoundary { position: position, span: span }, module_name: module_name)]
+  } else { [] }
+}
+
+// Two code-point sequences agree by identity, and base's name-keyed arms would compare an alias
+// spelling (String<Char>) against the structure (FreeMonoid<Char>) and misfire, so they are skipped.
+// Two HOST texts are NOT short-circuited: base's own checks still judge them (a kernel String at a
+// NonEmptyStr refinement is base's refusal, and it stays one).
+fn text_representations_both_code_point(a: TextRepresentation, b: TextRepresentation) -> Bool {
+  match a {
+    CodePointSequence => match b { CodePointSequence => true  _ => false }
+    _ => false
+  }
+}
+
 fn direct_call_arg_mismatch_diags(
   plan: List<ResolvedCallFormal>,
   typed_args: List<Node>,
@@ -6383,7 +6498,14 @@ fn direct_call_arg_mismatch_diags(
           } else {
           let actual_raw = expression_value_type(e: actual_expr)
           let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
-          if direct_call_arg_type_mismatch(
+          let formal_text = if formal_code_point_view(formal: app.formal, env: type_env) != none { CodePointSequence } else { text_representation_by_identity(n: formal, env: type_env) }
+          let actual_text = argument_text_representation(value: actual_expr, type_env: type_env)
+          let unjudged = text_unjudged_advisories(a: formal_text, b: actual_text, position: "a call argument", span: actual_expr.span, module_name: module_name)
+          concat(unjudged, if text_representations_cross(a: formal_text, b: actual_text) {
+            [make_error_node(diagnostic: InternalError { message: concat("text representation crossing at a call argument: declared ", node_type_shape(n: formal, source_indices: source_indices), ", produced ", node_type_shape(n: actual, source_indices: source_indices), " -- host text and a code-point sequence (FreeMonoid<Char>) meet only through the Unicode scalar unfold, which is applied to a host value at a code-point formal; a code-point sequence has no declared route into host text"), span: actual_expr.span }, module_name: module_name)]
+          } else if text_representations_both_code_point(a: formal_text, b: actual_text) {
+            []
+          } else if direct_call_arg_type_mismatch(
             formal: formal, substitution_basis: app.formal.substitution_basis, actual: actual, actual_expr: actual_expr, type_env: type_env, module_name: module_name, source_indices: source_indices) {
             [type_mismatch_error(
               expected: node_type_shape(n: formal, source_indices: source_indices),
@@ -6393,7 +6515,7 @@ fn direct_call_arg_mismatch_diags(
             )]
           } else {
             []
-          }
+          })
           }
         Absent => []
         }
@@ -6432,6 +6554,46 @@ type Tier2bBt {
 // existing two contracts distinguishable, which is the prerequisite for either answer. The name is
 // currently forked across v1.compiler.method, v1.compiler.languages (bridge_method_overrides maps
 // it to with_update), v1.compiler.parse and v1.compiler.emit_rust, each special-casing it apart.
+// A CODE-POINT SEQUENCE HANDED TO A HOST-TEXT BUILTIN IS A CROSSING WITH NO ROUTE (XL-0T ruling B;
+// gunbc.rung_drop text_boundary_identity_wall). The builtin registry types a call by its return
+// alone, so its arguments were never judged, and a module declaring `type String = FreeMonoid<Char>`
+// could call string_length / char_at / substring on its own values with zero diagnostics while
+// rustc refused the emission. Each argument bound to a host-text parameter
+// (v1.compiler.infer_method builtin_host_text_param_names) is asked the one text-representation
+// authority (v1.compiler.infer_env text_representation_by_identity); a CodePointSequence there refuses,
+// located at the argument. An argument is matched to its parameter by label, else by position.
+fn builtin_text_argument_crossing_diags(func_name: String, typed_args: List<Node>, scope: InferScope) -> List<ErrorNode> {
+  let host_params = builtin_host_text_param_names(name: func_name)
+  if host_params |> count == 0 { [] }
+  else {
+    let formal_names = builtin_param_names(name: func_name)
+    typed_args |> enumerate |> flat_map(pair => {
+      let arg = pair.second
+      let bound_name = match arg_name_at(n: arg, source_indices: scope.type_env.source_indices) {
+        Present { value: label } => label
+        Absent => match formal_names |> skip(pair.first) |> first { Present { value: n } => n  Absent => "" }
+      }
+      if !(host_params |> any(n => n == bound_name)) { [] }
+      else {
+        let value = arg_value(n: arg)
+        match value.inferred {
+          Present { value: Resolved { node: _ } } =>
+            match argument_text_representation(value: value, type_env: scope.type_env) {
+              CodePointSequence => [inference_error(
+                message: concat("text representation crossing: argument '", bound_name, "' of ", func_name,
+                  " is host text, and the value passed is a code-point sequence (FreeMonoid<Char>); no declared route converts a non-literal between the two -- pass a host String, or use the structural operation on the sequence"),
+                span: value.span, module_name: scope.module_name)]
+              HostText => []
+              NotText => []
+              TextRepresentationUnidentified => [make_error_node(diagnostic: TextRepresentationUnidentifiedAtBoundary { position: concat("argument '", concat(bound_name, concat("' of ", func_name))), span: value.span }, module_name: scope.module_name)]
+            }
+          _ => []
+        }
+      }
+    })
+  }
+}
+
 fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<Node>, scope: InferScope, span: SourceSpan) -> Tier2bBt {
   if func_name == "lookup" || func_name == "map_get" {
     Tier2bBt {
@@ -6547,7 +6709,7 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
       Present { value: re } =>
         match operand_elem {
           Present { value: oe } =>
-            set_element_types_mismatch(recv_elem: re, operand_elem: oe, source_indices: scope.type_env.source_indices)
+            set_element_types_mismatch(recv_elem: re, operand_elem: oe, source_indices: scope.type_env.source_indices, text: TextJudgedIn { env: scope.type_env })
           Absent => false
         }
       Absent => false
@@ -7380,6 +7542,96 @@ fn expression_is_uppercase_constructor_reference(n: Node, source_indices: Map<St
   }
 }
 
+// THE UNFOLD IS KEYED TO THE ONE DECLARED ROW, NOT RE-DECIDED HERE. A value is unfolded at a
+// destination only when that destination's literal homomorphism is the Unicode scalar sequence
+// unfold (gunbc.structural_realization_bindings literal_homomorphism_rows UnicodeScalarSequenceUnfold,
+// asked through literal_boundary_elaboration exactly as a string literal at the same boundary asks
+// it). A destination with no such row keeps the value as it was; an IDENTIFIED crossing then refuses
+// at the argument judgment, and one with an unidentified side stays unjudged by the text wall (base
+// compatibility decides; gunbc.rung_drop text_boundary_identity_wall). No second conversion table
+// exists for values.
+fn destination_declares_scalar_sequence_unfold(destination_type: Node, scope: InferScope) -> Bool {
+  match literal_boundary_elaboration(lit: LitStr { value: "" }, expected: Present { value: destination_type }, scope: scope) {
+    LiteralBoundaryElaborated { elaboration: e, destination_type: _ } =>
+      match e.homomorphism.producer {
+        UnicodeScalarSequenceUnfold => true
+        _ => false
+      }
+    LiteralBoundaryPlain => false
+    LiteralBoundaryRefused { message: _ } => false
+  }
+}
+
+// THE UNFOLD, FOR A VALUE (XL-0T ruling B; gunbc.rung_drop text_boundary_identity_wall). A call
+// argument bound to a formal whose DECLARATION-BOUND type is a code-point sequence is inferred under
+// that type, never under the formal's spelling re-resolved in the caller: a callee declaring its
+// parameter with the bare String of v2.std.text means the structural carrier at every call site,
+// and reading param_node_type_expr in the caller's scope made the same parameter host text there.
+// A kernel literal then takes its declared homomorphism (literal_boundary_elaboration). A
+// NON-literal host-text value takes the SAME unfold, selected by the SAME row
+// (destination_declares_scalar_sequence_unfold), as a node in the typed tree: the scalar-string
+// algebra method `chars` (std.algebra free_monoid_scalar_templates: String -> List<Int>, one scalar
+// per character) applied to the value and typed as the destination. That is the one declared route
+// between the two representations -- the Unicode scalar sequence of the text -- so every target
+// realizes it through its own row for `chars` and the emitter never decides it. The reverse
+// direction has no declared route and is not unfolded: a code-point sequence at a host-text formal
+// stays a refusal (v1.compiler.infer_types node_type_equals_core, builtin_text_argument_crossing_diags).
+// The value's representation is read from the SAME peeled type direct_call_arg_mismatch_diags
+// judges (expression_value_type through peel_nominal_alias_identity), so a qualified
+// v2.std.text.String value whose raw resolved node still reads as the spelling String is not
+// mistaken for host text and unfolded twice.
+fn host_text_unfolded_at_code_point_boundary(value: Node, destination_type: Node, scope: InferScope) -> Node {
+  match value.inferred {
+    Present { value: Resolved { node: _ } } =>
+      match argument_text_representation(value: value, type_env: scope.type_env) {
+        HostText =>
+          if destination_declares_scalar_sequence_unfold(destination_type: destination_type, scope: scope) {
+            make_named_expr_node(occurrence_identity: OccurrenceSynthetic,
+              name: "chars", expr_data: ExprMethodCall { method_semantics: Present { value: PlainMethodSemantics } },
+              children: [value],
+              inferred: Present { value: Resolved { node: destination_type } },
+              span: value.span,
+              name_span: elaborated_span(name: "chars")
+            )
+          } else { value }
+        CodePointSequence => value
+        NotText => value
+        TextRepresentationUnidentified => value
+      }
+    _ => value
+  }
+}
+
+// A FORMAL IS A CODE-POINT SEQUENCE WHEN EITHER OF ITS DECLARATION-BOUND VIEWS SAYS SO, and the
+// view that says so is the one the argument is typed against. The declaration-bound conformance of a
+// parameter declared with the QUALIFIED v2.std.text.String is peeled to the FreeMonoid coproduct
+// declaration itself, which has lost its Char argument; its substitution basis still carries
+// FreeMonoid<Char>, and where it too is generalized the declared type still does. Reading only the
+// first let a host value reach a qualified text parameter with no unfold. But a DECLARED type that is
+// host text wins over both peeled views: a bare `String` in a module that imports v2.std.text
+// { String } is the kernel String (kernel precedence; test.claim.self_host_structural_text_witness_test
+// w_bare_string_with_text_import_stays_host_deterministically), while the by-name peel in that module
+// finds the imported structural alias. Absent means neither view is a code-point sequence.
+fn formal_code_point_view(formal: ResolvedFormal, env: TypeEnv) -> Node? {
+  match text_representation_by_identity(n: formal.declared_type, env: env) {
+    HostText => none
+    _ => formal_code_point_view_peeled(formal: formal, env: env)
+  }
+}
+
+fn formal_code_point_view_peeled(formal: ResolvedFormal, env: TypeEnv) -> Node? {
+  match text_representation_by_identity(n: formal.declaration_bound_conformance, env: env) {
+    CodePointSequence => Present { value: formal.declaration_bound_conformance }
+    _ => match text_representation_by_identity(n: formal.substitution_basis, env: env) {
+      CodePointSequence => Present { value: formal.substitution_basis }
+      _ => match text_representation_by_identity(n: formal.declared_type, env: env) {
+        CodePointSequence => Present { value: formal.declared_type }
+        _ => none
+      }
+    }
+  }
+}
+
 fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<Node>, formals: List<ResolvedFormal>, generic_names: List<String>, init_subst: Map<String, Node>, scope: InferScope) -> ArgGenericFoldState {
   fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: init_subst }, f: (st, pair) =>
     let a = pair.second
@@ -7404,13 +7656,29 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
       }
       CallArgumentFormalUnavailable => type_variable_node(id: "callable_param")
     }
-    let contextual_expected = match arg_value(n: a).expr_data {
+    let formal_declaration_bound = match formal_selection {
+      CallArgumentFormalSelected { formal_index: formal_index, formal: _ } => match formals |> skip(formal_index) |> first {
+        Present { value: carried } => formal_code_point_view(formal: carried, env: scope.type_env)
+        Absent => none
+      }
+      CallArgumentFormalUnavailable => none
+    }
+    let formal_is_code_point_sequence = formal_declaration_bound != none
+    let code_point_formal = match formal_declaration_bound { Present { value: bound } => bound  Absent => formal_conformance_type }
+    let argument_is_literal = match arg_value(n: a).expr_data {
+      ExprLiteral { value: _ } => true
+      _ => false
+    }
+    let contextual_expected = if formal_is_code_point_sequence && argument_is_literal { code_point_formal } else { match arg_value(n: a).expr_data {
       ExprVar { binding_kind: _ } => if expression_is_uppercase_constructor_reference(n: arg_value(n: a), source_indices: scope.type_env.source_indices) { formal_conformance_type } else { formal_param_type }
       ExprRecordLit { parent_enum: _ } => formal_param_type
       _ => formal_param_type
-    }
+    } }
     let expected = if has_formal { Present { value: contextual_expected } } else { none }
-    let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)
+    let ar_inferred = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)
+    let ar = if formal_is_code_point_sequence {
+      InferResult { typed: host_text_unfolded_at_code_point_boundary(value: ar_inferred.typed, destination_type: code_point_formal, scope: scope), diagnostics: ar_inferred.diagnostics }
+    } else { ar_inferred }
     let next_subst = if is_lambda_expr(e: arg_value(n: a)) || !has_formal {
       st.subst
     } else if should_unify_record_lit_generics(formal: formal_raw, arg_expr: arg_value(n: a), generic_names: generic_names, source_indices: scope.type_env.source_indices) {
@@ -7612,6 +7880,18 @@ type LiteralBoundary
   | LiteralBoundaryElaborated { elaboration: LiteralElaboration, destination_type: Node }
   | LiteralBoundaryRefused { message: String }
 
+// A CODE-POINT-SEQUENCE DESTINATION IS KEYED BY ITS STRUCTURE. v1.compiler.infer_env
+// text_representation_by_identity establishes by declaration identity that the destination is
+// std.algebra FreeMonoid over std.types Char however it is spelled -- the qualified v2.std.text.String peels to std.algebra FreeMonoid, but
+// the same declaration read in its own module (the declaration-bound formal a foreign call site now
+// uses) keeps its alias name String<Char>, and its declaration reference names the alias rather than
+// the structure. The literal homomorphism row is keyed on the structure that survives resolution
+// (gunbc.structural_realization_bindings literal_homomorphism_rows), so the lookup is asked for that
+// structure directly rather than for whichever alias spelled it.
+fn code_point_sequence_structure_ref() -> DeclarationRef {
+  decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid")
+}
+
 fn literal_boundary_elaboration(lit: LiteralValue, expected: Node?, scope: InferScope) -> LiteralBoundary {
   match expected {
     Absent => LiteralBoundaryPlain
@@ -7619,17 +7899,30 @@ fn literal_boundary_elaboration(lit: LiteralValue, expected: Node?, scope: Infer
       if exp.return_cardinality == CardOptional {
         LiteralBoundaryPlain
       } else {
-        match type_reference_declaration_ref(n: exp, source_indices: scope.type_env.source_indices, env: scope.type_env) {
+        let is_code_point_sequence = match text_representation_by_identity(n: exp, env: scope.type_env) {
+          CodePointSequence => true
+          HostText => false
+          NotText => false
+          TextRepresentationUnidentified => false
+        }
+        let identified = if is_code_point_sequence {
+          Present { value: code_point_sequence_structure_ref() }
+        } else {
+          type_reference_declaration_ref(n: exp, source_indices: scope.type_env.source_indices, env: scope.type_env)
+        }
+        match identified {
           Absent => LiteralBoundaryPlain
           Present { value: destination } =>
             let kind = literal_source_kind_of(value: lit)
-            let element = if exp.children |> count == 1 {
+            let element = if is_code_point_sequence {
+              Present { value: decl_ref(module_path: "std.types", decl_name: "Char") }
+            } else if exp.children |> count == 1 {
               match exp.children |> first {
                 Present { value: arg } => type_reference_declaration_ref(n: arg, source_indices: scope.type_env.source_indices, env: scope.type_env)
                 Absent => none
               }
             } else { none }
-            let natively = provenance_realizes_natively(p: declaration_provenance_of_ref(d: destination, env: scope.type_env))
+            let natively = if is_code_point_sequence { false } else { provenance_realizes_natively(p: declaration_provenance_of_ref(d: destination, env: scope.type_env)) }
             match elaborate_literal_at(rows: literal_homomorphism_rows, source_kind: kind, destination: destination, element: element, destination_realizes_natively: natively) {
               DirectLiteral => LiteralBoundaryPlain
               ViaHomomorphism { homomorphism: h } =>
@@ -7725,16 +8018,6 @@ fn unfold_literal_image(lit: LiteralValue, elaboration: LiteralElaboration, dest
             destination_type: destination_type, span: span
           )
         _ => make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: "literal elaboration: a Peano unfolding row was selected for a non-integer literal (gunbc.structural_realization_bindings keys the row on KernelIntLiteral, so this row is malformed)", span: span)
-      }
-    BooleanUnfold { true_variant: t, false_variant: f } =>
-      match lit {
-        LitBool { value: b } =>
-          elaborated_expr_node(
-            name: if b { t.decl_name as String } else { f.decl_name as String },
-            expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: elaboration.destination.decl_name as String, parent_identity: VariantParentIdentified { key: VariantParentDeclaration { declaration: elaboration.destination } } } } },
-            children: [], destination_type: destination_type, span: span
-          )
-        _ => make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: "literal elaboration: a Boolean unfolding row was selected for a non-boolean literal (gunbc.structural_realization_bindings keys the row on KernelBoolLiteral, so this row is malformed)", span: span)
       }
   }
 }
@@ -8427,7 +8710,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             ),
             diagnostics: concat(arg_diags, relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, template_subst_diags), span: span, module_name: scope.module_name))
           }
-        } else if !callee_is_body_binding && func_name == "empty_map" {
+        } else if !callee_is_body_binding && is_empty_map_constructor(name: func_name) {
           let bare_m = bare_map_node()
           match expected {
             Present { value: exp } =>
@@ -8495,7 +8778,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   }
               }
           }
-        } else if !callee_is_body_binding && func_name == "empty_set" {
+        } else if !callee_is_body_binding && is_empty_set_constructor(name: func_name) {
           let bare_s = bare_set_node()
           match expected {
             Present { value: exp } =>
@@ -8579,7 +8862,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               span: span,
               name_span: node_name_span(n: texpr)
             ),
-            diagnostics: concat(arg_diags, tier2b.kernel_diags)
+            diagnostics: concat(concat(arg_diags, tier2b.kernel_diags), builtin_text_argument_crossing_diags(func_name: func_name, typed_args: typed_args, scope: scope))
           }
         } else {
           let callable_local = match call_target_local_binding(outcome: call_target) {
@@ -8958,7 +9241,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           let branch_diags = if node_type_compatible(
             left: then_rt,
             right: else_rt,
-            source_indices: scope.type_env.source_indices
+            source_indices: scope.type_env.source_indices,
+            text: TextJudgedIn { env: scope.type_env }
           ) {
             []
           } else {
@@ -9390,7 +9674,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 index_type: index_type,
                 span: span,
                 module_name: scope.module_name,
-                source_indices: scope.type_env.source_indices
+                source_indices: scope.type_env.source_indices,
+                text: TextJudgedIn { env: scope.type_env }
               ) }
             _ => none
           }
@@ -9440,7 +9725,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                     end_type: end_type,
                     span: span,
                     module_name: scope.module_name,
-                    source_indices: scope.type_env.source_indices
+                    source_indices: scope.type_env.source_indices,
+                text: TextJudgedIn { env: scope.type_env }
                   ) }
                 _ => none
               }
@@ -10441,7 +10727,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
         } else if (field_cardinality_diags |> count) > 0 {
           field_cardinality_diags
         } else if node_type_compatible(
-          left: expected_node, right: got_node, source_indices: scope.type_env.source_indices) {
+          left: expected_node, right: got_node, source_indices: scope.type_env.source_indices, text: TextJudgedIn { env: scope.type_env }) {
           []
         } else if declared_alias_target_matches_produced(
           expected: expected_node, produced: got_node, env: scope.type_env) {
@@ -10482,6 +10768,17 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
               expected: node_type_shape(n: formal_peeled, source_indices: scope.type_env.source_indices),
               got: node_type_shape(n: actual_peeled, source_indices: scope.type_env.source_indices),
               span: ar_typed.span,
+              module_name: scope.module_name
+            )]
+          } else if nominal_product_inhabitance_refusal(
+              declared: with_required_cardinality(n: expected_node), produced: got_node, scope: scope) != none {
+            [make_error_node(
+              diagnostic: DeclaredTypeNotInhabited {
+                position: declared_type_position_label(position: PositionRecordLiteralField, subject: fi_name),
+                expected: obligation_type_shape(n: expected_node, source_indices: scope.type_env.source_indices),
+                got: obligation_type_shape(n: got_node, source_indices: scope.type_env.source_indices),
+                span: ar_typed.span
+              },
               module_name: scope.module_name
             )]
           } else if expected_node.return_cardinality != CardOptional
@@ -15692,6 +15989,619 @@ type TypecheckModuleResult {
   binding_forks: List<TypeEnvCacheMergeConflict>
 }
 
+// ---------------------------------------------------------------------------------------------
+// KERNEL GROUNDING OF AN INDUCTIVE CARRIER (std.literal_elaboration KernelGrounding; rows in
+// gunbc.structural_realization_bindings kernel_grounding_rows; operator ruling A, 2026-09-30).
+//
+// A carrier with a grounding row is declared inductively (std.nat Nat = Zero | Succ { prev: Nat })
+// and REALIZED as the kernel integer its constructors denote. This fold is the one place that
+// realization is applied: it runs once per module at the end of typechecking, AFTER inference,
+// exhaustiveness and descent annotation have judged the program on the inductive declaration, and
+// it rewrites every constructor occurrence and every constructor pattern of a grounded carrier
+// into kernel-integer form. Every realizer downstream -- the Rust emitter, the other emit targets
+// and the seed interpreter -- reads that one tree, so no two of them can disagree about what a
+// Zero or a Succ is, and none of them carries a constructor-spelling rule of its own.
+//
+//   Zero                        the literal 0
+//   Succ { prev: e }            e + 1            (a numeral Succ^k(Zero) folds to the literal k)
+//   match n { .. }              with n grounded: an if-chain over n == k and n >= k, the
+//                               predecessor bound as n - k, the last arm unconditional because
+//                               the match was already judged exhaustive on the declaration
+//   a closed numeral pattern    nested in another constructor's field: the literal pattern k
+//
+// IDENTITY DECIDES, SPELLING ONLY PRE-FILTERS. A construct is folded only when the type it is
+// typed at resolves to the row's exact DeclarationRef. The constructor names are compared first
+// because the comparison is free and a construct that does not spell one of them cannot be one,
+// but a match on the names alone folds nothing: a user-declared Peano-shaped type, or one that
+// shares the spelling in another module, resolves to a different declaration and is left
+// structural. Where the names say the grounded carrier and identity cannot be established, the
+// fold REFUSES, located, rather than choose (DESIGN section 5).
+//
+// WHAT IS REFUSED RATHER THAN APPROXIMATED: an open successor pattern nested inside another
+// constructor's field (it needs a guard the pattern vocabulary has no form for), an authored
+// guard on a grounded match, and a grounded carrier whose declaration is a coproduct of any other
+// shape. Each is a typed, located diagnostic; none widens.
+// ---------------------------------------------------------------------------------------------
+
+type GroundedView {
+  carrier: DeclarationRef
+  carrier_name: String
+  zero: String
+  succ: String
+  prev_field: String
+  operand: OperandDeclaration
+}
+
+type GroundedCarrierState
+  = GroundedViewReadable { view: GroundedView }
+  | GroundedCarrierDeclaresNoConstructors
+  | GroundedCarrierShapeRefused { carrier: DeclarationRef, span: SourceSpan }
+
+type GroundCtx {
+  env: TypeEnv
+  module_name: String
+  views: List<GroundedView>
+}
+
+type GroundOut {
+  node: Node
+  changed: Bool
+  diagnostics: List<ErrorNode>
+}
+
+type GroundedItems {
+  items: List<Node>
+  diagnostics: List<ErrorNode>
+}
+
+type CarrierMatch
+  = NotGroundedCarrier
+  | GroundedCarrier
+  | GroundedCarrierUnidentified
+
+type PeanoPatternReading
+  = PeanoExact { k: Int }
+  | PeanoAtLeast { k: Int, binder: Node? }
+  | PeanoPatternUnreadable
+
+type GroundedPattern {
+  pattern: MatchPattern
+  changed: Bool
+  diagnostics: List<ErrorNode>
+}
+
+// A row whose carrier declares no constructors (an alias or an opaque declaration) has nothing to
+// fold and is not a refusal: its realization is already the kernel value at every occurrence.
+fn grounded_carrier_state(row: KernelGrounding, decl: Node, env: TypeEnv) -> GroundedCarrierState {
+  let si = env.source_indices
+  if decl.connective != Disj {
+    GroundedCarrierDeclaresNoConstructors
+  } else {
+    let variants = decl.children
+    let refused = GroundedCarrierShapeRefused { carrier: row.carrier, span: decl.span }
+    let nullary = variants |> filter(v => (variant_node_fields(n: v) |> count) == 0)
+    let unary = variants |> filter(v => (variant_node_fields(n: v) |> count) == 1)
+    if (variants |> count) != 2 {
+      refused
+    } else {
+      match nullary |> first {
+        Present { value: z } =>
+          match unary |> first {
+            Present { value: s } =>
+              match variant_node_fields(n: s) |> first {
+                Present { value: f } =>
+                  let field_is_carrier = match type_reference_declaration_ref(n: child_type_node(ch: f), source_indices: si, env: env) {
+                    Present { value: fd } => declaration_ref_eq(a: fd, b: row.carrier)
+                    Absent => false
+                  }
+                  if field_is_carrier {
+                    GroundedViewReadable {
+                      view: GroundedView {
+                        carrier: row.carrier,
+                        carrier_name: row.carrier.decl_name as String,
+                        zero: qualified_last_segment(name: authored_name_at(source_indices: si, node: z)),
+                        succ: qualified_last_segment(name: authored_name_at(source_indices: si, node: s)),
+                        prev_field: authored_name_at(source_indices: si, node: f),
+                        operand: OperandDeclaration { declaration: row.carrier, provenance: declaration_provenance_of_ref(d: row.carrier, env: env) }
+                      }
+                    }
+                  } else { refused }
+                Absent => refused
+              }
+            Absent => refused
+          }
+        Absent => refused
+      }
+    }
+  }
+}
+
+fn grounded_carrier_states(env: TypeEnv) -> List<GroundedCarrierState> {
+  kernel_grounding_rows |> flat_map(row =>
+    match declaration_node_of_ref(d: row.carrier, env: env) {
+      Present { value: decl } => [grounded_carrier_state(row: row, decl: decl, env: env)]
+      Absent => []
+    })
+}
+
+// EVERY FIELD CARRIED, FOUR REPLACEABLE. The fold changes a node's children, body, pattern or
+// occurrence identity and nothing else about it; written as one explicit construction so a field
+// added to Node refuses here instead of being silently dropped by a positional copy.
+fn grounded_node(n: Node, occurrence_identity: NodeOccurrenceIdentity, children: List<Node>, body: Node?, match_pattern: MatchPattern?) -> Node {
+  Node {
+    occurrence_identity: occurrence_identity, name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span,
+    children: children, connective: n.connective, params: n.params,
+    inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses,
+    body: body, transport: n.transport, properties: n.properties,
+    type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive,
+    has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: match_pattern,
+    module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data
+  }
+}
+
+fn ground_unchanged(n: Node) -> GroundOut {
+  GroundOut { node: n, changed: false, diagnostics: [] }
+}
+
+fn ground_refused(n: Node, message: String, ctx: GroundCtx) -> GroundOut {
+  GroundOut {
+    node: n,
+    changed: false,
+    diagnostics: [inference_error(message: concat("kernel grounding: ", message), span: n.span, module_name: ctx.module_name)]
+  }
+}
+
+fn grounded_view_for_constructor(name: String, ctx: GroundCtx) -> GroundedView? {
+  ctx.views |> filter(v => v.zero == name || v.succ == name) |> first
+}
+
+// Identity first. The spelling arm exists only to turn "the names say the grounded carrier and no
+// declaration could be read" into a refusal; it never answers GroundedCarrier.
+fn grounded_carrier_match(rt: Node, parent_enum: String?, view: GroundedView, ctx: GroundCtx) -> CarrierMatch {
+  let si = ctx.env.source_indices
+  match type_reference_declaration_ref(n: rt, source_indices: si, env: ctx.env) {
+    Present { value: d } =>
+      if declaration_ref_eq(a: d, b: view.carrier) { GroundedCarrier } else { NotGroundedCarrier }
+    Absent =>
+      let parent_leaf = match parent_enum {
+        Present { value: p } => qualified_last_segment(name: p)
+        Absent => qualified_last_segment(name: authored_name_at(source_indices: si, node: rt))
+      }
+      if parent_leaf == view.carrier_name { GroundedCarrierUnidentified } else { NotGroundedCarrier }
+  }
+}
+
+fn grounded_int_literal(k: Int, occurrence_identity: NodeOccurrenceIdentity, span: SourceSpan) -> Node {
+  make_expr_node(
+    occurrence_identity: occurrence_identity,
+    expr_data: ExprLiteral { value: LitInt { value: k } },
+    children: [],
+    inferred: Present { value: Resolved { node: int_type } },
+    span: span
+  )
+}
+
+// The operator node inference would have built for the same authored expression: the algebra
+// field comes from the one judgment inference asks (infer_binop_type_node), and the operand
+// declaration is the grounded carrier's, so emission decides the host operator from the same
+// fact it decides an authored `a + 1` on. result_type overrides the judgment's answer only for
+// the predecessor, where a difference of naturals leaves the naturals in general
+// (std.coercion dag_subtraction_refinement) and stays inside them here because the branch is
+// taken only when the subject is at least k.
+fn grounded_binop(op: BinOp, left: Node, k: Int, result_type: Node?, occurrence_identity: NodeOccurrenceIdentity, span: SourceSpan, view: GroundedView, ctx: GroundCtx) -> Node {
+  let info = infer_binop_type_node(op: op, left_type: resolved_type(n: left), source_indices: ctx.env.source_indices, env: ctx.env)
+  let rt = match result_type {
+    Present { value: t } => t
+    Absent => info.result_type
+  }
+  make_expr_node(
+    occurrence_identity: occurrence_identity,
+    expr_data: ExprBinOp { op: op, algebra_field: info.algebra_field, operand: Present { value: view.operand } },
+    children: [left, grounded_int_literal(k: k, occurrence_identity: OccurrenceSynthetic, span: span)],
+    inferred: Present { value: Resolved { node: rt } },
+    span: span
+  )
+}
+
+fn grounded_successor(prev: Node, carrier_type: Node, occurrence_identity: NodeOccurrenceIdentity, span: SourceSpan, view: GroundedView, ctx: GroundCtx) -> Node {
+  match prev.expr_data {
+    ExprLiteral { value: LitInt { value: j } } => grounded_int_literal(k: j + 1, occurrence_identity: occurrence_identity, span: span)
+    _ => grounded_binop(op: Add, left: prev, k: 1, result_type: Present { value: carrier_type }, occurrence_identity: occurrence_identity, span: span, view: view, ctx: ctx)
+  }
+}
+
+fn ground_record_lit(n: Node, parent_enum: String?, ctx: GroundCtx) -> GroundOut {
+  let si = ctx.env.source_indices
+  let name = match record_lit_type_name_at(texpr: n, source_indices: si) {
+    Present { value: t } => qualified_last_segment(name: t)
+    Absent => ""
+  }
+  match grounded_view_for_constructor(name: name, ctx: ctx) {
+    Absent => ground_unchanged(n: n)
+    Present { value: view } =>
+      let carrier_type = resolved_type(n: n)
+      match grounded_carrier_match(rt: carrier_type, parent_enum: parent_enum, view: view, ctx: ctx) {
+        NotGroundedCarrier => ground_unchanged(n: n)
+        GroundedCarrierUnidentified =>
+          ground_refused(n: n, message: concat("the constructor `", name, "` is spelled as a constructor of the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " but the declaration this occurrence is typed at could not be read, so whether it folds to a kernel integer is undecided"), ctx: ctx)
+        GroundedCarrier =>
+          if name == view.zero {
+            GroundOut { node: grounded_int_literal(k: 0, occurrence_identity: n.occurrence_identity, span: n.span), changed: true, diagnostics: [] }
+          } else {
+            match n.children |> filter(c => field_init_node_name_at(n: c, source_indices: si) == view.prev_field) |> first {
+              Present { value: fi } =>
+                GroundOut {
+                  node: grounded_successor(prev: field_init_node_value(n: fi), carrier_type: carrier_type, occurrence_identity: n.occurrence_identity, span: n.span, view: view, ctx: ctx),
+                  changed: true,
+                  diagnostics: []
+                }
+              Absent =>
+                ground_refused(n: n, message: concat("the successor constructor `", name, "` carries no `", view.prev_field, "` field to fold"), ctx: ctx)
+            }
+          }
+      }
+  }
+}
+
+fn ground_variant_value(n: Node, parent_enum: String, ctx: GroundCtx) -> GroundOut {
+  let si = ctx.env.source_indices
+  let name = qualified_last_segment(name: expr_var_name_at(texpr: n, source_indices: si))
+  match grounded_view_for_constructor(name: name, ctx: ctx) {
+    Absent => ground_unchanged(n: n)
+    Present { value: view } =>
+      match grounded_carrier_match(rt: resolved_type(n: n), parent_enum: Present { value: parent_enum }, view: view, ctx: ctx) {
+        NotGroundedCarrier => ground_unchanged(n: n)
+        GroundedCarrierUnidentified =>
+          ground_refused(n: n, message: concat("the constructor `", name, "` is spelled as a constructor of the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " but the declaration this occurrence is typed at could not be read, so whether it folds to a kernel integer is undecided"), ctx: ctx)
+        GroundedCarrier =>
+          if name == view.zero {
+            GroundOut { node: grounded_int_literal(k: 0, occurrence_identity: n.occurrence_identity, span: n.span), changed: true, diagnostics: [] }
+          } else {
+            ground_refused(n: n, message: concat("the successor constructor `", name, "` is used as a value; a kernel-grounded successor is folded only where it is applied to its `", view.prev_field, "` field"), ctx: ctx)
+          }
+      }
+  }
+}
+
+fn peano_pattern_reading(p: MatchPattern, view: GroundedView, si: Map<String, NewlineIndex>) -> PeanoPatternReading {
+  match p {
+    Wildcard => PeanoAtLeast { k: 0, binder: none }
+    Bind { declaration: d } => PeanoAtLeast { k: 0, binder: Present { value: d } }
+    LitPattern { value: v } =>
+      match v {
+        LitInt { value: k } => PeanoExact { k: k }
+        _ => PeanoPatternUnreadable
+      }
+    VariantPattern { name: n, parent_enum: _, field_bindings: fbs, parent_identity: _ } =>
+      let leaf = qualified_last_segment(name: n)
+      if leaf == view.zero {
+        PeanoExact { k: 0 }
+      } else if leaf == view.succ {
+        let inner = match fbs |> filter(fb => field_binding_name_at(n: fb, source_indices: si) == view.prev_field) |> first {
+          Present { value: fb } => peano_pattern_reading(p: field_binding_pattern(n: fb), view: view, si: si)
+          Absent => PeanoAtLeast { k: 0, binder: none }
+        }
+        match inner {
+          PeanoExact { k: k } => PeanoExact { k: k + 1 }
+          PeanoAtLeast { k: k, binder: b } => PeanoAtLeast { k: k + 1, binder: b }
+          PeanoPatternUnreadable => PeanoPatternUnreadable
+        }
+      } else {
+        PeanoPatternUnreadable
+      }
+  }
+}
+
+fn pattern_spells_grounded_constructor(p: MatchPattern, ctx: GroundCtx) -> Bool {
+  match p {
+    VariantPattern { name: n, parent_enum: _, field_bindings: fbs, parent_identity: _ } =>
+      grounded_view_for_constructor(name: qualified_last_segment(name: n), ctx: ctx) != none
+        || (fbs |> any(fb => pattern_spells_grounded_constructor(p: field_binding_pattern(n: fb), ctx: ctx)))
+    _ => false
+  }
+}
+
+fn grounded_pattern_unchanged(p: MatchPattern) -> GroundedPattern {
+  GroundedPattern { pattern: p, changed: false, diagnostics: [] }
+}
+
+fn grounded_pattern_refused(p: MatchPattern, message: String, span: SourceSpan, ctx: GroundCtx) -> GroundedPattern {
+  GroundedPattern {
+    pattern: p,
+    changed: false,
+    diagnostics: [inference_error(message: concat("kernel grounding: ", message), span: span, module_name: ctx.module_name)]
+  }
+}
+
+// A pattern that is NOT the whole subject of a grounded match: a closed numeral becomes the literal
+// pattern every realizer already matches an integer against; an open successor refuses.
+fn ground_nested_pattern(p: MatchPattern, subject_type: Node, span: SourceSpan, ctx: GroundCtx) -> GroundedPattern {
+  let si = ctx.env.source_indices
+  match p {
+    VariantPattern { name: n, parent_enum: pe, field_bindings: fbs, parent_identity: pid } =>
+      if !pattern_spells_grounded_constructor(p: p, ctx: ctx) {
+        grounded_pattern_unchanged(p: p)
+      } else {
+        let leaf = qualified_last_segment(name: n)
+        let head = match grounded_view_for_constructor(name: leaf, ctx: ctx) {
+          Present { value: view } =>
+            match grounded_carrier_match(rt: subject_type, parent_enum: pe, view: view, ctx: ctx) {
+              GroundedCarrier =>
+                match peano_pattern_reading(p: p, view: view, si: si) {
+                  PeanoExact { k: k } =>
+                    Present { value: GroundedPattern { pattern: LitPattern { value: LitInt { value: k } }, changed: true, diagnostics: [] } }
+                  PeanoAtLeast { k: k, binder: _ } =>
+                    Present { value: grounded_pattern_refused(p: p, message: concat("an open successor pattern (at least ", to_string(k), ") of the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " is nested inside another pattern; bind the field and match it in its own match"), span: span, ctx: ctx) }
+                  PeanoPatternUnreadable =>
+                    Present { value: grounded_pattern_refused(p: p, message: concat("a pattern over the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " is neither a numeral nor a successor of a binder"), span: span, ctx: ctx) }
+                }
+              GroundedCarrierUnidentified =>
+                Present { value: grounded_pattern_refused(p: p, message: concat("the pattern `", leaf, "` is spelled as a constructor of the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " but the declaration its subject is typed at could not be read"), span: span, ctx: ctx) }
+              NotGroundedCarrier => none
+            }
+          Absent => none
+        }
+        match head {
+          Present { value: g } => g
+          Absent =>
+            let fields = constructor_fields(type_node: subject_type, ctor: n, env: ctx.env, module_name: ctx.module_name)
+            let grounded = fbs |> map(fb =>
+              let fname = field_binding_name_at(n: fb, source_indices: si)
+              match fields |> filter(f => f.name == fname) |> first {
+                Present { value: f } =>
+                  let g = ground_nested_pattern(p: field_binding_pattern(n: fb), subject_type: f.type_node, span: fb.span, ctx: ctx)
+                  GroundOut {
+                    node: if g.changed { grounded_node(n: fb, occurrence_identity: fb.occurrence_identity, children: fb.children, body: fb.body, match_pattern: Present { value: g.pattern }) } else { fb },
+                    changed: g.changed,
+                    diagnostics: g.diagnostics
+                  }
+                Absent => ground_unchanged(n: fb)
+              })
+            if grounded |> any(g => g.changed) {
+              GroundedPattern {
+                pattern: VariantPattern { name: n, parent_enum: pe, field_bindings: grounded |> map(g => g.node), parent_identity: pid },
+                changed: true,
+                diagnostics: grounded |> flat_map(g => g.diagnostics)
+              }
+            } else {
+              GroundedPattern { pattern: p, changed: false, diagnostics: grounded |> flat_map(g => g.diagnostics) }
+            }
+        }
+      }
+    _ => grounded_pattern_unchanged(p: p)
+  }
+}
+
+fn grounded_comparison(op: BinOp, subject: Node, k: Int, span: SourceSpan, view: GroundedView, ctx: GroundCtx) -> Node {
+  grounded_binop(op: op, left: subject, k: k, result_type: none, occurrence_identity: OccurrenceSynthetic, span: span, view: view, ctx: ctx)
+}
+
+fn grounded_arm_body(arm: Node, reading: PeanoPatternReading, subject: Node, carrier_type: Node, view: GroundedView, ctx: GroundCtx) -> Node {
+  let body = arm_body(n: arm)
+  match reading {
+    PeanoAtLeast { k: k, binder: Present { value: decl } } =>
+      let name = authored_name_at(source_indices: ctx.env.source_indices, node: decl)
+      let value = if k == 0 {
+        subject
+      } else {
+        grounded_binop(op: Sub, left: subject, k: k, result_type: Present { value: carrier_type }, occurrence_identity: OccurrenceSynthetic, span: arm.span, view: view, ctx: ctx)
+      }
+      let let_node = make_named_expr_node(
+        occurrence_identity: OccurrenceSynthetic,
+        name: name,
+        expr_data: ExprLet,
+        children: [value],
+        inferred: Present { value: Resolved { node: carrier_type } },
+        span: arm.span,
+        name_span: elaborated_span(name: name)
+      )
+      make_expr_node(occurrence_identity: OccurrenceSynthetic, expr_data: ExprBlock, children: [let_node, body], inferred: body.inferred, span: arm.span)
+    _ => body
+  }
+}
+
+type GroundedArm {
+  arm: Node
+  reading: PeanoPatternReading
+}
+
+// Built from the LAST arm backwards, so the chain is linear in the arm count. The last arm is
+// unconditional: the match was judged exhaustive on the inductive declaration before this fold
+// ran, so a subject that reaches the last arm is one its pattern admits.
+fn grounded_arm_chain(arms: List<GroundedArm>, subject: Node, carrier_type: Node, result: InferredNode?, span: SourceSpan, view: GroundedView, ctx: GroundCtx) -> Node? {
+  arms |> reverse |> fold(init: none, f: (rest, a) =>
+    let body = grounded_arm_body(arm: a.arm, reading: a.reading, subject: subject, carrier_type: carrier_type, view: view, ctx: ctx)
+    match rest {
+      Absent => Present { value: body }
+      Present { value: tail } =>
+        match a.reading {
+          PeanoExact { k: k } =>
+            Present { value: make_expr_node(occurrence_identity: OccurrenceSynthetic, expr_data: ExprIf, children: [grounded_comparison(op: Eq, subject: subject, k: k, span: a.arm.span, view: view, ctx: ctx), body, tail], inferred: result, span: span) }
+          PeanoAtLeast { k: k, binder: _ } =>
+            if k == 0 {
+              Present { value: body }
+            } else {
+              Present { value: make_expr_node(occurrence_identity: OccurrenceSynthetic, expr_data: ExprIf, children: [grounded_comparison(op: Ge, subject: subject, k: k, span: a.arm.span, view: view, ctx: ctx), body, tail], inferred: result, span: span) }
+            }
+          PeanoPatternUnreadable => Present { value: tail }
+        }
+    })
+}
+
+data grounded_scrutinee_binder: String = "__kernel_grounded_subject"
+
+fn ground_grounded_match(m: Node, scrut: Node, arms: List<Node>, view: GroundedView, ctx: GroundCtx) -> GroundOut {
+  let si = ctx.env.source_indices
+  let carrier_type = resolved_type(n: scrut)
+  let read = arms |> map(arm => GroundedArm { arm: arm, reading: peano_pattern_reading(p: arm_pattern(n: arm), view: view, si: si) })
+  if arms |> any(arm => arm_guard(n: arm) != none) {
+    ground_refused(n: m, message: concat("a match over the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " carries an authored guard, which this fold does not carry into the integer form"), ctx: ctx)
+  } else if read |> any(a => match a.reading { PeanoPatternUnreadable => true  _ => false }) {
+    ground_refused(n: m, message: concat("a match over the kernel-grounded carrier ", view.carrier.module_path as String, ".", view.carrier_name, " has an arm that is neither a numeral nor a successor of a binder"), ctx: ctx)
+  } else {
+    let subject_is_variable = match scrut.expr_data {
+      ExprVar { binding_kind: _ } => true
+      _ => false
+    }
+    let subject = if subject_is_variable {
+      scrut
+    } else {
+      make_named_expr_node(
+        occurrence_identity: OccurrenceSynthetic,
+        name: grounded_scrutinee_binder,
+        expr_data: ExprVar { binding_kind: Present { value: LocalValueBinding } },
+        children: [],
+        inferred: scrut.inferred,
+        span: scrut.span,
+        name_span: elaborated_span(name: grounded_scrutinee_binder)
+      )
+    }
+    match grounded_arm_chain(arms: read, subject: subject, carrier_type: carrier_type, result: m.inferred, span: m.span, view: view, ctx: ctx) {
+      Absent => ground_refused(n: m, message: "a match over a kernel-grounded carrier has no arms", ctx: ctx)
+      Present { value: chain } =>
+        if subject_is_variable {
+          GroundOut { node: grounded_node(n: chain, occurrence_identity: m.occurrence_identity, children: chain.children, body: chain.body, match_pattern: chain.match_pattern), changed: true, diagnostics: [] }
+        } else {
+          let let_node = make_named_expr_node(
+            occurrence_identity: OccurrenceSynthetic,
+            name: grounded_scrutinee_binder,
+            expr_data: ExprLet,
+            children: [scrut],
+            inferred: scrut.inferred,
+            span: scrut.span,
+            name_span: elaborated_span(name: grounded_scrutinee_binder)
+          )
+          GroundOut {
+            node: make_expr_node(occurrence_identity: m.occurrence_identity, expr_data: ExprBlock, children: [let_node, chain], inferred: m.inferred, span: m.span),
+            changed: true,
+            diagnostics: []
+          }
+        }
+    }
+  }
+}
+
+fn ground_match(m: Node, ctx: GroundCtx) -> GroundOut {
+  let scrut = match_scrutinee(texpr: m)
+  let arms = match_arm_nodes(texpr: m)
+  if !(arms |> any(arm => pattern_spells_grounded_constructor(p: arm_pattern(n: arm), ctx: ctx))) {
+    ground_unchanged(n: m)
+  } else {
+    let subject_type = resolved_type(n: scrut)
+    let whole_subject_view = if subject_type.return_cardinality == CardOptional {
+      none
+    } else {
+      ctx.views |> filter(v =>
+        match grounded_carrier_match(rt: subject_type, parent_enum: none, view: v, ctx: ctx) {
+          GroundedCarrier => true
+          _ => false
+        }) |> first
+    }
+    match whole_subject_view {
+      Present { value: view } => ground_grounded_match(m: m, scrut: scrut, arms: arms, view: view, ctx: ctx)
+      Absent =>
+        let grounded = arms |> map(arm =>
+          let g = ground_nested_pattern(p: arm_pattern(n: arm), subject_type: subject_type, span: arm.span, ctx: ctx)
+          GroundOut {
+            node: if g.changed { grounded_node(n: arm, occurrence_identity: arm.occurrence_identity, children: arm.children, body: arm.body, match_pattern: Present { value: g.pattern }) } else { arm },
+            changed: g.changed,
+            diagnostics: g.diagnostics
+          })
+        let diagnostics = grounded |> flat_map(g => g.diagnostics)
+        if grounded |> any(g => g.changed) {
+          GroundOut { node: grounded_node(n: m, occurrence_identity: m.occurrence_identity, children: concat([scrut], grounded |> map(g => g.node)), body: m.body, match_pattern: m.match_pattern), changed: true, diagnostics: diagnostics }
+        } else {
+          GroundOut { node: m, changed: false, diagnostics: diagnostics }
+        }
+    }
+  }
+}
+
+fn ground_local(n: Node, ctx: GroundCtx) -> GroundOut {
+  match n.expr_data {
+    ExprRecordLit { parent_enum: pe } => ground_record_lit(n: n, parent_enum: pe, ctx: ctx)
+    ExprVar { binding_kind: bk } =>
+      match bk {
+        Present { value: kind } =>
+          match kind {
+            VariantValueBinding { parent_enum: pe } => ground_variant_value(n: n, parent_enum: pe, ctx: ctx)
+            _ => ground_unchanged(n: n)
+          }
+        Absent => ground_unchanged(n: n)
+      }
+    ExprMatch => ground_match(m: n, ctx: ctx)
+    _ => ground_unchanged(n: n)
+  }
+}
+
+// Children first, so a construct's operands are already in kernel form when it is folded (the
+// numeral Succ { prev: Succ { prev: Zero } } reaches its outer constructor as Succ over the literal
+// 1). A subtree with no grounded construct is returned as the node it was: nothing is rebuilt.
+fn ground_node(n: Node, ctx: GroundCtx) -> GroundOut {
+  let kids = n.children |> map(c => ground_node(n: c, ctx: ctx))
+  let kids_changed = kids |> any(k => k.changed)
+  let body_out = match n.body {
+    Present { value: b } => Present { value: ground_node(n: b, ctx: ctx) }
+    Absent => none
+  }
+  let body_changed = match body_out {
+    Present { value: b } => b.changed
+    Absent => false
+  }
+  let body_diagnostics = match body_out {
+    Present { value: b } => b.diagnostics
+    Absent => []
+  }
+  let with_kids = if kids_changed { grounded_node(n: n, occurrence_identity: n.occurrence_identity, children: kids |> map(k => k.node), body: n.body, match_pattern: n.match_pattern) } else { n }
+  let rebuilt = match body_out {
+    Present { value: b } => if b.changed { grounded_node(n: with_kids, occurrence_identity: with_kids.occurrence_identity, children: with_kids.children, body: Present { value: b.node }, match_pattern: with_kids.match_pattern) } else { with_kids }
+    Absent => with_kids
+  }
+  let local = ground_local(n: rebuilt, ctx: ctx)
+  GroundOut {
+    node: local.node,
+    changed: local.changed || kids_changed || body_changed,
+    diagnostics: concat(kids |> flat_map(k => k.diagnostics), body_diagnostics, local.diagnostics)
+  }
+}
+
+fn ground_kernel_views(items: List<Node>, env: TypeEnv, module_name: String) -> GroundedItems {
+  let states = grounded_carrier_states(env: env)
+  let views = states |> flat_map(s =>
+    match s {
+      GroundedViewReadable { view: v } => [v]
+      _ => []
+    })
+  let shape_diagnostics = states |> flat_map(s =>
+    match s {
+      GroundedCarrierShapeRefused { carrier: c, span: sp } =>
+        if (c.module_path as String) == module_name {
+          [inference_error(message: concat("kernel grounding: ", c.module_path as String, ".", c.decl_name as String, " carries a gunbc.structural_realization_bindings kernel_grounding_rows row but its declaration is not the inductive shape the row folds (exactly one constructor with no field and one with a single field of the carrier's own type)"), span: sp, module_name: module_name)]
+        } else { [] }
+      _ => []
+    })
+  if (views |> count) == 0 {
+    GroundedItems { items: items, diagnostics: shape_diagnostics }
+  } else {
+    let ctx = GroundCtx { env: env, module_name: module_name, views: views }
+    let outs = items |> map(item =>
+      match item.body {
+        Present { value: b } =>
+          let out = ground_node(n: b, ctx: ctx)
+          GroundOut {
+            node: if out.changed { grounded_node(n: item, occurrence_identity: item.occurrence_identity, children: item.children, body: Present { value: out.node }, match_pattern: item.match_pattern) } else { item },
+            changed: out.changed,
+            diagnostics: out.diagnostics
+          }
+        Absent => ground_unchanged(n: item)
+      })
+    GroundedItems {
+      items: outs |> map(o => o.node),
+      diagnostics: concat(shape_diagnostics, outs |> flat_map(o => o.diagnostics))
+    }
+  }
+}
+
 fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex, global_variant_base: Map<String, TypeBinding>) -> TypecheckModuleResult {
   let env_result = build_type_env(module: resolved, parent_index: parent_index, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index)
   let env = env_result.env
@@ -15786,6 +16696,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
       }
     } else { item }
   )
+  let grounded = ground_kernel_views(items: reannotated_items, env: env, module_name: resolved_module_name)
   let module_type_env_cache = TypeEnvCache {
     deps_map: env_cache.deps_map,
     str_bindings: env_cache.str_bindings,
@@ -15799,7 +16710,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     typed: TypedModule {
       progress: ItemsChecked,
       module: typed_module,
-      items: reannotated_items,
+      items: grounded.items,
       type_env: env,
       type_env_cache: module_type_env_cache,
       interface: build_module_interface(
@@ -15810,13 +16721,13 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
         source_indices: source_indices
       ),
       func_env: updated_func_env,
-      item_registry: refresh_direct_service_names(registry: ctx.item_registry, typed_items: reannotated_items, source_indices: source_indices, module_name: resolved_module_name),
+      item_registry: refresh_direct_service_names(registry: ctx.item_registry, typed_items: grounded.items, source_indices: source_indices, module_name: resolved_module_name),
       occurrence_transport: Present { value: resolved.occurrence_transport },
     },
     diagnostics: frontier_occurrence_budget_checked(
       module_name: resolved_module_name,
       module_span: resolved.module.span,
-      diagnostics: concat(env_diags, ctx.diagnostics, infer_diags, seed_diags)),
+      diagnostics: concat(env_diags, ctx.diagnostics, infer_diags, grounded.diagnostics, seed_diags)),
     binding_forks: env_result.binding_forks
   }
 }
@@ -16012,6 +16923,73 @@ fn build_enum_variant_shape_sets(modules: List<TypedModule>, type_summaries: Map
   )
 }
 
+// A KERNEL-GROUNDED CARRIER HAS NO STRUCTURAL SUMMARY, BECAUSE IT HAS NO STRUCTURAL REALIZATION.
+// The emit summaries are what every rendering decision about a declared type reads -- whether it
+// is an enum, which variants it owns, whether it sits at the shared reference layer -- and they are
+// keyed on the declared name. A carrier realized as the kernel integer
+// (std.literal_elaboration KernelGrounding) is none of those things on any target: its declaration
+// emits as the integer's own spelling and ground_kernel_views has folded its constructors out of
+// every body. Summarizing its inductive body would tell the emitter it is a recursive enum, and
+// every reference to it would then be rendered at the shared layer over a type no value has. So it
+// contributes no summary, decided here on the declaration's own identity (this module, this name)
+// before the name-keyed maps are built.
+fn item_declares_kernel_grounded_carrier(item: Node, module_name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if item.connective != Disj {
+    false
+  } else {
+    let name = authored_name_at(source_indices: source_indices, node: item)
+    if !(kernel_grounding_rows |> any(r => (r.carrier.decl_name as String) == name)) {
+      false
+    } else {
+      match kernel_grounding_for(rows: kernel_grounding_rows, source_kind: KernelIntLiteral, carrier: decl_ref(module_path: module_name, decl_name: name)) {
+        KernelGroundingFound { row: _ } => true
+        KernelGroundingAbsent => false
+        KernelGroundingAmbiguous { row_count: _ } => false
+      }
+    }
+  }
+}
+
+// THE SAME EXCLUSION FOR THE RECURSIVE-TYPE SET, which is the other name-keyed fact a rendering
+// decision reads (a field of a recursive type is boxed, and a boxed field is dereferenced where it
+// is read). A kernel-grounded carrier's inductive declaration is recursive; its realization is an
+// integer, which is not. The name is excluded only where this module's own environment resolves it
+// to the grounded declaration, so a user-declared recursive type of the same spelling is still
+// recorded by the module that declares it.
+fn env_name_is_kernel_grounded_carrier(name: String, env: TypeEnv) -> Bool {
+  let leaf = qualified_last_segment(name: name)
+  let rows = kernel_grounding_rows |> filter(r => (r.carrier.decl_name as String) == leaf)
+  if (rows |> count) == 0 {
+    false
+  } else {
+    match lookup_type_by_name(env: env, name: name) {
+      Present { value: bound } =>
+        rows |> any(r =>
+          match declaration_node_of_ref(d: r.carrier, env: env) {
+            Present { value: carrier_decl } => same_declaration_site(a: bound, b: carrier_decl)
+            Absent => false
+          })
+      Absent => false
+    }
+  }
+}
+
+// TWO NODES ARE ONE DECLARATION WHEN THEY WERE READ FROM ONE DECLARATION SITE. The name lookup
+// answers the declaration node the environment binds, and the symbol index answers the node the
+// grounding row's DeclarationRef names; comparing their declaration spans (file and extent)
+// identifies them without asking a type-reference reader to re-derive an identity from a node that
+// is itself the declaration, which it does not do.
+fn same_declaration_site(a: Node, b: Node) -> Bool {
+  match a.ident_span {
+    Present { value: sa } =>
+      match b.ident_span {
+        Present { value: sb } => sa.file == sb.file && sa.start == sb.start && sa.end == sb.end && sa.file != ""
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
 fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> EmitGraphInfo {
   let init = EmitInfoBuildState {
     type_summaries: empty_map(),
@@ -16021,14 +16999,24 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
     structural_alias_direct_fn_names: empty_set()
   }
   let built_raw = modules |> fold(init: init, f: (state, typed_module) =>
+    let module_name = authored_name_at(source_indices: typed_module.type_env.source_indices, node: typed_module.module)
     typed_module.items |> fold(init: state, f: (inner_state, item) =>
-      add_emit_item_summary(state: inner_state, item: item, source_indices: typed_module.type_env.source_indices)
+      if item_declares_kernel_grounded_carrier(item: item, module_name: module_name, source_indices: typed_module.type_env.source_indices) {
+        inner_state
+      } else {
+        add_emit_item_summary(state: inner_state, item: item, source_indices: typed_module.type_env.source_indices)
+      }
     )
   )
   let built = EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names), type_decl_items: built_raw.type_decl_items, fn_decl_items: built_raw.fn_decl_items, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names }
   let all_recursive = modules |> fold(init: empty_set(), f: (acc, m) =>
     fold(map_keys(m.type_env.recursive_type_set), init: acc, f: (inner, ident) =>
-      set_insert(inner, intern_str(table: m.type_env.intern_table, id: ident))
+      let recursive_name = intern_str(table: m.type_env.intern_table, id: ident)
+      if env_name_is_kernel_grounded_carrier(name: recursive_name, env: m.type_env) {
+        inner
+      } else {
+        set_insert(inner, recursive_name)
+      }
     )
   )
   let variant_shapes = build_enum_variant_shape_sets(modules: modules, type_summaries: built.type_summaries)
@@ -16219,285 +17207,8 @@ fn realize_module(
   }
 }
 
-type StrBindingsRewireAccum {
-  str_bindings: Map<String, TypeBinding>
-  ancestry_str_bindings: Map<String, TypeBinding>
-}
-
 fn import_module_path_at(imp: Node, source_indices: Map<String, NewlineIndex>) -> String {
   authored_name_at(source_indices: source_indices, node: imp)
-}
-
-// `seen_names` is keyed rather than a `Set` because this population is read two ways: the module's
-// own export set is tested for MEMBERSHIP (`local_names`), and each direct import's export set is
-// ENUMERATED to accumulate the per-name exporter count. A `Set` in this substrate supports the
-// first and not the second, so the enumeration had to be simulated by re-testing membership once
-// per candidate name — the scan `direct_import_exporter_counts` replaces. One keyed carrier serves
-// both readings; it is not a second representation of the set, it is the only one.
-type ExportIndexModuleAccum {
-  index: Map<String, TypeNameExportFacts>
-  seen_names: Map<String, Bool>
-}
-
-// ONE POPULATION, ONE TRAVERSAL, TWO DERIVED PROJECTIONS. Both access patterns are legitimate;
-// scanning the whole module population twice to get them is not. This is a BUILD-LOCAL
-// accumulator for the rewiring pass and deliberately not a new compiler authority: when the
-// post-hoc rewiring is deleted — early tiers born correct, so nothing needs repairing — this type
-// is deleted with it rather than surviving as a second census beside SymbolIndex.
-type ExportedTypeRelationBuild {
-  by_name: Map<String, TypeNameExportFacts>
-  by_module: Map<String, Map<String, Bool>>
-}
-
-// §6 bare-minimum cost, same receipt as module_exported_type_names_cost_note. The export-index
-// module walk's canonical binding was `filter(bindings |> map_values, b => b.name == name) |>
-// first` — a rescan of the WHOLE binding map (with a fresh Vec allocation) once per distinct name,
-// i.e. O(|bindings|^2) per module per closure assembly. It is dead work by construction: the
-// enclosing fold walks THAT SAME map_values sequence in order, and seen_names skips every repeat,
-// so the first element whose name matches is always the fold's own current element. `canonical =
-// binding` is therefore the identical value, not an approximation of it — the order both
-// expressions read is one traversal of one map value, so the equality does not depend on map_values
-// being stable ACROSS runs (§5941 determinism), only on the two reads of the same value agreeing,
-// which the rewrite removes the need for entirely.
-
-fn export_index_module_state(acc: Map<String, TypeNameExportFacts>, m: TypedModule) -> ExportIndexModuleAccum {
-  fold(m.type_env.bindings |> map_values, init: ExportIndexModuleAccum { index: acc, seen_names: empty_map() }, f: (state, binding) =>
-    let name = binding.name
-    if map_contains_key(state.seen_names, name) {
-      state
-    } else {
-      let canonical = binding
-      let seen_names = map_insert(state.seen_names, name, true)
-      let index = match map_get(state.index, name) {
-        Absent =>
-          map_insert(state.index, name, TypeNameExportFacts { exporter_count: 1, canonical_binding: Present { value: canonical } })
-        Present { value: facts } =>
-          map_insert(state.index, name, TypeNameExportFacts {
-            exporter_count: facts.exporter_count + 1,
-            canonical_binding: Present { value: canonical }
-          })
-      }
-      ExportIndexModuleAccum { index: index, seen_names: seen_names }
-    }
-  )
-}
-
-// Both projections read ONE relation — the (module, exported-name) pairs — and each used to be
-// built by its own whole-corpus fold that walked every module's bindings again. The second was in
-// fact already computed and thrown away: the per-module `seen_names` accumulated inside the module
-// walk IS that module's distinct binding-name set, which is exactly what the separate by-module
-// builder recomputed. One traversal now yields both, and the discarded value is the returned one.
-fn export_index_merge_module_both(acc: ExportedTypeRelationBuild, m: TypedModule, source_indices: Map<String, NewlineIndex>) -> ExportedTypeRelationBuild {
-  let state = export_index_module_state(acc: acc.by_name, m: m)
-  ExportedTypeRelationBuild {
-    by_name: state.index,
-    by_module: map_insert(acc.by_module, authored_name_at(source_indices: source_indices, node: m.module), state.seen_names)
-  }
-}
-
-fn build_export_indexes(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> ExportedTypeRelationBuild {
-  fold(modules, init: ExportedTypeRelationBuild { by_name: empty_map(), by_module: empty_map() }, f: (acc, m) =>
-    export_index_merge_module_both(acc: acc, m: m, source_indices: source_indices))
-}
-
-// Cost shape (§6 bare-minimum cost, floor batch-3 receipt 2026-07-25): the type names a module
-// exports is ONE derived fact — a set — and both consumers in
-// rewire_type_env_import_str_binding_identity read it. Before this row it existed twice: the
-// caller's per-module `local_names` fold, and `module_exports_type_name`, a LINEAR SCAN (map_values
-// allocates a Vec of every binding, then filters by name) re-run once per (consumer module x
-// inherited key x direct import). Measured on 79 discovery entries: that pass alone was 191.1s of a
-// 331.9s resolve wall (99% of all rewire time, 2.4s/entry) while the other two rewire passes
-// together cost 1.8s. Hoisting the set per module and testing membership made the per-name exporter
-// count O(direct imports) instead of O(direct imports x |parent bindings|), with no change to the
-// predicate it computes. That per-name scan is itself now gone: direct_import_exporter_counts
-// accumulates the whole relation in one traversal of the same sets and rewire_canonical_rewrites
-// reads it by key, so the pass no longer pays a scan per candidate name at all. The caller reads
-// its own row out of the SAME index rather than re-folding it (review 42566) — the Absent arm
-// computes the true value from this one authority, so it is a structurally-unreachable fallback
-// that is still honest, never a fabricated default (DESIGN section 5).
-
-fn module_exported_type_names(m: TypedModule) -> Map<String, Bool> {
-  fold(m.type_env.bindings |> map_values, init: empty_map(), f: (acc, b) => map_insert(acc, b.name, true))
-}
-
-fn direct_import_export_name_sets(m: TypedModule, export_name_index: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>) -> List<Map<String, Bool>> {
-  flat_map(module_imports(n: m.module), imp =>
-    let path = import_module_path_at(imp: imp, source_indices: source_indices)
-    match map_get(export_name_index, path) {
-      Present { value: names } => [names]
-      Absent => []
-    }
-  )
-}
-
-// ONE PASS OVER THE IMPORT SETS, NOT ONE PASS PER CANDIDATE NAME. `direct_import_exporter_count`
-// answered "how many direct imports export this name" by scanning every direct import's export set
-// — and allocating a fresh list of the matching sets to take its length — once per inherited key.
-// The question is asked for every key in the module's inherited keyspace, so the pass cost
-// K x I set probes plus K list allocations, where K is that keyspace and I the direct-import count,
-// to compute a relation whose whole content is one traversal of the same sets: O(sum |S_i| + K).
-// The counts are accumulated here once per module and read by key.
-//
-// Equivalence is by counting, not by argument: each occurrence in `import_export_names` contributes
-// exactly 1 to each of its names, which is what the filter-and-count did per name. A path listed
-// twice among a module's imports therefore still counts twice, exactly as before — the reason this
-// keeps the count rather than deriving the ">1" verdict from `TypeNameExportFacts.exporter_count`,
-// which counts distinct closure modules and would silently disagree on that duplicate.
-fn direct_import_exporter_counts(import_export_names: List<Map<String, Bool>>) -> Map<String, Int> {
-  fold(import_export_names, init: empty_map(), f: (acc, names) =>
-    fold(names |> map_keys, init: acc, f: (inner, name) =>
-      match map_get(inner, name) {
-        Present { value: seen } => map_insert(inner, name, seen + 1)
-        Absent => map_insert(inner, name, 1)
-      }
-    )
-  )
-}
-
-fn direct_import_exporter_count_of(exporter_counts: Map<String, Int>, name: String) -> Int {
-  match map_get(exporter_counts, name) {
-    Present { value: n } => n
-    Absent => 0
-  }
-}
-
-// THE DECISION, separated from the writing. Each name's verdict depends only on the two indexes,
-// the module's own export set and its direct imports — never on what earlier names decided — so the
-// per-name fold that used to thread both binding maps through every iteration was carrying state
-// nothing read. What that threading costs is a count, and the count is what changes here: the old
-// shape performed one insert into each FULL binding map per inherited name; the new shape performs
-// one insert per name into a rewrites map holding only the names actually rewritten, then one
-// merge per binding map. Whether each of those inserts also deep-copied its map is UNPROVEN here
-// — the emitted `Rc::make_mut` copies only when the handle is shared, and no control in this
-// change measures it — so the claim made is the structural one about how many writes reach the
-// large maps, not a claim about the copy mechanism.
-//
-// Two facts make the restructure exactly equivalent rather than approximately so, and both are
-// properties of the old code rather than assumptions about it: the verdict reads none of the
-// accumulated bindings, and the str_bindings arm only ever OVERWRITES a key it already found
-// present, so the key set of str_bindings is invariant across the fold and a later name's
-// `map_get(str_bindings, name)` cannot observe an earlier iteration's insert.
-fn rewire_canonical_rewrites(
-  type_name_index: Map<String, TypeNameExportFacts>,
-  exporter_counts: Map<String, Int>,
-  local_names: Map<String, Bool>,
-  inherited_keys: List<String>
-) -> Map<String, TypeBinding> {
-  fold(inherited_keys, init: empty_map(), f: (acc, name) =>
-    match map_get(type_name_index, name) {
-      Absent => acc
-      Present { value: facts } =>
-        if map_contains_key(local_names, name) || direct_import_exporter_count_of(exporter_counts: exporter_counts, name: name) > 1 || facts.exporter_count > 1 {
-          acc
-        } else {
-          match facts.canonical_binding {
-            Present { value: canonical } => map_insert(acc, name, canonical)
-            Absent => acc
-          }
-        }
-    }
-  )
-}
-
-fn rewire_str_binding_overlay(str_bindings: Map<String, TypeBinding>, rewrites: Map<String, TypeBinding>) -> Map<String, TypeBinding> {
-  fold(rewrites |> map_keys, init: empty_map(), f: (acc, name) =>
-    match map_get(str_bindings, name) {
-      Present { value: _ } =>
-        match map_get(rewrites, name) {
-          Present { value: canonical } => map_insert(acc, name, canonical)
-          Absent => acc
-        }
-      Absent => acc
-    }
-  )
-}
-
-// THE KERNEL LAYER IS NOT AN IMPORT IDENTITY TO CANONICALIZE (2026-08-31, frontier receipt 1
-// follow-up). This rewire replaces an inherited binding with the canonical EXPORTED declaration
-// when exactly one module in THE RUN'S ASSEMBLED MODULE POPULATION exports the name --
-// build_export_indexes is scoped to the invocation's module list (the entry closure under
-// reference-derived resolution), never to the corpus, so the exporter count is a run fact.
-// A KERNEL binding in ancestry is not an inherited import identity: it is the precedence layer
-// build_ancestry_precedence installed ABOVE the import union (locals > kernel > direct-selected
-// > union), and String has exactly one exporter in the 00_compile entry closure (v2.std.text;
-// std.string_type sits outside it), so the unguarded rewrite substituted the structural declaration
-// for the kernel identity in every module's persisted env -- inference (pre-rewire) answered
-// kernel while emit (post-rewire) read the substituted authority, the divergence behind the
-// pub-use String shadow measured as 139 of receipt 1's 146 E0308 rows. The guard is keyed on the
-// BINDING'S OWN identity (the kernel span file), never on a name roster: a module that locally
-// declares or genuinely imports a kernel-spelled name keeps its ordinary rewire, because its
-// binding does not carry the kernel span. The confirming discriminator was measured before the
-// fix: v2.std.compilers.target_model imports v2.std.text in TWO import statements, so its
-// direct-exporter count for String is 2, the rewrite skipped it, and it was the one module whose
-// emit-time lookup still answered kernel.
-fn ancestry_binding_is_kernel_identity(bindings: Map<String, TypeBinding>, name: String) -> Bool {
-  match map_get(bindings, name) {
-    Absent => false
-    Present { value: binding } => resolved_node_is_kernel_identity_for_name(node: binding.resolved, name: name)
-  }
-}
-
-fn rewire_type_env_import_str_binding_identity(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
-  let export_indexes = build_export_indexes(modules: modules, source_indices: source_indices)
-  let type_name_index = export_indexes.by_name
-  let export_name_index = export_indexes.by_module
-  map(modules, m =>
-    let local_names = match map_get(export_name_index, authored_name_at(source_indices: source_indices, node: m.module)) {
-      Present { value: names } => names
-      Absent => module_exported_type_names(m: m)
-    }
-    let import_export_names = direct_import_export_name_sets(m: m, export_name_index: export_name_index, source_indices: source_indices)
-    let exporter_counts = direct_import_exporter_counts(import_export_names: import_export_names)
-    let ancestry_keys = m.type_env.ancestry_str_bindings
-      |> map_keys
-      |> filter(name => !ancestry_binding_is_kernel_identity(bindings: m.type_env.ancestry_str_bindings, name: name))
-    let str_keys = m.type_env.str_bindings |> map_keys
-    let inherited_keys = concat(ancestry_keys, str_keys)
-    let rewrites = rewire_canonical_rewrites(
-      type_name_index: type_name_index,
-      exporter_counts: exporter_counts,
-      local_names: local_names,
-      inherited_keys: inherited_keys
-    )
-    let str_binding_overlay = rewire_str_binding_overlay(str_bindings: m.type_env.str_bindings, rewrites: rewrites)
-    let rewired = StrBindingsRewireAccum {
-      str_bindings: map_merge(m.type_env.str_bindings, str_binding_overlay),
-      ancestry_str_bindings: map_merge(m.type_env.ancestry_str_bindings, rewrites)
-    }
-    let rewired_index = fold(str_binding_overlay |> map_values, init: m.type_env.unit_variant_index, f: (acc, binding) =>
-      unit_variant_index_shadow_insert(
-        unit_variant_index: acc,
-        shadowed: effective_visible_binding(str_bindings: m.type_env.str_bindings, parents: m.type_env.parents, name: binding.name),
-        binding: binding,
-        source_indices: source_indices
-      )
-    )
-    TypedModule {
-      progress: m.progress,
-      module: m.module,
-      items: m.items,
-      type_env: TypeEnv { module_path: m.type_env.module_path,
-        bindings: m.type_env.bindings,
-        str_bindings: rewired.str_bindings,
-        ancestry_str_bindings: rewired.ancestry_str_bindings,
-        parents: m.type_env.parents,
-        recursive_types: m.type_env.recursive_types,
-        recursive_type_set: m.type_env.recursive_type_set,
-        inductive_fields: m.type_env.inductive_fields,
-        source_indices: m.type_env.source_indices,
-        intern_table: m.type_env.intern_table,
-        source_visible_names: m.type_env.source_visible_names, authored_import_names: m.type_env.authored_import_names,
-        symbol_index: m.type_env.symbol_index,
-        unit_variant_index: rewired_index,
-        unit_variant_index_observed: true
-      },
-      type_env_cache: m.type_env_cache,
-      interface: m.interface,
-      func_env: m.func_env,
-      item_registry: m.item_registry,
-      occurrence_transport: m.occurrence_transport,
-    }
-  )
 }
 
 fn compiler_kernel_type_env(source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypeEnv {
@@ -16621,7 +17332,6 @@ fn reconcile(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, inte
 fn reconcile_with_census_extra(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, census_fill_modules: List<Node>, census_si: Map<String, NewlineIndex>) -> ResolvedGraph {
   let typed = typecheck_with_census_extra(graph: graph, source_indices: source_indices, intern_table: intern_table, census_fill_modules: census_fill_modules, census_si: census_si)
   let modules = rewire_type_env_parent_links(modules: typed.modules, source_indices: source_indices)
-  let modules = rewire_type_env_import_str_binding_identity(modules: modules, source_indices: source_indices)
   let modules = rewire_func_env_parent_links(modules: modules, source_indices: source_indices)
   ResolvedGraph {
     modules: modules,

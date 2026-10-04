@@ -1,5 +1,6 @@
 module v2.test.floor_cost_debt_edit
 
+import std.types { List }
 import v2.workflow.floor_cost_debt_edit {
   CostDebtWitnessEdit, PureConjunctRemoval, ReJudgedAsNewWitness,
   CostDebtEditReJudgeCause, WitnessNotDeclaredAtBase, WitnessNotDeclaredAtHead,
@@ -7,6 +8,7 @@ import v2.workflow.floor_cost_debt_edit {
   cost_debt_edit_cause_label,
   CostDebtChangedWitnessCeiling,
   cost_debt_edit_from_sources,
+  cost_debt_changed_witness_ceilings_from_sources,
   cost_debt_changed_witness_ceiling,
 }
 import v2.workflow.required_floor {
@@ -15,10 +17,8 @@ import v2.workflow.required_floor {
   ClaimEvalStepStanding, EvalStepsWithinBudget, EvalStepsOverBudget, EvalStepsOverBudgetUnderDeclaredDrop,
   claim_eval_step_standing,
 }
-import v2.std.logic { Bool }
 import v2.std.integer { Int }
 import v2.std.text { String }
-import v2.std.collection { List }
 import std.measure { EvalStepCount, eval_step_count, eval_step_count_value }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -221,4 +221,34 @@ test fn cost_debt_edit_untokenizable_base_is_rejudged() -> Bool {
 test fn cost_debt_edit_witness_absent_at_base_is_rejudged() -> Bool {
   let edit = decide(base: src_other_witness_only(), head: src_one_conjunct(), function: "w")
   edit_rejudged_for(edit: edit, cause: WitnessNotDeclaredAtBase {}) && rejudged_and_refused(edit: edit)
+}
+
+// A batch must retain identity-specific tiers, including a missing declaration.
+test fn a_file_batch_keeps_each_declarations_own_ceiling() -> Bool {
+  let base = "module specimen\ntest fn a() -> Bool { true && b() }\ntest fn b() -> Bool { true }\n"
+  let head = "module specimen\ntest fn a() -> Bool { true }\ntest fn b() -> Bool { false }\n"
+  let rows = cost_debt_changed_witness_ceilings_from_sources(
+    base_source: base, head_source: head, functions: ["a", "b", "missing"],
+    test_fn_identities: ["specimen.a", "specimen.b"])
+  list_length(rows) == 3 && all(rows, row =>
+    if row.function == "a" {
+      row.ceiling.label == "pure_conjunct_removal" && ceiling_is_grandfathered(ceiling: row.ceiling)
+    } else if row.function == "b" {
+      row.ceiling.label == "rejudged_as_new_witness cause=edit_is_not_a_conjunct_removal" && ceiling_is_new_witness(ceiling: row.ceiling)
+    } else {
+      row.function == "missing" && row.ceiling.label == "rejudged_as_new_witness cause=witness_not_declared_at_base"
+        && ceiling_is_new_witness(ceiling: row.ceiling)
+    })
+}
+
+test fn a_file_batch_preserves_untokenizable_and_missing_head_refusals() -> Bool {
+  let base = "module specimen\ntest fn a() -> Bool { true }\n"
+  let rows = cost_debt_changed_witness_ceilings_from_sources(
+    base_source: base, head_source: "module specimen\n", functions: ["a"], test_fn_identities: ["specimen.a"])
+  let malformed = cost_debt_changed_witness_ceilings_from_sources(
+    base_source: "\"", head_source: base, functions: ["a", "missing"], test_fn_identities: ["specimen.a"])
+  list_length(rows) == 1 && list_length(malformed) == 2
+    && all(rows, row => row.ceiling.label == "rejudged_as_new_witness cause=witness_not_declared_at_head")
+    && all(malformed, row => row.ceiling.label == "rejudged_as_new_witness cause=witness_source_did_not_tokenize")
+    && all(concat(rows, malformed), row => ceiling_is_new_witness(ceiling: row.ceiling))
 }

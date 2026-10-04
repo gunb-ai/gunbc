@@ -1,6 +1,6 @@
 module v2.test.claim.effect_demand.effect_demand_census_test
 
-import std.types { CommitSha }
+import std.types { CommitSha, List }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.content_hash { Sha1Digest }
 import extdeps.git.object_store { GitObjectId, GitSha1ObjectId }
@@ -79,8 +79,6 @@ import v2.compiler.effect_demand {
   effect_demand_unrealized_rows
 }
 import v2.std.algebra { Empty, any, length }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
 
 // THE ORACLE IS A CONTROLLED FIXTURE, not a measurement copied from the current tree (DESIGN section
 // 5). Every probe authors the observed demands, the roster and the realization population by hand,

@@ -98,6 +98,7 @@ fn render_roadmap_site_surface_bundle_for_projection(proj: RoadmapAuthorityProje
       attempts_refused: none,
       standings: StandingsUnobserved { reason: "site surface observation renders the static page and does not consult the event carrier" },
       launch: launch_host_unobserved_static_render(),
+      profiles: [],
     )
   )
   let full_body = served_page_body(page: roadmap_page_for_projection(proj: proj))

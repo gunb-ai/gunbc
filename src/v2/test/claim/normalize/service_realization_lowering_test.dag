@@ -1,0 +1,155 @@
+module v2.test.claim.normalize.service_realization_lowering
+
+import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
+import v2.compiler.normalize { normalize_census }
+import v2.compiler.normalized_tree { CensusTree, NormalizedTree }
+import v2.compiler.namespace_graft { namespace_graft_module_body_optional }
+import v2.std.service_realization_labels {
+  realization_config_label,
+  realization_mock_arms_label,
+  realization_projection_label,
+  realization_root_label,
+  realization_status_arms_label,
+  realization_transport_label
+}
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.integer { Int }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.types { List }
+import v2.std.list_introduction { list_introduction_elements_optional }
+import v2.std.text { String }
+import v2.std.node { Ambiguous, Found, Node, Symbol, named_edge_target_lookup, symbol_intern_lexeme }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE REALIZATION LOWERS INTO ITS SIBLING (XL-2 PR3b-i; v2.compiler.body_lowering_fold
+// body_lower_service_node_image). Each source is parsed and census-normalized for real, once (WARM in
+// v2.workflow.floor_pure_producer_share), and the claims read the lowered tree: the operation's transport
+// kind, its exit arms (one carrying its doc), its mock arm and its `from "key"` row form its entry under
+// <realization>.s.F.Run, beside the service's config, and the entry passes the realization wall. A
+// transport's fields are not lowered (the declared 3b-ii frontier) and the service stays set aside on the
+// full route, so the census route is the one these claims read.
+
+data srl_accepted_source: String = "module m\n\nservice s.F {\n  config { endpoint: \"http://x\" }\n  operation Run {\n    output { out: String from \"stdout\" }\n    transport shell { argv: [\"true\"] }\n    exit { 0 => Unit  nonzero => String \"failed\" }\n    mock_response { 0 => { out: \"\" } }\n  }\n}\n"
+data srl_local_source: String = "module m\n\nservice S {\n  operation Run {\n    transport local {}\n  }\n}\n"
+data srl_repeated_exit_source: String = "module m\n\nservice S {\n  operation Run {\n    transport shell { argv: [\"true\"] }\n    exit { 0 => Unit }\n    exit { 1 => Unit }\n  }\n}\n"
+data srl_class_on_shell_source: String = "module m\n\nservice S {\n  operation Run {\n    transport shell { argv: [\"true\"] }\n    exit { 5xx => Unit }\n  }\n}\n"
+data srl_shared_prefix_source: String = "module m\n\nservice s.F {\n  operation Run {\n    transport shell { argv: [\"true\"] }\n    exit { 0 => Unit }\n  }\n}\n\nservice s.E {\n  operation Get {\n    transport shell { argv: [\"true\"] }\n    exit { 0 => Unit }\n  }\n}\n"
+
+fn srl_census(text: String) -> Outcome<CensusTree> {
+  match conservation_subject_of_text(path: "probe_service_realization_lowering.dag", text: text).parsed {
+    Accepted { value: artifact, diagnostics: _ } => normalize_census(parse_tree: artifact.tree)
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+fn srl_accepted() -> Outcome<CensusTree> { srl_census(text: srl_accepted_source) }
+fn srl_local() -> Outcome<CensusTree> { srl_census(text: srl_local_source) }
+fn srl_repeated_exit() -> Outcome<CensusTree> { srl_census(text: srl_repeated_exit_source) }
+fn srl_class_on_shell() -> Outcome<CensusTree> { srl_census(text: srl_class_on_shell_source) }
+fn srl_shared_prefix() -> Outcome<CensusTree> { srl_census(text: srl_shared_prefix_source) }
+
+fn srl_child(n: Node, name: Symbol) -> Optional<Node> {
+  match named_edge_target_lookup(children: n.children, name: name) {
+    Found { target: t } => optional_present(value: t)
+    Ambiguous => optional_absent()
+    Absent => optional_absent()
+  }
+}
+
+fn srl_path(n: Optional<Node>, names: List<Symbol>) -> Optional<Node> {
+  fold(names, init: n, f: fn(acc, name) {
+    match acc {
+      Present { value: node } => srl_child(n: node, name: name)
+      Absent => optional_absent()
+    }
+  })
+}
+
+fn srl_body(o: Outcome<CensusTree>) -> Optional<Node> {
+  match o {
+    Accepted { value: t, diagnostics: _ } =>
+      match namespace_graft_module_body_optional(root: t.root) {
+        Present { value: body } => optional_present(value: body)
+        Absent => optional_absent()
+      }
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+fn srl_has(n: Optional<Node>, names: List<Symbol>) -> Bool {
+  match srl_path(n: n, names: names) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// An arms block is a list introduction (v2.std.list_introduction); its arms are the list's elements.
+fn srl_arm_count(n: Optional<Node>, names: List<Symbol>) -> Int {
+  match srl_path(n: n, names: names) {
+    Present { value: arms } =>
+      match list_introduction_elements_optional(node: arms) {
+        Present { value: elements } => count(elements)
+        Absent => 0
+      }
+    Absent => 0
+  }
+}
+
+fn srl_refused_as(o: Outcome<CensusTree>, reason: Symbol) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+  }
+}
+
+test fn the_realization_facts_lower_into_the_sibling_holds() -> Bool {
+  let body = srl_body(o: srl_accepted())
+  srl_has(n: body, names: [realization_root_label(), ^s, ^F, realization_config_label()])
+    && srl_has(n: body, names: [realization_root_label(), ^s, ^F, ^Run, realization_transport_label()])
+    && (srl_arm_count(n: body, names: [realization_root_label(), ^s, ^F, ^Run, realization_status_arms_label()]) == 2)
+    && (srl_arm_count(n: body, names: [realization_root_label(), ^s, ^F, ^Run, realization_mock_arms_label()]) == 1)
+    && srl_has(n: body, names: [realization_root_label(), ^s, ^F, ^Run, realization_projection_label(), ^out])
+    && srl_has(n: body, names: [^s, ^F, ^Run])
+}
+
+// The siblings of two services under one prefix merge through the spine's marked-body merge: one
+// <realization>.s holding both F and E.
+test fn the_siblings_of_a_shared_prefix_merge_holds() -> Bool {
+  let body = srl_body(o: srl_shared_prefix())
+  srl_has(n: body, names: [realization_root_label(), ^s, ^F, ^Run])
+    && srl_has(n: body, names: [realization_root_label(), ^s, ^E, ^Get])
+}
+
+// Each refusal located, on the census route: a transport kind with no declared binding, a second exit
+// block, and an HTTP class on a shell exit status.
+test fn an_unrealizable_realization_refuses_located_holds() -> Bool {
+  srl_refused_as(o: srl_local(), reason: ^service_realization_transport_unmodeled)
+    && srl_refused_as(o: srl_repeated_exit(), reason: ^body_lowering_reason_realization_block_repeated)
+    && srl_refused_as(o: srl_class_on_shell(), reason: ^service_realization_status_pattern_not_of_transport)
+}
+
+// A CONFIG-ONLY REALIZATION IS HELD OFF THE FULL ROUTE TOO (side-chat P1). A service whose only realization
+// fact is its config sets nothing aside, so the full route is held by the realization leaf itself
+// (v2.compiler.body_lowering_fold body_lower_service_held): census normalization carries the sibling with
+// the config, and ordinary normalization of the same source refuses as service_realization_unreachable.
+data srl_config_only_source: String = "module m\n\nservice S {\n  config { endpoint: \"http://x\" }\n  operation Run {}\n}\n"
+
+fn srl_config_only_census() -> Outcome<CensusTree> { srl_census(text: srl_config_only_source) }
+
+fn srl_config_only_full() -> Outcome<NormalizedTree> {
+  conservation_subject_of_text(path: "probe_service_realization_lowering.dag", text: srl_config_only_source).normalized
+}
+
+test fn a_config_only_realization_is_held_off_the_full_route_holds() -> Bool {
+  srl_has(n: srl_body(o: srl_config_only_census()), names: [realization_root_label(), ^S, realization_config_label()])
+    && srl_full_refused_as(o: srl_config_only_full(), reason: ^body_lowering_reason_service_realization_unreachable)
+}
+
+fn srl_full_refused_as(o: Outcome<NormalizedTree>, reason: Symbol) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == reason
+  }
+}

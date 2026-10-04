@@ -7,6 +7,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.vllm.server { VllmSourceRevision }
 import extdeps.vllm.source_build { vllm_deepseek_v4_1_sm12_revision }
+import extdeps.vllm.kv_dtype_capability { kv_main_row_admitted_wires, deepseek_v4_sparse_mla_sm12_row, deepseek_v4_sparse_mla_sm10_row }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -98,11 +99,10 @@ fn v41_sm12_demand_symbols() -> List<NonEmptyStr> {
 // consulted at all. It is carried here because it is a launch-time constraint that a runtime image
 // cannot fix -- the remedy is a different launch argument, not a different build -- and keeping it
 // beside the build demands is what stops the two being confused.
-data v41_sm12_admitted_kv_cache_dtypes: List<NonEmptyStr> = [
-  "fp8" as NonEmptyStr,
-  "fp8_e4m3" as NonEmptyStr,
-  "fp8_ds_mla" as NonEmptyStr,
-]
+// THE ROW IS extdeps.vllm.kv_dtype_capability's, typed over the canonical request; this is its wire
+// projection, kept for the probe that sends wires to supports_combination and the readers that compare
+// against what it prints.
+data v41_sm12_admitted_kv_cache_dtypes: List<NonEmptyStr> = kv_main_row_admitted_wires(row: deepseek_v4_sparse_mla_sm12_row)
 
 fn v41_sm12_kv_cache_dtype_admitted(dtype: NonEmptyStr) -> Bool {
   fold(v41_sm12_admitted_kv_cache_dtypes, init: false, f: (acc, d) =>
@@ -115,12 +115,7 @@ fn v41_sm12_kv_cache_dtype_admitted(dtype: NonEmptyStr) -> Bool {
 // and explicitly REJECTS fp8_ds_mla ("SM10x uses the plain per-tensor FP8 KV layout"), while major 12
 // rejects the first three and requires one of the fp8 spellings. A row that carried one set would
 // read as "vLLM's admitted layouts" and be wrong on half the hardware.
-data v41_sm10_admitted_kv_cache_dtypes: List<NonEmptyStr> = [
-  "auto" as NonEmptyStr,
-  "bfloat16" as NonEmptyStr,
-  "fp8" as NonEmptyStr,
-  "fp8_e4m3" as NonEmptyStr,
-]
+data v41_sm10_admitted_kv_cache_dtypes: List<NonEmptyStr> = kv_main_row_admitted_wires(row: deepseek_v4_sparse_mla_sm10_row)
 
 // THE DTYPES WORTH ASKING ABOUT, which is the union of what either major admits plus the one this
 // whole thread turned on. nvfp4_ds_mla is in vLLM's CacheDType literal and is admitted by NEITHER

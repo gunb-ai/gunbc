@@ -1,0 +1,996 @@
+module v2.compiler.dependency_demand_census
+
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
+import v2.compiler.body_lowering_fold { body_lower_find_production_shell_optional, body_lower_type_expr_lowered_optional }
+import v2.compiler.dependency_demand {
+  CalleeOutsideClosure,
+  DemandDerived,
+  DemandDidNotSettle,
+  DemandUndecided,
+  DependencyDemand,
+  DependencyDemandRow,
+  FunctionFact,
+  FunctionValueCalled,
+  OpaqueOperationCalled,
+  OperationFact,
+  RequirementClass,
+  RequiresNone,
+  RequiresOpaque,
+  RequiresResources,
+  RequiresUndeclared,
+  UndeclaredOperationCalled,
+  UndecidedCause,
+  dependency_demand_of,
+  resource_set_add,
+  resource_set_empty,
+  resource_set_has,
+  resource_set_of,
+  ResourceSet
+}
+import v2.compiler.resolve { ResolveContext, ResolvedTree, resolve_node }
+import v2.compiler.eval { eval_node_is_arrow, eval_transform_has_callee_reference }
+import v2.std.node_query { find_arrow_body_child }
+import v2.compiler.parse { parse_tree_projection_edge }
+import v2.extdeps.languages.dag {
+  dag_node_is_fn_decl,
+  namespace_graft_spine_body_optional,
+  dag_surface_kw_then_ident_from_captured,
+  dag_surface_module_header_metadata_edge,
+  parse_production_captured_child_optional,
+  parse_production_emitted_identity_optional
+}
+import v2.std.algebra { fold_list, is_empty, length }
+import v2.std.collection { List, Map, empty_map, map_insert, map_lookup }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.grammar { grammar_empty_node }
+import v2.std.integer { Int }
+import v2.std.node { Arrow, ArrowResourceRequirementsEdge, Atom, Authored, Bind, Branch, Cardinality, ComputationNode, Conj, CoreEdgeLabel, Disj, Edge, Instantiation, Loop, Match, Node, Positional, StructuralLabel, Symbol, Transform, TypeNode, Value, edge_is_core, label_sort_key, node_rebuild }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_snoc, qualified_name_to_dotted_string }
+import v2.std.symbol_index { SymbolIndex, symbol_index_declares_resource_at, symbol_index_lookup }
+import v2.std.text { String }
+
+// THE DEPENDENCY-DEMAND CENSUS (D13 step b2): for every fn that authors a `uses` clause, the
+// authored rows read from THAT fn's parse, paired with the demand v2.compiler.dependency_demand
+// derives for the same fn over the whole closure, and one verdict. Its consumer is the D13
+// row-deletion change, which deletes a row only where this census, executed at that change's own
+// head, reads Equal (lane ruling: an earlier run's receipt is not evidence for a later tree).
+//
+// THE STRIP IS CENSUS-ONLY AND IT IS NOT A CARRIER. Production lowering refuses every fn with a
+// `uses` clause (v2.compiler.body_lowering_fold body_lower_fn_uses_refusal_optional), so such a fn
+// never resolves and its demand cannot be derived. The census route alone elides the clause from
+// the parse tree -- replacing the clause's production shell with grammar_empty_node, which is
+// exactly what the parser leaves in that optional slot when the clause is absent -- and records the
+// clause beside the tree. The elided tree is consumed inside the census route only (v2.compiler.compile
+// native_demand_census_report), whose result is census rows and never a tree, so nothing it
+// produces can reach infer, eval or emission. The authored rows are therefore never lowered onto
+// the fn: they are read, judged and reported (operator D13: no carrier for the authored row).
+//
+// THE VERDICT IS SCOPED TO THE AUDITED VOCABULARY (lane ruling). Derived demand is grounded only
+// for resources some operation was audited to declare, which today is Network. A row naming any
+// other resource is OutOfVocabulary, never a Mismatch, and its future owner is the per-resource
+// operation audit for that resource (Filesystem next).
+//
+// THE FACT READ IS A DECLARED OVER-APPROXIMATION, computed as the answer (DESIGN section 5, not an
+// absorbing fallback). A declaration's callees are EVERY declaration reference in its resolved
+// subtree, not only call heads: a fn passed as a value is counted where it is mentioned. So the
+// derived demand covers every callee a function value can reach when that value originates inside
+// the closure, and derived may exceed actual; it is never below it. A row is deleted only where the
+// derived demand covers it, so the over-approximation can turn a deletable row into a Mismatch, and
+// cannot turn a needed row into a deletion.
+
+// THE AUDITED VOCABULARY IS DERIVED, NOT SPELLED (review 74228 of gunbc#12992): it is the set of resources
+// that some operation of the closure DECLARES in its `requires` edge, read off the resolved tree by the
+// fact walk (DemandFactWalk audited). A resource no operation was audited to require -- Filesystem and
+// Clock today -- is out of vocabulary because no derivation of it is grounded, never because a string
+// here omitted it, and a renamed resource moves with its declaration.
+// ═══ THE STRIP ═══════════════════════════════════════════════════════════════════════════════════
+
+// One authored `uses` clause, read from the parse of the fn that carries it. `name` is Absent only
+// when the fn's own name could not be read off the same parse; that fn still gets a census row.
+type AuthoredUsesFunction {
+  owner: QualifiedName
+  name: Optional<Symbol>
+  types: List<Optional<Node>>
+}
+
+type DemandCensusStripped {
+  tree: Node
+  authored: List<AuthoredUsesFunction>
+}
+
+fn demand_census_strip(tree: Node, owner: QualifiedName) -> DemandCensusStripped {
+  let authored = demand_census_authored_in(acc: Empty, node: tree, owner: owner)
+  if is_empty(xs: authored) {
+    DemandCensusStripped { tree: tree, authored: authored }
+  } else {
+    DemandCensusStripped { tree: demand_census_elide_uses(node: tree), authored: authored }
+  }
+}
+
+// A fn declaration is not descended into: the clause belongs to the declaration's own signature,
+// and a fn body holds no fn declaration.
+fn demand_census_authored_in(acc: List<AuthoredUsesFunction>, node: Node, owner: QualifiedName) -> List<AuthoredUsesFunction> {
+  if dag_node_is_fn_decl(node: node) {
+    match parse_production_captured_child_optional(node: node) {
+      Absent => acc
+      Present { value: captured } =>
+        match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_uses_clause) {
+          Absent => acc
+          Present { value: clause } =>
+            list_snoc_item(xs: acc, item: AuthoredUsesFunction {
+              owner: owner,
+              name: dag_surface_kw_then_ident_from_captured(captured: captured),
+              types: demand_census_entry_types(clause: clause)
+            })
+        }
+    }
+  } else {
+    fold(node.children, init: acc, f: fn(a, e) { demand_census_authored_in(acc: a, node: e.target, owner: owner) })
+  }
+}
+
+// One element per authored entry, in authored order: the entry's type_expr shell, or Absent when the
+// entry carries none the reader can find (that row then reads AuthoredTypeUnresolved).
+fn demand_census_entry_types(clause: Node) -> List<Optional<Node>> {
+  fold_list(xs: demand_census_entry_shells(acc: Empty, node: clause), empty: Empty, cons: fn(acc, entry) {
+    list_snoc_item(xs: acc, item: demand_census_entry_type(entry: entry))
+  })
+}
+
+fn demand_census_entry_type(entry: Node) -> Optional<Node> {
+  match parse_production_captured_child_optional(node: entry) {
+    Absent => optional_absent()
+    Present { value: captured } => body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_type_expr)
+  }
+}
+
+fn demand_census_entry_shells(acc: List<Node>, node: Node) -> List<Node> {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      if id == ^dag_surface_uses_entry {
+        list_snoc_item(xs: acc, item: node)
+      } else {
+        fold(node.children, init: acc, f: fn(a, e) { demand_census_entry_shells(acc: a, node: e.target) })
+      }
+    Absent => fold(node.children, init: acc, f: fn(a, e) { demand_census_entry_shells(acc: a, node: e.target) })
+  }
+}
+
+fn demand_census_elide_uses(node: Node) -> Node {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } =>
+      if id == ^dag_surface_uses_clause { grammar_empty_node() } else { demand_census_elide_children(node: node) }
+    Absent => demand_census_elide_children(node: node)
+  }
+}
+
+fn demand_census_elide_children(node: Node) -> Node {
+  node_rebuild(n: node, children: fold(node.children, init: Empty, f: fn(acc, e) {
+    list_snoc_item(xs: acc, item: Edge { label: e.label, target: demand_census_elide_uses(node: e.target) })
+  }))
+}
+
+// ═══ THE FACT READ OVER ONE RESOLVED MODULE ═══════════════════════════════════════════════════════
+
+type DemandCensusModuleFacts {
+  functions: List<FunctionFact>
+  operations: List<OperationFact>
+  audited: List<QualifiedName>
+}
+
+type DemandFactWalk {
+  functions: List<FunctionFact>
+  operations: List<OperationFact>
+  audited: List<QualifiedName>
+  current: List<QualifiedName>
+  value_call: Bool
+}
+
+// A declaration is a named edge whose path the resolved tree's own declaration index carries
+// (ResolvedTree resolved_declarations); every other named edge -- a record field, a body edge -- is
+// containment inside the declaration that holds it.
+fn demand_census_module_facts(resolved: ResolvedTree, module_qn: QualifiedName) -> DemandCensusModuleFacts {
+  let w = demand_fact_node(
+    w: DemandFactWalk { functions: Empty, operations: Empty, audited: Empty, current: Empty, value_call: false },
+    position: module_qn,
+    node: resolved.root,
+    resolved: resolved
+  )
+  DemandCensusModuleFacts { functions: w.functions, operations: w.operations, audited: w.audited }
+}
+
+// THE CONTAINMENT RULE IS THE INDEX'S OWN (v2.compiler.symbol_index_fill symbol_index_fill_containment_node
+// and _edge), so a path this walk forms is the path resolved_declarations was keyed at: a module-spine
+// body is unwrapped wherever it stands, and a parse-projection or header-metadata edge is descended
+// without extending the position. Extending the position by those labels formed paths no declaration
+// has, and every fn read as undeclared.
+fn demand_fact_children(node: Node) -> List<Edge> {
+  match namespace_graft_spine_body_optional(node: node) {
+    Present { value: body } => body.children
+    Absent => node.children
+  }
+}
+
+fn demand_fact_node(w: DemandFactWalk, position: QualifiedName, node: Node, resolved: ResolvedTree) -> DemandFactWalk {
+  match declaration_reference_path_optional(node: node) {
+    Present { value: target } =>
+      DemandFactWalk { functions: w.functions, operations: w.operations, audited: w.audited, current: list_snoc_item(xs: w.current, item: target), value_call: w.value_call }
+    Absent =>
+      fold(demand_fact_children(node: node), init: demand_fact_note_call(w: w, node: node, resolved: resolved), f: fn(acc, e) { demand_fact_edge(w: acc, position: position, edge: e, resolved: resolved) })
+  }
+}
+
+// A CALL THROUGH A FUNCTION VALUE HAS NO STATIC CALLEE, so its demand is undecided (review of
+// gunbc#12992: hard-coding `false` made FunctionValueCalled unreachable on the real route). WHICH
+// TRANSFORM IS A CALL is the evaluator's own decision, v2.compiler.eval eval_transform_has_callee_reference
+// -- a Transform also carries blocks, casts and lowered operators, so reading every Transform's first
+// child as a callee flagged a block ending in a parameter as a call. Of the callees eval admits, an
+// Atom is a kernel operator and an Arrow an inline lambda whose body this walk reads anyway; a lexical
+// reference (v2.std.qualified_name lexical_reference_label_optional) names a LOCAL binding whose value
+// is only known at run time, and that is a function-value call.
+//
+// A NAMED FUNCTION PARAMETER IS THE OTHER ONE, AND EVAL'S PREDICATE DOES NOT SEE IT. Resolve mints a
+// parameter as parameter_reference_node (<fn path>.<label>), not as a lexical reference, so
+// eval_transform_has_callee_reference answers false for a Transform headed by one. Its value is the
+// caller's argument, never a static declaration, so at this census boundary a Transform whose first
+// positional child is a parameter reference is a function-value call too (review of gunbc#12992).
+fn demand_fact_note_call(w: DemandFactWalk, node: Node, resolved: ResolvedTree) -> DemandFactWalk {
+  if demand_fact_is_value_call(node: node) {
+    DemandFactWalk { functions: w.functions, operations: w.operations, audited: w.audited, current: w.current, value_call: true }
+  } else {
+    w
+  }
+}
+
+fn demand_fact_is_value_call(node: Node) -> Bool {
+  if eval_transform_has_callee_reference(node: node) {
+    demand_fact_head_is_lexical(node: node)
+  } else {
+    demand_fact_is_transform(node: node) && demand_fact_head_is_parameter(node: node)
+  }
+}
+
+fn demand_fact_is_transform(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: b } =>
+      match b {
+        Transform => true
+        Value => false
+        Branch => false
+        Loop => false
+        Bind => false
+        Match => false
+      }
+  }
+}
+
+fn demand_fact_head_is_lexical(node: Node) -> Bool {
+  match first(node.children) {
+    Present { value: e } =>
+      match lexical_reference_label_optional(node: e.target) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn demand_fact_head_is_parameter(node: Node) -> Bool {
+  match first(node.children) {
+    Present { value: e } =>
+      match e.label {
+        Positional =>
+          match parameter_reference_path_optional(node: e.target) {
+            Present { value: _ } => true
+            Absent => false
+          }
+        Authored { name: _ } => false
+        StructuralLabel { label: _ } => false
+      }
+    Absent => false
+  }
+}
+
+// Each arm is symbol_index_fill_containment_edge's own: a header-metadata structural edge is not
+// walked (it names the module, not a mention), a parse-projection authored edge is descended without
+// extending the position, and every other labelled edge extends it by the segment the index keys on
+// (label_sort_key for a structural label, the authored name otherwise).
+fn demand_fact_edge(w: DemandFactWalk, position: QualifiedName, edge: Edge, resolved: ResolvedTree) -> DemandFactWalk {
+  match edge.label {
+    Positional => demand_fact_node(w: w, position: position, node: edge.target, resolved: resolved)
+    StructuralLabel { label: _ } =>
+      if dag_surface_module_header_metadata_edge(e: edge) {
+        w
+      } else {
+        demand_fact_labelled_child(w: w, child: qualified_name_snoc(qn: position, segment: label_sort_key(label: edge.label)), edge: edge, resolved: resolved)
+      }
+    Authored { name: sym } =>
+      if parse_tree_projection_edge(name: sym) {
+        demand_fact_node(w: w, position: position, node: edge.target, resolved: resolved)
+      } else {
+        demand_fact_labelled_child(w: w, child: qualified_name_snoc(qn: position, segment: sym), edge: edge, resolved: resolved)
+      }
+  }
+}
+
+fn demand_fact_labelled_child(w: DemandFactWalk, child: QualifiedName, edge: Edge, resolved: ResolvedTree) -> DemandFactWalk {
+  match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: child) {
+    Absent => demand_fact_node(w: w, position: child, node: edge.target, resolved: resolved)
+    Present { value: _ } => demand_fact_declaration(w: w, path: child, node: edge.target, resolved: resolved)
+  }
+}
+
+// THREE KINDS OF DECLARATION, decided in this order. (1) A declaration at or under a declared
+// resource -- the resource itself or one of its capabilities -- demands that resource: a direct
+// capability call is a reference to it. (2) An Arrow with no body edge is an operation, and its
+// requirement is read from its ArrowResourceRequirementsEdge core edge; an absent edge is undeclared
+// (D13 ruling B). (3) Anything else -- a fn, a data row, a type -- demands what its subtree refers to.
+fn demand_fact_declaration(w: DemandFactWalk, path: QualifiedName, node: Node, resolved: ResolvedTree) -> DemandFactWalk {
+  match demand_census_resource_prefix(index: resolved.symbol_index, path: path) {
+    Present { value: declared } =>
+      demand_fact_with_operation(w: w, op: OperationFact { path: path, requirement: RequiresResources { resources: [declared] } })
+    Absent =>
+      if demand_census_is_operation_arrow(node: node) {
+        demand_fact_with_declared_operation(w: w, op: OperationFact { path: path, requirement: demand_census_requirement(arrow: node) })
+      } else {
+        let inner = demand_fact_node(
+          w: DemandFactWalk { functions: w.functions, operations: w.operations, audited: w.audited, current: Empty, value_call: false },
+          position: path,
+          node: node,
+          resolved: resolved
+        )
+        DemandFactWalk {
+          functions: list_snoc_item(xs: inner.functions, item: FunctionFact { path: path, callees: inner.current, calls_function_value: inner.value_call }),
+          operations: inner.operations,
+          audited: inner.audited,
+          current: w.current,
+          value_call: w.value_call
+        }
+      }
+  }
+}
+
+fn demand_fact_with_operation(w: DemandFactWalk, op: OperationFact) -> DemandFactWalk {
+  DemandFactWalk { functions: w.functions, operations: list_snoc_item(xs: w.operations, item: op), audited: w.audited, current: w.current, value_call: w.value_call }
+}
+
+// A DECLARED operation: its requirement is the authority the audited vocabulary is read from.
+fn demand_fact_with_declared_operation(w: DemandFactWalk, op: OperationFact) -> DemandFactWalk {
+  let with_op = demand_fact_with_operation(w: w, op: op)
+  match op.requirement {
+    RequiresResources { resources: rs } =>
+      DemandFactWalk { functions: with_op.functions, operations: with_op.operations, audited: fold_list(xs: rs, empty: with_op.audited, cons: fn(a, r) { list_snoc_item(xs: a, item: r) }), current: with_op.current, value_call: with_op.value_call }
+    RequiresNone => with_op
+    RequiresOpaque => with_op
+    RequiresUndeclared => with_op
+  }
+}
+
+type DemandPrefixScan {
+  prefix: QualifiedName
+  declared: Optional<QualifiedName>
+}
+
+// The SHORTEST prefix that is a declared resource: a capability's path is under its resource.
+fn demand_census_resource_prefix(index: SymbolIndex, path: QualifiedName) -> Optional<QualifiedName> {
+  let scanned = fold_list(xs: path, empty: DemandPrefixScan { prefix: Empty, declared: optional_absent() }, cons: fn(scan, seg) {
+    let prefix = qualified_name_snoc(qn: scan.prefix, segment: seg)
+    match scan.declared {
+      Present { value: r } => DemandPrefixScan { prefix: prefix, declared: optional_present(value: r) }
+      Absent =>
+        if symbol_index_declares_resource_at(index: index, qualified_path: prefix) {
+          DemandPrefixScan { prefix: prefix, declared: optional_present(value: prefix) }
+        } else {
+          DemandPrefixScan { prefix: prefix, declared: optional_absent() }
+        }
+    }
+  })
+  scanned.declared
+}
+
+// The edge a core contract marker names, through v2.std.node edge_is_core. v2.std.node
+// arrow_signature_edges_conform admits at most one of each on an Arrow, so the first is the only one.
+// (v2.std.node core_edge_target_lookup answers the same question; its third arm is spelled Absent,
+// which this module's Optional matches already bind.)
+fn demand_census_edge_target(children: List<Edge>, marker: CoreEdgeLabel) -> Optional<Node> {
+  fold(children, init: optional_absent(), f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if edge_is_core(e: e, marker: marker) { optional_present(value: e.target) } else { acc }
+    }
+  })
+}
+
+// An operation is an Arrow with no body: the arrow test is the evaluator's (v2.compiler.eval
+// eval_node_is_arrow) and the body read is v2.std.node_query find_arrow_body_child, never a local copy.
+fn demand_census_is_operation_arrow(node: Node) -> Bool {
+  if eval_node_is_arrow(node: node) {
+    match find_arrow_body_child(root: node) {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: _ } => true
+    }
+  } else {
+    false
+  }
+}
+
+fn demand_census_requirement_atom(id: Symbol) -> RequirementClass {
+  if id == ^requirements_declared_none {
+    RequiresNone
+  } else if id == ^requirements_opaque {
+    RequiresOpaque
+  } else {
+    RequiresUndeclared
+  }
+}
+
+fn demand_census_requirement_members(t: Node) -> RequirementClass {
+  RequiresResources {
+    resources: fold(t.children, init: Empty, f: fn(acc, e) {
+      match declaration_reference_path_optional(node: e.target) {
+        Present { value: p } => list_snoc_item(xs: acc, item: p)
+        Absent => acc
+      }
+    })
+  }
+}
+
+// The requirements target after resolution: an Atom for `none` / `opaque`, a Conj of resolved resource
+// references, or no edge at all (undeclared). Any other shape is refused by the pre-resolve wall
+// (v2.std.arrow_contract arrow_resource_requirements_edge_target_reads), so it reads as undeclared.
+fn demand_census_requirement(arrow: Node) -> RequirementClass {
+  match demand_census_edge_target(children: arrow.children, marker: ArrowResourceRequirementsEdge) {
+    Absent => RequiresUndeclared
+    Present { value: t } =>
+      match t.kind {
+        TypeNode { connective: c } =>
+          match c {
+            Atom { identity: id } => demand_census_requirement_atom(id: id)
+            Conj => demand_census_requirement_members(t: t)
+            Disj => RequiresUndeclared
+            Arrow => RequiresUndeclared
+            Cardinality => RequiresUndeclared
+            Instantiation => RequiresUndeclared
+          }
+        ComputationNode { behavior: _ } => RequiresUndeclared
+      }
+  }
+}
+
+// A reference to a MEMBER of a declaration (a variant, a field path) depends on that declaration, so
+// a callee the closure does not carry as its own fact is mapped to its LONGEST prefix that it does
+// carry. A callee with no carried prefix stays as written and the reducer reads it as outside the
+// closure.
+fn demand_census_normalize_callees(functions: List<FunctionFact>, operations: List<OperationFact>) -> List<FunctionFact> {
+  let known = fold_list(
+    xs: operations,
+    empty: fold_list(xs: functions, empty: empty_map(), cons: fn(m, f) { map_insert(m: m, key: f.path, value: true) }),
+    cons: fn(m, o) { map_insert(m: m, key: o.path, value: true) }
+  )
+  fold_list(xs: functions, empty: Empty, cons: fn(acc, f) {
+    list_snoc_item(xs: acc, item: FunctionFact {
+      path: f.path,
+      callees: fold_list(xs: f.callees, empty: Empty, cons: fn(cs, c) {
+        list_snoc_item(xs: cs, item: demand_census_known_prefix(known: known, path: c))
+      }),
+      calls_function_value: f.calls_function_value
+    })
+  })
+}
+
+type DemandKnownScan {
+  prefix: QualifiedName
+  longest: Optional<QualifiedName>
+}
+
+fn demand_census_known_prefix(known: Map<QualifiedName, Bool>, path: QualifiedName) -> QualifiedName {
+  let scanned = fold_list(xs: path, empty: DemandKnownScan { prefix: Empty, longest: optional_absent() }, cons: fn(scan, seg) {
+    let prefix = qualified_name_snoc(qn: scan.prefix, segment: seg)
+    match map_lookup(m: known, key: prefix) {
+      Present { value: _ } => DemandKnownScan { prefix: prefix, longest: optional_present(value: prefix) }
+      Absent => DemandKnownScan { prefix: prefix, longest: scan.longest }
+    }
+  })
+  match scanned.longest {
+    Present { value: p } => p
+    Absent => path
+  }
+}
+
+// ═══ THE AUTHORED SIDE, RESOLVED BY THE MODULE'S OWN SCOPE ═══════════════════════════════════════
+
+type AuthoredRowReading
+  = AuthoredResolved { declared: QualifiedName }
+  | AuthoredTypeUnresolved
+
+// The authored type is lowered by the same type lowering a parameter's type takes and resolved by the
+// real resolver in the module's root scope, so `Network` under `import std.resources { Network }` and
+// `std.resources.Network` both read as the declaration they name.
+fn demand_census_authored_readings(ctx: ResolveContext, authored: AuthoredUsesFunction) -> List<AuthoredRowReading> {
+  fold_list(xs: authored.types, empty: Empty, cons: fn(acc, shell) {
+    list_snoc_item(xs: acc, item: demand_census_authored_reading(ctx: ctx, shell: shell))
+  })
+}
+
+fn demand_census_authored_reading(ctx: ResolveContext, shell: Optional<Node>) -> AuthoredRowReading {
+  match shell {
+    Absent => AuthoredTypeUnresolved
+    Present { value: s } =>
+      match body_lower_type_expr_lowered_optional(node: s) {
+        Absent => AuthoredTypeUnresolved
+        Present { value: lowered } =>
+          match resolve_node(ctx: ctx, n: lowered) {
+            Rejected { diagnostics: _ } => AuthoredTypeUnresolved
+            Accepted { value: r, diagnostics: _ } =>
+              match declaration_reference_path_optional(node: r) {
+                Present { value: p } => AuthoredResolved { declared: p }
+                Absent => AuthoredTypeUnresolved
+              }
+          }
+      }
+  }
+}
+
+// ═══ THE ROW AND ITS VERDICT ═══════════════════════════════════════════════════════════════════
+
+// Why a uses fn's demand was not observed: the fn's file refused in the front end even with the clause
+// elided, the module refused at resolution (an alias the body still uses is unbound once the clause
+// is elided, so this is also where a NON-restatement row lands), the fn's own name could not be read,
+// or an authored type did not resolve.
+type DemandCensusUnobserved
+  = UnobservedFileRefused
+  | UnobservedModuleResolveRefused
+  | UnobservedFunctionUnnamed
+  | UnobservedFunctionNotDeclared
+  | UnobservedAuthoredTypeUnresolved
+
+type DemandCensusVerdict
+  = CensusEqual
+  | CensusMismatch { authored: List<QualifiedName>, derived: List<QualifiedName> }
+  | CensusUndecided { cause: UndecidedCause }
+  | CensusUnobserved { reason: DemandCensusUnobserved }
+
+// THE STANDING IS PER AUTHORED ROW, and it is the only thing that licenses a deletion (review of
+// gunbc#12992). A function's verdict is decided over the audited vocabulary only, so a function whose
+// Network row restates its demand reads Equal even when it also authors Filesystem; a function-level
+// Equal must never license deleting that Filesystem row. Each authored row therefore carries its own
+// standing: RowDeletable only for an in-vocabulary resource of an Equal function, RowOutOfVocabulary for
+// any resource no operation was audited to require -- whatever the function's verdict -- and the
+// remaining arms name why an in-vocabulary row is not deletable.
+type AuthoredRowStanding
+  = RowDeletable { resource: QualifiedName }
+  | RowMismatch { resource: QualifiedName }
+  | RowOutOfVocabulary { resource: QualifiedName }
+  | RowUndecided { resource: QualifiedName, cause: UndecidedCause }
+  | RowUnobserved { resource: QualifiedName }
+  | RowTypeUnresolved
+
+type DemandCensusRow {
+  function: QualifiedName
+  authored: List<AuthoredRowReading>
+  standings: List<AuthoredRowStanding>
+  verdict: DemandCensusVerdict
+  demand: Optional<DependencyDemand>
+}
+
+fn demand_census_row_standing(vocabulary: ResourceSet, verdict: DemandCensusVerdict, reading: AuthoredRowReading) -> AuthoredRowStanding {
+  match reading {
+    AuthoredTypeUnresolved => RowTypeUnresolved
+    AuthoredResolved { declared: p } =>
+      if resource_set_has(set: vocabulary, path: p) {
+        match verdict {
+          CensusEqual => RowDeletable { resource: p }
+          CensusMismatch { authored: _, derived: _ } => RowMismatch { resource: p }
+          CensusUndecided { cause: c } => RowUndecided { resource: p, cause: c }
+          CensusUnobserved { reason: _ } => RowUnobserved { resource: p }
+        }
+      } else {
+        RowOutOfVocabulary { resource: p }
+      }
+  }
+}
+
+fn demand_census_row_standings(vocabulary: ResourceSet, verdict: DemandCensusVerdict, readings: List<AuthoredRowReading>) -> List<AuthoredRowStanding> {
+  fold_list(xs: readings, empty: Empty, cons: fn(acc, r) { list_snoc_item(xs: acc, item: demand_census_row_standing(vocabulary: vocabulary, verdict: verdict, reading: r)) })
+}
+
+// THE EXACT ROWS (b3) MAY DELETE, by identity: the function and the resource of every RowDeletable.
+type DeletableUsesRow {
+  function: QualifiedName
+  resource: QualifiedName
+}
+
+fn demand_census_deletable(r: DemandCensusReport) -> List<DeletableUsesRow> {
+  fold_list(xs: r.rows, empty: Empty, cons: fn(acc, row) {
+    fold_list(xs: row.standings, empty: acc, cons: fn(a, st) {
+      match st {
+        RowDeletable { resource: p } => list_snoc_item(xs: a, item: DeletableUsesRow { function: row.function, resource: p })
+        RowMismatch { resource: _ } => a
+        RowOutOfVocabulary { resource: _ } => a
+        RowUndecided { resource: _, cause: _ } => a
+        RowUnobserved { resource: _ } => a
+        RowTypeUnresolved => a
+      }
+    })
+  })
+}
+
+fn demand_census_standing_text(st: AuthoredRowStanding) -> String {
+  match st {
+    RowDeletable { resource: p } => concat("deletable:", qualified_name_to_dotted_string(qn: p))
+    RowMismatch { resource: p } => concat("mismatch:", qualified_name_to_dotted_string(qn: p))
+    RowOutOfVocabulary { resource: p } => concat("out_of_vocabulary:", qualified_name_to_dotted_string(qn: p))
+    RowUndecided { resource: p, cause: _ } => concat("undecided:", qualified_name_to_dotted_string(qn: p))
+    RowUnobserved { resource: p } => concat("unobserved:", qualified_name_to_dotted_string(qn: p))
+    RowTypeUnresolved => "type_unresolved"
+  }
+}
+
+fn demand_census_in_vocabulary(vocabulary: ResourceSet, paths: List<QualifiedName>) -> List<QualifiedName> {
+  fold_list(xs: paths, empty: Empty, cons: fn(acc, p) {
+    if resource_set_has(set: vocabulary, path: p) { list_snoc_item(xs: acc, item: p) } else { acc }
+  })
+}
+
+// Set equality through the keyed sets of v2.compiler.dependency_demand, never a member-by-member scan.
+fn demand_census_same_set(left: List<QualifiedName>, right: List<QualifiedName>) -> Bool {
+  let l = resource_set_of(paths: left)
+  let r = resource_set_of(paths: right)
+  (l.size == r.size) && fold_list(xs: l.members, empty: true, cons: fn(all, p) { all && resource_set_has(set: r, path: p) })
+}
+
+fn demand_census_authored_paths(readings: List<AuthoredRowReading>) -> List<QualifiedName> {
+  fold_list(xs: readings, empty: Empty, cons: fn(acc, r) {
+    match r {
+      AuthoredResolved { declared: p } => list_snoc_item(xs: acc, item: p)
+      AuthoredTypeUnresolved => acc
+    }
+  })
+}
+
+fn demand_census_has_unresolved(readings: List<AuthoredRowReading>) -> Bool {
+  fold_list(xs: readings, empty: false, cons: fn(any, r) {
+    match r {
+      AuthoredResolved { declared: _ } => any
+      AuthoredTypeUnresolved => true
+    }
+  })
+}
+
+fn demand_census_verdict(vocabulary: ResourceSet, readings: List<AuthoredRowReading>, demand: DependencyDemand) -> DemandCensusVerdict {
+  let has_unresolved = demand_census_has_unresolved(readings: readings)
+  if has_unresolved {
+    CensusUnobserved { reason: UnobservedAuthoredTypeUnresolved }
+  } else {
+    match demand {
+      DemandUndecided { cause: c } => CensusUndecided { cause: c }
+      DemandDerived { resources: derived } =>
+        let a = demand_census_in_vocabulary(vocabulary: vocabulary, paths: demand_census_authored_paths(readings: readings))
+        let d = demand_census_in_vocabulary(vocabulary: vocabulary, paths: derived.members)
+        if demand_census_same_set(left: a, right: d) {
+          CensusEqual
+        } else {
+          CensusMismatch { authored: a, derived: d }
+        }
+    }
+  }
+}
+
+fn demand_census_row_unobserved(function: QualifiedName, reason: DemandCensusUnobserved) -> DemandCensusRow {
+  DemandCensusRow { function: function, authored: Empty, standings: Empty, verdict: CensusUnobserved { reason: reason }, demand: optional_absent() }
+}
+
+fn demand_census_function_path(authored: AuthoredUsesFunction) -> QualifiedName {
+  match authored.name {
+    Present { value: n } => qualified_name_snoc(qn: authored.owner, segment: n)
+    Absent => authored.owner
+  }
+}
+
+// ═══ THE REPORT ═══════════════════════════════════════════════════════════════════════════════
+
+// `uses_functions` is counted from the strip; `rows` is what the route emitted. They are produced by
+// different folds -- the strip over parse trees, the rows over the module roster -- so their equality
+// is the count-conservation check rather than a restatement of one count.
+// `unreadable_files` counts reads the front end refused BEFORE the strip ran (tokenize or parse): their
+// `uses` rows were never read, so they are missing from BOTH sides of the conservation check, and a
+// census with any of them is an INCOMPLETE POPULATION -- no observation, never a holding census
+// (review of gunbc#12992).
+type DemandCensusReport {
+  vocabulary: ResourceSet
+  unreadable_files: Int
+  uses_functions: Int
+  rows: List<DemandCensusRow>
+  file_refusals: Int
+  resolve_refused_modules: Int
+}
+
+fn demand_census_conserved(r: DemandCensusReport) -> Bool {
+  r.uses_functions == length(xs: r.rows)
+}
+
+// THE CENSUS'S OWN EXIT: 2 when the population is incomplete (a read refused before authorship), 1 when
+// the rows do not account for every uses fn read, 0 when it holds. The incomplete arm is first, so a
+// census missing a file can never report held.
+fn demand_census_exit(r: DemandCensusReport) -> Int {
+  if r.unreadable_files > 0 {
+    2
+  } else if demand_census_conserved(r: r) {
+    0
+  } else {
+    1
+  }
+}
+
+fn demand_census_verdict_word(v: DemandCensusVerdict) -> String {
+  match v {
+    CensusEqual => "equal"
+    CensusMismatch { authored: _, derived: _ } => "mismatch"
+    CensusUndecided { cause: _ } => "undecided"
+    CensusUnobserved { reason: _ } => "unobserved"
+  }
+}
+
+fn demand_census_cause_word(c: UndecidedCause) -> String {
+  match c {
+    OpaqueOperationCalled { operation: _ } => "opaque_operation"
+    UndeclaredOperationCalled { operation: _ } => "undeclared_operation"
+    FunctionValueCalled { function: _ } => "function_value"
+    CalleeOutsideClosure { callee: _ } => "callee_outside_closure"
+    DemandDidNotSettle { function: _ } => "did_not_settle"
+  }
+}
+
+fn demand_census_cause_subject(c: UndecidedCause) -> QualifiedName {
+  match c {
+    OpaqueOperationCalled { operation: p } => p
+    UndeclaredOperationCalled { operation: p } => p
+    FunctionValueCalled { function: p } => p
+    CalleeOutsideClosure { callee: p } => p
+    DemandDidNotSettle { function: p } => p
+  }
+}
+
+fn demand_census_unobserved_word(u: DemandCensusUnobserved) -> String {
+  match u {
+    UnobservedFileRefused => "file_refused"
+    UnobservedModuleResolveRefused => "module_resolve_refused"
+    UnobservedFunctionUnnamed => "function_unnamed"
+    UnobservedFunctionNotDeclared => "function_not_declared"
+    UnobservedAuthoredTypeUnresolved => "authored_type_unresolved"
+  }
+}
+
+// THE COUNTS ARE A TALLY OVER THE VARIANTS, decided by matching each row's verdict and cause, never by
+// comparing a printed word (review 74228 of gunbc#12992): a word is for printing only, and a count keyed
+// on one would read 0, not refuse, after a typo or a rename.
+type DemandCensusTally {
+  equal: Int
+  mismatch: Int
+  undecided: Int
+  unobserved: Int
+  opaque_operation: Int
+  undeclared_operation: Int
+  function_value: Int
+  callee_outside_closure: Int
+  did_not_settle: Int
+}
+
+fn demand_census_tally_empty() -> DemandCensusTally {
+  DemandCensusTally { equal: 0, mismatch: 0, undecided: 0, unobserved: 0, opaque_operation: 0, undeclared_operation: 0, function_value: 0, callee_outside_closure: 0, did_not_settle: 0 }
+}
+
+fn demand_census_tally_cause(t: DemandCensusTally, c: UndecidedCause) -> DemandCensusTally {
+  match c {
+    OpaqueOperationCalled { operation: _ } =>
+      DemandCensusTally { equal: t.equal, mismatch: t.mismatch, undecided: t.undecided + 1, unobserved: t.unobserved, opaque_operation: t.opaque_operation + 1, undeclared_operation: t.undeclared_operation, function_value: t.function_value, callee_outside_closure: t.callee_outside_closure, did_not_settle: t.did_not_settle }
+    UndeclaredOperationCalled { operation: _ } =>
+      DemandCensusTally { equal: t.equal, mismatch: t.mismatch, undecided: t.undecided + 1, unobserved: t.unobserved, opaque_operation: t.opaque_operation, undeclared_operation: t.undeclared_operation + 1, function_value: t.function_value, callee_outside_closure: t.callee_outside_closure, did_not_settle: t.did_not_settle }
+    FunctionValueCalled { function: _ } =>
+      DemandCensusTally { equal: t.equal, mismatch: t.mismatch, undecided: t.undecided + 1, unobserved: t.unobserved, opaque_operation: t.opaque_operation, undeclared_operation: t.undeclared_operation, function_value: t.function_value + 1, callee_outside_closure: t.callee_outside_closure, did_not_settle: t.did_not_settle }
+    CalleeOutsideClosure { callee: _ } =>
+      DemandCensusTally { equal: t.equal, mismatch: t.mismatch, undecided: t.undecided + 1, unobserved: t.unobserved, opaque_operation: t.opaque_operation, undeclared_operation: t.undeclared_operation, function_value: t.function_value, callee_outside_closure: t.callee_outside_closure + 1, did_not_settle: t.did_not_settle }
+    DemandDidNotSettle { function: _ } =>
+      DemandCensusTally { equal: t.equal, mismatch: t.mismatch, undecided: t.undecided + 1, unobserved: t.unobserved, opaque_operation: t.opaque_operation, undeclared_operation: t.undeclared_operation, function_value: t.function_value, callee_outside_closure: t.callee_outside_closure, did_not_settle: t.did_not_settle + 1 }
+  }
+}
+
+fn demand_census_tally(rows: List<DemandCensusRow>) -> DemandCensusTally {
+  fold_list(xs: rows, empty: demand_census_tally_empty(), cons: fn(t, r) {
+    match r.verdict {
+      CensusEqual =>
+        DemandCensusTally { equal: t.equal + 1, mismatch: t.mismatch, undecided: t.undecided, unobserved: t.unobserved, opaque_operation: t.opaque_operation, undeclared_operation: t.undeclared_operation, function_value: t.function_value, callee_outside_closure: t.callee_outside_closure, did_not_settle: t.did_not_settle }
+      CensusMismatch { authored: _, derived: _ } =>
+        DemandCensusTally { equal: t.equal, mismatch: t.mismatch + 1, undecided: t.undecided, unobserved: t.unobserved, opaque_operation: t.opaque_operation, undeclared_operation: t.undeclared_operation, function_value: t.function_value, callee_outside_closure: t.callee_outside_closure, did_not_settle: t.did_not_settle }
+      CensusUndecided { cause: c } => demand_census_tally_cause(t: t, c: c)
+      CensusUnobserved { reason: _ } =>
+        DemandCensusTally { equal: t.equal, mismatch: t.mismatch, undecided: t.undecided, unobserved: t.unobserved + 1, opaque_operation: t.opaque_operation, undeclared_operation: t.undeclared_operation, function_value: t.function_value, callee_outside_closure: t.callee_outside_closure, did_not_settle: t.did_not_settle }
+    }
+  })
+}
+
+fn demand_census_cause_line(word: String, n: Int) -> String {
+  demand_census_text(parts: ["[demand-census-undecided] cause=", word, " functions=", to_string(n)])
+}
+
+fn demand_census_deletable_rows(r: DemandCensusReport) -> Int {
+  length(xs: demand_census_deletable(r: r))
+}
+
+// OUT OF VOCABULARY, COUNTED PER RESOURCE: for each resource some row authors that no operation was
+// audited to require, how many rows author it and how many of those fns' decided derived demand agrees.
+// None of these rows is deletable by this census; the agreeing count sizes that resource's audit.
+fn demand_census_out_of_vocabulary_resources(r: DemandCensusReport) -> ResourceSet {
+  fold_list(xs: r.rows, empty: resource_set_empty(), cons: fn(acc, row) {
+    fold_list(xs: demand_census_authored_paths(readings: row.authored), empty: acc, cons: fn(a, p) {
+      if resource_set_has(set: r.vocabulary, path: p) { a } else { resource_set_add(set: a, path: p) }
+    })
+  })
+}
+
+fn demand_census_authoring(r: DemandCensusReport, resource: QualifiedName) -> Int {
+  fold_list(xs: r.rows, empty: 0, cons: fn(n, row) {
+    if resource_set_has(set: resource_set_of(paths: demand_census_authored_paths(readings: row.authored)), path: resource) { n + 1 } else { n }
+  })
+}
+
+fn demand_census_derives(demand: Optional<DependencyDemand>, resource: QualifiedName) -> Bool {
+  match demand {
+    Absent => false
+    Present { value: d } =>
+      match d {
+        DemandDerived { resources: rs } => resource_set_has(set: rs, path: resource)
+        DemandUndecided { cause: _ } => false
+      }
+  }
+}
+
+fn demand_census_out_of_vocabulary_agreeing(r: DemandCensusReport, resource: QualifiedName) -> Int {
+  fold_list(xs: r.rows, empty: 0, cons: fn(n, row) {
+    if resource_set_has(set: resource_set_of(paths: demand_census_authored_paths(readings: row.authored)), path: resource) && demand_census_derives(demand: row.demand, resource: resource) { n + 1 } else { n }
+  })
+}
+
+fn demand_census_out_of_vocabulary_line(r: DemandCensusReport, resource: QualifiedName) -> String {
+  demand_census_text(parts: [
+    "[demand-census-out-of-vocabulary] resource=", qualified_name_to_dotted_string(qn: resource),
+    " rows=", to_string(demand_census_authoring(r: r, resource: resource)),
+    " agreeing_functions=", to_string(demand_census_out_of_vocabulary_agreeing(r: r, resource: resource))
+  ])
+}
+
+fn demand_census_paths_text(paths: List<QualifiedName>) -> String {
+  fold_list(xs: paths, empty: "", cons: fn(acc, p) {
+    if acc == "" { qualified_name_to_dotted_string(qn: p) } else { concat(acc, concat(",", qualified_name_to_dotted_string(qn: p))) }
+  })
+}
+
+fn demand_census_row_line(r: DemandCensusRow) -> String {
+  let head = demand_census_text(parts: [
+    "[demand-census-row] function=", qualified_name_to_dotted_string(qn: r.function),
+    " verdict=", demand_census_verdict_word(v: r.verdict),
+    " authored=", demand_census_paths_text(paths: demand_census_authored_paths(readings: r.authored)),
+    " rows=", fold_list(xs: r.standings, empty: "", cons: fn(acc, st) { if acc == "" { demand_census_standing_text(st: st) } else { concat(acc, concat(",", demand_census_standing_text(st: st))) } })
+  ])
+  match r.verdict {
+    CensusEqual => head
+    CensusMismatch { authored: _, derived: d } => demand_census_text(parts: [head, " derived_in_vocabulary=", demand_census_paths_text(paths: d)])
+    CensusUndecided { cause: c } =>
+      demand_census_text(parts: [head, " cause=", demand_census_cause_word(c: c), " at=", qualified_name_to_dotted_string(qn: demand_census_cause_subject(c: c))])
+    CensusUnobserved { reason: u } => demand_census_text(parts: [head, " reason=", demand_census_unobserved_word(u: u)])
+  }
+}
+
+fn demand_census_conserved_word(r: DemandCensusReport) -> String {
+  if demand_census_conserved(r: r) { "true" } else { "false" }
+}
+
+fn demand_census_text(parts: List<String>) -> String {
+  fold_list(xs: parts, empty: "", cons: fn(acc, p) { concat(acc, p) })
+}
+
+fn demand_census_lines(r: DemandCensusReport) -> List<String> {
+  let tally = demand_census_tally(rows: r.rows)
+  let head = demand_census_text(parts: [
+    "[demand-census] vocabulary=", demand_census_paths_text(paths: r.vocabulary.members),
+    " uses_functions=", to_string(r.uses_functions),
+    " rows=", to_string(length(xs: r.rows)),
+    " conserved=", demand_census_conserved_word(r: r),
+    " equal=", to_string(tally.equal),
+    " mismatch=", to_string(tally.mismatch),
+    " undecided=", to_string(tally.undecided),
+    " unobserved=", to_string(tally.unobserved),
+    " deletable_rows=", to_string(demand_census_deletable_rows(r: r)),
+    " file_refusals=", to_string(r.file_refusals),
+    " unreadable_files=", to_string(r.unreadable_files),
+    " resolve_refused_modules=", to_string(r.resolve_refused_modules)
+  ])
+  let causes = [
+    head,
+    demand_census_cause_line(word: "opaque_operation", n: tally.opaque_operation),
+    demand_census_cause_line(word: "undeclared_operation", n: tally.undeclared_operation),
+    demand_census_cause_line(word: "function_value", n: tally.function_value),
+    demand_census_cause_line(word: "callee_outside_closure", n: tally.callee_outside_closure),
+    demand_census_cause_line(word: "did_not_settle", n: tally.did_not_settle)
+  ]
+  let with_vocabulary = fold_list(xs: demand_census_out_of_vocabulary_resources(r: r).members, empty: causes, cons: fn(acc, p) { list_snoc_item(xs: acc, item: demand_census_out_of_vocabulary_line(r: r, resource: p)) })
+  fold_list(xs: r.rows, empty: with_vocabulary, cons: fn(acc, row) { list_snoc_item(xs: acc, item: demand_census_row_line(r: row)) })
+}
+
+// ═══ JOINING THE CLOSURE ════════════════════════════════════════════════════════════════════════
+
+// Per module, what the route observed. The authored functions of a module ride with its standing,
+// so every one of them becomes exactly one row whatever the standing is.
+type DemandCensusModuleStanding
+  = DemandModuleResolved { readings: List<DemandCensusAuthoredReading> }
+  | DemandModuleResolveRefused { authored: List<AuthoredUsesFunction> }
+
+type DemandCensusAuthoredReading {
+  authored: AuthoredUsesFunction
+  readings: List<AuthoredRowReading>
+}
+
+// The whole-closure reduction. `functions`/`operations` are every resolved module's facts; each
+// standing yields its authored functions' rows; `file_refused` are the authored functions of files the
+// front end refused with the clause elided.
+fn demand_census_report(
+  uses_functions: Int,
+  functions: List<FunctionFact>,
+  operations: List<OperationFact>,
+  audited: List<QualifiedName>,
+  standings: List<DemandCensusModuleStanding>,
+  file_refused: List<AuthoredUsesFunction>,
+  file_refusals: Int,
+  unreadable_files: Int
+) -> DemandCensusReport {
+  let demand_rows = dependency_demand_of(functions: demand_census_normalize_callees(functions: functions, operations: operations), operations: operations)
+  let demand = fold_list(xs: demand_rows, empty: empty_map(), cons: fn(m, r) { map_insert(m: m, key: r.function, value: r.demand) })
+  let vocabulary = resource_set_of(paths: audited)
+  let resolved_rows = fold_list(xs: standings, empty: Empty, cons: fn(acc, s) {
+    match s {
+      DemandModuleResolveRefused { authored: fs } =>
+        fold_list(xs: fs, empty: acc, cons: fn(a, f) {
+          list_snoc_item(xs: a, item: demand_census_row_unobserved(function: demand_census_function_path(authored: f), reason: UnobservedModuleResolveRefused))
+        })
+      DemandModuleResolved { readings: rs } =>
+        fold_list(xs: rs, empty: acc, cons: fn(a, r) { list_snoc_item(xs: a, item: demand_census_resolved_row(vocabulary: vocabulary, reading: r, demand: demand)) })
+    }
+  })
+  DemandCensusReport {
+    vocabulary: vocabulary,
+    unreadable_files: unreadable_files,
+    uses_functions: uses_functions,
+    rows: fold_list(xs: file_refused, empty: resolved_rows, cons: fn(a, f) {
+      list_snoc_item(xs: a, item: demand_census_row_unobserved(function: demand_census_function_path(authored: f), reason: UnobservedFileRefused))
+    }),
+    file_refusals: file_refusals,
+    resolve_refused_modules: fold_list(xs: standings, empty: 0, cons: fn(n, s) {
+      match s {
+        DemandModuleResolveRefused { authored: _ } => n + 1
+        DemandModuleResolved { readings: _ } => n
+      }
+    })
+  }
+}
+
+fn demand_census_resolved_row(vocabulary: ResourceSet, reading: DemandCensusAuthoredReading, demand: Map<QualifiedName, DependencyDemand>) -> DemandCensusRow {
+  let path = demand_census_function_path(authored: reading.authored)
+  match reading.authored.name {
+    Absent => demand_census_row_unobserved(function: path, reason: UnobservedFunctionUnnamed)
+    Present { value: _ } =>
+      match map_lookup(m: demand, key: path) {
+        Absent => demand_census_row_unobserved(function: path, reason: UnobservedFunctionNotDeclared)
+        Present { value: d } =>
+          let verdict = demand_census_verdict(vocabulary: vocabulary, readings: reading.readings, demand: d)
+          DemandCensusRow {
+            function: path,
+            authored: reading.readings,
+            standings: demand_census_row_standings(vocabulary: vocabulary, verdict: verdict, readings: reading.readings),
+            verdict: verdict,
+            demand: optional_present(value: d)
+          }
+      }
+  }
+}

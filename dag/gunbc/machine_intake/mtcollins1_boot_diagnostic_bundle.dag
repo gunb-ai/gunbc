@@ -19,11 +19,14 @@ import gunbc.machine_intake_oob_boot_handoff { BootReadbackConfirmed, boot_readb
 import extdeps.bmc.http
 import extdeps.bmc.ipmi_sel { FirmwareError, FirmwareHang, FirmwareProgress }
 import extdeps.bmc.ipmi_sdr { SdrLineResult, sdr_decode_lines }
-import gunbc.machine_intake_mtcollins1_smpro_observation {
+import gunbc.machine_intake_ampere_smpro_observation {
   SmproProbeOutcome, SmproWordRead, SmproControllerRefused, SmproTransportFailed, SmproResponseMalformed,
-  mtcollins1_smpro_probe_count, mtcollins1_smpro_dossier_text, mtcollins1_smpro_findings,
+  SmproPassObservation, smpro_site_probe_bound, smpro_pass_dossier_text, smpro_site_targets,
+  smpro_socket_records, smpro_socket_word, smpro_outcome_word, smpro_outcome_text,
 }
-import gunbc.machine_intake_mtcollins1_bmc_sensor_observation { mtcollins1_sensor_findings, mtcollins1_sensor_table_text }
+import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
+import extdeps.ampere.smpro_register { smpro_gpi_ras_err_reg }
+import gunbc.machine_intake_mtcollins1_bmc_sensor_observation { mtcollins1_sensor_table_text, mtcollins1_sensor_anomalies }
 import extdeps.bmc.redfish_memory_inventory {
   RedfishMemoryMember, RedfishProcessorMember, RedfishResourceStatus, RedfishMemoryLocation,
   RedfishResourceState, StateAbsent, StateDisabled, StateUnavailableOffline, StateStandbyOffline,
@@ -43,12 +46,31 @@ import gunbc.machine_intake_sel_stimulus_listener { SelDelta, sel_read, sel_afte
 import gunbc.machine_intake_pre_os_bringup_verdict {
   SelWindowEvent, BootRestart, FirmwareProgressRecord, OemTimestamped, OtherStandardEvent,
   FirmwareConsoleReport, NoTerminalStated, UndecodedErrorCodesOnly, FirmwareErrorStatementUnrecognized, TrainingRefusedByFirmware,
-  firmware_console_report,
+  firmware_console_report, is_firmware_error_line, is_firmware_err_code_line,
 }
 import gunbc.machine_intake_ampere_dram_console_observation {
-  AmpereDramConsoleObservation, ampere_dram_console_observation, ampere_dram_findings, ampere_dram_console_text,
+  AmpereDramConsoleObservation, ampere_dram_console_observation, ampere_dram_console_text,
 }
-import gunbc.machine_intake_kernel_module_decompression_observation { KernelModuleDecompressionObservation, kernel_module_decompression_observation, kernel_module_decompression_text, kernel_module_decompression_findings }
+import gunbc.machine_intake_kernel_module_decompression_observation { KernelModuleDecompressionObservation, kernel_module_decompression_observation, kernel_module_decompression_text }
+import gunbc.machine_intake_ampere_nvparam_console_observation { NvParamConsoleObservation, ampere_nvparam_console_observation, ampere_nvparam_console_text }
+import gunbc.machine_intake_ampere_checkpoint_console_observation {
+  AmpereCheckpointConsoleObservation, AmpereCheckpointRelation, AmpereCheckpointReference,
+  ampere_checkpoint_console_observation, ampere_checkpoint_relation, ampere_checkpoint_relation_unread, ampere_checkpoint_console_text, ampere_checkpoint_relation_text,
+}
+import gunbc.machine_intake_mtcollins1_console_milestone_observation { ConsoleMilestoneObservation, mtcollins1_console_milestones, console_milestone_sighting_text }
+import gunbc.machine_intake_linux_boot_console_observation { LinuxBootConsoleObservation, linux_boot_console_observation, linux_boot_console_text }
+import extdeps.bootloader.grub { GrubConsoleReport, GrubNothingStated, GrubBannerOnly, GrubStillTrying, GrubBootFailed, grub_console_report, grub_error_text }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
+import gunbc.machine_intake_mtcollins1_power_on_account {
+  PowerOnAccount, PowerOnEvidence, AttemptConfigurationReceipt, BmcAnomaly, ConsoleEvidence, ConsoleRead, ConsoleNotRead, SmproPassEvidence,
+  Carrier, SolConsole, KvmScreen, SmproRegisters, SmproErrorRegisters, SystemEventLog, SensorTable, ChassisPower, RedfishInventory, VirtualMedia, HostCaptureMarkers,
+  CarrierCoverage, CarrierStanding, CarrierRead, CarrierReadEmpty, CarrierPartial, CarrierRefused, CarrierNotTaken,
+  PowerOnHandoff, HandoffPoweredOn, HandoffNotConfirmed, SelEvidence, SelEventsRead, SelEventsNotRead,
+  WatchdogUnobserved, ExpectedSockets, ExpectedTopologyNotRecorded, StimulusRequestNotRecorded,
+  PopulationLiveObserved, PopulationOperatorAttested, PopulationConflicted, SlotRow, StimulusApplicationNotRecorded, PopulationNotRecorded, FirmwareReadbacksNotRecorded,
+  ProcessorMissingOnExpectedSocket, ProcessorSocketDuplicated, ProcessorSocketUnreadable, ProcessorNotNominal, ProcessorAbsentOnExpectedSocket, MemoryBelowRecordedPopulation, MemoryNotNominal, SelHardwareEvent,
+  mtcollins1_power_on_account, mtcollins1_power_on_account_text, mtcollins1_power_on_account_notes, SpanConsoleReading, span_console_readings,
+}
 import gunbc.machine_intake_ampere_socket_console_observation {
   AmpereSocketConsoleObservation, AmpereSummaryObserved, AmpereSummaryNotPrinted, AmpereSocketReferenceComparison,
   ampere_socket_console_observation, ampere_socket_console_text, ampere_socket_reference_comparison, ampere_socket_reference_comparison_text,
@@ -149,8 +171,11 @@ import gunbc.machine_intake_megarac_media_attach {
 // renders it. It does not decode anything those authorities do not.
 //
 // THE BUNDLE NEVER DECIDES THE VERDICT (brief, and DESIGN section 5's separation of observation
-// from judgment). mtcollins1_boot_outcome_with_findings only appends findings to a refusal
-// reason. It never turns a success into a failure or a failure into a success, and the witness
+// from judgment). mtcollins1_boot_outcome_with_findings only appends what was found to a refusal
+// reason. WHAT WAS FOUND IS TYPED, TWO WAYS: what the MACHINE did is the power-on fold's
+// PowerOnAccount (gunbc.machine_intake_mtcollins1_power_on_account; docs/plans/power-on-sequence-model.md),
+// and what OUR HARNESS did -- media, handoff, override, power after, the BMC's reachability, the
+// credential -- is a HarnessFinding. Neither is a list of strings. It never turns a success into a failure or a failure into a success, and the witness
 // asserts both directions.
 //
 // A READ THAT FAILS IS A TYPED, LOCATED READING IN THE BUNDLE, NEVER A MISSING SECTION (DESIGN
@@ -325,12 +350,12 @@ type SensorReading
   | SensorsUnread { cause: BmcReadCause }
   | SensorsNotTaken { reason: NonEmptyStr }
 
-// THE SMpro BOOT-STAGE PASS (gunbc.machine_intake_mtcollins1_smpro_observation). The bundle's own
+// THE SMpro BOOT-STAGE PASS (gunbc.machine_intake_ampere_smpro_observation, read through the managed host's subject). The bundle's own
 // pass is taken after the attempt; the run record below carries the two passes taken while power
 // was established on. Its probes are kept whole, every one with its raw observation, including when none of
 // them was answered: the dossier is rendered for any outcome list.
 type SmproReading
-  = SmproProbed { outcomes: List<SmproProbeOutcome> }
+  = SmproProbed { observation: SmproPassObservation }
   | SmproNotTaken { reason: NonEmptyStr }
 
 type MembersReading<T>
@@ -357,7 +382,7 @@ type InventoryReading {
 // those bytes would under-count multi-byte console output. The size is taken before the content is
 // read, so a capture over the bound is reported without being loaded.
 type ConsoleReading
-  = ConsoleRetained { path: NonEmptyStr, size: ByteSize, lines: Int, firmware: FirmwareConsoleReport, dram: AmpereDramConsoleObservation, sockets: AmpereSocketConsoleObservation, against_reference: AmpereSocketReferenceComparison, modules: KernelModuleDecompressionObservation }
+  = ConsoleRetained { path: NonEmptyStr, size: ByteSize, lines: Int, firmware: FirmwareConsoleReport, firmware_error_lines: Int, capture_digest: Sha256FileDigest, dram: AmpereDramConsoleObservation, checkpoints: AmpereCheckpointConsoleObservation, checkpoint_relations: List<AmpereCheckpointRelation>, milestones: ConsoleMilestoneObservation, sockets: AmpereSocketConsoleObservation, against_reference: AmpereSocketReferenceComparison, loader: GrubConsoleReport, linux: LinuxBootConsoleObservation, modules: KernelModuleDecompressionObservation, nvparam: NvParamConsoleObservation, span_readings: List<SpanConsoleReading> }
   | ConsoleExceedsBound { path: NonEmptyStr, size: ByteSize, bound: ByteSize }
   | ConsoleNotRetained { path: NonEmptyStr }
   | ConsoleUnread { path: NonEmptyStr, detail: String }
@@ -393,7 +418,7 @@ data mtcollins1_boot_retained_artifact_prefix: String = "artifacts/mtcollins1-bo
 // pass right after the handoff observed power on (gunbc.machine_intake_oob_boot_handoff
 // BootControlIssued now carries an observed transition, not an exit code) and a second the first
 // time a poll saw the census envelope open. Both are read-only and fold-sequenced exactly as the
-// post-attempt pass (mtcollins1_smpro_sequenced).
+// post-attempt pass (gunbc.machine_intake_ampere_smpro_observation smpro_pass_sequenced).
 //
 // WHETHER THE OVERRIDE WAS CONSUMED BY THIS ATTEMPT. The IPMI boot override is one-shot: the
 // controller clears boot parameter 5's valid flag when a boot consumes it, and on its own timeout.
@@ -637,16 +662,32 @@ fn media_attach_text(record: MtCollins1MediaAttachRecord) -> String {
   }
 }
 
-fn media_attach_findings(record: MtCollins1MediaAttachRecord) -> List<String> {
+// WHAT OUR HARNESS DID THAT A READER OF THIS ATTEMPT MUST KNOW, as typed values carrying the record
+// they were decided from. These are facts about the observation, not about the machine: the
+// machine's side is the power-on account (gunbc.machine_intake_mtcollins1_power_on_account). Each is decided by
+// the *_harness function beside its record and rendered once, by harness_finding_text.
+type HarnessFinding
+  = EveryBmcReadFailed { failed: List<BmcChannelRead> }
+  | MediaAttachNotReady { record: MtCollins1MediaAttachRecord }
+  | MediaAttachSessionHeld { record: MtCollins1MediaAttachRecord }
+  | HandoffWithheldAtRecheck { handoff: MtCollins1HandoffMedia }
+  | HandoffUnconfirmed { handoff: MtCollins1HandoffMedia }
+  | PresentationAfterHandoff { look: MegaRacAttachResult }
+  | OverrideNotConsumed { consumption: BootOverrideConsumption }
+  | HostPoweredOffWithoutCensusEnd
+  | CredentialMayRemain
+
+fn media_attach_harness(record: MtCollins1MediaAttachRecord) -> List<HarnessFinding> {
   match record {
     MediaAttachNotAttempted { reason: _ } => []
     MediaAttachAttempted { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _, result: res } =>
       match media_attach_outcome_reason(outcome: res.outcome) {
-        Present { value: why } => [concat("media attach: ", why)]
+        Present { value: _ } => [MediaAttachNotReady { record: record }]
         Absent =>
           match res.session_release {
             SessionReleased => []
-            other => [concat("media attach: the presentation is ready but the session was ", session_release_text(standing: other))]
+            SessionReleaseRefused { detail: _ } => [MediaAttachSessionHeld { record: record }]
+            SessionReleaseNotAttempted => [MediaAttachSessionHeld { record: record }]
           }
       }
   }
@@ -704,20 +745,18 @@ fn recheck_text(v: PresentationStillServed) -> String {
 // AFFIRMED LOSS AND AN UNOBSERVED LOOK ARE DIFFERENT EVIDENCE (side-chat review 5331738657). Both
 // withhold before the handoff, but the bundle says which it was: "LOST" only when a look was taken
 // and showed the medium not served; a failed look is indeterminate and is reported as such.
-fn handoff_media_findings(h: MtCollins1HandoffMedia) -> List<String> {
+fn handoff_media_harness(h: MtCollins1HandoffMedia) -> List<HarnessFinding> {
   match h {
     HandoffMediaNotReached { reason: _ } => []
-    HandoffMediaWithheldAtRecheck { before: b } =>
-      [concat("media was ready at the gate but the pre-handoff recheck did not admit it, so no boot-device or power write was made: ", recheck_text(v: presentation_still_served(result: b)))]
+    HandoffMediaWithheldAtRecheck { before: _ } => [HandoffWithheldAtRecheck { handoff: h }]
     HandoffMediaAttempted { before: _, handoff: hc, after: a } =>
-      concat(match hc { HandoffConfirmed => []  HandoffAttemptedUnconfirmed { reason: r } => [concat("the boot-device and power handoff was attempted and not confirmed: ", r)] },
+      concat(match hc { HandoffConfirmed => []  HandoffAttemptedUnconfirmed { reason: _ } => [HandoffUnconfirmed { handoff: h }] },
       match presentation_still_served(result: a) {
         PresentationStillReady => []
-        PresentationNoLongerReady { reason: why } => [concat("the presentation was LOST at or after the boot-device and power handoff (", concat(why as String, concat("): ", observation_text(r: a))))]
-        PresentationUnobserved { reason: why } => [concat("the post-handoff look was UNOBSERVED, so whether the presentation survived the handoff is INDETERMINATE (", concat(why as String, concat("): ", observation_text(r: a))))]
-        PresentationReadyButSessionHeld { held: r } => [concat("after the handoff the presentation was served, but the look's own session was ", session_release_text(standing: r))]
-      }
-      )
+        PresentationReadyButSessionHeld { held: _ } => [PresentationAfterHandoff { look: a }]
+        PresentationNoLongerReady { reason: _ } => [PresentationAfterHandoff { look: a }]
+        PresentationUnobserved { reason: _ } => [PresentationAfterHandoff { look: a }]
+      })
   }
 }
 
@@ -793,7 +832,9 @@ fn media_loss_after_handoff(handoff: MtCollins1HandoffMedia, end: MtCollins1EndM
             EndMediaNotTaken { reason: _ } => MediaLossNotAffirmed
           }
       }
-    _ => MediaLossNotAffirmed
+    HandoffMediaAttempted { before: _, handoff: HandoffAttemptedUnconfirmed { reason: _ }, after: _ } => MediaLossNotAffirmed
+    HandoffMediaNotReached { reason: _ } => MediaLossNotAffirmed
+        HandoffMediaWithheldAtRecheck { before: _ } => MediaLossNotAffirmed
   }
 }
 
@@ -813,6 +854,7 @@ fn outcome_attributing_media_loss(outcome: ProcessExit, loss: MediaLossAfterHand
 }
 
 type MtCollins1BootRunRecord {
+  census_ended: Bool
   end_media: MtCollins1EndMedia
   handoff_media: MtCollins1HandoffMedia
   media: MtCollins1MediaAttachRecord
@@ -827,6 +869,7 @@ type MtCollins1BootRunRecord {
 
 fn run_record_not_taken(reason: NonEmptyStr) -> MtCollins1BootRunRecord {
   MtCollins1BootRunRecord {
+    census_ended: false,
     end_media: EndMediaNotTaken { reason: reason },
     handoff_media: HandoffMediaNotReached { reason: reason },
     media: MediaAttachNotAttempted { reason: reason },
@@ -906,10 +949,10 @@ fn power_after_attempt(observation: ChassisPowerObservation, census_ended: Bool)
   }
 }
 
-fn override_findings(c: BootOverrideConsumption) -> List<String> {
+fn override_harness(c: BootOverrideConsumption) -> List<HarnessFinding> {
   match c {
-    OverrideStillPendingAfterAttempt => ["the one-shot boot override was still pending after the attempt: the host did not boot through it"]
-    OverridePendingBeforeAttempt => ["a boot override matching this attempt's was already pending before it was set, so its consumption cannot be attributed to this attempt"]
+    OverrideStillPendingAfterAttempt => [OverrideNotConsumed { consumption: c }]
+    OverridePendingBeforeAttempt => [OverrideNotConsumed { consumption: c }]
     OverrideConsumedByCensusBoot => []
     OverrideNoLongerPendingAfterAttempt => []
     OverrideNotHandedOff { reason: _ } => []
@@ -917,9 +960,9 @@ fn override_findings(c: BootOverrideConsumption) -> List<String> {
   }
 }
 
-fn power_after_findings(p: PowerAfterAttempt) -> List<String> {
+fn power_after_harness(p: PowerAfterAttempt) -> List<HarnessFinding> {
   match p {
-    PoweredOffWithoutCensusEnd => ["the host was powered off after the attempt without the census END marker"]
+    PoweredOffWithoutCensusEnd => [HostPoweredOffWithoutCensusEnd]
     PoweredOffAfterCensusEnd => []
     PoweredOnAfterAttempt => []
     PowerAfterUnobserved { observation: _ } => []
@@ -1075,44 +1118,16 @@ fn mtcollins1_census_socket_count() -> Int {
   count(mtcollins1_census_sockets())
 }
 
-// THE FIRMWARE'S OWN SOCKET COUNT AGAINST THE CENSUS. A summary that prints fewer active sockets
-// than the census holds is a finding; one that was not printed says nothing either way.
-fn socket_summary_findings(o: AmpereSocketConsoleObservation) -> List<String> {
-  match o.summary {
-    AmpereSummaryNotPrinted => []
-    AmpereSummaryObserved { summary: s, summaries_printed: _ } => match s.active_sockets {
-      Absent => []
-      Present { value: n } => if n >= mtcollins1_census_socket_count() { [] } else {
-        [concat("firmware boot summary: ", to_string(n), " active socket(s), the census holds ", to_string(mtcollins1_census_socket_count()))]
-      }
-    }
-  }
-}
-
-fn console_findings(c: ConsoleReading) -> List<String> {
-  match c {
-    ConsoleRetained { path: _, size: _, lines: _, firmware: _, dram: d, sockets: o, against_reference: _, modules: m } => concat(ampere_dram_findings(observation: d, expected_sockets: mtcollins1_census_sockets()), concat(socket_summary_findings(o: o), kernel_module_decompression_findings(o: m)))
-    ConsoleExceedsBound { path: _, size: _, bound: _ } => []
-    ConsoleNotRetained { path: _ } => []
-    ConsoleUnread { path: _, detail: _ } => []
-    ConsoleNotConfigured => []
-  }
-}
-
-fn smpro_findings(s: SmproReading) -> List<String> {
-  match s { SmproProbed { outcomes: os } => mtcollins1_smpro_findings(outcomes: os) SmproNotTaken { reason: _ } => [] }
-}
-
 fn smpro_text(s: SmproReading) -> String {
   match s {
-    SmproProbed { outcomes: os } => mtcollins1_smpro_dossier_text(outcomes: os)
+    SmproProbed { observation: o } => smpro_pass_dossier_text(obs: o)
     SmproNotTaken { reason: why } => concat("NOT TAKEN: ", why as String)
   }
 }
 
-fn sensor_findings(s: SensorReading) -> List<String> {
+fn sensor_anomalies(s: SensorReading, receipt: AttemptConfigurationReceipt) -> List<BmcAnomaly> {
   match s {
-    SensorsRead { lines: ls, at: _ } => mtcollins1_sensor_findings(lines: ls, sockets: mtcollins1_census_sockets())
+    SensorsRead { lines: ls, at: _ } => mtcollins1_sensor_anomalies(lines: ls, sockets: mtcollins1_census_sockets(), expected: expected_socket_list(receipt: receipt))
     SensorsUnread { cause: _ } => []
     SensorsNotTaken { reason: _ } => []
   }
@@ -1184,10 +1199,25 @@ fn state_is_absent(state: RedfishResourceState) -> Bool {
   }
 }
 
-fn socket_absent_finding(ms: List<RedfishMemoryMember>, socket: Int) -> String {
-  let on = filter(ms, m => memory_socket_key(m: m) == socket)
-  let absent = count(filter(on, m => state_is_absent(state: m.status.state)))
-  if absent == 0 || socket < 0 { "" } else { concat("BMC reports ", to_string(absent), " of ", to_string(count(on)), " socket-", to_string(socket), " Memory member(s) State=Absent") }
+fn recorded_slot_rows(receipt: AttemptConfigurationReceipt) -> List<SlotRow>? {
+  match receipt.dimms {
+    PopulationLiveObserved { rows: rs, source: _ } => Present { value: rs }
+    PopulationOperatorAttested { rows: rs, receipt: _ } => Present { value: rs }
+    PopulationConflicted { readings: _ } => none
+    PopulationNotRecorded { reason: _ } => none
+  }
+}
+
+fn expected_socket_list(receipt: AttemptConfigurationReceipt) -> List<Int>? {
+  match receipt.expected { ExpectedSockets { sockets: ks, source: _ } => Present { value: ks } ExpectedTopologyNotRecorded { reason: _ } => none }
+}
+
+// "CPU 1", "Socket 1": the trailing number of the BMC's own socket rendering, or none.
+fn processor_socket_number(p: RedfishProcessorMember) -> Int? {
+  match p.socket {
+    Absent => none
+    Present { value: t } => match filter(split(s: trim(t), delimiter: " "), x => x != "").last() { Absent => none Present { value: tok } => parse_int(s: tok) }
+  }
 }
 
 fn memory_label(m: RedfishMemoryMember) -> String {
@@ -1201,45 +1231,61 @@ fn processor_socket_suffix(p: RedfishProcessorMember) -> String {
   match p.socket { Present { value: s } => concat(" (Socket ", s, ")") Absent => "" }
 }
 
-fn processor_findings(processors: MembersReading<RedfishProcessorMember>) -> List<String> {
+// COMPLETENESS IS JUDGED PER EXPECTED SOCKET, never by a count: for each socket the receipt expects,
+// exactly one Processor member names it (none is Missing, two or more is Duplicated); a member whose
+// socket the BMC renders unreadably is its own anomaly. With no recorded topology none of these is
+// judged (law 6). What the BMC states about a member's health stays unconditional.
+fn processor_anomalies(processors: MembersReading<RedfishProcessorMember>, receipt: AttemptConfigurationReceipt) -> List<BmcAnomaly> {
   match processors {
     MembersRead { members: ps } => {
-      let expected = mtcollins1_census_socket_count()
-      let none_short: List<String> = []
-      let short = if count(ps) < expected {
-        [concat("BMC lists ", to_string(count(ps)), " Processor member(s); the 2026-09-10 census observed ", to_string(expected), " sockets")]
-      } else { none_short }
-      concat(short, map(filter(ps, p => state_is_down(state: p.status.state) || health_is_bad(health: p.status.health)),
-        p => concat("BMC Processor ", p.id as String, processor_socket_suffix(p: p), ": ", status_text(status: p.status))))
+      let unhealthy = map(filter(ps, p => health_is_bad(health: p.status.health) || (state_is_down(state: p.status.state) && !state_is_absent(state: p.status.state))), p => ProcessorNotNominal { member: p })
+      let per_socket = match expected_socket_list(receipt: receipt) {
+        Absent => []
+        Present { value: ks } => concat(
+          flat_map(ks, k => {
+            let on = filter(ps, p => match processor_socket_number(p: p) { Present { value: n } => n == k Absent => false })
+            if count(on) == 0 { [ProcessorMissingOnExpectedSocket { socket: k }] }
+            else if count(on) > 1 { [ProcessorSocketDuplicated { socket: k, members: on }] }
+            else { flat_map(on, p => if state_is_absent(state: p.status.state) && !health_is_bad(health: p.status.health) { [ProcessorAbsentOnExpectedSocket { member: p, socket: k }] } else { [] }) }
+          }),
+          map(filter(ps, p => match processor_socket_number(p: p) { Present { value: _ } => false Absent => true }), p => ProcessorSocketUnreadable { member: p }))
+      }
+      concat(unhealthy, per_socket)
     }
     MembersUnread { cause: _ } => []
     MembersNotTaken { reason: _ } => []
   }
 }
 
-fn memory_findings(memory: MembersReading<RedfishMemoryMember>) -> List<String> {
+// PER SOCKET, OVER THE UNION OF THE SOCKETS THE RECEIPT RECORDS POPULATED AND THE SOCKETS THE BMC
+// LISTS: a socket whose present members are fewer than the receipt's populated slots on it is an
+// anomaly, including a socket the collection never mentions. With no recorded population nothing is
+// judged (law 6). What the BMC states about a member's health stays unconditional.
+fn memory_anomalies(memory: MembersReading<RedfishMemoryMember>, receipt: AttemptConfigurationReceipt) -> List<BmcAnomaly> {
   match memory {
     MembersRead { members: ms } => {
-      let slots = count(mtcollins1_slots)
-      let none_short: List<String> = []
-      let short = if count(ms) < slots {
-        [concat("BMC lists ", to_string(count(ms)), " Memory member(s); the census board has ", to_string(slots), " slots")]
-      } else { none_short }
-      let sockets = distinct_ints(xs: map(ms, m => memory_socket_key(m: m)))
-      let absent_by_socket = filter(map(sockets, k => socket_absent_finding(ms: ms, socket: k)), line => line != "")
-      let bad = map(filter(ms, m => (state_is_down(state: m.status.state) && !state_is_absent(state: m.status.state)) || health_is_bad(health: m.status.health)),
-        m => concat("BMC Memory ", memory_label(m: m), ": ", status_text(status: m.status)))
-      concat(short, concat(absent_by_socket, bad))
+      let bad = map(filter(ms, m => (state_is_down(state: m.status.state) && !state_is_absent(state: m.status.state)) || health_is_bad(health: m.status.health)), m => MemoryNotNominal { member: m })
+      let below = match recorded_slot_rows(receipt: receipt) {
+        Absent => []
+        Present { value: rows } => {
+          let sockets = distinct_ints(xs: concat(map(filter(rows, r => r.populated), r => r.socket), filter(map(ms, m => memory_socket_key(m: m)), k => k >= 0)))
+          flat_map(sockets, k => {
+            let present = count(filter(ms, m => memory_socket_key(m: m) == k && !state_is_absent(state: m.status.state)))
+            let populated = count(filter(rows, r => r.socket == k && r.populated))
+            if present < populated { [MemoryBelowRecordedPopulation { socket: k, present: present, populated: populated }] } else { [] }
+          })
+        }
+      }
+      concat(below, bad)
     }
     MembersUnread { cause: _ } => []
     MembersNotTaken { reason: _ } => []
   }
 }
 
-fn sel_findings(delta: SelDeltaReading) -> List<String> {
+fn sel_hardware_anomalies(delta: SelDeltaReading) -> List<BmcAnomaly> {
   match delta {
-    SelDeltaDecoded { delta: d } =>
-      map(filter(d.events, e => sel_event_is_memory_or_processor(event: e)), e => concat("SEL ", sel_event_text(event: e)))
+    SelDeltaDecoded { delta: d } => map(filter(d.events, e => sel_event_is_memory_or_processor(event: e)), e => SelHardwareEvent { event: e })
     SelDeltaRefused { cause: _ } => []
     SelDeltaUnavailable { reason: _ } => []
   }
@@ -1283,7 +1329,8 @@ fn members_channel(channel: NonEmptyStr, m: MembersReading<T>) -> BmcChannelRead
 fn smpro_channel(s: SmproReading) -> BmcChannelRead {
   BmcChannelRead { channel: "ipmi master write-read (smpro)", standing: match s {
     SmproNotTaken { reason: _ } => BmcChannelNotAttempted
-    SmproProbed { outcomes: os } =>
+    SmproProbed { observation: obs } => {
+      let os = obs.outcomes
       if any(os, o => match o { SmproWordRead { raw: _, word: _ } => true SmproControllerRefused { raw: _, completion: _ } => true SmproResponseMalformed { raw: _, detail: _ } => true SmproTransportFailed { raw: _, timed_out: _ } => false SmproNotSent { socket: _, register: _, reason: _ } => false SmproRequestUnencodable { socket: _, register: _, detail: _ } => false }) { BmcChannelAnswered }
       else {
         match flat_map(os, o => match o { SmproTransportFailed { raw: r, timed_out: _ } => [r] SmproWordRead { raw: _, word: _ } => [] SmproControllerRefused { raw: _, completion: _ } => [] SmproResponseMalformed { raw: _, detail: _ } => [] SmproNotSent { socket: _, register: _, reason: _ } => [] SmproRequestUnencodable { socket: _, register: _, detail: _ } => [] }).first() {
@@ -1291,6 +1338,7 @@ fn smpro_channel(s: SmproReading) -> BmcChannelRead {
           Present { value: r } => BmcChannelFailed { cause: bmc_ipmitool_read_cause(endpoint: mtcollins1_ipmi_endpoint(), at: r.at, exit_code: r.exit_code, stderr: r.stderr) }
         }
       }
+    }
   } }
 }
 
@@ -1335,24 +1383,278 @@ fn bmc_all_reads_failed(bundle: MtCollins1BootDiagnosticBundle) -> List<BmcChann
   }
 }
 
-fn mtcollins1_boot_bundle_findings(bundle: MtCollins1BootDiagnosticBundle) -> List<String> {
-  let nothing: List<String> = []
-  let failed = bmc_all_reads_failed(bundle: bundle)
-  let unreachable = if count(failed) == 0 { nothing } else { [bmc_all_failed_text(failed: failed)] }
-  let shred = if bundle.inventory.credential_removed { nothing } else { ["the per-attempt Redfish netrc could not be removed; credential material may remain on the runner"] }
-  concat(unreachable, concat(processor_findings(processors: bundle.inventory.processors),
-    concat(memory_findings(memory: bundle.inventory.memory),
-    concat(sel_findings(delta: sel_delta_reading(before: bundle.sel_before, after: bundle.sel_after)), concat(sensor_findings(s: bundle.sensors), concat(smpro_findings(s: bundle.smpro), concat(smpro_findings(s: bundle.run.smpro_power_on), concat(smpro_findings(s: bundle.run.smpro_census), concat(media_attach_findings(record: bundle.run.media), concat(handoff_media_findings(h: bundle.run.handoff_media), concat(override_findings(c: bundle.run.override), concat(power_after_findings(p: bundle.run.power_after), concat(console_findings(c: bundle.console), shred)))))))))))))
+// ── WHAT THE BUNDLE ESTABLISHES ────────────────────────────────────────────────────────────────
+// THE EVIDENCE THE POWER-ON ACCOUNT READS, assembled from this bundle's own sections. Nothing is
+// re-read: each field is a section already taken, or a standing derived from one.
+fn smpro_pass(label: NonEmptyStr, s: SmproReading) -> List<SmproPassEvidence> {
+  match s {
+    SmproProbed { observation: o } => [SmproPassEvidence { label: label, observation: o }]
+    SmproNotTaken { reason: _ } => []
+  }
 }
 
-// THE ONE-LINE CONSEQUENCE ON THE RUN'S OUTCOME: findings are appended to a refusal reason, and a
-// success stays a success. This is the whole of the bundle's reach into the verdict.
-fn mtcollins1_boot_outcome_with_findings(outcome: ProcessExit, findings: List<String>) -> ProcessExit {
+fn handoff_standing(h: MtCollins1HandoffMedia) -> PowerOnHandoff {
+  match h {
+    HandoffMediaAttempted { before: _, handoff: hc, after: _ } => match hc {
+      HandoffConfirmed => HandoffPoweredOn
+      HandoffAttemptedUnconfirmed { reason: r } => HandoffNotConfirmed { reason: concat("the boot-device and power handoff was attempted and not confirmed: ", r) as NonEmptyStr }
+    }
+    HandoffMediaWithheldAtRecheck { before: _ } => HandoffNotConfirmed { reason: "the pre-handoff recheck withheld the power write" }
+    HandoffMediaNotReached { reason: r } => HandoffNotConfirmed { reason: r }
+  }
+}
+
+fn console_evidence(c: ConsoleReading) -> ConsoleEvidence {
+  match c {
+    ConsoleRetained { path: _, size: _, lines: _, firmware: f, firmware_error_lines: e, capture_digest: dg, dram: d, checkpoints: cp, checkpoint_relations: rs, milestones: ms, sockets: o, against_reference: _, loader: g, linux: l, modules: m, nvparam: _, span_readings: sr } =>
+      ConsoleRead { capture: dg, firmware: f, firmware_error_lines: e, dram: d, checkpoints: cp, relations: rs, milestones: ms, sockets: o, loader: g, linux: l, modules: m, span_readings: sr }
+    ConsoleExceedsBound { path: _, size: _, bound: _ } => ConsoleNotRead
+    ConsoleNotRetained { path: _ } => ConsoleNotRead
+    ConsoleUnread { path: _, detail: _ } => ConsoleNotRead
+    ConsoleNotConfigured => ConsoleNotRead
+  }
+}
+
+fn sel_evidence(delta: SelDeltaReading) -> SelEvidence {
+  match delta {
+    SelDeltaDecoded { delta: d } => SelEventsRead { events: d.events }
+    SelDeltaRefused { cause: _ } => SelEventsNotRead
+    SelDeltaUnavailable { reason: _ } => SelEventsNotRead
+  }
+}
+
+// ── COVERAGE: one standing per carrier, never a host statement ─────────────────────────────────
+fn console_coverage(c: ConsoleReading) -> CarrierStanding {
+  match c {
+    ConsoleRetained { path: _, size: _, lines: n, firmware: _, firmware_error_lines: _, capture_digest: _, dram: _, checkpoints: _, checkpoint_relations: _, milestones: _, sockets: _, against_reference: _, loader: _, linux: _, modules: _, nvparam: _, span_readings: _ } =>
+      if n == 0 { CarrierReadEmpty } else { CarrierRead }
+    ConsoleExceedsBound { path: p, size: _, bound: _ } => CarrierPartial { detail: concat("capture ", p as String, " is over the byte bound and was not read") as NonEmptyStr }
+    ConsoleNotRetained { path: p } => CarrierNotTaken { reason: concat("capture ", p as String, " is not retained with this artifact") as NonEmptyStr }
+    ConsoleUnread { path: p, detail: d } => CarrierRefused { cause: concat("capture ", p as String, " unread: ", d) as NonEmptyStr }
+    ConsoleNotConfigured => CarrierNotTaken { reason: "the SOL capture path was unset for this attempt" }
+  }
+}
+
+fn kvm_coverage(rec: KvmObserverRecord) -> CarrierStanding {
+  match rec.start {
+    KvmObserverNotStarted { reason: r } => CarrierNotTaken { reason: r }
+    KvmObserverStarted { dir: _, subject: _, standing: _, checked_at: _ } => if count(rec.stills) == 0 { CarrierReadEmpty } else { CarrierRead }
+  }
+}
+
+fn smpro_answered(s: SmproReading) -> Bool {
+  match s { SmproProbed { observation: o } => any(o.outcomes, o => match smpro_outcome_word(o: o) { Present { value: _ } => true Absent => false }) SmproNotTaken { reason: _ } => false }
+}
+
+fn smpro_coverage(readings: List<SmproReading>) -> CarrierStanding {
+  if any(readings, r => smpro_answered(s: r)) { CarrierRead }
+  else if any(readings, r => match r { SmproProbed { observation: _ } => true SmproNotTaken { reason: _ } => false }) { CarrierRefused { cause: "no SMpro register word was read in any pass" } }
+  else { CarrierNotTaken { reason: "no SMpro pass was taken" } }
+}
+
+// THE ERROR-RECORD REGISTERS, covered apart from the boot-stage pair (#13058): a pass whose CUR and
+// BOOTSTAGE read while GPI_RAS_ERR or a record word refused is a gap in THIS carrier, not in progress.
+fn record_gaps(os: List<SmproProbeOutcome>, socket: Int) -> List<String> {
+  let r = smpro_socket_records(outcomes: os, socket: socket)
+  let gpi = match smpro_socket_word(outcomes: os, socket: socket, register: smpro_gpi_ras_err_reg.name) {
+    Absent => [concat("socket ", to_string(socket), " GPI_RAS_ERR was not probed")]
+    Present { value: o } => match smpro_outcome_word(o: o) { Present { value: _ } => [] Absent => [concat("socket ", to_string(socket), " GPI_RAS_ERR ", smpro_outcome_text(o: o))] }
+  }
+  concat(gpi, concat(match r.smpro.missing { Present { value: m } => [concat("socket ", to_string(socket), " SMpro records: ", m)] Absent => [] },
+    match r.pmpro.missing { Present { value: m } => [concat("socket ", to_string(socket), " PMpro records: ", m)] Absent => [] }))
+}
+
+fn smpro_error_coverage(readings: List<SmproReading>) -> CarrierStanding {
+  let passes = flat_map(readings, r => match r { SmproProbed { observation: o } => [o] SmproNotTaken { reason: _ } => [] })
+  let gaps = flat_map(passes, o => flat_map(smpro_site_targets(site: o.subject.site), t => record_gaps(os: o.outcomes, socket: t.socket)))
+  let wanted = fold(passes, init: 0, f: (acc, o) => acc + count(smpro_site_targets(site: o.subject.site)) * 3)
+  if count(passes) == 0 { CarrierNotTaken { reason: "no SMpro pass was taken" } }
+  else if count(gaps) == 0 { CarrierRead }
+  else if count(gaps) >= wanted { CarrierRefused { cause: (match gaps.first() { Present { value: g } => g Absent => "every error-record read failed" }) as NonEmptyStr } }
+  else { CarrierPartial { detail: join(gaps, "; ") as NonEmptyStr } }
+}
+
+fn sel_coverage(delta: SelDeltaReading) -> CarrierStanding {
+  match delta {
+    SelDeltaDecoded { delta: _ } => CarrierRead
+    SelDeltaRefused { cause: c } => CarrierRefused { cause: c }
+    SelDeltaUnavailable { reason: r } => CarrierNotTaken { reason: (if r == "" { "the SEL delta is unavailable" } else { r }) as NonEmptyStr }
+  }
+}
+
+fn sensor_coverage(s: SensorReading) -> CarrierStanding {
+  match s {
+    SensorsRead { lines: ls, at: _ } => if count(ls) == 0 { CarrierReadEmpty } else { CarrierRead }
+    SensorsUnread { cause: c } => CarrierRefused { cause: bmc_read_cause_text(cause: c) as NonEmptyStr }
+    SensorsNotTaken { reason: r } => CarrierNotTaken { reason: r }
+  }
+}
+
+fn chassis_coverage(p: PowerAfterAttempt) -> CarrierStanding {
+  match p {
+    PowerAfterUnobserved { observation: _ } => CarrierRefused { cause: "the post-attempt chassis read did not answer" }
+    PowerAfterNotTaken { reason: r } => CarrierNotTaken { reason: r }
+    PoweredOffAfterCensusEnd => CarrierRead
+    PoweredOffWithoutCensusEnd => CarrierRead
+    PoweredOnAfterAttempt => CarrierRead
+  }
+}
+
+fn members_coverage<T>(m: MembersReading<T>) -> CarrierStanding {
+  match m {
+    MembersRead { members: _ } => CarrierRead
+    MembersUnread { cause: c } => CarrierRefused { cause: bmc_read_cause_text(cause: c) as NonEmptyStr }
+    MembersNotTaken { reason: r } => CarrierNotTaken { reason: r }
+  }
+}
+
+fn inventory_coverage(i: InventoryReading) -> CarrierStanding {
+  match members_coverage(m: i.memory) {
+    CarrierRead => members_coverage(m: i.processors)
+    other => other
+  }
+}
+
+fn media_coverage(m: MtCollins1MediaAttachRecord) -> CarrierStanding {
+  match m {
+    MediaAttachNotAttempted { reason: r } => CarrierNotTaken { reason: r }
+    MediaAttachAttempted { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _, result: _ } => CarrierRead
+  }
+}
+
+fn census_coverage(run: MtCollins1BootRunRecord) -> CarrierStanding {
+  if run.census_ended { CarrierRead } else { CarrierPartial { detail: "no census END marker was observed; the watch's own termination is the run's exit" } }
+}
+
+fn mtcollins1_boot_coverage(bundle: MtCollins1BootDiagnosticBundle) -> List<CarrierCoverage> {
+  let delta = sel_delta_reading(before: bundle.sel_before, after: bundle.sel_after)
+  [
+    CarrierCoverage { carrier: SolConsole, standing: console_coverage(c: bundle.console) },
+    CarrierCoverage { carrier: KvmScreen, standing: kvm_coverage(rec: bundle.screen) },
+    CarrierCoverage { carrier: SmproRegisters, standing: smpro_coverage(readings: [bundle.run.smpro_power_on, bundle.run.smpro_census, bundle.smpro]) },
+    CarrierCoverage { carrier: SmproErrorRegisters, standing: smpro_error_coverage(readings: [bundle.run.smpro_power_on, bundle.run.smpro_census, bundle.smpro]) },
+    CarrierCoverage { carrier: SystemEventLog, standing: sel_coverage(delta: delta) },
+    CarrierCoverage { carrier: SensorTable, standing: sensor_coverage(s: bundle.sensors) },
+    CarrierCoverage { carrier: ChassisPower, standing: chassis_coverage(p: bundle.run.power_after) },
+    CarrierCoverage { carrier: RedfishInventory, standing: inventory_coverage(i: bundle.inventory) },
+    CarrierCoverage { carrier: VirtualMedia, standing: media_coverage(m: bundle.run.media) },
+    CarrierCoverage { carrier: HostCaptureMarkers, standing: census_coverage(run: bundle.run) },
+  ]
+}
+
+// THE ATTEMPT CONFIGURATION RECEIPT THIS RUN CAN FREEZE TODAY. The fleet-converge boot takes no
+// stimulus, population, expected-topology or pre-actuation firmware receipt yet, so those fields are
+// NotRecorded with that reason and every question needing them is open; the historical census and
+// orientation rows are deliberately NOT used (they map topology, never current occupancy, and are no
+// expectation of THIS attempt), so no topology degradation is minted from them. DECLARED FRONTIER: the receipt's live inputs land
+// with the boot workflow's stimulus-receipt input (docs/plans/power-on-sequence-model.md section 10);
+// until then the account says what it cannot judge rather than judging it.
+data mtcollins1_receipt_input_frontier: NonEmptyStr = "the fleet-converge boot takes no stimulus, population or pre-actuation firmware receipt yet"
+
+fn mtcollins1_attempt_configuration_receipt(attempt: AttemptIdentityReading) -> AttemptConfigurationReceipt {
+  AttemptConfigurationReceipt {
+    subject: "mtcollins1",
+    attempt: attempt_identity_text(a: attempt) as NonEmptyStr,
+    expected: ExpectedTopologyNotRecorded { reason: mtcollins1_receipt_input_frontier },
+    requested: StimulusRequestNotRecorded { reason: mtcollins1_receipt_input_frontier },
+    applied: StimulusApplicationNotRecorded { reason: mtcollins1_receipt_input_frontier },
+    cpus: PopulationNotRecorded { reason: mtcollins1_receipt_input_frontier },
+    dimms: PopulationNotRecorded { reason: mtcollins1_receipt_input_frontier },
+    firmware: FirmwareReadbacksNotRecorded { reason: mtcollins1_receipt_input_frontier },
+  }
+}
+
+fn mtcollins1_boot_evidence(bundle: MtCollins1BootDiagnosticBundle) -> PowerOnEvidence {
+  let delta = sel_delta_reading(before: bundle.sel_before, after: bundle.sel_after)
+  let receipt = mtcollins1_attempt_configuration_receipt(attempt: bundle.attempt)
+  PowerOnEvidence {
+    configuration: receipt,
+    handoff: handoff_standing(h: bundle.run.handoff_media),
+    smpro: concat(smpro_pass(label: "power-on", s: bundle.run.smpro_power_on), concat(smpro_pass(label: "census", s: bundle.run.smpro_census), smpro_pass(label: "after the attempt", s: bundle.smpro))),
+    console: console_evidence(c: bundle.console),
+    sel: sel_evidence(delta: delta),
+    watchdog: WatchdogUnobserved { reason: "the boot run does not read the BMC's IPMI watchdog" },
+    bmc_anomalies: concat(processor_anomalies(processors: bundle.inventory.processors, receipt: receipt), concat(memory_anomalies(memory: bundle.inventory.memory, receipt: receipt), concat(sensor_anomalies(s: bundle.sensors, receipt: receipt), sel_hardware_anomalies(delta: delta)))),
+    census_ended: bundle.run.census_ended,
+    coverage: mtcollins1_boot_coverage(bundle: bundle),
+  }
+}
+
+// WHAT THE BUNDLE FOUND: the power-on account (the host and our coverage of it) and, beside it, what
+// our harness did. The two are composed here because the harness records are this module's.
+type MtCollins1BootFindings {
+  account: PowerOnAccount
+  harness: List<HarnessFinding>
+}
+
+fn mtcollins1_boot_harness(bundle: MtCollins1BootDiagnosticBundle) -> List<HarnessFinding> {
+  let failed = bmc_all_reads_failed(bundle: bundle)
+  concat(if count(failed) == 0 { [] } else { [EveryBmcReadFailed { failed: failed }] },
+    concat(media_attach_harness(record: bundle.run.media),
+    concat(handoff_media_harness(h: bundle.run.handoff_media),
+    concat(override_harness(c: bundle.run.override),
+    concat(power_after_harness(p: bundle.run.power_after),
+      if bundle.inventory.credential_removed { [] } else { [CredentialMayRemain] })))))
+}
+
+fn mtcollins1_boot_findings(bundle: MtCollins1BootDiagnosticBundle) -> MtCollins1BootFindings {
+  MtCollins1BootFindings { account: mtcollins1_power_on_account(e: mtcollins1_boot_evidence(bundle: bundle)), harness: mtcollins1_boot_harness(bundle: bundle) }
+}
+
+fn harness_finding_text(f: HarnessFinding) -> String {
+  match f {
+    EveryBmcReadFailed { failed: xs } => bmc_all_failed_text(failed: xs)
+    MediaAttachNotReady { record: r } => match r {
+      MediaAttachAttempted { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _, result: res } =>
+        concat("media attach: ", match media_attach_outcome_reason(outcome: res.outcome) { Present { value: why } => why Absent => "not ready" })
+      MediaAttachNotAttempted { reason: why } => concat("media attach: not attempted: ", why as String)
+    }
+    MediaAttachSessionHeld { record: r } => match r {
+      MediaAttachAttempted { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _, result: res } =>
+        concat("media attach: the presentation is ready but the session was ", session_release_text(standing: res.session_release))
+      MediaAttachNotAttempted { reason: why } => concat("media attach: not attempted: ", why as String)
+    }
+    HandoffWithheldAtRecheck { handoff: h } => match h {
+      HandoffMediaWithheldAtRecheck { before: b } => concat("media was ready at the gate but the pre-handoff recheck did not admit it, so no boot-device or power write was made: ", recheck_text(v: presentation_still_served(result: b)))
+      HandoffMediaNotReached { reason: _ } => "the pre-handoff recheck withheld the handoff"
+      HandoffMediaAttempted { before: _, handoff: _, after: _ } => "the pre-handoff recheck withheld the handoff"
+    }
+    HandoffUnconfirmed { handoff: h } => match h {
+      HandoffMediaAttempted { before: _, handoff: hc, after: _ } => match hc {
+        HandoffAttemptedUnconfirmed { reason: r } => concat("the boot-device and power handoff was attempted and not confirmed: ", r)
+        HandoffConfirmed => "the boot-device and power handoff was confirmed"
+      }
+      HandoffMediaNotReached { reason: _ } => "the boot-device and power handoff was not attempted"
+      HandoffMediaWithheldAtRecheck { before: _ } => "the boot-device and power handoff was not attempted"
+    }
+    PresentationAfterHandoff { look: a } => match presentation_still_served(result: a) {
+      PresentationStillReady => "after the handoff the presentation was still served"
+      PresentationNoLongerReady { reason: why } => concat("the presentation was LOST at or after the boot-device and power handoff (", why as String, "): ", observation_text(r: a))
+      PresentationUnobserved { reason: why } => concat("the post-handoff look was UNOBSERVED, so whether the presentation survived the handoff is INDETERMINATE (", why as String, "): ", observation_text(r: a))
+      PresentationReadyButSessionHeld { held: r } => concat("after the handoff the presentation was served, but the look's own session was ", session_release_text(standing: r))
+    }
+    OverrideNotConsumed { consumption: c } => match c {
+      OverrideStillPendingAfterAttempt => "the one-shot boot override was still pending after the attempt: the host did not boot through it"
+      OverridePendingBeforeAttempt => "a boot override matching this attempt's was already pending before it was set, so its consumption cannot be attributed to this attempt"
+      OverrideConsumedByCensusBoot => override_consumption_text(c: c)
+      OverrideNoLongerPendingAfterAttempt => override_consumption_text(c: c)
+      OverrideNotHandedOff { reason: _ } => override_consumption_text(c: c)
+      OverrideConsumptionUnread { reason: _ } => override_consumption_text(c: c)
+    }
+    HostPoweredOffWithoutCensusEnd => "the host was powered off after the attempt without the census END marker"
+    CredentialMayRemain => "the per-attempt Redfish netrc could not be removed; credential material may remain on the runner"
+  }
+}
+
+// THE ONE-LINE CONSEQUENCE ON THE RUN'S OUTCOME: the account's notes (its ending, every stated error,
+// degradation and anomaly) and every harness finding are appended to a refusal reason, and a success
+// stays a success. This is the whole of the bundle's reach into the verdict.
+fn mtcollins1_boot_outcome_with_findings(outcome: ProcessExit, findings: MtCollins1BootFindings) -> ProcessExit {
   match outcome {
     ExitSuccess => ExitSuccess
     ExitFailure { code: c, reason: r } =>
-      if count(findings) == 0 { ExitFailure { code: c, reason: r } }
-      else { ExitFailure { code: c, reason: concat(r, " | bmc diagnostics: ", join(findings, "; ")) } }
+      ExitFailure { code: c, reason: concat(r, " | power-on account: ", join(mtcollins1_power_on_account_notes(a: findings.account), "; "),
+        if count(findings.harness) == 0 { "" } else { concat(" | harness: ", join(map(findings.harness, f => harness_finding_text(f: f)), "; ")) }) }
   }
 }
 
@@ -1446,10 +1748,19 @@ fn firmware_report_text(report: FirmwareConsoleReport) -> String {
   }
 }
 
+fn grub_report_text(report: GrubConsoleReport) -> String {
+  match report {
+    GrubNothingStated => "GRUB: nothing printed"
+    GrubBannerOnly => "GRUB: banner printed, no error"
+    GrubStillTrying { errors: es } => concat("GRUB: still trying after ", join(map(es, e => grub_error_text(error: e)), "; "))
+    GrubBootFailed { errors: es } => concat("GRUB: boot FAILED: ", join(map(es, e => grub_error_text(error: e)), "; "))
+  }
+}
+
 fn console_text(c: ConsoleReading) -> String {
   match c {
-    ConsoleRetained { path: p, size: b, lines: n, firmware: f, dram: d, sockets: o, against_reference: cmp, modules: m } =>
-      concat("capture ", p as String, " retained in this artifact: ", to_string(byte_size_count(b: b)), " bytes (stat), ", to_string(n), " line(s), within the ", to_string(byte_size_count(b: mtcollins1_boot_console_bound)), "-byte bound; ", firmware_report_text(report: f), "\n", ampere_dram_console_text(observation: d, expected_sockets: mtcollins1_census_sockets()), "\n", ampere_socket_console_text(o: o), ampere_socket_reference_comparison_text(c: cmp), "\n", kernel_module_decompression_text(o: m))
+    ConsoleRetained { path: p, size: b, lines: n, firmware: f, firmware_error_lines: e, capture_digest: _, dram: d, checkpoints: cp, checkpoint_relations: rs, milestones: ms, sockets: o, against_reference: cmp, loader: g, linux: l, modules: m, nvparam: nv, span_readings: _ } =>
+      concat("capture ", p as String, " retained in this artifact: ", to_string(byte_size_count(b: b)), " bytes (stat), ", to_string(n), " line(s), within the ", to_string(byte_size_count(b: mtcollins1_boot_console_bound)), "-byte bound; ", firmware_report_text(report: f), "; ", to_string(e), " firmware error line(s)\n", ampere_dram_console_text(observation: d, expected_sockets: mtcollins1_census_sockets()), "\n-- checkpoints --\n", ampere_checkpoint_console_text(o: cp), "\n", if count(rs) == 0 { "no checkpoint relation" } else { join(map(rs, r => ampere_checkpoint_relation_text(r: r)), "\n") }, "\n-- milestones --\n", if count(ms.sightings) == 0 { "none" } else { join(map(ms.sightings, x => console_milestone_sighting_text(s: x)), "\n") }, "\n", ampere_socket_console_text(o: o), ampere_socket_reference_comparison_text(c: cmp), "\n-- loader and linux --\n", grub_report_text(report: g), "\n", linux_boot_console_text(o: l), "\n", kernel_module_decompression_text(o: m), "\n", ampere_nvparam_console_text(o: nv))
     ConsoleExceedsBound { path: p, size: b, bound: bound } =>
       concat("capture ", p as String, " is ", to_string(byte_size_count(b: b)), " bytes (stat), OVER the ", to_string(byte_size_count(b: bound)), "-byte bound; the collector does not truncate, so the artifact carries it whole")
     ConsoleNotRetained { path: p } =>
@@ -1468,13 +1779,15 @@ fn sensors_text(s: SensorReading) -> String {
 }
 
 fn mtcollins1_boot_bundle_text(bundle: MtCollins1BootDiagnosticBundle) -> String {
-  let findings = mtcollins1_boot_bundle_findings(bundle: bundle)
+  let findings = mtcollins1_boot_findings(bundle: bundle)
   join([
     "mtcollins1 boot diagnostics",
     concat("attempt=", attempt_identity_text(a: bundle.attempt)),
     concat("outcome=", bundle.outcome),
-    "== decisive findings ==",
-    if count(findings) == 0 { "none" } else { join(findings, "\n") },
+    "== our best understanding of what happened (the power-on account) ==",
+    mtcollins1_power_on_account_text(a: findings.account),
+    "== what our harness did ==",
+    if count(findings.harness) == 0 { "nothing to report" } else { join(map(findings.harness, f => harness_finding_text(f: f)), "\n") },
     "== bmc system event log ==",
     sel_snapshot_text(label: "before", s: bundle.sel_before),
     sel_snapshot_text(label: "after", s: bundle.sel_after),
@@ -1519,12 +1832,12 @@ data mtcollins1_boot_redfish_read_deadline: Second = second(count: 15)
 
 // The two SEL snapshots, the one SDR dump, the one sensor read and every SMpro probe the post-attempt
 // pass can send
-// (gunbc.machine_intake_mtcollins1_smpro_observation mtcollins1_smpro_probe_count) each run under
+// (gunbc.machine_intake_ampere_smpro_observation smpro_site_probe_bound) each run under
 // the same coreutils bound. The reads taken under the unit hold -- the two in-run SMpro passes, the
 // two boot parameter 5 reads and the final-power poll -- are paid inside the actuation, and their
 // allowance is gunbc.machine_intake_mtcollins1_boot_run mtcollins1_boot_in_run_smpro_allowance.
 fn mtcollins1_boot_ipmi_read_count() -> Int {
-  4 + mtcollins1_smpro_probe_count()
+  4 + smpro_site_probe_bound(standing: mtcollins1_smpro_site())
 }
 
 data mtcollins1_boot_redfish_read_budget: Int = 48
@@ -2128,10 +2441,32 @@ type ReferenceCaptureRead {
   text: String
   ok: Bool
   error: String
+  digest: Sha256FileDigest
+}
+
+// THE REFERENCE'S SCOPE, for the opaque checkpoint relation (ruling R2): a continuation the reference
+// shows is evidence only under the firmware and population it was taken with. Both are this
+// capture's own record (gunbc.machine_intake_mtcollins1_memory_census_observation, 2026-09-10/11):
+// two sockets, sixteen DIMMs, the firmware set installed before the 2026-10-02 update.
+data mtcollins1_census_reference_firmware_scope: NonEmptyStr = "the vendor firmware set installed before the 2026-10-02 update"
+
+data mtcollins1_census_reference_configuration_scope: NonEmptyStr = "two sockets, sixteen DIMMs (the 2026-09-10/11 census population)"
+
+fn checkpoint_relations(checkpoints: AmpereCheckpointConsoleObservation, capture: Sha256FileDigest, reference: ReferenceCaptureRead) -> List<AmpereCheckpointRelation> {
+  flat_map(checkpoints.spans, span => match if reference.ok {
+      ampere_checkpoint_relation(span: span, capture: capture, reference: AmpereCheckpointReference {
+        path: mtcollins1_census_sol_artifact_path, digest: reference.digest,
+        firmware_scope: mtcollins1_census_reference_firmware_scope, configuration_scope: mtcollins1_census_reference_configuration_scope,
+        observation: ampere_checkpoint_console_observation(lines: host_capture_lines(capture: HostCaptureLiveStream { text: reference.text })),
+      })
+    } else {
+      ampere_checkpoint_relation_unread(span: span, capture: capture, path: mtcollins1_census_sol_artifact_path, digest: reference.digest,
+        firmware_scope: mtcollins1_census_reference_firmware_scope, configuration_scope: mtcollins1_census_reference_configuration_scope, detail: reference.error)
+    } { Absent => [] Present { value: r } => [r] })
 }
 
 // THE PURE DECISION over the capture's stat size and, when within the bound, its content.
-fn mtcollins1_boot_console_reading(path: String, size: ByteSize, capture: String, read_ok: Bool, read_error: String, reference: ReferenceCaptureRead) -> ConsoleReading {
+fn mtcollins1_boot_console_reading(path: String, size: ByteSize, capture: String, read_ok: Bool, read_error: String, capture_digest: Sha256FileDigest, reference: ReferenceCaptureRead) -> ConsoleReading {
   if path == "" {
     ConsoleNotConfigured
   } else if !console_path_retained(path: path) {
@@ -2143,11 +2478,22 @@ fn mtcollins1_boot_console_reading(path: String, size: ByteSize, capture: String
   } else {
     let lines = host_capture_lines(capture: HostCaptureLiveStream { text: capture })
     let sockets = ampere_socket_console_observation(lines: lines)
+    let checkpoints = ampere_checkpoint_console_observation(lines: lines)
     ConsoleRetained {
-      path: path as NonEmptyStr, size: size, lines: count(lines), firmware: firmware_console_report(lines: lines), dram: ampere_dram_console_observation(lines: lines),
+      path: path as NonEmptyStr, size: size, lines: count(lines), firmware: firmware_console_report(lines: lines),
+      firmware_error_lines: count(filter(lines, l => is_firmware_error_line(line: l) || is_firmware_err_code_line(line: l))),
+      capture_digest: capture_digest,
+      dram: ampere_dram_console_observation(lines: lines),
+      checkpoints: checkpoints,
+      checkpoint_relations: checkpoint_relations(checkpoints: checkpoints, capture: capture_digest, reference: reference),
+      milestones: mtcollins1_console_milestones(lines: lines),
       sockets: sockets,
       against_reference: ampere_socket_reference_comparison(reference_path: mtcollins1_census_sol_artifact_path, reference_text: reference.text, read_ok: reference.ok, read_error: reference.error, subject: sockets),
+      loader: grub_console_report(lines: lines),
+      linux: linux_boot_console_observation(lines: lines),
       modules: kernel_module_decompression_observation(lines: lines),
+      nvparam: ampere_nvparam_console_observation(lines: lines),
+      span_readings: span_console_readings(lines: lines),
     }
   }
 }
@@ -2168,7 +2514,9 @@ fn mtcollins1_boot_console(path: String) -> ConsoleReading {
           let r = Filesystem.Read(path: path)
           let reference = Filesystem.Read(path: mtcollins1_census_sol_artifact_path as String)
           mtcollins1_boot_console_reading(path: path, size: size, capture: r.content, read_ok: r.success, read_error: r.error,
-            reference: ReferenceCaptureRead { text: reference.content, ok: reference.success, error: reference.error })
+            capture_digest: sha256sum_file_digest_via_shell(path: path as NonEmptyStr),
+            reference: ReferenceCaptureRead { text: reference.content, ok: reference.success, error: reference.error,
+              digest: sha256sum_file_digest_via_shell(path: mtcollins1_census_sol_artifact_path) })
         }
     }
   }
@@ -2192,7 +2540,7 @@ fn mtcollins1_boot_write_bundle(bundle: MtCollins1BootDiagnosticBundle) -> Bundl
 }
 
 fn mtcollins1_boot_outcome_after_bundle(outcome: ProcessExit, bundle: MtCollins1BootDiagnosticBundle, write: BundleWrite) -> ProcessExit {
-  let with_findings = mtcollins1_boot_outcome_with_findings(outcome: outcome, findings: mtcollins1_boot_bundle_findings(bundle: bundle))
+  let with_findings = mtcollins1_boot_outcome_with_findings(outcome: outcome, findings: mtcollins1_boot_findings(bundle: bundle))
   match write {
     BundleWritten => with_findings
     BundleWriteFailed { error: e } =>

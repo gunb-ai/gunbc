@@ -1,5 +1,6 @@
 module test.claim.floor_resolve_realization_witness
 
+import std.types { List }
 import gunbc.ci_materialization {
   ResolveObligation,
   ResolveObligationSubject,
@@ -25,8 +26,6 @@ import gunbc.ci_materialization {
   ci_floor_declared_resolve_count,
 }
 import gunbc.floor_materialization { floor_entry_walk_memo_provider_id }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
 import std.measure { nanosecond }
 
 // Eight required controls for 0B resolve realization (operator ruling 2026-08-04). ADMIT: anchor

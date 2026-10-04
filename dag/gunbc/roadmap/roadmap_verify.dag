@@ -49,6 +49,7 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_attempt_verification_path_for_instance,
 }
 import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.json.emit {
   JsonValue,
   serialize_json,

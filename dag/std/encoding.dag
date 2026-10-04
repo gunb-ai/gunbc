@@ -47,19 +47,26 @@ fn encoding_lattice_meet(a: Encoding, b: Encoding) -> Encoding {
     Binary => match b {
       Binary => Binary
       Unknown => Binary
-      _ => ASCII
+      ASCII => ASCII
+      UTF8 => ASCII
+      Latin1 => ASCII
+      Text => ASCII
     }
     UTF8 => match b {
       Unknown => UTF8
       Text => UTF8
       UTF8 => UTF8
-      _ => ASCII
+      ASCII => ASCII
+      Latin1 => ASCII
+      Binary => ASCII
     }
     Latin1 => match b {
       Unknown => Latin1
       Text => Latin1
       Latin1 => Latin1
-      _ => ASCII
+      ASCII => ASCII
+      UTF8 => ASCII
+      Binary => ASCII
     }
     Text => match b {
       Unknown => Text
@@ -80,7 +87,9 @@ fn encoding_lattice_join(a: Encoding, b: Encoding) -> Encoding {
       Binary => Binary
       ASCII => Binary
       Unknown => Unknown
-      _ => Unknown
+      UTF8 => Unknown
+      Latin1 => Unknown
+      Text => Unknown
     }
     UTF8 => match b {
       ASCII => UTF8
@@ -437,41 +446,13 @@ type Base64DecodeState {
 // 32-bit group and the group's low three octets ARE the answer, so word_to_octets replaces the
 // previous (n / 65536) % 256 ladder outright. The leading octet is dropped rather than masked away
 // because it is the zero octet base64_group_of_octets put there.
+// THE FOUR SEXTETS OCCUPY DISJOINT BIT RANGES (18, 12, 6, 0; each below 2^6, as base64_char_value
+// produces them), so their OR is their weighted sum and the group is ONE word_of_int. The earlier
+// placement built four words and folded three word_or over all 32 bit places per group -- the
+// dominant per-character cost of every base64 decode (~860 eval steps per character, measured
+// 2026-10-01) for an answer a single range-checked construction states.
 fn base64_group_of_sextets(a: Int, b: Int, c: Int, v: Int) -> WordResult {
-  match base64_place_sextet(value: a, offset: 18) {
-    WordRefused { cause: cause } => WordRefused { cause: cause }
-    WordReady { word: wa } =>
-      match base64_place_sextet(value: b, offset: 12) {
-        WordRefused { cause: cause } => WordRefused { cause: cause }
-        WordReady { word: wb } =>
-          match base64_place_sextet(value: c, offset: 6) {
-            WordRefused { cause: cause } => WordRefused { cause: cause }
-            WordReady { word: wc } =>
-              match base64_place_sextet(value: v, offset: 0) {
-                WordRefused { cause: cause } => WordRefused { cause: cause }
-                WordReady { word: wv } => base64_or_all(a: wa, b: wb, c: wc, d: wv)
-              }
-          }
-      }
-  }
-}
-
-fn base64_place_sextet(value: Int, offset: Int) -> WordResult {
-  match word_of_int(width: Width32, value: value) {
-    WordRefused { cause: cause } => WordRefused { cause: cause }
-    WordReady { word: w } => word_shift_left(a: w, amount: offset)
-  }
-}
-
-fn base64_or_all(a: Word, b: Word, c: Word, d: Word) -> WordResult {
-  match word_or(a: a, b: b) {
-    WordRefused { cause: cause } => WordRefused { cause: cause }
-    WordReady { word: ab } =>
-      match word_or(a: ab, b: c) {
-        WordRefused { cause: cause } => WordRefused { cause: cause }
-        WordReady { word: abc } => word_or(a: abc, b: d)
-      }
-  }
+  word_of_int(width: Width32, value: a * 262144 + b * 4096 + c * 64 + v)
 }
 
 fn base64_group_octet_values(group: Word) -> List<Int>? {
@@ -674,7 +655,10 @@ fn utf8_admit_octet(d: Utf8DecodeState, b: Int) -> Utf8DecodeState {
 fn utf8_decode_octets(octets: List<Int>) -> List<Int>? {
   match fold(octets, init: Utf8Ready { out: [] }, f: (d, octet) => utf8_admit_octet(d: d, b: octet)) {
     Utf8Ready { out: out } => Present { value: out }
-    _ => none
+    Utf8NeedOne { out: _, length: _, acc: _ } => none
+    Utf8NeedTwo { out: _, length: _, acc: _ } => none
+    Utf8NeedThree { out: _, acc: _ } => none
+    Utf8Refused => none
   }
 }
 

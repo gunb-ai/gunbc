@@ -51,7 +51,8 @@ fn anchor_is_straddle(a: ClaimAnchorKey, modeled: Symbol, native: Symbol) -> Boo
   match a {
     GeneratedClaimAnchor { generated_anchor: GeneratedCrossRepresentationEquality { modeled_coproduct: mc, native_realization: nr } } =>
       (mc == modeled) && (nr == native)
-    _ => false
+    GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { coproduct_type: _, omitted_variant: _ } } => false
+    ManualClaimAnchor { manual_anchor: _ } => false
   }
 }
 
@@ -86,7 +87,7 @@ fn witness_cross_representation_roster_covers_bool() -> Bool {
   (length(xs: testgen_scheduled_cross_representation_equality_generators()) > 0)
     && roster_covers_genuine_straddle(
       modeled_ref: DeclarationRef {
-        module_path: "v2.std.logic",
+        module_path: "std.types",
         decl_name: "Bool",
         field: WholeDeclaration
       },

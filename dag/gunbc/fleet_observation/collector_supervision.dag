@@ -1,7 +1,6 @@
 module gunbc.fleet_observation_collector_supervision
 
 import std.types { Bool, Int, NonEmptyStr }
-import std.string_type { String }
 import std.nat { Nat }
 import std.measure {
   ByteSize,

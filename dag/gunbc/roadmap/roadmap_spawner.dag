@@ -7,8 +7,10 @@ import gunbc.roadmap_model {
   node_sizing_derivation,
   SectionElement, Prose, Group, SectionGroup,
   RoadmapParent, TopLevel, UnderParent, roadmap_primary_parent, roadmap_parent_ids,
-  section_group,
+  section_group, roadmap_nodes_by_id, roadmap_nodes_with_id, roadmap_parent_index, roadmap_parent_ids_in,
 }
+import v2.std.collection { Map, empty_map, map_insert, map_lookup }
+import gunbc.roadmap.roadmap_lineage { lineage_index, lineage_walk_in }
 import gunbc.roadmap_sizing {
   NodeSizingDerivation, SizingDerived, SizingNotDerivable,
   intricacy_label, volume_label,
@@ -21,17 +23,18 @@ import gunbc.roadmap_authority {
   roadmap_authority_projection,
   RoadmapAuthorityProjection,
   RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
-  roadmap_authority_for,
   declared_roadmap_nodes,
   closing_contract_task_pairs_projection,
   ClosingContractTaskPairsProjected,
   ClosingContractTaskPairsProjectionRefused,
-  active,
+  roadmap_node,
+  ticket,
+  dispatchable,
+  carrier,
   fields,
 }
-import gunbc.roadmap_focus { NoFocus }
 import extdeps.languages.json.emit {
-  JsonValue, JsonNull, JsonKeyValue,
+  JsonValue, JsonKeyValue,
   serialize_json,
   quote_json_string,
   json_null,
@@ -100,15 +103,15 @@ fn roadmap_rendered_ghost_count(doc: RoadmapDocument) -> Int {
     ClosingContractTaskPairsProjectionRefused { detail: _ } =>
       count(doc_all_nodes(doc: doc))
     ClosingContractTaskPairsProjected { pairs: pairs } =>
-      let sanctioned = concat(declared_roadmap_nodes(), pairs |> map(p => p.task))
+      let sanctioned = roadmap_nodes_by_id(nodes: concat(declared_roadmap_nodes(), pairs |> map(p => p.task)))
       doc_all_nodes(doc: doc)
-        |> filter(n => !any(sanctioned, s => s == n))
+        |> filter(n => !any(roadmap_nodes_with_id(index: sanctioned, id: n.node), s => s == n))
         |> count
   }
 }
 
 fn ghost_probe_document(ghost: RoadmapNode) -> RoadmapDocument {
-  let base = roadmap_authority_for(focus: NoFocus)
+  let base = roadmap_authority()
   RoadmapDocument {
     preamble: base.preamble,
     lead_lanes: base.lead_lanes,
@@ -120,11 +123,11 @@ fn ghost_probe_document(ghost: RoadmapNode) -> RoadmapDocument {
 }
 
 fn roadmap_ghost_node_red_probe_count() -> Int {
-  roadmap_rendered_ghost_count(doc: ghost_probe_document(ghost: active(
+  roadmap_rendered_ghost_count(doc: ghost_probe_document(ghost: roadmap_node(
     identity: "rn_GHOSTPROBEAAAAAAAAAAAAAAAA", id: "synthetic-ghost-probe",
     owner: "compiler-guarantee",
-    path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
-    t: fields(
+    carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
+    line: ticket(t: fields(
       headline: "SYNTHETIC: a rendered node that no declared authority carries",
       boundary: "Negative control for the containment witness — never declared, never rendered outside the probe.",
       displaced_cost: "None; this row exists to be caught.",
@@ -132,11 +135,17 @@ fn roadmap_ghost_node_red_probe_count() -> Int {
       red_control: "Its own detection: the containment predicate must count exactly this node.",
       out_of_scope: "Everything.",
       handback: "None."
-    ))))
+    )),
+    dispatch: dispatchable(),
+  )))
 }
 
+// THE ALTERED-COPY PROBE COPIES THE FIRST DECLARED NODE rather than a named one. It used to look up
+// one id and answer 0 when that id was absent, so deleting the row would have turned the probe into
+// a count that no longer probes anything; the first declared node is absent only when the authority
+// declares nothing, and the witness asserting a count of exactly 1 reds on that too.
 fn roadmap_altered_copy_red_probe_count() -> Int {
-  match declared_roadmap_nodes() |> filter(n => (n.node as String) == "ladder-claims-carrier") |> first {
+  match declared_roadmap_nodes() |> first {
     Absent => 0
     Present { value: n } => roadmap_rendered_ghost_count(doc: ghost_probe_document(ghost: RoadmapNode {
       identity: n.identity,
@@ -147,6 +156,8 @@ fn roadmap_altered_copy_red_probe_count() -> Int {
       execution: n.execution,
       owner: "SYNTHETIC-altered-copy-probe",
       signoff: n.signoff,
+      parent: n.parent,
+      centering: n.centering,
     }))
   }
 }
@@ -277,14 +288,9 @@ fn acceptance_json_value(a: Acceptance, line: RoadmapItem) -> JsonValue {
 }
 
 fn node_plan_doc_json(carriers: List<Pointer>) -> JsonValue {
-  let plans = carriers |> filter(p => p.label == "plan")
-  if count(plans) > 0 {
-    fold(plans, init: json_null(), f: (acc, p) => match acc {
-      JsonNull => json_string(s: p.path)
-      _ => acc
-    })
-  } else {
-    json_null()
+  match (carriers |> filter(p => p.label == "plan")).first() {
+    Present { value: p } => json_string(s: p.path)
+    Absent => json_null()
   }
 }
 
@@ -340,8 +346,50 @@ fn node_json(n: RoadmapNode, repo: String, acceptance: Acceptance, edges: List<R
 }
 
 fn node_unmet_parent_ids(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: RoadmapNodeId) -> List<RoadmapNodeId> {
-  roadmap_parent_ids(edges: edges, node: id)
-    |> filter(pid => !any(nodes, n => n.node == pid && node_closes_dependency(n: n)))
+  node_unmet_parent_ids_in(graph: readiness_graph(nodes: nodes, edges: edges), id: id)
+}
+
+// THE READINESS GRAPH, indexed once per graph. Readiness asks every node of one graph the same
+// three questions -- its lineage walk, its prerequisites, which of them are closed -- so a fold over
+// a graph (a page's rows, the dispatcher's admission) indexes it once: lineage by id, parents by
+// child, the ids some node closes as a dependency. Asked of the raw lists per node, the parents and
+// closed reads made the fold nodes x edges and nodes x prerequisites x nodes, and the page and the
+// admission each paid it for the same rows.
+type ReadinessGraph {
+  lineage: Map<String, RoadmapNode>
+  fuel: Int
+  parents: Map<String, List<RoadmapNodeId>>
+  closes: Map<String, Bool>
+}
+
+fn readiness_graph(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> ReadinessGraph {
+  let empty: Map<String, Bool> = empty_map()
+  ReadinessGraph {
+    lineage: lineage_index(nodes: nodes),
+    fuel: count(nodes) + 1,
+    parents: roadmap_parent_index(edges: edges),
+    closes: fold(nodes |> filter(n => node_closes_dependency(n: n)), init: empty, f: (acc, n) => map_insert(m: acc, key: n.node as String, value: true)),
+  }
+}
+
+fn readiness_graph_closes(graph: ReadinessGraph, id: RoadmapNodeId) -> Bool {
+  match map_lookup(m: graph.closes, key: id as String) { Present { value: _ } => true  Absent => false }
+}
+
+fn node_unmet_parent_ids_in(graph: ReadinessGraph, id: RoadmapNodeId) -> List<RoadmapNodeId> {
+  roadmap_parent_ids_in(parents: graph.parents, node: id)
+    |> filter(pid => !readiness_graph_closes(graph: graph, id: pid))
+}
+
+// The one readiness of a node over an indexed graph: the page's scheduling and the dispatcher's
+// readiness gate both read this value.
+fn node_readiness_in_graph(node: RoadmapNode, graph: ReadinessGraph, merged: List<Int>) -> NodeReadiness {
+  node_readiness(
+    node: node,
+    lineage: lineage_walk_in(node_id: node.node as String, index: graph.lineage, fuel: graph.fuel),
+    unmet_parents: node_unmet_parent_ids_in(graph: graph, id: node.node) |> map(p => p as String),
+    merged: merged,
+  )
 }
 
 fn ready_array_json(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> String {

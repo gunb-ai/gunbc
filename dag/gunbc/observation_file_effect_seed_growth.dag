@@ -1,5 +1,6 @@
 module gunbc.observation_file_effect_seed_growth
 
+import std.types { List }
 // THE RECEIPT FOR THE [file] MIGRATION'S SEED SIDE.
 //
 // The [file] family's projection authority is
@@ -21,7 +22,6 @@ module gunbc.observation_file_effect_seed_growth
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.collection { List }
 
 data observation_file_effect_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [

@@ -15,6 +15,7 @@ import v2.compiler.self_host.promotion_admission {
   contract_axis_of_roster_digest,
   BehaviorAgrees,
   BehaviorDiverges,
+  BehaviorDivergesExactly,
   BehavioralComparisonObservation,
   BehavioralCorpus,
   BehavioralEquivalenceReceipt,
@@ -34,6 +35,8 @@ import v2.compiler.self_host.promotion_admission {
   PromotionOutcome,
   SelfHostCandidate,
   admit_promotion,
+  admit_promotion_with_seed_corrections,
+  SeedDefectCorrection,
   build_receipt_from_observation,
   equivalence_receipt_from_observation,
   fault_receipt_from_observation,
@@ -56,12 +59,10 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.diagnostic { outcome_accepted }
 import v2.std.node { Atom, Node, TypeNode }
 import v2.std.witness { Holds }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
 import v2.std.node { Hash, combine_hash, symbol_identity_digest }
 import v2.std.optional { Absent, Present }
 import std.content_hash { content_hash_atom, sha512_hex_digest }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 
 // Test-side projection. The authority carrier deliberately exposes no is_* Bool over
 // PromotionOutcome (review 51217, predicate-dissolution): a witness must return Bool,
@@ -1975,4 +1976,70 @@ test fn a_subtree_obligation_observed_twice_promotes() -> Bool {
     Promoted { successor: _, cases_compared: _ } => true
     PromotionRefused { causes: _ } => false
   }
+}
+
+// ── the seed is a regression oracle: divergences are disposed of, never matched ─────────────
+//
+// DESIGN section 7 (operator ruling 2026-10-02): a divergence from the seed is a v2 regression or a
+// recorded seed-defect correction. These claims pin both halves at the promotion gate: a complete
+// enumeration whose every case is recorded promotes, and every other shape still refuses.
+
+fn pa_xor_correction() -> SeedDefectCorrection {
+  SeedDefectCorrection {
+    corpus: "std-logic-classical-truth-table",
+    at_case: "classical_xor(True,True)",
+    contract: "test.claim.logic classical_xor_is_exclusive" as NonEmptyStr,
+    reason: "the seed answered True for xor(True,True); the contract says False" as NonEmptyStr
+  }
+}
+
+fn pa_good_with_equivalence(outcome: EquivalenceOutcome) -> SelfHostCandidate {
+  pa_bundle(
+    candidate_lens_coverage: pa_coverage_closed(),
+    successor_lens_coverage: pa_coverage_closed_for(subject: pa_successor_identity()),
+    candidate_build: pa_build(subject: pa_candidate_identity(), outcome: ObservationPresent { value: BuildGreen }),
+    successor_build: pa_build(subject: pa_successor_identity(), outcome: ObservationPresent { value: BuildGreen }),
+    candidate_equivalence: pa_equivalence(subject: pa_candidate_identity(), cases: pa_corpus_cases, outcome: ObservationPresent { value: outcome }),
+    successor_equivalence: pa_equivalence(subject: pa_successor_identity(), cases: pa_corpus_cases, outcome: ObservationPresent { value: outcome }),
+    discriminating_fault: pa_fault(subject: pa_candidate_identity(), outcome: ObservationPresent { value: FaultCaught }),
+    candidate_provenance: pa_provenance(subject: pa_candidate_identity(), producer: pa_seed_identity()),
+    successor_provenance: pa_provenance(subject: pa_successor_identity(), producer: pa_candidate_identity())
+  )
+}
+
+// POSITIVE CONTROL: v2 deliberately differs from the seed on one case, the run enumerated every
+// diverging case, and that case is a recorded correction. It promotes.
+test fn a_recorded_seed_defect_correction_admits_its_divergence() -> Bool {
+  pa_admitted(
+    o: admit_promotion_with_seed_corrections(
+      c: pa_good_with_equivalence(outcome: BehaviorDivergesExactly { cases: ["classical_xor(True,True)"] }),
+      corrections: [pa_xor_correction()]
+    )
+  )
+}
+
+// THE SAME RUN WITH NO RECORD: an undisposed divergence is a v2 regression by default.
+test fn an_unrecorded_divergence_in_a_complete_run_is_refused() -> Bool {
+  let o = admit_promotion(c: pa_good_with_equivalence(outcome: BehaviorDivergesExactly { cases: ["classical_xor(True,True)"] }))
+  !pa_admitted(o: o) && promotion_refusal_carries(o: o, cause: ^refusal_behavior_diverged_from_oracle)
+}
+
+// A FIRST-DIVERGENCE RECEIPT CANNOT BE DISPOSED OF: the cases after it were never judged, so a
+// record for the first case must not admit the run.
+test fn a_first_divergence_receipt_is_refused_even_when_its_case_is_recorded() -> Bool {
+  let o = admit_promotion_with_seed_corrections(
+    c: pa_good_with_equivalence(outcome: BehaviorDiverges { at_case: "classical_xor(True,True)" }),
+    corrections: [pa_xor_correction()]
+  )
+  !pa_admitted(o: o) && promotion_refusal_carries(o: o, cause: ^refusal_behavior_diverged_from_oracle)
+}
+
+// A RECORDED CORRECTION THE RUN NO LONGER OBSERVES: v2 now agrees with the seed's defect on a case
+// it declared corrected, so the correction regressed and the row refuses.
+test fn a_recorded_correction_the_run_no_longer_observes_is_refused() -> Bool {
+  let o = admit_promotion_with_seed_corrections(
+    c: pa_good_with_equivalence(outcome: BehaviorAgrees),
+    corrections: [pa_xor_correction()]
+  )
+  !pa_admitted(o: o) && promotion_refusal_carries(o: o, cause: ^refusal_seed_defect_correction_not_observed)
 }

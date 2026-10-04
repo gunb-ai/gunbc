@@ -13,7 +13,6 @@ import v2.compiler.resolve {
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.collection { empty_map }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
-import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
   Node,

@@ -4,7 +4,6 @@ import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
 import extdeps.transports.shell { ShellOutcome }
 import std.types { NonEmptyStr, List, Bool, Int, Unit }
-import std.string_type { String }
 import std.algebra { trim }
 import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire, systemd_binary_path }
 
@@ -765,6 +764,40 @@ service systemd.Systemctl {
     }
   }
 
+  operation ListUnitsUserAllLoaded {
+    input {
+      pattern: NonEmptyStr,
+      unit_type: String = "service",
+    }
+    output {
+      stdout: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "systemctl",
+        "--user",
+        "list-units",
+        "--type={unit_type}",
+        "--all",
+        "--no-legend",
+        "--plain",
+        "{pattern}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl --user list-units --all failed"
+    }
+    mock_response {
+      0 => {
+        stdout: "gunbc-attempt-node-1-feedfacefeedface.service loaded active running gunbc attempt\n",
+        success: true,
+      } "hermetic systemd.Systemctl.ListUnitsUserAllLoaded (user-manager population -- the belt's transient units are user units, invisible to the system manager -- first field only)"
+    }
+  }
+
   operation Status {
     requires Network
     input { unit: NonEmptyStr }
@@ -826,6 +859,42 @@ fn systemctl_enable_now_command(units: List<String>) -> ArgvCommand {
     arguments: append(
       [sudo_non_interactive_flag as String, systemctl_path_resolved_program().invocation as String, "enable", "--now"],
       items: units,
+    ),
+  )
+}
+
+// DAEMON-RELOAD AND START AS TYPED ARGV, ELEVATED, for the host-effect realizer's staging fold
+// (gunbc.host_effect_realize compile_pool_slice_install_step). The posture is
+// systemctl_enable_now_command's own, restated rather than inherited by accident: the unit lives
+// in the system manager, so an unelevated invocation is not a weaker version of this request but a
+// different one that fails; the elevation comes from extdeps.sudo.elevation -- absolute
+// /usr/bin/sudo and its -n, non-interactive, which FAILS instead of blocking on a tty CI does not
+// have. daemon-reload carries no verb row because it has no second consumer spelling an
+// absolute-path argv beside this one (the row comment above records why enable and start are
+// hoisted); start reads its hoisted verb row. These are the ArgvCommand counterparts of the
+// shell-text builders gunbc.live_deploy.operations carries for its own emit path -- one operation,
+// two carrier grammars, each module owning its own.
+fn systemctl_daemon_reload_command() -> ArgvCommand {
+  argv_command(
+    program: sudo_program(),
+    arguments: [
+      sudo_non_interactive_flag as String,
+      systemctl_path_resolved_program().invocation as String,
+      "daemon-reload",
+    ],
+  )
+}
+
+fn systemctl_start_command(unit: NonEmptyStr) -> ArgvCommand {
+  argv_command(
+    program: sudo_program(),
+    arguments: append(
+      [
+        sudo_non_interactive_flag as String,
+        systemctl_path_resolved_program().invocation as String,
+        systemctl_start_verb as String,
+      ],
+      items: [unit as String],
     ),
   )
 }

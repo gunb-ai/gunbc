@@ -1,0 +1,197 @@
+module gunbc.spark.group_b_serving_capacity
+
+import std.types { NonEmptyStr, Port }
+import std.nat { Nat }
+import std.measure { TokenCount, token_count, BasisPoint, basis_point }
+import v2.std.optional { Present, Absent }
+import extdeps.vllm.engine_args {
+  VllmPrefixCachingRequest, PrefixCachingExplicit, VllmKvCacheDtypeRequest, KvFp8,
+  VllmEngramConfigRequest, EngramConfigOmitted,
+  ModalityOmitted,
+}
+import gunbc.spark.serving_arm { ServingLaunchProfile, glm53_native_launch_policy }
+import gunbc.spark.serving_capacity_intent {
+  ServingCapacityIntent, ServingCapacityIntentAdmission, uniform_cold_seats, profile_for_envelope, envelope_at_cold_floor,
+  SchedulerEnvelope, envelope_hard_max_num_seqs,
+  ServingCapacityIntentAdmitted, ServingCapacityIntentRefused,
+}
+
+// ── THE SERVICE OBLIGATION GROUP B IS RESTORED TO ────────────────────────────────────────────────
+//
+// THE FLEET IS WITHDRAWN, and the path back is NOT the re-convergence of the retired profile:
+// the 2026-09-19 row (sixteen sequences at 262144 tokens, 8400 basis points) is the configuration
+// whose live units crash-looped from 2026-09-18, and nothing measured since rehabilitates it. THE
+// RESTORATION SHAPE IS THE DERIVED SIX-SEAT 262K WINDOW, and each field names its basis:
+//
+//   SEATS: DERIVED FROM THE ENGINE'S OWN GROUP-AWARE KV INVENTORY, not authored and not imported:
+//     floor(1,805,689 / 262,144) = 6. The inventory is the head EngineCore line of the converged
+//     bounded-experiment run (2026-09-25, engine v0.1.dev1+g8d09804c8, [kv_cache_utils.py:2312]):
+//     "GPU KV cache size: 1,805,689 tokens, Maximum concurrency for 65,536 tokens per request:
+//     27.55x". The engine derived that capacity FROM THE LIMITING RANK (TP3/srv11: the smallest
+//     envelope-minus-weights-minus-activation-minus-graph residual arena, 17.03 GiB against
+//     24.08 on TP0/srv9), so the derived count is the count the WORST rank admits, not the average
+//     rank's. THE DERIVATION IS TOKENS OVER TOKENS: the residual arena in GiB is supply evidence
+//     and never a demand input -- no seat count is ever computed from arena bytes. The forbidden
+//     linear route (scaling the inventory from TP0's larger arena) fabricates 9 seats and is
+//     pinned RED on the fit witness.
+//   WINDOW: 262144 tokens per seat -- the full window the arm has carried since the initial
+//     profile, now admissible BECAUSE the seat population is derived instead of over-provisioned:
+//     six cold seats at 262144 tokens total 1,572,864 resident tokens, inside the 1,805,689-token
+//     inventory with 232,825 tokens of slack.
+//   BATCH CEILING: 2048, unchanged from the arm's existing scheduler configuration -- the engine
+//     profiles its activation peak against the batch shape it will actually run.
+//   ENVELOPE: 8567 basis points (0.8567), the engine's own advice, unchanged.
+//
+// THE HARNESS-SEAT AUTHORITY GOVERNED THE PRE-MEASUREMENT SHAPE and is retired with it: the
+// 2026-09-24 conservative restoration (one harness seat at 65536) was the right wall while no
+// memory receipts existed; the converged experiment supersedes it, and the seat authority is now
+// the engine's measured inventory, not the harness handout. The witness asserts the derivation
+// (floor of the inventory over the window, the limiting rank named) on every suite run.
+//
+// THE INTENT IS DECLARED AS THE MINT'S ADMISSION, not unwrapped at declaration: a caller sees the
+// refusal arm rather than a fabricated degenerate intent if the seat population ever derives to
+// zero, and the accessor below is the one place the admitted arm is read.
+data group_b_kv_inventory_tokens: Nat = 1805689
+
+// THE INVENTORY'S PROVENANCE, quoted once where the derivation reads it: the head EngineCore line
+// of the converged run, 2026-09-25, engine v0.1.dev1+g8d09804c8, profile 64K window x 1 seat x
+// 2048 batched tokens x fp8 KV x 8567 basis points; the per-rank worker lines and the modeling
+// laws that keep the arena a supply fact are carried at gunbc.spark.arm_memory_fit's wet-bundle
+// witness, where the receipts join the fit subject.
+data group_b_restoration_window_tokens: Nat = 262144
+
+// THE SEAT COUNT IS THE DERIVATION, not a literal: the day the inventory reading is re-measured,
+// this expression moves with it and the witness pinning floor(1,805,689 / 262,144) = 6 goes red
+// at exactly the place the number changed.
+data group_b_restoration_seats: Nat = group_b_kv_inventory_tokens / group_b_restoration_window_tokens
+
+// THE REQUESTED CANDIDATE IS EIGHT (owner directive 2026-09-28, "could we move to 262k x 8
+// now"; frozen as the objective 2026-09-28: restore GLM at a qualified 262,144-token x 8-seat
+// configuration). THE REQUESTED CAPACITY IS A POLICY INPUT, and the OBSERVED capacity is
+// evidence — neither manufactures the other: the six-seat run's 1,035-block inventory prices
+// eight seats at 984 blocks (4.93% reserve) as a CONDITIONAL EXPECTATION ONLY, because
+// max-num-seqs 8 can change the runtime's graph/capture and workspace and thereby the residual
+// arena. The eight-seat verdict must come from THE EIGHT-SEAT CANDIDATE'S OWN resolved
+// allocation plan and per-rank phase bounds — the wet readback — never carried from the
+// six-seat execution. The derived SIX stays as the restoration floor above (the older
+// summary-based derivation, retained as the floor and nothing more). What the request does
+// NOT mint: the profile-shape binding at max-num-seqs 8, the eight-way liveness observation,
+// and the SERVICE PROMISE — the arm stays Unestablished; promotion happens only through
+// persistent convergence after the existing safety and functional gates, and W1b (performance
+// attribution) and W2 (warm-reuse evidence) are follow-ups that do not hold a safe service
+// offline — a cache miss blocks only a warm-reuse PROMISE, never serving. The sequence budget
+// means input PLUS generated context, not a 262K input followed by an unbounded answer.
+data group_b_experiment_subject_seats: Nat = 8
+
+data group_b_restoration_intent_admission: ServingCapacityIntentAdmission = uniform_cold_seats(
+  each: token_count(count: 262144),
+  seats: group_b_experiment_subject_seats,
+  max_batched_tokens: token_count(count: 2048),
+)
+
+fn group_b_restoration_intent() -> ServingCapacityIntent? {
+  match group_b_restoration_intent_admission {
+    ServingCapacityIntentAdmitted { intent: i } => Present { value: i }
+    ServingCapacityIntentRefused { cause: _ } => none
+  }
+}
+
+// ── THE LAUNCH POLICY BESIDE THE INTENT ──────────────────────────────────────────────────────────
+//
+// WHAT THE INTENT DOES NOT DECIDE, stated once: utilization, port, alias, prefix caching -- and the
+// model's own choices (KV dtypes, Engram, modality), which are gunbc.spark.serving_arm
+// glm53_native_launch_policy, the checkpoint's row. These are operator policy, and they
+// travel into the derived profile unchanged. THE UTILIZATION IS THE ENGINE'S OWN ADVICE: the
+// corpus records (gunbc.spark.serving_arm, the 2026-09-16 operator ruling) that 0.84 measures as
+// effectively 0.8233 once CUDA-graph profiling is charged, and names 0.8567 as the value restoring
+// the intended KV size. The crash-looping units ran the un-advised 8400; the restoration applies
+// the advice.
+data group_b_restoration_utilization: BasisPoint = basis_point(count: 8567)
+
+data group_b_restoration_serve_port: Port = 30000
+
+data group_b_restoration_served_alias: NonEmptyStr = "glm-5.3-flash" as NonEmptyStr
+
+data group_b_restoration_prefix_caching: VllmPrefixCachingRequest = PrefixCachingExplicit { enabled: true }
+
+// THE EXECUTABLE PROFILE IS DERIVED, never authored: the engine config the restoration runs, the
+// engine config the fit proof prices, and the engine config the renderer renders are one value by
+// construction (the join the sealed subject mint enforces). Absent means the declared intent
+// refused -- a caller must refuse in turn, not fall back to a profile of its own.
+// THE PLAIN-RECORD CARRIER, and the reason is a resolver seam, not a preference: field
+// projections through a Present-bound payload of a SOLE-CONSTRUCTOR record fail the
+// produced-identity check at the cross-module seam ("produced identity erased"), while projections
+// through a PLAIN record's field typecheck exactly as gunbc.spark.serving_arm_launch's
+// crow.weight_gib does. The executable stays sealed and joined; the carrier is the typed
+// hand-off this seam can see.
+type GroupBRestorationExecutable {
+  profile: ServingLaunchProfile
+}
+
+// ── THE THREE COUNTS ARE THREE FACTS (operator ruling 2026-10-02) ─────────────────────────────────
+//
+// "Keep the cold guarantee at 8x262K, split out a hard scheduler ceiling and independent route-offer
+// ceiling ... Keep C behavior-preserving at 8/8." The cold guarantee is the intent above; the
+// scheduler ceiling is the envelope below, AT THE FLOOR today, so the engine renders exactly the
+// launch it ran before the split; the route offer is its own row, decided rather than derived. Group
+// B is promoted above the floor only after the measured goodput winner from the group A sweep has
+// its own all-rank memory and allocation-plan evidence -- the envelope is the one place that moves.
+fn group_b_scheduler_envelope() -> SchedulerEnvelope? {
+  match group_b_restoration_intent() {
+    Absent => none
+    Present { value: intent } => Present { value: envelope_at_cold_floor(cold: intent) }
+  }
+}
+
+// THE ROUTE OFFER IS HOW MANY CONCURRENT TURNS THIS REPOSITORY OFFERS THE ROUTE, a control-plane
+// admission decision -- not the cold guarantee and not the engine's ceiling. It supersedes the
+// 2026-09-28 derivation from the cold seat count ("make it equivalent to whatever the fabric offer is
+// offering"), which tied the offer to the guarantee so they could not fork; the 2026-10-02 ruling
+// separates them on purpose, and what keeps them from forking now is the bound below rather than
+// identity. Eight is the value it had, so nothing a caller sees moves.
+data group_b_route_offer_ceiling: Nat = 8
+
+// THE OFFER MAY NOT EXCEED THE ENGINE'S CEILING: a turn offered above it would queue inside the
+// engine, where a cold request at the head blocks every warm one behind it (the pinned scheduler
+// stops scanning the waiting queue at the first request whose blocks do not fit). The durable backlog
+// belongs before the engine. Absent means the envelope is unavailable or the offer breaches it; the
+// route is UNRESOLVED with the cause (gunbc.serving.serving_enrollment) -- never a guessed capacity.
+type RouteOfferStanding
+  = RouteOfferAdmitted { seats: Nat }
+  | RouteOfferRefused { cause: NonEmptyStr }
+
+fn group_b_route_offer() -> RouteOfferStanding {
+  match group_b_scheduler_envelope() {
+    Absent => RouteOfferRefused { cause: "the Group B scheduler envelope is unavailable (its cold intent refused), so there is no engine ceiling to bound an offer by" as NonEmptyStr }
+    Present { value: e } =>
+      if group_b_route_offer_ceiling == 0 {
+        RouteOfferRefused { cause: "the Group B route offer is zero, which offers nothing" as NonEmptyStr }
+      } else if group_b_route_offer_ceiling > envelope_hard_max_num_seqs(e: e) {
+        RouteOfferRefused { cause: join(["the Group B route offer of ", to_string(group_b_route_offer_ceiling), " exceeds the engine ceiling of ", to_string(envelope_hard_max_num_seqs(e: e)), ": offered turns would queue inside the engine"], "") as NonEmptyStr }
+      } else {
+        RouteOfferAdmitted { seats: group_b_route_offer_ceiling }
+      }
+  }
+}
+
+fn group_b_restoration_executable() -> GroupBRestorationExecutable? {
+  match group_b_scheduler_envelope() {
+    Absent => none
+    Present { value: envelope } =>
+      Present { value: GroupBRestorationExecutable { profile: profile_for_envelope(
+        envelope: envelope,
+        policy: glm53_native_launch_policy,
+        decided_gpu_memory_basis_points: group_b_restoration_utilization,
+        serve_port: group_b_restoration_serve_port,
+        served_alias: group_b_restoration_served_alias,
+        prefix_caching: group_b_restoration_prefix_caching,
+      ) } }
+  }
+}
+
+fn group_b_restoration_profile() -> ServingLaunchProfile? {
+  match group_b_restoration_executable() {
+    Absent => none
+    Present { value: executable } => Present { value: executable.profile }
+  }
+}

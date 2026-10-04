@@ -29,12 +29,17 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the production compile accepts. Asserting on emitted TEXT keeps this witness on the path the
 // defect actually lives on, and lets it see the alias NAME rather than only a diagnostic count.
 
+// THE SPECIMEN IS std.integer NonNegativeInt (`type NonNegativeInt = Nat`), a transparent alias of
+// the naturals. It used to be std.nat Nat itself, which was an alias until the Nat de-fork (operator
+// ruling A, 2026-09-30) made it the inductive declaration; a declaration is not an alias, so the
+// row would have stopped exercising the seam it exists for. Measured on both sides of the de-fork:
+// base e7a527daba5 and the de-fork head both emit `-> NonNegativeInt` for this source.
 fn qualified_alias_emits_its_own_name() -> Bool {
   compile_dag_rust_emit_check(
-    "module probe_alias_qualified\n\nimport std.nat { Nat }\n\nfn qual1() -> std.nat.Nat {\n  60\n}\n",
+    "module probe_alias_qualified\n\nimport std.integer { NonNegativeInt }\n\nfn qual1() -> std.integer.NonNegativeInt {\n  60\n}\n",
     "src/probe_alias_qualified.rs",
-    ["-> Nat"],
-    ["CommutativeSemiring"]
+    ["-> NonNegativeInt"],
+    ["CommutativeSemiring", "-> Nat", "-> i64"]
   )
 }
 
@@ -58,7 +63,7 @@ fn a_second_qualified_alias_emits_its_own_name() -> Bool {
 
 fn a_direct_target_reference_stays_structural() -> Bool {
   compile_dag_rust_emit_check(
-    "module probe_alias_direct\n\nimport std.algebra { CommutativeSemiring }\nimport std.magnitude { Magnitude }\n\nfn direct(x: CommutativeSemiring<Magnitude>) -> CommutativeSemiring<Magnitude> {\n  x\n}\n",
+    "module probe_alias_direct\n\nimport std.algebra { CommutativeSemiring }\nimport std.types { Int }\n\nfn direct(x: CommutativeSemiring<Int>) -> CommutativeSemiring<Int> {\n  x\n}\n",
     "src/probe_alias_direct.rs",
     ["CommutativeSemiring"],
     []

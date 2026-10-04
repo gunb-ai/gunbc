@@ -1,0 +1,364 @@
+module gunbc.auth.session
+
+import std.types { NonEmptyStr, String, Bool, Timestamp, Email, List }
+import std.nat { Nat, Zero }
+import extdeps.http.server { SetCookie, CookieSameSiteLax }
+import std.algebra { trim }
+import std.decl_ref { decl_ref }
+import extdeps.uri { Uri }
+import extdeps.auth.oidc {
+  OidcIdTokenVerdict, OidcIdTokenVerified, OidcIdTokenRefused, OidcIdTokenRefusal,
+  OidcLoginTransaction, login_transaction_expired,
+}
+import gunbc.principal_projection {
+  PrincipalRef, HumanPrincipalMinted, HumanPrincipalRefused, mint_human_principal_from_verdict,
+}
+import v2.std.algebra { filter }
+
+// THE APPLICATION SESSION (ruling authority placement: gunbc.auth.session). An
+// AuthenticatedSession is what a completed Google login mints: the verdict-sealed human
+// principal, the method (Google OIDC — the only human authentication method this deployment
+// admits), the client the login ran for, a bounded lifetime, the CSRF token the session's
+// mutations must present, and the login-time slice of the operator's mutable profile
+// projection (today the avatar picture; display-name enrichment is the follow-up). The session
+// IDENTIFIES the operator; it never authorizes anything by
+// itself — action authorization is gunbc.auth.request_authentication's law, and an approval
+// decision additionally requires the exact scoped capability (std.scoped_authorization and the
+// signed approval capability stay that authority; login never substitutes for it).
+
+type SessionClient
+  = SessionClientTrackerWeb
+  | SessionClientApprovalsWeb
+
+fn session_client_label(client: SessionClient) -> NonEmptyStr {
+  match client {
+    SessionClientTrackerWeb => "tracker-web" as NonEmptyStr
+    SessionClientApprovalsWeb => "approvals-web" as NonEmptyStr
+  }
+}
+
+// ONE HUMAN AUTHENTICATION METHOD. Google OIDC is the human-authentication authority (owner
+// directive 2026-09-25); the closed coproduct is the wall against a second, weaker method
+// arriving by drift — a new method is a new arm with its own evidence, never a loosened check.
+type SessionAuthMethod
+  = | AuthMethodGoogleOidc
+
+// THE CSRF TOKEN rides the session but is NOT the session: login state (the cookie) and the
+// mutation proof are separate facts, so a request that merely carries the cookie — replayed by
+// the browser from any origin — cannot satisfy the mutation check (ruling: login state != CSRF
+// token).
+type CsrfToken {
+  token: NonEmptyStr
+}
+
+// THE LOGIN-TIME PROFILE PROJECTION the session carries beside the identity facts. Profile
+// facts are MUTABLE PROJECTIONS, NEVER IDENTITY — the law gunbc.principal_projection states for
+// PrincipalProfile holds verbatim here: the picture can change (a re-login re-projects it, and
+// the A9 directory lane moves it forward later) while the PrincipalRef does not, and no
+// principal is ever derived from a picture. The projection rides the session for one reason: a
+// completed login is the moment the verified ID token's picture claim is in hand, and the
+// session store is the durable carrier that already answers per-request. THE NEVER-BLOCKS LAW:
+// the picture is OPTIONAL END TO END — absent from the token, absent from the file, unreadable,
+// or malformed renders the initials fallback and never refuses authentication, authorization,
+// or rendering. THE DISPLAY NAME is the same projection shape — the verified token's name
+// claim, optional end to end, presentation only: the header prefers it over the principal
+// label's short form and falls back when absent; identity is never derived from a name. THE
+// EMAIL is the third member of the same shape (the verified token's email claim): the
+// assignee/picker surfaces display it, and identity is never derived from it either — the
+// PrincipalRef stays the only identity all three describe.
+type SessionProfile {
+  picture: Uri?
+  name: String?
+  email: Email?
+}
+
+type AuthenticatedSession {
+  session_id: NonEmptyStr
+  principal: PrincipalRef
+  authenticated_at: Timestamp
+  expires_at: Timestamp
+  auth_method: SessionAuthMethod
+  client: SessionClient
+  csrf: CsrfToken
+  profile: SessionProfile
+}
+
+// THE SESSION MINT, the sealed boundary that turns a completed login into session identity. The
+// principal comes ONLY from the verdict through the caller-sealed principal mint — there is no
+// principal parameter, so no caller can seat a session on a principal the evidence did not
+// establish (a service writer cannot present a human Google session as workload identity, and a
+// fabricated PrincipalRef cannot be seated at all). The profile projection is the same shape of
+// fact: the picture is read from the VERIFIED claims inside the seal — there is no picture
+// parameter, so no caller can seat a picture the evidence did not carry. The transaction is
+// checked here too: expired or nonce-mismatched transactions refuse before any session exists.
+type SessionMint
+  = SessionMinted { session: AuthenticatedSession }
+  | SessionRefused { cause: SessionRefusalCause }
+
+type SessionRefusalCause
+  = SessionVerdictRefused { cause: OidcIdTokenRefusal }
+  | SessionTransactionExpired { transaction: OidcLoginTransaction, observed_at: Timestamp }
+  | SessionTransactionNonceMismatch { transaction_nonce: NonEmptyStr, token_nonce: NonEmptyStr? }
+
+fn mint_authenticated_session(
+  verdict: OidcIdTokenVerdict,
+  transaction: OidcLoginTransaction,
+  client: SessionClient,
+  session_id: NonEmptyStr,
+  authenticated_at: Timestamp,
+  expires_at: Timestamp,
+  csrf_token_value: NonEmptyStr,
+  observed_at: Timestamp,
+) -> SessionMint
+  admit_callers: [
+    decl_ref(module_path: "test.claim.auth_session_witness_test", decl_name: "witness_mint_session"),
+    decl_ref(module_path: "test.claim.request_authentication_witness_test", decl_name: "witness_mint_session"),
+    decl_ref(module_path: "gunbc.roadmap_auth_routes", decl_name: "auth_callback_mint_session"),
+  ]
+{
+  if login_transaction_expired(t: transaction, observed_at: observed_at) {
+    SessionRefused {
+      cause: SessionTransactionExpired { transaction: transaction, observed_at: observed_at },
+    }
+  } else {
+    match verdict {
+      OidcIdTokenRefused { cause: c } => SessionRefused { cause: SessionVerdictRefused { cause: c } }
+      OidcIdTokenVerified { claims } =>
+        if !oidc_nonce_matches_transaction(claims_nonce: claims.nonce, transaction_nonce: transaction.nonce) {
+          SessionRefused {
+            cause: SessionTransactionNonceMismatch {
+              transaction_nonce: transaction.nonce,
+              token_nonce: claims.nonce,
+            },
+          }
+        } else {
+          match mint_human_principal_from_verdict(verdict: verdict) {
+            HumanPrincipalRefused { cause: c } => SessionRefused { cause: SessionVerdictRefused { cause: c } }
+            HumanPrincipalMinted { principal: p } =>
+              SessionMinted {
+                session: AuthenticatedSession {
+                  session_id: session_id,
+                  principal: p,
+                  authenticated_at: authenticated_at,
+                  expires_at: expires_at,
+                  auth_method: AuthMethodGoogleOidc,
+                  client: client,
+                  csrf: CsrfToken { token: csrf_token_value },
+                  profile: SessionProfile { picture: claims.standard.picture, name: claims.standard.name, email: claims.standard.email },
+                }
+              }
+          }
+        }
+    }
+  }
+}
+
+fn oidc_nonce_matches_transaction(claims_nonce: NonEmptyStr?, transaction_nonce: NonEmptyStr) -> Bool {
+  match claims_nonce {
+    Present { value: n } => (n as String) == (transaction_nonce as String)
+    Absent => false
+  }
+}
+
+fn session_principal(session: AuthenticatedSession) -> PrincipalRef {
+  session.principal
+}
+
+// SESSION LIFETIME IS A TOTAL FOLD over the model's clock string, the same comparison
+// std.scoped_authorization uses for grant expiry.
+fn session_not_expired(session: AuthenticatedSession, observed_at: Timestamp) -> Bool {
+  observed_at <= session.expires_at
+}
+
+// ── The CSRF proof ─────────────────────────────────────────────────────────────────────────────
+// THE MUTATION PROOF, checked per state-changing request. Absent and mismatch are different
+// refusals with different remedies (the form forgot the token vs the token is stale), and an
+// empty presentation is absent — never a match against an empty token, because CsrfToken's
+// constructor carries a NonEmptyStr.
+type CsrfDecision
+  = CsrfAdmitted
+  | CsrfRefused { cause: CsrfRefusalCause }
+
+type CsrfRefusalCause
+  = CsrfTokenAbsent
+  | CsrfTokenMismatch { presented: NonEmptyStr, expected: NonEmptyStr }
+
+fn csrf_decision(session: AuthenticatedSession, presented_wire: String) -> CsrfDecision {
+  if presented_wire == "" {
+    CsrfRefused { cause: CsrfTokenAbsent }
+  } else if presented_wire == (session.csrf.token as String) {
+    CsrfAdmitted
+  } else {
+    CsrfRefused {
+      cause: CsrfTokenMismatch {
+        presented: presented_wire as NonEmptyStr,
+        expected: session.csrf.token,
+      },
+    }
+  }
+}
+
+// ── The opaque cookie ──────────────────────────────────────────────────────────────────────────
+// THE BROWSER CARRIER AND ITS ATTRIBUTES. The cookie value is opaque (Secret — no program reads
+// it back into a string here); the attributes are the ruling's spelled set, as data rows a
+// realization must emit verbatim: Secure, HttpOnly, SameSite=Lax, path-bound, bounded lifetime,
+// and rotation on every authentication (a fresh session_id + csrf token land at each login, so a
+// re-login invalidates what a stolen cookie could replay).
+data session_cookie_secure: Bool = true
+
+data session_cookie_http_only: Bool = true
+
+data session_cookie_same_site_lax: Bool = true
+
+data session_cookie_path: NonEmptyStr = "/" as NonEmptyStr
+
+// THE STANDING A REQUEST ARRIVES WITH. Decoding the wire cookie into this standing lands at the
+// serve seam (gunbc.auth.session_store resolves the opaque id through the file-backed store;
+// gunbc.roadmap_serve builds the request-security evidence from the standing); the model decides
+// over the standing, and each non-valid arm is a located refusal rather than an anonymous
+// session — a malformed cookie is a deployment fact, not a person. ABSENT, UNKNOWN, and UNREAD
+// stay distinct arms: absent names no cookie header at all, unknown names a cookie whose id the
+// store does not hold (a forged or expired-and-reaped cookie lands here), and unread names a
+// store the seam could not read — three different remedies (nothing / re-login / fix the store),
+// so three arms, per the vocabulary-of-refusals discipline.
+type SessionCookieStanding
+  = SessionCookieValid { session: AuthenticatedSession }
+  | SessionCookieExpired { session: AuthenticatedSession, observed_at: Timestamp }
+  | SessionCookieAbsent
+  | SessionCookieUnknown { session_id: NonEmptyStr }
+  | SessionCookieUnread { detail: String }
+  | SessionCookieMalformed { detail: String }
+
+// ── The cookie wire ────────────────────────────────────────────────────────────────────────────
+// THE COOKIE NAME IS THE REALIZATION'S ONE WIRE FACT, as a data row every consumer reads: the
+// serve seam matches it inbound and the Set-Cookie line spells it outbound, so the name cannot
+// drift between the reader and the writer.
+data session_cookie_name: NonEmptyStr = "gunbc_session" as NonEmptyStr
+
+// THE INBOUND PARSE, one typed arm per wire fact: no Cookie header (or one that names no session
+// cookie) is NotPresent; a value outside RFC 6265's cookie-octet set, an empty value, or a
+// DUPLICATE session cookie is Malformed — with two values present the seam and any downstream
+// reader could disagree about which is authoritative, and header smuggling is precisely the
+// technique of making them disagree, so the duplicate refuses like every other duplicate header
+// at this deployment's socket seams. The parse checks SYNTAX only; whether the id names a live
+// session is the store's answer, one fold down.
+type SessionCookieIdParse
+  = SessionCookieIdParsed { session_id: NonEmptyStr }
+  | SessionCookieIdNotPresent
+  | SessionCookieIdMalformed { detail: String }
+
+// The cookie NAME is a parameter so the login flow's browser-binding cookie (__Host-gunbc-login,
+// gunbc.auth.login_browser_binding) parses with the same syntax and duplicate refusal; the session
+// cookie is the default.
+fn session_cookie_id_of_header(cookie_header: String, cookie_name: NonEmptyStr = session_cookie_name) -> SessionCookieIdParse {
+  let pairs = split(s: cookie_header, delimiter: ";")
+  let matches: List<String> = filter(
+    pairs,
+    pair => starts_with(s: trim(pair), prefix: concat(cookie_name as String, "=")),
+  )
+  if count(matches) == 0 {
+    SessionCookieIdNotPresent
+  } else if count(matches) > 1 {
+    SessionCookieIdMalformed {
+      detail: concat("duplicate ", concat(cookie_name as String, " cookie in the Cookie header")),
+    }
+  } else {
+    match matches.first() {
+      Absent => SessionCookieIdNotPresent
+      Present { value: pair } =>
+        let trimmed_pair = trim(pair)
+        session_cookie_id_of_value(
+          value: substring(
+            s: trimmed_pair,
+            start: string_length(s: concat(cookie_name as String, "=")),
+            end: string_length(s: trimmed_pair),
+          ),
+        )
+    }
+  }
+}
+
+// RFC 6265 section 4.1.1 COOKIE-OCTET, the printable set a cookie value may carry: %x21,
+// %x23-2B, %x2D-3A, %x3C-5B, %x5D-7E. The alphabet check stays SYNTAX (the store decides
+// existence); the empty value is Malformed rather than NotPresent, because a header that names
+// the session cookie with no value is a wire fact about the deployment, not the same as no
+// cookie.
+fn session_cookie_octet(cp: Int) -> Bool {
+  cp == 33
+    || (cp >= 35 && cp <= 43)
+    || (cp >= 45 && cp <= 58)
+    || (cp >= 60 && cp <= 91)
+    || (cp >= 93 && cp <= 126)
+}
+
+fn session_cookie_value_wire_valid(s: String, i: Int, len: Int) -> Bool {
+  if i >= len {
+    true
+  } else if !session_cookie_octet(cp: code_point(c: char_at(s, i))) {
+    false
+  } else {
+    session_cookie_value_wire_valid(s: s, i: i + 1, len: len)
+  }
+}
+
+fn session_cookie_id_of_value(value: String) -> SessionCookieIdParse {
+  if value == "" {
+    SessionCookieIdMalformed {
+      detail: concat("empty ", concat(session_cookie_name as String, " cookie value")),
+    }
+  } else if !session_cookie_value_wire_valid(s: value, i: 0, len: string_length(s: value)) {
+    SessionCookieIdMalformed {
+      detail: "the session cookie value carries a character outside RFC 6265's cookie-octet set",
+    }
+  } else {
+    SessionCookieIdParsed { session_id: value as NonEmptyStr }
+  }
+}
+
+// THE OUTBOUND Set-Cookie LINE, derived from the attribute data rows so the spelling the ruling
+// spelled ("Secure, HttpOnly, SameSite=Lax, path-bound, bounded lifetime") is emitted verbatim
+// and cannot drift from the rows the witness checks. Max-Age is the bounded lifetime in whole
+// seconds; the caller supplies it because the lifetime bound is the login policy's fact
+// (gunbc.auth.oidc_deployment_config), not this module's.
+fn session_cookie_set_cookie(session_id: NonEmptyStr, max_age_seconds: Nat) -> SetCookie {
+  SetCookie {
+    name: session_cookie_name,
+    value: session_id as String,
+    path: session_cookie_path,
+    secure: session_cookie_secure,
+    http_only: session_cookie_http_only,
+    same_site: if session_cookie_same_site_lax { Present { value: CookieSameSiteLax } } else { none },
+    max_age_seconds: max_age_seconds,
+  }
+}
+
+// THE LOGOUT CLEARING COOKIE: same attributes, empty value, zero lifetime, so the browser drops
+// the cookie whether or not the server-side session could be deleted.
+fn session_cookie_clear() -> SetCookie {
+  SetCookie {
+    name: session_cookie_name,
+    value: "",
+    path: session_cookie_path,
+    secure: session_cookie_secure,
+    http_only: session_cookie_http_only,
+    same_site: if session_cookie_same_site_lax { Present { value: CookieSameSiteLax } } else { none },
+    max_age_seconds: Zero,
+  }
+}
+
+// ONE REFUSAL, ONE RENDERED REASON over the non-valid arms, for routes that answer a standing
+// with prose: each arm names its remedy, and no arm renders as an anonymous session.
+fn session_cookie_standing_reason(standing: SessionCookieStanding) -> String {
+  match standing {
+    SessionCookieValid { session: _ } => "the session cookie names a live authenticated session"
+    SessionCookieExpired { session: _, observed_at: _ } =>
+      "the authenticated session has expired; the operator must log in again"
+    SessionCookieAbsent => "no session cookie was presented"
+    SessionCookieUnknown { session_id: _ } =>
+      "the session cookie names no session this deployment holds (forged, reaped, or logged out); nothing mints from it"
+    SessionCookieUnread { detail: d } =>
+      concat("the session store could not be read: ", d)
+    SessionCookieMalformed { detail: d } =>
+      concat("the session cookie is malformed: ", d)
+  }
+}

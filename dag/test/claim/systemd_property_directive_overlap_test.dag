@@ -1,5 +1,7 @@
 module test.claim.systemd_property_directive_overlap
 
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 import gunbc.systemd_property_directive_overlap {
   systemd_property_writability,
   systemd_property_is_settable,
@@ -10,7 +12,7 @@ import gunbc.systemd_property_directive_overlap {
   systemd_property_directive_overlap_dissolution,
 }
 import extdeps.systemd {
-  MemoryMax, MemoryCurrent, ActiveState, TasksMax,
+  MemoryMax, MemoryCurrent, MemoryPeak, ActiveState, TasksMax,
   LoadState, UnitFileState, SubState, Result, ExecMainStatus, ExecStartProperty,
   User, WorkingDirectoryProperty, Unit, NextElapseUSecMonotonic, AccuracyUSec, TimersMonotonic,
   systemd_unit_property_wire,
@@ -39,6 +41,7 @@ test fn a_settable_knob_and_a_read_only_observation_classify_apart() -> Bool {
   systemd_property_is_settable(property: MemoryMax)
     && systemd_property_is_settable(property: TasksMax)
     && !systemd_property_is_settable(property: MemoryCurrent)
+    && !systemd_property_is_settable(property: MemoryPeak)
     && !systemd_property_is_settable(property: ActiveState)
 }
 
