@@ -25,7 +25,7 @@ import gunbc.native_frontier_debt {
   NativeFrontierMintReceipt
 }
 import v2.workflow.compile_door_cause_ownership {
-  CauseOwnership, CorrectnessFlipDeclaration, FatalGrain, HeadGrain, MigrationOwned
+  CauseOwnership, CorrectnessFlipDeclaration, MigrationOwned
 }
 import gunbc.native_frontier_ratchet {
   NativeFrontierVerdict, FrontierHeld, FrontierAdvanced, FrontierGrewByOwnedCorrectnessFlip,
@@ -442,14 +442,12 @@ data flip_cause: NativeRouteExclusionCause = CompilerFrontierAttributed { reason
 
 data flip_owner: CauseOwnership = CauseOwnership {
   cause: ^fixture_correctness_flip_cause,
-  grain: FatalGrain,
   lane: MigrationOwned,
   flip_trigger: "fixture: retires when the fixture slice lowers the construct"
 }
 
 data flip_declaration: CorrectnessFlipDeclaration = CorrectnessFlipDeclaration {
   cause: ^fixture_correctness_flip_cause,
-  grain: FatalGrain,
   pull_request: 12392,
   reconciles_tested_tree: "0123456789abcdef0123456789abcdef01234567",
   why: "fixture: a silently wrong acceptance now refuses at the located site"
@@ -488,8 +486,9 @@ test fn an_owned_correctness_flip_increase_is_admitted() -> Bool {
   }
 }
 
-// THE SAME INCREASE, UNOWNED, IS A LOSS. Three ways to lack the authority, each the same run: no
-// declaration, a declaration whose cause has no owning row, and an owning row at the wrong grain.
+// THE SAME INCREASE, UNOWNED, IS A LOSS. Two ways to lack the authority, each the same run: no
+// declaration, and a declaration whose cause has no owning row (the third way, an owning row at the
+// wrong grain, left with the grain itself in advisories steps 3+4).
 // Each loses on both identities, under the guard's accept-to-refuse finding and this module's new
 // debt, and proposes nothing.
 fn loses_both(authority: NativeFrontierFlipAuthority) -> Bool {
@@ -500,10 +499,6 @@ fn loses_both(authority: NativeFrontierFlipAuthority) -> Bool {
 test fn w_RED_the_same_increase_with_an_unowned_cause_is_lost() -> Bool {
   loses_both(authority: NativeFrontierFlipAuthority { owners: [flip_owner], flips: [] })
     && loses_both(authority: NativeFrontierFlipAuthority { owners: [], flips: [flip_declaration] })
-    && loses_both(authority: NativeFrontierFlipAuthority {
-      owners: [CauseOwnership { cause: ^fixture_correctness_flip_cause, grain: HeadGrain, lane: MigrationOwned, flip_trigger: "fixture" }],
-      flips: [flip_declaration]
-    })
 }
 
 // A MIXED SET REFUSES EXACTLY ITS UNOWNED PART. A falls under the owned flip; B lands refusing with

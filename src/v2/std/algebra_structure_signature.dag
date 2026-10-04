@@ -313,16 +313,32 @@ type AlgebraFieldDeclaration
   | FieldNotDeclared
   | InhabitanceMalformed { cause: Symbol }
 
-fn algebra_inhabitance_field_declaration(inhabitance: Node, field: Symbol) -> AlgebraFieldDeclaration {
+// THE INHABITANCE'S CARRIER AND ITS ANSWER FOR ONE FIELD, READ TOGETHER FROM THE ONE NODE THAT STATES BOTH: the
+// ^inhabitant_edge target IS the carrier the structure is over, so a consumer selecting an inhabitance by its
+// carrier reads it here, and never from a second copy stored beside the node (which could disagree with it and
+// would make the structure's fields answer for a type it is not over).
+type AlgebraInhabitanceFieldReading
+  = InhabitanceFieldRead { carrier: Node, declaration: AlgebraFieldDeclaration }
+  | InhabitanceFieldReadMalformed { cause: Symbol }
+
+fn algebra_inhabitance_field_reading(inhabitance: Node, field: Symbol) -> AlgebraInhabitanceFieldReading {
   match named_child_lookup(root: inhabitance, name: ^inhabitant_edge) {
-    NamedChildMissing => InhabitanceMalformed { cause: ^algebra_inhabitance_inhabitant_edge_missing }
-    NamedChildAmbiguous => InhabitanceMalformed { cause: ^algebra_inhabitance_inhabitant_edge_ambiguous }
-    NamedChildFound { target: _ } =>
+    NamedChildMissing => InhabitanceFieldReadMalformed { cause: ^algebra_inhabitance_inhabitant_edge_missing }
+    NamedChildAmbiguous => InhabitanceFieldReadMalformed { cause: ^algebra_inhabitance_inhabitant_edge_ambiguous }
+    NamedChildFound { target: carrier } =>
       match named_child_lookup(root: inhabitance, name: ^algebra_edge) {
-        NamedChildMissing => InhabitanceMalformed { cause: ^algebra_inhabitance_algebra_edge_missing }
-        NamedChildAmbiguous => InhabitanceMalformed { cause: ^algebra_inhabitance_algebra_edge_ambiguous }
-        NamedChildFound { target: algebra } => algebra_structure_field_declaration(structure: algebra, field: field)
+        NamedChildMissing => InhabitanceFieldReadMalformed { cause: ^algebra_inhabitance_algebra_edge_missing }
+        NamedChildAmbiguous => InhabitanceFieldReadMalformed { cause: ^algebra_inhabitance_algebra_edge_ambiguous }
+        NamedChildFound { target: algebra } =>
+          InhabitanceFieldRead { carrier: carrier, declaration: algebra_structure_field_declaration(structure: algebra, field: field) }
       }
+  }
+}
+
+fn algebra_inhabitance_field_declaration(inhabitance: Node, field: Symbol) -> AlgebraFieldDeclaration {
+  match algebra_inhabitance_field_reading(inhabitance: inhabitance, field: field) {
+    InhabitanceFieldReadMalformed { cause: c } => InhabitanceMalformed { cause: c }
+    InhabitanceFieldRead { carrier: _, declaration: d } => d
   }
 }
 

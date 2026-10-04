@@ -14,7 +14,13 @@ import std.upsert_decision {
   UpsertClassification,
 }
 import extdeps.shell
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemReadOutcome,
+  FilesystemReadRefused,
+  FilesystemReadSucceeded,
+  filesystem_read_outcome,
+}
 import extdeps.cloud.gcp.auth_print_access_token {
   gcloud_stderr_auth_deficit,
 }
@@ -202,19 +208,21 @@ type SuppliedTokenResolution
   = SuppliedTokenReady { token: Secret }
   | SuppliedTokenUnavailable { cause: NonEmptyStr }
 
-fn classify_supplied_token(success: Bool, error: String, content: String) -> SuppliedTokenResolution {
-  if success == false {
-    SuppliedTokenUnavailable {
-      cause: join(["the access token file could not be read: ", error], "") as NonEmptyStr,
-    }
-  } else {
-    let token = trim(s: content)
-    if token == "" {
+fn classify_supplied_token(read: FilesystemReadOutcome) -> SuppliedTokenResolution {
+  match read {
+    FilesystemReadRefused { error } =>
       SuppliedTokenUnavailable {
-        cause: "the access token file is empty, which is never a usable bearer token" as NonEmptyStr,
+        cause: join(["the access token file could not be read: ", error], "") as NonEmptyStr,
       }
-    } else {
-      SuppliedTokenReady { token: token as Secret }
+    FilesystemReadSucceeded { content } => {
+      let token = trim(s: content)
+      if token == "" {
+        SuppliedTokenUnavailable {
+          cause: "the access token file is empty, which is never a usable bearer token" as NonEmptyStr,
+        }
+      } else {
+        SuppliedTokenReady { token: token as Secret }
+      }
     }
   }
 }
@@ -238,7 +246,7 @@ fn read_supplied_access_token() -> SuppliedTokenResolution {
         }
       } else {
         let read = Filesystem.Read(path: path)
-        classify_supplied_token(success: read.success, error: read.error, content: read.content)
+        classify_supplied_token(read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error))
       }
     }
   }
