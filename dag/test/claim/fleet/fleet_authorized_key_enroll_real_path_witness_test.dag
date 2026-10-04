@@ -1,27 +1,25 @@
 module test.claim.fleet.fleet_authorized_key_enroll_real_path_witness_test
 
 import std.logic { Bool }
-import std.types { String, FilePath, NonEmptyStr }
-import v2.std.optional { Present, Absent }
+import std.types { String, FilePath }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.algebra { trim }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_exact_read }
 import extdeps.exec.command { LocalExec }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import std.process { ExitSuccess, ExitFailure }
 import extdeps.tools.gnu_coreutils { ls_long_directory_command }
 import gunbc.command_runner { run_shell_command_capture }
-import gunbc.fleet.fleet_host_key_enrollment {
+import gunbc.fleet_host_key_enrollment {
   fleet_automation_authorized_keys_line,
   fleet_authorized_key_enroll_route,
-  fleet_host_key_enroll_apply,
   self_enroll_presence_decision,
   authorized_keys_admits_line,
   SelfEnrollAlreadyPresent,
   SelfEnrollApply,
   SelfEnrollRefuse,
 }
-import gunbc.fleet.fleet_probe_identity_observe {
+import gunbc.fleet_probe_identity_observe {
   fleet_probe_identity_observe_wet,
   fleet_probe_identity_receipt_path,
 }
@@ -33,21 +31,21 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // verdict, the create-or-append, the ssh-config pin) is witnessed hermetically over SUPPLIED
 // outcomes, so nothing in those witnesses executes the real routes; this file is the executing
 // half, and every claim drives a PRODUCTION integration, not a re-implementation:
-// fleet_authorized_key_enroll_route (read -> verdict -> conditional apply), the
-// fleet_host_key_enroll_apply config-pin route (registry -> staging write -> HOME resolution ->
-// mkdir/touch -> tee -a pin -> chmod -> readback), and fleet_probe_identity_observe_wet (the probe
-// receipt's own write + readback). THE ADMITTED EFFECTS, named rather than folded into a
-// neighbour: a temp-directory write (shell.Mktemp.Dir / shell.Remove.RecursiveForce, as
-// excl_local_repo_wet_tempdir_write_reason); mkdir -p and chmod 700/600 over LocalExec
-// (shell.Exec.RunArgv); the owner-only create-exclusive Filesystem.WriteCreateNew; the tee -a
-// appends whose payloads (the key line, the pin block) reach tee on STDIN
+// fleet_authorized_key_enroll_route (read -> verdict -> conditional apply) and
+// fleet_probe_identity_observe_wet (the probe receipt's own write + readback). THE CONFIG-PIN
+// ROUTE'S RECEIPT IS WITHHELD: fleet_host_key_enroll_apply resolves the home from the process
+// environment (shell.Env.Get) with no parameter, so a real execution would pin the runner user's
+// REAL ~/.ssh/config; its row stays off local_repo_wet_schedule until the route takes a
+// parameterized destination root (the pin's hermetic witnesses carry its pairing meanwhile). THE
+// ADMITTED EFFECTS, named rather than folded into a neighbour: a temp-directory write
+// (shell.Mktemp.Dir / shell.Remove.RecursiveForce, as excl_local_repo_wet_tempdir_write_reason);
+// mkdir -p and chmod 700/600 over LocalExec (shell.Exec.RunArgv); the owner-only create-exclusive
+// Filesystem.WriteCreateNew; the tee -a append whose payload (the key line) reaches tee on STDIN
 // (shell.Exec.RunArgvStdin); the reads and captures (Filesystem.Read, Filesystem.ReadText,
-// shell.Exec.RunArgv stdout through run_shell_command_capture, Filesystem.Env.Get for HOME). The
-// config-pin claim runs against the PROCESS'S OWN HOME -- that is the production route's own
-// semantics (the deleted script pinned the same way); the runner home is ephemeral and the
-// pin's marker makes every re-run a no-op. THE NEGATIVE HALF: no network, no ssh leg, no sudo, no
-// cargo, no git, no remote host, no install media; nothing outside the created temp directory and
-// (for the pin claim) the process's own ssh directory and the checkout's target/.
+// shell.Exec.RunArgv stdout through run_shell_command_capture). The probe claim only READS the
+// process's own home (the ADC file check) and writes the receipt under the checkout's target/.
+// THE NEGATIVE HALF: no network, no ssh leg, no sudo, no cargo, no git, no remote host, no
+// install media; nothing outside the created temp directory and the checkout's target/.
 
 fn fe_with_temp_dir(scenario: fn(FilePath) -> Bool) -> Bool {
   let dir = shell.Mktemp.Dir()
@@ -117,40 +115,17 @@ test fn fleet_authorized_key_enroll_route_twice_by_real_execution() -> Bool {
   })
 }
 
-// 2. THE CONFIG-PIN ROUTE BY REAL EXECUTION: fleet_host_key_enroll_apply itself -- the registry
-// scan, the fragment staging into the checkout's target/, HOME resolution, mkdir -p of the ssh
-// directory, the put-if-absent of the config, the tee -a pin (the block on stdin), chmod 600, and
-// the ssh-keygen -F readback. The first invocation converges; a SECOND invocation must be a no-op
-// -- the marker still appears exactly once in the config. The pin rides the process's own HOME,
-// which is the production route's own semantics; the runner home is ephemeral.
-fn fe_home_dir() -> String {
-  match shell.Env.Get(name: "HOME" as NonEmptyStr).value {
-    Absent => ""
-    Present { value: raw } => trim(s: raw)
-  }
-}
-
-test fn fleet_host_key_enroll_config_pin_route_by_real_execution() -> Bool {
-  let first = fleet_host_key_enroll_apply()
-  let cfg_after_first = Filesystem.Read(path: concat(fe_home_dir(), "/.ssh/config"))
-  let second = fleet_host_key_enroll_apply()
-  !string_contains(s: first, pattern: "outcome=refused")
-    && cfg_after_first.success
-    && string_contains(s: cfg_after_first.content, pattern: "gunbc-fleet-pin")
-    && string_contains(s: cfg_after_first.content, pattern: "target/fleet-known-hosts-fragment")
-    && count(filter(split(s: cfg_after_first.content, delimiter: "\n"), fn(l) { trim(s: l) == "# gunbc-fleet-pin" })) == 1
-    && !string_contains(s: second, pattern: "outcome=refused")
-    && fe_mode_is("-rw-------", concat(fe_home_dir(), "/.ssh/config"))
-}
-
-// 3. THE PROBE RECEIPT'S OWN ROUTE BY REAL EXECUTION: fleet_probe_identity_observe_wet runs its
+// 2. THE PROBE RECEIPT'S OWN ROUTE BY REAL EXECUTION: fleet_probe_identity_observe_wet runs its
 // whoami/getent/hostname/gcloud legs against the real host and writes the receipt; the claim reads
 // the written file back and requires the schema lines to be there -- the write-then-readback the
 // receipt exists to observe.
 test fn fleet_probe_identity_observe_receipt_by_real_execution() -> Bool {
   let exit = fleet_probe_identity_observe_wet()
   let rc = Filesystem.Read(path: fleet_probe_identity_receipt_path)
-  exit.success
+  match exit {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
     && rc.success
     && string_contains(s: rc.content, pattern: "user=")
     && string_contains(s: rc.content, pattern: "hostname=")
