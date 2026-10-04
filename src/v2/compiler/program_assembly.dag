@@ -66,8 +66,7 @@ import v2.std.text { String }
 type ProgramAssemblyFoldState
   = ProgramAssemblyFoldOk {
       roots: FreeMonoid<NormalizedTree>,
-      index: SourceRootIndex,
-      advisories: Diagnostics
+      index: SourceRootIndex
     }
   | ProgramAssemblyFoldFailed {
       diagnostics: NonEmptyDiagnostics
@@ -129,11 +128,10 @@ fn program_assembly_fold_state_from_located(
   match state {
     ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: _ } =>
       ProgramAssemblyFoldFailed { diagnostics: d }
-    ProgramAssemblyLocatedFoldOk { located: located, index: idx, alloc: _, spans: _, advisories: advised } =>
+    ProgramAssemblyLocatedFoldOk { located: located, index: idx, alloc: _, spans: _, advisories: _ } =>
       ProgramAssemblyFoldOk {
         roots: list_map(xs: located, f: fn(item) { item.tree }),
-        index: idx,
-        advisories: advised
+        index: idx
       }
   }
 }
@@ -641,10 +639,10 @@ fn module_roots_from_source_root_ingest(
   ingest: SourceRootIngest,
   lm: LanguageModel
 ) -> Outcome<FreeMonoid<NormalizedTree>> {
-  match program_assembly_fold_ingest(ingest: ingest, lm: lm) {
-    ProgramAssemblyFoldOk { roots: roots, index: _, advisories: advised } =>
-      outcome_with_diagnostics(value: roots, diagnostics: advised)
-    ProgramAssemblyFoldFailed { diagnostics: d } =>
+  match program_assembly_fold_ingest_located(ingest: ingest, lm: lm) {
+    ProgramAssemblyLocatedFoldOk { located: located, index: _, alloc: _, spans: _, advisories: advised } =>
+      outcome_with_diagnostics(value: list_map(xs: located, f: fn(item) { item.tree }), diagnostics: advised)
+    ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: _ } =>
       Rejected { diagnostics: d }
   }
 }

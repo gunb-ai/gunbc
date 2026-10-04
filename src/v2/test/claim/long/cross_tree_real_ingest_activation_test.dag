@@ -73,7 +73,7 @@ fn ct_real_target_qn() -> QualifiedName {
 fn ct_real_edge_decision(ingest: SourceRootIngest) -> CrossTreeEdgeDecision {
   match program_assembly_fold_ingest(ingest: ingest, lm: dag_language_model()) {
     ProgramAssemblyFoldFailed { diagnostics: _ } => EdgeCrossAmbiguous
-    ProgramAssemblyFoldOk { roots: _, index: idx, advisories: _ } =>
+    ProgramAssemblyFoldOk { roots: _, index: idx } =>
       cross_tree_edge_decision(
         index: idx,
         from_qn: ct_real_subject_qn(),
