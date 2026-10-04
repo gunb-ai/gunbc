@@ -251,7 +251,7 @@ fn census_runs(source: String) -> Bool {
 // row must refuse at the crossing; the c_ row hands the same formal a code-point sequence and must stay
 // admitted, so the wall refuses by representation and not by the formal's shape.
 test fn r_host_string_into_generic_free_monoid_formal_refuses() -> Bool {
-  refuses(source: "module probe_generic_free_monoid_host\nimport v2.std.algebra { length }\nfn n(t: String) -> Int { length(xs: t) }\n")
+  refuses(source: "module probe_generic_free_monoid_host\nimport std.types { String, Int }\nimport v2.std.algebra { length }\nfn n(t: String) -> Int { length(xs: t) }\n")
 }
 
 test fn c_code_point_sequence_into_generic_free_monoid_formal_admitted() -> Bool {
