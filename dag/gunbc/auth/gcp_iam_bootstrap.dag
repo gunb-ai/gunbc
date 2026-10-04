@@ -21,7 +21,7 @@ import gunbc.actions_run_binding { actions_variable_trimmed }
 import gunbc.auth.access_token_source { read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_id, fleet_secrets_project_number }
 import gunbc.secret_provision_actuator {
-  observe_secret_container, create_secret_container, SecretContainerObserved, SecretContainerAbsent, SecretObservationRefused,
+  observe_secret_container, create_secret_container, SecretContainerObserved, SecretContainerAbsent, SecretObservationRefused, SecretObservationOutcome, SecretContainerCreation,
   SecretContainerCreated, SecretContainerCreationRefused, SecretContainerCreationOutcomeUnknown,
 }
 import gunbc.auth.gcp_iam_converge { gcp_iam_observe_dedicated_federation, gcp_iam_converge_targets, gcp_iam_converge_grant_set_secrets, iam_converge_service_account, iam_observe_service_account, iam_converge_denied_permissions, same_key_set, cell_preimage, observe_and_plan_estate, GcpIamEstateRefused, GcpIamEstateNoop, GcpIamEstateApply, PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable }
@@ -132,19 +132,62 @@ fn iam_bootstrap_ensure_identity(f: DedicatedFederation, own_trust: Bool, token:
 // payload until the mint flow adds one. A created container must read back before anything is
 // granted on it, and an ambiguous create is never retried (gunbc.secret_provision_actuator
 // SecretContainerCreation: a later GET cannot establish absence).
+// THE DECISION IS PURE AND THE EFFECT ONLY CARRIES IT OUT. The observation and the create outcome are
+// projected to these closed carriers, because the actuator's observed container has a sole
+// constructor a witness cannot build, so a claim over the decision can be driven by supplied values.
+type CustodyContainerObservation = CustodyObservedPresent | CustodyObservedAbsent | CustodyObservationRefused { cause: String }
+
+type CustodyContainerCreateOutcome = CustodyCreated | CustodyCreateRefused { cause: String } | CustodyCreateOutcomeUnknown { cause: String }
+
+type CustodyContainerStep = CustodyContainerLeave | CustodyContainerCreateBare | CustodyContainerRefuse { reason: String }
+
+// A CREATE AFTER AN AMBIGUOUS ONE IS NEVER ISSUED: only a definite creation proceeds, to readback.
+type CustodyAfterCreate = CustodyReadBack | CustodyCreateStops { reason: String }
+
+fn custody_container_step(secret: NonEmptyStr, o: CustodyContainerObservation) -> CustodyContainerStep {
+  match o {
+    CustodyObservedPresent => CustodyContainerLeave
+    CustodyObservedAbsent => CustodyContainerCreateBare
+    CustodyObservationRefused { cause } => CustodyContainerRefuse { reason: join([secret as String, ": the container could not be observed: ", cause], "") }
+  }
+}
+
+fn custody_after_create(secret: NonEmptyStr, c: CustodyContainerCreateOutcome) -> CustodyAfterCreate {
+  match c {
+    CustodyCreated => CustodyReadBack
+    CustodyCreateRefused { cause } => CustodyCreateStops { reason: join([secret as String, ": bare container creation refused: ", cause], "") }
+    CustodyCreateOutcomeUnknown { cause } => CustodyCreateStops { reason: join([secret as String, ": bare container creation outcome unknown, not retried: ", cause], "") }
+  }
+}
+
+fn custody_observation_of(o: SecretObservationOutcome) -> CustodyContainerObservation {
+  match o {
+    SecretContainerObserved { container: _ } => CustodyObservedPresent
+    SecretContainerAbsent { project: _, secret_id: _ } => CustodyObservedAbsent
+    SecretObservationRefused { cause } => CustodyObservationRefused { cause: cause as String }
+  }
+}
+
+fn custody_create_outcome_of(c: SecretContainerCreation) -> CustodyContainerCreateOutcome {
+  match c {
+    SecretContainerCreated { container: _ } => CustodyCreated
+    SecretContainerCreationRefused { cause } => CustodyCreateRefused { cause: cause as String }
+    SecretContainerCreationOutcomeUnknown { cause } => CustodyCreateOutcomeUnknown { cause: cause as String }
+  }
+}
+
 fn iam_bootstrap_ensure_custody_container(secret: NonEmptyStr, token: Secret) -> String {
-  match observe_secret_container(project: fleet_secrets_project_id, secret_id: secret, token: token) {
-    SecretContainerObserved { container: _ } => ""
-    SecretObservationRefused { cause } => join([secret as String, ": the container could not be observed: ", cause as String], "")
-    SecretContainerAbsent { project: _, secret_id: _ } =>
-      match create_secret_container(project: fleet_secrets_project_id, secret_id: secret, token: token) {
-        SecretContainerCreationRefused { cause } => join([secret as String, ": bare container creation refused: ", cause as String], "")
-        SecretContainerCreationOutcomeUnknown { cause } => join([secret as String, ": bare container creation outcome unknown, not retried: ", cause as String], "")
-        SecretContainerCreated { container: _ } =>
-          match observe_secret_container(project: fleet_secrets_project_id, secret_id: secret, token: token) {
-            SecretContainerObserved { container: _ } => ""
-            SecretContainerAbsent { project: _, secret_id: _ } => concat(secret as String, ": created but not yet visible on readback; no rights granted")
-            SecretObservationRefused { cause } => join([secret as String, ": created but readback refused: ", cause as String], "")
+  match custody_container_step(secret: secret, o: custody_observation_of(o: observe_secret_container(project: fleet_secrets_project_id, secret_id: secret, token: token))) {
+    CustodyContainerLeave => ""
+    CustodyContainerRefuse { reason } => reason
+    CustodyContainerCreateBare =>
+      match custody_after_create(secret: secret, c: custody_create_outcome_of(c: create_secret_container(project: fleet_secrets_project_id, secret_id: secret, token: token))) {
+        CustodyCreateStops { reason } => reason
+        CustodyReadBack =>
+          match custody_observation_of(o: observe_secret_container(project: fleet_secrets_project_id, secret_id: secret, token: token)) {
+            CustodyObservedPresent => ""
+            CustodyObservedAbsent => concat(secret as String, ": created but not yet visible on readback; no rights granted")
+            CustodyObservationRefused { cause } => join([secret as String, ": created but readback refused: ", cause], "")
           }
       }
   }

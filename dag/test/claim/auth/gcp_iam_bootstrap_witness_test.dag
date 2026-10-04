@@ -1,6 +1,6 @@
 module test.claim.auth.gcp_iam_bootstrap_witness_test
 
-import std.types { Bool, List }
+import std.types { Bool, List, NonEmptyStr }
 import extdeps.auth.oidc { OidcStandardClaims }
 import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cloud.gcp.iam_deny { GcpDenyRule, GcpDenyPolicyRule }
@@ -15,6 +15,9 @@ import gunbc.auth.gcp_iam_converge {
   ConvergeSecretPolicyRole, ConvergeCreateRole, iam_converge_role_id,
 }
 import gunbc.auth.gcp_iam_bootstrap {
+  custody_container_step, custody_after_create, CustodyObservedPresent, CustodyObservedAbsent, CustodyObservationRefused,
+  CustodyCreated, CustodyCreateRefused, CustodyCreateOutcomeUnknown, CustodyContainerLeave, CustodyContainerCreateBare, CustodyContainerRefuse,
+  CustodyReadBack, CustodyCreateStops,
   iam_bootstrap_service_enabled, iam_bootstrap_probe_cell, iam_bootstrap_pool_seedable, iam_bootstrap_pool_initialized, iam_bootstrap_pool_initial_cells, iam_bootstrap_pool_policy_reading, iam_bootstrap_stage_admitted, BootstrapServices, BootstrapIdentities, BootstrapRoles, BootstrapDeny,
   BootstrapCapabilities, BootstrapProbeAuthority, BootstrapProbeCleanup, BootstrapPrivilegeReadback, BootstrapWorkflowTrust, BootstrapAuthorityCleanup,
 }
@@ -228,4 +231,18 @@ test fn grant_set_secrets_are_bound_per_secret_never_on_the_project() -> Bool {
     && all(filter(bs, b => iam_bootstrap_resource_key(resource: b.resource) == iam_bootstrap_resource_key(resource: BootstrapProject)), b =>
       b.cell.role == iam_converge_role_id(r: ConvergeCreateRole))
     && !any(iam_bootstrap_role_permissions(role: BootstrapApplyRole { role: ConvergeCreateRole }), p => starts_with(s: p, prefix: "secretmanager."))
+}
+
+// A CUSTODY CONTAINER IS CREATED ONLY WHEN OBSERVED ABSENT, AND A CREATE IS NEVER ISSUED TWICE: a
+// present container is left alone, an unobservable one refuses, and after an ambiguous or refused
+// create the step stops rather than proceeding to readback or another create. The REDs are a
+// present container re-created, and an unknown outcome treated as created.
+test fn custody_containers_are_created_only_when_absent_and_never_retried() -> Bool {
+  let x = "cloudflare-r2-workspace-read-token" as NonEmptyStr
+  (match custody_container_step(secret: x, o: CustodyObservedPresent) { CustodyContainerLeave => true  CustodyContainerCreateBare => false  CustodyContainerRefuse { reason: _ } => false })
+    && (match custody_container_step(secret: x, o: CustodyObservedAbsent) { CustodyContainerCreateBare => true  CustodyContainerLeave => false  CustodyContainerRefuse { reason: _ } => false })
+    && (match custody_container_step(secret: x, o: CustodyObservationRefused { cause: "403" }) { CustodyContainerRefuse { reason: _ } => true  CustodyContainerLeave => false  CustodyContainerCreateBare => false })
+    && (match custody_after_create(secret: x, c: CustodyCreated) { CustodyReadBack => true  CustodyCreateStops { reason: _ } => false })
+    && (match custody_after_create(secret: x, c: CustodyCreateOutcomeUnknown { cause: "timeout" }) { CustodyCreateStops { reason: r } => string_contains(s: r, pattern: "not retried")  CustodyReadBack => false })
+    && (match custody_after_create(secret: x, c: CustodyCreateRefused { cause: "409" }) { CustodyCreateStops { reason: _ } => true  CustodyReadBack => false })
 }
