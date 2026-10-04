@@ -9,11 +9,11 @@ import gunbc.workspace_reservation_record { WorkspaceReservationPlan }
 import gunbc.workspace_allocation_plan {
   workspace_actor_takeover_decision, WorkspaceActorTakeoverDecision,
   TakeoverRecoverHeld, TakeoverRearmActor, TakeoverCancelActor, TakeoverRetain,
-  WorkspacePriorActorStanding, PriorActorRunning, PriorActorTerminal, PriorActorUnobservable,
   ActorIntentAcquire, ActorIntentRetire,
 }
 import gunbc.workspace_acquisition_invocation {
   workspace_prior_actor_standing, SlotInvocationObserved, SlotInvocationUnreadable,
+  WorkspacePriorActorStanding, PriorActorRunning, PriorActorTerminal, PriorActorUnobservable,
 }
 import gunbc.test.claim.workspace_launch_directive_witness_test { launch_fixture_allocation }
 

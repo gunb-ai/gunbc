@@ -278,6 +278,7 @@ pub enum TargetProducer {
     BareReferenceChannelOutcome,
     SelfHostBehavioralEquivalence,
     DependencyDemandCensus,
+    GenericIdentityCensus,
     /// `NativeClaimProgramProducer { entry }`: the entry is carried, so a second program of the same
     /// shape is a registry row naming its entry, never another variant.
     NativeClaimProgram {
@@ -449,6 +450,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("dependency-demand-census"),
             TargetProducer::DependencyDemandCensus,
+        ),
+        (
+            instrument_label("generic-identity-census"),
+            TargetProducer::GenericIdentityCensus,
         ),
     ]
 }
@@ -866,6 +871,9 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::BareReferenceChannelOutcome => run_bare_reference_channel_outcome(),
         TargetProducer::DependencyDemandCensus => {
             run_dependency_demand_census(&self_host_source_roots())
+        }
+        TargetProducer::GenericIdentityCensus => {
+            run_generic_identity_census(&self_host_source_roots())
         }
         TargetProducer::SelfHostBehavioralEquivalence => run_cli_wire_census(
             "self-host-behavioral-equivalence",
@@ -3431,6 +3439,65 @@ mod binary_freshness_tests {
 /// the exit are decided by `v2.compiler.compile` `native_demand_census_output`, so the host adds no
 /// verdict: exit 0 is the census holding (its rows account for every uses fn), 1 is a census finding,
 /// and 2 or a refused preparation is no observation.
+/// `gunbc.instrument_targets` `generic_identity_census_label`. TRANSPORT ONLY: the fixture and the
+/// `v2.compiler.compile` closure are read from disk and handed to
+/// `v1.tests.claim.generic_identity_census` as `SourceFile` data. The standing line, each control,
+/// the report's counts and the unobserved populations are that module's; this function maps the
+/// first line of the returned standing to a termination and decides nothing else. A fixture or
+/// closure that cannot be read is `SubjectUnreached`, never a standing.
+fn run_generic_identity_census(source_roots: &[String]) -> InvocationOutcome {
+    use crate::v1_compiler_compile::SourceFile;
+    use crate::v1_tests_claim_generic_identity_census as census;
+    use std::rc::Rc;
+    const FIXTURE: &str = "fixtures/generic_identity_census/a.dag";
+    const REPORT_ENTRY: &str = "src/v2/compiler/00_compile.dag";
+    let unreached = |detail: String| InvocationOutcome {
+        termination: Termination::SubjectUnreached,
+        message: format!("generic-identity-census: subject unreached: {detail}"),
+    };
+    let fixture = match std::fs::read_to_string(FIXTURE) {
+        Ok(content) => vec![Rc::new(SourceFile {
+            path: FIXTURE.to_string(),
+            content,
+        })],
+        Err(err) => return unreached(format!("fixture {FIXTURE}: {err}")),
+    };
+    let standing = census::generic_identity_fixture_standing(Rc::new(fixture.into()));
+    if standing.starts_with("REFUSED") {
+        return unreached(format!("fixture did not compile: {standing}"));
+    }
+    for line in standing.lines() {
+        println!("generic-identity-census: {line}");
+    }
+    let closure =
+        match cli_run::load_sources_for_entry_with_pool_index(source_roots, REPORT_ENTRY, false) {
+            Ok(sources) => sources,
+            Err(detail) => return unreached(format!("closure of {REPORT_ENTRY}: {detail}")),
+        };
+    let subjects = closure.len();
+    let report = census::generic_identity_census_summary_from_sources(Rc::new(closure.into()));
+    if report.starts_with("REFUSED") {
+        return unreached(format!(
+            "closure of {REPORT_ENTRY} did not compile: {report}"
+        ));
+    }
+    for line in report.lines() {
+        println!("generic-identity-census: report {line}");
+    }
+    let held = standing.lines().next() == Some("STANDING held");
+    InvocationOutcome {
+        termination: if held {
+            Termination::ObservationHeld
+        } else {
+            Termination::ObservationDidNotHold
+        },
+        message: format!(
+            "generic-identity-census: {} (controls over {FIXTURE}; report over the closure of {REPORT_ENTRY}, {subjects} sources)",
+            standing.lines().next().unwrap_or("STANDING absent")
+        ),
+    }
+}
+
 fn run_dependency_demand_census(source_roots: &[String]) -> InvocationOutcome {
     match cli_run::run_v2_demand_census(source_roots) {
         Ok(code) => InvocationOutcome {

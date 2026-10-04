@@ -1,0 +1,95 @@
+module gunbc.workspace_commissioning_executor_plan
+
+import std.types { String, NonEmptyStr, Bool, List }
+import v2.std.algebra { filter }
+import gunbc.fleet_plan_bundle { fleet_plan_bundle_hash }
+import gunbc.fleet_converge_receipt {
+  FleetConvergePlanReceipt, fleet_converge_plan_receipt_decode, FleetConvergePlanReceiptDecoded, FleetConvergePlanReceiptUnreadable,
+}
+import gunbc.fleet_converge_terminal { FullyApplied }
+import gunbc.workspace_commissioning_directive {
+  workspace_commissioning_directive_from_text, WorkspaceCommissioningDirectiveReady, WorkspaceCommissioningDirectiveRefused,
+}
+import gunbc.workspace_commissioning_transaction { WorkspaceCommissioningProvenance, WorkspaceCommissioningPrepared }
+import gunbc.workspace_commissioning_store { workspace_commissioning_record_text }
+
+// This checks byte consistency only. It is not plan approval, a mutation lease or a start
+// permit. Production preparation must obtain these bytes through the administrator-owned
+// reviewed artifact path and independently reobserve host/baseline/generation admission.
+type WorkspaceExecutorPlanBytes sole_constructor {
+  provenance: WorkspaceCommissioningProvenance
+  receipt: FleetConvergePlanReceipt
+  bundle: NonEmptyStr
+  prestate: NonEmptyStr
+}
+
+type WorkspaceExecutorPlanBytesRead
+  = WorkspaceExecutorPlanBytesVerified { verified: WorkspaceExecutorPlanBytes }
+  | WorkspaceExecutorPlanBytesRefused { reason: String }
+
+data workspace_executor_scope_wire: String = "scope:workspace-slot-commissioning"
+data workspace_executor_credential_row_prefix: String = "workspace-commissioning-credential:"
+
+fn workspace_executor_credential_row(provenance: WorkspaceCommissioningProvenance) -> String {
+  concat(workspace_executor_credential_row_prefix,
+    workspace_commissioning_record_text(record: WorkspaceCommissioningPrepared { provenance: provenance }) as String)
+}
+
+fn workspace_executor_plan_has_exact_credential(plan_body: String, provenance: WorkspaceCommissioningProvenance) -> Bool {
+  let rows: List<String> = filter(split(s: plan_body, delimiter: "\n"),
+    line => starts_with(s: line, prefix: workspace_executor_credential_row_prefix))
+  let first: String? = rows.first()
+  rows.count() == 1 && (match first {
+    Present { value: row } => row == workspace_executor_credential_row(provenance: provenance)
+    Absent => false
+  })
+}
+
+fn workspace_executor_plan_prestate(plan_body: String) -> String? {
+  let marker = "commissioning-prestate:"
+  let rows: List<String> = filter(split(s: plan_body, delimiter: "\n"), line => starts_with(s: line, prefix: marker))
+  let first: String? = rows.first()
+  if rows.count() != 1 { none } else { match first {
+    Present { value: row } => if string_length(s: row) <= string_length(s: marker) { none }
+      else { Present { value: substring(s: row, start: string_length(s: marker), end: string_length(s: row)) } }
+    Absent => none
+  } }
+}
+
+fn workspace_executor_plan_bytes(plan_body: String, apply_shell: String,
+  receipt_text: String, credential: String) -> WorkspaceExecutorPlanBytesRead {
+  match workspace_commissioning_directive_from_text(text: credential) {
+    WorkspaceCommissioningDirectiveReady { provenance } => match fleet_converge_plan_receipt_decode(raw: receipt_text) {
+      FleetConvergePlanReceiptDecoded { receipt } => if receipt.observed_host != (provenance.slot.host as String)
+        || receipt.run.run_revision != (provenance.source_revision as String)
+        || receipt.scope_wire != workspace_executor_scope_wire
+        || receipt.prior_generation < 0 || receipt.planned_generation <= 0
+        || receipt.prior_generation != receipt.planned_generation - 1
+        || receipt.apply_terminal != FullyApplied
+        || !workspace_executor_plan_has_exact_credential(plan_body: plan_body, provenance: provenance) {
+        WorkspaceExecutorPlanBytesRefused { reason: "commissioning credential and reviewed receipt disagree" }
+      } else { match fleet_plan_bundle_hash(plan_body: plan_body, apply_shell: apply_shell) {
+        Present { value: hash } => if (hash.digest as String) != receipt.plan_artifact_hash {
+          WorkspaceExecutorPlanBytesRefused { reason: "reviewed fleet bundle digest does not match its bytes" }
+        } else { match workspace_executor_plan_prestate(plan_body: plan_body) {
+          Present { value: prestate } => WorkspaceExecutorPlanBytesVerified { verified: WorkspaceExecutorPlanBytes {
+            provenance: provenance, receipt: receipt, bundle: hash.digest as NonEmptyStr, prestate: prestate as NonEmptyStr,
+          } }
+          Absent => WorkspaceExecutorPlanBytesRefused { reason: "reviewed commissioning prestate is missing or ambiguous" }
+        } }
+        Absent => WorkspaceExecutorPlanBytesRefused { reason: "reviewed fleet bundle identity is unavailable" }
+      } }
+      FleetConvergePlanReceiptUnreadable { reason: _ } => WorkspaceExecutorPlanBytesRefused { reason: "reviewed fleet plan receipt is unreadable" }
+    }
+    WorkspaceCommissioningDirectiveRefused { reason: _ } => WorkspaceExecutorPlanBytesRefused { reason: "commissioning credential is not canonical" }
+  }
+}
+
+fn workspace_executor_plan_credential(plan_body: String) -> String? {
+  let rows: List<String> = filter(split(s: plan_body, delimiter: "\n"), line => starts_with(s: line, prefix: workspace_executor_credential_row_prefix))
+  let first: String? = rows.first()
+  if rows.count() != 1 { none } else { match first {
+    Present { value: row } => Present { value: substring(s: row, start: string_length(s: workspace_executor_credential_row_prefix), end: string_length(s: row)) }
+    Absent => none
+  } }
+}
