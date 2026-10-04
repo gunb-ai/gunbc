@@ -3605,7 +3605,7 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
       renders_clap_cli: has_pipeline,
       renders_async_services: has_services
     })
-  let main_file = emit_main_rs(modules: typed.modules, has_services: has_services, crate_name: crate_name)
+  let main_file = emit_main_rs(modules: typed.modules, has_services: has_services, crate_name: crate_name, registry: ctx.registry)
   let cli_dispatch_file = if has_pipeline { [emit_gunbc_cli_dispatch_generated(crate_name: crate_name)] } else { [] }
   let rt_file = emit_v2_rt_module()
   let compiler_tests_file = if has_pipeline { [emit_compiler_tests_module()] } else { [] }
@@ -17506,7 +17506,7 @@ fn emit_gunbc_cli_dispatch_generated(crate_name: String) -> TextFile {
 // a library: its main is the typed entry-point-absent refusal. The derived "workflow" CLI that used
 // to answer below the pipeline arms -- one clap subcommand per function carrying `uses` or reaching
 // a service -- is deleted: it renamed the effect axis an entry role, and no built closure reached it.
-fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: String) -> TextFile {
+fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: String, registry: Map<String, ItemInfo>) -> TextFile {
   let retained_host_pipeline = compiler_pipeline_entry_is_retained_host(modules: modules)
   let pipeline_module = compiler_pipeline_entry_module_name(modules: modules)
   if compiler_pipeline_entry_is_ambiguous(modules: modules) {
@@ -17528,7 +17528,11 @@ fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: Stri
       return emit_native_cli_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
     }
     if compiler_pipeline_entry_is_native_claim(modules: modules) {
-      return emit_native_claim_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
+      return emit_native_claim_driver_main_rs(
+        crate_name: crate_name,
+        pipeline_module: pipeline_module,
+        demand: native_claim_report_effect_demand(registry: registry, pipeline_module: pipeline_module)
+      )
     }
     if compiler_pipeline_entry_is_direct_ingest(modules: modules) {
       return emit_direct_ingest_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
@@ -17673,8 +17677,83 @@ fn emit_host_source_root_read_rs(crate_name: String) -> String {
 // gunbc test reads (0 held, 1 not held, 2 no observation). No code is taken from the program, so no
 // program can reach a fourth status or a failure spelled as 0. The reason goes to stderr so the case
 // rows on stdout stay the whole observation a reader joins by identity.
-fn emit_native_claim_driver_main_rs(crate_name: String, pipeline_module: String) -> TextFile {
+// WHAT THE REPORT DEMANDS OF ITS HOST, read from the one effect authority (item_is_effectful_callee
+// over the registry row the report's declaration produces), never from the entry module's imports.
+// The declared resource set of a NativeClaimDriver is {Filesystem}: a pure report gets the sync main
+// below unchanged, a report whose only demand is the Filesystem service gets that service bound to
+// the existing filesystem_io handler -- the binding NativeCliDriver's main already performs -- and
+// anything else is a typed refusal in place of a main, because binding an effect this driver does
+// not declare would be a transport no row admitted.
+type NativeClaimEffectDemand
+  = NativeClaimPure
+  | NativeClaimFilesystem
+  | NativeClaimUndeclaredEffect { detail: String }
+
+fn native_claim_report_effect_demand(registry: Map<String, ItemInfo>, pipeline_module: String) -> NativeClaimEffectDemand {
+  match lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: pipeline_module, decl_name: "native_claim_report" }) {
+    Present { value: info } =>
+      if !item_is_effectful_callee(info: info) { NativeClaimPure }
+      else if (item_resource_names(info: info) |> count) == 0 && (info.service_names |> count) == 1 && (info.service_names |> all(sn => service_var_name(service_name: sn) == "filesystem")) { NativeClaimFilesystem }
+      else { NativeClaimUndeclaredEffect { detail: concat("services [", concat(info.service_names |> join(separator: ", "), concat("] resources [", concat(item_resource_names(info: info) |> join(separator: ", "), "]")))) } }
+    Absent => NativeClaimUndeclaredEffect { detail: "native_claim_report has no registry row" }
+  }
+}
+
+fn emit_native_claim_driver_main_rs(crate_name: String, pipeline_module: String, demand: NativeClaimEffectDemand) -> TextFile {
   let pipeline_mod = module_to_filename(name: pipeline_module)
+  match demand {
+    NativeClaimPure => emit_native_claim_driver_pure_main_rs(crate_name: crate_name, pipeline_mod: pipeline_mod)
+    NativeClaimFilesystem => emit_native_claim_driver_filesystem_main_rs(crate_name: crate_name, pipeline_mod: pipeline_mod)
+    NativeClaimUndeclaredEffect { detail } => TextFile {
+      path: concat(rust_source_root(), "main", rust_source_ext()),
+      content: concat("// Generated by v1 compiler -- do not edit.\n\ncompile_error!(\"REFUSED: a NativeClaimDriver report may demand only the Filesystem service; ", concat(escape_string_literal_body(s: detail), "\");\n"))
+    }
+  }
+}
+
+// The report's terminal mapping is shared by both mains: held 0, not held 1, no observation 2.
+fn native_claim_terminal_exit_lines() -> String {
+  concat(
+      "    print!(\"\{\}\", report.stdout);", "\n",
+      "    match &*report.terminal \{", "\n",
+      "        NativeClaimTerminal::NativeClaimHeld => std::process::exit(0),", "\n",
+      "        NativeClaimTerminal::NativeClaimNotHeld \{ reason \} => \{", "\n",
+      "            eprintln!(\"NOT HELD: \{reason\}\");", "\n",
+      "            std::process::exit(1);", "\n",
+      "        \}", "\n",
+      "        NativeClaimTerminal::NativeClaimNoObservation \{ reason \} => \{", "\n",
+      "            eprintln!(\"NO OBSERVATION: \{reason\}\");", "\n",
+      "            std::process::exit(2);", "\n",
+      "        \}", "\n",
+      "    \}", "\n")
+}
+
+// A transport error out of the bound handler is no observation (2), never a held or not-held case:
+// the report did not finish deciding.
+fn emit_native_claim_driver_filesystem_main_rs(crate_name: String, pipeline_mod: String) -> TextFile {
+  TextFile {
+    path: concat(rust_source_root(), "main", rust_source_ext()),
+    content: concat(
+      "// Generated by v1 compiler -- do not edit.", "\n",
+      "\n",
+      "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]", "\n",
+      "\n",
+      "use ", crate_name, "::std_compiler_entry::NativeClaimTerminal;", "\n",
+      "use ", crate_name, "::", pipeline_mod, "::native_claim_report;", "\n",
+      "\n",
+      "#[tokio::main(flavor = \"current_thread\")]", "\n",
+      "async fn main() \{", "\n",
+      "    let filesystem = ", crate_name, "::extdeps_filesystem_filesystem_io::Filesystem::new(Default::default());", "\n",
+      "    let report = match native_claim_report(&filesystem).await \{", "\n",
+      "        Ok(report) => report,", "\n",
+      "        Err(cause) => \{ eprintln!(\"NO OBSERVATION: native filesystem transport: \{\}\", cause); std::process::exit(2); \}", "\n",
+      "    \};", "\n",
+      native_claim_terminal_exit_lines(),
+      "\}", "\n")
+  }
+}
+
+fn emit_native_claim_driver_pure_main_rs(crate_name: String, pipeline_mod: String) -> TextFile {
   TextFile {
     path: concat(rust_source_root(), "main", rust_source_ext()),
     content: concat(
@@ -17687,18 +17766,7 @@ fn emit_native_claim_driver_main_rs(crate_name: String, pipeline_module: String)
       "\n",
       "fn main() \{", "\n",
       "    let report = native_claim_report();", "\n",
-      "    print!(\"\{\}\", report.stdout);", "\n",
-      "    match &*report.terminal \{", "\n",
-      "        NativeClaimTerminal::NativeClaimHeld => std::process::exit(0),", "\n",
-      "        NativeClaimTerminal::NativeClaimNotHeld \{ reason \} => \{", "\n",
-      "            eprintln!(\"NOT HELD: \{reason\}\");", "\n",
-      "            std::process::exit(1);", "\n",
-      "        \}", "\n",
-      "        NativeClaimTerminal::NativeClaimNoObservation \{ reason \} => \{", "\n",
-      "            eprintln!(\"NO OBSERVATION: \{reason\}\");", "\n",
-      "            std::process::exit(2);", "\n",
-      "        \}", "\n",
-      "    \}", "\n",
+      native_claim_terminal_exit_lines(),
       "\}", "\n")
   }
 }
@@ -18108,6 +18176,13 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    for refusal in context.file_refusals.iter() \{", "\n",
       "        println!(\"{}\", serde_json::json!(\{ \"file_refusal\": refusal \}));", "\n",
       "    \}", "\n",
+      "    // THE ADVISORY POPULATION IS THE SAME CONTEXT FACT `census` REPORTS, printed in the same", "\n",
+      "    // shape, so a saved whole-tree receipt carries it without a second pass. Its count is taken", "\n",
+      "    // here, from the context that produced the rows, not from the threaded one at the end.", "\n",
+      "    for advised in context.accepted_file_advisories.iter() \{", "\n",
+      "        println!(\"{}\", serde_json::json!(\{ \"accepted_file_advisories\": advised \}));", "\n",
+      "    \}", "\n",
+      "    let advised_files = context.accepted_file_advisories.len();", "\n",
       "    let refusal_index = native_lane_file_refusal_index(context.file_refusals.clone());", "\n",
       "    let roster_started = Instant::now();", "\n",
       "    let modules = native_census_modules(ingest.clone());", "\n",
@@ -18192,6 +18267,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "            \"corpus_reads\": corpus_reads,", "\n",
       "            \"modules\": modules.len(),", "\n",
       "            \"file_refusals\": context.file_refusals.len(),", "\n",
+      "            \"advised_files\": advised_files,", "\n",
       "            \"resolved\": resolved_ok,", "\n",
       "            \"file_refused\": file_refused,", "\n",
       "            \"resolve_refused\": resolve_refused,", "\n",

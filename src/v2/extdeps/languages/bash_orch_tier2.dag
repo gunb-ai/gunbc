@@ -28,9 +28,11 @@ fn bash_orch_procedure_tokens() -> List<ConcreteSyntaxToken> {
     FixedToken { token_class: ^bash_token_orch_procedure_close }
   ]
 }
+data bash_orch_procedure_tokens_carried: List<ConcreteSyntaxToken> = bash_orch_procedure_tokens()
+
 
 data bash_orch_procedure_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_orch_procedure_tokens()
+  tokens: bash_orch_procedure_tokens_carried
 )
 
 fn bash_orch_procedure_source_text(name: String, body: String) -> String {
@@ -43,15 +45,19 @@ fn bash_orch_procedure_lex() -> LexRules {
     span(text: "\n}", class: ^bash_token_orch_procedure_close)
   ]))
 }
+data bash_orch_procedure_lex_carried: LexRules = bash_orch_procedure_lex()
+
 
 fn bash_orch_procedure_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_orch_procedure,
     lhs: ^bash_production_orch_procedure,
-    tokens: bash_orch_procedure_tokens(),
+    tokens: bash_orch_procedure_tokens_carried,
     emitted: bash_orch_procedure_emitted
   )
 }
+data bash_orch_procedure_translation_rules_node_carried: Node = bash_orch_procedure_translation_rules_node()
+
 
 fn bash_orch_procedure_binding_spellings(name: String, body: String) -> Map<Symbol, String> {
   map_insert(
@@ -62,12 +68,12 @@ fn bash_orch_procedure_binding_spellings(name: String, body: String) -> Map<Symb
 
 fn bash_orch_procedure_target_model(name: String, body: String) -> TargetModel {
   bash_make_bound_tokens_target_model(
-    rules: bash_orch_procedure_translation_rules_node(),
+    rules: bash_orch_procedure_translation_rules_node_carried,
     source_literal: ^bash_orch_procedure_source_literal,
     production_name: ^bash_production_orch_procedure,
-    tokens: bash_orch_procedure_tokens(),
+    tokens: bash_orch_procedure_tokens_carried,
     source_text: bash_orch_procedure_source_text(name: name, body: body),
-    lex: bash_orch_procedure_lex(),
+    lex: bash_orch_procedure_lex_carried,
     binding_spellings: bash_orch_procedure_binding_spellings(name: name, body: body)
   )
 }
@@ -77,9 +83,11 @@ fn bash_orch_call_tokens() -> List<ConcreteSyntaxToken> {
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_orch_call_spelling }
   ]
 }
+data bash_orch_call_tokens_carried: List<ConcreteSyntaxToken> = bash_orch_call_tokens()
+
 
 data bash_orch_call_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_orch_call_tokens()
+  tokens: bash_orch_call_tokens_carried
 )
 
 fn bash_orch_call_source_text(spelling: String) -> String {
@@ -96,10 +104,12 @@ fn bash_orch_call_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
     rule_name: ^bash_relation_rule_orch_call,
     lhs: ^bash_production_orch_call,
-    tokens: bash_orch_call_tokens(),
+    tokens: bash_orch_call_tokens_carried,
     emitted: bash_orch_call_emitted
   )
 }
+data bash_orch_call_translation_rules_node_carried: Node = bash_orch_call_translation_rules_node()
+
 
 fn bash_orch_call_binding_spellings(spelling: String) -> Map<Symbol, String> {
   map_insert(empty_map(), ^bash_orch_call_spelling, spelling)
@@ -107,10 +117,10 @@ fn bash_orch_call_binding_spellings(spelling: String) -> Map<Symbol, String> {
 
 fn bash_orch_call_target_model(spelling: String) -> TargetModel {
   bash_make_bound_tokens_target_model(
-    rules: bash_orch_call_translation_rules_node(),
+    rules: bash_orch_call_translation_rules_node_carried,
     source_literal: ^bash_orch_call_source_literal,
     production_name: ^bash_production_orch_call,
-    tokens: bash_orch_call_tokens(),
+    tokens: bash_orch_call_tokens_carried,
     source_text: bash_orch_call_source_text(spelling: spelling),
     lex: bash_orch_call_lex(spelling: spelling),
     binding_spellings: bash_orch_call_binding_spellings(spelling: spelling)

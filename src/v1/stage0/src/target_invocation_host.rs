@@ -1194,9 +1194,13 @@ fn run_v2_native_census(source_roots: &[String]) -> InvocationOutcome {
         Ok(run) => InvocationOutcome {
             termination: Termination::ObservationHeld,
             message: format!(
-                "v2-native-census: modules={} file_refusals={} residual_rows={} cause_groups={}; \
-                 the rows grouped by fatal reason are the cause_group lines above",
-                run.modules, run.file_refusals, run.residual_rows, run.cause_groups
+                "v2-native-census: modules={} file_refusals={} advised_files={} residual_rows={} \
+                 cause_groups={}; the rows grouped by fatal reason are the cause_group lines above",
+                run.modules,
+                run.file_refusals,
+                run.advised_files,
+                run.residual_rows,
+                run.cause_groups
             ),
         },
         Err(cause) => InvocationOutcome {

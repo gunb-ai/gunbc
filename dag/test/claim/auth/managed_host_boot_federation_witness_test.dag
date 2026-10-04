@@ -130,7 +130,7 @@ test fn the_boot_account_reads_exactly_two_pinned_versions_from_the_dedicated_po
 // refuses it there as unprovisioned. A consumer reading this standing gets no federation to use.
 test fn w_a_bound_host_with_no_boot_policy_is_unprovisioned() -> Bool {
   managed_hosts() |> all(h => {
-    let renamed = managed_host_fixture(host: "fixture-unprovisioned-host", access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold)
+    let renamed = managed_host_fixture(host: "fixture-unprovisioned-host", access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
     match admit_boot_federation(host: renamed) {
       BootFederationUnprovisioned { host: x, cause: c } => (x as String) == "fixture-unprovisioned-host" && match c {
         BootFederationNoPolicy => true
