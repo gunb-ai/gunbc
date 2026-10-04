@@ -5,19 +5,24 @@ import std.measure { kibibyte_count, hardware_thread_count_value }
 import v2.std.optional { Present }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions_runner { actions_runner_release_2_337_0 }
-import extdeps.provisioning.ubuntu_seeded_install_media { NoCloudSeedArtifact, UbuntuSeededInstallMediaBuildInput, seeded_install_media_build_key }
+import extdeps.provisioning.ubuntu_seeded_install_media {
+  NoCloudSeedArtifact, UbuntuSeededInstallMediaBuildInput, seeded_install_media_build_key,
+  seeded_install_media_seed_artifact_admission, SeedArtifactsAdmitted, SeedArtifactsRefused,
+  SeedArtifactNameNotABasename, SeedArtifactNameReserved, SeedArtifactNameCollidesWithSeedFile, SeedArtifactNameDuplicated,
+}
 import gunbc.boot_medium { BootMedium, BootMediumRunnerHostUp, BootMediumVolumeLabel, BootMediumNoTerminal }
 import gunbc.fleet_intent_network { operator_host_mtcollins1 }
 import gunbc.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_machine, mtcollins1_census_console_device, mtcollins1_census_console_arg }
 import gunbc.machine_intake_mtcollins1_boot_run {
-  MtCollins1BootTerminalVerdict, TerminalAccepted, TerminalRefused, TerminalPending,
+  MtCollins1BootTerminalVerdict, TerminalAccepted, TerminalRunnerHostAccepted, TerminalRefused, TerminalPending,
+  WatchRunnerHostAccepted, watch_tick, SolChannelLive,
   mtcollins1_boot_terminal_verdict, mtcollins1_boot_terminal_cause_text, mtcollins1_boot_medium_refusal,
 }
 import gunbc.runner.runner_host_medium {
   RunnerHostMediumHost, RunnerHostMediumImage, RunnerHostMediumImageDerived, RunnerHostMediumRunnerUnpublished, RunnerHostMediumUserDataRefused,
   RunnerHostUpReadback, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved,
-  RunnerHostSectionFailed, RunnerHostMachineNotAarch64, RunnerHostSectionAbsent,
+  RunnerHostSectionFailed, RunnerHostMachineNotAarch64, RunnerHostSectionAbsent, RunnerHostLabelAbsent,
   runner_host_medium_image, runner_host_boot_medium, runner_host_up_readback, runner_host_medium_volume_id,
 }
 
@@ -32,7 +37,11 @@ data mtcollins1_runner_host: RunnerHostMediumHost = RunnerHostMediumHost {
 data supplied_digest: NonEmptyStr = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 fn runner_subject() -> AdmittedBootSubject? {
-  match boot_subject_admission_for(host: operator_host_mtcollins1, medium: runner_host_boot_medium(output_digest: supplied_digest), execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr) {
+  subject_with(medium: runner_host_boot_medium(output_digest: supplied_digest))
+}
+
+fn subject_with(medium: BootMedium) -> AdmittedBootSubject? {
+  match boot_subject_admission_for(host: operator_host_mtcollins1, medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr) {
     BootSubjectAdmitted { subject: s } => Present { value: s }
     BootSubjectRefused { host: _, cause: _ } => none
   }
@@ -49,7 +58,7 @@ data meminfo_body: String = "MemTotal:       134217728 kB\nMemFree:        13000
 
 fn sections(install_exit: String, machine: String) -> String {
   concat(
-    section(name: "boot-media", argv: "test -e /dev/disk/by-label/GUNBC_RUNNER_HOST_2404_3", body: "", exit_code: "0"),
+    section(name: "boot-media", argv: "ls -1 /dev/disk/by-label", body: "GUNBC_RUNNER_HOST_2404_3\nEFI\n", exit_code: "0"),
     section(name: "runner-install", argv: "(the rendered extract)", body: "", exit_code: install_exit),
     section(name: "runner-listener", argv: "test -x /opt/actions-runner/bin/Runner.Listener", body: "", exit_code: "0"),
     section(name: "systemd-manager", argv: "test -d /run/systemd/system", body: "", exit_code: "0"),
@@ -146,19 +155,44 @@ test fn a_closed_envelope_missing_the_meminfo_section_refuses() -> Bool {
 // THE ROUTE: the boot run's terminal verdict, given a subject admitted with the runner medium, reaches
 // runner_host_up_readback -- it accepts the held envelope and refuses the foreign machine with the
 // runner-host cause, which the census predicate (it reads no uname-machine section) could not produce.
-test fn the_boot_run_terminal_verdict_delegates_to_the_runner_host_up_predicate() -> Bool {
+// And the accepted reading survives the delegation and the watch tick WHOLE: the consumer reads the
+// exact idle MemTotal, MemAvailable, thread count and machine from the one accepted boot reading.
+test fn the_boot_run_terminal_verdict_delegates_and_carries_the_whole_reading() -> Bool {
   match runner_subject() {
     Absent => false
-    Present { value: s } =>
-      (match mtcollins1_boot_terminal_verdict(capture: closed(install_exit: "0", machine: "aarch64"), subject: s) {
-        TerminalAccepted { run: _, threads: t } => hardware_thread_count_value(t: t) == 80
+    Present { value: s } => {
+      let verdict = mtcollins1_boot_terminal_verdict(capture: closed(install_exit: "0", machine: "aarch64"), subject: s)
+      (match verdict {
+        TerminalRunnerHostAccepted { up: up } => kibibyte_count(k: up.mem_total) == 134217728 && kibibyte_count(k: up.mem_available) == 131000000 && hardware_thread_count_value(t: up.threads) == 80 && (up.machine as String) == "aarch64"
         _ => false
       })
+        && (match watch_tick(verdict: verdict, channel: SolChannelLive) {
+          WatchRunnerHostAccepted { up: up } => kibibyte_count(k: up.mem_total) == 134217728 && kibibyte_count(k: up.mem_available) == 131000000 && hardware_thread_count_value(t: up.threads) == 80 && (up.machine as String) == "aarch64"
+          _ => false
+        })
         && (match mtcollins1_boot_terminal_verdict(capture: closed(install_exit: "0", machine: "x86_64"), subject: s) {
           TerminalRefused { causes: cs } => any(cs, c => string_contains(s: mtcollins1_boot_terminal_cause_text(cause: c), pattern: "uname -m printed x86_64"))
           _ => false
         })
+    }
   }
+}
+
+// THE LABEL IS THE ADMITTED SUBJECT'S, NOT A MODULE CONSTANT: a subject admitted with the runner
+// terminal but label OTHER is refused by a capture of this image (whose host lists
+// GUNBC_RUNNER_HOST_2404_3), while the exact-label subject accepts the same capture.
+test fn a_subject_admitted_with_another_label_is_refused_by_this_images_capture() -> Bool {
+  let base = runner_host_boot_medium(output_digest: supplied_digest)
+  let other = BootMedium { image_name: base.image_name, digest: base.digest, export: base.export, terminal: BootMediumRunnerHostUp { label: "OTHER" } }
+  let capture = closed(install_exit: "0", machine: "aarch64")
+  (match subject_with(medium: other) {
+    Present { value: s } => match runner_host_up_readback(capture: capture, subject: s) {
+      RunnerHostUpRefused { refusals: rs } => any(rs, r => match r { RunnerHostLabelAbsent { expected: e, observed: _ } => (e as String) == "OTHER" _ => false })
+      _ => false
+    }
+    Absent => false
+  })
+    && (match readback(capture: capture) { Present { value: RunnerHostUpObserved { up: _ } } => true _ => false })
 }
 
 fn with_artifacts(input: UbuntuSeededInstallMediaBuildInput, artifacts: List<NoCloudSeedArtifact>) -> UbuntuSeededInstallMediaBuildInput {
@@ -189,6 +223,46 @@ test fn the_seed_artifact_digest_keys_the_build_and_its_url_does_not() -> Bool {
       key == (seeded_install_media_build_key(input: with_artifacts(input: input, artifacts: moved)) as String)
         && key != (seeded_install_media_build_key(input: with_artifacts(input: input, artifacts: other)) as String)
         && key != (seeded_install_media_build_key(input: with_artifacts(input: input, artifacts: [])) as String)
+    }
+    RunnerHostMediumRunnerUnpublished { binary_release: _ } => false
+    RunnerHostMediumUserDataRefused { reason: _ } => false
+  }
+}
+
+// THE ARTIFACT NAME IS ADMITTED BEFORE ANY FETCH (the remaster's fetch takes only an
+// AdmittedSeedArtifact; its real-execution control is test.claim.srv3_seeded_install_media_real_execution).
+// The runner image's own tarball is admitted; an escaping path, the image's own program name, a
+// NoCloud datasource name and a duplicate each refuse with their own cause.
+fn admission_refuses_with(input: UbuntuSeededInstallMediaBuildInput, extra: NoCloudSeedArtifact, cause: String) -> Bool {
+  match seeded_install_media_seed_artifact_admission(input: with_artifacts(input: input, artifacts: append(input.seed_artifacts, items: [extra]))) {
+    SeedArtifactsAdmitted { artifacts: _ } => false
+    SeedArtifactsRefused { refusals: rs } => any(rs, r => match r {
+      SeedArtifactNameNotABasename { name: _ } => cause == "basename"
+      SeedArtifactNameReserved { name: _ } => cause == "reserved"
+      SeedArtifactNameCollidesWithSeedFile { name: _ } => cause == "collides"
+      SeedArtifactNameDuplicated { name: _ } => cause == "duplicated"
+    })
+  }
+}
+
+fn artifact_named(n: String) -> NoCloudSeedArtifact {
+  NoCloudSeedArtifact { name: n as NonEmptyStr, source_url: "https://example.invalid/x", sha256: supplied_digest }
+}
+
+test fn seed_artifact_names_are_admitted_only_as_fresh_basenames() -> Bool {
+  match runner_host_medium_image(host: mtcollins1_runner_host) {
+    RunnerHostMediumImageDerived { input: input, runner: _ } => {
+      let own = map(input.seed_artifacts, a => a.name as String)
+      (match seeded_install_media_seed_artifact_admission(input: input) {
+        SeedArtifactsAdmitted { artifacts: admitted } => map(admitted, a => a.basename.value as String) == own
+        SeedArtifactsRefused { refusals: _ } => false
+      })
+        && admission_refuses_with(input: input, extra: artifact_named(n: "../../boot/grub/grub.cfg"), cause: "basename")
+        && admission_refuses_with(input: input, extra: artifact_named(n: ".."), cause: "basename")
+        && admission_refuses_with(input: input, extra: artifact_named(n: "runner-host-up.sh"), cause: "collides")
+        && admission_refuses_with(input: input, extra: artifact_named(n: "user-data"), cause: "reserved")
+        && admission_refuses_with(input: input, extra: artifact_named(n: "meta-data"), cause: "reserved")
+        && admission_refuses_with(input: input, extra: artifact_named(n: fold(own, init: "", f: (acc, n) => n)), cause: "duplicated")
     }
     RunnerHostMediumRunnerUnpublished { binary_release: _ } => false
     RunnerHostMediumUserDataRefused { reason: _ } => false

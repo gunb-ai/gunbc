@@ -910,6 +910,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.srv3_seeded_install_media_real_execution", function: "a_seed_artifact_is_fetched_read_back_and_an_escaping_name_moves_no_byte_by_real_execution" },
+      entry: "dag/test/claim/srv3/srv3_seeded_install_media_real_execution_witness_test.dag",
+      function: "a_seed_artifact_is_fetched_read_back_and_an_escaping_name_moves_no_byte_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.mtcollins1_census_image_local_wet", function: "the_attempt_three_capture_binds_and_reads_by_real_execution" },
       entry: "dag/test/claim/machine_intake/mtcollins1_census_image_local_wet_test.dag",
       function: "the_attempt_three_capture_binds_and_reads_by_real_execution",

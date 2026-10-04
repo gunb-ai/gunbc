@@ -27,7 +27,7 @@ import extdeps.provisioning.ubuntu_seeded_install_media {
 import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallLiveCommands }
 import gunbc.os_install_emit { autoinstall_live_commands_user_data, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
 import gunbc.seeded_install_media_policy { seeded_install_media_pinned_dates, seeded_install_media_builder_revision }
-import gunbc.boot_medium { BootMedium, BootMediumRunnerHostUp, bmc_boot_image_export }
+import gunbc.boot_medium { BootMedium, BootMediumRunnerHostUp, BootMediumVolumeLabel, BootMediumNoTerminal, bmc_boot_image_export }
 import gunbc.managed_host_boot { AdmittedBootSubject, boot_subject_machine }
 import gunbc.machine_intake_host_capture_envelope {
   HostCaptureStage, HostCaptureRunIdentity, BoundHostCaptureEnvelope,
@@ -129,7 +129,7 @@ data runner_host_up_section_names: List<NonEmptyStr> = [
 // installed and executable. The slot unit's own activity is the launch leg's readback.
 fn runner_host_up_stages(artifact: ActionsRunnerBinaryArtifact) -> List<HostCaptureStage> {
   [
-    HostCaptureStage { name: runner_host_section_boot_media, command: concat("test -e /dev/disk/by-label/", runner_host_medium_volume_id as String) as NonEmptyStr },
+    HostCaptureStage { name: runner_host_section_boot_media, command: "ls -1 /dev/disk/by-label" },
     HostCaptureStage { name: runner_host_section_runner_install, command: runner_host_medium_install_command(artifact: artifact) },
     HostCaptureStage { name: runner_host_section_runner_listener, command: concat("test -x ", runner_host_listener_path()) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_systemd, command: "test -d /run/systemd/system" },
@@ -229,6 +229,8 @@ type RunnerHostUpRefusal
   | RunnerHostMeminfoFieldAbsent { field: NonEmptyStr }
   | RunnerHostNprocUnreadable { observed: String }
   | RunnerHostMachineNotAarch64 { observed: String }
+  | RunnerHostLabelAbsent { expected: NonEmptyStr, observed: List<String> }
+  | RunnerHostMediumTerminalNotRunnerHostUp { image: NonEmptyStr }
 
 type RunnerHostUpReadback
   = RunnerHostUpPending { reason: String }
@@ -244,6 +246,8 @@ fn runner_host_up_refusal_text(refusal: RunnerHostUpRefusal) -> String {
     RunnerHostMeminfoFieldAbsent { field: f } => concat("meminfo carries no ", f as String)
     RunnerHostNprocUnreadable { observed: o } => concat("nproc printed ", o, ", not a positive count")
     RunnerHostMachineNotAarch64 { observed: o } => concat("uname -m printed ", o, ", the runner image is arm64")
+    RunnerHostLabelAbsent { expected: e, observed: o } => concat("no block device carries the admitted medium's label ", concat(e as String, concat("; labels read: ", join(o, ", "))))
+    RunnerHostMediumTerminalNotRunnerHostUp { image: i } => concat("the admitted medium ", concat(i as String, " does not name the runner-host-up terminal"))
   }
 }
 
@@ -284,11 +288,18 @@ fn runner_host_section_output(read: RunnerHostSectionRead) -> List<String> {
 
 // EVERY REFUSAL IS NAMED, NOT THE FIRST: a host whose runner install failed AND whose nproc is short
 // reports both, so one boot answers both questions.
-fn runner_host_up_over_closed(envelope: BoundHostCaptureEnvelope) -> RunnerHostUpReadback {
-  let gates = flat_map(
-    [runner_host_section_boot_media, runner_host_section_runner_install, runner_host_section_runner_listener, runner_host_section_systemd],
+fn runner_host_up_over_closed(envelope: BoundHostCaptureEnvelope, label: NonEmptyStr) -> RunnerHostUpReadback {
+  let media_read = runner_host_section_read(envelope: envelope, name: runner_host_section_boot_media)
+  let labels = filter(map(runner_host_section_output(read: media_read), l => trim(s: l)), l => l != "")
+  let media_refusals = match media_read {
+    RunnerHostSectionRefused { refusal: r } => [r]
+    RunnerHostSectionHeld { output: _ } =>
+      if any(labels, l => l == (label as String)) { [] } else { [RunnerHostLabelAbsent { expected: label, observed: labels }] }
+  }
+  let gates = append(media_refusals, items: flat_map(
+    [runner_host_section_runner_install, runner_host_section_runner_listener, runner_host_section_systemd],
     n => runner_host_section_refusal(read: runner_host_section_read(envelope: envelope, name: n)),
-  )
+  ))
   let mem_read = runner_host_section_read(envelope: envelope, name: runner_host_section_meminfo)
   let nproc_read = runner_host_section_read(envelope: envelope, name: runner_host_section_nproc)
   let machine_read = runner_host_section_read(envelope: envelope, name: runner_host_section_machine)
@@ -350,12 +361,19 @@ fn runner_host_up_over_open(envelope: BoundHostCaptureEnvelope) -> RunnerHostUpR
 
 // THE PREDICATE THE BOOT RUN'S TERMINAL WATCH DELEGATES TO for a BootMediumRunnerHostUp medium. The
 // capture binds to the subject's machine and run (one envelope, never a search over the stream), and
-// the label is the medium's own, read back as the boot-media section.
+// the label it must establish is the one on the ADMITTED subject's medium, compared to the labels the
+// host listed -- not a module constant, so a subject admitted with another label is refused by a
+// capture of this image.
 fn runner_host_up_readback(capture: String, subject: AdmittedBootSubject) -> RunnerHostUpReadback {
-  match host_capture_bind(capture: capture, machine: boot_subject_machine(subject: subject)) {
-    HostCaptureNotBegun => RunnerHostUpPending { reason: "no begin marker for this machine yet" }
-    HostCaptureUnbound { reason: r } => RunnerHostUpRefused { refusals: [RunnerHostCaptureUnbound { reason: r }] }
-    HostCaptureOpen { envelope: e } => runner_host_up_over_open(envelope: e)
-    HostCaptureBound { envelope: e } => runner_host_up_over_closed(envelope: e)
+  match subject.medium.terminal {
+    BootMediumRunnerHostUp { label: label } =>
+      match host_capture_bind(capture: capture, machine: boot_subject_machine(subject: subject)) {
+        HostCaptureNotBegun => RunnerHostUpPending { reason: "no begin marker for this machine yet" }
+        HostCaptureUnbound { reason: r } => RunnerHostUpRefused { refusals: [RunnerHostCaptureUnbound { reason: r }] }
+        HostCaptureOpen { envelope: e } => runner_host_up_over_open(envelope: e)
+        HostCaptureBound { envelope: e } => runner_host_up_over_closed(envelope: e, label: label)
+      }
+    BootMediumVolumeLabel { label: _ } => RunnerHostUpRefused { refusals: [RunnerHostMediumTerminalNotRunnerHostUp { image: subject.medium.image_name }] }
+    BootMediumNoTerminal { reason: _ } => RunnerHostUpRefused { refusals: [RunnerHostMediumTerminalNotRunnerHostUp { image: subject.medium.image_name }] }
   }
 }

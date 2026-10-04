@@ -21,7 +21,7 @@ import gunbc.machine_intake_mtcollins1_census_medium_readback {
   mtcollins1_census_medium_readback, mtcollins1_census_readback_refusal_before_filing, mtcollins1_census_readback_refusal_before_attach,
 }
 import gunbc.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, BootMediumRunnerHostUp }
-import gunbc.runner.runner_host_medium { RunnerHostUpRefusal, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved, runner_host_up_readback, runner_host_up_refusal_text }
+import gunbc.runner.runner_host_medium { RunnerHostUp, RunnerHostUpRefusal, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved, runner_host_up_readback, runner_host_up_refusal_text }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_boot_medium }
 import gunbc.managed_host_boot {
   AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused,
@@ -852,6 +852,7 @@ type MtCollins1BootTerminalVerdict
   = TerminalPending { reason: String }
   | TerminalRefused { causes: List<MtCollins1BootTerminalCause> }
   | TerminalAccepted { run: HostCaptureRunIdentity, threads: HardwareThreadCount }
+  | TerminalRunnerHostAccepted { up: RunnerHostUp }
 
 // ONE QUALIFICATION READ AS ONE OF THREE: still being written, refused with a cause, or held.
 type TerminalQualification
@@ -1249,7 +1250,7 @@ fn mtcollins1_boot_terminal_verdict(capture: String, subject: AdmittedBootSubjec
     BootMediumRunnerHostUp { label: _ } => match runner_host_up_readback(capture: capture, subject: subject) {
       RunnerHostUpPending { reason: r } => TerminalPending { reason: r }
       RunnerHostUpRefused { refusals: rs } => TerminalRefused { causes: [TerminalRunnerHostNotUp { refusals: rs }] }
-      RunnerHostUpObserved { up: up } => TerminalAccepted { run: up.run, threads: up.threads }
+      RunnerHostUpObserved { up: up } => TerminalRunnerHostAccepted { up: up }
     }
   }
 }
@@ -1409,6 +1410,7 @@ fn sol_client_diagnostics_text(client: SolClientDiagnostics) -> String {
 // collector is not "still waiting", it is ObservationChannelLost.
 type WatchTick
   = WatchAccepted
+  | WatchRunnerHostAccepted { up: RunnerHostUp }
   | WatchRefused { causes: List<MtCollins1BootTerminalCause> }
   | WatchChannelLost { collector: SolCollectorObservation, client: SolClientDiagnostics, last: String }
   | WatchContinue { reason: String }
@@ -1421,6 +1423,7 @@ fn watch_tick(verdict: MtCollins1BootTerminalVerdict, channel: SolChannelReading
         SolChannelNotLive { collector: l, client: c } => WatchChannelLost { collector: l, client: c, last: why }
       }
     TerminalAccepted { run: _, threads: _ } => WatchAccepted
+    TerminalRunnerHostAccepted { up: up } => WatchRunnerHostAccepted { up: up }
     TerminalRefused { causes: cs } => WatchRefused { causes: cs }
   }
 }
@@ -1738,8 +1741,9 @@ fn mtcollins1_boot_await_capture_terminal(
   let reported = mtcollins1_boot_screen_boundary_report(screen: screen, already: screen_reported)
   let ended = match seen.phase { CensusEnded => true _ => false }
   match watch_tick(verdict: seen.verdict, channel: seen.channel) {
-    WatchAccepted => TerminalWatch { outcome: ExitSuccess, census_ended: ended, smpro_census: smpro_census, screen_reported: reported }
-    WatchRefused { causes: causes } => TerminalWatch { outcome: exit_failure(reason: mtcollins1_boot_terminal_refusal_text(causes: causes)), census_ended: ended, smpro_census: smpro_census, screen_reported: reported }
+    WatchAccepted => TerminalWatch { outcome: ExitSuccess, census_ended: ended, smpro_census: smpro_census, screen_reported: reported, runner_host: none }
+    WatchRunnerHostAccepted { up: up } => TerminalWatch { outcome: ExitSuccess, census_ended: ended, smpro_census: smpro_census, screen_reported: reported, runner_host: Present { value: up } }
+    WatchRefused { causes: causes } => TerminalWatch { outcome: exit_failure(reason: mtcollins1_boot_terminal_refusal_text(causes: causes)), census_ended: ended, smpro_census: smpro_census, screen_reported: reported, runner_host: none }
     WatchChannelLost { collector: l, client: c, last: why } => {
       let lost = mtcollins1_boot_channel_lost(
         loss: SolObservationLoss { stage: SolLostDuringWatch, last_live_at: last_live_at, observed_gone_at: seen.at, collector: l, client: c, last_capture_observation: why },
@@ -1747,15 +1751,15 @@ fn mtcollins1_boot_await_capture_terminal(
         password_file: password_file,
         screen: Present { value: screen },
       )
-      TerminalWatch { outcome: exit_failure(reason: observation_channel_lost_text(lost: lost)), census_ended: ended, smpro_census: smpro_census, screen_reported: reported }
+      TerminalWatch { outcome: exit_failure(reason: observation_channel_lost_text(lost: lost)), census_ended: ended, smpro_census: smpro_census, screen_reported: reported, runner_host: none }
     }
     WatchContinue { reason: why } => {
       match mtcollins1_sol_observer_refusal(capture_path: capture_path) {
-        Present { value: gone } => return TerminalWatch { outcome: exit_failure(reason: concat(gone, "; observed during the capture watch, so the watch stops rather than continuing unreported")), census_ended: ended, smpro_census: smpro_census, screen_reported: reported }
+        Present { value: gone } => return TerminalWatch { outcome: exit_failure(reason: concat(gone, "; observed during the capture watch, so the watch stops rather than continuing unreported")), census_ended: ended, smpro_census: smpro_census, screen_reported: reported, runner_host: none }
         _ => {}
       }
       if remaining <= 0 {
-        TerminalWatch { outcome: exit_failure(reason: concat("mtcollins1 boot: deadline reached without a host-capture terminal; last observation: ", why, "; capture preserved; claim will abort, not complete")), census_ended: ended, smpro_census: smpro_census, screen_reported: reported }
+        TerminalWatch { outcome: exit_failure(reason: concat("mtcollins1 boot: deadline reached without a host-capture terminal; last observation: ", why, "; capture preserved; claim will abort, not complete")), census_ended: ended, smpro_census: smpro_census, screen_reported: reported, runner_host: none }
       } else {
         let census_pass = match smpro_census {
           SmproNotTaken { reason: _ } => match seen.phase {
@@ -1805,6 +1809,10 @@ type TerminalWatch {
   census_ended: Bool
   smpro_census: SmproReading
   screen_reported: List<String>
+  // THE ONE ACCEPTED RUNNER-HOST READING (gunbc.runner.runner_host_medium RunnerHostUp), carried
+  // whole so the qualification receipt's GuestIdleMeminfoAndNproc reads it here rather than
+  // re-parsing the capture; none for every other medium and every non-accepting end.
+  runner_host: RunnerHostUp?
 }
 
 // THE SCREEN'S BOUNDARY, REPORTED IN THE TICK AND BEFORE ANY OPTIONAL READ (acceptance (b)). Every
