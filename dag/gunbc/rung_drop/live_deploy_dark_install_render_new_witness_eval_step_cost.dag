@@ -83,8 +83,10 @@ data live_deploy_dark_install_render_new_witness_eval_step_cost: RungDrop = Rung
 // WHY THE TRIGGER IS NOT ESTABLISHED: no run BILLS this identity. While the drop stands, the
 // identity is EXEMPT from the eval-step standing gate, so it cannot appear on the over-cost list
 // at any cost; the required floor bills only changed or new witnesses, so an unrelated PR does not
-// re-bill it; and the floor's per-claim cost record (required_floor_claim_cost.tsv) is not
-// persisted as an artifact, so an acceptance run records no billed reading for a rostered
+// re-bill it; and the floor's per-claim cost record is not persisted as an artifact on current
+// acceptance runs (this lane's own rows cite `artifact required-floor-claim-cost` from earlier
+// runs 34854812903/35174104379; run 37154118158 uploaded only required-ci-measurement-receipt), so
+// an acceptance run records no billed reading for a rostered
 // identity. The only measured frame is the hermetic single-claim frame (claim_batch --hermetic,
 // dag/test/claim/live_deploy/emit_test.dag): 986,167 eval steps at this PR's own pre-refactor base
 // 5251e7fb31f, 981,593 on origin/main fetched 2026-10-03T23:31Z, and 960,614 on this PR's head
