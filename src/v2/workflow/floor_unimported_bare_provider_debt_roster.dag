@@ -246,7 +246,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/extdeps/linux/proc_meminfo.dag", name: "length", standing: ActiveDebt },
   UnimportedBareProviderDisposition { file: "dag/extdeps/linux/proc_meminfo.dag", name: "skip", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/linux/proc_mountinfo.dag", name: "filter", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/extdeps/linux/proc_mountinfo.dag", name: "length", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/extdeps/linux/proc_mountinfo.dag", name: "length", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/linux/proc_net_tcp.dag", name: "filter", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/linux/proc_net_tcp.dag", name: "get", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/linux/proc_net_tcp.dag", name: "length", standing: Retired { cause: ImportsFixed } },
