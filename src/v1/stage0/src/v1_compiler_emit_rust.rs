@@ -38678,18 +38678,21 @@ pub fn emit_data_def(
                 annotation_type_node.clone(),
                 scope.type_env.clone().source_indices.clone(),
             ) {
-                crate::v1_compiler_coercion::coerce_primitive_type(
-                    crate::v1_compiler_coercion::type_reference_realization(
-                        annotation_type_node.clone(),
+                rust_carrier_optional_wrap(
+                    annotation_type_node.clone(),
+                    crate::v1_compiler_coercion::coerce_primitive_type(
+                        crate::v1_compiler_coercion::type_reference_realization(
+                            annotation_type_node.clone(),
+                            crate::v1_std_core::authored_name_at(
+                                scope.type_env.clone().source_indices.clone(),
+                                annotation_type_node.clone(),
+                            ),
+                            RenderTarget::Rust,
+                        ),
                         crate::v1_std_core::authored_name_at(
                             scope.type_env.clone().source_indices.clone(),
                             annotation_type_node.clone(),
                         ),
-                        RenderTarget::Rust,
-                    ),
-                    crate::v1_std_core::authored_name_at(
-                        scope.type_env.clone().source_indices.clone(),
-                        annotation_type_node.clone(),
                     ),
                 )
             } else {
