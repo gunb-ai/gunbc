@@ -691,6 +691,12 @@ type GenericIdentityContextItem {
 // argument does bind the parameter, OBSERVED typed Int and carrying no foreign parameter. None
 // depends on a defect staying unrepaired. The call the spelling collision leaves unsubstituted is a
 // three-valued READING beside them and never gates, because repairing it is the point of step 2.
+//
+// conformance_keeps_the_parameter_mark is the copy law (L1) at one stored carrier. The fixture's
+// same_spelling_as_a_record_parameter<Q> declares a parameter spelled like the record Box<Q>'s, and
+// its formal q: Q must carry ITS OWN mark in declaration_bound_conformance. Before
+// v1.compiler.infer_resolve peel_nominal_alias_identity read the mark, the name lookup replaced that
+// leaf with whatever the module bound to the spelling Q, and this control was UNMET.
 fn gi_control_line(name: String, held: Bool) -> String {
   concat(concat(concat("control ", name), ": "), if held { "held" } else { "UNMET" })
 }
@@ -810,8 +816,11 @@ fn generic_identity_fixture_standing(sources: List<SourceFile>) -> String {
       let bound_call_observed_clean = gi_bound_call_observed_clean(o: bound_call)
       let unobserved_declared = (generic_identity_unobserved() |> count) == 4
       let owner_argument_arms = gi_owner_argument_arms_discriminate(g: g, si: si, sigs: sigs)
+      let conformance_keeps_mark = rows |> any(r =>
+        r.enclosing == "same_spelling_as_a_record_parameter" && r.carrier == "formal_declaration_bound_conformance" && r.path == "q"
+          && gi_declaration_label(d: r.declaration) == "gic.a::same_spelling_as_a_record_parameter::<Q>")
       let missing_carriers = gi_missing_carriers_are_unobserved(g: g, si: si, sigs: sigs)
-      let held = marked_signature_leaf && minted_container_child && bound_call_observed_clean && unobserved_declared && owner_argument_arms && missing_carriers
+      let held = marked_signature_leaf && minted_container_child && bound_call_observed_clean && unobserved_declared && owner_argument_arms && missing_carriers && conformance_keeps_mark
       concat([
         concat("STANDING ", if held { "held" } else { "unmet" }),
         gi_control_line(name: "marked_signature_leaf", held: marked_signature_leaf),
@@ -820,6 +829,7 @@ fn generic_identity_fixture_standing(sources: List<SourceFile>) -> String {
         gi_control_line(name: "unobserved_populations_declared", held: unobserved_declared),
         gi_control_line(name: "owner_argument_arms_discriminate", held: owner_argument_arms),
         gi_control_line(name: "missing_carriers_are_unobserved", held: missing_carriers),
+        gi_control_line(name: "conformance_keeps_the_parameter_mark", held: conformance_keeps_mark),
         concat("reading bound_call: ", gi_collision_reading(o: bound_call)),
         concat("reading spelling_collision_call: ", gi_collision_reading(o: gi_result_carrier_observation(g: g, si: si, sigs: sigs, function_name: "caller_literal")))
       ], gi_supplied_node_readings(sigs: sigs, si: si)) |> join(separator: "\n")
