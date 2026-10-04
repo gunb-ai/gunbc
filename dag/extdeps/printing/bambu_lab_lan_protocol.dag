@@ -213,3 +213,14 @@ fn bambu_status_snapshot_payload() -> String {
     json_kv(key: "push_target", value: json_int(n: 1)),
   ]))]))
 }
+
+// Bambu Studio MachineObject::can_print accepts IDLE and FINISH; FINISH is
+// excluded from is_in_printing_status. This is job readiness, never bed-clear evidence.
+// https://github.com/bambulab/BambuStudio/blob/master/src/slic3r/GUI/DeviceManager.cpp
+fn bambu_completed_or_idle_state(state:String) -> Bool {state=="IDLE"||state=="FINISH"}
+
+// 83935249 is 0x0500C011. Bambu's collaborator calls this a non-existent error
+// that should be deleted; the vendor error table has a blank description for it.
+// https://github.com/bambulab/BambuStudio/issues/4495#issuecomment-2275068828
+// This exact wire value is classified, not all nonzero codes or all blank UI messages.
+fn bambu_start_error_nonblocking(code:String) -> Bool {code=="0"||code=="83935249"}

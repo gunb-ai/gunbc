@@ -1,5 +1,6 @@
 module gunbc.fleet.printer_operator_approval
 
+import extdeps.printing.bambu_lab_lan_protocol {bambu_completed_or_idle_state,bambu_start_error_nonblocking}
 import extdeps.tools.hostname
 import std.algebra {trim}
 import gunbc.fleet.printer_federation {printer_lan_host_identity}
@@ -114,7 +115,7 @@ fn approve_and_print(printer: String, path: String, digest: String, version: Str
                         Filesystem.Write(path: concat(start_claim_path(escalation_id:request.escalation_id),".before-start.json"), content: text).success && report_allows_start(text: text)
                       _ => false
                     }
-                    if !idle { return exit_failure(reason: "Printer was not freshly observed IDLE with no print error; nothing uploaded or started") }
+                    if !idle { return exit_failure(reason: "Printer was not freshly observed IDLE/FINISH without a blocking print error; nothing uploaded or started") }
                     let claim = Filesystem.WriteCreateNew(path: start_claim_path(escalation_id:request.escalation_id), content: request.subject)
                     if !claim.success { exit_failure(reason: "This printer's batch start is already claimed or its durable marker cannot be written; do not replay") }
                     else { print_claimed_project(claim:ClaimedPrinterStart {printer:p,path:path,digest:digest,version:version as NonEmptyStr,token_source:token_source,session:session,authorization:authorization,request:request}) }
@@ -128,16 +129,18 @@ fn approve_and_print(printer: String, path: String, digest: String, version: Str
   }
 }
 
+// Called only behind current, job-bound approval of a physically cleared bed.
+// Neither IDLE nor FINISH establishes bed clearance; the approval owns that evidence.
 fn report_allows_start(text: String) -> Bool {
   match parse_json_document(s: text) {
     JsonDocumentParsed { value: root } => match json_object_unique_member(v: root, key: "print") {
       JsonMemberFound { value: p } => {
         let idle = match json_object_unique_member(v: p, key: "gcode_state") {
-          JsonMemberFound { value: JsonString { value: state } } => state == "IDLE"
+          JsonMemberFound { value: JsonString { value: state } } => bambu_completed_or_idle_state(state:state)
           _ => false
         }
         let clear = match json_object_unique_member(v: p, key: "print_error") {
-          JsonMemberFound { value: JsonNumber { lexeme: code } } => (code as String) == "0"
+          JsonMemberFound { value: JsonNumber { lexeme: code } } => bambu_start_error_nonblocking(code:code as String)
           _ => false
         }
         idle && clear
@@ -180,7 +183,7 @@ fn print_claimed_project(claim:ClaimedPrinterStart) -> ProcessExit {
           ProjectDelivered { receipt: receipt } => {
             let remote = receipt_remote_name(r: receipt)
             let still_idle=match report_using_session(session:claim.session) { ProcessOutputPresent {text:t}=>report_allows_start(text:t) _=>false }
-            if !still_idle { return exit_failure(reason:"Printer no longer IDLE after upload; start withheld and claim retained") }
+            if !still_idle { return exit_failure(reason:"Printer no longer ready after upload; start withheld and claim retained") }
             let fresh_authority=match approval_instant_now() {
               Absent=>false
               Present {value:now}=>match authorize(authorization:claim.authorization,request:claim.request,observed_at:now) {AuthorizationPermitted {grant:_}=>true _=>false}

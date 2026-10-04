@@ -30,14 +30,18 @@ test fn approval_changes_with_device_bytes_version_or_attempt() -> Bool {
   }
 }
 
-test fn only_explicit_idle_without_print_error_admits_start() -> Bool {
-  report_allows_start(text: "{\"print\":{\"gcode_state\":\"IDLE\",\"print_error\":0}}") &&
-  !report_allows_start(text: "{\"print\":{\"gcode_state\":\"FINISH\",\"print_error\":0}}") &&
-  !report_allows_start(text: "{\"print\":{\"gcode_state\":\"RUNNING\",\"print_error\":0}}") &&
-  !report_allows_start(text: "{\"print\":{\"gcode_state\":\"IDLE\",\"print_error\":1}}") &&
-  !report_allows_start(text: "{\"print\":{\"gcode_state\":\"IDLE\"}}") &&
-  !report_allows_start(text: "{}")
+test fn completed_or_idle_job_needs_nonblocking_error() -> Bool {
+ all(["IDLE","FINISH"],state=>all(["0","83935249"],code=>report_allows_start(text:join(["{\"print\":{\"gcode_state\":\"",state,"\",\"print_error\":",code,"}}"],"")))) &&
+ all(["RUNNING","PAUSE","PREPARE","SLICING","FAILED","UNKNOWN",""],state=>all(["0","83935249"],code=>!report_allows_start(text:join(["{\"print\":{\"gcode_state\":\"",state,"\",\"print_error\":",code,"}}"],""))))
 }
+test fn unknown_errors_and_incomplete_reports_remain_refused() -> Bool {
+ all(["1","83902511","83935248","83935250"],code=>!report_allows_start(text:join(["{\"print\":{\"gcode_state\":\"IDLE\",\"print_error\":",code,"}}"],""))) &&
+ !report_allows_start(text:"{\"print\":{\"gcode_state\":\"IDLE\"}}") &&
+ !report_allows_start(text:"{\"print\":{\"gcode_state\":\"IDLE\",\"print_error\":\"0\"}}") &&
+ !report_allows_start(text:"{\"print\":{\"gcode_state\":\"IDLE\",\"print_error\":0,\"print_error\":83902511}}") &&
+ !report_allows_start(text:"{}")
+}
+
 
 
 test fn help_exit_one_needs_the_actual_supported_version_banner() -> Bool {

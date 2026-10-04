@@ -2,9 +2,9 @@
 
 The printer start paths share one approval and claim implementation. Dispatch input validation
 is not authorization: the common path verifies an unexpired ntfy grant, observes an explicit
-error-free IDLE report, and acquires a durable claim for the approved escalation ID before any
-upload/start. FINISH, partial reports and errors refuse. Approval text requires the operator to
-check the actual bed when approving. A second IDLE observation and approval-expiry check occur
+IDLE or FINISH report with zero or the vendor-confirmed spurious 0500C011 code, and acquires a durable claim for the approved escalation ID before any
+upload/start. Active/paused/unknown states, partial reports and other error codes refuse. Approval text requires the operator to
+check the actual bed when approving. A second readiness observation and approval-expiry check occur
 immediately before publishing the start.
 
 Claims live in `/var/lib/gunbc/printer-starts` on the separately modeled printer LAN host. The
@@ -24,3 +24,12 @@ custody and is not authorization to relay tokens through chat.
 
 Local approval, census and workflow-binding witnesses pass. CI is required and the PR remains
 draft. CAD and slicer preparation are split out; approval-client cutover is prerequisite #13218.
+
+Vendor-readiness correction (2026-10-04): Bambu Studio treats FINISH as a completed
+job eligible for another print, not a cooling state. The bed may still hold a part in
+either IDLE or FINISH, so fresh job-bound bed-clear approval remains mandatory.
+The exact 0500C011 code is vendor-confirmed non-existent (BambuStudio issue 4495,
+comment 2275068828); no broader nonzero-error exemption is introduced. Tests retain
+refusal of the actual prior SD fault 83902511, adjacent codes, active/paused states,
+missing/duplicate fields and string-typed errors. The durable claim and post-upload
+readiness/approval-expiry checks remain unchanged.
