@@ -1,0 +1,650 @@
+module test.claim.machine_intake_bmc_secure_state_witness
+
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, Secret, String, list_length }
+import std.decl_ref { decl_ref }
+import std.content_hash { content_hash_of_value }
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint }
+import extdeps.bmc.types { AccountRoleAdministrator }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire }
+import extdeps.bmc.access_profile { SurfaceAccountManagement }
+import extdeps.bmc.ipmi_channel {
+  IpmiChannelNumber,
+  IpmiControllerChannelCensus,
+  IpmiMedium8023Lan,
+  IpmiMediumSerialAsync,
+  IpmiPrivilegeNoAccess,
+  IpmiPrivilegeAdministrator,
+  IpmiUserId,
+  ipmi_controller_channel_census,
+  ipmi_lan_channel_member,
+  ipmi_non_lan_channel_member,
+  ipmi_user_channel_access,
+}
+import extdeps.network.ipv4 { ipv4_address }
+import extdeps.cloud.gcp.secret_ref { HashPending, SecretRef }
+import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
+import gunbc.clock_read { ObserverClockInstant, observer_clock_modeled }
+import gunbc.machine_intake_subject {
+  AssemblyManifest,
+  ComponentIdentity,
+  DimmComponent,
+  FirmwareEntry,
+  FirmwareManifest,
+  IntakeAttemptId,
+  MachineIntakeSubject,
+  UnitKey,
+  qualification_subject_of,
+}
+import gunbc.machine_intake_phase { DevelopmentAndTest, intake_qualification_policy }
+import gunbc.machine_intake_receipt { EvidenceRef }
+import std.scoped_authorization { AttemptIdentity }
+import extdeps.crypto.mac { MacKeyId }
+import gunbc.auth.approval_capability { ApprovalCapabilityClaims, ProposeApprove, approval_capability_protocol }
+import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted }
+import gunbc.auth.secret_ref_credential { SecretCredentialFetch, SecretCredentialReady, SecretCredentialFetchRefused }
+import gunbc.bmc_model { BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_ipmi_users }
+import gunbc.machine_intake_bmc_rotation_route {
+  BmcRotationRouteStanding,
+  BmcAccountWriteRequest,
+  IpmiSetUserPassword,
+  RedfishAccountPasswordWrite,
+  RouteGroundedByExecutedRequest,
+  RouteGroundedByCitedSource,
+  RouteQualificationCandidate,
+  RouteUngrounded,
+  ObservedSurfaceRead,
+  RouteQualified,
+  RouteQualificationRefused,
+  RotationApplyAdmission,
+  RotationApplyAdmitted,
+  RotationApplyRouteNotGrounded,
+  RotationApplyRouteForAnotherController,
+  RotationApplyRouteForAnotherBuild,
+  RotationApplyApprovalRefused,
+  RotationApplyApprovalDenied,
+  RotationApplyApprovalForAnotherAuthority,
+  RotationApplyApprovalForAnotherRequest,
+  rotation_route_candidate,
+  rotation_route_ungrounded,
+  qualify_rotation_route,
+  dry_route_qualification_request,
+  rotation_apply_authority,
+  route_qualification_authority,
+  rotation_route_request_identity,
+}
+import gunbc.machine_intake_bmc_secure {
+  BmcSecureGoal,
+  BmcAccountActionDue,
+  BmcAccountPlanOutcome,
+  BmcSecurePhaseOutcome,
+  GenerationFetchAdmission,
+  BmcSecureRefusalCause,
+  bmc_secure_refusal_label,
+  BmcAccountStateObservation,
+  BmcSecureStateInspected,
+  BmcSecureStateUnobserved,
+  ManagedCredentialReference,
+  ManagedCredentialGenerationFetched,
+  GenerationStored,
+  GenerationStoreRefused,
+  GenerationFetched,
+  GenerationFetchRefused,
+  GenerationFetchResolvedAnotherVersion,
+  GenerationFetchPrecedesStore,
+  GenerationFetchNotReady,
+  BmcAccountPlanned,
+  BmcAccountPlanRefused,
+  BmcAccountActionPlan,
+  AccountPlanNotDue,
+  AccountPlanUnobserved,
+  AccountWriteNotAdmitted,
+  AccountWriteRequestNotIpmiUser,
+  AccountWriteRequestForAnotherUser,
+  ManagedGenerationForAnotherAccount,
+  ManagedGenerationNotAdvanced,
+  GenerationFetchedAfterPlan,
+  PlanPrecedesDivergedReading,
+  BmcSecurePhaseConverged,
+  BmcSecurePhaseRefused,
+  BmcSecurePhaseNoop,
+  BmcSecurePhaseApplied,
+  PhaseReadingUnobserved,
+  PhaseNotHeld,
+  ApplicationIncomplete,
+  PostReadForAnotherController,
+  PostReadPrecedesApplication,
+  ApplicationPrecedesPlan,
+  PostReadNotHeld,
+  PublishedAccountRetired,
+  ManagedCredentialRejected,
+  PublishedCredentialStillAccepted,
+  inspect_bmc_secure_state,
+  admit_stored_generation,
+  admit_fetched_generation,
+  plan_bmc_account_action,
+  bmc_secure_phase_noop,
+  bmc_secure_phase_applied,
+  bmc_secure_phase_receipt_evidence,
+  dry_read_bmc_account_state,
+  dry_apply_bmc_account_plan,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE STATE-SHAPED BmcSecure, EXECUTED OVER ITS DRY REALIZATION (cut O1b). Every reading below is taken
+// from a gunbc.bmc_model BmcWorld by dry_read_bmc_account_state after the world was written (or not)
+// by dry_apply_bmc_account_plan, so the claims discriminate the decision, the secret order, the plan
+// admission and the domain receipt on the realization's own route, not on hand-authored readings. The
+// SUPPLIED boundaries are the operator approval (an admitted Redemption, whose producer is witnessed in
+// test.claim.approval_broker_witness_test) and the Secret Manager fetch result (whose producer is
+// gunbc.auth.secret_ref_credential fetch_secret_ref_credential, live only). Routes are grounded through
+// the real qualification effect over the same world, never minted.
+
+// ── the synthetic lab unit ──────────────────────────────────────────────────────────────────────
+
+data lab_unit: UnitKey = "LAB-O1B-0001" as UnitKey
+
+data lab_assembly: AssemblyManifest = AssemblyManifest {
+  chassis_part_number: "CH-LAB-O1B",
+  components: [ComponentIdentity { kind: DimmComponent, slot: "A1", identity: "SPD-LAB-A1" }],
+}
+
+data lab_firmware_manifest: FirmwareManifest = FirmwareManifest {
+  entries: [FirmwareEntry { component: "bmc", version: "0.45.3" }],
+  configuration_digests: [],
+}
+
+fn lab_subject() -> MachineIntakeSubject {
+  MachineIntakeSubject {
+    subject: qualification_subject_of(unit_key: lab_unit, assembly: lab_assembly, firmware: lab_firmware_manifest),
+    attempt_id: "intake-20261004-o1b" as IntakeAttemptId,
+  }
+}
+
+fn other_subject() -> MachineIntakeSubject {
+  MachineIntakeSubject {
+    subject: qualification_subject_of(unit_key: lab_unit, assembly: lab_assembly, firmware: lab_firmware_manifest),
+    attempt_id: "intake-20261004-other" as IntakeAttemptId,
+  }
+}
+
+data lab_endpoint: BmcControllerEndpoint = BmcControllerEndpoint { host: "198.51.100.45" }
+data other_endpoint: BmcControllerEndpoint = BmcControllerEndpoint { host: "198.51.100.46" }
+
+fn lab_firmware() -> BmcFirmwareReleaseIdentity {
+  bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.45.3" as NonEmptyStr)
+}
+
+data managed_user: IpmiUserId = 3
+data published_user: IpmiUserId = 2
+
+data factory_password: String = "admin"
+data managed_password_v1: String = "managed-generation-1!"
+data managed_password_v2: String = "managed-generation-2!"
+data break_glass_password: String = "break-glass-generation-4!"
+
+// The census of the unit: two addressable LAN members, a serial channel, and the published user's
+// channel access as the census reads it (BmcWorld does not model channels).
+fn census(published_lan_privilege_closed: Bool) -> IpmiControllerChannelCensus {
+  let lan_privilege = if published_lan_privilege_closed { IpmiPrivilegeNoAccess } else { IpmiPrivilegeAdministrator }
+  ipmi_controller_channel_census(
+    members: [
+      ipmi_lan_channel_member(channel: 1, medium: IpmiMedium8023Lan, address: ipv4_address(octet1: 198, octet2: 51, octet3: 100, octet4: 45)),
+      ipmi_non_lan_channel_member(channel: 2, medium: IpmiMediumSerialAsync),
+      ipmi_lan_channel_member(channel: 8, medium: IpmiMedium8023Lan, address: ipv4_address(octet1: 198, octet2: 51, octet3: 100, octet4: 47)),
+    ],
+    user_access: [
+      ipmi_user_channel_access(channel: 1, user: published_user, privilege: lan_privilege),
+      ipmi_user_channel_access(channel: 2, user: published_user, privilege: IpmiPrivilegeNoAccess),
+      ipmi_user_channel_access(channel: 8, user: published_user, privilege: lan_privilege),
+    ],
+  )
+}
+
+fn managed_ref(version: NonEmptyStr, epoch: Int) -> ManagedCredentialReference {
+  ManagedCredentialReference {
+    account: "gunbc",
+    role: AccountRoleAdministrator,
+    secret: SecretRef { project: "gunbai-secrets", secret: "bmc-lab-o1b-gunbc", version: version, hash_state: HashPending },
+    credential_epoch: epoch,
+  }
+}
+
+fn break_glass_ref() -> ManagedCredentialReference {
+  ManagedCredentialReference {
+    account: "admin",
+    role: AccountRoleAdministrator,
+    secret: SecretRef { project: "gunbai-secrets", secret: "bmc-lab-o1b-admin", version: "3", hash_state: HashPending },
+    credential_epoch: 3,
+  }
+}
+
+fn goal_v1() -> BmcSecureGoal {
+  BmcSecureGoal { managed: managed_ref(version: "1", epoch: 1), policy: intake_qualification_policy(environment: DevelopmentAndTest) }
+}
+
+// ── the observer clock of these claims ──────────────────────────────────────────────────────────
+// Admitted to observer_clock_modeled by name; every instant is labeled as modeled.
+fn observer_at(millis: EpochMs) -> ObserverClockInstant {
+  observer_clock_modeled(millis: millis, realization: "test.claim.machine_intake_bmc_secure_state_witness schedule" as NonEmptyStr)
+}
+
+data t_read: EpochMs = 1791072000000
+data t_store: EpochMs = 1791072010000
+data t_fetch: EpochMs = 1791072020000
+data t_plan: EpochMs = 1791072030000
+data t_apply: EpochMs = 1791072040000
+data t_readback: EpochMs = 1791072050000
+
+// The year-2000 instant mtjade1's controller reports about itself.
+data year_2000: EpochMs = 946684800000
+
+// ── worlds ──────────────────────────────────────────────────────────────────────────────────────
+
+fn world(users: List<BmcIpmiUser>) -> BmcWorld {
+  bmc_with_ipmi_users(world: bmc_world(power: BmcPowerOn), users: users)
+}
+
+// Managed generation 1 accepted, published credential retired to the break-glass value.
+fn world_secured() -> BmcWorld {
+  world(users: [BmcIpmiUser { id: 3, password: managed_password_v1 }, BmcIpmiUser { id: 2, password: break_glass_password }])
+}
+
+// Managed accepted AND the factory credential still accepted.
+fn world_factory_open() -> BmcWorld {
+  world(users: [BmcIpmiUser { id: 3, password: managed_password_v1 }, BmcIpmiUser { id: 2, password: factory_password }])
+}
+
+// After a BMC reflash: the managed user's password is gone and the factory credential answers.
+fn world_reflash_restored() -> BmcWorld {
+  world(users: [BmcIpmiUser { id: 3, password: "" }, BmcIpmiUser { id: 2, password: factory_password }])
+}
+
+fn read(w: BmcWorld, subject: MachineIntakeSubject, managed: ManagedCredentialReference, managed_password: String, closed: Bool, at: EpochMs) -> BmcAccountStateObservation {
+  dry_read_bmc_account_state(
+    world: w,
+    subject: subject,
+    endpoint: lab_endpoint,
+    managed: managed,
+    managed_user: managed_user,
+    managed_password: managed_password,
+    census: census(published_lan_privilege_closed: closed),
+    published_user: published_user,
+    published_password: factory_password,
+    published_account: PublishedAccountRetired,
+    read_at_millis: at,
+  )
+}
+
+// ── approvals and routes ────────────────────────────────────────────────────────────────────────
+
+fn approval(authority: NonEmptyStr, revision: NonEmptyStr) -> Redemption {
+  RedemptionAdmitted {
+    claims: ApprovalCapabilityClaims {
+      protocol: approval_capability_protocol,
+      issuer: "gunbc-approval-broker" as NonEmptyStr,
+      audience: "srv1" as NonEmptyStr,
+      authority: authority,
+      escalation_id: "o1b-witness-1" as NonEmptyStr,
+      request_revision: revision,
+      decision: ProposeApprove,
+      attempt: "attempt-1" as AttemptIdentity,
+      issued_at: "2026-10-04T00:00:00Z",
+      expires_at: "2026-10-04T00:15:00Z",
+      key_id: "broker-2026-10" as MacKeyId,
+    },
+    decided_by: "operator" as NonEmptyStr,
+  }
+}
+
+fn rotation_approval(s: BmcRotationRouteStanding, user: IpmiUserId) -> Redemption {
+  approval(authority: rotation_apply_authority, revision: rotation_route_request_identity(standing: s, request: IpmiSetUserPassword { user: user }))
+}
+
+// The approval names the route's own request: the operator approves what the route grounds.
+fn route_user(s: BmcRotationRouteStanding) -> IpmiUserId {
+  match s.grounding {
+    RouteGroundedByExecutedRequest { request: r, request_receipt: _, response_receipt: _ } => request_user(r: r)
+    RouteGroundedByCitedSource { request: r, citation: _ } => request_user(r: r)
+    RouteQualificationCandidate { request: r, evidence: _ } => request_user(r: r)
+    RouteUngrounded => managed_user
+  }
+}
+
+fn request_user(r: BmcAccountWriteRequest) -> IpmiUserId {
+  match r {
+    IpmiSetUserPassword { user: u } => u
+    RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => managed_user
+  }
+}
+
+// A route grounded by the real qualification effect: candidate -> executed request on a qualification
+// world -> grounded. The qualification world is the lab controller before intake.
+fn grounded_route(user: IpmiUserId) -> BmcRotationRouteStanding {
+  let request = IpmiSetUserPassword { user: user }
+  let candidate = rotation_route_candidate(
+    endpoint: lab_endpoint,
+    firmware: lab_firmware(),
+    request: request,
+    evidence: ObservedSurfaceRead {
+      surface: SurfaceAccountManagement,
+      receipt: EvidenceRef { label: "lab IPMI user list read", digest: content_hash_of_value(value: "lab IPMI user list read" as NonEmptyStr) },
+    },
+  )
+  let qualification_world = world(users: [BmcIpmiUser { id: 3, password: "qualify" }, BmcIpmiUser { id: 2, password: "qualify" }])
+  match qualify_rotation_route(
+    standing: candidate,
+    approval: approval(authority: route_qualification_authority, revision: rotation_route_request_identity(standing: candidate, request: request)),
+    response: dry_route_qualification_request(world: qualification_world, request: request, password: "qualify-Secret!1").response,
+  ) {
+    RouteQualified { standing: s } => s
+    RouteQualificationRefused { standing: s, cause: _ } => s
+  }
+}
+
+// ── the secret order ────────────────────────────────────────────────────────────────────────────
+
+fn version_identity(secret: String, version: String) -> SmResolvedVersionIdentity {
+  join(["projects/gunbai-secrets/secrets/", secret, "/versions/", version], "") as SmResolvedVersionIdentity
+}
+
+fn ready(secret: String, version: String, bytes: String) -> SecretCredentialFetch {
+  SecretCredentialReady { credential: bytes as Secret, resolved_version: version_identity(secret: secret, version: version) }
+}
+
+fn stored_then_fetched(
+  current: ManagedCredentialReference,
+  secret: String,
+  version: String,
+  fetch: SecretCredentialFetch,
+  store_at: EpochMs,
+  fetch_at: EpochMs,
+) -> GenerationFetchAdmission? {
+  match admit_stored_generation(current: current, added: version_identity(secret: secret, version: version), stored_at: observer_at(millis: store_at)) {
+    GenerationStoreRefused { cause: _ } => none
+    GenerationStored { stored: st } => Present { value: admit_fetched_generation(stored: st, fetch: fetch, fetched_at: observer_at(millis: fetch_at)) }
+  }
+}
+
+fn fetched(current: ManagedCredentialReference, secret: String, version: String, bytes: String, fetch_at: EpochMs) -> ManagedCredentialGenerationFetched? {
+  match stored_then_fetched(current: current, secret: secret, version: version, fetch: ready(secret: secret, version: version, bytes: bytes), store_at: t_store, fetch_at: fetch_at) {
+    Absent => none
+    Present { value: a } =>
+      match a {
+        GenerationFetchRefused { cause: _ } => none
+        GenerationFetched { fetched: f } => Present { value: f }
+      }
+  }
+}
+
+fn fetch_label(a: GenerationFetchAdmission?) -> String {
+  match a {
+    Absent => "store-refused"
+    Present { value: x } =>
+      match x {
+        GenerationFetched { fetched: _ } => "fetched"
+        GenerationFetchRefused { cause: c } =>
+          match c {
+            GenerationFetchNotReady { detail: _ } => "not-ready"
+            GenerationFetchResolvedAnotherVersion { stored: _, resolved: _ } => "another-version"
+            GenerationFetchPrecedesStore { stored_at: _, fetched_at: _ } => "fetch-precedes-store"
+          }
+      }
+  }
+}
+
+fn managed_generation(version: String, fetch_at: EpochMs) -> ManagedCredentialGenerationFetched? {
+  fetched(current: managed_ref(version: "1", epoch: 1), secret: "bmc-lab-o1b-gunbc", version: version, bytes: managed_password_v2, fetch_at: fetch_at)
+}
+
+fn break_glass_generation() -> ManagedCredentialGenerationFetched? {
+  fetched(current: break_glass_ref(), secret: "bmc-lab-o1b-admin", version: "4", bytes: break_glass_password, fetch_at: t_fetch)
+}
+
+// ── the plan ────────────────────────────────────────────────────────────────────────────────────
+
+fn plan_with(
+  reading: BmcAccountStateObservation,
+  goal: BmcSecureGoal,
+  managed_route: BmcRotationRouteStanding,
+  managed_generation_value: ManagedCredentialGenerationFetched?,
+  planned_at: EpochMs,
+) -> BmcAccountPlanOutcome? {
+  match managed_generation_value {
+    Absent => none
+    Present { value: mg } =>
+      match break_glass_generation() {
+        Absent => none
+        Present { value: bg } =>
+          Present {
+            value: plan_bmc_account_action(
+              subject: lab_subject(),
+              goal: goal,
+              reading: reading,
+              firmware: lab_firmware(),
+              managed_user: managed_user,
+              managed_route: managed_route,
+              managed_approval: rotation_approval(s: managed_route, user: route_user(s: managed_route)),
+              managed_generation: mg,
+              published_route: grounded_route(user: published_user),
+              published_approval: rotation_approval(s: grounded_route(user: published_user), user: published_user),
+              published_generation: bg,
+              planned_at: observer_at(millis: planned_at),
+            ),
+          }
+      }
+  }
+}
+
+fn plan_default(reading: BmcAccountStateObservation) -> BmcAccountPlanOutcome? {
+  plan_with(reading: reading, goal: goal_v1(), managed_route: grounded_route(user: managed_user), managed_generation_value: managed_generation(version: "2", fetch_at: t_fetch), planned_at: t_plan)
+}
+
+fn admission_label(a: RotationApplyAdmission) -> String {
+  match a {
+    RotationApplyAdmitted { standing: _, request: _, decided_by: _ } => "admitted"
+    RotationApplyRouteNotGrounded { standing: _ } => "route-not-grounded"
+    RotationApplyRouteForAnotherController { route_endpoint: _, target_endpoint: _ } => "another-controller"
+    RotationApplyRouteForAnotherBuild { route_firmware: _, target_firmware: _ } => "another-build"
+    RotationApplyApprovalRefused { cause: _ } => "approval-refused"
+    RotationApplyApprovalDenied => "approval-denied"
+    RotationApplyApprovalForAnotherAuthority { authority: _ } => "another-authority"
+    RotationApplyApprovalForAnotherRequest { approved: _, requested: _ } => "another-request"
+  }
+}
+
+fn apply_on(cause: BmcSecureRefusalCause) -> String {
+  join(["apply:", bmc_secure_refusal_label(cause: cause) as String], "")
+}
+
+fn decision_label(d: UpsertDecision<BmcAccountActionDue>) -> String {
+  match d {
+    Noop => "noop"
+    Refuse { reason: _ } => "refuse"
+    Apply { plan: due } => join(["apply:", bmc_secure_refusal_label(cause: due.deviation) as String], "")
+  }
+}
+
+fn plan_label(o: BmcAccountPlanOutcome?) -> String {
+  match o {
+    Absent => "fixture-generation-unavailable"
+    Present { value: x } =>
+      match x {
+        BmcAccountPlanned { plan: _ } => "planned"
+        BmcAccountPlanRefused { cause: c } =>
+          match c {
+            AccountPlanNotDue { decision: d } => join(["not-due:", decision_label(d: d)], "")
+            AccountPlanUnobserved { cause: _ } => "unobserved"
+            AccountWriteNotAdmitted { target: _, admission: a } => join(["not-admitted:", admission_label(a: a)], "")
+            AccountWriteRequestNotIpmiUser { target: _, request: _ } => "not-ipmi-user"
+            AccountWriteRequestForAnotherUser { target: _, admitted: _, required: _ } => "another-user"
+            ManagedGenerationForAnotherAccount { generation: _, in_force: _ } => "generation-another-account"
+            ManagedGenerationNotAdvanced { in_force: _, generation: _ } => "generation-not-advanced"
+            GenerationFetchedAfterPlan { target: _, fetched_at: _, planned_at: _ } => "fetched-after-plan"
+            PlanPrecedesDivergedReading { read_floor: _, planned_at: _ } => "plan-precedes-reading"
+          }
+      }
+  }
+}
+
+fn phase_label(o: BmcSecurePhaseOutcome) -> String {
+  match o {
+    BmcSecurePhaseConverged { receipt: r } =>
+      match r.decision {
+        BmcSecurePhaseNoop { observation: _ } => "converged:noop"
+        BmcSecurePhaseApplied { plan: _, application: _, post_read: _ } => "converged:applied"
+      }
+    BmcSecurePhaseRefused { cause: c } =>
+      match c {
+        PhaseReadingUnobserved { cause: _ } => "refused:unobserved"
+        PhaseNotHeld { decision: d } => join(["refused:not-held:", decision_label(d: d)], "")
+        ApplicationIncomplete { managed_write_completed: m, published_write_completed: p, response_receipt: _ } =>
+          join(["refused:incomplete:", if m { "m" } else { "-" }, if p { "p" } else { "-" }], "")
+        PostReadForAnotherController { expected: _, found: _ } => "refused:another-controller"
+        PostReadPrecedesApplication { applied_at: _, read_floor: _ } => "refused:post-read-precedes-application"
+        ApplicationPrecedesPlan { planned_at: _, applied_at: _ } => "refused:application-precedes-plan"
+        PostReadNotHeld { decision: d } => join(["refused:post-read-not-held:", decision_label(d: d)], "")
+      }
+  }
+}
+
+// ── the whole Apply path: read, plan, write the world, re-read, mint ─────────────────────────────
+
+fn applied_on(
+  initial: BmcWorld,
+  closed_before: Bool,
+  managed_fetch: SecretCredentialFetch,
+  applied_at: EpochMs,
+  readback_at: EpochMs,
+) -> String {
+  let before = read(w: initial, subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, closed: closed_before, at: t_read)
+  match plan_default(reading: before) {
+    Absent => "fixture-generation-unavailable"
+    Present { value: o } =>
+      match o {
+        BmcAccountPlanRefused { cause: _ } => join(["plan:", plan_label(o: Present { value: o })], "")
+        BmcAccountPlanned { plan: p } => {
+          let step = dry_apply_bmc_account_plan(
+            world: initial,
+            plan: p,
+            managed_fetch: managed_fetch,
+            published_fetch: ready(secret: "bmc-lab-o1b-admin", version: "4", bytes: break_glass_password),
+            applied_at_millis: applied_at,
+          )
+          let after = read(w: step.world, subject: lab_subject(), managed: p.goal.managed, managed_password: managed_password_v2, closed: closed_before, at: readback_at)
+          phase_label(o: bmc_secure_phase_applied(application: step.application, post_read: after))
+        }
+      }
+  }
+}
+
+fn managed_v2_fetch() -> SecretCredentialFetch {
+  ready(secret: "bmc-lab-o1b-gunbc", version: "2", bytes: managed_password_v2)
+}
+
+fn decision_on(w: BmcWorld, closed: Bool) -> String {
+  match inspect_bmc_secure_state(
+    subject: lab_subject(),
+    goal: goal_v1(),
+    reading: read(w: w, subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, closed: closed, at: t_read),
+  ) {
+    BmcSecureStateUnobserved { cause: _ } => "unobserved"
+    BmcSecureStateInspected { observed: _, assessment: _, decision: d } => decision_label(d: d)
+  }
+}
+
+// ── CONTROLS ────────────────────────────────────────────────────────────────────────────────────
+
+// Already secured -> Noop, minted as a Noop receipt, and no plan can be made over it.
+test fn an_already_secured_controller_is_a_noop() -> Bool {
+  let reading = read(w: world_secured(), subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, closed: true, at: t_read)
+  decision_on(w: world_secured(), closed: true) == "noop"
+    && phase_label(o: bmc_secure_phase_noop(subject: lab_subject(), goal: goal_v1(), reading: reading)) == "converged:noop"
+    && plan_label(o: plan_default(reading: reading)) == "not-due:noop"
+}
+
+// Managed accepted AND factory accepted -> NOT Noop: Apply on the published credential, and the full
+// path writes the world, re-reads it, and mints an Applied receipt carrying the application receipts.
+test fn managed_and_factory_both_accepted_is_not_a_noop_and_converges_through_apply() -> Bool {
+  let reading = read(w: world_factory_open(), subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, closed: true, at: t_read)
+  decision_on(w: world_factory_open(), closed: true) == apply_on(cause: PublishedCredentialStillAccepted { channel: 1 })
+    && phase_label(o: bmc_secure_phase_noop(subject: lab_subject(), goal: goal_v1(), reading: reading)) == join(["refused:not-held:", apply_on(cause: PublishedCredentialStillAccepted { channel: 1 })], "")
+    && applied_on(initial: world_factory_open(), closed_before: true, managed_fetch: managed_v2_fetch(), applied_at: t_apply, readback_at: t_readback) == "converged:applied"
+}
+
+// Reflash-restored factory access (managed user erased, factory answers) -> the SAME Apply and
+// readback path, with no second recovery authority.
+test fn reflash_restored_factory_access_takes_the_same_apply_and_readback_path() -> Bool {
+  decision_on(w: world_reflash_restored(), closed: true) == apply_on(cause: ManagedCredentialRejected)
+    && applied_on(initial: world_reflash_restored(), closed_before: true, managed_fetch: managed_v2_fetch(), applied_at: t_apply, readback_at: t_readback) == "converged:applied"
+}
+
+// Ordering is on the observer clock. A readback stamped with the controller's year-2000 instant
+// cannot satisfy readback-after-application; the observer's own later instant can. (That a
+// ControllerClockReading cannot be placed in an ordering field at all is the compile-time half,
+// test.claim.machine_intake_bmc_secure_state_forged_probe_witness.)
+test fn a_year_2000_readback_cannot_satisfy_ordering_and_an_observer_instant_can() -> Bool {
+  applied_on(initial: world_factory_open(), closed_before: true, managed_fetch: managed_v2_fetch(), applied_at: t_apply, readback_at: year_2000) == "refused:post-read-precedes-application"
+    && applied_on(initial: world_factory_open(), closed_before: true, managed_fetch: managed_v2_fetch(), applied_at: t_apply, readback_at: t_readback) == "converged:applied"
+}
+
+// An ungrounded route with the operator's approval of the rotation -> the Apply is refused before
+// any write is planned; the grounded route with the same approval shape is planned.
+test fn an_ungrounded_route_with_approval_refuses_the_apply() -> Bool {
+  let reading = read(w: world_factory_open(), subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, closed: true, at: t_read)
+  let ungrounded = rotation_route_ungrounded(endpoint: lab_endpoint, firmware: lab_firmware())
+  plan_label(o: plan_with(reading: reading, goal: goal_v1(), managed_route: ungrounded, managed_generation_value: managed_generation(version: "2", fetch_at: t_fetch), planned_at: t_plan)) == "not-admitted:route-not-grounded"
+    && plan_label(o: plan_default(reading: reading)) == "planned"
+}
+
+// The secret order. The generation must be stored, then fetched at exactly the stored version, before
+// the plan; a write whose fetch resolves another version writes nothing.
+test fn the_secret_order_is_carried_by_the_plan() -> Bool {
+  let reading = read(w: world_factory_open(), subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, closed: true, at: t_read)
+  let current = managed_ref(version: "1", epoch: 1)
+  fetch_label(a: stored_then_fetched(current: current, secret: "bmc-lab-o1b-gunbc", version: "2", fetch: managed_v2_fetch(), store_at: t_store, fetch_at: t_fetch)) == "fetched"
+    && fetch_label(a: stored_then_fetched(current: current, secret: "bmc-lab-o1b-gunbc", version: "2", fetch: ready(secret: "bmc-lab-o1b-gunbc", version: "1", bytes: managed_password_v1), store_at: t_store, fetch_at: t_fetch)) == "another-version"
+    && fetch_label(a: stored_then_fetched(current: current, secret: "bmc-lab-o1b-gunbc", version: "2", fetch: managed_v2_fetch(), store_at: t_fetch, fetch_at: t_store)) == "fetch-precedes-store"
+    && fetch_label(a: stored_then_fetched(current: current, secret: "bmc-lab-o1b-gunbc", version: "2", fetch: SecretCredentialFetchRefused { reason: "no token" as NonEmptyStr }, store_at: t_store, fetch_at: t_fetch)) == "not-ready"
+    && fetch_label(a: stored_then_fetched(current: current, secret: "bmc-lab-o1b-other", version: "2", fetch: managed_v2_fetch(), store_at: t_store, fetch_at: t_fetch)) == "store-refused"
+    && plan_label(o: plan_with(reading: reading, goal: goal_v1(), managed_route: grounded_route(user: managed_user), managed_generation_value: managed_generation(version: "2", fetch_at: t_apply), planned_at: t_plan)) == "fetched-after-plan"
+    && applied_on(initial: world_factory_open(), closed_before: true, managed_fetch: ready(secret: "bmc-lab-o1b-gunbc", version: "1", bytes: managed_password_v1), applied_at: t_apply, readback_at: t_readback) == "refused:incomplete:-p"
+}
+
+// The readback is independent by ordering: the pre-write reading passed as the post-read is refused,
+// and so is a readback of another controller or of the generation the write replaced.
+test fn the_post_read_is_independent_of_the_reading_that_diverged() -> Bool {
+  let initial = world_factory_open()
+  let before = read(w: initial, subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, closed: true, at: t_read)
+  match plan_default(reading: before) {
+    Absent => false
+    Present { value: o } =>
+      match o {
+        BmcAccountPlanRefused { cause: _ } => false
+        BmcAccountPlanned { plan: p } => {
+          let step = dry_apply_bmc_account_plan(world: initial, plan: p, managed_fetch: managed_v2_fetch(), published_fetch: ready(secret: "bmc-lab-o1b-admin", version: "4", bytes: break_glass_password), applied_at_millis: t_apply)
+          let old_generation = read(w: step.world, subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, closed: true, at: t_readback)
+          phase_label(o: bmc_secure_phase_applied(application: step.application, post_read: before)) == "refused:post-read-precedes-application"
+            && phase_label(o: bmc_secure_phase_applied(application: step.application, post_read: old_generation)) == "refused:post-read-not-held:refuse"
+            && list_length(items: match bmc_secure_phase_applied(application: step.application, post_read: read(w: step.world, subject: lab_subject(), managed: p.goal.managed, managed_password: managed_password_v2, closed: true, at: t_readback)) {
+              BmcSecurePhaseConverged { receipt: r } => bmc_secure_phase_receipt_evidence(receipt: r)
+              BmcSecurePhaseRefused { cause: _ } => []
+            }) > 2
+        }
+      }
+  }
+}
+
+// A generation that does not advance the epoch in force, or belongs to another account, plans nothing;
+// a reading of another subject is unobserved.
+test fn the_plan_refuses_a_stale_or_foreign_generation_and_a_foreign_reading() -> Bool {
+  let reading = read(w: world_factory_open(), subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, closed: true, at: t_read)
+  let foreign = read(w: world_factory_open(), subject: other_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, closed: true, at: t_read)
+  let stale_goal = BmcSecureGoal { managed: managed_ref(version: "2", epoch: 2), policy: intake_qualification_policy(environment: DevelopmentAndTest) }
+  plan_label(o: plan_with(reading: reading, goal: goal_v1(), managed_route: grounded_route(user: managed_user), managed_generation_value: break_glass_generation(), planned_at: t_plan)) == "generation-another-account"
+    && plan_label(o: plan_with(reading: read(w: world_factory_open(), subject: lab_subject(), managed: managed_ref(version: "2", epoch: 2), managed_password: managed_password_v1, closed: true, at: t_read), goal: stale_goal, managed_route: grounded_route(user: managed_user), managed_generation_value: managed_generation(version: "2", fetch_at: t_fetch), planned_at: t_plan)) == "generation-not-advanced"
+    && plan_label(o: plan_default(reading: foreign)) == "unobserved"
+    && plan_label(o: plan_with(reading: reading, goal: goal_v1(), managed_route: grounded_route(user: published_user), managed_generation_value: managed_generation(version: "2", fetch_at: t_fetch), planned_at: t_plan)) == "another-user"
+}

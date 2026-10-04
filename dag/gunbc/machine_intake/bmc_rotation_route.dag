@@ -365,17 +365,6 @@ fn admit_rotation_apply(
   }
 }
 
-// ── WHO CONSUMES THE ADMISSION, AND BY WHAT ROUTE (DESIGN §3c) ────────────────────────────────
-//
-// THIS MODULE SITS BELOW gunbc.machine_intake_bmc_secure AND IMPORTS NOTHING FROM IT. The BmcSecure
-// Apply (cut O1b) imports admit_rotation_apply and refuses on any arm but RotationApplyAdmitted, so
-// the refusal for an ungrounded route is that module's to type; mapping a route onto its rotation-event
-// vocabulary here would make the import graph cyclic the moment O1b lands. The executing consumer
-// today is test.claim.machine_intake_bmc_rotation_route_witness_test.
-data rotation_route_consumption_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when the cut O1b BmcSecure Apply in gunbc.machine_intake_bmc_secure calls admit_rotation_apply on the route standing for the controller and build it writes, and refuses before any account write on every arm other than RotationApplyAdmitted; NOT satisfied by this module typechecking, by the witness exercising the arms, or by an Apply that receives an admission it did not compute from the standing" as NonEmptyStr,
-)
-
 // The modeled Redfish account-password operation and action shape, by reference, for a candidate
 // naming an observed Redfish surface.
 fn redfish_account_password_write() -> BmcAccountWriteRequest {
