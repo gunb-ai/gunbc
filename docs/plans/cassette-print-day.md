@@ -198,3 +198,11 @@ the modeled 40 mm 140-mm fan/cradle/guard sandwich. Use non-countersunk heads an
 only snug against the plastic. Nut/washer selection and engagement still require assembly
 review. These suggestions do not resolve motherboard standoff thread/height. Rear arms,
 crossmember and corner posts retain their modeled printed pins.
+
+Future operator launches should use printer workflow revision `a96a2fd8b5` from PR #13149,
+staged on srv1 at `/home/briansrls/print-run-2026-10-04/source-reconciled-a96a2fd8b5`.
+It integrates bounded exact-filename RUNNING reconciliation after both acknowledged and
+uncertain publishes, with durable raw reports and final receipt. The previous wave-three
+scripts remain historical receipts and must not be rerun. The new workflow passed 35 local
+checks; its full live start path has not yet been exercised. Use fresh attempts and the same
+approval/bed-clear/claim requirements for future jobs.
