@@ -645,10 +645,6 @@ import v2.std.algebra { any }
 // token sequences once each and stores five Bool verdicts; each claim that paid its own parse measured
 // over the new-witness budget on the floor runs of #13099 (eval steps 72-105k). Portable because it
 // holds only Bools.
-// THE dag TARGET TEXT ROUND-TRIP ROW: v2.test.emit.dag_target_text_round_trip trt_verdicts renders six
-// emitted token sequences to text, lexes each and parses each once, and stores six Bool verdicts. The
-// floor of #13113 measured one such claim at 67k and one at 122k eval steps when each paid its own
-// parse. Portable because it holds only Bools.
 // THE XL-2 IF-ARM AND STATEMENT-SPINE ROW IS THE SAME GROUND AT THIRTEEN SPECIMENS:
 // v2.test.claim.namespace_xl0.if_arm_and_statement_lowering_refusal iasl_outcomes drives one front
 // end over thirteen inline modules and stores one verdict arm per module, portable for the same reason.
@@ -938,7 +934,6 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.parse.brace_and_lambda_head_route.bhr_verdicts",
   "v2.test.parse.bare_node_statement_route.bns_verdicts",
   "v2.test.emit.dag_bind_let_block_scoped.dbl_verdicts",
-  "v2.test.emit.dag_target_text_round_trip.trt_verdicts",
   "v2.test.parse.type_decl_modifier_g0_parse_probe.caret_tree_atom_identities",
   "v2.test.claim.body_lowering.string_literal_value_lowering.slv_verdicts",
   "v2.test.claim.namespace_xl0.value_read_refusal.vrr_outcomes",
