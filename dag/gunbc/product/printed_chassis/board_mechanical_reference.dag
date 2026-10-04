@@ -1,16 +1,36 @@
 module product.printed_chassis.board_mechanical_reference
-import std.types {Int,List,String}
-import extdeps.languages.json.emit {JsonValue,json_object,json_kv,json_array,json_string,json_int,json_null}
+import std.types {Int,List,String,NonEmptyStr}
+import std.measure {Micrometer,micrometer_count}
+import extdeps.external_authority {ExternalAuthority,CitedFigureStanding,CitedToAuthority,TranscribedUncited}
+import extdeps.uri {uri_wire}
+import extdeps.ocp.mt_jade.platform {mt_jade_motherboard_mechanical}
+import extdeps.ocp.mt_jade.subject {mt_jade_subject_authority_anchor}
+import extdeps.boards.asrock_rack {BoardLocationStanding,HolePositionEstimatedFromImage,BoardStandardLocationCorrespondence,standoff_placement,StandoffAdmitted,StandoffProhibited}
+import extdeps.standards.micro_atx {micro_atx_mounting_locations,MountingLocationId,LocB,LocC,LocF,LocH,LocJ,LocL,LocM,LocR,LocS}
+import gunbc.specification_citation_read_provenance {SpecificationCitationReadReceipt,mt_jade_mirror_citation_read_receipt}
+import extdeps.languages.json.emit {JsonValue,json_object,json_kv,json_array,json_string,json_int,json_null,json_bool}
 
-// Product planning inference authorized by the operator on 2026-10-04. These are
-// candidate board fastening features, not an authoritative or complete hole map.
-// OCP Jade rev 1.0 p9 Fig1 is less obscured and has a more consistent aspect ratio
-// than the annotated p13 Fig3. Render at 2 PDF pixels/point (1224x1584). PCB bounds
-// x394..830, y594..1083; connector projections excluded. Source PDF SHA256:
-// 1ca9adc18543ef4686537aaafa386fa09075f75612dd3ea57c03b7d8d438f6ae.
-// Independent axis scaling is an approximation. No diameter, thread, underside
-// clearance, accuracy guarantee or fabrication admission follows from these rows.
+// A repository observation, not an OCP-authored coordinate map. Dimensions,
+// citation and read receipt are joined from their existing authorities.
 type CandidateMountPixel {id:String,x:Int,y:Int}
+type RasterDatum = FrontLeftBoundingBoxXRightDepthRear {}
+type ImageMountCoverage = VisibleCandidatesIncomplete {}
+type ImageMountAccuracy = AccuracyUnestablished {}
+type RasterCalibration {
+ left_px:Int,right_px:Int,front_px:Int,rear_px:Int,
+ page:Int,figure:Int,pixels_per_point:Int,datum:RasterDatum,
+ width:Micrometer,depth:Micrometer
+}
+type ImageMountReading {
+ calibration:RasterCalibration,candidates:List<CandidateMountPixel>,
+ source:ExternalAuthority,source_read:SpecificationCitationReadReceipt,
+ standing:BoardLocationStanding,coverage:ImageMountCoverage,accuracy:ImageMountAccuracy
+}
+type BoardMountingReference
+ = StandardLocationReference {locations:List<BoardStandardLocationCorrespondence>}
+ | ImageLocationReference {reading:ImageMountReading}
+ | MountingReferencePending {read_obligation:NonEmptyStr}
+
 data jade_candidate_mount_pixels:List<CandidateMountPixel> = [
  CandidateMountPixel {id:"J01",x:496,y:604},CandidateMountPixel {id:"J02",x:702,y:604},
  CandidateMountPixel {id:"J03",x:405,y:829},CandidateMountPixel {id:"J04",x:821,y:831},
@@ -20,19 +40,66 @@ data jade_candidate_mount_pixels:List<CandidateMountPixel> = [
  CandidateMountPixel {id:"J11",x:498,y:1047},CandidateMountPixel {id:"J12",x:565,y:1062},
  CandidateMountPixel {id:"J13",x:739,y:1047},
 ]
-fn jade_from_left_um(p:CandidateMountPixel) -> Int {(p.x-394)*428000/436}
-fn jade_from_front_um(p:CandidateMountPixel) -> Int {(p.y-594)*479360/489}
-fn mounting_reference_json(id:String) -> JsonValue {
- if id=="mt-jade" {json_object(members:[
- json_kv(key:"source",value:json_string(s:"https://www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1")),
- json_kv(key:"figure",value:json_string(s:"p9 Fig1; outline p13 section 7.2; archived PDF hash recorded in model")),
- json_kv(key:"standing",value:json_string(s:"Image-derived candidate mounts; incomplete and unverified. Double-check feature identity, board revision and coordinates before mounting.")),
- json_kv(key:"datum",value:json_string(s:"Left/front bounding-box corner; front is image top/fan edge; coordinates positive right and toward rear. Outline is nonrectangular.")),
- json_kv(key:"candidates",value:json_array(elements:map(jade_candidate_mount_pixels,p=>json_object(members:[json_kv(key:"id",value:json_string(s:p.id)),json_kv(key:"from_left_um",value:json_int(n:jade_from_left_um(p:p))),json_kv(key:"from_front_um",value:json_int(n:jade_from_front_um(p:p))),json_kv(key:"diameter_um",value:json_null())])))),
- json_kv(key:"accuracy_bound_um",value:json_null())
- ])} else {if id=="mt-collins" {json_object(members:[
- json_kv(key:"source",value:json_string(s:"https://portwell.com/pdf/server/APTSA-627211-B4.pdf")),
- json_kv(key:"standing",value:json_string(s:"User-supplied secondary outline reference; 424.2 mm width / 512 mm depth is a planning inference. Double-check dimensions and revision. Held guide p36 Fig12 is cropped/occluded; no global hole coordinates inferred from it. Jade mounts must not be copied.")),
- json_kv(key:"candidates",value:json_array(elements:[])),json_kv(key:"accuracy_bound_um",value:json_null())
- ])} else {json_null()}}
+
+data jade_raster_calibration:RasterCalibration = RasterCalibration {
+ left_px:394,right_px:830,front_px:594,rear_px:1083,
+ page:9,figure:1,pixels_per_point:2,datum:FrontLeftBoundingBoxXRightDepthRear {},
+ width:mt_jade_motherboard_mechanical.outline_width,depth:mt_jade_motherboard_mechanical.outline_depth
+}
+data jade_image_mount_reading:ImageMountReading = ImageMountReading {
+ calibration:jade_raster_calibration,candidates:jade_candidate_mount_pixels,
+ source:mt_jade_subject_authority_anchor,source_read:mt_jade_mirror_citation_read_receipt,
+ standing:HolePositionEstimatedFromImage,coverage:VisibleCandidatesIncomplete {},accuracy:AccuracyUnestablished {}
+}
+// Scaling is a display estimate only. Calibration is fixed by the observation;
+// passing this coordinate never discharges standoff_placement's standing check.
+fn image_from_left_um(c:RasterCalibration,p:CandidateMountPixel) -> Int {(p.x-c.left_px)*micrometer_count(m:c.width)/(c.right_px-c.left_px)}
+fn image_from_front_um(c:RasterCalibration,p:CandidateMountPixel) -> Int {(p.y-c.front_px)*micrometer_count(m:c.depth)/(c.rear_px-c.front_px)}
+fn jade_from_left_um(p:CandidateMountPixel) -> Int {image_from_left_um(c:jade_raster_calibration,p:p)}
+fn jade_from_front_um(p:CandidateMountPixel) -> Int {image_from_front_um(c:jade_raster_calibration,p:p)}
+fn cited_figure_json(standing:CitedFigureStanding) -> JsonValue {
+ match standing {
+ CitedToAuthority {authority:a}=>json_object(members:[json_kv(key:"source",value:json_string(s:uri_wire(uri:a.uri) as String)),json_kv(key:"standing",value:json_string(s:"cited"))])
+ TranscribedUncited {read_obligation:o}=>json_object(members:[json_kv(key:"standing",value:json_string(s:"transcribed; read required")),json_kv(key:"read_obligation",value:json_string(s:o as String))])
+ }
+}
+fn placement_admitted(standing:BoardLocationStanding) -> Bool {
+ match standoff_placement(standing:standing) {StandoffAdmitted=>true StandoffProhibited {cause:_}=>false}
+}
+fn standard_location_label(id:MountingLocationId) -> String {
+ match id {LocB=>"B" LocC=>"C" LocF=>"F" LocH=>"H" LocJ=>"J" LocL=>"L" LocM=>"M" LocR=>"R" LocS=>"S"}
+}
+fn mounting_reference_json(reference:BoardMountingReference) -> JsonValue {
+ match reference {
+ MountingReferencePending {read_obligation:o}=>json_object(members:[json_kv(key:"kind",value:json_string(s:"pending")),json_kv(key:"read_obligation",value:json_string(s:o as String))])
+ StandardLocationReference {locations:rows}=>json_object(members:[
+ json_kv(key:"kind",value:json_string(s:"standard-location-correspondence")),
+ json_kv(key:"locations",value:json_array(elements:map(rows,r=>json_object(members:[
+ json_kv(key:"location",value:json_string(s:standard_location_label(id:r.location))),
+ json_kv(key:"standoff_admitted",value:json_bool(b:placement_admitted(standing:r.standing))),
+ json_kv(key:"standard_coordinates",value:json_array(elements:map(filter(micro_atx_mounting_locations,m=>m.id==r.location),m=>json_object(members:[json_kv(key:"along_rear_edge_um",value:json_int(n:micrometer_count(m:m.along_rear_edge))),json_kv(key:"depth_from_rear_edge_um",value:json_int(n:micrometer_count(m:m.depth_from_rear_edge)))]))))
+ ]))))])
+ ImageLocationReference {reading:r}=>json_object(members:[
+ json_kv(key:"kind",value:json_string(s:"image-derived-candidates")),
+ json_kv(key:"source",value:json_string(s:uri_wire(uri:r.source.uri) as String)),
+ json_kv(key:"source_read_subject",value:json_string(s:concat(r.source_read.subject.module_path,concat(".",r.source_read.subject.decl_name)))),
+ json_kv(key:"page",value:json_int(n:r.calibration.page)),json_kv(key:"figure",value:json_int(n:r.calibration.figure)),
+ json_kv(key:"pixels_per_point",value:json_int(n:r.calibration.pixels_per_point)),
+ json_kv(key:"raster_bounds",value:json_array(elements:map([r.calibration.left_px,r.calibration.right_px,r.calibration.front_px,r.calibration.rear_px],n=>json_int(n:n)))),
+ json_kv(key:"datum",value:json_string(s:match r.calibration.datum {FrontLeftBoundingBoxXRightDepthRear {}=>"Front-left bounding-box corner; X right, depth rearward. Bounding box is not routed PCB outline."})),
+ json_kv(key:"coverage",value:json_string(s:match r.coverage {VisibleCandidatesIncomplete {}=>"visible candidates only; incomplete"})),
+ json_kv(key:"coordinate_table_markdown",value:json_string(s:image_candidate_table_markdown(reading:r))),
+ json_kv(key:"accuracy_bound_um",value:match r.accuracy {AccuracyUnestablished {}=>json_null()}),
+ json_kv(key:"candidates",value:json_array(elements:map(r.candidates,p=>json_object(members:[
+ json_kv(key:"id",value:json_string(s:p.id)),json_kv(key:"from_left_um",value:json_int(n:image_from_left_um(c:r.calibration,p:p))),
+ json_kv(key:"from_front_um",value:json_int(n:image_from_front_um(c:r.calibration,p:p))),
+ json_kv(key:"diameter_um",value:json_null()),json_kv(key:"standoff_admitted",value:json_bool(b:placement_admitted(standing:r.standing)))
+ ]))))
+ ])
+ }
+}
+// The documentation table is a projection of this function, not a second set of
+// coordinates. The review emitter publishes the same values as JSON above.
+fn image_candidate_table_markdown(reading:ImageMountReading) -> String {
+ concat("| Candidate | From left, um | From front, um |\n| --- | ---: | ---: |\n",join(map(reading.candidates,p=>join(["| ",p.id," | ",to_string(image_from_left_um(c:reading.calibration,p:p))," | ",to_string(image_from_front_um(c:reading.calibration,p:p))," |\n"],"")),""))
 }

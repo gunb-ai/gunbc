@@ -708,8 +708,11 @@ data asrock_altrad8ud_standoff_figure_authority: ExternalAuthority = ExternalAut
 
 // WHAT IS KNOWN about a standard location on this specific board. Every arm names its evidence
 // route, so the grade is readable from the constructor rather than from prose beside it.
+// Image-position estimates (used by Jade review) do not establish a location; unlike
+// a correspondence to exact standard coordinates, they cannot admit a standoff.
 type BoardLocationStanding
   = HoleCorrespondenceInferred
+  | HolePositionEstimatedFromImage
   | HoleAbsenceExplicitlyDirected
   | HoleNotObservedInDrawing
   | HolePhysicallyConfirmedPresent
@@ -730,6 +733,7 @@ type StandoffPlacementDecision
 // physically-confirmed arms below are unpopulated today and are the shape the measurement lands in.
 fn standoff_placement(standing: BoardLocationStanding) -> StandoffPlacementDecision {
   match standing {
+    HolePositionEstimatedFromImage => StandoffProhibited { cause: NoAdmittedBoardHole }
     HoleCorrespondenceInferred => StandoffAdmitted
     HolePhysicallyConfirmedPresent => StandoffAdmitted
     HoleAbsenceExplicitlyDirected => StandoffProhibited { cause: ProductSaysRemove }

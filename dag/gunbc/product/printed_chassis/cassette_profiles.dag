@@ -1,14 +1,44 @@
 module product.printed_chassis.cassette_profiles
-import std.measure {micrometer}
+import std.measure {micrometer_count}
 import std.types {List}
-import product.printed_chassis.cassette_profile {CassetteProfile,ProvisionalBoardOutline,PublishedBoardOutline,BoardOutlinePending,RetainPlatformPowerAssembly,IndependentPowerCassette,transplant_obligations,retained_platform_subsystems}
+import product.printed_chassis.cassette_profile {CassetteProfile,BoardOutline,BoardOutlineKnown,BoardOutlinePending,RetainPlatformPowerAssembly,IndependentPowerCassette,transplant_obligations,retained_platform_subsystems}
+import product.printed_chassis.board_mechanical_reference {StandardLocationReference,ImageLocationReference,MountingReferencePending,jade_image_mount_reading}
+import extdeps.external_authority {CitedToAuthority}
 import extdeps.ocp.mt_jade.platform {mt_jade_motherboard_mechanical}
-import extdeps.boards.asrock_rack {asrock_altrad8ud_extent_along_rear_io,asrock_altrad8ud_extent_depth}
-// Configuration rows for ONE design. Board-specific facts stay in their upstream
-// modules; no copied tray generator, fastener logic, or realization adapter lives here.
-data altra_profile:CassetteProfile=CassetteProfile {id:"altrad8ud",requested_hardware:"ASRock Rack ALTRAD8UD-1L2T",outline:PublishedBoardOutline {width:asrock_altrad8ud_extent_along_rear_io,depth:asrock_altrad8ud_extent_depth},power:IndependentPowerCassette,retain:[],open:transplant_obligations}
-// Exact user-requested identity; unknown geometry does not borrow another GH200's drawing.
-data gh200_p4261_profile:CassetteProfile=CassetteProfile {id:"gh200-p4261",requested_hardware:"NVIDIA P4261 / 694-24261-000-100 K1",outline:BoardOutlinePending,power:RetainPlatformPowerAssembly,retain:retained_platform_subsystems,open:transplant_obligations}
-data mt_jade_profile:CassetteProfile=CassetteProfile {id:"mt-jade",requested_hardware:"Ampere Mt. Jade board transplant",outline:PublishedBoardOutline {width:mt_jade_motherboard_mechanical.outline_width,depth:mt_jade_motherboard_mechanical.outline_depth},power:RetainPlatformPowerAssembly,retain:retained_platform_subsystems,open:transplant_obligations}
-data mt_collins_profile:CassetteProfile=CassetteProfile {id:"mt-collins",requested_hardware:"Ampere Mt. Collins board transplant; exact chassis/board revision pending",outline:ProvisionalBoardOutline {width:micrometer(count:424200),depth:micrometer(count:512000),reference:"https://portwell.com/pdf/server/APTSA-627211-B4.pdf; user-supplied research, secondary-source dimensions and axis assignment require recheck"},power:RetainPlatformPowerAssembly,retain:retained_platform_subsystems,open:transplant_obligations}
+import extdeps.ocp.mt_jade.subject {mt_jade_subject_authority_anchor}
+import extdeps.portwell.aptsa_627211_b4 {collins_datasheet_mechanicals}
+import extdeps.boards.asrock_rack {asrock_altrad8ud_extent_along_rear_io,asrock_altrad8ud_extent_depth,asrock_altrad8ud_standard_location_correspondence,extdeps_external_authority_anchor}
+// Configuration rows for one generator. Each profile carries its mounting
+// evidence directly; changing an id cannot detach it from that evidence.
+data altra_profile:CassetteProfile = CassetteProfile {
+ id:"altrad8ud",requested_hardware:"ASRock Rack ALTRAD8UD-1L2T",
+ outline:BoardOutlineKnown {width:asrock_altrad8ud_extent_along_rear_io,depth:asrock_altrad8ud_extent_depth,standing:CitedToAuthority {authority:extdeps_external_authority_anchor}},
+ mounting:StandardLocationReference {locations:asrock_altrad8ud_standard_location_correspondence},
+ power:IndependentPowerCassette,retain:[],open:transplant_obligations
+}
+data gh200_p4261_profile:CassetteProfile = CassetteProfile {
+ id:"gh200-p4261",requested_hardware:"NVIDIA P4261 / 694-24261-000-100 K1",outline:BoardOutlinePending,
+ mounting:MountingReferencePending {read_obligation:"Revision-matched P4261 mechanical drawing and mounting map required; no other NVIDIA board substituted."},
+ power:RetainPlatformPowerAssembly,retain:retained_platform_subsystems,open:transplant_obligations
+}
+data mt_jade_profile:CassetteProfile = CassetteProfile {
+ id:"mt-jade",requested_hardware:"Ampere Mt. Jade board transplant",
+ outline:BoardOutlineKnown {width:mt_jade_motherboard_mechanical.outline_width,depth:mt_jade_motherboard_mechanical.outline_depth,standing:CitedToAuthority {authority:mt_jade_subject_authority_anchor}},
+ mounting:ImageLocationReference {reading:jade_image_mount_reading},
+ power:RetainPlatformPowerAssembly,retain:retained_platform_subsystems,open:transplant_obligations
+}
+// Axis assignment is this product's inference from Portwell's two dimensions and
+// chassis width. Only the short side fits across the chassis. A changed source
+// that no longer discriminates the axes refuses instead of silently rotating.
+fn collins_outline() -> BoardOutline {
+ let r=collins_datasheet_mechanicals
+ if micrometer_count(m:r.first_board_dimension)>micrometer_count(m:r.chassis_width) && micrometer_count(m:r.second_board_dimension)<micrometer_count(m:r.chassis_width) {
+ BoardOutlineKnown {width:r.second_board_dimension,depth:r.first_board_dimension,standing:r.standing}
+ } else {BoardOutlinePending}
+}
+data mt_collins_profile:CassetteProfile = CassetteProfile {
+ id:"mt-collins",requested_hardware:"Ampere Mt. Collins board transplant; exact chassis/board revision pending",outline:collins_outline(),
+ mounting:MountingReferencePending {read_obligation:"Full-board revision-matched drawing required. Guide Figures 11/12 are cropped or occluded; do not copy Jade's map. Recheck Portwell metric/inch disagreement and inferred axis assignment."},
+ power:RetainPlatformPowerAssembly,retain:retained_platform_subsystems,open:transplant_obligations
+}
 data cassette_profiles:List<CassetteProfile> = [altra_profile,gh200_p4261_profile,mt_collins_profile,mt_jade_profile]

@@ -2,7 +2,9 @@ module product.printed_chassis.cassette_profile
 import v2.std.optional {Present}
 import std.types {NonEmptyStr,List,Int}
 import std.measure {Micrometer,micrometer_count}
-type BoardOutline = PublishedBoardOutline {width:Micrometer,depth:Micrometer} | ProvisionalBoardOutline {width:Micrometer,depth:Micrometer,reference:NonEmptyStr} | BoardOutlinePending
+import extdeps.external_authority {CitedFigureStanding}
+import product.printed_chassis.board_mechanical_reference {BoardMountingReference}
+type BoardOutline = BoardOutlineKnown {width:Micrometer,depth:Micrometer,standing:CitedFigureStanding} | BoardOutlinePending
 type PowerArchitecture = RetainPlatformPowerAssembly | IndependentPowerCassette
 // Product requirements; these are not claims that the incoming hardware includes them.
 type RetainedSubsystem = ComputeAssembly | VendorPowerDistribution | PsuCageAndEarth
@@ -12,11 +14,11 @@ type DesignObligation = ExactAssemblyRevision | MountingCoordinates | UndersideK
  | PowerPinoutAndEnable | ManagementDependencies | ThermalAndAirflow | CableSweptVolumes
  | ComponentMassAndPlacement | StructuralJointsAndCreep | EarthAndMainsEnclosure
  | PrinterSegmentation | CoolerLoadAndTransport
-type CassetteProfile {id:NonEmptyStr,requested_hardware:NonEmptyStr,outline:BoardOutline,power:PowerArchitecture,retain:List<RetainedSubsystem>,open:List<DesignObligation>}
+type CassetteProfile {id:NonEmptyStr,requested_hardware:NonEmptyStr,outline:BoardOutline,mounting:BoardMountingReference,power:PowerArchitecture,retain:List<RetainedSubsystem>,open:List<DesignObligation>}
 // Axis-aligned board-envelope tiling only, not a printable tray or minimum arbitrary packing.
 fn board_grid_tiles(project:CassetteProfile,usable_tile_um:Int) -> Int? {
  if usable_tile_um<=0 {return none}
- match project.outline {ProvisionalBoardOutline {width:w,depth:d,reference:_}=>Present {value:((micrometer_count(m:w)+usable_tile_um-1)/usable_tile_um)*((micrometer_count(m:d)+usable_tile_um-1)/usable_tile_um)} BoardOutlinePending=>none PublishedBoardOutline {width:w,depth:d}=>Present {value:((micrometer_count(m:w)+usable_tile_um-1)/usable_tile_um)*((micrometer_count(m:d)+usable_tile_um-1)/usable_tile_um)}}
+ match project.outline {BoardOutlinePending=>none BoardOutlineKnown {width:w,depth:d,standing:_}=>Present {value:((micrometer_count(m:w)+usable_tile_um-1)/usable_tile_um)*((micrometer_count(m:d)+usable_tile_um-1)/usable_tile_um)}}
 }
 data transplant_obligations:List<DesignObligation> = [ExactAssemblyRevision,MountingCoordinates,UndersideKeepouts,PowerPinoutAndEnable,ManagementDependencies,ThermalAndAirflow,CableSweptVolumes,ComponentMassAndPlacement,StructuralJointsAndCreep,EarthAndMainsEnclosure,PrinterSegmentation,CoolerLoadAndTransport]
 data retained_platform_subsystems:List<RetainedSubsystem> = [ComputeAssembly,VendorPowerDistribution,PsuCageAndEarth,ManagementAndSequencing,CoolingAndDucting,IoAndRisers,HarnessAndFrontPanel,SocketBackplatesAndLoadPath]
