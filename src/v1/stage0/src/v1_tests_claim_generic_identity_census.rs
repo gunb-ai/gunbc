@@ -2,6 +2,7 @@
 // Source module: v1.tests.claim.generic_identity_census
 
 use self::ForeignParameterReading::*;
+use self::ResultCarrierObservation::*;
 pub use crate::std_decl_ref::declaration_ref_display_key;
 use crate::std_decl_ref::DeclField::{NamedField, TypeParameter, WholeDeclaration};
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
@@ -43,6 +44,7 @@ pub enum ForeignParameterReading {
     ForeignOwnerIsNotAFunction,
     ForeignParameterInAValueArgument,
     ForeignParameterInNoValueArgument,
+    ForeignParameterValueArgumentUndecided,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -157,6 +159,67 @@ pub fn gi_type_mentions_parameter(n: Rc<Node>, key: String) -> bool {
     })
 }
 
+pub fn gi_type_spells_unmarked(
+    n: Rc<Node>,
+    name: String,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if gi_is_bare(n.clone()) {
+            (!gi_declaration_is_type_parameter(n.declaration.clone())
+                && (crate::v1_compiler_infer::type_node_label(n.clone(), si.clone())
+                    == name.clone()))
+        } else {
+            {
+                let is_arrow = match n.connective.clone() {
+                    Connective::Arrow => true,
+                    _ => false,
+                };
+                let in_children = {
+                    let mut __found = false;
+                    for c in n.children.clone().iter().cloned() {
+                        if gi_type_spells_unmarked(c.clone(), name.clone(), si.clone()) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                };
+                let in_params = (is_arrow.clone() && {
+                    let mut __found = false;
+                    for p in n.params.clone().iter().cloned() {
+                        if gi_type_spells_unmarked(
+                            crate::v1_std_core::param_node_type_expr(p.clone()),
+                            name.clone(),
+                            si.clone(),
+                        ) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                });
+                let in_return = (is_arrow.clone()
+                    && match n.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::Resolved { node: rt, .. }) => {
+                            gi_type_spells_unmarked(rt.clone(), name.clone(), si.clone())
+                        }
+                        _ => false,
+                    });
+                ((in_children.clone() || in_params.clone()) || in_return.clone())
+            }
+        }
+    })
+}
+
+pub fn gi_type_parameter_name(r: Rc<DeclarationRef>) -> String {
+    match (*r.field.clone()).clone() {
+        DeclField::TypeParameter { name: p, .. } => p.clone(),
+        DeclField::WholeDeclaration => "".to_string(),
+        DeclField::NamedField { field_name: _, .. } => "".to_string(),
+    }
+}
+
 pub fn gi_sig_key(module_path: String, decl_name: String) -> String {
     v1_rt::concat(
         v1_rt::concat(module_path.clone(), "::".to_string()),
@@ -197,6 +260,7 @@ pub fn gi_foreign_reading(ctx: Rc<GenericIdentityContext>, n: Rc<Node>) -> Forei
                                 }
                                 __result
                             });
+                            let parameter_name = gi_type_parameter_name(r.clone());
                             if {
                                 let mut __found = false;
                                 for p in value_params.iter().cloned() {
@@ -212,7 +276,24 @@ pub fn gi_foreign_reading(ctx: Rc<GenericIdentityContext>, n: Rc<Node>) -> Forei
                             } {
                                 ForeignParameterReading::ForeignParameterInAValueArgument
                             } else {
-                                ForeignParameterReading::ForeignParameterInNoValueArgument
+                                if {
+                                    let mut __found = false;
+                                    for p in value_params.iter().cloned() {
+                                        if gi_type_spells_unmarked(
+                                            crate::v1_std_core::param_node_type_expr(p.clone()),
+                                            parameter_name.clone(),
+                                            ctx.si.clone(),
+                                        ) {
+                                            __found = true;
+                                            break;
+                                        }
+                                    }
+                                    __found
+                                } {
+                                    ForeignParameterReading::ForeignParameterValueArgumentUndecided
+                                } else {
+                                    ForeignParameterReading::ForeignParameterInNoValueArgument
+                                }
                             }
                         }
                     }
@@ -487,56 +568,50 @@ pub fn gi_sig_rows(
 ) -> Rc<Vec<Rc<GenericIdentityRow>>> {
     {
         let names = gi_generic_names(sig.params.clone(), si.clone());
-        if ((names.clone().len() as i64) == 0) {
-            Rc::new(vec![])
-        } else {
-            {
-                let ctx = Rc::new(GenericIdentityContext {
-                    module_file: module_file.clone(),
-                    enclosing: sig.name.clone(),
-                    generic_names: names.clone(),
-                    si: si.clone(),
-                    sigs: sigs.clone(),
-                });
-                let value_params = Rc::new({
-                    let mut __result = Vec::new();
-                    for p in sig.params.clone().iter().cloned() {
-                        if !crate::v1_compiler_infer::param_is_generic_decl(p.clone(), si.clone()) {
-                            __result.push(p);
-                        }
-                    }
-                    __result
-                });
-                let param_rows = Rc::new({
-                    let mut __result = Vec::new();
-                    for p in value_params.iter().cloned() {
-                        __result.extend(
-                            (*gi_type_rows(
-                                ctx.clone(),
-                                "signature_param_type".to_string(),
-                                crate::v1_std_core::param_node_name_at(p.clone(), si.clone()),
-                                "".to_string(),
-                                crate::v1_std_core::param_node_type_expr(p.clone()),
-                            ))
-                            .iter()
-                            .cloned(),
-                        );
-                    }
-                    __result
-                });
-                let return_rows = gi_type_rows(
-                    ctx.clone(),
-                    "signature_return".to_string(),
-                    "".to_string(),
-                    "".to_string(),
-                    sig.inferred.clone(),
-                );
-                v1_rt::concat(
-                    v1_rt::concat(param_rows.clone(), return_rows.clone()),
-                    gi_formals_rows(ctx.clone(), sig.resolved_formals.clone()),
-                )
+        let ctx = Rc::new(GenericIdentityContext {
+            module_file: module_file.clone(),
+            enclosing: sig.name.clone(),
+            generic_names: names.clone(),
+            si: si.clone(),
+            sigs: sigs.clone(),
+        });
+        let value_params = Rc::new({
+            let mut __result = Vec::new();
+            for p in sig.params.clone().iter().cloned() {
+                if !crate::v1_compiler_infer::param_is_generic_decl(p.clone(), si.clone()) {
+                    __result.push(p);
+                }
             }
-        }
+            __result
+        });
+        let param_rows = Rc::new({
+            let mut __result = Vec::new();
+            for p in value_params.iter().cloned() {
+                __result.extend(
+                    (*gi_type_rows(
+                        ctx.clone(),
+                        "signature_param_type".to_string(),
+                        crate::v1_std_core::param_node_name_at(p.clone(), si.clone()),
+                        "".to_string(),
+                        crate::v1_std_core::param_node_type_expr(p.clone()),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let return_rows = gi_type_rows(
+            ctx.clone(),
+            "signature_return".to_string(),
+            "".to_string(),
+            "".to_string(),
+            sig.inferred.clone(),
+        );
+        v1_rt::concat(
+            v1_rt::concat(param_rows.clone(), return_rows.clone()),
+            gi_formals_rows(ctx.clone(), sig.resolved_formals.clone()),
+        )
     }
 }
 
@@ -682,6 +757,9 @@ pub fn gi_foreign_label(f: ForeignParameterReading) -> String {
         ForeignParameterReading::ForeignParameterInNoValueArgument => {
             "foreign_in_no_value_argument".to_string()
         }
+        ForeignParameterReading::ForeignParameterValueArgumentUndecided => {
+            "foreign_value_argument_undecided".to_string()
+        }
     }
 }
 
@@ -794,6 +872,26 @@ pub fn generic_identity_census_tsv(rows: Rc<Vec<Rc<GenericIdentityRow>>>) -> Str
     .join(&"\n".to_string())
 }
 
+pub fn gi_rows_of_graph(
+    g: Rc<ResolvedGraph>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<GenericIdentityRow>>> {
+    {
+        let sigs = gi_all_sigs(g.modules.clone(), si.clone());
+        Rc::new({
+            let mut __result = Vec::new();
+            for m in g.modules.clone().iter().cloned() {
+                __result.extend(
+                    (*gi_module_rows(m.clone(), si.clone(), sigs.clone()))
+                        .iter()
+                        .cloned(),
+                );
+            }
+            __result
+        })
+    }
+}
+
 pub fn gi_rows_from_sources(
     sources: Rc<Vec<Rc<SourceFile>>>,
 ) -> Option<Rc<Vec<Rc<GenericIdentityRow>>>> {
@@ -801,24 +899,7 @@ pub fn gi_rows_from_sources(
         let result = crate::v1_compiler_compile::compile_to_resolved(sources.clone());
         match result.graph.clone() {
             std::option::Option::None => std::option::Option::None,
-            Some(g) => {
-                let sigs = gi_all_sigs(g.modules.clone(), result.source_indices.clone());
-                Some(Rc::new({
-                    let mut __result = Vec::new();
-                    for m in g.modules.clone().iter().cloned() {
-                        __result.extend(
-                            (*gi_module_rows(
-                                m.clone(),
-                                result.source_indices.clone(),
-                                sigs.clone(),
-                            ))
-                            .iter()
-                            .cloned(),
-                        );
-                    }
-                    __result
-                }))
-            }
+            Some(g) => Some(gi_rows_of_graph(g.clone(), result.source_indices.clone())),
         }
     }
 }
@@ -971,6 +1052,152 @@ pub fn generic_identity_census_summary_from_sources(sources: Rc<Vec<Rc<SourceFil
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ResultCarrierObservation {
+    ResultCarrierUnobserved {
+        why: String,
+    },
+    ResultCarrierObserved {
+        type_label: String,
+        carries_foreign_parameter: bool,
+    },
+}
+
+pub fn gi_result_expression_type(
+    mut __tco_loop_e: Rc<Node>,
+    mut __tco_loop_depth: i64,
+) -> Option<Rc<Node>> {
+    loop {
+        #[allow(unused_mut)]
+        let mut e = __tco_loop_e;
+        #[allow(unused_mut)]
+        let mut depth = __tco_loop_depth;
+        match e.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => {
+                break Some(rt.clone());
+            }
+            _ => {
+                if (depth.clone() >= 3) {
+                    break std::option::Option::None;
+                } else {
+                    match e.children.clone().last().cloned() {
+                        Some(c) => {
+                            let __tco_0 = c.clone();
+                            let __tco_1 = v1_rt::int_add(depth, 1);
+                            __tco_loop_e = __tco_0;
+                            __tco_loop_depth = __tco_1;
+                            continue;
+                        }
+                        std::option::Option::None => {
+                            break std::option::Option::None;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn gi_result_carrier_observation(
+    g: Rc<ResolvedGraph>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    sigs: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+    function_name: String,
+) -> Rc<ResultCarrierObservation> {
+    {
+        let found = Rc::new({
+            let mut __result = Vec::new();
+            for m in g.modules.clone().iter().cloned() {
+                __result.extend(
+                    (*Rc::new({
+                        let mut __result = Vec::new();
+                        for item in Rc::new({
+                            let mut __result = Vec::new();
+                            for item in m.items.clone().iter().cloned() {
+                                if (crate::v1_std_core::authored_name_at(si.clone(), item.clone())
+                                    == function_name.clone())
+                                {
+                                    __result.push(item);
+                                }
+                            }
+                            __result
+                        })
+                        .iter()
+                        .cloned()
+                        {
+                            __result.push(Rc::new(GenericIdentityContextItem {
+                                module_file: crate::v1_std_core::authored_name_at(
+                                    si.clone(),
+                                    m.module.clone(),
+                                ),
+                                item: item.clone(),
+                            }));
+                        }
+                        __result
+                    }))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        match found.clone().first().cloned() {
+            std::option::Option::None => {
+                Rc::new(ResultCarrierObservation::ResultCarrierUnobserved {
+                    why: v1_rt::concat("no item named ".to_string(), function_name.clone()),
+                })
+            }
+            Some(hit) => match hit.item.clone().body.clone() {
+                std::option::Option::None => {
+                    Rc::new(ResultCarrierObservation::ResultCarrierUnobserved {
+                        why: v1_rt::concat(function_name.clone(), " has no body".to_string()),
+                    })
+                }
+                Some(b) => match gi_result_expression_type(b.clone(), 0) {
+                    std::option::Option::None => {
+                        Rc::new(ResultCarrierObservation::ResultCarrierUnobserved {
+                            why: v1_rt::concat(
+                                function_name.clone(),
+                                " body carries no resolved type within the walked depth"
+                                    .to_string(),
+                            ),
+                        })
+                    }
+                    Some(rt) => {
+                        let ctx = Rc::new(GenericIdentityContext {
+                            module_file: hit.module_file.clone(),
+                            enclosing: function_name.clone(),
+                            generic_names: gi_generic_names(
+                                hit.item.clone().params.clone(),
+                                si.clone(),
+                            ),
+                            si: si.clone(),
+                            sigs: sigs.clone(),
+                        });
+                        Rc::new(ResultCarrierObservation::ResultCarrierObserved {
+                            type_label: crate::v1_compiler_infer::type_node_label(
+                                rt.clone(),
+                                si.clone(),
+                            ),
+                            carries_foreign_parameter: (gi_foreign_label(gi_foreign_reading(
+                                ctx.clone(),
+                                rt.clone(),
+                            )) != "own_or_unmarked".to_string()),
+                        })
+                    }
+                },
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct GenericIdentityContextItem {
+    pub module_file: String,
+    pub item: Rc<Node>,
+}
+
 pub fn gi_control_line(name: String, held: bool) -> String {
     v1_rt::concat(
         v1_rt::concat(
@@ -985,104 +1212,129 @@ pub fn gi_control_line(name: String, held: bool) -> String {
     )
 }
 
+pub fn gi_collision_reading(o: Rc<ResultCarrierObservation>) -> String {
+    match (*o.clone()).clone() {
+        ResultCarrierObservation::ResultCarrierUnobserved { why: w, .. } => {
+            v1_rt::concat("carrier unobserved: ".to_string(), w.clone())
+        }
+        ResultCarrierObservation::ResultCarrierObserved {
+            type_label: l,
+            carries_foreign_parameter: f,
+            ..
+        } => {
+            if f.clone() {
+                v1_rt::concat("observed unsubstituted, typed ".to_string(), l.clone())
+            } else {
+                v1_rt::concat("observed substituted, typed ".to_string(), l.clone())
+            }
+        }
+    }
+}
+
+pub fn gi_bound_call_observed_clean(o: Rc<ResultCarrierObservation>) -> bool {
+    match (*o.clone()).clone() {
+        ResultCarrierObservation::ResultCarrierUnobserved { why: _, .. } => false,
+        ResultCarrierObservation::ResultCarrierObserved {
+            type_label: l,
+            carries_foreign_parameter: f,
+            ..
+        } => ((l.clone() == "Int".to_string()) && !f.clone()),
+    }
+}
+
 pub fn generic_identity_fixture_standing(sources: Rc<Vec<Rc<SourceFile>>>) -> String {
-    match gi_rows_from_sources(sources.clone()) {
-        std::option::Option::None => "REFUSED\tcompile_to_resolved produced no graph".to_string(),
-        Some(rows) => {
-            let marked_signature_leaf = {
-                let mut __found = false;
-                for r in rows.iter().cloned() {
-                    if ((((r.enclosing.clone() == "head_of".to_string())
-                        && (r.carrier.clone() == "signature_param_type".to_string()))
-                        && (r.path.clone() == "xs/arg".to_string()))
-                        && (gi_declaration_label(r.declaration.clone())
-                            == "gic.a::head_of::<T>".to_string()))
-                    {
-                        __found = true;
-                        break;
+    {
+        let result = crate::v1_compiler_compile::compile_to_resolved(sources.clone());
+        match result.graph.clone() {
+            std::option::Option::None => {
+                "REFUSED\tcompile_to_resolved produced no graph".to_string()
+            }
+            Some(g) => {
+                let si = result.source_indices.clone();
+                let sigs = gi_all_sigs(g.modules.clone(), si.clone());
+                let rows = gi_rows_of_graph(g.clone(), si.clone());
+                let marked_signature_leaf = {
+                    let mut __found = false;
+                    for r in rows.iter().cloned() {
+                        if ((((r.enclosing.clone() == "head_of".to_string())
+                            && (r.carrier.clone() == "signature_param_type".to_string()))
+                            && (r.path.clone() == "xs/arg".to_string()))
+                            && (gi_declaration_label(r.declaration.clone())
+                                == "gic.a::head_of::<T>".to_string()))
+                        {
+                            __found = true;
+                            break;
+                        }
                     }
-                }
-                __found
-            };
-            let minted_container_child = {
-                let mut __found = false;
-                for r in rows.iter().cloned() {
-                    if (((((r.enclosing.clone() == "ints".to_string())
-                        && (r.parent_label.clone() == "List".to_string()))
-                        && (r.spelled.clone() == "T".to_string()))
-                        && (r.resolved_label.clone() == "Int".to_string()))
-                        && (gi_mark_label(r.clone()) == "neither".to_string()))
-                    {
-                        __found = true;
-                        break;
+                    __found
+                };
+                let minted_container_child = {
+                    let mut __found = false;
+                    for r in rows.iter().cloned() {
+                        if (((((r.enclosing.clone() == "ints".to_string())
+                            && (r.parent_label.clone() == "List".to_string()))
+                            && (r.spelled.clone() == "T".to_string()))
+                            && (r.resolved_label.clone() == "Int".to_string()))
+                            && (gi_mark_label(r.clone()) == "neither".to_string()))
+                        {
+                            __found = true;
+                            break;
+                        }
                     }
-                }
-                __found
-            };
-            let bound_call_is_clean = !{
-                let mut __found = false;
-                for r in rows.iter().cloned() {
-                    if ((r.enclosing.clone() == "caller_function".to_string())
-                        && (gi_foreign_label(r.foreign.clone()) != "own_or_unmarked".to_string()))
-                    {
-                        __found = true;
-                        break;
-                    }
-                }
-                __found
-            };
-            let unobserved_declared = ((generic_identity_unobserved().len() as i64) == 4);
-            let collision_lost = {
-                let mut __found = false;
-                for r in rows.iter().cloned() {
-                    if ((r.enclosing.clone() == "caller_literal".to_string())
-                        && (gi_foreign_label(r.foreign.clone())
-                            == "foreign_in_a_value_argument".to_string()))
-                    {
-                        __found = true;
-                        break;
-                    }
-                }
-                __found
-            };
-            let held = (((marked_signature_leaf.clone() && minted_container_child.clone())
-                && bound_call_is_clean.clone())
-                && unobserved_declared.clone());
-            Rc::new(vec![
-                v1_rt::concat(
-                    "STANDING ".to_string(),
-                    if held.clone() {
-                        "held".to_string()
-                    } else {
-                        "unmet".to_string()
-                    },
-                ),
-                gi_control_line(
-                    "marked_signature_leaf".to_string(),
-                    marked_signature_leaf.clone(),
-                ),
-                gi_control_line(
-                    "minted_container_child".to_string(),
-                    minted_container_child.clone(),
-                ),
-                gi_control_line(
-                    "bound_call_is_clean".to_string(),
-                    bound_call_is_clean.clone(),
-                ),
-                gi_control_line(
-                    "unobserved_populations_declared".to_string(),
-                    unobserved_declared.clone(),
-                ),
-                v1_rt::concat(
-                    "reading spelling_collision_call: ".to_string(),
-                    if collision_lost.clone() {
-                        "parameter left unsubstituted".to_string()
-                    } else {
-                        "substituted".to_string()
-                    },
-                ),
-            ])
-            .join(&"\n".to_string())
+                    __found
+                };
+                let bound_call = gi_result_carrier_observation(
+                    g.clone(),
+                    si.clone(),
+                    sigs.clone(),
+                    "caller_function".to_string(),
+                );
+                let bound_call_observed_clean = gi_bound_call_observed_clean(bound_call.clone());
+                let unobserved_declared = ((generic_identity_unobserved().len() as i64) == 4);
+                let held = (((marked_signature_leaf.clone() && minted_container_child.clone())
+                    && bound_call_observed_clean.clone())
+                    && unobserved_declared.clone());
+                Rc::new(vec![
+                    v1_rt::concat(
+                        "STANDING ".to_string(),
+                        if held.clone() {
+                            "held".to_string()
+                        } else {
+                            "unmet".to_string()
+                        },
+                    ),
+                    gi_control_line(
+                        "marked_signature_leaf".to_string(),
+                        marked_signature_leaf.clone(),
+                    ),
+                    gi_control_line(
+                        "minted_container_child".to_string(),
+                        minted_container_child.clone(),
+                    ),
+                    gi_control_line(
+                        "bound_call_observed_clean".to_string(),
+                        bound_call_observed_clean.clone(),
+                    ),
+                    gi_control_line(
+                        "unobserved_populations_declared".to_string(),
+                        unobserved_declared.clone(),
+                    ),
+                    v1_rt::concat(
+                        "reading bound_call: ".to_string(),
+                        gi_collision_reading(bound_call.clone()),
+                    ),
+                    v1_rt::concat(
+                        "reading spelling_collision_call: ".to_string(),
+                        gi_collision_reading(gi_result_carrier_observation(
+                            g.clone(),
+                            si.clone(),
+                            sigs.clone(),
+                            "caller_literal".to_string(),
+                        )),
+                    ),
+                ])
+                .join(&"\n".to_string())
+            }
         }
     }
 }
@@ -1102,3 +1354,5 @@ pub struct ForeignOwnerIsNotAFunction;
 pub struct ForeignParameterInAValueArgument;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ForeignParameterInNoValueArgument;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ForeignParameterValueArgumentUndecided;
