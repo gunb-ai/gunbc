@@ -3,7 +3,9 @@ module gunbc.fleet.convergence_fold
 import std.types { Bool, Int, List, NonEmptyStr, String, brand }
 import v2.std.algebra { length }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import std.decl_ref { decl_ref }
 import gunbc.host_convergence_census {
+  host_convergence_census_standing,
   HostConvergenceCensus,
   CensusWellFormed,
   CensusMalformed,
@@ -86,10 +88,28 @@ type ConvergenceStep<M> {
 }
 
 // THE ORDER AUTHORITY: which declaration owns the order, and its ranking. Absent is an unranked
-// member and refuses; the fold never invents a rank.
+// member and refuses; the fold never invents a rank. This record is OPEN and only the classifier
+// takes it: a caller can author any rank_of and name any authority, so it can never mint a plan.
 type ConvergenceOrderAuthority<M> {
   authority: DeclarationRef
   rank_of: fn(M) -> Int?
+}
+
+// THE PLANNING AUTHORITY THE PRODUCTION MINT TAKES. Sealed, and minted only by
+// convergence_planning_authority for the callers it admits: each admitted caller is the one function
+// in its domain that binds the domain's real order authority. The census is not a field: the mint
+// reads gunbc.host_convergence_census host_convergence_census_standing itself, so no caller can hand
+// it a census. A new consumer of the fold (the Spark arm) adds its own binding function here.
+type ConvergencePlanningAuthority<M> sole_constructor {
+  order: ConvergenceOrderAuthority<M>
+}
+
+fn convergence_planning_authority<M>(order: ConvergenceOrderAuthority<M>) -> ConvergencePlanningAuthority<M>
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "arrival_planning_authority"),
+  ]
+{
+  ConvergencePlanningAuthority { order: order }
 }
 
 type ConvergencePlanRefusal<M>
@@ -176,36 +196,53 @@ fn admit_ranked_step<M>(acc: PlanCheck<M>, s: ConvergenceStep<M>, order: Converg
   }
 }
 
-// THE PLAN ADMISSION. Refuses, in order: an empty roster; a malformed census; a step identity with no
-// census row or with two (the identity join of gunbc.host_convergence_census, so the census stays the
-// roster); a precondition naming no step of the plan; then the rank walk above.
-fn admit_convergence_plan<M>(
+// THE PLAN CLASSIFIER. Refuses, in order: an empty roster; a malformed census; a step identity with
+// no census row or with two (the identity join of gunbc.host_convergence_census, so the census stays
+// the roster); a precondition naming no step of the plan; then the rank walk above. It is PURE and
+// takes supplied values, so supplied-value controls can exercise every arm; its admissible arm is an
+// open list of ranked steps and is never a plan a run can be folded over.
+type ConvergencePlanClassification<M>
+  = PlanClassifiedAdmissible { steps: List<RankedStep<M>> }
+  | PlanClassifiedRefused { cause: ConvergencePlanRefusal<M> }
+
+fn classify_convergence_plan<M>(
   census: HostConvergenceCensus,
   order: ConvergenceOrderAuthority<M>,
   steps: List<ConvergenceStep<M>>,
-) -> ConvergencePlanAdmission<M> {
+) -> ConvergencePlanClassification<M> {
   if length(xs: steps) == 0 {
-    ConvergencePlanRefused { cause: PlanHasNoSteps }
+    PlanClassifiedRefused { cause: PlanHasNoSteps }
   } else {
     match census {
-      CensusMalformed { cause: c } => ConvergencePlanRefused { cause: PlanCensusMalformed { cause: c } }
+      CensusMalformed { cause: c } => PlanClassifiedRefused { cause: PlanCensusMalformed { cause: c } }
       CensusWellFormed { rows: rows } =>
         match census_identity_join(required: map(steps, s => s.identity), rows: rows) {
-          IdentityMissingFromCensus { identity: i } => ConvergencePlanRefused { cause: StepMissingFromCensus { step: i } }
-          IdentityDuplicatedInCensus { identity: i } => ConvergencePlanRefused { cause: StepDuplicatedInCensus { step: i } }
+          IdentityMissingFromCensus { identity: i } => PlanClassifiedRefused { cause: StepMissingFromCensus { step: i } }
+          IdentityDuplicatedInCensus { identity: i } => PlanClassifiedRefused { cause: StepDuplicatedInCensus { step: i } }
           IdentitiesCovered =>
             match first_unknown_precondition(steps: steps) {
-              Present { value: r } => ConvergencePlanRefused { cause: r }
+              Present { value: r } => PlanClassifiedRefused { cause: r }
               Absent => {
                 let checked = fold(steps, init: PlanCheck { refusal: none, admitted: [] }, f: (acc, s) => admit_ranked_step(acc: acc, s: s, order: order))
                 match checked.refusal {
-                  Present { value: r } => ConvergencePlanRefused { cause: r }
-                  Absent => ConvergencePlanAdmitted { plan: AdmittedConvergencePlan { authority: order.authority, steps: checked.admitted } }
+                  Present { value: r } => PlanClassifiedRefused { cause: r }
+                  Absent => PlanClassifiedAdmissible { steps: checked.admitted }
                 }
               }
             }
         }
     }
+  }
+}
+
+// THE PRODUCTION PLAN MINT: the canonical census and an admitted planning authority, nothing else.
+fn admit_convergence_plan<M>(
+  planning: ConvergencePlanningAuthority<M>,
+  steps: List<ConvergenceStep<M>>,
+) -> ConvergencePlanAdmission<M> {
+  match classify_convergence_plan(census: host_convergence_census_standing, order: planning.order, steps: steps) {
+    PlanClassifiedRefused { cause: r } => ConvergencePlanRefused { cause: r }
+    PlanClassifiedAdmissible { steps: ranked } => ConvergencePlanAdmitted { plan: AdmittedConvergencePlan { authority: planning.order.authority, steps: ranked } }
   }
 }
 
@@ -235,10 +272,22 @@ fn step_outcome_refusal<R, C>(outcome: StepOutcome<R, C>) -> C? {
 }
 
 // THE DOMAIN'S PROJECTION OF ITS RECEIPT: the instance it was minted for, and the precondition
-// instances whose receipts the step consumed as input.
-type ConvergenceReceiptProjection<R> {
+// instances whose receipts the step consumed as input. SEALED, and minted only for the callers
+// convergence_receipt_projection admits -- each the one function in its domain that reads its own
+// sealed receipt's fields -- so no caller can re-key a real receipt to another run, step or subject,
+// or claim it consumed a precondition it did not.
+type ConvergenceReceiptProjection<R> sole_constructor {
   key_of: fn(R) -> StepInstanceKey
   consumed_of: fn(R) -> List<StepInstanceKey>
+}
+
+fn convergence_receipt_projection<R>(key_of: fn(R) -> StepInstanceKey, consumed_of: fn(R) -> List<StepInstanceKey>) -> ConvergenceReceiptProjection<R>
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "arrival_receipt_projection"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "probe_receipt_projection"),
+  ]
+{
+  ConvergenceReceiptProjection { key_of: key_of, consumed_of: consumed_of }
 }
 
 type StepInstanceRefusal<C>
@@ -252,7 +301,11 @@ type StepInstanceStanding<R, C>
   | InstanceRefused { key: StepInstanceKey, cause: StepInstanceRefusal<C> }
   | InstanceNotReached { key: StepInstanceKey, blocked_by: StepInstanceKey }
 
-type ConvergenceRunLedger<R, C> {
+// THE LEDGER AND THE CONVERGED RUN ARE SEALED: only fold_convergence_run constructs them, so a
+// downstream admission (O1c-3's ManagedHostAdmission) can tell a folded run from an authored one.
+// The verdict and instance arms around them are open diagnostic wrappers; the admission evidence is
+// ConvergedRun.
+type ConvergenceRunLedger<R, C> sole_constructor {
   run: ConvergenceRunId
   subject: StepSubjectKey
   order_authority: DeclarationRef
@@ -267,8 +320,12 @@ type RunOutcomeRefusal
   | OutcomeForUnplannedStep { key: StepInstanceKey }
   | OutcomeOutsideRun { key: StepInstanceKey }
 
+type ConvergedRun<R, C> sole_constructor {
+  ledger: ConvergenceRunLedger<R, C>
+}
+
 type ConvergenceRunVerdict<R, C>
-  = RunConverged { ledger: ConvergenceRunLedger<R, C> }
+  = RunConverged { run: ConvergedRun<R, C> }
   | RunStopped { ledger: ConvergenceRunLedger<R, C>, at: StepInstanceKey }
   | RunOutcomesRefused { cause: RunOutcomeRefusal }
 
@@ -398,7 +455,7 @@ fn fold_convergence_run<M, R, C>(
         walk_instance(acc: acc, ranked: s, run: run, subject: subject, outcomes: outcomes, projection: projection))
       let ledger = ConvergenceRunLedger { run: run, subject: subject, order_authority: plan.authority, instances: walked.instances }
       match walked.stopped_at {
-        Absent => RunConverged { ledger: ledger }
+        Absent => RunConverged { run: ConvergedRun { ledger: ledger } }
         Present { value: k } => RunStopped { ledger: ledger, at: k }
       }
     }
