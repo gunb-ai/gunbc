@@ -492,23 +492,39 @@ fn emit_data_fields_json(value: Node, source_indices: Map<String, NewlineIndex>,
   )
 }
 
-// AN OPTIONAL IN A DATA ROW IS SPELLED AS THE TARGET'S NATIVE OPTION, NOT AS A DECLARED COPRODUCT.
-// Every target realizes Optional natively (Rust Option, Python None, Go nil), and each one's JSON
-// reading of that option is transparent: Absent is `null`, `Present { value: v }` is `v` itself.
-// Looking Optional up in the wire-spelling index spelled Present as an internally tagged
-// `{"_variant": "Present", "value": ..}`, which the native option cannot parse (serde: "invalid
-// type: map, expected a string" at run time), and where Optional is not declared inside the
-// closure -- gunbc.fleet_tailnet fleet_tailnet_domain -- the lookup refused outright. Control:
-// gunbc.instruments.native_emission_controls optional_data_row_cases.
-fn emit_optional_data_value_json(value: Node, source_indices: Map<String, NewlineIndex>, variant_wire: Map<String, DataVariantWireSpelling>) -> EmitterOutcome {
-  match value.children |> first {
-    Absent => Emitted { json: "null" }
-    Present { value: payload_field } =>
-      if (value.children |> count) == 1 {
-        emit_data_value_json(value: field_init_node_value(n: payload_field), source_indices: source_indices, variant_wire: variant_wire)
-      } else {
-        Refused { reason: "an Optional variant literal carries more than its one payload field" }
+// A DATA ROW DECLARED `T?` IS SPELLED AS THE TARGET'S NATIVE OPTION, selected by the row's DECLARED
+// cardinality -- never by the spelling of a variant's parent. Every target realizes `T?` natively
+// (Rust Option, Python None, Go nil), and each one's JSON reading of it is transparent: absent is
+// `null`, present is the payload itself. The caller (v1.compiler.emit_rust emit_data_def_body) asks
+// this only for a row whose declared type carries CardOptional, so an unrelated coproduct that happens
+// to be NAMED Optional keeps its own wire policy (review on gunbc#13202: a leaf-name test here was a
+// second, unrostered authority that would have serialized such a coproduct as null or a bare payload).
+// Within an optional row, a variant literal whose parent IS the declared inner type is a value of T
+// and is spelled as one; any other one-field variant literal is the option's present arm and is
+// unwrapped to its payload. Control: gunbc.instruments.native_emission_controls optional_data_row_cases
+// and its Optional-named collision case.
+fn emit_declared_optional_row_json(value: Node, inner_type_name: String, source_indices: Map<String, NewlineIndex>, variant_wire: Map<String, DataVariantWireSpelling>) -> EmitterOutcome {
+  match value.expr_data {
+    ExprLiteral { value: LitNull } => Emitted { json: "null" }
+    ExprRecordLit { parent_enum: pe } =>
+      match pe {
+        Present { value: parent } =>
+          if qualified_last_segment(name: parent) == qualified_last_segment(name: inner_type_name) {
+            emit_data_value_json(value: value, source_indices: source_indices, variant_wire: variant_wire)
+          } else {
+            match value.children |> first {
+              Absent => Emitted { json: "null" }
+              Present { value: payload_field } =>
+                if (value.children |> count) == 1 {
+                  emit_data_value_json(value: field_init_node_value(n: payload_field), source_indices: source_indices, variant_wire: variant_wire)
+                } else {
+                  Refused { reason: concat("an optional row's present literal carries ", to_string(value.children |> count), " fields; the option's present arm carries exactly its payload") }
+                }
+            }
+          }
+        Absent => emit_data_value_json(value: value, source_indices: source_indices, variant_wire: variant_wire)
       }
+    _ => emit_data_value_json(value: value, source_indices: source_indices, variant_wire: variant_wire)
   }
 }
 
@@ -534,9 +550,6 @@ fn emit_data_value_json(value: Node, source_indices: Map<String, NewlineIndex>, 
     ExprRecordLit { parent_enum: pe } =>
       match pe {
         Present { value: parent } =>
-          if qualified_last_segment(name: parent) == "Optional" {
-            emit_optional_data_value_json(value: value, source_indices: source_indices, variant_wire: variant_wire)
-          } else {
           match record_lit_type_name_at(texpr: value, source_indices: source_indices) {
             Absent => Refused { reason: concat("variant record literal with parent coproduct ", parent, " carries no authored head name to key the wire-spelling index") }
             Present { value: head } =>
@@ -568,7 +581,6 @@ fn emit_data_value_json(value: Node, source_indices: Map<String, NewlineIndex>, 
                     }
                 }
               }
-          }
           }
         Absent =>
           if (value.children |> count) == 0 {
