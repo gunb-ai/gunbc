@@ -3,7 +3,7 @@ module gunbc.roadmap_launch_deployment_observe
 import extdeps.systemd { systemd_duration_usec }
 import std.measure { Second, second, second_count, microsecond_count }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatReady, CheckedNatOverflow }
-import gunbc.live_deploy.emit { belt_tick_cadence }
+import gunbc.live_deploy.belt_cadence { belt_tick_cadence }
 
 import std.types { String, Bool, NonEmptyStr, Int, List }
 import std.algebra { trim }
@@ -44,7 +44,7 @@ import gunbc.roadmap_belt_actuate {
 // TICK FRESHNESS is decided on two clock readings the receipt run does not control -- the tick's
 // own observed_at and the dashboard receipt's completed_at, both rendered by extdeps.clock Now on
 // srv1 as `%Y-%m-%dT%H:%M:%SZ` -- against the receipt run's own now. The bound is derived from the
-// emitted timer cadence (gunbc.live_deploy.emit belt_tick_cadence, 60s) times a fixed multiplier,
+// emitted timer cadence (gunbc.live_deploy.belt_cadence belt_tick_cadence, 60s) times a fixed multiplier,
 // never typed as an independent number.
 // ---------------------------------------------------------------- HTTP GET
 type HttpBodyRead
@@ -330,7 +330,7 @@ fn iso8601_utc_epoch_seconds(text: String) -> Second? {
 // tick completes, so a live timer produces a receipt at most one cadence plus one tick duration
 // old. Three cadences is the admission; a receipt older than that came from a timer that is not
 // running now, whatever the unit file says.
-// Derived from the ONE emitted cadence authority (gunbc.live_deploy.emit belt_tick_cadence),
+// Derived from the ONE emitted cadence authority (gunbc.live_deploy.belt_cadence belt_tick_cadence),
 // normalized through systemd.time(7); a spelling that stops normalizing refuses freshness rather
 // than silently keeping an out-of-date number here.
 fn belt_tick_cadence_seconds_derived() -> Second? {

@@ -1,0 +1,46 @@
+module gunbc.workspace_allocation_reservation
+
+import std.types { NonEmptyStr, String, Timestamp, List }
+import std.measure { MoneyAmountMicro, MoneyPerSecond, second }
+import extdeps.currency.currency { CurrencyCode }
+import product.fabric.demand { Demand, BuyTerms, AdmissionTerms, SatisfactionRequirement, ObservationReceiptRef }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+import gunbc.principal_projection { principal_ref_label }
+import product.fabric.identity { FabricIdentity, WorkKey, DemandKey, ExecutionAttemptKey, fabric_identity_eq }
+import product.fabric.supply { GrantDuration, EstimatedGrantDuration }
+import product.fabric.budget { MoneyAccount }
+import gunbc.fabric_executor_class { ExecutorSanction }
+import gunbc.fabric_control_plane {
+  FabricCellCandidate, CellReservation, CellReserved, broker_reserve_for_requirements,
+  fabric_cell_allocation_key,
+}
+import gunbc.fabric_memory_grant_policy { MicroVmMemoryGrantIssue, MemoryGrantIssued }
+import gunbc.workspace_allocation {
+  WorkspaceRequest, WorkspaceReservation, workspace_execution_requirements, workspace_memory_grant, workspace_work,
+}
+
+// Supply must be a dedicated, already-budgeted roster withdrawn from competing use.
+// Holding the entire slot does not make the unused RAM available for packing.
+type WorkspaceDedicatedSupply {
+  roster: List<FabricCellCandidate>
+  sanctions: List<ExecutorSanction>
+}
+
+type WorkspaceReservationOutcome
+  = WorkspaceReservationCommitted { reservation: WorkspaceReservation, account: MoneyAccount }
+  | WorkspaceReservationRefused { outcome: CellReservation }
+  | WorkspaceGrantRefused { outcome: MicroVmMemoryGrantIssue<NonEmptyStr> }
+  | WorkspaceReservationBindingRefused { reason: NonEmptyStr }
+
+fn workspace_demand(request: WorkspaceRequest, submitted_at: Timestamp, buy: BuyTerms) -> Demand<NonEmptyStr> {
+  let work = workspace_work(request: request)
+  let request_key = serialize_content_hash(hash: content_hash_of_value(value: concat(
+    to_string((principal_ref_label(p: request.owner)).length()), ":", principal_ref_label(p: request.owner),
+    to_string((request.idempotency_key as String).length()), ":", request.idempotency_key as String)))
+  Demand {
+    id: FabricIdentity { principal: work.id.principal, key: request_key as DemandKey },
+    work: work.id, origin: request_key as ObservationReceiptRef, submitted_at: submitted_at,
+    admission: AdmissionTerms { deadline: Present { value: request.expires_at }, buy: buy },
+    satisfaction: SatisfactionRequirement { terminal_receipt_may_satisfy: false, new_attempt_required: true, step_reuse_permitted: false },
+  }
+}
