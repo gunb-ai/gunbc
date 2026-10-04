@@ -1628,6 +1628,21 @@ service git.Core {
     transport shell { argv: ["git", "-C", "{repo}", "rev-parse", "{target}"] }
   }
 
+  // THE BLOB ID OF A FILE'S CURRENT BYTES (`git hash-object <path>`): the id git would give those exact bytes
+  // as a blob, computed from the working file itself and written nowhere. Comparable byte-for-byte with a
+  // committed blob's id from rev-parse <ref>:<path>.
+  operation HashObjectInRepo {
+    requires opaque
+    input { repo: FilePath, path: FilePath }
+    output {
+      blob: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repo}", "hash-object", "{path}"] }
+  }
+
   operation FetchForcedRefInRepo {
     requires opaque
     input { repo: FilePath, remote: String, refspec: String }
