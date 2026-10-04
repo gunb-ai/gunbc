@@ -21,7 +21,7 @@ import v2.extdeps.languages.dag { dag_grammar_root, dag_language_model }
 import v2.std.algebra { any, fold_list, length, list_map }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
-import v2.std.diagnostic { Accepted, Diagnostic, Rejected, Unavailable, UserInputBoundary, diagnostics_has_reason, diagnostics_singleton, invariant_port_locus }
+import v2.std.diagnostic { Accepted, Diagnostic, Rejected, Some, Unavailable, UserInputBoundary, diagnostics_singleton, invariant_port_locus }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Symbol, symbol_intern_lexeme }
 import v2.std.text { String }

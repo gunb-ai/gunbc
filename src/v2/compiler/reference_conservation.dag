@@ -29,8 +29,10 @@ import v2.std.diagnostic {
   Locus,
   NodeLocus,
   NonEmptyDiagnostics,
+  None,
   Outcome,
   Rejected,
+  Some,
   Textual,
   WholeFile,
   bind_outcome
