@@ -1,0 +1,57 @@
+module product.printed_chassis.stacking_frame
+
+import std.types {Int,String,List,Bool}
+import product.printed_chassis.assembly_geometry {AssemblyPart,Primitive,MechanicalInterface,Printed,Clearance,Cassette,FixedFrame,LayOnXZ,LayOnYZ,block,part,mechanical_interface,SlidingFrameJoint,StackingLocator,PrintedRetainingPin,Proposed}
+import product.printed_chassis.cassette {tray_w,tray_d,joint_clearance}
+
+// Review proposal: gravity locators are not lifting locks or a load rating.
+// Existing cassette geometry is unchanged. Y is vertical; front is +Z.
+data stack_pitch:Int=158000
+data frame_x:Int=tray_w/2+27000
+data frame_rear:Int= -260000
+data frame_front:Int=190000
+data segment_d:Int=(frame_front-frame_rear)/3
+data withdrawal:Int=150000
+fn side_id(s:Int,i:Int) -> String {concat(if s<0 {"SL"} else {"SR"},to_string(i+1))}
+fn side(s:Int,i:Int) -> AssemblyPart {
+ let cz=frame_rear+segment_d/2+i*segment_d
+ let postz=if i==0 {0-segment_d/2+10000} else {segment_d/2-10000}
+ let corners=if i==1 {[]} else {[block(w:20000,h:158000,d:20000,x:0,y:57000,z:postz),block(w:12000,h:6000,d:12000,x:0,y: -25000,z:postz)]}
+ let sockets=if i==1 {[]} else {[block(w:12000+2*joint_clearance,h:6000+2*joint_clearance,d:12000+2*joint_clearance,x:0,y:133000,z:postz)]}
+ let tongues=if i==2 {[]} else {map([-16000,130000],y=>block(w:10000,h:8000,d:18000,x:0,y:y,z:segment_d/2))}
+ let mortises=if i==0 {[]} else {map([-16000,130000],y=>block(w:10000+2*joint_clearance,h:8000+2*joint_clearance,d:18000+2*joint_clearance,x:0,y:y,z:0-segment_d/2))}
+ let beam_pockets=if i==1 {[]} else {map(if i==0 {[-16000,110000]} else {[-19000]},y=>block(w:30500,h:if i==2 {6500} else {12500},d:12500,x:0-s*15000,y:y,z:(if i==0 {frame_rear+10000} else {frame_front-10000})-cz))}
+ part(id:side_id(s:s,i:i),name:"Joined side frame section",kind:Printed,scope:FixedFrame,
+ adds:concat([block(w:20000,h:158000,d:12000,x:0,y:57000,z:0),block(w:20000,h:12000,d:segment_d,x:0,y: -16000,z:0),block(w:20000,h:12000,d:segment_d,x:0,y:130000,z:0),block(w:14000,h:6000,d:segment_d,x:0-s*17000,y: -18000,z:0)],concat(corners,tongues)),
+ cuts:concat(sockets,concat(mortises,beam_pockets)),x:s*frame_x,y:0,z:cz,ex:s*45000,ey:0,ez:(i-1)*25000,plane:LayOnYZ,
+ notes:"Two horizontal tenons per seam, 0.25 mm clearance per side. Runner top is Y=-15 mm: rear sockets and clip-on front skids carry the cassette. End sections carry corner loads through broad shoulders; 6 mm feet locate in 6.5 mm deep pockets. Joint retention, racking and creep require loaded trials; do not lift a populated stack.")
+}
+fn tie(s:Int,rear:Bool,top:Bool) -> AssemblyPart {
+ let y=if top {110000} else {if rear { -16000} else { -19000}}
+ let height=if rear {12000} else {6000}
+ let z=if rear {frame_rear+10000} else {frame_front-10000}
+ let id=concat(if rear {if top {"RT"} else {"RB"}} else {"FB"},if s<0 {"L"} else {"R"})
+ let tongue=if s<0 {[block(w:18000,h:height/2,d:12000,x:frame_x/2,y:0-height/4,z:0)]} else {[]}
+ let pocket=if s>0 {[block(w:18500,h:height/2+500,d:13000,x:0-frame_x/2,y:0-height/4,z:0)]} else {[]}
+ let stop=if !rear&&s>0 {[block(w:8500,h:16000,d:8500,x:50000-frame_x/2,y:0,z:0)]} else {[]}
+ part(id:id,name:if rear {"Rear keyed cross-tie half"} else {"Front keyed cross-tie half"},kind:Printed,scope:FixedFrame,
+ adds:concat([block(w:frame_x,h:height,d:12000,x:0,y:0,z:0)],tongue),cuts:concat(pocket,stop),x:s*frame_x/2,y:y,z:z,ex:0,ey:if top {25000} else { -20000},ez:if rear { -25000} else {25000},plane:LayOnXZ,
+ notes:"Half-lap center join and rectangular end sockets. No frame screws proposed. Gravity seating is not proven retention: lateral separation and racking remain review obligations. Front top remains open for cassette withdrawal.")
+}
+fn frame_parts() -> List<AssemblyPart> {
+ concat(flat_map([-1,1],s=>map([0,1,2],i=>side(s:s,i:i))),concat(flat_map([-1,1],s=>[tie(s:s,rear:false,top:false),tie(s:s,rear:true,top:false),tie(s:s,rear:true,top:true)]),[
+ part(id:"STOP",name:"Lift-out front cassette stop",kind:Printed,scope:FixedFrame,adds:[block(w:8000,h:38000,d:8000,x:0,y:0,z:0),block(w:16000,h:4000,d:12000,x:0,y: -11000,z:0),block(w:24000,h:4000,d:16000,x:0,y:17000,z:0)],cuts:[],x:50000,y: -3000,z:frame_front-10000,ex:0,ey:45000,ez:0,plane:LayOnXZ,notes:"One broad-grip stop drops into the front tie; lift it out before withdrawing the cassette. Tool-free gravity retention proposal, not a vibration-qualified latch.")]))
+}
+fn frame_interfaces() -> List<MechanicalInterface> {
+ [mechanical_interface(id:"frame-joinery",members:map(frame_parts(),p=>p.id),fastener:SlidingFrameJoint,quantity:0,status:Proposed,requirement:"Assemble keyed side sections and front/rear ties. Zero added screws proposed; prove joint retention and racking on an unpowered frame."),
+ mechanical_interface(id:"stack-locators",members:["SL1","SL3","SR1","SR3"],fastener:StackingLocator,quantity:4,status:Proposed,requirement:"Four shoulder-bearing corners per level; 12 mm feet in 12.5 mm pockets at 158 mm pitch. Locators resist lateral shift, not lifting or overturning. Stack capacity unqualified."),
+ mechanical_interface(id:"cassette-stop",members:["STOP","FBR"],fastener:PrintedRetainingPin,quantity:1,status:Proposed,requirement:"Lift the front stop before extraction; disconnect power and cables. Partial withdrawal is supported by hand until loaded stability is validated.")]
+}
+fn stacking_dimensions_valid(pitch:Int,pocket:Int,foot:Int) -> Bool {pitch==158000&&pocket>foot&&pocket-foot==500&&withdrawal<tray_d&&frame_x-10000>tray_w/2+9000}
+
+// Added shoes preserve all r06 printable parts. They slide onto the front rail ends.
+fn skid_parts() -> List<AssemblyPart> {
+ map([-1,1],s=>part(id:if s<0 {"SKL"} else {"SKR"},name:"Clip-on front leveling skid",kind:Printed,scope:Cassette,
+ adds:[block(w:16000,h:11000,d:40000,x:0,y: -9500,z:0),block(w:3750,h:28250,d:40000,x:s*6125,y: -875,z:0),block(w:12000,h:3000,d:40000,x:s*2000,y:11750,z:0)],cuts:[],x:s*(tray_w/2+2080),y:0,z:100000,ex:s*35000,ey: -20000,ez:0,plane:LayOnXZ,
+ notes:"Slides over the existing rail end. Bottom bears on lowered frame ledges at Y=-15 mm; top of sole contacts rail underside at Y=-4 mm. Roof clearance is 0.25 mm; outside-wall clearance is 0.33 mm. Retention and loaded sliding remain unqualified; no new screws or changes to the existing tray."))
+}

@@ -1,0 +1,12 @@
+module test.claim.stacking_frame_witness_test
+import std.types {Bool}
+import product.printed_chassis.stacking_review {admitted,parts,joints}
+import product.printed_chassis.stacking_frame {stacking_dimensions_valid,stack_pitch,frame_parts}
+import product.printed_chassis.assembly_review_checks {review_model_checks,within_bed}
+
+test fn complete_stack_source_is_admitted() -> Bool {admitted()}
+test fn each_frame_piece_fits_the_existing_printer() -> Bool {all(frame_parts(),p=>within_bed(p:p))}
+test fn lost_corner_refuses_assembly() -> Bool {!review_model_checks(parts:filter(parts(),p=>p.id!="SL1"),interfaces:joints())}
+test fn tight_locator_and_wrong_pitch_are_refused() -> Bool {
+ !stacking_dimensions_valid(pitch:stack_pitch,pocket:12000,foot:12000)&&!stacking_dimensions_valid(pitch:stack_pitch-1000,pocket:12500,foot:12000)
+}

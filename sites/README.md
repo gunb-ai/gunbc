@@ -38,3 +38,10 @@ Historical review 05 Site source: `a9658fd05d27e83220c611b5fb00ac4397b74739` (ow
 
 Published review 06 Site source: `8dcdc73e2ed18f6498f63204796018727e3f923f` (owner-private).
 Joinery/CAD draft: https://github.com/gunb-ai/gunbc/pull/13222 .
+
+Revision 07 adds `product.printed_chassis.stacking_frame` and `stacking_review`: two vertically
+stacked frames with a 150 mm cassette-withdrawal preview, separate shared-power reservations,
+13 frame pieces and two clip-on front skids. The original 17 cassette STL files are unchanged.
+All 32 printed instances passed geometry checks; stack contact and seven sampled withdrawal
+positions were checked. Load rating, retention, continuous swept-volume and cables are not
+qualified. Source and test details: `docs/plans/cassette-stacking-review.md`.

@@ -27,7 +27,7 @@ type AssemblyPart {
   print_plane: PrintPlane, notes: String,
 }
 type InterfaceStatus = Proposed | OriginalPlateFitOnly | Unresolved
-type FastenerKind = M3PanelClamp | M4FanThroughBolt | PrintedRetainingPin | BoardSupportPending | ProtectedDcBranch | BondingHardwarePending
+type FastenerKind = SlidingFrameJoint | StackingLocator | M3PanelClamp | M4FanThroughBolt | PrintedRetainingPin | BoardSupportPending | ProtectedDcBranch | BondingHardwarePending
 
 type MechanicalInterface {
   id: String, members: List<String>, fastener: FastenerKind, quantity: Int,

@@ -1,0 +1,29 @@
+module product.printed_chassis.stacking_review
+import std.types {Bool,List}
+import gunbc.cli_wire {CliWireResponse,CliWirePrintable}
+import std.process {ExitSuccess,exit_failure}
+import extdeps.languages.json.emit {serialize_json,json_object,json_kv,json_string}
+import product.printed_chassis.assembly_geometry {AssemblyPart,MechanicalInterface,Clearance,FixedFrame,LayOnXZ,block,part}
+import product.printed_chassis.cassette {printed_parts,interfaces}
+import product.printed_chassis.rack_assembly {hardware}
+import product.printed_chassis.stacking_frame {frame_parts,skid_parts,frame_interfaces,stacking_dimensions_valid,stack_pitch}
+import product.printed_chassis.cassette_review {manifest_for_layout}
+import product.printed_chassis.assembly_review_checks {review_model_checks}
+import product.printed_chassis.cadquery_realization {realize_review_parts,ReviewCadQueryEmitted,ReviewCadQueryRefused,review_program_source}
+import product.printed_chassis.review_realization {adapter_source}
+fn power_station() -> List<AssemblyPart> {
+ [part(id:"PSU",name:"Separate shared supply reservation",kind:Clearance,scope:FixedFrame,adds:[block(w:150000,h:85000,d:150000,x:0,y:42500,z:0)],cuts:[],x:400000,y:0,z:0,ex:0,ey:0,ez:0,plane:LayOnXZ,notes:"Shared supply stays off the removable cassette and off the stacked printed frame. Model, capacity, protective enclosure and mounting unresolved."),
+ part(id:"PDB",name:"Protected distribution reservation",kind:Clearance,scope:FixedFrame,adds:[block(w:150000,h:30000,d:35000,x:0,y:15000,z:0)],cuts:[],x:400000,y:0,z: -110000,ex:0,ey:0,ez:0,plane:LayOnXZ,notes:"Protected isolatable DC branches; electrical design remains unresolved."),
+ part(id:"FEEDS",name:"Rear disconnect service corridor",kind:Clearance,scope:FixedFrame,adds:[block(w:30000,h:stack_pitch*2,d:40000,x:0,y:stack_pitch,z:0)],cuts:[],x:210000,y: -22000,z: -260000,ex:0,ey:0,ez:0,plane:LayOnXZ,notes:"Cable routing reservation; not a modeled connected harness. Isolate and disconnect before cassette extraction. Rear exhaust must remain unobstructed.")]
+}
+fn parts() -> List<AssemblyPart> {concat(printed_parts(),concat(skid_parts(),concat(hardware(),concat(frame_parts(),power_station()))))}
+fn joints() -> List<MechanicalInterface> {concat(filter(interfaces(),i=>i.id!="rack-ground"),frame_interfaces())}
+fn admitted() -> Bool {stacking_dimensions_valid(pitch:stack_pitch,pocket:12500,foot:12000)&&review_model_checks(parts:parts(),interfaces:joints())}
+fn bundle() -> CliWireResponse {
+ if !admitted() {return CliWirePrintable {bytes:"Stack source checks refused",exit:exit_failure(reason:"Stack source checks refused")}}
+ let manifest=manifest_for_layout(parts:parts(),joints:joints(),stacking:true)
+ match realize_review_parts(parts:parts()) {ReviewCadQueryRefused {reason:_}=>CliWirePrintable {bytes:"Stack CAD emission refused",exit:exit_failure(reason:"Stack CAD emission refused")} ReviewCadQueryEmitted {program:p}=>{
+ let source=join([review_program_source(p:p),"import json\n_expected_manifest = json.loads(",serialize_json(v:json_string(s:serialize_json(v:manifest))),")\n",adapter_source()],"")
+ CliWirePrintable {bytes:serialize_json(v:json_object(members:[json_kv(key:"manifest",value:manifest),json_kv(key:"program",value:json_string(s:source))])),exit:ExitSuccess}
+ }}
+}
