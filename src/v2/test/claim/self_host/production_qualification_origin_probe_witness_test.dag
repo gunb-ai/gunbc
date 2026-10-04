@@ -26,7 +26,6 @@ import v2.test.claim.self_host.production_qualification_origin_probe_structural_
 }
 import v2.std.algebra { any }
 import v2.std.integer { int_eq }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 // Production-qualification origin PROBE witnesses (wise-ram-22 recut): per-PR discovery carries

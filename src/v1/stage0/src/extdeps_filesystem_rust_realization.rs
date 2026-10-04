@@ -45,11 +45,29 @@ pub fn rust_file_create_new_canonical_block() -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
-                rust_file_create_staging_candidate_attempt_limit_def(),
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            rust_file_create_staging_candidate_attempt_limit_def(),
+                            "\n".to_string(),
+                        ),
+                        "pub ".to_string(),
+                    ),
+                    rust_file_write_create_new_fn_def(),
+                ),
                 "\n".to_string(),
             ),
             "pub ".to_string(),
         ),
-        rust_file_write_create_new_fn_def(),
+        rust_file_link_create_new_fn_def(),
     )
+}
+
+pub fn rust_file_link_create_new_fn_def() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "fn gunbc_file_link_create_new(source_path: &str, file_path: &str) -> std::io::Result<()> {\n    std::fs::hard_link(source_path, file_path)\n}\n".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }

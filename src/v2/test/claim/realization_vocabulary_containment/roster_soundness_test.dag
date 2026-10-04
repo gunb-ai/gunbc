@@ -9,7 +9,6 @@ import v2.lens.realization_vocabulary_containment {
   realization_vocab_grandfathered_edge_keys_are_distinct,
   realization_vocab_grandfathered_edge_roster_well_formed
 }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

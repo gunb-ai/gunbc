@@ -25,7 +25,6 @@ import v2.std.dependency {
   EffectDependsOn
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, None, diagnostics_singleton }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, ComputationNode, Edge, Authored, Node, Symbol, TypeNode, Value }
 import v2.std.runtime {
   BindInterpreter,
