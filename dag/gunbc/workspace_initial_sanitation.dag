@@ -1,0 +1,136 @@
+module gunbc.workspace_initial_sanitation
+
+import extdeps.shell.exec { ProcessOutputAbsent, ProcessRefused }
+import std.types { String, NonEmptyStr, Bool, List, Timestamp }
+import std.algebra { trim }
+import std.decl_ref { decl_ref }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.linux.procfs { procfs_path_literal, ProcSelfMountinfo }
+import extdeps.linux.proc_mountinfo { mountinfo_mount_points, MountPointsRead, MountPointsUndecodable }
+import extdeps.tools.hostname { hostname_short_read_command }
+import gunbc.command_runner { run_shell_command_capture, ProcessOutputPresent, LocalExec }
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fabric_cell_converge { fabric_cell_root_path, fabric_cell_attempt_root_path, fabric_cell_slice_name }
+import gunbc.runner_microvm_lifecycle {
+  CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreeReadFailed,
+  ResourceReadback, ResourceAbsent, ResourcePresent, ResourceUnreadable,
+  process_observation_of_cgroup, cgroup_observation, resource_observation, slot_network_observation,
+}
+import gunbc.runner_microvm_lifecycle_realize { observe_cgroup_subtree, mount_point_is_within }
+import gunbc.runner_microvm_network { SlotNetworkSanitationSubject, SlotNetworkReadback, slot_network_verdict }
+import gunbc.runner_microvm_network_observe { observe_slot_network_readings }
+import product.fabric.sanitation { SanitationObservation, MountsRemoved, WritableLayersDeleted, SecretsRemoved }
+
+// Observation identity is content-addressed; observed_at separately carries freshness. A clean
+// restart can reread the same subject without changing the prepared journal identity.
+// Initial commissioning has a slot but no attempt. The existing lifecycle still owns the
+// interpretation of each readback. This producer neither invents an attempt nor cleans residue.
+// Its controller caller must exclude competing starts throughout observation and publication.
+type WorkspaceInitialSanitationObserved sole_constructor {
+  slot: RunnerSlotIdentity
+  observed_at: Timestamp
+  observation_identity: NonEmptyStr
+  observations: List<SanitationObservation>
+}
+
+type WorkspaceInitialSanitationRead
+  = WorkspaceInitialSanitationReadback { observation: WorkspaceInitialSanitationObserved }
+  | WorkspaceInitialSanitationUnavailable { reason: String }
+
+type WorkspaceInitialSanitationReadings {
+  cgroup_before: CgroupSubtreeReadback
+  cgroup_after: CgroupSubtreeReadback
+  mounts: ResourceReadback
+  storage: ResourceReadback
+  network: SlotNetworkReadback
+}
+
+// Both ends must be empty. A transient live or unreadable subtree cannot be erased by the last
+// reading. The exclusive controller boundary, not these two samples, excludes a new start.
+fn workspace_initial_cgroup_readback(readings: WorkspaceInitialSanitationReadings) -> CgroupSubtreeReadback {
+  match readings.cgroup_before {
+    CgroupSubtreeEmpty => readings.cgroup_after
+    other => other
+  }
+}
+
+fn workspace_initial_sanitation_observations(readings: WorkspaceInitialSanitationReadings) -> List<SanitationObservation> {
+  let cgroup = workspace_initial_cgroup_readback(readings: readings)
+  [
+    process_observation_of_cgroup(cgroup: cgroup),
+    cgroup_observation(readback: cgroup),
+    resource_observation(fact: MountsRemoved, readback: readings.mounts),
+    slot_network_observation(result: readings.network),
+    resource_observation(fact: WritableLayersDeleted, readback: readings.storage),
+    resource_observation(fact: SecretsRemoved, readback: readings.storage),
+  ]
+}
+
+// The cell root must contain only its empty attempts directory. Inspect the whole root so a
+// legacy credential file beside attempts is residue too. Missing/unreadable directories refuse:
+// installation owns these directories, and an absent substrate is not a sanitation reading.
+fn workspace_initial_storage_reading(root_success: Bool, root_entries: String,
+  attempts_success: Bool, attempts_entries: String) -> ResourceReadback {
+  if !root_success || !attempts_success {
+    ResourceUnreadable { reason: "initial cell storage directories could not both be listed" }
+  } else {
+    let root_names = filter(split(s: root_entries, delimiter: "\n"), name => name != "")
+    let attempt_names = filter(split(s: attempts_entries, delimiter: "\n"), name => name != "")
+    if root_names != ["attempts"] || count(attempt_names) != 0 {
+      ResourcePresent { detail: "cell storage contains prior or unexplained material; recover its subjects before commissioning" }
+    } else { ResourceAbsent }
+  }
+}
+
+fn workspace_initial_mount_reading(root: String, success: Bool, content: String) -> ResourceReadback {
+  if !success { ResourceUnreadable { reason: "initial sanitation mount table is unreadable" } }
+  else { match mountinfo_mount_points(content: content) {
+    MountPointsUndecodable { line: _, cause: _ } => ResourceUnreadable { reason: "initial sanitation mount table does not decode" }
+    MountPointsRead { mount_points } => if any(mount_points, path => mount_point_is_within(mount_point: path, root: root)) {
+      ResourcePresent { detail: "a mount remains at or below the cell root" }
+    } else { ResourceAbsent }
+  } }
+}
+
+// Host identity is checked before any local store or kernel reading. All reads are fresh and
+// use the network subject derived from its existing converged receipt. No supplied fixture
+// observation can construct the sealed result consumed by commissioning.
+fn workspace_observe_initial_sanitation(subject: SlotNetworkSanitationSubject) -> WorkspaceInitialSanitationRead {
+  match run_shell_command_capture(command: hostname_short_read_command(), transport: LocalExec) {
+    ProcessOutputPresent { text: host } => if trim(s: host) != (subject.subject.slot.host as String) {
+      WorkspaceInitialSanitationUnavailable { reason: "initial sanitation must execute on the slot's host" }
+    } else { workspace_observe_initial_sanitation_on_host(subject: subject) }
+    ProcessOutputAbsent => WorkspaceInitialSanitationUnavailable { reason: "initial sanitation host identity is unreadable" }
+    ProcessRefused { exit_code: _, stderr: _ } => WorkspaceInitialSanitationUnavailable { reason: "initial sanitation host identity is unreadable" }
+  }
+}
+
+fn workspace_observe_initial_sanitation_on_host(subject: SlotNetworkSanitationSubject) -> WorkspaceInitialSanitationRead
+  admit_callers: [decl_ref(module_path: "gunbc.workspace_initial_sanitation", decl_name: "workspace_observe_initial_sanitation")]
+{
+  let slot = subject.subject.slot
+  let root = fabric_cell_root_path(slot: slot)
+  let slice = fabric_cell_slice_name(slot: slot) as NonEmptyStr
+  let before = observe_cgroup_subtree(slice: slice)
+  let mounts = Filesystem.Read(path: procfs_path_literal(p: ProcSelfMountinfo) as String)
+  let cell = Filesystem.List(path: root)
+  let attempts = Filesystem.List(path: fabric_cell_attempt_root_path(slot: slot))
+  let network = slot_network_verdict(s: subject, readings: observe_slot_network_readings(subject: subject))
+  let readings = WorkspaceInitialSanitationReadings {
+    cgroup_before: before, cgroup_after: observe_cgroup_subtree(slice: slice),
+    mounts: workspace_initial_mount_reading(root: root, success: mounts.success, content: mounts.content),
+    storage: workspace_initial_storage_reading(root_success: cell.success, root_entries: cell.entries,
+      attempts_success: attempts.success, attempts_entries: attempts.entries),
+    network: network,
+  }
+  match clock_now_probed_at() {
+    Absent => WorkspaceInitialSanitationUnavailable { reason: "initial sanitation observation has no clock" }
+    Present { value: now } => WorkspaceInitialSanitationReadback { observation: WorkspaceInitialSanitationObserved {
+      slot: slot, observed_at: now as String,
+      observation_identity: serialize_content_hash(hash: content_hash_of_value(value: to_string([to_string(slot), to_string(subject), to_string(readings)]))) as NonEmptyStr,
+      observations: workspace_initial_sanitation_observations(readings: readings),
+    } }
+  }
+}
