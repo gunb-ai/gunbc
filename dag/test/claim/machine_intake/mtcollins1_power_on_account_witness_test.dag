@@ -10,7 +10,9 @@ import extdeps.bootloader.grub { grub_console_report, grub_error_text }
 import extdeps.ampere.smpro_register { smpro_manufacturer_id_reg, smpro_cur_bootstage_reg, smpro_bootstage_reg, smpro_gpi_ras_err_reg,
   smpro_err_pmpro_type_reg, smpro_err_pmpro_info_lo_reg, smpro_err_pmpro_info_hi_reg, smpro_err_pmpro_data_lo_reg, smpro_err_pmpro_data_hi_reg,
   smpro_warn_pmpro_info_lo_reg, smpro_warn_pmpro_info_hi_reg, SmproRegister, SmproBootProgressRefused }
-import gunbc.machine_intake_mtcollins1_smpro_observation { SmproProbeRaw, SmproProbeOutcome, smpro_probe_outcome }
+import gunbc.machine_intake_ampere_smpro_observation { SmproProbeRaw, SmproProbeOutcome, smpro_probe_outcome, SmproSiteAdmitted, SmproSiteRefused, smpro_pass_observation_fixture }
+import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import extdeps.bmc.ipmi_sel { InitiatedByPowerUp, SystemRestart }
 import gunbc.machine_intake_pre_os_bringup_verdict { SelWindowEvent, BootRestart }
 import gunbc.machine_intake_pre_os_bringup_verdict { firmware_console_report }
@@ -41,6 +43,15 @@ import gunbc.machine_intake_mtcollins1_power_on_account {
 import gunbc.machine_intake_host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ONE SUPPLIED PASS, rendered against mtcollins1's real admitted site so the account reads it through
+// a subject as production does. A refused site yields no pass, and every claim expecting one fails.
+fn pass_of(label: NonEmptyStr, outcomes: List<SmproProbeOutcome>) -> List<SmproPassEvidence> {
+  match mtcollins1_smpro_site() {
+    SmproSiteAdmitted { site: s } => [SmproPassEvidence { label: label, observation: smpro_pass_observation_fixture(host: operator_host_mtcollins1, site: s, outcomes: outcomes) }]
+    SmproSiteRefused { cause: _ } => []
+  }
+}
 
 // SUPPLIED FIXTURES (DESIGN section 3, a witness discriminates at one interface). The account's inputs
 // are constructed here: console readings by running the real readers over EXACT BYTES of real
@@ -105,22 +116,22 @@ fn raw(socket: Int, reg: SmproRegister, stdout: String) -> SmproProbeOutcome {
 // THE 2026-10-03 LOOP's SMpro pass (eager-gull-22's synchronized capture): socket 0 CUR_BOOTSTAGE 0x0002
 // with BOOTSTAGE 0x0201; socket 1 CUR_BOOTSTAGE 0x0001 with BOOTSTAGE 0x03ff, a refused pair.
 fn loop_pass() -> List<SmproPassEvidence> {
-  [SmproPassEvidence { label: "power-on", outcomes: [
+  pass_of(label: "power-on", outcomes: [
     raw(socket: 0, reg: smpro_manufacturer_id_reg, stdout: "cd 3a"), raw(socket: 0, reg: smpro_cur_bootstage_reg, stdout: "00 02"), raw(socket: 0, reg: smpro_bootstage_reg, stdout: "02 01"),
     raw(socket: 1, reg: smpro_manufacturer_id_reg, stdout: "cd 3a"), raw(socket: 1, reg: smpro_cur_bootstage_reg, stdout: "00 01"), raw(socket: 1, reg: smpro_bootstage_reg, stdout: "03 ff"),
-  ] }]
+  ])
 }
 
 // Socket 0's GPI-pending CCIX record as #13058 decodes it (smpro-err-20261003T005609Z: 0x7E = 0x0002,
 // 0xA6 = 0x0074, 0xA7 = 0x2244).
 fn ccix_pass() -> List<SmproPassEvidence> {
-  [SmproPassEvidence { label: "census", outcomes: [
+  pass_of(label: "census", outcomes: [
     raw(socket: 0, reg: smpro_manufacturer_id_reg, stdout: "cd 3a"), raw(socket: 0, reg: smpro_gpi_ras_err_reg, stdout: "00 02"),
     raw(socket: 0, reg: smpro_err_pmpro_type_reg, stdout: "00 02"), raw(socket: 0, reg: smpro_err_pmpro_info_hi_reg, stdout: "22 44"),
     raw(socket: 0, reg: smpro_err_pmpro_info_lo_reg, stdout: "00 74"), raw(socket: 0, reg: smpro_err_pmpro_data_hi_reg, stdout: "00 00"),
     raw(socket: 0, reg: smpro_err_pmpro_data_lo_reg, stdout: "00 00"), raw(socket: 0, reg: smpro_warn_pmpro_info_hi_reg, stdout: "00 00"),
     raw(socket: 0, reg: smpro_warn_pmpro_info_lo_reg, stdout: "00 00"),
-  ] }]
+  ])
 }
 
 // REAL SEL ROWS, re-typed as the reader types them (gunbc.machine_intake_pre_os_bringup_verdict
@@ -345,13 +356,13 @@ test fn a_cycle_one_panic_then_a_reset_and_a_stable_uefi_shell_is_not_ended_by_t
 // ── GAP 4: A PENDING WARNING SURVIVES ─────────────────────────────────────────────────────────
 
 test fn a_pending_warning_without_an_error_is_kept() -> Bool {
-  let pass = [SmproPassEvidence { label: "census", outcomes: [
+  let pass = pass_of(label: "census", outcomes: [
     raw(socket: 0, reg: smpro_manufacturer_id_reg, stdout: "cd 3a"), raw(socket: 0, reg: smpro_gpi_ras_err_reg, stdout: "00 02"),
     raw(socket: 0, reg: smpro_err_pmpro_type_reg, stdout: "00 01"), raw(socket: 0, reg: smpro_err_pmpro_info_hi_reg, stdout: "00 00"),
     raw(socket: 0, reg: smpro_err_pmpro_info_lo_reg, stdout: "00 00"), raw(socket: 0, reg: smpro_err_pmpro_data_hi_reg, stdout: "00 00"),
     raw(socket: 0, reg: smpro_err_pmpro_data_lo_reg, stdout: "00 00"), raw(socket: 0, reg: smpro_warn_pmpro_info_hi_reg, stdout: "22 44"),
     raw(socket: 0, reg: smpro_warn_pmpro_info_lo_reg, stdout: "00 74"),
-  ] }]
+  ])
   let a = mtcollins1_power_on_account(e: evidence(console: ConsoleNotRead, smpro: pass, census_ended: false))
   count(a.warnings) == 1 && !any(a.errors, x => match x.error { SmproRecordStated { socket: _, processor: _, pass: _, record: _ } => true _ => false })
 }

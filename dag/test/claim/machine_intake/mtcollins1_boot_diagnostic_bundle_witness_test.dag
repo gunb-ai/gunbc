@@ -26,7 +26,7 @@ import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   power_after_attempt, power_after_harness,
   MtCollins1BootDiagnosticBundle, InventoryReading, MembersRead, MembersUnread, MembersNotTaken,
   SelSnapshotRead, SelSnapshotUnread, SelSnapshotNotTaken, ConsoleNotConfigured,
-  SdrCacheDumped, SdrCacheUnread, SdrCacheNotTaken, SensorsRead, SensorsNotTaken, SmproProbed, SmproNotTaken,
+  SdrCacheDumped, SdrCacheUnread, SdrCacheNotTaken, SensorsRead, SensorsNotTaken, SmproProbed, SmproNotTaken, SmproReading,
   BmcUnreachable, BmcTimeout, BmcAuthRefused, BmcHttpRefused, BmcSessionUnestablished,
   bmc_curl_read_cause, bmc_ipmitool_read_cause, inventory_not_taken,
   mtcollins1_boot_findings, harness_finding_text, processor_anomalies, memory_anomalies, mtcollins1_attempt_configuration_receipt, mtcollins1_boot_bundle_text, mtcollins1_boot_outcome_with_findings,
@@ -43,11 +43,22 @@ import gunbc.machine_intake_pre_os_bringup_verdict { TrainingRefusedByFirmware }
 import std.measure { byte_size, byte_size_count, second_count }
 import extdeps.bmc.ipmi_sdr { sdr_decode_lines }
 import extdeps.ampere.smpro_register { smpro_manufacturer_id_reg, smpro_bootstage_reg, smpro_cur_bootstage_reg, smpro_gpi_ras_err_reg, smpro_err_pmpro_type_reg }
-import gunbc.machine_intake_mtcollins1_smpro_observation { SmproProbeRaw, smpro_probe_outcome, mtcollins1_smpro_read_order }
+import gunbc.machine_intake_ampere_smpro_observation { SmproProbeRaw, SmproProbeOutcome, smpro_probe_outcome, smpro_pass_read_order, SmproSiteAdmitted, SmproSiteRefused, smpro_pass_observation_fixture }
+import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.machine_intake_mtcollins1_power_on_account { AttemptConfigurationReceipt, ExpectedSockets, ProcessorMissingOnExpectedSocket, ProcessorSocketDuplicated, BmcAnomaly, MemoryBelowRecordedPopulation, SlotRow, PopulationOperatorAttested, StoppedWithoutRestart, SmproErrorRegisters, SmproRegisters, CarrierRead, CarrierRefused, CarrierPartial, mtcollins1_power_on_account_notes }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A PROBED READING OVER SUPPLIED OUTCOMES, rendered against mtcollins1's real admitted site. A refused
+// site yields NOT TAKEN with the marker, so a claim expecting a probed reading fails loudly.
+fn smpro_probed(outcomes: List<SmproProbeOutcome>) -> SmproReading {
+  match mtcollins1_smpro_site() {
+    SmproSiteAdmitted { site: s } => SmproProbed { observation: smpro_pass_observation_fixture(host: operator_host_mtcollins1, site: s, outcomes: outcomes) }
+    SmproSiteRefused { cause: _ } => SmproNotTaken { reason: "FIXTURE SITE REFUSED" }
+  }
+}
 
 // ── SUPPLIED FIXTURES ────────────────────────────────────────────────────────────────────────
 //
@@ -277,11 +288,11 @@ test fn an_incomplete_memory_collection_mints_no_short_inventory_finding() -> Bo
 // ── THE DIAGNOSTICS DEADLINE ─────────────────────────────────────────────────────────────────
 
 // 2 SEL snapshots, 1 SDR dump, 1 sensor read and the SMpro probes (2 sockets x the planned read order,
-// gunbc.machine_intake_mtcollins1_smpro_observation mtcollins1_smpro_read_order) x (20 s + 5 s
+// gunbc.machine_intake_ampere_smpro_observation smpro_pass_read_order) x (20 s + 5 s
 // kill-after) + 48 Redfish reads x 15 s + 60 s publish. The SMpro term was the literal 10 until #13058
 // grew the read order to 24 registers per socket, which left this claim red on main.
 test fn the_allowance_is_the_sum_of_the_bounds() -> Bool {
-  (second_count(s: mtcollins1_boot_diagnostics_allowance()) as Int) == (4 + 2 * count(mtcollins1_smpro_read_order)) * 25 + mtcollins1_boot_redfish_read_budget * 15 + 60
+  (second_count(s: mtcollins1_boot_diagnostics_allowance()) as Int) == (4 + 2 * count(smpro_pass_read_order)) * 25 + mtcollins1_boot_redfish_read_budget * 15 + 60
 }
 
 test fn a_spent_budget_refuses_the_read_and_names_what_was_not_reached() -> Bool {
@@ -651,7 +662,7 @@ test fn a_socket_one_smpro_stage_reaches_the_refusal() -> Bool {
     smpro_probe_outcome(raw: smpro_raw(socket: 1, register: smpro_bootstage_reg.name, exit_code: 0, stdout: "03 03", stderr: "")),
   ]
   let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors,
-    smpro: SmproProbed { outcomes: outcomes }, inventory: b.inventory, console: b.console, run: no_run(), screen: no_screen() }
+    smpro: smpro_probed(outcomes: outcomes), inventory: b.inventory, console: b.console, run: no_run(), screen: no_screen() }
   (match mtcollins1_boot_outcome_with_findings(outcome: exit_failure(reason: "q"), findings: mtcollins1_boot_findings(bundle: bundle)) {
     ExitFailure { code: _, reason: r } => contains(r, "socket 1 SMpro reports a FAILED stage") && contains(r, "reported DDR initialization")
     ExitSuccess => false
@@ -664,7 +675,7 @@ test fn an_smpro_nak_means_the_bmc_answered() -> Bool {
   let b = bundle_bmc_silent()
   let nak = smpro_probe_outcome(raw: smpro_raw(socket: 0, register: smpro_manufacturer_id_reg.name, exit_code: 1, stdout: "", stderr: "Unable to send RAW command (channel=0x0 netfn=0x6 lun=0x0 cmd=0x52 rsp=0x83): Unknown (0x83)"))
   let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors,
-    smpro: SmproProbed { outcomes: [nak] }, inventory: b.inventory, console: b.console, run: no_run(), screen: no_screen() }
+    smpro: smpro_probed(outcomes: [nak]), inventory: b.inventory, console: b.console, run: no_run(), screen: no_screen() }
   !any_contains(xs: found(bundle: bundle), pattern: "every BMC read failed")
     && any_contains(xs: found(bundle: bundle_bmc_silent()), pattern: "every BMC read failed")
 }
@@ -676,7 +687,7 @@ test fn a_malformed_smpro_answer_means_the_bmc_answered() -> Bool {
   let b = bundle_bmc_silent()
   let bad = smpro_probe_outcome(raw: smpro_raw(socket: 0, register: smpro_manufacturer_id_reg.name, exit_code: 0, stdout: " cd\n", stderr: ""))
   let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors,
-    smpro: SmproProbed { outcomes: [bad] }, inventory: b.inventory, console: b.console, run: no_run(), screen: no_screen() }
+    smpro: smpro_probed(outcomes: [bad]), inventory: b.inventory, console: b.console, run: no_run(), screen: no_screen() }
   let findings = found(bundle: bundle)
   !any_contains(xs: findings, pattern: "every BMC read failed") && !any_contains(xs: findings, pattern: "did not answer")
     && contains(mtcollins1_boot_bundle_text(bundle: bundle), "MANUFACTURER_ID_REG: MALFORMED")
@@ -945,7 +956,7 @@ test fn refused_error_registers_beside_a_read_stage_pair_are_their_own_coverage_
     smpro_probe_outcome(raw: smpro_raw(socket: 0, register: smpro_err_pmpro_type_reg.name, exit_code: 1, stdout: "", stderr: nak)),
   ]
   let bundle = MtCollins1BootDiagnosticBundle { attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors,
-    smpro: SmproProbed { outcomes: outcomes }, inventory: b.inventory, console: b.console, run: no_run(), screen: no_screen() }
+    smpro: smpro_probed(outcomes: outcomes), inventory: b.inventory, console: b.console, run: no_run(), screen: no_screen() }
   let cov = mtcollins1_boot_findings(bundle: bundle).account.coverage
   any(cov, c => (match c.carrier { SmproRegisters => true _ => false }) && (match c.standing { CarrierRead => true _ => false }))
     && any(cov, c => (match c.carrier { SmproErrorRegisters => true _ => false }) && (match c.standing { CarrierRefused { cause: _ } => true CarrierPartial { detail: _ } => true _ => false }))

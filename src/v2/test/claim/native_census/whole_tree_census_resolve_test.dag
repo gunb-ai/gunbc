@@ -15,6 +15,8 @@ import v2.compiler.compile {
   native_census_modules,
   native_census_residual_rows,
   NativeCensusCauseGroup,
+  NativeCensusCascadeNone,
+  NativeCensusClosureIndexUnavailable,
   native_census_cause_groups_add_residual,
   native_census_cause_groups_empty,
   native_census_cause_groups_from_file_refusals,
@@ -486,8 +488,8 @@ test fn census_cause_groups_key_on_fatal_not_head_holds() -> Bool {
     CensusProbeContextRefused => false
     CensusProbeOutcomesDecided { clean: _, unbound: _, poison: _, advised: _, unbound_residual_rows: _, two_residual_rows: _, advised_rows: rows, two: _, advised_two: _ } =>
       {
-        let groups = fold_list(xs: rows, empty: native_census_cause_groups_empty(), cons: fn(acc, row) {
-          native_census_cause_groups_add_residual(groups: acc, row: row)
+        let groups = fold_list(xs: rows, empty: native_census_cause_groups_empty(resolves: true), cons: fn(acc, row) {
+          native_census_cause_groups_add_residual(groups: acc, cascade: NativeCensusCascadeNone, row: row)
         })
         let listed = native_census_cause_group_rows(groups: groups)
         length(xs: listed) == 1
@@ -529,7 +531,11 @@ test fn census_file_refusals_group_under_fatal_not_shared_head_holds() -> Bool {
     census_supplied_file_refusal(path: ^census_supplied_b, fatal: ^parse_unexpected_token),
     census_supplied_file_refusal(path: ^census_supplied_c, fatal: ^tokenize_lex_e0_source_not_exhausted)
   ]
-  let groups = native_census_cause_groups_from_file_refusals(refusals: refusals)
+  let groups = native_census_cause_groups_from_file_refusals(
+    refusals: refusals,
+    closure: NativeCensusClosureIndexUnavailable { reason: ^census_supplied_no_import_graph },
+    resolves: false
+  )
   let listed = native_census_cause_group_rows(groups: groups)
   length(xs: listed) == 2
     && census_cause_group_of(groups: listed, reason: ^tokenize_lex_e0_source_not_exhausted) == 2
