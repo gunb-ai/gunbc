@@ -13,8 +13,8 @@ import gunbc.roadmap_serve {
   SandboxAssetHandler, SandboxEchoHandler,
   SessionsJsonHandler, AttemptsJsonHandler, WorkflowJsonHandler, BeltStopHandler,
   BeltPublishHandler,
-  IssueDetailPageHandler, IssueAssignHandler, IssueCommentHandler, IssueAssignmentContextHandler,
-  serve_issue_assignment_context_over,
+  IssueDetailPageHandler, IssueAssignHandler, IssueCommentHandler, IssueAssignmentContextHandler, IssueAssigneePickerHandler,
+  serve_issue_assignment_context_over, serve_issue_assignee_picker_over,
   AuthSessionHandler, AuthLoginHandler, AuthGoogleCallbackHandler, AuthLogoutHandler,
   roadmap_serve_route_table_build,
   roadmap_serve_route_specs,
@@ -658,6 +658,7 @@ test fn witness_undeclared_daily_body_costs_no_other_route() -> Bool {
 test fn witness_issue_detail_route_selects() -> Bool {
   selects(method: GET, path: "/issue/some-node", want: IssueDetailPageHandler)
     && selects(method: GET, path: "/issue/some-node/assignment", want: IssueAssignmentContextHandler)
+    && selects(method: GET, path: "/issue/some-node/assignee-picker", want: IssueAssigneePickerHandler)
     && selects(method: POST, path: "/issue/some-node/assign", want: IssueAssignHandler)
     && selects(method: POST, path: "/issue/some-node/comment", want: IssueCommentHandler)
 }
@@ -1109,4 +1110,12 @@ test fn the_served_entry_reads_the_cookie_field_from_its_declared_request_header
     && malformed.body == "Your session has expired or is unavailable. Sign in again."
     && repeated.status == 400
     && repeated.body == "bad request: duplicate cookie header\n"
+}
+
+test fn anonymous_picker_unknown_issue_refuses_before_host_reads() -> Bool {
+  let response = serve_issue_assignee_picker_over(
+    instance: srv2_preview_dashboard_instance(), plan: caller_supplied_plan_fixture(), params: [],
+    request: ServeHttpRequest { method: GET, path: "/issue/missing/assignee-picker", body: "",
+      security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent } })
+  response.status == 404 && !string_contains(s: response.body, pattern: "csrf")
 }

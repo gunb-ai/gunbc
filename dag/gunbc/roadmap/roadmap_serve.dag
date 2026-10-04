@@ -27,7 +27,7 @@ import gunbc.roadmap_style { roadmap_css }
 import gunbc.roadmap_allocation_client { allocation_client_source }
 
 
-import gunbc.roadmap_inline_assignment { inline_assignment_context_body }
+import gunbc.roadmap_inline_assignment { inline_assignment_context_body, inline_assignment_preview_body }
 
 import extdeps.tailscale.serve { ServeStatusUnreadable }
 import gunbc.roadmap_auth_routes { auth_login_response, auth_google_callback_response, auth_logout_response, roadmap_serve_authentication_evidence }
@@ -309,6 +309,7 @@ type RoadmapServeHandler
   | IssueDetailPageHandler
   | IssueAssignHandler
   | IssueAssignmentContextHandler
+  | IssueAssigneePickerHandler
   | IssueCommentHandler
   | ProjectSuitePageHandler
   | AuthSessionHandler
@@ -391,6 +392,7 @@ fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>>
     ServedRouteSpec { method: GET, raw: "/issue/\{node_id\}", handler: IssueDetailPageHandler },
     ServedRouteSpec { method: GET, raw: "/project/\{node_id\}", handler: ProjectSuitePageHandler },
     ServedRouteSpec { method: GET, raw: "/issue/\{node_id\}/assignment", handler: IssueAssignmentContextHandler },
+    ServedRouteSpec { method: GET, raw: "/issue/\{node_id\}/assignee-picker", handler: IssueAssigneePickerHandler },
     ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/assign", handler: IssueAssignHandler },
     ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/comment", handler: IssueCommentHandler },
     ServedRouteSpec { method: GET, raw: "/auth/session", handler: AuthSessionHandler },
@@ -819,6 +821,30 @@ fn serve_issue_assignment_context_over(
     AuthAbsent => serve_text_response(status: 401, content_type: text_plain_utf8, body: "Sign in to assign this issue.")
     SessionStandingInvalid { standing: _ } => serve_text_response(status: 401, content_type: text_plain_utf8, body: "Your session has expired or is unavailable. Sign in again.")
     FabricServiceEvidence { kind: _, authenticated_at: _ } => serve_text_response(status: 403, content_type: text_plain_utf8, body: "Inline assignment requires a signed-in human session.")
+  }
+}
+
+// Opening a picker is a public read, just like opening the issue page. Saving still uses
+// the protected assignment context and existing authenticated POST admission.
+fn serve_issue_assignee_picker_over(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, params: List<PathParamBinding>) -> ServeHttpResponse {
+  match request.security.authentication {
+    GoogleOidcSession { session: _ } => serve_issue_assignment_context_over(instance: instance, plan: plan, request: request, params: params)
+    AuthAbsent => serve_issue_assignee_preview_over(instance: instance, plan: plan, params: params)
+    SessionStandingInvalid { standing: _ } => serve_issue_assignee_preview_over(instance: instance, plan: plan, params: params)
+    FabricServiceEvidence { kind: _, authenticated_at: _ } => serve_issue_assignee_preview_over(instance: instance, plan: plan, params: params)
+  }
+}
+
+fn serve_issue_assignee_preview_over(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, params: List<PathParamBinding>) -> ServeHttpResponse {
+  let node_id = path_param_value(params: params, name: "node_id")
+  if !issue_detail_node_exists(proj: plan, node_id: node_id) {
+    serve_text_response(status: 404, content_type: text_plain_utf8, body: "Issue not found.")
+  } else {
+    let recents = match roadmap_events_read_all(layout: roadmap_event_carrier_layout_for_instance(instance: instance)) {
+      AllEventsRead { envelopes } => roadmap_recent_claimed_assignees(envs: envelopes)
+      AllEventsReadRefused { step: _, reason: _ } => []
+    }
+    serve_text_response(status: 200, content_type: application_json_utf8, body: inline_assignment_preview_body(node_id: node_id, recents: recents, profiles: serve_profiles_for_instance(instance: instance)))
   }
 }
 
@@ -1345,6 +1371,7 @@ fn roadmap_serve_invoke_over(
     IssueDetailPageHandler => serve_issue_detail_response_over(instance: instance, plan: plan(), params: params, request: request)
     ProjectSuitePageHandler => serve_project_suite_response_over(plan: plan(), params: params, request: request)
     IssueAssignmentContextHandler => serve_issue_assignment_context_over(instance: instance, plan: plan(), request: request, params: params)
+    IssueAssigneePickerHandler => serve_issue_assignee_picker_over(instance: instance, plan: plan(), request: request, params: params)
     IssueAssignHandler => serve_issue_assign_response_over(instance: instance, plan: plan(), request: request, params: params)
     IssueCommentHandler => serve_issue_comment_response_over(instance: instance, request: request, params: params)
     AuthSessionHandler => auth_session_response_over(instance: instance, request: request)

@@ -1956,17 +1956,17 @@ test fn witness_issue_table_renders_modeled_action_and_census() -> Bool {
   }
 }
 
-// The workspace shows the identity beside its avatar and retains a session-gated editor.
+// The workspace shows the identity beside its avatar; opening is public and committing remains session-gated.
 test fn witness_issue_table_assignee_renders_the_avatar_chip_or_placeholder() -> Bool {
   match fx_summary_only_page_html(stale: false) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       let table = table_region(html: h)
-      occurrence_count(s: table, pattern: "class=\"site-avatar site-avatar-default\" data-avatar=\"absent\"") == 1
+      occurrence_count(s: table, pattern: "class=\"site-avatar site-avatar-default\" data-avatar=\"absent\"") == 3
         && string_contains(s: table, pattern: "issue-assignee-text")
-        && occurrence_count(s: table, pattern: ">--</button>") == 2
+        && occurrence_count(s: table, pattern: ">Unassigned</span>") == 2
         && occurrence_count(s: table, pattern: "class=\"issue-inline-assign\" disabled=\"disabled\"") == 3
-        && string_contains(s: table, pattern: "Sign in to assign this issue; checking session.")
+        && string_contains(s: table, pattern: "Open assignee picker; checking session.")
   }
 }
 
@@ -1981,7 +1981,7 @@ test fn witness_issue_table_header_derives_from_the_model_roster() -> Bool {
         string_contains(s: table, pattern: join(["data-sort-key=\"", extdeps.google.issue_tracker.issue_results_sort_key_wire(key: c.sort_key), "\""], ""))
           && string_contains(s: table, pattern: join([">", workspace_column_label(col: c), "</button>"], "")))
         && occurrence_count(s: table, pattern: "aria-sort=\"none\"") == count(issue_results_columns) - 1
-        && occurrence_count(s: table, pattern: "aria-sort=\"descending\"") == 1
+        && occurrence_count(s: table, pattern: "aria-sort=\"other\"") == 1
         && !string_contains(s: table, pattern: "data-col=\"type\"")
         && !string_contains(s: table, pattern: "data-col=\"actions\"")
   }

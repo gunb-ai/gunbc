@@ -273,7 +273,7 @@ fn fragment_is_sound_toggle(c: Fragment) -> Bool {
     Element { tag: t, attributes: a, children: _ } =>
       t == "button"
         && fold(a, init: false, f: (found, at) =>
-          found || (at.name == "class" && at.value == sound_toggle_class))
+          found || (at.name == "class" && any(split(s: at.value, delimiter: " "), token => token == sound_toggle_class)))
     FragmentText { content: _ } => false
     RawNode { content: _ } => false
   }
@@ -350,4 +350,10 @@ test fn witness_sound_toggle_label_is_painted_by_the_program_not_the_markup() ->
       string_contains(s: h, pattern: join(["<button class=\"", sound_toggle_class, "\" type=\"button\">sound</button>"], ""))
         && !string_contains(s: h, pattern: sound_toggle_label_on)
   }
+}
+
+// Shared geometry classes do not hide the control; partial class names do not identify it.
+test fn sound_toggle_recognition_uses_class_tokens() -> Bool {
+  fragment_is_sound_toggle(c: Element { tag: "button", attributes: [attr(name: "class", value: concat("site-button-compact ", sound_toggle_class))], children: [] })
+    && !fragment_is_sound_toggle(c: Element { tag: "button", attributes: [attr(name: "class", value: concat(sound_toggle_class, "-other"))], children: [] })
 }

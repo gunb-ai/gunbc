@@ -242,6 +242,11 @@ fn roadmap_surface_rules() -> List<BuildRule> {
       decl(prop: MinHeight, value: scale_var(t: height_control)),
       decl(prop: BorderRadius, value: "var(--radius-surface)")
     ] },
+    StaticRule { selector: RawSelector { text: ".issue-assign-session" }, decls: [
+      decl(prop: FontSize, value: "var(--text-12)"),
+      decl(prop: LineHeight, value: "1.5"),
+      decl(prop: Padding, value: "var(--space-4) var(--space-8)")
+    ] },
     StaticRule { selector: RawSelector { text: ".issue-assign-input" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_13)),
       decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
@@ -1078,7 +1083,7 @@ fn roadmap_surface_rules() -> List<BuildRule> {
       decl(prop: Color, value: "var(--issue-text-dim)")
     ] },
     StaticRule { selector: RawSelector { text: ".issue-assign-form .site-choice-list" }, decls: [
-      decl(prop: RawProperty { name: "top" }, value: scale_var(t: height_control)),
+      decl(prop: RawProperty { name: "top" }, value: "100%"),
       decl(prop: RawProperty { name: "right" }, value: "0"),
       decl(prop: RawProperty { name: "left" }, value: "auto"),
       decl(prop: MinWidth, value: "min(32ch, 85vw)"),

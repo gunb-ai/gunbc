@@ -48,3 +48,9 @@ fn issue_priority_of(node_id: String, index: RoadmapMembershipIndex) -> DerivedP
 fn issue_priority_explanation(value: DerivedPriority) -> String {
   join([roadmap_priority_label(priority: value.priority), " · ", value.reason, if value.source == "" { "" } else { join([" · inherited from ", value.source], "") }], "")
 }
+
+// Ready is the first bucket; within each bucket urgency precedes status. The rendered
+// order is also the client’s initial/Undo order, so no second comparison model is needed.
+fn workspace_priority_order_key(priority: RoadmapPriority, status_rank: Int) -> Int {
+  (if status_rank == 10 { 0 } else { 1000 }) + roadmap_priority_rank(priority: priority) * 100 - status_rank
+}

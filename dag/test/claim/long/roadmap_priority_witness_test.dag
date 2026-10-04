@@ -1,6 +1,6 @@
 module test.claim.long.roadmap_priority_witness
 
-import gunbc.roadmap_priority { ProjectPriority, PriorityP0, PriorityP1, PriorityP3, project_priority_walk, issue_priority_of, roadmap_priority_rank }
+import gunbc.roadmap_priority { ProjectPriority, PriorityP0, PriorityP1, PriorityP2, PriorityP3, project_priority_walk, issue_priority_of, roadmap_priority_rank, workspace_priority_order_key }
 import gunbc.roadmap.roadmap_project { membership_index }
 import gunbc.roadmap_nesting { RoadmapMembership }
 
@@ -41,4 +41,12 @@ test fn only_v2_project_work_inherits_p1_and_debt_override_stays_p3() -> Bool {
   roadmap_priority_rank(priority: issue_priority_of(node_id: "bootstrap", index: index).priority) == 1
     && roadmap_priority_rank(priority: issue_priority_of(node_id: "shell-typed-invocation", index: index).priority) == 3
     && roadmap_priority_rank(priority: issue_priority_of(node_id: "fleet-work", index: index).priority) == 2
+}
+
+// Ready work leads even urgent blocked work; urgency then orders each readiness bucket.
+test fn ready_bucket_then_priority_then_status_orders_workspace() -> Bool {
+  workspace_priority_order_key(priority: PriorityP3, status_rank: 10) < workspace_priority_order_key(priority: PriorityP0, status_rank: 4)
+    && workspace_priority_order_key(priority: PriorityP1, status_rank: 10) < workspace_priority_order_key(priority: PriorityP2, status_rank: 10)
+    && workspace_priority_order_key(priority: PriorityP1, status_rank: 4) < workspace_priority_order_key(priority: PriorityP2, status_rank: 9)
+    && workspace_priority_order_key(priority: PriorityP2, status_rank: 9) < workspace_priority_order_key(priority: PriorityP2, status_rank: 4)
 }

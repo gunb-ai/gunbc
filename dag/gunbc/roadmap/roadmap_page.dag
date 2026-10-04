@@ -1,8 +1,9 @@
 module gunbc.roadmap_page
+import gunbc.roadmap_auth_route_paths { auth_login_route_path }
 import gunbc.site.status { status_badge, status_tone }
 import gunbc.roadmap_surface_style { workspace_issue_columns }
 import gunbc.roadmap_presentation { issue_status_sort_rank }
-import gunbc.roadmap_priority { DerivedPriority, issue_priority_of, roadmap_priority_rank, roadmap_priority_label, issue_priority_explanation }
+import gunbc.roadmap_priority { DerivedPriority, issue_priority_of, roadmap_priority_rank, workspace_priority_order_key, roadmap_priority_label, issue_priority_explanation }
 import gunbc.site.choice { site_choice_list, site_compact_choice, site_choice_input }
 import gunbc.site.dependency_graph { DependencyGraphItem, dependency_graph_interactive }
 import gunbc.roadmap_presentation { dependency_cycle_touches }
@@ -122,7 +123,6 @@ import extdeps.google.issue_tracker {
   IssueActionAssign, issue_action_wire,
   IssueButtonText, issue_button_idiom_wire,
   IssueActionAvailability, issue_action_availability_wire,
-  issue_assignee_unassigned_display,
   IssueResultsColumn, IssueResultsColumnKind,
   IssueColumnPriority, IssueColumnTitle, IssueColumnAssignee,
   IssueColumnStatus, IssueColumnLastModified,
@@ -546,6 +546,7 @@ fn issue_assign_form_nodes(node_id: String, profiles: List<PrincipalProfile>, vi
         attr(name: "data-node", value: node_id ),
         attr(name: "title", value: "Assigning Fabric starts a workflow run; review before confirming" ),
       ], [ txt(issue_action_wire(kind: IssueActionAssign)) ]),
+      el_attrs("p", concat([attr(name: "class", value: "issue-assign-session"), attr(name: "data-assignment-signin", value: "")], if command_context.csrf == "" { [] } else { [attr(name: "hidden", value: "")] }), [el_attrs("a", [attr(name: "href", value: auth_login_route_path)], [txt("Sign in to save an assignment")])]),
     ]) ]
 }
 
@@ -1698,11 +1699,11 @@ fn issue_line_cell_content(col: IssueResultsColumn, view: WorkRowView, bar: Task
           attr(name: "type", value: "button"),
           attr(name: "class", value: "issue-inline-assign"),
           attr(name: "disabled", value: "disabled"),
-          attr(name: "title", value: "Sign in to assign this issue; checking session."),
+          attr(name: "title", value: "Open assignee picker; checking session."),
           attr(name: "aria-label", value: join(["Assign ", view.headline], "")),
           attr(name: "data-assign-node", value: view.node_id),
         ], match issue_assignee_holder(view: view, attempts: []) {
-          Absent => [ txt(issue_assignee_unassigned_display as String) ]
+          Absent => [issue_avatar_chip_node(display: EventPrincipalDisplay { name: "Unassigned", detail: "Choose an assignee", initials: "?", avatar: AvatarAbsent, picture: "" }, workflow: false), el_class("span", "issue-assignee-text", [txt("Unassigned")])]
           Present { value: holder } => [
             issue_avatar_chip_node(display: event_principal_display_with_profile(p: holder, profiles: view.profiles), workflow: event_principal_is_fabric(p: holder)),
             el_attrs("span", [attr(name: "class", value: "issue-assignee-text"), attr(name: "title", value: event_principal_display_with_profile(p: holder, profiles: view.profiles).detail)], [txt(workspace_assignee_label(holder: holder, profiles: view.profiles))])
@@ -1790,7 +1791,7 @@ fn issue_table_header_nodes() -> Fragment {
         attr(name: "class", value: join(["issue-col issue-col-", issue_results_column_kind_wire(kind: c.kind)], "") ),
         attr(name: "data-col", value: issue_results_column_kind_wire(kind: c.kind) ),
         attr(name: "role", value: "columnheader" ),
-        attr(name: "aria-sort", value: if c.kind == IssueColumnStatus { "descending" } else { "none" } ),
+        attr(name: "aria-sort", value: if c.kind == IssueColumnPriority { "other" } else { "none" } ),
       ], [ el_attrs("button", [
         attr(name: "type", value: "button" ),
         attr(name: "class", value: "issue-sort" ),
@@ -1806,7 +1807,7 @@ fn issue_table_markup(rows: List<IssueTableRow>, observation: ObservationImpactV
   el_attrs("div", [attr(name: "class", value: "issue-table"), attr(name: "role", value: "table"), attr(name: "aria-label", value: "Issue search results")], [
     issue_table_header_nodes(),
     el_class("div", "issue-empty", [ txt("No issues match your search.") ]),
-    el_attrs("ul", [attr(name: "role", value: "rowgroup")], map(sort_by(rows, r => -issue_status_sort_rank(view: r.view)), r => issue_line_li(row: r, observation: observation, memberships: membership_index_of_table, dependencies: dependency_index_of_table))),
+    el_attrs("ul", [attr(name: "role", value: "rowgroup")], map(sort_by(rows, r => workspace_priority_order_key(priority: issue_priority_of(node_id: r.view.node_id, index: membership_index_of_table).priority, status_rank: issue_status_sort_rank(view: r.view))), r => issue_line_li(row: r, observation: observation, memberships: membership_index_of_table, dependencies: dependency_index_of_table))),
   ])
 }
 
