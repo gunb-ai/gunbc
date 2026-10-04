@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.hub_cache_root_relative_to_executing_home
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data hub_cache_root_relative_to_executing_home: RecurringFailureMode = RecurringFailureMode {
+  identity: "hub_cache_root_relative_to_executing_home" as NonEmptyStr,
+
+  receipts: [
+    "**the Hugging Face cache root is relative to the executing process's home** (a Hub CLI run inside a --rm container with no HF_HUB_CACHE writes to the container's own ~/.cache/huggingface/hub, so a completed download is deleted with the container while the host cache stays empty).",
+
+    "INVALID STATE: a containerised Hub CLI whose environment does not point HF_HUB_CACHE (or HF_HOME / XDG_CACHE_HOME) at the container side of the mount it was given. The cache path a caller names on the host and the one the CLI resolves are then two different directories.",
+
+    "HARM: 2026-10-03/04 Spark Group A bring-up (valiant-crab-775): each materialize attempt of the GLM snapshot fetched ~300 GB into the container and lost it at exit; the host cache read as never filled and the next attempt started over.",
+
+    "DISTINGUISHING FACTS: upstream huggingface_hub constants.py resolves HF_HUB_CACHE > HF_HOME/hub > XDG_CACHE_HOME/huggingface/hub > ~/.cache/huggingface/hub against the EXECUTING process's environment and home (extdeps.huggingface.hub hub_cache_root_for, landed by gunbc#13040). The tell is a host cache directory that stays empty while the CLI reports success.",
+
+    "RUNG: found at 1 (a human noticed the disk). Now 3 for the materialize path: gunbc.spark.model_snapshot_materialize derives the CLI's environment from the mount it declares and refuses (ContainerizedHubCliRefused) when the resolved root is not the mount's container side, so a cache write that would vanish with the container has no constructor there. CEILING 3 overall: every containerised Hub CLI invocation in the corpus routed through that one constructor. NEXT-RUNG TRIGGER: none for the materialize path; any other Hub CLI invocation site must take its environment from the same constructor, SUFFICIENT FOR no Hub CLI argv in the corpus resolving its cache outside its declared mount.",
+  ],
+
+  evidence: [],
+}

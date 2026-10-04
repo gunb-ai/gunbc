@@ -1,0 +1,94 @@
+module test.claim.spark.spark_inspect_dropin_shape_witness_test
+
+import std.types { String, Bool, List, NonEmptyStr, Int }
+import v2.std.algebra { filter, length }
+import gunbc.spark.managed_grant_reconcile {
+  SparkInspectDropinShape, SharedInspectDropinShape, PerContainerInspectDropinShape, InspectDropinShapeUnobserved,
+  spark_inspect_dropin_shape_of_listing, spark_inspect_dropin_shape_of_names, spark_inspect_dropin_shape_wire,
+  spark_sudoers_dropin_listing_argv,
+}
+import gunbc.fleet_multi_principal_probe {
+  SparkGrantCoverage, GrantCoverageProbedEachRun, GrantCoverageHandRead, GrantCoverageUnobserved,
+  spark_grant_coverage, spark_grant_coverage_wire, spark_group_b_sudoers_readings,
+}
+
+// THE SHAPE READING, over supplied listings. Group B's listing (2026-10-04 22:53Z) is the shared file
+// alone; a host converged by the #13040 installer carries per-container files and no shared one.
+
+fn is_shared_alone(s: SparkInspectDropinShape) -> Bool {
+  match s {
+    SharedInspectDropinShape { per_container: pc } => length(pc) == 0
+    PerContainerInspectDropinShape { per_container: _ } => false
+    InspectDropinShapeUnobserved { cause: _ } => false
+  }
+}
+
+test fn w_shared_file_alone_reads_shared_shape() -> Bool {
+  is_shared_alone(s: spark_inspect_dropin_shape_of_listing(exit_code: 0, stdout: "gunbc-docker-inspect\ngunbc-enable-linger\ngunbc-reboot\nREADME\n", stderr: ""))
+}
+
+test fn w_shared_file_beside_per_container_files_is_residue_not_alone() -> Bool {
+  match spark_inspect_dropin_shape_of_listing(exit_code: 0, stdout: "gunbc-docker-inspect\ngunbc-docker-inspect-glm53-staircase\nREADME\n", stderr: "") {
+    SharedInspectDropinShape { per_container: pc } => pc == ["gunbc-docker-inspect-glm53-staircase"]
+    PerContainerInspectDropinShape { per_container: _ } => false
+    InspectDropinShapeUnobserved { cause: _ } => false
+  }
+}
+
+test fn w_per_container_only_reads_per_container_shape() -> Bool {
+  match spark_inspect_dropin_shape_of_listing(exit_code: 0, stdout: "gunbc-docker-inspect-a\ngunbc-docker-inspect-b\ngunbc-reboot\n", stderr: "") {
+    PerContainerInspectDropinShape { per_container: pc } => length(pc) == 2
+    SharedInspectDropinShape { per_container: _ } => false
+    InspectDropinShapeUnobserved { cause: _ } => false
+  }
+}
+
+// An unreadable directory is not an absent shared file.
+test fn w_unlistable_directory_is_unobserved_not_per_container() -> Bool {
+  match spark_inspect_dropin_shape_of_listing(exit_code: 2, stdout: "", stderr: "ls: cannot open directory '/etc/sudoers.d': Permission denied") {
+    InspectDropinShapeUnobserved { cause: _ } => true
+    SharedInspectDropinShape { per_container: _ } => false
+    PerContainerInspectDropinShape { per_container: _ } => false
+  }
+}
+
+test fn w_listing_argv_is_read_only() -> Bool {
+  spark_sudoers_dropin_listing_argv() == ["ls", "-1", "/etc/sudoers.d"]
+}
+
+// ── coverage ──────────────────────────────────────────────────────────────────────────────────
+
+fn coverage_text() -> String {
+  join(map(spark_grant_coverage(), c => spark_grant_coverage_wire(c: c)), "")
+}
+
+fn count_unobserved(cs: List<SparkGrantCoverage>) -> Int {
+  length(filter(cs, c => match c {
+    GrantCoverageUnobserved { host: _ } => true
+    GrantCoverageProbedEachRun { host: _ } => false
+    GrantCoverageHandRead { reading: _ } => false
+  }))
+}
+
+// THE IDENTITY JOIN: every procured Spark appears in the coverage, eight rows, none dropped. A coverage
+// computed from the probed hosts alone would have two rows and reds this.
+test fn w_coverage_names_every_procured_spark() -> Bool {
+  length(spark_grant_coverage()) == 8
+}
+
+// srv7/srv8 are neither probed nor hand-read today: they must be NAMED unobserved, not omitted.
+test fn w_hosts_with_no_reading_are_named_unobserved() -> Bool {
+  count_unobserved(cs: spark_grant_coverage()) == 2
+    && contains(coverage_text(), "grant-coverage host=srv7 UNOBSERVED")
+    && contains(coverage_text(), "grant-coverage host=srv8 UNOBSERVED")
+}
+
+// Group B's current on-host state is represented, not assumed: each of the four reads in the shared
+// shape with no per-container file, and its grant listing is stated unobserved.
+test fn w_group_b_reads_shared_shape_with_listing_unobserved() -> Bool {
+  length(spark_group_b_sudoers_readings) == 4
+    && length(filter(spark_group_b_sudoers_readings, r => is_shared_alone(s: spark_inspect_dropin_shape_of_names(names: r.dropin_names)))) == 4
+    && contains(coverage_text(), "grant-coverage host=srv12 (spark-2196) HAND-READ at=2026-10-04T22:53Z")
+    && contains(coverage_text(), "grant_listing=UNOBSERVED")
+    && contains(coverage_text(), "inspect-dropins host=srv12 SHARED-SHAPE")
+}
