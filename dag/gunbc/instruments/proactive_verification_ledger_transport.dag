@@ -9,7 +9,6 @@ import gunbc.proactive_verification_ledger {
 }
 import tools.host_prelude { ClaimRun, run_gunbc_claims }
 import v2.std.algebra { fold_list }
-import v2.std.logic { Bool }
 
 fn run_family_ledger_row(row: FamilyVerificationLedgerRow) -> Bool {
   match row.execution {

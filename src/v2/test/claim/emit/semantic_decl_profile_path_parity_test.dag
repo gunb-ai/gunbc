@@ -16,7 +16,6 @@ import v2.std.compilers.lexing { LexRules }
 import v2.std.collection { Map }
 import v2.std.compilers.target_model { bound_spelling_from_map, lex_rules_literal_for_class }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 

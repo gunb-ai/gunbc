@@ -18,7 +18,6 @@ import std.realization_schedule {
   runnable_resource_profile_negligible
 }
 import std.content_hash { Fnv1a64 }
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

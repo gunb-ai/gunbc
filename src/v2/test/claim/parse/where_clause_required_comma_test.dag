@@ -3,7 +3,6 @@ module v2.test.claim.parse.where_clause_required_comma
 import v2.compiler.reference_conservation_admission { conservation_subject_of_text }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
