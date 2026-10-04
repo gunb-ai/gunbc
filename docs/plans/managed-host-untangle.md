@@ -320,28 +320,31 @@ The dry realization over `gunbc.bmc_model` `BmcWorld` exercises those carriers, 
 
 **So the one missing piece is the ordered composition of protocol steps.** It goes in the workflow layer, `gunbc.fleet`. It does not go in std, because lanes, principals and resumability are fleet policy. The module is named by DFS when built, and it is parameterized over each domain's steps.
 
-**Its shape, tested against two real consumers:** cut O's five arrival phases, and the Spark arm's ten steps (image produce and distribute, checkpoint seed and replica, sudo grants, claim recovery, supersede, launch, load).
+**Its shape, tested against two real consumers:** cut O's five arrival phases, and the Spark arm's steps S1–S9 (image produce and distribute, checkpoint seed and replica, sudo grants, claim recovery, supersede, launch). valiant-crab-775 reviewed the shape on 2026-10-04, and its six corrections are in the table.
 
 | Requirement | Shape | Driven by |
 |---|---|---|
-| A step | an identity; a subject; a `HostEffectDomainProjection`; its domain receipt type; its **preconditions as step identities** | both |
+| A step | an identity; a `HostEffectDomainProjection`; its domain receipt type; its preconditions. **A step instance is step × subject**: the Spark steps are per (host, artifact), the arrival steps per unit. | both |
+| Preconditions | step identities **with a quantifier over subjects**: all-of or any-of, each over a stated subject set. So "3 of 4 hosts converged" is representable as partial progress and is not read as a refusal. | Spark S9 (S3, S5, S6 on all hosts); S5 (S4 verified on some peer) |
 | Order | derived from preconditions by an identity join (an unknown identity or a cycle refuses). **Where an order authority already exists, the derived order must equal it or refuse.** Cut O's is `arrival_phases_all`. | arrival (authority), Spark (derived) |
 | Per step | the canonical protocol, unchanged: Noop / Apply / Refuse, independent readback, the domain receipt minted by the effect authority | both |
-| Precondition satisfied | only by that step's **readback in this run**: a receipt for the same subject. Never by an earlier step's return value. | both |
+| Precondition satisfied | only by a **readback in this run** of the precondition instance: a receipt for the same subject. Never by an earlier step's return value. **Which readback is sufficient is the domain's declaration**, and the fold does not force the most expensive one. A domain may declare a cheap identity readback that binds to an earlier full-verification receipt, and it must then state what that cheap readback does and does not establish (§4b rung honesty). | both; Spark S5, whose full verify hashes 306 GB per host |
 | Refusal | names the unmet step by identity. The fold may take that step **only if it is in the roster and ungated**. A gated step stops with a typed refusal naming the discharge it needs. | Spark S9 naming S6/S7; the arrival credential write |
 | Gate | a step is ungated, or gated on an authorization discharged for that subject and that run. The pattern comes from `select_authorization_pattern`, selected **before** the fold (§3d: the fold chooses nothing). | arrival `BmcSecure`; Spark S7 |
 | Principal | per step, from the same selection. A step whose principal is not bound refuses. | Spark S6/S7 vs S9 |
 | No fallback arms | a step with no admissible realization refuses; it never widens (§5) | Spark S5: no verified peer, no Hub fallback |
-| Uncertain completion | an applied step whose readback does not yet ground is **pending**, distinct from converged and from refused. The run ends pending, and a rerun re-observes and reattaches. A pending step never satisfies a precondition. | Spark S2/S4 (hours, resumable); arrival archive |
+| Uncertain completion | an applied step whose readback does not yet ground is **pending**, distinct from converged and from refused. A rerun re-observes and reattaches. A pending instance never satisfies a precondition. **Only its dependents wait.** Independent instances proceed in the same run; otherwise every run degenerates to one step. | Spark S2/S4 (hours, resumable) while S3 and S6 proceed; arrival archive |
 | Deadline | every effect leg carries a deadline. A leg with none is unconstructible. | Spark's ssh leg that hangs instead of refusing |
-| Lane | the set of hosts a run may mutate is derived from its steps' subjects, one lane per affected host | Spark's host-keyed vs srv1-keyed lanes cancelling; the arrival unit hold |
-| Verdict | one ledger per run: each step converged, pending, refused, or not reached. The line stops at the first refusal. | both |
+| Lane | the set of hosts a run may mutate is derived from its step instances' **mutated subjects**, one lane per affected host. **The executor host that dispatches the run is not a lane key.** | Spark, where every mode dispatches from srv1 and collides there; the arrival unit hold |
+| Verdict | one ledger per run: each step instance converged, pending, refused, or not reached. **A refusal stops the line. A pending instance does not.** | both |
+| Selected before the fold | everything that is a choice: the route, the authorization pattern, the principal, and **roles** such as seed versus replica. A role derived inside a step is how a silent fallback happens. | arrival route (O1a); Spark S4/S5 roles |
+| Not a step | a **measurement** is not a persistent host effect. It consumes a converged verdict and produces an observation receipt, outside the fold and outside the census. Otherwise "converged" comes to mean "benchmarked". | Spark S10 (load) |
 
 **Workflow surface.** Lane derivation changes concurrency groups in the generated workflow, which is an operator-visible surface. Cut O's use changes none: it runs inside the existing `mtcollins1_boot` job and its unit hold. The Spark arm's reshaping of its modes is that lane's proposal to the operator, not part of this cut.
 
 **§3c: the home lands with a consumer in the same closure.** A fold with no consumer is a dangling declaration, so there is no "fold only" PR. O1c is therefore three PRs:
 
-- **O1c-1**: the fold in `gunbc.fleet`, with its **first consumer**: the arrival prefix's two read-only phases, `AccessDiscover` (including the O1a route standing) and `IdentityBindProvisional`, as real protocol steps with census rows. Controls: the order equals `arrival_phases_all` or refuses; an unknown precondition refuses; a gated step is not auto-taken; a pending step satisfies nothing; a leg without a deadline is a compile refusal.
+- **O1c-1**: the fold in `gunbc.fleet`, with its **first consumer**: the arrival prefix's two read-only phases, `AccessDiscover` (including the O1a route standing) and `IdentityBindProvisional`, as real protocol steps with census rows. Controls: the order equals `arrival_phases_all` or refuses; an unknown precondition refuses; a gated step is not auto-taken; a pending instance satisfies nothing and blocks only its dependents; an all-of precondition with one subject unconverged is partial, not refused; a leg without a deadline is a compile refusal. The quantifier and independent-progress controls use a designed multi-subject fixture, because the arrival consumer has one subject per run. The pairing obligation (§3 witness rule) is met by the arrival steps running the real path.
 - **O1c-2**: `PriorLifeBoundary`'s archive arm as a step.
 - **O1c-3**: the `BmcSecure` step (O1b's domain receipt) and the `ManagedHostAdmission` population.
 
