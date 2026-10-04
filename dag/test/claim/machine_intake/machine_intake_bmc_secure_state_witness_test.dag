@@ -22,7 +22,8 @@ import extdeps.bmc.ipmi_channel {
   ipmi_user_channel_access,
 }
 import extdeps.network.ipv4 { ipv4_address }
-import extdeps.bmc.ipmi_channel { extdeps_external_authority_anchor }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { uri_https }
 import extdeps.cloud.gcp.secret_ref { HashPending, SecretRef }
 import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
 import gunbc.clock_read { ObserverClockInstant, observer_clock_modeled }
@@ -314,17 +315,33 @@ fn request_user(r: BmcAccountWriteRequest) -> IpmiUserId {
   }
 }
 
-// GROUNDED LAB ROUTES, BY CITATION. A modeled run cannot ground a route (O1a), so the synthetic lab
-// controller's routes are grounded the way a build-scoped citation grounds one: the IPMI v2.0
-// specification's Set User Password command (App 47h). The two helpers take no argument, so the
-// standing they return names the lab controller and build and nothing a caller can aim; they are the
-// admitted callers of rotation_route_from_citation for this witness.
-fn cited_lab_route_managed_user() -> BmcRotationRouteStanding {
-  rotation_route_from_citation(endpoint: lab_endpoint, firmware: lab_firmware(), request: IpmiSetUserPassword { user: 3 }, citation: extdeps_external_authority_anchor)
+// GROUNDED LAB ROUTES, BY A FIXTURE CITATION. A modeled run cannot ground a route (O1a), so this
+// witness grounds the synthetic lab controller's two routes through rotation_route_from_citation, whose
+// admit list names exactly the two helpers below. The citation is NOT an authority: its locator is a
+// `.invalid` name (RFC 2606) that says it is this witness's fixture, so a reader of the standing can
+// never take it for a cited source. The helpers take no argument and are themselves admitted only to
+// grounded_route; the standing they return names the lab endpoint, an RFC 5737 TEST-NET-2 address that
+// cannot be a real controller, so admit_rotation_apply refuses it for any other endpoint. No module
+// outside test.claim imports this witness: the two production references to its name are admit-list
+// declaration references, not imports.
+data lab_route_fixture_citation: ExternalAuthority = ExternalAuthority {
+  uri: uri_https(locator: "fixture-not-an-authority.invalid/test.claim.machine_intake_bmc_secure_state_witness/lab-route" as NonEmptyStr),
 }
 
-fn cited_lab_route_published_user() -> BmcRotationRouteStanding {
-  rotation_route_from_citation(endpoint: lab_endpoint, firmware: lab_firmware(), request: IpmiSetUserPassword { user: 2 }, citation: extdeps_external_authority_anchor)
+fn cited_lab_route_managed_user() -> BmcRotationRouteStanding
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "grounded_route"),
+  ]
+{
+  rotation_route_from_citation(endpoint: lab_endpoint, firmware: lab_firmware(), request: IpmiSetUserPassword { user: 3 }, citation: lab_route_fixture_citation)
+}
+
+fn cited_lab_route_published_user() -> BmcRotationRouteStanding
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "grounded_route"),
+  ]
+{
+  rotation_route_from_citation(endpoint: lab_endpoint, firmware: lab_firmware(), request: IpmiSetUserPassword { user: 2 }, citation: lab_route_fixture_citation)
 }
 
 fn grounded_route(user: IpmiUserId) -> BmcRotationRouteStanding {
