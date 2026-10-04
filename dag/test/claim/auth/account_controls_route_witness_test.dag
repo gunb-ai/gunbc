@@ -1,7 +1,10 @@
 module test.claim.auth.account_controls_route_witness_test
 
 import std.types { Bool, String, NonEmptyStr, Secret }
-import extdeps.ietf.http_semantics { POST }
+import extdeps.ietf.http_semantics { GET, POST }
+import gunbc.roadmap_auth_route_paths { auth_login_route_path, auth_logout_route_path }
+import gunbc.roadmap_serve { AuthLoginHandler, AuthLogoutHandler }
+import test.claim.roadmap_serve_witness { selects }
 import extdeps.http.server {
   ServeHttpRequest, ServeHttpResponse, RequestSecurityContext,
   ServeResponseHeader, ServeResponseHeaderLocation, ServeResponseHeaderSetCookie, ServeResponseHeaderNoStore,
@@ -88,4 +91,15 @@ test fn logout_redirects_home_and_clears_the_session_cookie() -> Bool {
       ServeResponseHeaderSetCookie { cookie: c } => if c.name == session_cookie_name && c.value == "" { "session-cookie-emptied" } else { "other-cookie" }
       ServeResponseHeaderNoStore => "no-store"
     }), "|") == "location=/|session-cookie-emptied"
+}
+
+// THE PATHS THE ACCOUNT CONTROLS ADDRESS ARE SERVED, on the live route table and with the method
+// each control uses: Sign in and Switch account are links (GET) to the login path, and Sign out is
+// a form POST to the logout path. The controls and the route specs read the same two rows
+// (gunbc.roadmap_auth_route_paths), so this fails if a row stops being served rather than when a
+// second spelling drifts.
+test fn the_account_controls_address_routes_the_table_serves() -> Bool {
+  selects(method: GET, path: auth_login_route_path, want: AuthLoginHandler)
+    && selects(method: GET, path: concat(auth_login_route_path, "?prompt=select_account"), want: AuthLoginHandler)
+    && selects(method: POST, path: auth_logout_route_path, want: AuthLogoutHandler)
 }

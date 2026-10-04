@@ -31,6 +31,7 @@ import gunbc.site.markup { txt, el, el_class, el_attrs }
 import std.markdown { markdown_inlines_to_fragments }
 import extdeps.languages.markdown { parse_inline_markdown_minimal }
 import extdeps.auth.oidc { OidcLoginPromptSelectAccount, oidc_login_prompt_label }
+import gunbc.roadmap_auth_route_paths { auth_login_route_path, auth_logout_route_path }
 import gunbc.roadmap_style { roadmap_css, round_fill_delay_var, round_fill_duration_var }
 import gunbc.fleet_capacity_panel { fleet_capacity_panel }
 import gunbc.roadmap_model {
@@ -261,7 +262,7 @@ data header_composition_frame_note: String = "HEADER AND CONTENT RUN FULL WIDTH 
 fn header_account_nodes() -> List<Fragment> {
   let signin = el_attrs("a", [
     attr(name: "class", value: "header-account header-account-signin" ),
-    attr(name: "href", value: "/auth/login" ),
+    attr(name: "href", value: auth_login_route_path ),
     attr(name: "data-account-signin", value: "" ),
     attr(name: "title", value: "sign in with Google" ),
   ], [ txt("Sign in") ])
@@ -283,7 +284,7 @@ fn header_account_nodes() -> List<Fragment> {
   ], [ avatar, name ])
   let switch_item = el_attrs("a", [
     attr(name: "class", value: "header-account-menu-item" ),
-    attr(name: "href", value: concat("/auth/login?prompt=", oidc_login_prompt_label(prompt: OidcLoginPromptSelectAccount) as String) ),
+    attr(name: "href", value: join([auth_login_route_path, "?prompt=", oidc_login_prompt_label(prompt: OidcLoginPromptSelectAccount) as String], "") ),
     attr(name: "role", value: "menuitem" ),
   ], [ txt("Switch account") ])
   let signout_btn = el_attrs("button", [
@@ -294,7 +295,7 @@ fn header_account_nodes() -> List<Fragment> {
   let signout_form = el_attrs("form", [
     attr(name: "class", value: "header-account-signout" ),
     attr(name: "method", value: "post" ),
-    attr(name: "action", value: "/auth/logout" ),
+    attr(name: "action", value: auth_logout_route_path ),
   ], [ signout_btn ])
   let menu = el_attrs("span", [
     attr(name: "class", value: "header-account-menu" ),
