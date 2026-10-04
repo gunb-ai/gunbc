@@ -137,3 +137,31 @@ test fn explicit_match_on_optional_stays_admitted() -> Bool {
 test fn optional_compared_with_optional_stays_admitted() -> Bool {
   eq_admitted(source: optionality_both_optional_green_source)
 }
+
+// C5, THE SAME CLASS AT THE DECLARED RETURN: a fn declared `-> T?` whose body produces a bare T. No
+// declared coercion lifts T into T?, and the Rust emission refused it (E0308, gunbc.running_release_
+// identity running_release_member_string). The red is a bare-Int body under `-> Int?`; the controls
+// are the explicit present spelling and the absent spelling, which the arm must not widen into.
+data return_lift_red_source: String = "module ret_probe_lift\nfn f(x: Int) -> Int? { x }\n"
+
+data return_explicit_present_green_source: String = "module ret_probe_present\nfn f(x: Int) -> Int? { Present { value: x } }\n"
+
+data return_absent_green_source: String = "module ret_probe_absent\nfn f(x: Int) -> Int? { none }\n"
+
+test fn required_body_at_optional_return_refuses_blocking() -> Bool {
+  eq_blocking_count(source: return_lift_red_source, wanted: "DeclaredTypeNotInhabited") == 1
+}
+
+test fn explicit_present_return_stays_admitted() -> Bool {
+  eq_admitted(source: return_explicit_present_green_source)
+}
+
+test fn absent_return_stays_admitted() -> Bool {
+  eq_admitted(source: return_absent_green_source)
+}
+
+data return_lift_match_arm_red_source: String = "module ret_probe_arm\nfn g(s: String) -> String? {\n  match s {\n    \"a\" => s\n    _ => none\n  }\n}\n"
+
+test fn required_arm_at_optional_return_refuses_blocking() -> Bool {
+  eq_blocking_count(source: return_lift_match_arm_red_source, wanted: "DeclaredTypeNotInhabited") >= 1
+}
