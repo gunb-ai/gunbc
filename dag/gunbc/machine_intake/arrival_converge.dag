@@ -83,6 +83,7 @@ import gunbc.fleet.convergence_fold {
   admit_convergence_plan,
   fold_convergence_run,
   step_instance_key,
+  step_outcome_receipt,
 }
 
 // THE ARRIVAL CONVERGENCE, READ-ONLY PREFIX (docs/plans/managed-host-untangle.md, cut O1c-1): the
@@ -475,9 +476,9 @@ type ArrivalPrefixVerdict
 // the fold records it NotReached. Then the fold composes the outcomes into the run's ledger.
 fn arrival_prefix_outcomes(run: ConvergenceRunId, subject: StepSubjectKey, read: CurrentManagerRead, inputs: IdentityBindInputs) -> List<StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal>> {
   let access = access_discover(key: step_instance_key(run: run, step: access_discover_step_ref, subject: subject), read: read)
-  match access {
-    StepRefused { key: _, cause: _ } => [access]
-    StepEstablished { receipt: r } =>
+  match step_outcome_receipt(outcome: access) {
+    Absent => [access]
+    Present { value: r } =>
       match r {
         AccessDiscoverReceipt { receipt: a } =>
           [access, identity_bind_provisional(key: step_instance_key(run: run, step: identity_bind_provisional_step_ref, subject: subject), access: a, inputs: inputs)]

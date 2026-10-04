@@ -218,6 +218,22 @@ type StepOutcome<R, C>
   = StepEstablished { receipt: R }
   | StepRefused { key: StepInstanceKey, cause: C }
 
+// THE ONLY EXHAUSTIVE MATCHES ON StepOutcome LIVE IN THIS MODULE, so an arm added later (the Spark
+// arm's pending) changes the fold and no domain. A domain reads its own outcome through these.
+fn step_outcome_receipt<R, C>(outcome: StepOutcome<R, C>) -> R? {
+  match outcome {
+    StepEstablished { receipt: r } => Present { value: r }
+    StepRefused { key: _, cause: _ } => none
+  }
+}
+
+fn step_outcome_refusal<R, C>(outcome: StepOutcome<R, C>) -> C? {
+  match outcome {
+    StepEstablished { receipt: _ } => none
+    StepRefused { key: _, cause: c } => Present { value: c }
+  }
+}
+
 // THE DOMAIN'S PROJECTION OF ITS RECEIPT: the instance it was minted for, and the precondition
 // instances whose receipts the step consumed as input.
 type ConvergenceReceiptProjection<R> {

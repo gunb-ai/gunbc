@@ -34,7 +34,7 @@ import gunbc.fleet.convergence_fold {
   InstanceConverged, InstanceRefused, InstanceNotReached,
   DomainRefused, PreconditionUnmet, StepOutcomeAbsent,
   ConvergenceRunVerdict, StepInstanceStanding,
-  admit_convergence_plan, fold_convergence_run, step_instance_key,
+  admit_convergence_plan, fold_convergence_run, step_instance_key, step_outcome_receipt, step_outcome_refusal,
 }
 import gunbc.machine_intake_arrival_converge {
   ArrivalPrefixVerdict, ArrivalRunFolded, ArrivalPlanRefused, ArrivalPrefixUnstepped,
@@ -237,9 +237,9 @@ fn real_access(run: ConvergenceRunId, subject: StepSubjectKey, read: CurrentMana
 }
 
 fn established_access(o: StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal>) -> AccessDiscoverEstablished? {
-  match o {
-    StepEstablished { receipt: r } => match r { AccessDiscoverReceipt { receipt: a } => Present { value: a }  IdentityBindReceipt { receipt: _ } => none }
-    StepRefused { key: _, cause: _ } => none
+  match step_outcome_receipt(outcome: o) {
+    Present { value: r } => match r { AccessDiscoverReceipt { receipt: a } => Present { value: a }  IdentityBindReceipt { receipt: _ } => none }
+    Absent => none
   }
 }
 
@@ -360,9 +360,9 @@ test fn w_a_duplicate_run_step_subject_refuses() -> Bool {
 // A read bound to another unit does not establish this unit's access: the goal diverges and the
 // read-only phase, having no remedy, refuses.
 test fn w_access_discover_refuses_a_read_bound_to_another_unit() -> Bool {
-  match real_access(run: run_a, subject: "mtjade2" as StepSubjectKey, read: read_mtjade1_current_manager_read()) {
-    StepRefused { key: _, cause: c } => match c { ReadOnlyPhaseRefused { phase: p, reason: _ } => p == AccessDiscover  _ => false }
-    StepEstablished { receipt: _ } => false
+  match step_outcome_refusal(outcome: real_access(run: run_a, subject: "mtjade2" as StepSubjectKey, read: read_mtjade1_current_manager_read())) {
+    Present { value: c } => match c { ReadOnlyPhaseRefused { phase: p, reason: _ } => p == AccessDiscover  _ => false }
+    Absent => false
   }
 }
 
