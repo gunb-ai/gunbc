@@ -378,8 +378,7 @@ fn disclosure_body_nodes(d: DisclosureView) -> List<Fragment> {
         concat(
           map(fields, f => disclosure_field_row(f: f)),
           disclosure_updates_block(updates: updates)))
-    LegacyBodyDisclosure { content } =>
-      markdown_inlines_to_fragments(inlines: parse_inline_markdown_minimal(text: content))
+    LegacyBodyDisclosure { content: _ } => []
   }
 }
 
@@ -1950,19 +1949,12 @@ fn ticket_fields_selected(fields: List<DisclosureField>, identities: List<Ticket
   fold(identities, init: [], f: (acc, identity) => concat(acc, filter(fields, f => f.identity == identity)))
 }
 
-// THE AUTHORED FIELDS, FOLDED PER THE MANDATE (owner 2026-09-25,
-// docs/plans/issue-page-architecture.md): Description (the brief) always renders; Acceptance
-// criteria carries the red control and the hand-back; Current plan carries current state, first
-// slice and displaced cost inside a details/summary disclosure — OPEN while the work is not done,
-// collapsed once it is; Scope carries out-of-scope inside a collapsed disclosure. Long content is
-// collapsed by default; the verified row never forms when no verification was recorded (fixed at
-// the source, roadmap_presentation.ticket_disclosure_fields). The flat rendering survives for the
-// daily table's row disclosure, where the fold is not the mandate's subject.
+// Supporting authored details share one collapsed disclosure below the brief (2026-10-04).
+// This supersedes the per-section/open-current-plan presentation of 2026-09-25.
 fn disclosure_folded_nodes(d: DisclosureView, done: Bool) -> List<Fragment> {
   match d {
     NoDisclosure => []
-    LegacyBodyDisclosure { content } =>
-      markdown_inlines_to_fragments(inlines: parse_inline_markdown_minimal(text: content))
+    LegacyBodyDisclosure { content: _ } => []
     TicketDisclosure { brief, fields, updates } =>
       let acceptance_fields = ticket_fields_selected(fields: fields, identities: [TicketRedControl, TicketHandback])
       let acceptance = if count(acceptance_fields) == 0 { [] } else {
@@ -1970,15 +1962,16 @@ fn disclosure_folded_nodes(d: DisclosureView, done: Bool) -> List<Fragment> {
       }
       let plan_fields = ticket_fields_selected(fields: fields, identities: [TicketCurrentState, TicketFirstSlice, TicketDisplacedCost])
       let plan = if count(plan_fields) == 0 { [] } else {
-        [ issue_authored_details(summary: "Current plan", open: !done, rows: map(plan_fields, f => disclosure_field_row(f: f))) ]
+        [ issue_authored_section(heading: "Current plan", rows: map(plan_fields, f => disclosure_field_row(f: f))) ]
       }
       let scope_fields = ticket_fields_selected(fields: fields, identities: [TicketOutOfScope])
       let scope = if count(scope_fields) == 0 { [] } else {
-        [ issue_authored_details(summary: "Scope", open: false, rows: map(scope_fields, f => disclosure_field_row(f: f))) ]
+        [ issue_authored_section(heading: "Scope", rows: map(scope_fields, f => disclosure_field_row(f: f))) ]
       }
-      [ el_class("div", "issue-authored", concat(
-          [],
-          concat(acceptance, concat(plan, concat(scope, disclosure_updates_block(updates: updates)))))) ]
+      let sections = concat(acceptance, concat(plan, concat(scope, disclosure_updates_block(updates: updates))))
+      if count(sections) == 0 { [] } else {
+        [issue_authored_details(summary: "More details", open: false, rows: [el_class("div", "issue-authored", sections)])]
+      }
   }
 }
 
@@ -2094,7 +2087,7 @@ fn issue_comments_stream_node(node_id: String, envs: List<RoadmapEventEnvelope>,
   el_class("div", "issue-comments", [
     el_class("h2", "issue-comments-heading", [txt(concat("Comments · ", to_string(value: count(roadmap_issue_comments(envs: envs)))))]),
     el_class("div", "issue-comment-stream", if count(entries) == 0 {
-      [el_class("p", "issue-panel-empty", [txt("No comments yet.")])]
+      []
     } else { map(entries, e => issue_stream_entry_row_node(node_id: node_id, envs: envs, entries: entries, e: e, profiles: profiles)) }),
   ])
 }
@@ -2338,6 +2331,7 @@ fn issue_breadcrumb_crumb_node(crumb: IssueBreadcrumbCrumb) -> Fragment {
     IssueBreadcrumbTask { node_id: _, purpose, boundary } =>
       el_attrs("span", [
         attr(name: "class", value: "issue-breadcrumb-here"),
+        attr(name: "aria-current", value: "page"),
         attr(name: "title", value: boundary),
       ], [ txt(purpose) ])
   }
@@ -2365,8 +2359,46 @@ fn issue_breadcrumb_nodes(breadcrumb: IssueBreadcrumb) -> List<Fragment> {
   }
 }
 
+fn issue_breadcrumb_short_label(label: String) -> String {
+  if string_length(s: label) <= 44 { label } else {
+    join([substring(s: label, start: 0, end: 27), "…", substring(s: label, start: string_length(s: label) - 14, end: string_length(s: label))], "")
+  }
+}
+
+fn issue_breadcrumb_compact_labels(crumbs: List<IssueBreadcrumbCrumb>) -> List<String> {
+  let ancestors = fold(crumbs, init: [] as List<String>, f: (acc, c) => match c {
+    IssueBreadcrumbProject { node_id: _, purpose, boundary: _ } => concat(acc, [purpose])
+    IssueBreadcrumbTask { node_id: _, purpose: _, boundary: _ } => acc
+  })
+  let ends = fold(ancestors, init: { first: "", last: "", n: 0 }, f: (acc, label) => {
+    first: if acc.n == 0 { label } else { acc.first }, last: label, n: acc.n + 1
+  })
+  if ends.n == 0 { [] } else if ends.n == 1 { [ends.first] } else { [ends.first, ends.last] }
+}
+
+fn issue_breadcrumb_tree(crumbs: List<IssueBreadcrumbCrumb>) -> List<Fragment> {
+  let reversed = fold(crumbs, init: [] as List<IssueBreadcrumbCrumb>, f: (acc, crumb) => concat([crumb], acc))
+  fold(reversed, init: [] as List<Fragment>, f: (children, crumb) =>
+    [el("li", concat([issue_breadcrumb_crumb_node(crumb: crumb)], if count(children) == 0 { [] } else { [el("ol", children)] }))])
+}
+
 fn issue_alignment_breadcrumb_node(resolution: AlignmentResolution) -> Fragment {
-  el_class("nav", "issue-breadcrumb", issue_breadcrumb_nodes(breadcrumb: issue_breadcrumb_of(resolution: resolution)))
+  let breadcrumb = issue_breadcrumb_of(resolution: resolution)
+  el_attrs("nav", [attr(name: "class", value: "issue-breadcrumb"), attr(name: "aria-label", value: "Issue hierarchy")], match breadcrumb {
+    IssueBreadcrumbRefused { reason: _ } => issue_breadcrumb_nodes(breadcrumb: breadcrumb)
+    IssueBreadcrumbPath { crumbs } => {
+      let labels = issue_breadcrumb_compact_labels(crumbs: crumbs)
+      if count(labels) == 0 { [] } else if count(crumbs) == 1 && all(labels, label => string_length(s: label) <= 44) {
+        [el_class("ol", "issue-path-tree", issue_breadcrumb_tree(crumbs: crumbs))]
+      } else {
+        [el_class("details", "issue-path-disclosure", [
+          el_attrs("summary", [attr(name: "aria-label", value: "Expand issue hierarchy")], map(labels, label =>
+            el_attrs("span", [attr(name: "class", value: "issue-path-label"), attr(name: "title", value: label)], [txt(issue_breadcrumb_short_label(label: label))]))),
+          el_class("ol", "issue-path-tree", issue_breadcrumb_tree(crumbs: crumbs)),
+        ])]
+      }
+    }
+  })
 }
 
 fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> Fragment {
@@ -2380,6 +2412,7 @@ fn issue_detail_page_with_alignment(view: WorkRowView, panel: IssueLinkPanel, ob
     attr(name: "class", value: "issue-detail" ),
     attr(name: "data-tab", value: "comments" ),
   ], [
+    issue_alignment_breadcrumb_node(resolution: alignment),
     el_class("div", "issue-detail-head", concat(
       [ el_class("span", "issue-id", [ txt(view.node_id) ]) ],
       concat(
@@ -2391,7 +2424,6 @@ fn issue_detail_page_with_alignment(view: WorkRowView, panel: IssueLinkPanel, ob
       issue_tab_chip(label: "Work", tab: "work"),
       issue_tab_chip(label: "History", tab: "history"),
     ]),
-    issue_alignment_breadcrumb_node(resolution: alignment),
     el_class("div", "issue-body", [
       el_class("div", "issue-panels", [
         el_class("section", "panel-comments", issue_comments_tab_nodes(view: view, events: events, expected_revision: expected_revision, command_context: command_context)),
@@ -2407,13 +2439,12 @@ fn issue_detail_page_with_alignment(view: WorkRowView, panel: IssueLinkPanel, ob
 // THE COMMENTS TAB: the description pinned above the stream, the composer below — the page's
 // default panel (the tab law renders it when data-tab is "comments").
 fn issue_comments_tab_nodes(view: WorkRowView, events: List<RoadmapEventEnvelope>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> List<Fragment> {
-  concat(
-    [
-      issue_description_node(view: view),
+  [el_class("div", "issue-reading-surface", concat(
+    [issue_description_node(view: view)],
+    concat(disclosure_folded_nodes(d: view.disclosure, done: work_lifecycle_key(l: view.lifecycle) == "done"), [
       issue_comments_stream_node(node_id: view.node_id, envs: events, profiles: view.profiles),
       issue_comment_composer_node(node_id: view.node_id, expected_revision: expected_revision, profiles: view.profiles, command_context: command_context),
-    ],
-    disclosure_folded_nodes(d: view.disclosure, done: work_lifecycle_key(l: view.lifecycle) == "done"))
+    ])))]
 }
 
 // Nesting and blocking are independently projected; no reverse blocker stands in for a child.

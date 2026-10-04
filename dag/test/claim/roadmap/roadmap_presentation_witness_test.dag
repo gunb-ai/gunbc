@@ -28,7 +28,7 @@ import gunbc.roadmap.roadmap_alignment {
 import gunbc.roadmap_page {
   IssueBreadcrumbPath, IssueBreadcrumbRefused,
   IssueBreadcrumbProject, IssueBreadcrumbTask,
-  issue_breadcrumb_of, issue_alignment_breadcrumb_node,
+  issue_breadcrumb_of, issue_alignment_breadcrumb_node, issue_breadcrumb_short_label, issue_breadcrumb_compact_labels,
   project_suite_headline, project_suite_rows, project_suite_row_node,
 }
 import gunbc.roadmap_workflow_stage {
@@ -1859,7 +1859,8 @@ test fn witness_issue_breadcrumb_renders_root_to_leaf_with_suite_links() -> Bool
         && string_contains(s: h, pattern: "Root headline")
         && string_contains(s: h, pattern: "Mid headline")
         && string_contains(s: h, pattern: "Task headline")
-        && string_contains(s: h, pattern: " › ")
+        && string_contains(s: h, pattern: "issue-path-tree")
+        && string_contains(s: h, pattern: "aria-current=\"page\"")
         && string_contains(s: h, pattern: "title=\"Root boundary\"")
         && !string_contains(s: h, pattern: "href=\"/issue/")
         && !string_contains(s: h, pattern: "principles")
@@ -1998,3 +1999,17 @@ test fn witness_page_hides_a_not_ready_leaf_and_nothing_in_progress() -> Bool {
     && row_is_shown(row: fx_visibility_row(scheduling: not_ready, activity: fx_specimen_activity(), node_id: "vis-live-leaf"), memberships: memberships)
 }
 
+
+// Compact display preserves full authoritative path data and never repeats a lone ancestor.
+test fn issue_path_compacts_only_display_and_omits_current_title() -> Bool {
+  issue_breadcrumb_short_label(label: "Short title") == "Short title"
+    && issue_breadcrumb_short_label(label: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ") == "abcdefghijklmnopqrstuvwxyzA…MNOPQRSTUVWXYZ"
+    && issue_breadcrumb_compact_labels(crumbs: []) == []
+    && issue_breadcrumb_compact_labels(crumbs: [
+      IssueBreadcrumbProject { node_id: "root", purpose: "Root", boundary: "" },
+      IssueBreadcrumbProject { node_id: "mid", purpose: "Middle", boundary: "" },
+      IssueBreadcrumbProject { node_id: "parent", purpose: "Parent", boundary: "" },
+      IssueBreadcrumbTask { node_id: "task", purpose: "Current title", boundary: "" }
+    ]) == ["Root", "Parent"]
+    && issue_breadcrumb_compact_labels(crumbs: [IssueBreadcrumbProject { node_id: "root", purpose: "Root", boundary: "" }]) == ["Root"]
+}

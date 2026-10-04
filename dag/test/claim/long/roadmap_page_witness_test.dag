@@ -2472,38 +2472,37 @@ fn brief_fixture_html(lifecycle: gunbc.roadmap_presentation.WorkLifecycle, contr
     profiles: []))
 }
 
-// THE AUTHORED FIELDS FOLD (owner mandate 2026-09-25, docs/plans/issue-page-architecture.md):
-// Description renders the brief; Acceptance criteria carries the red control and hand-back; the
-// code-ish red control (multi-line, fn signature) renders in a MONO block, never a prose
-// paragraph; Current plan rides a details/summary disclosure OPEN while the work is not done;
-// Scope rides a collapsed disclosure; and the verified row NEVER forms when no verification was
-// recorded.
+// The 2026-10-04 reading surface supersedes the older per-section disclosure ruling.
 test fn witness_issue_authored_fields_fold_per_the_mandate() -> Bool {
   match brief_fixture_html(lifecycle: gunbc.roadmap_presentation.OpenLifecycle) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       occurrence_count(s: h, pattern: "<h2 class=\"issue-description-heading\">Description</h2>") == 1
+        && occurrence_count(s: h, pattern: "issue-reading-surface") == 1
+        && occurrence_count(s: h, pattern: "<details class=\"issue-authored-details\"") == 1
+        && !string_contains(s: h, pattern: "No comments yet")
+        && marker_before(s: h, first: "the brief words", second: "More details")
+        && marker_before(s: h, first: "the displaced cost", second: "issue-comments-heading")
         && occurrence_count(s: h, pattern: "<h3 class=\"issue-authored-heading\">Acceptance criteria</h3>") == 1
-        && occurrence_count(s: h, pattern: "<details class=\"issue-authored-details\" open=\"\"><summary>Current plan</summary>") == 1
-        && occurrence_count(s: h, pattern: "<details class=\"issue-authored-details\"><summary>Scope</summary>") == 1
+        && occurrence_count(s: h, pattern: "<details class=\"issue-authored-details\"><summary>More details</summary>") == 1
+        && occurrence_count(s: h, pattern: "<h3 class=\"issue-authored-heading\">Scope</h3>") == 1
         && occurrence_count(s: h, pattern: "<pre class=\"ticket-field-code\">first line\nfn example_signature() :: typed</pre>") == 1
         && string_contains(s: h, pattern: "<span class=\"ticket-field-label\">red control</span>")
         && string_contains(s: h, pattern: "<span class=\"ticket-field-label\">hand-back</span>")
         && string_contains(s: h, pattern: "<span class=\"ticket-field-label\">current state</span>")
         && string_contains(s: h, pattern: "<span class=\"ticket-field-label\">first slice</span>")
         && string_contains(s: h, pattern: "<span class=\"ticket-field-label\">displaced cost</span>")
-        && string_contains(s: h, pattern: "<summary>Scope</summary><div class=\"ticket-field\"><span class=\"ticket-field-label\">out of scope</span>")
+        && string_contains(s: h, pattern: "<h3 class=\"issue-authored-heading\">Scope</h3><div class=\"ticket-field\"><span class=\"ticket-field-label\">out of scope</span>")
         && occurrence_count(s: h, pattern: "issue-field-label\">verified</span>") == 0
   }
 }
 
-// CURRENT PLAN COLLAPSES ONCE THE WORK IS DONE: the same fixture under a done lifecycle renders
-// the plan disclosure with NO open attribute — the summary stays, the body rests.
+// Supporting details remain collapsed for completed work as well.
 test fn witness_issue_current_plan_collapses_once_done() -> Bool {
   match brief_fixture_html(lifecycle: gunbc.roadmap_presentation.DoneLifecycle) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      occurrence_count(s: h, pattern: "<details class=\"issue-authored-details\"><summary>Current plan</summary>") == 1
+      occurrence_count(s: h, pattern: "<details class=\"issue-authored-details\"><summary>More details</summary>") == 1
   }
 }
 

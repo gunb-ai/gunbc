@@ -3,7 +3,7 @@ module gunbc.design.scale
 import std.types { Int, String, Bool }
 import gunbc.design.material { CssDecl, decl, css_block }
 import extdeps.languages.css.values {
-  CssLength, css_px, css_length_wire,
+  CssLength, css_ch, css_px, css_length_wire,
   CssFontStack, CssFontFamily, NamedFamily, GenericFamily,
   CssGenericFamily, GenericSansSerif, GenericMonospace, GenericSystemUi,
   css_font_stack_wire,
@@ -127,6 +127,8 @@ data radius_surface: ScaleToken = named_length_token(name: "radius-surface", px:
 data radius_999: ScaleToken = length_token(prefix: "radius", px: 999)
 data border_1: ScaleToken = length_token(prefix: "border", px: 1)
 data border_2: ScaleToken = length_token(prefix: "border", px: 2)
+data measure_prose: ScaleToken = ScaleToken { name: "measure-prose", value: LengthValue { length: css_ch(n: 80) } }
+
 data measure_page: ScaleToken = named_length_token(name: "measure", px: 960)
 
 // The tactile target height (remodel W1c, operator archetype 2026-07-24: the GitHub merge button —
@@ -169,7 +171,7 @@ data travel_lift: ScaleToken = named_length_token(name: "travel-lift", px: -1)
 data travel_press: ScaleToken = named_length_token(name: "travel-press", px: 1)
 
 data dimension_scale: List<ScaleToken> = [
-  radius_surface, radius_999, border_1, border_2, measure_page,
+  radius_surface, radius_999, border_1, border_2, measure_page, measure_prose,
   height_control, height_compact_face, height_row, width_status, height_taskbar,
   travel_lift, travel_press, graph_row_height, graph_rail_width,
 ]
