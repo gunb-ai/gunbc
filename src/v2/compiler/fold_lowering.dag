@@ -4,6 +4,7 @@ import std.types { List }
 import v2.extdeps.languages.dag {
   dag_call_named_arg_value_optional,
   dag_call_positional_arg_value_optional,
+  dag_kernel_value_type_first,
   dag_lex_token_symbol,
   parse_production_captured_child_optional,
   parse_production_emitted_identity_optional
@@ -33,6 +34,7 @@ import std.algebra {
   Empty,
   collection_all_shape,
   collection_concat_shape,
+  collection_count_shape,
   collection_fold_shape,
   collection_map_shape,
   template_accumulator_position,
@@ -249,7 +251,8 @@ data collection_roster_rows: List<CollectionRosterRow> = [
   collection_roster_row(t: collection_fold_shape(), decl_name: "collection_fold_shape", form: RosterAuthoredStep),
   collection_roster_row(t: collection_map_shape(), decl_name: "collection_map_shape", form: RosterCallbackStep { realization: CallbackMapsToCons }),
   collection_roster_row(t: collection_all_shape(), decl_name: "collection_all_shape", form: RosterCallbackStep { realization: CallbackAllByAnd }),
-  collection_roster_row(t: collection_concat_shape(), decl_name: "collection_concat_shape", form: RosterFreeMonoidPrimitiveCall)
+  collection_roster_row(t: collection_concat_shape(), decl_name: "collection_concat_shape", form: RosterFreeMonoidPrimitiveCall),
+  collection_roster_row(t: collection_count_shape(), decl_name: "collection_count_shape", form: RosterFreeMonoidPrimitiveCall)
 ]
 
 data collection_fold_head: Symbol = symbol_intern_lexeme(lexeme: collection_fold_shape().name)
@@ -323,7 +326,16 @@ fn collection_roster_template_type(t: AlgebraTypeTemplate) -> Optional<Node> {
     ReceiverElement => optional_present(value: collection_roster_element_type())
     ReceiverKey => optional_absent()
     ReceiverValue => optional_absent()
-    NamedTemplate { name: _ } => optional_absent()
+    NamedTemplate { name: n } =>
+      match dag_kernel_value_type_first(select: fn(row, _binding) {
+        match row.spelling {
+          Present { value: spelled } => spelled == n
+          Absent => false
+        }
+      }) {
+        Present { value: row } => optional_present(value: row.value_type)
+        Absent => optional_absent()
+      }
     ContainerOf { source: _, element: _ } => optional_absent()
     OptionalOf { inner: _ } => optional_absent()
     WitnessOf { inner: _ } => optional_absent()

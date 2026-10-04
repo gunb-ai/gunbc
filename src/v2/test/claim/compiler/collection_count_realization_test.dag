@@ -1,0 +1,74 @@
+module v2.test.claim.compiler.collection_count_realization
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_infer_tree, fmi_reason }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
+import v2.std.optional { Absent, Present }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol, node_subtree_nodes }
+import std.types { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: a bare `count` whose name no declaration claims binds to the std.algebra collection roster's
+// primitive-call row (collection_count_shape), and v2 infer types the call by that row: the free-monoid carrier
+// in, a STATED Int out -- the declared departure recorded on std.algebra algebra_count_length_name_fork_note
+// (trigger: v2 infer elaborates a literal at an expected type, sufficient for a Nat result with literals as
+// written). BOUNDARY: source text in, through the production assembly route, then infer. RED ON THE BASE:
+// `count(` refused resolve_reason_unbound_symbol, so no module reached infer.
+
+data ccc_size_compared_to_a_literal: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Bool {\n  count(xs) == 0\n}\n"
+data ccc_size_in_arithmetic: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn f(xs: List<Pair>) -> Int {\n  count(xs) - 1\n}\n"
+data ccc_size_of_an_int: String = "module p\n\nfn f(x: Int) -> Int {\n  count(x)\n}\n"
+data ccc_size_declared_bool: String = "module p\n\nimport v2.std.collection { List }\n\nfn f(xs: List<Int>) -> Bool {\n  count(xs)\n}\n"
+
+fn ccc_binds_row(tree: ResolvedTree) -> Bool {
+  fold(node_subtree_nodes(root: tree.root), init: false, f: fn(acc, n) {
+    acc || (match declaration_reference_path_optional(node: n) {
+      Present { value: p } => qualified_name_to_dotted_string(qn: p) == "std.algebra.collection_count_shape"
+      Absent => false
+    })
+  })
+}
+
+type CccReading {
+  binds_row: Bool
+  reason: Symbol
+}
+
+fn ccc_reading(src: String) -> CccReading {
+  match fmi_assemble(src: src) {
+    Rejected { diagnostics: d } => CccReading { binds_row: false, reason: fmi_reason(o: Rejected { diagnostics: d }) }
+    Accepted { value: tree, diagnostics: _ } => CccReading { binds_row: ccc_binds_row(tree: tree), reason: fmi_reason(o: fmi_infer_tree(tree: tree)) }
+  }
+}
+
+fn ccc_literal_reading() -> CccReading { ccc_reading(src: ccc_size_compared_to_a_literal) }
+fn ccc_arithmetic_reading() -> CccReading { ccc_reading(src: ccc_size_in_arithmetic) }
+fn ccc_int_reading() -> CccReading { ccc_reading(src: ccc_size_of_an_int) }
+fn ccc_declared_bool_reading() -> CccReading { ccc_reading(src: ccc_size_declared_bool) }
+
+// POSITIVE: count over a List binds the row and its Int compares against a literal as written.
+test fn ccc_list_size_compares_to_an_int_literal() -> Bool {
+  let r = ccc_literal_reading()
+  r.binds_row && r.reason == ^accepted
+}
+
+// POSITIVE: the stated Int takes part in Int arithmetic.
+test fn ccc_list_size_in_int_arithmetic() -> Bool {
+  let r = ccc_arithmetic_reading()
+  r.binds_row && r.reason == ^accepted
+}
+
+// RED: the carrier is the free monoid, so the size of an Int refuses at the argument.
+test fn ccc_size_of_a_non_collection_refuses() -> Bool {
+  let r = ccc_int_reading()
+  r.binds_row && r.reason == ^application_argument_does_not_inhabit
+}
+
+// RED: the row's result is Int, so returning it where Bool is declared refuses.
+test fn ccc_size_result_is_the_stated_int() -> Bool {
+  let r = ccc_declared_bool_reading()
+  r.binds_row && r.reason != ^accepted
+}
