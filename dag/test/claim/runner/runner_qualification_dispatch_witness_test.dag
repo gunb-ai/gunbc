@@ -55,7 +55,8 @@ import gunbc.runner.runner_qualification_dispatch {
   qualification_instrument_read_from_job_log, qualification_instrument_extraction_frontier_rows,
   ClaimCostArtifactRead, ClaimCostArtifactAbsent, ClaimCostArtifactExpired, ClaimCostArtifactListTruncated,
   ClaimCostArchiveUnreadable, ClaimCostArchiveNotInflatable,
-  conclude_claim_cost_listing, conclude_claim_cost_download,
+  conclude_claim_cost_listing, conclude_claim_cost_download, conclude_claim_cost_attempt,
+  ClaimCostArtifactAmbiguous, ClaimCostRunAdvancedPastAttempt, ClaimCostRunUnreadable,
 }
 import gunbc.required_ci_phase_roster { FloorPhaseTimed, FloorPhaseUntimed }
 import extdeps.linux.cgroup_v2_memory { CgroupMemoryLimited }
@@ -736,6 +737,33 @@ test fn every_claim_cost_read_ends_in_a_typed_refusal() -> Bool {
     })
     && (match conclude_claim_cost_download(artifact_id: 9001, performance: RestExchangeSucceeded) {
       ClaimCostArchiveNotInflatable { artifact_id: 9001 } => true
+      _ => false
+    })
+}
+
+// TWO SAME-NAME ARTIFACTS ARE A REFUSAL, NEVER FIRST-ONE-WINS.
+fn claim_cost_artifact_with(id: Int) -> ActionsArtifact {
+  ActionsArtifact { id: id, name: "required-floor-claim-cost", expired: false }
+}
+
+test fn two_same_name_claim_cost_artifacts_refuse_as_ambiguous() -> Bool {
+  match conclude_claim_cost_listing(performance: RestExchangeSucceeded, listed: ActionsArtifactList { total_count: 2, artifacts: [claim_cost_artifact_with(id: 1), claim_cost_artifact_with(id: 2)] }) {
+    Present { value: ClaimCostArtifactAmbiguous { artifact_ids: ids } } => count(ids) == 2
+    _ => false
+  }
+}
+
+// THE LISTING IS BOUND TO THE COLLECTED ATTEMPT: a run re-read after the listing at attempt 2 means the
+// listing may hold attempt 2's artifact, so no claim-cost read proceeds for attempt 1; at attempt 1 it
+// proceeds; an unreadable re-read refuses rather than assuming attempt 1.
+test fn a_rerun_seen_after_the_listing_refuses_the_claim_cost_read() -> Bool {
+  (match conclude_claim_cost_attempt(performance: RestExchangeSucceeded, run: dispatched_run(attempt_n: 2)) {
+    Present { value: ClaimCostRunAdvancedPastAttempt { observed_attempt: 2 } } => true
+    _ => false
+  })
+    && (match conclude_claim_cost_attempt(performance: RestExchangeSucceeded, run: dispatched_run(attempt_n: 1)) { Absent => true _ => false })
+    && (match conclude_claim_cost_attempt(performance: RestExchangeUnreached { cause: "unreached" }, run: dispatched_run(attempt_n: 1)) {
+      Present { value: ClaimCostRunUnreadable { performance: _ } } => true
       _ => false
     })
 }

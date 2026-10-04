@@ -846,7 +846,7 @@ type QualificationCollectStage {
 
 fn job_log_standing(collected: CollectedQualificationRun, slot: HostUnitSlot, log: AttemptJobLog) -> JobLogInstrumentStanding
   admit_callers: [
-    decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "collect_qualification_instruments"),
+    decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "collect_qualification_instruments_under"),
   ]
 {
   match designated_job_log(designated_job_id: collected.floor_job.id, log: log) {
@@ -887,12 +887,20 @@ type ClaimCostArtifactRead
   = ClaimCostArtifactListUnreadable { performance: RestExchangePerformance }
   | ClaimCostArtifactListTruncated { returned: Int, total: Int }
   | ClaimCostArtifactAbsent { names_seen: List<String> }
+  | ClaimCostArtifactAmbiguous { artifact_ids: List<Int> }
+  | ClaimCostRunUnreadable { performance: RestExchangePerformance }
+  | ClaimCostRunAdvancedPastAttempt { observed_attempt: Int }
   | ClaimCostArtifactExpired { artifact_id: Int }
   | ClaimCostArchiveUnreadable { artifact_id: Int, performance: RestExchangePerformance }
   | ClaimCostArchiveNotInflatable { artifact_id: Int }
 
+fn claim_cost_artifacts_named(listed: ActionsArtifactList) -> List<ActionsArtifact> {
+  listed.artifacts |> filter(a => a.name == required_floor_claim_cost_artifact_name)
+}
+
 fn claim_cost_artifact_listed(listed: ActionsArtifactList) -> ActionsArtifact? {
-  listed.artifacts |> filter(a => a.name == required_floor_claim_cost_artifact_name) |> first
+  let named = claim_cost_artifacts_named(listed: listed)
+  if count(named) == 1 { named |> first } else { none }
 }
 
 // none: the listing names an unexpired claim-cost artifact and the download is owed.
@@ -903,12 +911,35 @@ fn conclude_claim_cost_listing(performance: RestExchangePerformance, listed: Act
         Present { value: ClaimCostArtifactListTruncated { returned: count(listed.artifacts), total: listed.total_count } }
       } else {
         match claim_cost_artifact_listed(listed: listed) {
-          Absent => Present { value: ClaimCostArtifactAbsent { names_seen: listed.artifacts |> map(a => a.name) } }
+          Absent =>
+            if count(claim_cost_artifacts_named(listed: listed)) > 1 {
+              Present { value: ClaimCostArtifactAmbiguous { artifact_ids: claim_cost_artifacts_named(listed: listed) |> map(a => a.id) } }
+            } else {
+              Present { value: ClaimCostArtifactAbsent { names_seen: listed.artifacts |> map(a => a.name) } }
+            }
           Present { value: a } =>
             if a.expired { Present { value: ClaimCostArtifactExpired { artifact_id: a.id } } } else { none }
         }
       }
     other => Present { value: ClaimCostArtifactListUnreadable { performance: other } }
+  }
+}
+
+// THE ARTIFACT IS BOUND TO ATTEMPT 1 BY READING THE RUN AFTER THE LISTING. Upstream's artifact object
+// names its workflow run's id, head SHA and branch but no attempt, and a re-run reuses the run id, so a
+// listing alone cannot tell attempt 1's artifact from a re-run's. A re-run that uploaded before the
+// listing was taken had already advanced the run, so re-reading the run AFTER the listing and requiring
+// run_attempt to still be the dispatched attempt excludes every artifact the listing could have seen
+// from a later attempt. none: the run is still at the collected attempt.
+fn conclude_claim_cost_attempt(performance: RestExchangePerformance, run: WorkflowRun) -> ClaimCostArtifactRead? {
+  match performance {
+    RestExchangeSucceeded =>
+      if run.run_attempt != dispatched_run_attempt {
+        Present { value: ClaimCostRunAdvancedPastAttempt { observed_attempt: run.run_attempt } }
+      } else {
+        none
+      }
+    other => Present { value: ClaimCostRunUnreadable { performance: other } }
   }
 }
 
@@ -932,9 +963,13 @@ fn conclude_claim_cost_download(artifact_id: Int, performance: RestExchangePerfo
 
 fn read_claim_cost_artifact(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, run_id: Int) -> ClaimCostArtifactRead uses net: Network {
   let listed = list_run_artifacts_with(token: token, owner: owner, repo: repo, run_id: run_id)
+  let after = read_run_with(token: token, owner: owner, repo: repo, run_id: run_id)
   match conclude_claim_cost_listing(performance: listed.performance, listed: listed.listed) {
     Present { value: refused } => refused
     Absent =>
+      match conclude_claim_cost_attempt(performance: after.performance, run: after.run) {
+        Present { value: refused } => refused
+        Absent =>
       match claim_cost_artifact_listed(listed: listed.listed) {
         Absent => ClaimCostArtifactAbsent { names_seen: [] }
         Present { value: a } => {
@@ -942,11 +977,14 @@ fn read_claim_cost_artifact(token: ControllerInstallationToken, owner: NonEmptyS
           conclude_claim_cost_download(artifact_id: a.id, performance: archive.performance)
         }
       }
+      }
   }
 }
 
-// THE PRODUCTION ENTRY. It takes the sealed collection and the controller token, and nothing a caller
-// could cross-wire: the repository is gunbc_repository, the run, revision and attempt are the
+// THE PRODUCTION ENTRY. It takes the sealed collection and the controller token, and refuses before any
+// read unless that token is the registration's App and installation (token_names_registration, the
+// join collect_qualification_run makes), so it reads nothing under another installation. Nothing
+// else a caller could cross-wire: the repository is gunbc_repository, the run, revision and attempt are the
 // collection's, the floor job is the one collect_qualification_run joined to the minted runner, and
 // the slot is that registration's own host-unit slot. It reads the floor job's log and the claim-cost
 // artifact and returns a standing per instrument source. Its consumer is the route's collect stage
@@ -957,8 +995,17 @@ fn read_claim_cost_artifact(token: ControllerInstallationToken, owner: NonEmptyS
 type QualificationCollectOutcome
   = QualificationCollected { stage: QualificationCollectStage }
   | QualificationCollectSlotNotAHostUnit
+  | QualificationCollectUnderAnotherInstallation { token_app: DeclaredGitHubApp, token_installation: GitHubAppInstallationId }
 
 fn collect_qualification_instruments(collected: CollectedQualificationRun, token: ControllerInstallationToken) -> QualificationCollectOutcome uses net: Network {
+  if !token_names_registration(token_app: token.app, token_installation: token.installation, subject: collected.dispatched.subject) {
+    QualificationCollectUnderAnotherInstallation { token_app: token.app, token_installation: token.installation }
+  } else {
+    collect_qualification_instruments_under(collected: collected, token: token)
+  }
+}
+
+fn collect_qualification_instruments_under(collected: CollectedQualificationRun, token: ControllerInstallationToken) -> QualificationCollectOutcome uses net: Network {
   let owner = gunbc_repository.owner as NonEmptyStr
   let repo = gunbc_repository.name as NonEmptyStr
   match collected.dispatched.subject.registration.slot {
@@ -984,8 +1031,8 @@ data qualification_instrument_extraction_frontier_rows: List<FrontierRow> = [
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.floor_cost_distribution", decl_name: "parse_claim_cost_tsv"),
-    reason: "ClaimCostArtifactEvalSteps and CalibrationSpecimenWitnessLine are both read from the required-floor-claim-cost TSV (gunbc.floor_cost_distribution parse_claim_cost_tsv; the calibration specimen's row is joined there by calibration_specimen_grounding). Neither is on the job log: on the recorded required-floor log of run 35048059968 / job 104642384772 (test.fixture recorded_required_floor_log_excerpt), there are zero [witness] lines and zero occurrences of the specimen identity test.claim.floor_eval_step_calibration_specimen_test.calibration_specimen_performs_its_declared_work, and eval_steps appear only on the [over-cost] preview, a 25-row truncated view that is not the instrument and is not read as one. Two capabilities are missing. FIRST, the required workflow no longer uploads the artifact: cli_run write_required_floor_claim_cost_tsv still writes the TSV, but the emission of .github/workflows/witnesses.yml by gunbc.compiler_gate_workflow carries no upload step for it, and recent required runs publish only required-ci-measurement-receipt and compiler-pair-candidate. SECOND, an uploaded artifact is always a zip, and the REST handler reads every body as UTF-8 text (extdeps.transports.rest RestBodyObservation body: String), so extdeps.github.actions_artifacts github.Artifacts DownloadArtifact answers RestBodyUndecodable. read_claim_cost_artifact attempts the read on every collection and carries the result as a typed ClaimCostArtifactRead refusal (ClaimCostArtifactAbsent while nothing uploads it)",
-    dissolution: unbound_dissolution(description: "BOTH capabilities hold. (1) The required workflow uploads required-floor-claim-cost again, as an upload step in the existing floor job emitted by gunbc.compiler_gate_workflow under gunbc.witness_floor_workflow required_floor_claim_cost_artifact_name -- an emission change, not a new job. (2) The REST transport carries a binary body and an inflate reader can take one member out of one upload-artifact zip. Together these are SUFFICIENT FOR collect_qualification_instruments to read ClaimCostArtifactEvalSteps and CalibrationSpecimenWitnessLine from the same collected run through parse_claim_cost_tsv, and for qualification_instrument_source to place both on that read. NOT satisfied by either capability alone, by the [over-cost] preview or any other truncated view, by a new print of eval_steps into the log, or by an artifact downloaded outside this route"),
+    reason: "ClaimCostArtifactEvalSteps and CalibrationSpecimenWitnessLine are both read from the required-floor-claim-cost TSV (gunbc.floor_cost_distribution parse_claim_cost_tsv; the calibration specimen's row is joined there by calibration_specimen_grounding). Neither is on the job log: on the recorded required-floor log of run 35048059968 / job 104642384772 (test.fixture recorded_required_floor_log_excerpt) there are zero [witness] lines and zero occurrences of the specimen identity, and eval_steps appear only on the [over-cost] preview, a 25-row truncated view that is not the instrument. The required floor job uploads the artifact (gunbc.witness_floor_workflow required_floor_claim_cost_upload_bound_step, bound by gunbc.compiler_gate_workflow), and read_claim_cost_artifact lists it under the registration's installation token, refuses zero or several same-name artifacts, binds the listing to the collected attempt by re-reading the run after it (ClaimCostRunAdvancedPastAttempt), and downloads the one artifact. What does not exist is the reading after the download: an uploaded artifact is always a zip, the REST handler reads every body as UTF-8 text (extdeps.transports.rest RestBodyObservation body: String), so DownloadArtifact answers RestBodyUndecodable today and a body that did arrive is ClaimCostArchiveNotInflatable",
+    dissolution: unbound_dissolution(description: "the REST transport carries a binary response body, AND an inflate reader takes the exact required_floor_claim_cost.tsv member out of one upload-artifact zip, AND that member is parsed by parse_claim_cost_tsv into a reading bound to this collected run -- the artifact downloaded is the one listed for the sealed run id at the collected attempt, carried with its artifact id beside the parsed rows in the sealed receipt -- SUFFICIENT FOR collect_qualification_instruments to read ClaimCostArtifactEvalSteps and CalibrationSpecimenWitnessLine from the same run as the job log, and for qualification_instrument_source to place both on that read. NOT satisfied by the binary transport or the inflate reader alone, by reading any other member, by the [over-cost] preview or any other truncated view, by a new print of eval_steps into the log, or by an artifact downloaded outside this route"),
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.runner_throughput_qualification_route", decl_name: "mtcollins1_boot_leg"),

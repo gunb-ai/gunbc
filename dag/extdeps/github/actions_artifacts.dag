@@ -59,10 +59,16 @@ type ActionsArtifactList {
 // other spelling representable, and a coproduct input interpolated into a path is rendered by the
 // seed with its AUTHORED variant name (the regression extdeps.github.workflow_runs
 // WorkflowJobAttemptFilter records), so neither would be more faithful than the literal.
+// AUTHENTICATION IS THE CALLER'S TOKEN. Accepting an auth_token operation input does not by itself
+// bind authentication; auth_input names that input as the credential, as extdeps.github.git_database
+// and github.WorkflowRuns declare, so the controller installation token the qualification collector
+// passes is the one the request carries rather than the ambient GITHUB_TOKEN. An empty token keeps
+// the env fallback, the same dual declaration github.WorkflowRuns uses.
 service github.Artifacts {
   config {
     endpoint: default_api_base
     auth: Bearer
+    auth_input: auth_token
     auth_source: EnvVar { name: "GITHUB_TOKEN" }
   }
 
