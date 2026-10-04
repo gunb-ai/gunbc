@@ -7,6 +7,12 @@ fn parse_table_token(class: Symbol) -> Token {
   Token { class: class, lexeme: std.algebra.Empty, file: class, start: 0, end: 0 }
 }
 
+// A stream of more than one token is a stream of distinct positions (v2.std.compilers.lexing Token):
+// a repeat decides it progressed by the next token's start, so `a a b` carries three starts.
+fn parse_table_token_at(class: Symbol, start: Int) -> Token {
+  Token { class: class, lexeme: std.algebra.Empty, file: class, start: start, end: start + 1 }
+}
+
 data parse_table_two_tokens: List<Token> = Cons {
   head: parse_table_token(class: ^parse_table_probe_class),
   tail: Cons { head: parse_table_token(class: ^parse_table_probe_class), tail: std.algebra.Empty }
@@ -216,7 +222,7 @@ test fn parse_table_parse_expr_combinator_holds() -> Bool {
   let toks_b = Cons { head: tok_b, tail: std.algebra.Empty }
   let toks_c = Cons { head: tok_c, tail: std.algebra.Empty }
   let toks_ab = Cons { head: tok_a, tail: Cons { head: tok_b, tail: std.algebra.Empty } }
-  let toks_aab = Cons { head: tok_a, tail: Cons { head: tok_a, tail: Cons { head: tok_b, tail: std.algebra.Empty } } }
+  let toks_aab = Cons { head: parse_table_token_at(class: ^pt_parse_expr_tok_a, start: 0), tail: Cons { head: parse_table_token_at(class: ^pt_parse_expr_tok_a, start: 2), tail: Cons { head: parse_table_token_at(class: ^pt_parse_expr_tok_b, start: 4), tail: std.algebra.Empty } } }
   let r1 = match parse_expr(
     expr: Terminal { token_class: ^pt_parse_expr_tok_a, stamp: StampClass },
     tokens: toks_a, all_tokens: toks_a, root: root, table: table, prov: prov

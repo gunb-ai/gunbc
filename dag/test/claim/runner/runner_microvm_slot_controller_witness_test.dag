@@ -45,6 +45,7 @@ import gunbc.runner_microvm_slot_controller { slot_of_instance, minted_registrat
 import gunbc.fabric_required_build_cell { ReservationUnreadable, ReservationPayloadUndecodable }
 import std.durable_compare_and_set { CasUnreadableReadRefused }
 import gunbc.github_effect_perform { JitMintReceived, JitMintClockUnread }
+import gunbc.runner_jit_mint { MicroVmJitSlot }
 import gunbc.runner.runner_jit_perform { JitCredentialBoundToAttempt, JitCredentialMintNotCreated, JitCredentialNotDispatched, DispatchRefusedCellNotOwned }
 import extdeps.github.actions_jit_runner { jit_config_mint_outcome, JitConfigMinted }
 import gunbc.live_deploy.emit { microvm_slot_unit_file_with_workspace_root }
@@ -293,7 +294,7 @@ fn delivered_mint() -> Bool {
     Present { value: a } =>
       match jit_config_mint_outcome(status: 201, encoded: "ZmFrZS1qaXQtY29uZmlnLXRoYXQtaXMtbG9uZy1lbm91Z2gtdG8tcGFzcy10aGUtZmxvb3ItY2hlY2stZm9yLXRoZS13aXRuZXNz", runner_id: 4242, error_body: "") {
         JitConfigMinted { config: c, runner_id: id } =>
-          minted_registration(mint: JitMintReceived { delivery: JitCredentialBoundToAttempt { attempt: a, credential: c, runner_id: id } }) == Present { value: 4242 }
+          minted_registration(mint: JitMintReceived { delivery: JitCredentialBoundToAttempt { slot: MicroVmJitSlot { attempt: a }, credential: c, runner_id: id } }) == Present { value: 4242 }
         _ => false
       }
   }

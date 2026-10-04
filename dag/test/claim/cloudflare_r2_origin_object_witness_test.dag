@@ -88,7 +88,9 @@ import gunbc.cloudflare.r2_origin_object {
   resolve_origin_target_under,
   OriginPut,
   put_is_clean,
+  origin_fetch_of_staged,
 }
+import gunbc.cloudflare.r2_staged_transfer { R2StagingNotCreated, R2StagingRemoved, R2StagingResidue }
 import gunbc.fabric_m0_origin_readback {
   OriginReading,
   OriginReadingOutcome,
@@ -516,4 +518,47 @@ test fn r2_origin_object_frontier_rows_reflect_the_executed_evidence() -> Bool {
          row: row, ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "admit_r2_object_write_api_mint")))
     && !any(cloudflare_permission_group_observation_frontier_rows, row => frontier_row_names_decl(
          row: row, ref: decl_ref(module_path: "gunbc.cloudflare.r2_permission_group_observe", decl_name: "cloudflare_r2_bucket_item_write_observed_permission_group_id")))
+}
+
+// A STAGING RESIDUE IS CARRIED OUT OF THE FETCH beside a confirmed reading and beside an unreadable
+// staged file alike, and neither arm's outcome absorbs it: the reading still confirms, the
+// unavailable cause still names the read, and the residue names the directory that was not removed.
+test fn a_staging_residue_is_carried_out_of_the_fetch_on_both_staged_arms() -> Bool {
+  match read_origin_staged_file(staged_path: fixture_staged_manifest) {
+    OriginReadingUnavailable { staged_path: _, cause: _ } => false
+    OriginReadingTaken { reading: r } => {
+      let confirmed = origin_fetch_of_staged(key: "k", read: OriginReadingTaken { reading: r }, released: R2StagingResidue { path: "/tmp/stage.X" })
+      let unreadable = origin_fetch_of_staged(key: "k", read: OriginReadingUnavailable { staged_path: "/tmp/stage.X/object", cause: "unreadable" }, released: R2StagingResidue { path: "/tmp/stage.X" })
+      (match confirmed.outcome {
+        OriginObjectStaged { key: k, reading: _ } => (k as String) == "k"
+        OriginObjectAbsent { key: _ } => false
+        OriginFetchUnavailable { key: _, cause: _ } => false
+      })
+        && (match confirmed.staging {
+          R2StagingResidue { path: p } => (p as String) == "/tmp/stage.X"
+          R2StagingRemoved => false
+          R2StagingNotCreated => false
+        })
+        && (match unreadable.outcome {
+          OriginFetchUnavailable { key: _, cause: c } => (c as String) == "unreadable"
+          OriginObjectStaged { key: _, reading: _ } => false
+          OriginObjectAbsent { key: _ } => false
+        })
+        && (match unreadable.staging {
+          R2StagingResidue { path: p } => (p as String) == "/tmp/stage.X"
+          R2StagingRemoved => false
+          R2StagingNotCreated => false
+        })
+    }
+  }
+}
+
+// THE DISCRIMINATING CONTROL: a removed directory is carried out as Removed, not as a residue, so
+// the residue above is the release's answer and not a constant of the fold.
+test fn a_released_staging_directory_is_carried_out_as_removed() -> Bool {
+  match origin_fetch_of_staged(key: "k", read: OriginReadingUnavailable { staged_path: "/tmp/stage.X/object", cause: "unreadable" }, released: R2StagingRemoved).staging {
+    R2StagingRemoved => true
+    R2StagingResidue { path: _ } => false
+    R2StagingNotCreated => false
+  }
 }

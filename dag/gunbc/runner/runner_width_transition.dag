@@ -1,7 +1,7 @@
 module gunbc.runner_width_transition
 
 import std.types { Bool, List, String, NonEmptyStr, Int, list_length }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.runner_slot_population_census { desired_unit_names_range, unit_is_owned_by_host }
 import gunbc.runner_slot_allocation {
