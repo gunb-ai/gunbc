@@ -325,7 +325,7 @@ fn frontier_probe_missing_module_from_assemble_context(
   } else {
     match program_assembly_fold_ingest(ingest: ingest, lm: dag_language_model()) {
       ProgramAssemblyFoldFailed { diagnostics: _ } => optional_absent()
-      ProgramAssemblyFoldOk { roots: roots, index: _ } =>
+      ProgramAssemblyFoldOk { roots: roots, index: _, advisories: _ } =>
         match validate_module_roots(roots: roots) {
           Rejected { diagnostics: _ } => optional_absent()
           Accepted { value: validated_roots, diagnostics: _ } =>
