@@ -37,10 +37,11 @@ type ShellTransportConfig {
 // program said no' and 'there was no program' have different remedies.
 //
 // SCOPE, STATED SO IT IS NOT MISREAD AS COMPLETE: an operation carries this outcome by declaring an
-// output field of type ShellOutcome, exactly as RestOutcome is opted into. An operation that
-// declares none still refuses the evaluation on a spawn failure, now as the typed seed diagnostic
-// shell-spawn-refused rather than a rendered type error. Both transports' opt-ins dissolve together
-// when an operation's result authority derives its transport-failure arm without a declared field.
+// output field of type ShellOutcome. An operation that declares none still refuses the evaluation
+// on a spawn failure, now as the typed seed diagnostic shell-spawn-refused rather than a rendered
+// type error. The rest transport no longer has such an opt-in: every rest operation yields
+// extdeps.transports.rest RestResult. This opt-in dissolves when a shell operation's result
+// authority derives its transport-failure arm without a declared field.
 type ShellOutcome
   = ShellExited
   | ShellSpawnRefused { program: NonEmptyStr, cause: NonEmptyStr }

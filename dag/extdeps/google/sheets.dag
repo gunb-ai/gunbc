@@ -1,7 +1,6 @@
 module extdeps.google.sheets
 
 import std.types { NonEmptyStr, String, Int, List, Secret, Bool, Float, AuthScheme }
-import extdeps.transports.rest { RestOutcome, RestOk }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.credentials { EnvVar }
 import extdeps.external_authority {
@@ -17,6 +16,7 @@ import extdeps.api_rate_limit { UpstreamRateLimit, RateLimitPeriod, PerMinute }
 import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
 import extdeps.ietf.http_semantics { HttpMethod }
 import std.resources { Network }
+import extdeps.transports.rest { RestResult }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -635,7 +635,6 @@ data hermetic_get_values_value_range: ValueRange = ValueRange {
   majorDimension: Absent,
   values: Absent,
 }
-data hermetic_get_values_outcome: RestOutcome = RestOk
 
 // THE READ THAT MAKES FORMATTING CONVERGEABLE. Without it a format actuator can only report what
 // the API answered to its write, never what the sheet now carries, so re-running re-applies
@@ -680,7 +679,6 @@ service sheets.Spreadsheets {
     }
     output {
       result: SpreadsheetRead
-      outcome: RestOutcome
     }
     readonly
     transport rest {
@@ -706,7 +704,6 @@ service sheets.Spreadsheets {
     }
     output {
       result: SpreadsheetRead
-      outcome: RestOutcome
     }
     readonly
     transport rest {
@@ -733,7 +730,6 @@ service sheets.Spreadsheets {
     }
     output {
       value_range: ValueRange
-      outcome: RestOutcome
     }
     readonly
     transport rest {
@@ -751,7 +747,7 @@ service sheets.Spreadsheets {
       5xx => SheetsError
     }
     mock_response {
-      200 => { value_range: hermetic_get_values_value_range, outcome: hermetic_get_values_outcome } "hermetic values.get decoded-200 shape over an empty whole tab; the title is the fixture identity, not a live tab"
+      200 => { value_range: hermetic_get_values_value_range } "hermetic values.get decoded-200 shape over an empty whole tab; the title is the fixture identity, not a live tab"
     }
   }
 
@@ -766,7 +762,6 @@ service sheets.Spreadsheets {
     output {
       spreadsheet_id: String from "spreadsheetId"
       total_updated_cells: Int? from "totalUpdatedCells"
-      outcome: RestOutcome
     }
     transport rest {
       method: POST,
@@ -791,7 +786,7 @@ service sheets.Spreadsheets {
   operation SetFrozenRows {
     requires Network
     input { spreadsheet_id: String, sheet_id: Int, frozen_row_count: Int }
-    output { spreadsheet_id: String from "spreadsheetId", outcome: RestOutcome }
+    output { spreadsheet_id: String from "spreadsheetId" }
     transport rest {
       method: POST,
       path: "/spreadsheets/\{spreadsheet_id\}:batchUpdate",
@@ -829,7 +824,7 @@ service sheets.Spreadsheets {
       foreground: SheetsColor
       bold: Bool
     }
-    output { spreadsheet_id: String from "spreadsheetId", outcome: RestOutcome }
+    output { spreadsheet_id: String from "spreadsheetId" }
     transport rest {
       method: POST,
       path: "/spreadsheets/\{spreadsheet_id\}:batchUpdate",
@@ -878,7 +873,7 @@ service sheets.Spreadsheets {
       foreground: SheetsColor
       rule_index: Int
     }
-    output { spreadsheet_id: String from "spreadsheetId", outcome: RestOutcome }
+    output { spreadsheet_id: String from "spreadsheetId" }
     transport rest {
       method: POST,
       path: "/spreadsheets/\{spreadsheet_id\}:batchUpdate",

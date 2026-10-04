@@ -25,8 +25,8 @@ import gunbc.ci_workflow_source_read {
   WorkflowSourceIdentity,
 }
 import extdeps.transports.rest {
-  RestOk, RestStatusRefused, RestTransportRefused,
-  classify_rest_outcome, RestReadExchange,
+  RestStatusRefused, RestTransportRefused,
+  classify_rest_refusal, RestReadExchange,
   RestExchangeStatusRefused, RestExchangeUnreached,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -286,7 +286,7 @@ test fn an_upstream_truncated_page_is_not_a_complete_one() -> Bool {
 
 // -------------------------------------------------------------------------------------
 // A REFUSAL THAT ARRIVES AS A REFUSAL, AND KEEPS ITS STATUS. An earlier revision of
-// canonicalize_hit bound the RestExchangePerformance and discarded it, so a 404 on a deleted path,
+// canonicalize_hit bound the RestExchangeRefusal and discarded it, so a 404 on a deleted path,
 // a 403 rate limit and a 500 all left as one identical sentence - the collapse this module's
 // opening note says it exists to prevent, reintroduced at its own boundary. The arm also had no
 // claim, so the collapse was unobserved as well as unmodeled.
@@ -299,8 +299,8 @@ test fn an_upstream_truncated_page_is_not_a_complete_one() -> Bool {
 
 fn refusal_of(status: Int, body: String) -> WorkflowSourceRead {
   WorkflowSourceRefused {
-    performance: classify_rest_outcome(standing: RestReadExchange {
-      rest: RestStatusRefused { status: status, body: body },
+    performance: classify_rest_refusal(standing: RestReadExchange {
+      refusal: RestStatusRefused { status: status, body: body },
     }),
   }
 }
@@ -329,8 +329,8 @@ test fn a_read_refusal_reaches_canonicalization_carrying_its_status() -> Bool {
 // zero by a reader expecting one. It reaches the same refusal arm and keeps its own disposition.
 test fn a_transport_loss_reaches_canonicalization_as_unreached() -> Bool {
   let read = WorkflowSourceRefused {
-    performance: classify_rest_outcome(standing: RestReadExchange {
-      rest: RestTransportRefused { cause: "timeout" },
+    performance: classify_rest_refusal(standing: RestReadExchange {
+      refusal: RestTransportRefused { cause: "timeout" },
     }),
   }
   match canonicalize_hit(hit: fixture_hit, read: read) {

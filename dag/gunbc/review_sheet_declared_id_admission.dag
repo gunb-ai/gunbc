@@ -3,13 +3,15 @@ module gunbc.review_sheet_declared_id_admission
 import std.types { NonEmptyStr, String, Bool, List }
 import std.resources { Network }
 import extdeps.transports.rest {
+  RestResult,
+  RestAnswered,
+  RestRefused,
   RestReadExchange,
-  RestExchangeSucceeded,
   RestExchangeStatusRefused,
   RestExchangeUnreached,
   RestExchangeUndecodable,
   RestExchangeCommitAmbiguous,
-  classify_rest_outcome,
+  classify_rest_refusal,
 }
 import extdeps.google.drive
 import extdeps.google.drive { DriveFile, google_sheet_mime_type }
@@ -321,25 +323,26 @@ type DeclaredIdPreflight
 // answers whether this id names a file this credential can actually open. The selection is an id,
 // so the read is the question that matches it.
 fn preflight_file_by_id(file_id: NonEmptyStr) -> DeclaredIdPreflight uses net: Network {
-  let read = drive.Files.GetFile(file_id: file_id as String)
-  match classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }) {
-    RestExchangeSucceeded => PreflightFileRead { file: read.file }
-    RestExchangeStatusRefused { status, body } =>
-      PreflightFileUnreadable {
-        cause: join(["the file-by-id preflight for ", file_id as String, " refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
-      }
-    RestExchangeUnreached { cause } =>
-      PreflightFileUnreadable {
-        cause: join(["the file-by-id preflight for ", file_id as String, " never reached Drive: ", cause as String], "") as NonEmptyStr
-      }
-    RestExchangeUndecodable { status, cause } =>
-      PreflightFileUnreadable {
-        cause: join(["the file-by-id preflight for ", file_id as String, " answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
-      }
-    RestExchangeCommitAmbiguous { detail } =>
-      PreflightFileUnreadable {
-        cause: join(["the file-by-id preflight for ", file_id as String, " reported commit ambiguity, which a read may not: ", detail], "") as NonEmptyStr
-      }
+  match drive.Files.GetFile(file_id: file_id as String) {
+    RestAnswered { answer: read } => PreflightFileRead { file: read.file }
+    RestRefused { refusal } => match classify_rest_refusal(standing: RestReadExchange { refusal: refusal }) {
+      RestExchangeStatusRefused { status, body } =>
+        PreflightFileUnreadable {
+          cause: join(["the file-by-id preflight for ", file_id as String, " refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+        }
+      RestExchangeUnreached { cause } =>
+        PreflightFileUnreadable {
+          cause: join(["the file-by-id preflight for ", file_id as String, " never reached Drive: ", cause as String], "") as NonEmptyStr
+        }
+      RestExchangeUndecodable { status, cause } =>
+        PreflightFileUnreadable {
+          cause: join(["the file-by-id preflight for ", file_id as String, " answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+        }
+      RestExchangeCommitAmbiguous { detail } =>
+        PreflightFileUnreadable {
+          cause: join(["the file-by-id preflight for ", file_id as String, " reported commit ambiguity, which a read may not: ", detail], "") as NonEmptyStr
+        }
+    }
   }
 }
 

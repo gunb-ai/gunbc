@@ -10,15 +10,17 @@ import std.integer { uint8_channel_inclusive_max_value_derived }
 import extdeps.color.srgb { Srgb8 }
 import extdeps.color.okabe_ito { okabe_ito_bluish_green, okabe_ito_vermillion, okabe_ito_blue }
 import extdeps.transports.rest {
-  RestOutcome,
+  RestResult,
+  RestAnswered,
+  RestRefused,
+  RestRefusal,
   RestReadExchange,
   RestMutationExchange,
-  RestExchangeSucceeded,
   RestExchangeStatusRefused,
   RestExchangeUnreached,
   RestExchangeUndecodable,
   RestExchangeCommitAmbiguous,
-  classify_rest_outcome,
+  classify_rest_refusal,
 }
 import gunbc.review_sheet_projection {
   ReviewSheetSchema,
@@ -207,9 +209,8 @@ type FormatStepOutcome
 // looks like. That is weaker evidence than the values converge carries, and the honest consequence
 // is that formatting is NOT idempotent-by-observation: re-running re-applies rather than adopting.
 // Conditional rules in particular accumulate, which is why the rule steps take an explicit index.
-fn classify_format_step(step: NonEmptyStr, outcome: RestOutcome) -> FormatStepOutcome {
-  match classify_rest_outcome(standing: RestMutationExchange { rest: outcome }) {
-    RestExchangeSucceeded => FormatStepApplied { step: step }
+fn classify_format_step(step: NonEmptyStr, outcome: RestRefusal) -> FormatStepOutcome {
+  match classify_rest_refusal(standing: RestMutationExchange { refusal: outcome }) {
     RestExchangeStatusRefused { status, body } =>
       FormatStepRefused {
         step: step,
@@ -351,12 +352,14 @@ fn format_request_plan(tab: LocatedReviewTab, validated: ValidatedHeaderSchema, 
 }
 
 fn freeze_header(q: FreezeRowsRequest) -> FormatStepOutcome {
-  let r = sheets.Spreadsheets.SetFrozenRows(
+  match sheets.Spreadsheets.SetFrozenRows(
     spreadsheet_id: q.spreadsheet_id,
     sheet_id: q.sheet_id,
     frozen_row_count: q.frozen_row_count,
-  )
-  classify_format_step(step: "freeze header row" as NonEmptyStr, outcome: r.outcome)
+  ) {
+    RestAnswered { answer: _ } => FormatStepApplied { step: "freeze header row" as NonEmptyStr }
+    RestRefused { refusal } => classify_format_step(step: "freeze header row" as NonEmptyStr, outcome: refusal)
+  }
 }
 
 fn format_header_band(q: HeaderBandRequest) -> FormatStepOutcome {
@@ -367,8 +370,8 @@ fn format_header_band(q: HeaderBandRequest) -> FormatStepOutcome {
       match header_foreground_color() {
         SheetsColorUnderivable { cause: c } =>
           FormatStepRefused { step: "header band" as NonEmptyStr, cause: c }
-        SheetsColorDerived { color: fg } => {
-          let r = sheets.Spreadsheets.FormatCellRange(
+        SheetsColorDerived { color: fg } =>
+          match sheets.Spreadsheets.FormatCellRange(
             spreadsheet_id: q.spreadsheet_id,
             sheet_id: q.sheet_id,
             start_row: q.start_row,
@@ -378,9 +381,10 @@ fn format_header_band(q: HeaderBandRequest) -> FormatStepOutcome {
             background: bg,
             foreground: fg,
             bold: true,
-          )
-          classify_format_step(step: "header band" as NonEmptyStr, outcome: r.outcome)
-        }
+          ) {
+            RestAnswered { answer: _ } => FormatStepApplied { step: "header band" as NonEmptyStr }
+            RestRefused { refusal } => classify_format_step(step: "header band" as NonEmptyStr, outcome: refusal)
+          }
       }
   }
 }
@@ -397,7 +401,8 @@ fn color_standing(q: StandingRuleRequest, color: SheetsColorReading) -> FormatSt
 }
 
 fn color_standing_derived(q: StandingRuleRequest, color: SheetsColor) -> FormatStepOutcome {
-  let r = sheets.Spreadsheets.AddTextColorRule(
+  let step = join(["standing colour for ", q.match_text], "") as NonEmptyStr
+  match sheets.Spreadsheets.AddTextColorRule(
     spreadsheet_id: q.spreadsheet_id,
     sheet_id: q.sheet_id,
     start_row: q.start_row,
@@ -406,11 +411,10 @@ fn color_standing_derived(q: StandingRuleRequest, color: SheetsColor) -> FormatS
     match_text: q.match_text,
     foreground: color,
     rule_index: q.rule_index,
-  )
-  classify_format_step(
-    step: join(["standing colour for ", q.match_text], "") as NonEmptyStr,
-    outcome: r.outcome,
-  )
+  ) {
+    RestAnswered { answer: _ } => FormatStepApplied { step: step }
+    RestRefused { refusal } => classify_format_step(step: step, outcome: refusal)
+  }
 }
 
 type StandingColorRule {
@@ -538,12 +542,11 @@ type FormatObservation
 // away by a range chosen to bound something else. It is cheap for the same reason: sheet metadata
 // without grid data does not grow with the census.
 fn read_format_meta(tab: LocatedReviewTab, grid: SpreadsheetRead) -> FormatObservation {
-  let meta = sheets.Spreadsheets.GetSpreadsheetMetadata(
+  match sheets.Spreadsheets.GetSpreadsheetMetadata(
     spreadsheet_id: tab.spreadsheet_id as String,
     fields: review_sheet_format_meta_field_mask,
-  )
-  match classify_rest_outcome(standing: RestReadExchange { rest: meta.outcome }) {
-    RestExchangeSucceeded =>
+  ) {
+    RestAnswered { answer: meta } =>
       match located_sheet(read: meta.result, sheet_id: tab.sheet_id) {
         Absent =>
           FormatUnreadable {
@@ -560,22 +563,24 @@ fn read_format_meta(tab: LocatedReviewTab, grid: SpreadsheetRead) -> FormatObser
               }
           }
       }
-    RestExchangeStatusRefused { status, body } =>
-      FormatUnreadable {
-        cause: join(["the metadata read answered ", to_string(status), ": ", body], "") as NonEmptyStr
-      }
-    RestExchangeUnreached { cause } =>
-      FormatUnreadable {
-        cause: join(["the metadata read never reached Sheets: ", cause as String], "") as NonEmptyStr
-      }
-    RestExchangeUndecodable { status, cause } =>
-      FormatUnreadable {
-        cause: join(["the metadata read answered ", to_string(status), " with a body this model could not decode: ", cause as String], "") as NonEmptyStr
-      }
-    RestExchangeCommitAmbiguous { detail } =>
-      FormatUnreadable {
-        cause: join(["the metadata read is a read and reported an ambiguous commit: ", detail], "") as NonEmptyStr
-      }
+    RestRefused { refusal } => match classify_rest_refusal(standing: RestReadExchange { refusal: refusal }) {
+      RestExchangeStatusRefused { status, body } =>
+        FormatUnreadable {
+          cause: join(["the metadata read answered ", to_string(status), ": ", body], "") as NonEmptyStr
+        }
+      RestExchangeUnreached { cause } =>
+        FormatUnreadable {
+          cause: join(["the metadata read never reached Sheets: ", cause as String], "") as NonEmptyStr
+        }
+      RestExchangeUndecodable { status, cause } =>
+        FormatUnreadable {
+          cause: join(["the metadata read answered ", to_string(status), " with a body this model could not decode: ", cause as String], "") as NonEmptyStr
+        }
+      RestExchangeCommitAmbiguous { detail } =>
+        FormatUnreadable {
+          cause: join(["the metadata read is a read and reported an ambiguous commit: ", detail], "") as NonEmptyStr
+        }
+    }
   }
 }
 
@@ -820,30 +825,31 @@ fn read_format(tab: LocatedReviewTab) -> FormatObservation {
 }
 
 fn read_format_at(tab: LocatedReviewTab, range: String) -> FormatObservation {
-  let grid = sheets.Spreadsheets.GetSpreadsheet(
+  match sheets.Spreadsheets.GetSpreadsheet(
     spreadsheet_id: tab.spreadsheet_id as String,
     range: range,
     fields: review_sheet_format_grid_field_mask,
     include_grid_data: true,
-  )
-  match classify_rest_outcome(standing: RestReadExchange { rest: grid.outcome }) {
-    RestExchangeSucceeded => read_format_meta(tab: tab, grid: grid.result)
-    RestExchangeStatusRefused { status, body } =>
-      FormatUnreadable {
-        cause: join(["spreadsheets.get answered ", to_string(status), ": ", body], "") as NonEmptyStr
-      }
-    RestExchangeUnreached { cause } =>
-      FormatUnreadable {
-        cause: join(["spreadsheets.get never reached Sheets: ", cause as String], "") as NonEmptyStr
-      }
-    RestExchangeUndecodable { status, cause } =>
-      FormatUnreadable {
-        cause: join(["spreadsheets.get answered ", to_string(status), " with a body this model could not decode: ", cause as String], "") as NonEmptyStr
-      }
-    RestExchangeCommitAmbiguous { detail } =>
-      FormatUnreadable {
-        cause: join(["spreadsheets.get is a read and reported an ambiguous commit: ", detail], "") as NonEmptyStr
-      }
+  ) {
+    RestAnswered { answer: grid } => read_format_meta(tab: tab, grid: grid.result)
+    RestRefused { refusal } => match classify_rest_refusal(standing: RestReadExchange { refusal: refusal }) {
+      RestExchangeStatusRefused { status, body } =>
+        FormatUnreadable {
+          cause: join(["spreadsheets.get answered ", to_string(status), ": ", body], "") as NonEmptyStr
+        }
+      RestExchangeUnreached { cause } =>
+        FormatUnreadable {
+          cause: join(["spreadsheets.get never reached Sheets: ", cause as String], "") as NonEmptyStr
+        }
+      RestExchangeUndecodable { status, cause } =>
+        FormatUnreadable {
+          cause: join(["spreadsheets.get answered ", to_string(status), " with a body this model could not decode: ", cause as String], "") as NonEmptyStr
+        }
+      RestExchangeCommitAmbiguous { detail } =>
+        FormatUnreadable {
+          cause: join(["spreadsheets.get is a read and reported an ambiguous commit: ", detail], "") as NonEmptyStr
+        }
+    }
   }
 }
 

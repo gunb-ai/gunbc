@@ -9,7 +9,7 @@ import v1.std.core {
   NewlineIndex, expr_var_name_at, expr_call_func_at, expr_method_name_at, let_binding_name_at,
   param_node_name_at, resource_use_name_at, MatchPattern, TextFile, SourceSpan,
   resource_use_resource, NullCoalesce, UnaryOpKind, StringPart, DeclaredFuncSig,
-  transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData,
+  transport_env, ExprData,
   NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda,
   ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
@@ -60,7 +60,7 @@ import std.induction { SubValueUnknown }
 import v1.compiler.runtime_go { go_runtime_source }
 
 import v1.compiler.emit {
-  BlockEmitState, InterpPart,
+  BlockEmitState, InterpPart, emit_unrealized_rest_result_refusal,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_container, emit_map_type,
   emit_node_type, emit_ident, emit_let_binding, emit_simple_expr,
   emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op,
@@ -480,7 +480,7 @@ fn emit_go_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: Infer
 fn emit_go_transport_body(bound: BoundOperation, op_name: String, source_indices: Map<String, NewlineIndex>, depth: Int) -> String {
   emit_unified_transport_dispatch(
     bound: bound, op_name: op_name, source_indices: source_indices, depth: depth, target: Go,
-    render_rest: (n, t, d, si) => emit_go_rest_call(op_name: n, transport: t, depth: d, source_indices: si),
+    render_rest: (n, t, d, si) => emit_unrealized_rest_result_refusal(op_name: n, target: Go),
     render_shell: (n, t, d, si) => emit_go_shell_call(op_name: n, transport: t, depth: d, source_indices: si),
     render_local: (n, d) => emit_go_local_call(op_name: n, depth: d))
 }
@@ -502,40 +502,6 @@ fn emit_go_service_struct(name: String, fallback_transport: Node, op_children: L
   } else {
     concat(language_spec(target: Go).items.type_alias_keyword, " ", name, " ", language_spec(target: Go).items.struct_keyword, " {\n", decls |> join(separator: "\n"), "\n}")
   }
-}
-
-fn emit_go_rest_call(op_name: String, transport: Node, depth: Int, source_indices: Map<String, NewlineIndex>) -> String {
-  let prefix = make_indent(level: depth)
-  let url_line = concat(prefix, "url := fmt.Sprintf(\"%s/", to_snake(name: op_name), "\", c.BaseURL)")
-  let body_line = concat(prefix, "reqBody := bytes.NewBuffer(nil)")
-  let req_line = concat(prefix, "req, err := http.NewRequest(\"POST\", url, reqBody)\n",
-    "if err != nil {\n\treturn nil, fmt.Errorf(\"creating request: %w\", err)\n}")
-  let auth_line = if transport_has_auth(t: transport, source_indices: source_indices) {
-    let header_name = match transport_auth_header_name(t: transport, source_indices: source_indices) {
-      Present { value: h } => h
-      Absent => "Authorization"
-    }
-    concat(prefix, "req.Header.Set(\"", header_name, "\", c.AuthToken)")
-  } else { "" }
-  let hdrs = transport_headers(t: transport, source_indices: source_indices)
-  let header_lines = hdrs |> map(h =>
-    concat(prefix, "req.Header.Set(\"", field_init_node_name_at(n: h, source_indices: source_indices), "\", ", emit_simple_expr(expr: field_init_node_value(n: h), target: Go, source_indices: source_indices), ")")
-  )
-  let send_lines = concat(
-    prefix, "resp, err := http.DefaultClient.Do(req)\n",
-    "if err != nil {\n\treturn nil, fmt.Errorf(\"sending request: %w\", err)\n}\n",
-    "defer resp.Body.Close()\n",
-    "body, err := io.ReadAll(resp.Body)\n",
-    "if err != nil {\n\treturn nil, fmt.Errorf(\"reading response: %w\", err)\n}\n",
-    "var result interface{}\n",
-    "if err := json.Unmarshal(body, &result); err != nil {\n",
-    "\treturn nil, fmt.Errorf(\"decoding response: %w\", err)\n}\n",
-    "return result, nil"
-  )
-  let all_lines = concat([url_line, body_line, req_line],
-    if auth_line == "" { [] } else { [auth_line] },
-    header_lines, [send_lines])
-  all_lines |> join(separator: "\n")
 }
 
 fn emit_go_shell_call(op_name: String, transport: Node, depth: Int, source_indices: Map<String, NewlineIndex>) -> String {

@@ -68,43 +68,45 @@ type RestTransportConfig {
   tls: TlsPosture?
 }
 
-// A RESPONSE THAT IS NOT 2xx IS AN ANSWER, NOT AN ABSENCE OF ONE, and until this type existed the
-// realization threw it away. Operations already declare what a status yields - github.Pulls.List
-// declares 200/401/404/422/5xx and twenty-two other extdeps modules declare 204 such arms between
-// them - and the v1 seed parsed every one of those declarations onto the operation node as a
-// response_<status> property and then never read it. dispatch_rest raised InterpError::TypeError
-// with a rendered 'HTTP {status}: {body}' string instead, so a caller could not reach the status,
-// could not reach the body, and could not persist either without parsing a diagnostic meant for a
-// human. That is specification-without-execution across the whole REST surface, and it is what made
-// a live 401 unrepresentable to the Publication observer that provoked this type.\n\nFOUR STATES,
-// DELIBERATELY NOT THREE. RestOk means the operation's declared output fields carry the decoded
-// answer. RestStatusRefused means the request was transported and a remote authority answered with
-// a status this operation does not treat as success - the status and the body it came with are both
-// retained, because the body is usually the only place the remote says WHY. RestTransportRefused
-// means no status exists at all: nothing was answered, so nothing may be reported as an answer.
-// RestBodyUndecodable means a status arrived and the payload beneath it could not be read - the
-// status is known and is carried, and the body is not fabricated as empty. Collapsing the last two
-// would report 'the remote said nothing' for 'we never reached the remote', which are different
-// facts with different remedies; collapsing an unreadable body into an empty one would report
-// silence the remote never chose.\n\nWHY status IS HttpStatus AND NOT Int: std.types already
-// carries HttpStatus with its 100-599 range, so a second unconstrained integer here would be a
-// second name for one concept, and a transport-refusal arm would then be able to hold a status that
-// no response can have. There is deliberately no status on RestTransportRefused for the same reason
-// in the other direction - a sentinel zero would be a plausible-looking value standing where the
-// honest answer is that the question does not apply.\n\nSCOPE, STATED SO IT IS NOT MISREAD AS
-// COMPLETE: this outcome is carried by an operation that DECLARES an outcome field, and an
-// operation that declares none keeps raising exactly as before. That opt-in is the narrow half of
-// the repair, not its end state - the refusal body also stays a String here rather than being
-// decoded into the shape the response block already names for it. Both dissolve together when the
-// response block becomes the single authority for a result and output derives from its 2xx arm, at
-// which point every operation carries this outcome without declaring it and this field deletes as
-// redundant.
-
-type RestOutcome
-  = RestOk
-  | RestStatusRefused { status: HttpStatus, body: String }
+// A RESPONSE THAT IS NOT 2xx IS AN ANSWER, NOT AN ABSENCE OF ONE. Operations declare what a status
+// yields in their response block, and the realization once discarded every non-2xx arm: it raised
+// a rendered 'HTTP {status}: {body}' diagnostic, so a caller could reach neither the status nor
+// the body without parsing text meant for a human.
+//
+// THREE REFUSALS, DELIBERATELY NOT TWO. RestStatusRefused means the request was transported and a
+// remote authority answered with a status this operation does not treat as success - the status
+// and the body it came with are both retained, because the body is usually the only place the
+// remote says WHY. RestTransportRefused means no status exists at all: nothing was answered, so
+// nothing may be reported as an answer. RestBodyUndecodable means a status arrived and the payload
+// beneath it could not be read - the status is known and is carried, and the body is not
+// fabricated as empty. Collapsing the last two would report 'the remote said nothing' for 'we
+// never reached the remote', which are different facts with different remedies.
+//
+// WHY status IS HttpStatus AND NOT Int: std.types already carries HttpStatus with its 100-599
+// range, so a second unconstrained integer here would be a second name for one concept. There is
+// deliberately no status on RestTransportRefused - a sentinel zero would be a plausible-looking
+// value standing where the honest answer is that the question does not apply.
+type RestRefusal
+  = RestStatusRefused { status: HttpStatus, body: String }
   | RestTransportRefused { cause: NonEmptyStr }
   | RestBodyUndecodable { status: HttpStatus, cause: NonEmptyStr }
+
+// THE RESULT OF EVERY REST OPERATION IS THIS COPRODUCT, AND NO OPERATION DECLARES IT. An
+// operation's output block describes the decoded 2xx body and nothing else; calling the operation
+// yields RestResult over that output, so the body's fields exist only in the arm where the remote
+// answered with them. The earlier shape put an outcome field BESIDE the body fields, which left
+// every body field with no value whenever the outcome was a refusal - a state a realization with
+// no null cannot inhabit - and made the typed refusal an opt-in that an operation could omit and
+// silently keep an untyped raise. Both are gone: there is no field to declare and no raise to
+// fall back to, so a caller reaches a body only by eliminating the refusal arm.
+//
+// The refusal body is still a String rather than the shape the response block names for that
+// status; rest_refusal_body_decode_frontier states what ends that.
+type RestResult<Body>
+  = RestAnswered { answer: Body }
+  | RestRefused { refusal: RestRefusal }
+
+data rest_refusal_body_decode_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CAPABILITY: RestStatusRefused carries the refusal body decoded into the type the operation's response block declares for that status, so a caller reads the remote's stated reason as fields rather than re-parsing a String. TRIGGER: the response block's non-2xx arms are lowered by both dispatch_rest and the rest emit into a per-operation refusal coproduct keyed by declared status. SUFFICIENT FOR deleting body: String from RestStatusRefused and every consumer-side parse of it. NOT satisfied by decoding one operation's refusal body at its call site." as NonEmptyStr)
 
 // A STATUS IS ONLY EVIDENCE OF NON-COMMIT WHEN THE REMOTE MEANT IT AS A DECISION. A 4xx is an
 // authority or argument decision before committing; a 5xx spans states the remote may not be able
@@ -113,9 +115,11 @@ fn mutation_status_is_commit_ambiguous(status: HttpStatus) -> Bool {
   status >= 500
 }
 
-type RestExchangePerformance
-  = RestExchangeSucceeded
-  | RestExchangeStatusRefused { status: HttpStatus, body: String }
+// WHAT A REFUSAL ESTABLISHES ABOUT THE REMOTE, WHICH DEPENDS ON WHETHER THE EXCHANGE MUTATED. There
+// is no succeeded arm: an answered exchange is the RestAnswered arm of RestResult and never
+// reaches this classification, so a caller cannot be handed a success with no body beside it.
+type RestExchangeRefusal
+  = RestExchangeStatusRefused { status: HttpStatus, body: String }
   | RestExchangeCommitAmbiguous { detail: NonEmptyStr }
   | RestExchangeUnreached { cause: NonEmptyStr }
   | RestExchangeUndecodable { status: HttpStatus, cause: NonEmptyStr }
@@ -125,27 +129,25 @@ type RestExchangePerformance
 // is unwritable. Deriving the standing from the operation's `readonly` modifier is the next
 // rung (rest_exchange_standing_from_operation_readonly_frontier).
 type RestExchangeStanding
-  = RestReadExchange { rest: RestOutcome }
-  | RestMutationExchange { rest: RestOutcome }
+  = RestReadExchange { refusal: RestRefusal }
+  | RestMutationExchange { refusal: RestRefusal }
 
-data rest_exchange_standing_from_operation_readonly_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CAPABILITY: a rest operation result carries RestReadExchange vs RestMutationExchange derived from that operation's readonly modifier (dispatch_rest and rest emit), so classify_rest_outcome does not take a caller-built standing. TRIGGER: the result record includes that standing from the op declaration. SUFFICIENT FOR deleting RestReadExchange and RestMutationExchange constructors at classify call sites. NOT satisfied by a mutation: Bool argument on classify_rest_outcome." as NonEmptyStr)
+data rest_exchange_standing_from_operation_readonly_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CAPABILITY: a rest operation's RestRefused arm carries RestReadExchange vs RestMutationExchange derived from that operation's readonly modifier (dispatch_rest and rest emit), so classify_rest_refusal does not take a caller-built standing. TRIGGER: the refusal arm includes that standing from the op declaration. SUFFICIENT FOR deleting RestReadExchange and RestMutationExchange constructors at classify call sites. NOT satisfied by a mutation: Bool argument on classify_rest_refusal." as NonEmptyStr)
 
 fn rest_exchange_ambiguous_detail(prefix: String, rest: String) -> NonEmptyStr {
   concat(prefix, rest) as NonEmptyStr
 }
 
-fn classify_rest_outcome(standing: RestExchangeStanding) -> RestExchangePerformance {
+fn classify_rest_refusal(standing: RestExchangeStanding) -> RestExchangeRefusal {
   match standing {
-    RestReadExchange { rest } =>
-      match rest {
-        RestOk => RestExchangeSucceeded
+    RestReadExchange { refusal } =>
+      match refusal {
         RestStatusRefused { status, body } => RestExchangeStatusRefused { status: status, body: body }
         RestTransportRefused { cause } => RestExchangeUnreached { cause: cause }
         RestBodyUndecodable { status, cause } => RestExchangeUndecodable { status: status, cause: cause }
       }
-    RestMutationExchange { rest } =>
-      match rest {
-        RestOk => RestExchangeSucceeded
+    RestMutationExchange { refusal } =>
+      match refusal {
         RestStatusRefused { status, body } =>
           if mutation_status_is_commit_ambiguous(status: status) {
             RestExchangeCommitAmbiguous {
@@ -168,7 +170,7 @@ fn classify_rest_outcome(standing: RestExchangeStanding) -> RestExchangePerforma
 
 // THE HTTP CLIENT BOUNDARY REPORTS FACTS AND DECIDES NO OPERATION POLICY. RestResponseObserved says
 // a status arrived and then says separately whether its body was readable; RestExchangeRefused says
-// no response arrived, so no status can be fabricated. The operation-facing RestOutcome above is
+// no response arrived, so no status can be fabricated. The operation-facing RestResult above is
 // downstream: the same dispatch_rest fold consumes this carrier whether a real HTTP handler or an
 // exact fixture replay produced it. A replay arm that returned the operation's final output would
 // sit one layer too high and could green while dispatch_rest was broken - the defect in

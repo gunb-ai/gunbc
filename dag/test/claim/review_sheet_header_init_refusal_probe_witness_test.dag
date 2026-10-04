@@ -38,7 +38,7 @@ fn probe_source(name: String) -> String {
 // the row set is the whole compile's), and every closure that reaches extdeps.transports.rest --
 // which both modules under test do, through the values actuator's values.get call site -- carries
 // blocking rows of that closure's own under this compile: measured on this tree, a source whose
-// only import is extdeps.transports.rest { RestOutcome, RestOk } is NOT total-clean, before any
+// only import is extdeps.transports.rest { RestResult, RestAnswered } is NOT total-clean, before any
 // module of this change is reached. So a total-zero control over these modules is not authorable
 // here, and asserting it would be asserting the transport closure's emission, not this wall.
 //

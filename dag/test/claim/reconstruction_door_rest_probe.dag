@@ -1,6 +1,7 @@
 module test.claim.reconstruction_door_rest_probe
 
 import std.types { NonEmptyStr }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused }
 
 // Reconstruction-door probe (audit queue item 20b, REST JSON projection; was labelled "ARM 2"). Declares a REST
 // service whose `id` output is a refined `NonEmptyStr`, deliberately with NO
@@ -34,12 +35,18 @@ service DoorProbeRest {
 
 // Case 1 (positive control): server body is {"id":"valid-value"}.
 fn witness_rest_id_equals_valid() -> Bool {
-  DoorProbeRest.Fetch().id == "valid-value"
+  match DoorProbeRest.Fetch() {
+    RestAnswered { answer } => answer.id == "valid-value"
+    RestRefused { refusal: _ } => false
+  }
 }
 
 // Case 2 (predicate bypass, no tampering at all): server body is
 // {"id":""}, returned over a real socket by a real HTTP server — nothing on
 // disk is edited for this case.
 fn witness_rest_id_equals_empty() -> Bool {
-  DoorProbeRest.Fetch().id == ""
+  match DoorProbeRest.Fetch() {
+    RestAnswered { answer } => answer.id == ""
+    RestRefused { refusal: _ } => false
+  }
 }

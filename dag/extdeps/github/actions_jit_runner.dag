@@ -2,10 +2,10 @@ module extdeps.github.actions_jit_runner
 
 import std.types { String, NonEmptyStr, Bool, Int, List, HttpStatus, Secret }
 import extdeps.github.github { default_api_base }
-import extdeps.transports.rest { RestOutcome }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.resources { Network }
+import extdeps.transports.rest { RestResult }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -161,7 +161,6 @@ service github.ActionsJitRunners {
     }
     output {
       result: JitConfigCreatedBody
-      outcome: RestOutcome
     }
     transport rest {
       method: POST,

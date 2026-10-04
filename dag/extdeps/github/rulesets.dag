@@ -3,12 +3,12 @@ module extdeps.github.rulesets
 import extdeps.github.github { default_api_base, default_per_page }
 import extdeps.github.errors { GitHubErrorShape }
 import extdeps.external_authority { ExternalAuthority }
-import extdeps.transports.rest { RestOutcome }
 import extdeps.uri { Uri, Https }
 import std.credentials { EnvVar }
 import std.measure { Minute, minute, minute_count, MergeQueueEntryCount, merge_queue_entry_count, merge_queue_entry_count_value }
 import v2.std.collection { Absent, Present }
 import std.resources { Network }
+import extdeps.transports.rest { RestResult }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -712,7 +712,6 @@ service github.Rulesets {
     }
     output {
       rulesets: List<RulesetSummaryWire>
-      outcome: RestOutcome
     }
     readonly
     transport rest {
@@ -746,7 +745,6 @@ service github.Rulesets {
       conditions: RulesetConditionsWire
       rules: List<RulesetRuleWire>
       bypass_actors: List<RulesetBypassActor>?
-      outcome: RestOutcome
     }
     readonly
     transport rest {
@@ -785,7 +783,6 @@ service github.Rulesets {
       conditions: RulesetConditionsWire
       rules: List<RulesetRuleWire>
       bypass_actors: List<RulesetBypassActor>?
-      outcome: RestOutcome
     }
     transport rest {
       method: PUT,

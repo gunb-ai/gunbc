@@ -4,7 +4,7 @@ import std.types { String, Int, Bool, NonEmptyStr, FilePath, CommitSha }
 import std.credentials { CredentialSource }
 import extdeps.git
 import extdeps.github.pulls
-import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import gunbc.roadmap_publish { PublicationReceiptOutcome, ReceiptBound }
 
 // PUBLICATION ACTUATION: the two host effects that turn a verified attempt head into a bound pull
@@ -26,9 +26,8 @@ fn pull_request_created_outcome(number: Int, html_url: NonEmptyStr) -> Publicati
   ReceiptBound { pr_number: number, url: html_url, draft: false }
 }
 
-fn pull_request_refusal_detail(outcome: RestOutcome) -> String {
+fn pull_request_refusal_detail(outcome: RestRefusal) -> String {
   match outcome {
-    RestOk => "the create call reported success without a pull request"
     RestStatusRefused { status: _, body } => join(["GitHub refused the pull request: ", body], "")
     RestTransportRefused { cause } => join(["the pull request request did not reach GitHub: ", cause as String], "")
     RestBodyUndecodable { status: _, cause } => join(["GitHub answered but the pull request body was undecodable: ", cause as String], "")
@@ -50,7 +49,7 @@ fn publish_attempt(
   if pushed.exit_code != 0 {
     PushRefused { exit_code: pushed.exit_code, stderr: pushed.stderr }
   } else {
-    let created = github.Pulls.Create(
+    match github.Pulls.Create(
       auth_token: credential,
       owner: owner,
       repo: repo_name,
@@ -59,12 +58,9 @@ fn publish_attempt(
       base: base,
       body: body,
       draft: false,
-    )
-    match created.outcome {
-      RestOk => PublishActuated { pr_number: created.number, url: created.html_url }
-      RestStatusRefused { status, body: b } => PullRequestRefused { detail: pull_request_refusal_detail(outcome: RestStatusRefused { status: status, body: b }) }
-      RestTransportRefused { cause } => PullRequestRefused { detail: pull_request_refusal_detail(outcome: RestTransportRefused { cause: cause }) }
-      RestBodyUndecodable { status, cause } => PullRequestRefused { detail: pull_request_refusal_detail(outcome: RestBodyUndecodable { status: status, cause: cause }) }
+    ) {
+      RestAnswered { answer } => PublishActuated { pr_number: answer.number, url: answer.html_url }
+      RestRefused { refusal } => PullRequestRefused { detail: pull_request_refusal_detail(outcome: refusal) }
     }
   }
 }

@@ -3,7 +3,7 @@ module test.claim.runner.runner_group_restriction_observation_witness_test
 import std.types { Bool, String, List, Int, NonEmptyStr }
 import extdeps.github.actions_jit_runner { JitRunnerGroupId }
 import gunbc.fleet.org_actions_inspection { runner_groups_of_rest_read }
-import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestBodyUndecodable }
 import extdeps.github.org_actions { OrgRunnerGroupWire, OrgRunnerGroupListWire }
 import gunbc.runner_group_restriction_observation {
   MicrovmRunnerGroupStanding, RunnerGroupRestrictedToWorkflow, RunnerGroupRestrictionRefused,
@@ -39,12 +39,12 @@ fn listed(groups: List<OrgRunnerGroupWire>) -> OrgRunnerGroupListWire {
   OrgRunnerGroupListWire { total_count: count(groups), runner_groups: groups }
 }
 
-fn observed_read(outcome: RestOutcome, body: OrgRunnerGroupListWire) -> MicrovmRunnerGroupStanding {
-  observe_shakedown_runner_group_restriction(name: "microvm-shakedown" as NonEmptyStr, listed: runner_groups_of_rest_read(outcome: outcome, body: body))
+fn observed_read(outcome: RestResult<OrgRunnerGroupListWire>) -> MicrovmRunnerGroupStanding {
+  observe_shakedown_runner_group_restriction(name: "microvm-shakedown" as NonEmptyStr, listed: runner_groups_of_rest_read(outcome: outcome))
 }
 
 fn observed(body: OrgRunnerGroupListWire) -> MicrovmRunnerGroupStanding {
-  observed_read(outcome: RestOk, body: body)
+  observed_read(outcome: RestAnswered { answer: body })
 }
 
 fn shakedown() -> String { microvm_shakedown_selected_workflow() as String }
@@ -105,14 +105,14 @@ test fn witness_runner_group_duplicated_in_the_read_refuses() -> Bool {
 // undecodable body (a member missing from GitHub's response fails the typed decode) each refuse the
 // list; neither may read as "no such group", which would send the ensure to create one.
 test fn witness_runner_group_read_refused_by_status_refuses_as_unreadable() -> Bool {
-  match observed_read(outcome: RestStatusRefused { status: 403, body: "Resource not accessible by integration" }, body: listed(groups: [])) {
+  match observed_read(outcome: RestRefused { refusal: RestStatusRefused { status: 403, body: "Resource not accessible by integration" } }) {
     RunnerGroupRestrictionRefused { name: _, cause: RunnerGroupListUnreadable { reason: _ } } => true
     _ => false
   }
 }
 
 test fn witness_runner_group_body_undecodable_refuses_as_unreadable() -> Bool {
-  match observed_read(outcome: RestBodyUndecodable { status: 200, cause: "runner_groups[0] lacks restricted_to_workflows" }, body: listed(groups: [])) {
+  match observed_read(outcome: RestRefused { refusal: RestBodyUndecodable { status: 200, cause: "runner_groups[0] lacks restricted_to_workflows" } }) {
     RunnerGroupRestrictionRefused { name: _, cause: RunnerGroupListUnreadable { reason: _ } } => true
     _ => false
   }

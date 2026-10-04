@@ -3,14 +3,16 @@ module gunbc.review_sheet_values_actuator
 import std.types { NonEmptyStr, String, Bool, List, Int }
 import v2.std.algebra { fold_list }
 import extdeps.transports.rest {
+  RestResult,
+  RestAnswered,
+  RestRefused,
   RestReadExchange,
   RestMutationExchange,
-  RestExchangeSucceeded,
   RestExchangeStatusRefused,
   RestExchangeUnreached,
   RestExchangeUndecodable,
   RestExchangeCommitAmbiguous,
-  classify_rest_outcome,
+  classify_rest_refusal,
 }
 import extdeps.google.sheets
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
@@ -93,29 +95,30 @@ fn read_values_rendered(
   a1: String,
   render: SheetsValueRenderOption,
 ) -> ValuesReadOutcome {
-  let read = sheets.Spreadsheets.GetValues(
+  match sheets.Spreadsheets.GetValues(
     spreadsheet_id: spreadsheet_id as String,
     range: a1,
     value_render_option: render,
-  )
-  match classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }) {
-    RestExchangeSucceeded => ValuesRead { range: read.value_range }
-    RestExchangeStatusRefused { status, body } =>
-      ValuesUnreadable {
-        cause: join(["values.get refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
-      }
-    RestExchangeUnreached { cause } =>
-      ValuesUnreadable {
-        cause: join(["values.get never reached Sheets: ", cause as String], "") as NonEmptyStr
-      }
-    RestExchangeUndecodable { status, cause } =>
-      ValuesUnreadable {
-        cause: join(["values.get answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
-      }
-    RestExchangeCommitAmbiguous { detail } =>
-      ValuesUnreadable {
-        cause: join(["values.get reported commit ambiguity, which a read may not: ", detail], "") as NonEmptyStr
-      }
+  ) {
+    RestAnswered { answer: read } => ValuesRead { range: read.value_range }
+    RestRefused { refusal } => match classify_rest_refusal(standing: RestReadExchange { refusal: refusal }) {
+      RestExchangeStatusRefused { status, body } =>
+        ValuesUnreadable {
+          cause: join(["values.get refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+        }
+      RestExchangeUnreached { cause } =>
+        ValuesUnreadable {
+          cause: join(["values.get never reached Sheets: ", cause as String], "") as NonEmptyStr
+        }
+      RestExchangeUndecodable { status, cause } =>
+        ValuesUnreadable {
+          cause: join(["values.get answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+        }
+      RestExchangeCommitAmbiguous { detail } =>
+        ValuesUnreadable {
+          cause: join(["values.get reported commit ambiguity, which a read may not: ", detail], "") as NonEmptyStr
+        }
+    }
   }
 }
 
@@ -276,39 +279,40 @@ fn perform_values_write(
   a1: String,
   desired: ValueRange,
 ) -> ValuesWriteOutcome {
-  let written = sheets.Spreadsheets.BatchUpdateValues(
+  match sheets.Spreadsheets.BatchUpdateValues(
     spreadsheet_id: spreadsheet_id as String,
     value_input_option: InputRaw,
     data: [value_range_for_write(r: desired, a1: a1)],
     include_values_in_response: false,
-  )
-  match classify_rest_outcome(standing: RestMutationExchange { rest: written.outcome }) {
-    RestExchangeSucceeded =>
+  ) {
+    RestAnswered { answer: written } =>
       verify_written_values(
         spreadsheet_id: spreadsheet_id,
         a1: a1,
         desired: desired,
         detail: "values.batchUpdate answered success" as NonEmptyStr,
       )
-    RestExchangeCommitAmbiguous { detail } =>
-      verify_written_values(
-        spreadsheet_id: spreadsheet_id,
-        a1: a1,
-        desired: desired,
-        detail: join(["values.batchUpdate left the write ambiguous (", detail, ")"], "") as NonEmptyStr,
-      )
-    RestExchangeStatusRefused { status, body } =>
-      ValuesWriteRefused {
-        cause: join(["values.batchUpdate refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
-      }
-    RestExchangeUnreached { cause } =>
-      ValuesWriteRefused {
-        cause: join(["values.batchUpdate never reached Sheets: ", cause as String], "") as NonEmptyStr
-      }
-    RestExchangeUndecodable { status, cause } =>
-      ValuesWriteRefused {
-        cause: join(["values.batchUpdate answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
-      }
+    RestRefused { refusal } => match classify_rest_refusal(standing: RestMutationExchange { refusal: refusal }) {
+      RestExchangeCommitAmbiguous { detail } =>
+        verify_written_values(
+          spreadsheet_id: spreadsheet_id,
+          a1: a1,
+          desired: desired,
+          detail: join(["values.batchUpdate left the write ambiguous (", detail, ")"], "") as NonEmptyStr,
+        )
+      RestExchangeStatusRefused { status, body } =>
+        ValuesWriteRefused {
+          cause: join(["values.batchUpdate refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+        }
+      RestExchangeUnreached { cause } =>
+        ValuesWriteRefused {
+          cause: join(["values.batchUpdate never reached Sheets: ", cause as String], "") as NonEmptyStr
+        }
+      RestExchangeUndecodable { status, cause } =>
+        ValuesWriteRefused {
+          cause: join(["values.batchUpdate answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+        }
+    }
   }
 }
 

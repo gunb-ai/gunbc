@@ -1,7 +1,6 @@
 module extdeps.google.drive
 
 import std.types { NonEmptyStr, String, Int, List, Secret, Bool }
-import extdeps.transports.rest { RestOutcome }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -9,6 +8,7 @@ import extdeps.api_rate_limit { UpstreamRateLimit, RateLimitPeriod, PerMinute }
 import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact, Subject, JsonPending }
 import std.credentials { EnvVar }
 import std.resources { Network }
+import extdeps.transports.rest { RestResult }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https locator: "developers.google.com/drive/api/reference/rest/v3" }
@@ -296,7 +296,7 @@ service drive.Drives {
   operation GetDrive {
     requires Network
     input { drive_id: String }
-    output { drive: DriveResource, outcome: RestOutcome }
+    output { drive: DriveResource }
     readonly
     transport rest { method: GET, path: "/drives/\{drive_id\}" }
     response {
@@ -327,7 +327,7 @@ service drive.Permissions {
   operation ListPermissions {
     requires Network
     input { file_id: String }
-    output { list: DrivePermissionList, outcome: RestOutcome }
+    output { list: DrivePermissionList }
     readonly
     transport rest {
       method: GET,
@@ -355,7 +355,7 @@ service drive.Permissions {
       principal_type: DrivePrincipalType
       email_address: String
     }
-    output { permission_id: String from "id", outcome: RestOutcome }
+    output { permission_id: String from "id" }
     transport rest {
       method: POST,
       path: "/files/\{file_id\}/permissions",
@@ -423,7 +423,7 @@ service drive.Files {
   operation ListFiles {
     requires Network
     input { drive_id: String, query: String }
-    output { list: DriveFileList, outcome: RestOutcome }
+    output { list: DriveFileList }
     readonly
     transport rest {
       method: GET,
@@ -451,7 +451,7 @@ service drive.Files {
   operation GetFile {
     requires Network
     input { file_id: String }
-    output { file: DriveFile, outcome: RestOutcome }
+    output { file: DriveFile }
     readonly
     transport rest {
       method: GET,
@@ -477,7 +477,7 @@ service drive.Files {
       parent_id: String
       marker_property_value: String
     }
-    output { file_id: String from "id", outcome: RestOutcome }
+    output { file_id: String from "id" }
     transport rest {
       method: POST,
       path: "/files",

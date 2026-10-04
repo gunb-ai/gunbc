@@ -1,6 +1,10 @@
 module gunbc.fleet_desired_admission
 
-import std.types { String, Bool, FilePath, GitRef, NonEmptyStr, CommitSha }
+import std.types { String, Bool, FilePath, GitRef, NonEmptyStr, CommitSha, Int }
+import extdeps.transports.rest {
+  RestResult, RestAnswered, RestRefused, RestRefusal,
+  RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
+}
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git.object_store {
@@ -443,6 +447,14 @@ fn fleet_desired_actuate_accepted_wet(
   }
 }
 
+fn fleet_desired_run_list_refusal_text(refusal: RestRefusal) -> String {
+  match refusal {
+    RestStatusRefused { status, body } => join(["status ", to_string(status as Int), ": ", body], "")
+    RestTransportRefused { cause } => concat("no response: ", cause as String)
+    RestBodyUndecodable { status, cause } => join(["status ", to_string(status as Int), " body did not decode: ", cause as String], "")
+  }
+}
+
 // THE MERGE-QUEUE ENTRY, fired by the push to the default branch. The branch fact is judged from
 // the delivered payload before anything is read from the forge; only an admitted branch fact names
 // a revision worth asking about. The run list is read from the REST resource addressed at
@@ -450,7 +462,8 @@ fn fleet_desired_actuate_accepted_wet(
 // refuses as a partial page inside the fold rather than being judged from part of its evidence.
 // A push whose revision has no qualifying merge_group run refuses as RequiredCiMergeGroupRunAbsent.
 // An operator's admin-bypass merge or a direct push is one SCENARIO that produces that absent
-// evidence; the refusal reports only the absence, never a diagnosed cause.
+// evidence; the refusal reports only the absence, never a diagnosed cause. A run list the forge
+// refused or did not answer is its own exit, distinct from an answered list with no qualifying run.
 fn admit_fleet_desired_from_push_wet() -> ProcessExit {
   match push_ref_update_from_event_path(path: fleet_desired_admission_event_payload_path) {
     PushRefUpdateObserved { update: push } =>
@@ -459,25 +472,29 @@ fn admit_fleet_desired_from_push_wet() -> ProcessExit {
           exit_failure(reason: concat("fleet_desired_admission: ", default_branch_refusal_message(cause: why)))
         DefaultBranchAdmitted { observed: br } => {
           let revision_hex = git_object_id_wire_hex(oid: br.revision) as String
-          let listed = github.WorkflowRuns.ListForRef(
+          match github.WorkflowRuns.ListForRef(
             auth_token: "",
             owner: gunbc_repository.owner,
             repo: gunbc_repository.name,
             head_sha: revision_hex as CommitSha,
             event: github_event_name_merge_group,
             per_page: max_per_page,
-          )
-          match fleet_desired_accepted_from_merge_queue(
-            default_branch: br,
-            runs: listed.runs,
-            observed_epoch: observe_required_ci_epoch_at_commit(
-              address: GitWorktreeAt { path: fleet_desired_admission_repo_root },
-              head_sha: revision_hex as GitRef,
-            ),
           ) {
-            FleetDesiredRevisionRefused { cause: why } => exit_failure(reason: why)
-            FleetDesiredRevisionAccepted { accepted: accepted } =>
-              fleet_desired_actuate_accepted_wet(accepted: accepted)
+            RestRefused { refusal } =>
+              exit_failure(reason: join(["fleet_desired_admission: the merge_group run list for ", revision_hex, " could not be read: ", fleet_desired_run_list_refusal_text(refusal: refusal)], ""))
+            RestAnswered { answer: listed } =>
+              match fleet_desired_accepted_from_merge_queue(
+                default_branch: br,
+                runs: listed.runs,
+                observed_epoch: observe_required_ci_epoch_at_commit(
+                  address: GitWorktreeAt { path: fleet_desired_admission_repo_root },
+                  head_sha: revision_hex as GitRef,
+                ),
+              ) {
+                FleetDesiredRevisionRefused { cause: why } => exit_failure(reason: why)
+                FleetDesiredRevisionAccepted { accepted: accepted } =>
+                  fleet_desired_actuate_accepted_wet(accepted: accepted)
+              }
           }
         }
       }
