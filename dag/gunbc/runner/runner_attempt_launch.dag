@@ -42,7 +42,7 @@ import gunbc.github_effect_perform { JitMintPerformance, JitMintReceived }
 import gunbc.runner.runner_jit_perform {
   JitCredentialDelivery, JitCredentialBoundToAttempt,
 }
-import gunbc.runner_jit_mint { jit_runner_name_for }
+import gunbc.runner_jit_mint { jit_runner_name_for, JitSlot, MicroVmJitSlot }
 import gunbc.runner.runner_jit_admission {
   SignatureAxis, ExpiryAxis, jit_admission_axis_standing, AxisRequired, HostMintAdmission,
 }
@@ -160,7 +160,7 @@ type AttemptGround
 type JitDeviceRefusal
   = JitMintNotReceived { performance: JitMintPerformance }
   | JitCredentialNotDelivered { delivery: JitCredentialDelivery }
-  | JitCredentialBoundToDifferentAttempt { bound_to: MicroVmAttempt }
+  | JitCredentialBoundToDifferentAttempt { bound_to: JitSlot }
   | JitCredentialBelowFloor { bytes: ByteSize }
   | JitCredentialAboveCeiling { bytes: ByteSize }
   | JitMintAdmissionAxisNotRequired
@@ -207,10 +207,10 @@ fn admit_jit_credential(attempt: MicroVmAttempt, mint: JitMintPerformance) -> Ji
   match mint {
     JitMintReceived { delivery: delivery } =>
       match delivery {
-        JitCredentialBoundToAttempt { attempt: bound, credential: c, runner_id: id } =>
+        JitCredentialBoundToAttempt { slot: bound, credential: c, runner_id: id } =>
           if !host_mint_admission_is_required() {
             JitCredentialRefused { refusal: JitMintAdmissionAxisNotRequired }
-          } else if bound != attempt {
+          } else if bound != MicroVmJitSlot { attempt: attempt } {
             JitCredentialRefused { refusal: JitCredentialBoundToDifferentAttempt { bound_to: bound } }
           } else if !measure_le(a: jit_config_byte_floor, b: jit_credential_bytes(credential: c)) {
             JitCredentialRefused { refusal: JitCredentialBelowFloor { bytes: jit_credential_bytes(credential: c) } }

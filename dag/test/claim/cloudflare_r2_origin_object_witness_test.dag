@@ -449,6 +449,7 @@ test fn origin_write_target_refuses_while_the_write_credential_is_unminted() -> 
     bucket: R2OriginBucket {
       bucket_name: "a-bucket",
       jurisdiction: R2JurisdictionDefault,
+      location_hint: none,
       purpose: FabricDurableOrigin {},
       read_credential: OriginCredentialPinned {
         access_key_id: "0123456789abcdef0123456789abcdef",

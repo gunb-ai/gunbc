@@ -730,6 +730,8 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // Four more were added from the probe pair 37204679518 against 37204680949 (main 072c37b6cf): claims
 // over budget only without the roster after main's corpus moved, each in a module with a producer
 // only it demands.
+// Nine more were added from the probe pair 37210396855 against 37210398646 (main 44ed81c294), for the
+// nine rows gunbc#13038 added to the hand roster (v2.test.claim.type_application_kind).
 // Re-derive with that probe; do not extend by hand.
 //
 // THE xl2 MEMBERS (test.claim.namespace_xl2_rehearsal_census) were the bundle `xl2_control_runs`,
@@ -762,6 +764,20 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
       SingleClaimFillDebtClaim { claim: "xl2_two_failures_in_one_module_are_two_rows_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "xl2_duplicated_path_is_withheld_not_chosen_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "xl2_nested_reference_survives_the_strip_holds", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.type_application_kind",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "tak_application_of_a_non_generic_declaration_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_application_with_more_arguments_than_binders_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_arguments_pair_with_parameters_in_authored_order", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_arguments_swapped_against_authored_order_refuse", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_accepts_a_nat_literal_unjudged", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_accepts_a_variant_of_its_kind", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_refuses_a_kernel_type", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_kinded_parameter_refuses_a_variant_of_another_coproduct", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "tak_unkinded_parameter_is_unchanged", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {

@@ -14,7 +14,7 @@ import gunbc.fabric.fabric_blob_placement { fabric_cache_blob_key, fabric_cache_
 import gunbc.fabric.fabric_blob_r2 {
   CacheBlobRead, CacheBlobWrite, CacheBlobTargetReady, CacheBlobTargetRefused, resolve_cache_blob_target,
 }
-import gunbc.cloudflare.r2_origin { FabricCacheBlobs, bucket_purpose_lifecycle_rules, FabricDurableOrigin, FabricBootOrigin }
+import gunbc.cloudflare.r2_origin { FabricCacheBlobs, bucket_purpose_lifecycle_rules, FabricDurableOrigin, FabricBootOrigin, FabricWorkspace }
 import extdeps.cloudflare.r2_lifecycle {
   R2LifecycleRule, R2LifecycleRulesRead, R2LifecycleRulesUnmodeled, R2LifecycleReadRefused,
   r2_lifecycle_read_body, r2_lifecycle_rules_canonical,
@@ -97,6 +97,7 @@ test fn cache_blob_targets_refuse_naming_the_unminted_credential() -> Bool {
 test fn only_the_cache_purpose_declares_release_by_age() -> Bool {
   bucket_purpose_lifecycle_rules(purpose: FabricDurableOrigin {}).length() == 0
     && bucket_purpose_lifecycle_rules(purpose: FabricBootOrigin {}).length() == 0
+    && bucket_purpose_lifecycle_rules(purpose: FabricWorkspace {}).length() == 0
     && r2_lifecycle_rules_canonical(rules: bucket_purpose_lifecycle_rules(purpose: FabricCacheBlobs {}))
       == "fabric-cache-blobs-release enabled prefix=blobs/ max_age=604800"
 }
@@ -104,6 +105,25 @@ test fn only_the_cache_purpose_declares_release_by_age() -> Bool {
 data lifecycle_converged_body: String = "{\"success\":true,\"errors\":[],\"messages\":[],\"result\":{\"rules\":[{\"id\":\"fabric-cache-blobs-release\",\"enabled\":true,\"conditions\":{\"prefix\":\"blobs/\"},\"deleteObjectsTransition\":{\"condition\":{\"type\":\"Age\",\"maxAge\":604800}}}]}}"
 data lifecycle_empty_body: String = "{\"success\":true,\"errors\":[],\"messages\":[],\"result\":{\"rules\":[]}}"
 data lifecycle_unmodeled_body: String = "{\"success\":true,\"errors\":[],\"messages\":[],\"result\":{\"rules\":[{\"id\":\"abort\",\"enabled\":true,\"conditions\":{\"prefix\":\"\"},\"abortMultipartUploadsTransition\":{\"condition\":{\"type\":\"Age\",\"maxAge\":86400}}}]}}"
+
+// THE WORKSPACE NEVER INHERITS THE CACHE'S RELEASE. Its declared set is empty while the cache's is
+// not, and the classifier treats a bucket carrying the cache's seven-day rule as NOT converged on the
+// workspace's declaration -- so a workspace whose history were expiring could not read as held.
+test fn the_workspace_declares_no_release_and_the_cache_rule_is_not_its_convergence() -> Bool {
+  let workspace = bucket_purpose_lifecycle_rules(purpose: FabricWorkspace {})
+  let cache_rule_differs = match classify_r2_lifecycle(desired: workspace, read: r2_lifecycle_read_body(body: lifecycle_converged_body)).decision {
+    Apply { plan: _ } => true
+    _ => false
+  }
+  let empty_converges = match classify_r2_lifecycle(desired: workspace, read: r2_lifecycle_read_body(body: lifecycle_empty_body)).decision {
+    Noop => true
+    _ => false
+  }
+  workspace.length() == 0
+    && bucket_purpose_lifecycle_rules(purpose: FabricCacheBlobs {}).length() > 0
+    && cache_rule_differs
+    && empty_converges
+}
 
 test fn a_converged_rule_set_noops_and_an_empty_one_applies() -> Bool {
   let desired = bucket_purpose_lifecycle_rules(purpose: FabricCacheBlobs {})
