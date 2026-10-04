@@ -149,6 +149,14 @@ type StructuralEdgeLabel
   = CoreMarker { marker: CoreEdgeLabel }
   | ProductionEdge { language: Symbol, edge: Symbol }
 
+// MatchArmScopeExitEdge: A MATCH ARM'S BINDERS END AT ITS LET'S BODY. A named edge (targeting an
+// empty Conj, beside the three positionals, as TypeAnnotationEdge is) on a Bind that IS a match
+// arm's MatchArmBodyEdge target, lowered from `let x = match s { .. }` heading a spine (v2.compiler.body_lowering_fold
+// body_lower_let_match_binding_arm_continued, its one producer). The Bind's VALUE resolves in the
+// arm's scope and sees the pattern's binders; its BINDER and BODY (the rest of the spine) resolve
+// in the scope enclosing the match, so no pattern binder reaches the rest
+// (v2.compiler.resolve resolve_match_arm_admitted, its one consumer). It adds no behavior kind;
+// a marked Bind anywhere else is a malformed tree.
 type CoreEdgeLabel
   = ArrowBodyEdge
   | ArrowSignatureOrderEdge
@@ -177,6 +185,7 @@ type CoreEdgeLabel
   | LexicalReferenceEdge
   | MapLiteralEntryEdge
   | MapLiteralEntriesEdge
+  | MatchArmScopeExitEdge
 
 fn core_edge_label(marker: CoreEdgeLabel) -> EdgeLabel {
   StructuralLabel { label: CoreMarker { marker: marker } }
@@ -240,6 +249,7 @@ fn core_edge_labels() -> List<CoreEdgeLabel> {
     LexicalReferenceEdge,
     MapLiteralEntryEdge,
     MapLiteralEntriesEdge,
+    MatchArmScopeExitEdge,
   ]
 }
 
@@ -274,6 +284,7 @@ fn core_edge_label_canonical_symbol(marker: CoreEdgeLabel) -> Symbol {
     LexicalReferenceEdge => ^core_lexical_reference_edge
     MapLiteralEntryEdge => ^core_map_literal_entry_edge
     MapLiteralEntriesEdge => ^core_map_literal_entries_edge
+    MatchArmScopeExitEdge => ^core_match_arm_scope_exit_edge
   }
 }
 type Edge {
@@ -613,7 +624,7 @@ type EdgeDiscipline
 
   | PositionalPrefixThenLabeledEdges
 
-  | PositionalPlusOneNamedEdges
+  | PositionalPlusNamedMarkerEdges
 
 // 🟡 dissolve-on: Atom connectives with labeled payload children (int-literal magnitude on
 // ^dag_token_int_literal via ^integer_literal_magnitude_field) —
@@ -1524,7 +1535,7 @@ fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
     LoopBoundEdges => loop_behavior_edges_conform(children: children)
     ArrowBodyEdges => arrow_body_edges_conform(children: children)
     PositionalPrefixThenLabeledEdges => positional_prefix_then_labeled_conform(children: children)
-    PositionalPlusOneNamedEdges => (count(children) - positional_child_count(children: children)) <= 1
+    PositionalPlusNamedMarkerEdges => (count(children) - positional_child_count(children: children)) <= 2
   }
 }
 
@@ -1627,7 +1638,7 @@ fn behavior_edges_conform(children: List<Edge>, b: Behavior) -> Bool {
     Branch => edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
     Loop => edges_conform(children: children, d: LoopBoundEdges)
     Bind =>
-      edges_conform(children: children, d: PositionalPlusOneNamedEdges) && (positional_child_count(children: children) == 3)
+      edges_conform(children: children, d: PositionalPlusNamedMarkerEdges) && (positional_child_count(children: children) == 3)
     Match =>
       edges_conform(children: children, d: PositionalEdges)
         && (positional_child_count(children: children) >= 2)
@@ -1667,7 +1678,7 @@ fn behavior_edge_discipline(b: Behavior) -> EdgeDiscipline {
     Transform => PositionalPrefixThenLabeledEdges
     Branch => PositionalEdges
     Loop => LoopBoundEdges
-    Bind => PositionalPlusOneNamedEdges
+    Bind => PositionalPlusNamedMarkerEdges
     Match => PositionalEdges
   }
 }
@@ -1789,9 +1800,9 @@ fn canonicalize_loop_labeled<T>(items: List<T>, label_of: fn(T) -> EdgeLabel) ->
 // sorted by label. Their SHAPES differ, because their contracts do. A Transform's named edges are
 // either one v2.std.type_binder marker (a cast's target) or an application's named actuals, and an
 // application's positional order carries meaning, so no positional edge may follow a named one
-// (positional_prefix_then_labeled_conform). A Bind carries at most one named edge, its let
-// annotation, and where it stands is free (PositionalPlusOneNamedEdges): a marker has no slot to
-// misplace. v2.std.type_binder type_binder_labels_conform states which labels each admits.
+// (positional_prefix_then_labeled_conform). A Bind carries at most two named edges, both markers --
+// its let annotation and its MatchArmScopeExitEdge, each at most once -- and where they stand is free
+// (PositionalPlusNamedMarkerEdges): a marker has no slot to misplace. v2.std.type_binder type_binder_labels_conform states which labels each admits.
 // Positional order is identity-bearing, so it is kept; named edges bind by label, so where a producer
 // placed them cannot move the content hash: f(a: 1, b: 2) and f(b: 2, a: 1) are one node, and
 // f(1, 2) and f(2, 1) stay two.
@@ -1834,7 +1845,7 @@ fn canonicalize_labeled_for_content_hash<T>(
     ArrowBodyEdges => canonicalize_arrow_labeled(items: items, label_of: label_of)
     LoopBoundEdges => canonicalize_loop_labeled(items: items, label_of: label_of)
     PositionalPrefixThenLabeledEdges => canonicalize_positional_then_named(items: items, label_of: label_of)
-    PositionalPlusOneNamedEdges => canonicalize_positional_then_named(items: items, label_of: label_of)
+    PositionalPlusNamedMarkerEdges => canonicalize_positional_then_named(items: items, label_of: label_of)
   }
 }
 

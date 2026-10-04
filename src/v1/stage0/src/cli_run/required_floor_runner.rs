@@ -1213,16 +1213,21 @@ pub(crate) fn floor_diff_edits_from_line_ranges_reading(
             m
         });
         let test_fn_names: HashSet<String> = scan_test_decl_names(&content).into_iter().collect();
-        let mut decls: Vec<(i64, String, bool)> = Vec::new();
+        // (start line, name, is_data, last line). The last line is filled after sorting: the
+        // last non-blank line before the next declaration starts. It is what lets a
+        // pure-deletion gap between two declarations be told from one inside a declaration. It
+        // errs toward CHARGING: a leading comment of the next declaration counts as the
+        // previous one's tail, so deleting it over-selects, never under-selects.
+        let mut decls: Vec<(i64, String, bool, Option<i64>)> = Vec::new();
         for item in crate::v1_std_core::module_items(module_node.clone()).iter() {
             let line = byte_to_line_col(nl.clone(), item.span.start).line;
             let name = authored_name_at(single_si.clone(), item.clone());
             let is_data = item_kind(item.clone()) == ItemKind::DataItem;
-            decls.push((line, name, is_data));
+            decls.push((line, name, is_data, None));
         }
         for (name, line) in scan_test_decl_lines(&content) {
-            if !decls.iter().any(|(_, n, _)| n == &name) {
-                decls.push((line, name, false));
+            if !decls.iter().any(|(_, n, _, _)| n == &name) {
+                decls.push((line, name, false, None));
             }
         }
         if decls.is_empty() {
@@ -1235,7 +1240,29 @@ pub(crate) fn floor_diff_edits_from_line_ranges_reading(
             touched_entry_files.insert(file_norm.clone());
             continue;
         }
-        decls.sort_by_key(|(line, _, _)| *line);
+        decls.sort_by_key(|(line, _, _, _)| *line);
+        {
+            let lines: Vec<&str> = content.lines().collect();
+            let count = decls.len();
+            for i in 0..count {
+                let start = decls[i].0;
+                let next = if i + 1 < count {
+                    decls[i + 1].0 - 1
+                } else {
+                    lines.len() as i64
+                };
+                let mut last = start;
+                for l in start..=next {
+                    if lines
+                        .get((l - 1).max(0) as usize)
+                        .is_some_and(|t| !t.trim().is_empty())
+                    {
+                        last = l;
+                    }
+                }
+                decls[i].3 = Some(last);
+            }
+        }
         let first_decl_line = decls[0].0;
         let mut changed =
             changed_new_lines_for_file(changed_new_lines_by_file, file_path, &file_norm);
@@ -1280,7 +1307,7 @@ pub(crate) fn floor_diff_edits_from_line_ranges_reading(
         // universe is this file's parsed decl list, not the corpus, so it is the precise answer
         // to "what does this path declare", never an absorbing "rerun everything" (DESIGN §5).
         if added_paths.contains(&file_norm) {
-            for (line, _, _) in &decls {
+            for (line, _, _, _) in &decls {
                 changed.insert(*line);
             }
         }
@@ -1289,8 +1316,48 @@ pub(crate) fn floor_diff_edits_from_line_ranges_reading(
         if changed.contains(&1) && !added_paths.contains(&file_norm) {
             return Err(format!("diff before first declaration in {file_path}"));
         }
-        let has_pre_decl = changed.iter().any(|&l| l < first_decl_line);
-        let has_post_decl = changed.iter().any(|&l| l >= first_decl_line);
+        // PURE-DELETION GAPS ARE CHARGED BY WHERE THE GAP LIES, NOT BY THE LINE AFTER IT. Under
+        // `-U0` a deletion-only hunk names no surviving line; both parsers anchor it at L+1, the
+        // line after the gap, which charged the NEXT declaration whenever whole declarations were
+        // deleted between two others -- force-running an unchanged neighbour under the
+        // changed-witness policy (`gunbc.recurring_failure_mode`
+        // `a_pure_deletion_force_runs_its_unchanged_neighbour`, measured on gunbc#13103). A gap
+        // at or before the first declaration stays a pre-declaration (file-grain) edit; a gap
+        // strictly inside a declaration's span charges that declaration; a gap between
+        // declarations charges none, because what it removed no longer exists to select.
+        // The module-line refusal above already read the gap at line 1.
+        let gaps: HashSet<i64> = if added_paths.contains(&file_norm) {
+            HashSet::new()
+        } else {
+            ranges
+                .iter()
+                .filter(|r| r.deletion_gap)
+                .map(|r| r.start)
+                .collect()
+        };
+        let mut gap_pre_decl = false;
+        let mut gap_charged: HashSet<usize> = HashSet::new();
+        for &g in &gaps {
+            changed.remove(&g);
+            if g <= first_decl_line {
+                gap_pre_decl = true;
+                continue;
+            }
+            for (i, (start, _, _, last)) in decls.iter().enumerate() {
+                let bound = last.unwrap_or_else(|| {
+                    decls
+                        .get(i + 1)
+                        .map(|(l, _, _, _)| l - 1)
+                        .unwrap_or(i64::MAX)
+                });
+                if *start < g && g <= bound {
+                    gap_charged.insert(i);
+                }
+            }
+        }
+        let has_pre_decl = gap_pre_decl || changed.iter().any(|&l| l < first_decl_line);
+        let has_post_decl =
+            !gap_charged.is_empty() || changed.iter().any(|&l| l >= first_decl_line);
         if has_pre_decl {
             touched_entry_files.insert(file_norm.clone());
             if !has_post_decl {
@@ -1298,9 +1365,12 @@ pub(crate) fn floor_diff_edits_from_line_ranges_reading(
             }
         }
         for i in 0..decls.len() {
-            let (line, name, is_data) = &decls[i];
-            let decl_end = decls.get(i + 1).map(|(l, _, _)| l - 1).unwrap_or(i64::MAX);
-            if !changed.iter().any(|&l| l >= *line && l <= decl_end) {
+            let (line, name, is_data, _) = &decls[i];
+            let decl_end = decls
+                .get(i + 1)
+                .map(|(l, _, _, _)| l - 1)
+                .unwrap_or(i64::MAX);
+            if !gap_charged.contains(&i) && !changed.iter().any(|&l| l >= *line && l <= decl_end) {
                 continue;
             }
             if test_fn_names.contains(name) {
@@ -2224,12 +2294,12 @@ fn unimported_bare_provider_authority(rel: &str) -> String {
 }
 
 /// One roster row as the host reads it -- only the fields it needs to gather FACTS (which file a
-/// row names, and whether it is an ImportsFixed retirement whose file must be re-derived). Every
+/// row names, and whether it is a retirement whose file must be re-derived). Every
 /// decision about the rows is the `.dag`'s; the host passes the rows back to it as values.
 struct RosterRow {
     file: String,
-    /// A retirement the host re-derives on every run to hold it true: `ImportsFixed` or
-    /// `NotAReference`, read from the row view's own fields.
+    /// A retirement the host re-derives on every run to hold it true, read from the row view's
+    /// `rechecked` field, which the `.dag` derives from the row's standing.
     rechecked: bool,
 }
 
@@ -2249,7 +2319,7 @@ impl UnimportedBareProviderRosterReading {
     /// Only the HEAD's rows are decoded by the host: the standing judgment reads them to choose
     /// which files to re-derive. A BASE roster is read for its `.dag` value alone, which the edit
     /// judgment compares in `.dag`, so the host never spells a base row's fields -- a base written
-    /// before a view field existed (`not_a_reference`, gunbc#12609) is still a readable base.
+    /// before a view field existed (`rechecked`, gunbc#13116) is still a readable base.
     fn read(
         index: &MultiEntryIndex,
         entry: &str,
@@ -2284,28 +2354,16 @@ impl UnimportedBareProviderRosterReading {
                     ))
                 }
             };
-            let imports_fixed = match ctx.field(fields, "imports_fixed") {
+            let rechecked = match ctx.field(fields, "rechecked") {
                 Some(v1_interpreter::Value::Bool(b)) => *b,
                 other => {
                     return Err(format!(
-                        "{function}: row `imports_fixed` is not a Bool ({})",
+                        "{function}: row `rechecked` is not a Bool ({})",
                         floor_value_shape(other)
                     ))
                 }
             };
-            let not_a_reference = match ctx.field(fields, "not_a_reference") {
-                Some(v1_interpreter::Value::Bool(b)) => *b,
-                other => {
-                    return Err(format!(
-                        "{function}: row `not_a_reference` is not a Bool ({})",
-                        floor_value_shape(other)
-                    ))
-                }
-            };
-            rows.push(RosterRow {
-                file,
-                rechecked: imports_fixed || not_a_reference,
-            });
+            rows.push(RosterRow { file, rechecked });
         }
         Ok(Self {
             ctx,
@@ -2419,9 +2477,13 @@ fn unimported_bare_provider_standing_refusals(
     let mut carried: Vec<String> = Vec::new();
     let mut route_carried: Vec<String> = Vec::new();
     let mut hints: HashMap<String, String> = HashMap::new();
+    let (mut suppressed_builtin, mut suppressed_kernel_method_only) = (0usize, 0usize);
     for path in &checked {
         let sf = &lookup[path.as_str()];
-        for v in unimported_bare_providers(sf, index)? {
+        let judgment = unimported_bare_provider_judgment(sf, index)?;
+        suppressed_builtin += judgment.suppressed_builtin;
+        suppressed_kernel_method_only += judgment.suppressed_kernel_method_only;
+        for v in judgment.rows {
             let id = head.identity(&v.file, &v.name)?;
             hints.insert(
                 id.clone(),
@@ -2437,6 +2499,15 @@ fn unimported_bare_provider_standing_refusals(
             carried.push(id);
         }
     }
+    // THE DECLARED COVERAGE FRONTIER (`gunbc.rung_drop`
+    // `unimported_bare_provider_gate_admits_kernel_method_names_untyped`): counted on every run over
+    // the files this run judged, so growth in the kernel-method-only population is visible.
+    eprintln!(
+        "[floor-phase] phase=unimported-bare-provider-frontier judged_files={} \
+         suppressed_builtin={suppressed_builtin} \
+         suppressed_kernel_method_only={suppressed_kernel_method_only}",
+        checked.len()
+    );
     let strings = |xs: Vec<String>| list_value_from_vec(xs.iter().map(str_value).collect());
     let verdict = head.refusals(
         "unimported_bare_provider_roster_standing",

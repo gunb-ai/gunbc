@@ -1,0 +1,97 @@
+module v2.test.claim.binder_admission.arm_scope_exit_marker
+
+import v2.compiler.resolve {
+  LexicalBinding,
+  frame_binders_add,
+  frame_binders_empty,
+  lexical_frame,
+  NotDeclaring,
+  Scope,
+  ScopeRoot,
+  empty_namespace,
+  ResolveContext,
+  ResolveWalkAccepted,
+  ResolveWalkRefused,
+  resolve_node_walk,
+}
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.std.compilers.body_lowering { lower_bind }
+import std.algebra { Cons, Empty }
+import v2.std.language_model { void_language_model }
+import v2.std.node {
+  Atom,
+  Conj,
+  MatchArmScopeExitEdge,
+  Node,
+  Symbol,
+  TypeNode,
+  core_edge,
+  node_rebuild,
+  node_synthetic,
+}
+import v2.std.optional { optional_absent }
+import v2.std.logic { Bool }
+import std.occurrence_identity { OccurrenceId, OccurrenceMinted }
+import v2.std.integer { Int }
+
+// THE MARKER'S ONE LEGAL POSITION IS CLOSED BY CONSTRUCTION. v2.std.node MatchArmScopeExitEdge
+// declares that a Bind is a match arm's body whose binder and body leave the arm's scope; resolve
+// honours it only where it reaches it as an arm's body (v2.compiler.resolve resolve_match_arm_admitted)
+// and refuses it anywhere else as a malformed tree (resolve_bind_node), because a scope claim with no
+// arm to exit has no meaning. Supplied nodes, one interface: the same Bind -- `let x = y in x`, with
+// `y` bound above -- resolves unmarked and refuses marked, so the marker is the only variable.
+
+// Each atom carries its own minted occurrence: a lexical reference is keyed by its occurrence, so a
+// synthetic one refuses as unkeyed before the marker is ever read.
+fn asem_atom(id: Symbol, at: Int) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: id } }, children: [], occurrence_id: OccurrenceMinted { id: OccurrenceId { value: at } } }
+}
+
+fn asem_scope_binding_y() -> Scope {
+  lexical_frame(
+    fb: frame_binders_add(
+      fb: frame_binders_empty(),
+      name: ^y,
+      binding: LexicalBinding { binder_site: OccurrenceMinted { id: OccurrenceId { value: 1 } }, declared: optional_absent() }
+    ),
+    outer: ScopeRoot { module: empty_namespace() }
+  )
+}
+
+fn asem_ctx() -> ResolveContext {
+  ResolveContext {
+    scope: asem_scope_binding_y(),
+    type_scope: asem_scope_binding_y(),
+    namespace: empty_namespace(),
+    policy: default_name_resolution_policy(),
+    position: Empty,
+    lm: void_language_model(identity: ^asem_void_language),
+    under_module_root: false,
+    declaring: NotDeclaring
+  }
+}
+
+fn asem_bind() -> Node {
+  lower_bind(key_binding: asem_atom(id: ^x, at: 11), value: asem_atom(id: ^y, at: 12), body_binding: asem_atom(id: ^x, at: 13))
+}
+
+fn asem_marked(bind: Node) -> Node {
+  node_rebuild(
+    n: bind,
+    children: concat(bind.children, [core_edge(marker: MatchArmScopeExitEdge, target: node_synthetic(kind: TypeNode { connective: Conj }, children: []))])
+  )
+}
+
+test fn an_unmarked_bind_resolves() -> Bool {
+  match resolve_node_walk(ctx: asem_ctx(), n: asem_bind()) {
+    ResolveWalkAccepted { value: _, diagnostics: _, lexical: _ } => true
+    ResolveWalkRefused { first: _, rest: _, observation: _ } => false
+  }
+}
+
+test fn a_marked_bind_outside_a_match_arm_refuses_as_a_malformed_tree() -> Bool {
+  match resolve_node_walk(ctx: asem_ctx(), n: asem_marked(bind: asem_bind())) {
+    ResolveWalkAccepted { value: _, diagnostics: _, lexical: _ } => false
+    ResolveWalkRefused { first: f, rest: _, observation: _ } => f.head.reason == ^resolve_reason_malformed_tree
+  }
+}
