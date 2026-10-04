@@ -128,7 +128,9 @@ fn exact_text(path: String) -> ExactText {
 fn start_time_text(stat: String) -> String? {
   match proc_pid_stat_start_time(content: stat) {
     StartTimeObserved { ticks_since_boot: t } => Present { value: to_string(t) }
-    _ => none
+    StartTimeCommUnterminated => none
+    StartTimeFieldAbsent { fields_after_comm: _ } => none
+    StartTimeUnparseable { field: _ } => none
   }
 }
 
