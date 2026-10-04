@@ -687,3 +687,18 @@ fn load_repository_whole(path: String, v: JsonValue, generation: Fnv1a64Structur
       RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: cause } }
   }
 }
+
+// BEFORE ANY INSERT UNDER AN IDENTITY THE REPOSITORY MAY ALREADY PERSIST: a resident or unrostered
+// identity needs no read; a rostered, non-resident one is materialized from exactly its shard so the
+// store's identity law compares it. Skipping this is not silent -- the append-only save refuses a
+// produced object shadowing a rostered identity -- but doing it keeps an identical insert idempotent.
+fn materialize_if_rostered(envelope_path: String, store: ObjectStore, identity: ObjectId) -> ObjectMaterialization {
+  match find_object(store: store, identity: identity) {
+    Present { value: _ } => ObjectsMaterialized { store: store, read_shards: [] }
+    Absent =>
+      match store_rostered_lookup(store: store, identity: identity) {
+        Absent => ObjectsMaterialized { store: store, read_shards: [] }
+        Present { value: _ } => materialize_objects(envelope_path: envelope_path, store: store, identities: [identity])
+      }
+  }
+}

@@ -419,7 +419,7 @@ import gunbc.scm.object_store {
   PathUniqueManifestEntries,
   path_unique_of_record, path_unique_with_path_bound, path_unique_with_path_removed,
   store_path_unique_manifest, UniqueManifestStored, UniqueManifestLocatorCollision,
-  find_object, store_rostered_lookup, scm_object_identity, authored_source_object,
+  find_object, store_rostered_lookup, scm_object_identity, authored_source_object, path_unique_manifest_identity,
   CorpusManifestRecord, authored_source_target_locator, object_id_eq,
 }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit, empty_repository, commit_at_reference, merge_base, MergeBaseDerived, MergeBaseNotDerived, RepositoryIndexHasNoObjectRoster, repository_history,
@@ -433,7 +433,7 @@ import gunbc.scm.write_spine {
   StagedCommitMinted, StagedCommitCandidateRefused, StagedCommitNothingToFreeze,
   StagedCommitAllocatorInvalid, StagedCommitSourceUnrecoverable,
 }
-import gunbc.scm.repository_load { load_repository, load_repository_indexed, materialize_objects, ObjectsMaterialized, ObjectMaterializationRefused, RepositoryLoaded, RepositoryLoadRefused, RepositoryLoadRefusal, RepositoryFileUnreadable, RepositoryDocumentUnparseable, RepositoryDocumentRefused }
+import gunbc.scm.repository_load { load_repository, load_repository_indexed, materialize_objects, materialize_if_rostered, ObjectMaterialization, ObjectsMaterialized, ObjectMaterializationRefused, RepositoryLoaded, RepositoryLoadRefused, RepositoryLoadRefusal, RepositoryFileUnreadable, RepositoryDocumentUnparseable, RepositoryDocumentRefused }
 import gunbc.scm.repository_save {
   save_repository_sharded_guarded,
   RepositoryGuardedSaveOutcome,
@@ -6149,18 +6149,13 @@ type BeltDeltaResident
   | DeltaResidentRefused { detail: String }
 
 fn belt_scm_delta_resident_for(path: String, store: ObjectStore, text: String) -> BeltDeltaResident {
-  let identity = scm_object_identity(object: authored_source_object(text: text))
-  match find_object(store: store, identity: identity) {
-    Present { value: _ } => DeltaResident { store: store }
-    Absent =>
-      match store_rostered_lookup(store: store, identity: identity) {
-        Absent => DeltaResident { store: store }
-        Present { value: _ } =>
-          match materialize_objects(envelope_path: path, store: store, identities: [identity]) {
-            ObjectMaterializationRefused { detail } => DeltaResidentRefused { detail: detail }
-            ObjectsMaterialized { store: next, read_shards: _ } => DeltaResident { store: next }
-          }
-      }
+  belt_delta_resident_of(outcome: materialize_if_rostered(envelope_path: path, store: store, identity: scm_object_identity(object: authored_source_object(text: text))))
+}
+
+fn belt_delta_resident_of(outcome: ObjectMaterialization) -> BeltDeltaResident {
+  match outcome {
+    ObjectMaterializationRefused { detail } => DeltaResidentRefused { detail: detail }
+    ObjectsMaterialized { store, read_shards: _ } => DeltaResident { store: store }
   }
 }
 
@@ -6366,7 +6361,11 @@ fn belt_scm_delta_capture_over(
                   match folded.refused {
                     Present { value: detail } => ScmCaptureRefused { detail: detail }
                     Absent =>
-                      match store_path_unique_manifest(store: folded.store, unique: folded.unique) {
+                      match belt_delta_resident_of(outcome: materialize_if_rostered(envelope_path: path, store: folded.store, identity: path_unique_manifest_identity(unique: folded.unique))) {
+                        DeltaResidentRefused { detail } =>
+                          ScmCaptureRefused { detail: join(["the candidate manifest's identity is already persisted and could not be read back: ", detail], "") }
+                        DeltaResident { store: manifest_resident } =>
+                      match store_path_unique_manifest(store: manifest_resident, unique: folded.unique) {
                         UniqueManifestLocatorCollision { identity: _, existing: _, incoming: _ } =>
                           ScmCapturePoisoned {
                             detail: "the object store refuses the candidate manifest: a different manifest already holds its identity, which is store damage, not a capture",
@@ -6448,6 +6447,7 @@ fn belt_scm_delta_capture_over(
                               }
                             }
                           }
+                      }
                       }
                   }
                 }
@@ -10839,6 +10839,7 @@ fn belt_publish_project_materialize(
   instance: HostDashboardInstance,
   worktree: String,
   files: List<RecoveredSourceFile>,
+  deletes: List<NonEmptyStr>,
 ) -> BeltScmCapture {
   let dirs = distinct_by_key(
     xs: files
@@ -10852,7 +10853,7 @@ fn belt_publish_project_materialize(
         environment: instance.execution_environment,
         cap: AttemptStateDirectoryCapability,
       ),
-      args: concat(["-d", "-m", "0700"], dirs),
+      args: concat(["-d", "-m", "0700"], if count(dirs) == 0 { ["."] } else { dirs }),
     ),
     workdir: worktree,
   ) {
@@ -10893,8 +10894,28 @@ fn belt_publish_project_materialize(
         ScmCaptureRefused { detail } => ScmCaptureRefused { detail: detail }
         ScmCapturePoisoned { detail } => ScmCapturePoisoned { detail: detail }
         ScmCandidateCaptured { repository_path: _, commit_ordinal: _, commit_root_locator: _ } =>
-          ScmCandidateCaptured { repository_path: "", commit_ordinal: 0, commit_root_locator: "" }
+          belt_publish_apply_deletes(instance: instance, worktree: worktree, deletes: deletes)
       }
+  }
+}
+
+// EVERY DELETE IN THE PLAN IS REMOVED FROM THE CHECKOUT AND STAGED, in one git rm, before the edge
+// commit. A delete naming a path the base checkout lacks is the plan disagreeing with the checkout,
+// so --ignore-unmatch is NOT passed: git refuses and the publish stops rather than committing a tree
+// other than the head's.
+fn belt_publish_apply_deletes(instance: HostDashboardInstance, worktree: String, deletes: List<NonEmptyStr>) -> BeltScmCapture {
+  if count(deletes) == 0 {
+    ScmCandidateCaptured { repository_path: "", commit_ordinal: 0, commit_root_locator: "" }
+  } else {
+    match belt_commit_git(instance: instance, worktree: worktree, args: concat(["rm", "-q", "--"], map(deletes, d => d as String))) {
+      ExecFailed { program, exit_code, stderr } =>
+        ScmCaptureRefused {
+          detail: belt_commit_exec_detail(step: "publish-deletes", outcome: ExecFailed { program: program, exit_code: exit_code, stderr: stderr }),
+        }
+      ExecRefused { program, reason } =>
+        ScmCaptureRefused { detail: belt_commit_exec_detail(step: "publish-deletes", outcome: ExecRefused { program: program, reason: reason }) }
+      ExecOk { stdout: _ } => ScmCandidateCaptured { repository_path: "", commit_ordinal: 0, commit_root_locator: "" }
+    }
   }
 }
 
@@ -10906,18 +10927,84 @@ fn belt_publish_project_materialize(
 // recovered -- their sources materialized from exactly their shards -- and written. The equivalence
 // rests on the root being the base the worktree holds; when the root does not name this base (an
 // envelope from the pre-seeding capture design, or a base that moved), the delta is underivable and
-// the publish REFUSES, typed, rather than widening to a whole-corpus recovery. Paths the head removed
-// are left as the base has them, exactly as the whole-corpus write left them.
+// the publish REFUSES, typed, rather than widening to a whole-corpus recovery.
+//
+// THE CHANGE IS CLOSED UNDER BOTH OPERATIONS (ruling on #13111, 2026-10-04). A head that DELETES a
+// base path must delete it from the checkout too, or the published tree resurrects it and differs
+// from the SCM commit it claims to realize -- the verified-tree/integrated-tree divergence this PR
+// exists to remove (the earlier revision left removed paths as the base had them). So the plan is a
+// closed carrier, PublishBind for every head entry the base lacks or binds differently and
+// PublishDelete for every base path the head lacks; a rename is a delete plus a bind. The pure
+// application (belt_publish_apply) is the model the tree-equality control executes, and the realizer
+// (belt_publish_project_materialize) consumes exactly the same plan.
+type BeltPublishChange
+  = PublishBind { entry: CorpusManifestEntry }
+  | PublishDelete { path: NonEmptyStr }
+
 type BeltPublishDelta
-  = PublishDeltaFiles { files: List<RecoveredSourceFile> }
+  = PublishDeltaFiles { files: List<RecoveredSourceFile>, deletes: List<NonEmptyStr> }
   | PublishDeltaRefused { detail: String }
 
-fn belt_publish_changed_entries(head: CorpusManifestRecord, root: CorpusManifestRecord) -> List<CorpusManifestEntry> {
-  let bound = path_unique_of_record(base: root).bindings
-  filter(head.entries, e => match map_get(bound, key: e.path) {
-    Absent => true
-    Present { value: held } => !object_id_eq(left: held.source.locator, right: e.source.locator)
+fn belt_publish_plan(head: List<CorpusManifestEntry>, root: List<CorpusManifestEntry>) -> List<BeltPublishChange> {
+  let base_bound = path_unique_of_record_entries(entries: root)
+  let head_bound = path_unique_of_record_entries(entries: head)
+  concat(
+    head
+      |> filter(e => match map_get(base_bound, key: e.path) {
+        Absent => true
+        Present { value: held } => !object_id_eq(left: held.source.locator, right: e.source.locator)
+      })
+      |> map(e => PublishBind { entry: e }),
+    root
+      |> filter(e => match map_get(head_bound, key: e.path) {
+        Absent => true
+        Present { value: _ } => false
+      })
+      |> map(e => PublishDelete { path: e.path }),
+  )
+}
+
+fn path_unique_of_record_entries(entries: List<CorpusManifestEntry>) -> Map<NonEmptyStr, CorpusManifestEntry> {
+  fold(entries, init: empty_map(), f: (m, e) => map_insert(m, e.path, e))
+}
+
+fn belt_publish_binds(plan: List<BeltPublishChange>) -> List<CorpusManifestEntry> {
+  plan |> flat_map(c => match c {
+    PublishBind { entry } => [entry]
+    PublishDelete { path: _ } => []
   })
+}
+
+fn belt_publish_deletes(plan: List<BeltPublishChange>) -> List<NonEmptyStr> {
+  plan |> flat_map(c => match c {
+    PublishBind { entry: _ } => []
+    PublishDelete { path } => [path]
+  })
+}
+
+// THE PURE APPLICATION: the base tree (path -> source digest) with the plan applied, in path order --
+// the model of the checkout after the realizer writes every bind and removes every delete.
+fn belt_publish_apply(base: List<CorpusManifestEntry>, plan: List<BeltPublishChange>) -> List<String> {
+  let applied = fold(plan, init: fold(base, init: empty_map(), f: (m, e) => map_insert(m, e.path as String, object_id_key(identity: e.source.locator))), f: (m, c) =>
+    match c {
+      PublishBind { entry } => map_insert(m, entry.path as String, object_id_key(identity: entry.source.locator))
+      PublishDelete { path } => map_without(m: m, key: path as String)
+    })
+  sort_by(map_keys(applied), k => k) |> map(k => join([k, "=", match map_get(applied, key: k) { Present { value: d } => d Absent => "" }], ""))
+}
+
+fn map_without(m: Map<String, String>, key: String) -> Map<String, String> {
+  fold(map_keys(m), init: empty_map(), f: (acc, k) =>
+    if k == key { acc } else {
+      match map_get(m, key: k) {
+        Present { value: v } => map_insert(acc, k, v)
+        Absent => acc
+      }
+    })
+}
+
+fn belt_publish_tree_of(entries: List<CorpusManifestEntry>) -> List<String> {
+  sort_by(entries, e => e.path as String) |> map(e => join([e.path as String, "=", object_id_key(identity: e.source.locator)], ""))
 }
 
 fn belt_publish_head_delta(
@@ -10957,7 +11044,8 @@ fn belt_publish_head_delta(
                       CorpusManifestIsAuthoredSource { identity: _ } => PublishDeltaRefused { detail: "the base root is an authored source, which is store damage" }
                       CorpusManifestIsSemanticNode { identity: _ } => PublishDeltaRefused { detail: "the base root is a semantic node, which is store damage" }
                       CorpusManifestFound(root_record) => {
-                        let changed = belt_publish_changed_entries(head: head_record, root: root_record)
+                        let plan = belt_publish_plan(head: head_record.entries, root: root_record.entries)
+                        let changed = belt_publish_binds(plan: plan)
                         match materialize_objects(
                           envelope_path: path,
                           store: with_manifests,
@@ -10967,7 +11055,7 @@ fn belt_publish_head_delta(
                           ObjectsMaterialized { store: with_sources, read_shards: _ } =>
                             match recover_corpus(store: with_sources, entries: changed) {
                               CorpusRecoveryRefused { cause: _ } => PublishDeltaRefused { detail: "the integration head's changed corpus is unrecoverable from the store" }
-                              CorpusRecovered { files } => PublishDeltaFiles { files: files }
+                              CorpusRecovered { files } => PublishDeltaFiles { files: files, deletes: belt_publish_deletes(plan: plan) }
                             }
                         }
                       }
@@ -11057,8 +11145,8 @@ fn belt_publish_project_for_instance(
                               match belt_publish_head_delta(instance: instance, path: envelope_path, envelope: envelope, head_commit: head_commit, base_sha: base_sha) {
                                 PublishDeltaRefused { detail } =>
                                   PublishEvidenceUnreadable { node_id: node_id, detail: detail }
-                                    PublishDeltaFiles { files } =>
-                                      match belt_publish_project_materialize(instance: instance, worktree: worktree, files: files) {
+                                    PublishDeltaFiles { files, deletes } =>
+                                      match belt_publish_project_materialize(instance: instance, worktree: worktree, files: files, deletes: deletes) {
                                         ScmCaptureRefused { detail } =>
                                           PublishEvidenceUnreadable { node_id: node_id, detail: detail }
                                         ScmCapturePoisoned { detail } =>
