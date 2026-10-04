@@ -21,6 +21,9 @@ data gfi_prelude: String = "module p\n\nimport v2.std.collection { List }\n\ntyp
 data gfi_not_a_list: String = gfi_prelude + "fn f(a: Int, b: Int) -> Int {\n  0\n}\n\nfn k(a: Int, b: Int) -> List<Int> {\n  g(a, b)\n}\n"
 data gfi_two_instances: String = gfi_prelude + "fn k(a: List<Int>, b: List<Pair>) -> List<Int> {\n  g(a, b)\n}\n"
 data gfi_nested_mismatch: String = gfi_prelude + "fn k(a: List<List<Int>>, b: Pair) -> Pair {\n  h(a, b)\n}\n"
+data gfi_alias_prelude: String = "module p\n\nimport v2.std.collection { List }\nimport std.algebra { FreeMonoid }\n\ntype Pair {\n  target: Int\n}\n\nfn m<T>(a: FreeMonoid<T>, b: FreeMonoid<T>) -> FreeMonoid<T> {\n  a\n}\n\n"
+data gfi_alias_agrees: String = gfi_alias_prelude + "fn k(a: List<Pair>, b: List<Pair>) -> List<Pair> {\n  m(a, b)\n}\n"
+data gfi_alias_disagrees: String = gfi_alias_prelude + "fn k(a: List<Pair>, b: List<Int>) -> List<Pair> {\n  m(a, b)\n}\n"
 data gfi_one_instance: String = gfi_prelude + "fn k(a: List<Pair>, b: List<Pair>) -> List<Pair> {\n  g(a, b)\n}\n"
 data gfi_nested_agrees: String = gfi_prelude + "fn k(a: List<List<Int>>, b: Int) -> Int {\n  h(a, b)\n}\n"
 
@@ -36,6 +39,8 @@ fn gfi_two_instances_reason() -> Symbol { gfi_reason(src: gfi_two_instances) }
 fn gfi_nested_mismatch_reason() -> Symbol { gfi_reason(src: gfi_nested_mismatch) }
 fn gfi_one_instance_reason() -> Symbol { gfi_reason(src: gfi_one_instance) }
 fn gfi_nested_agrees_reason() -> Symbol { gfi_reason(src: gfi_nested_agrees) }
+fn gfi_alias_agrees_reason() -> Symbol { gfi_reason(src: gfi_alias_agrees) }
+fn gfi_alias_disagrees_reason() -> Symbol { gfi_reason(src: gfi_alias_disagrees) }
 
 // RED: an Int at a List<T> formal -- the constructor does not match.
 test fn gfi_non_list_argument_at_a_list_formal_refuses() -> Bool {
@@ -60,4 +65,14 @@ test fn gfi_one_consistent_instance_is_accepted() -> Bool {
 // ACCEPTED, NESTED: List<List<Int>> and Int agree on T.
 test fn gfi_nested_consistent_instance_is_accepted() -> Bool {
   gfi_nested_agrees_reason() == ^accepted
+}
+
+// ALIAS: List<T> is std.algebra FreeMonoid<T> under another spelling. A FreeMonoid<T> formal takes a
+// List<Pair> argument (the alias unfolds, so the constructors are one), and still refuses a second instance.
+test fn gfi_alias_argument_at_its_aliased_formal_is_accepted() -> Bool {
+  gfi_alias_agrees_reason() == ^accepted
+}
+
+test fn gfi_alias_argument_at_two_instances_refuses() -> Bool {
+  gfi_alias_disagrees_reason() == ^application_argument_does_not_inhabit
 }
