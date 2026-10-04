@@ -181,3 +181,20 @@ Files and unexecuted launch scripts are staged at
 remains open; the prior private token file is absent. A fresh private token file and
 printer-01 removal confirmation have been requested. No approval request, upload or
 start has been performed for these two jobs.
+
+### Wave 3 dispatch and assembly hardware
+
+The operator subsequently confirmed both beds clear, supplied fresh operator authentication,
+approved both ntfy requests, and confirmed both printers active. Each workflow passed
+approval/readiness and uploaded its exact staged digest. Both start publishers lost their
+acknowledgements; neither was replayed. Independent telemetry confirms both exact digest filenames RUNNING: printer-01
+9%, 51 minutes remaining, vendor-documented non-existent error 83935249; printer-02
+4%, 107 minutes remaining, error 0. The private one-hour token file was removed. Durable start claims must remain in place.
+
+Suggested first-assembly hardware, calculated from the existing geometry rather than
+fit-verified: four M3 × 16 mm machine screws with nuts and two flat washers each for the
+8 mm tray seams; two M4 × 50 mm machine screws with nuts and two flat washers each for
+the modeled 40 mm 140-mm fan/cradle/guard sandwich. Use non-countersunk heads and tighten
+only snug against the plastic. Nut/washer selection and engagement still require assembly
+review. These suggestions do not resolve motherboard standoff thread/height. Rear arms,
+crossmember and corner posts retain their modeled printed pins.
