@@ -16864,6 +16864,11 @@ fn data_row_type_forbids_deserialize(type_node: Node, emit_info: EmitGraphInfo, 
   type_expr_reaches_sealed_carrier(n: type_node, emit_info: emit_info, source_indices: source_indices, seen: empty_map())
 }
 
+// Named rather than inlined because `if x == Variant {` parses as a record literal in .dag.
+fn data_row_declares_optional(type_node: Node) -> Bool {
+  type_node.return_cardinality == CardOptional
+}
+
 fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, needs_rc: Bool) -> String {
   let raw_ty_str = render_rust_type(n: type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info)
   let type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: type_node)
@@ -16922,7 +16927,7 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
   } else if match value.expr_data { ExprElaboratedLiteral { value: _, elaboration: _ } => true _ => false } {
     concat("            ", emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
   } else if has_nested_records_node(n: type_node, source_indices: scope.type_env.source_indices) && !data_value_has_cross_refs(value: value) && !data_row_type_forbids_deserialize(type_node: type_node, emit_info: emit_info, source_indices: scope.type_env.source_indices) {
-    let row_json = if type_node.return_cardinality == CardOptional {
+    let row_json = if data_row_declares_optional(type_node: type_node) {
       emit_declared_optional_row_json(value: value, inner_type_name: authored_name_at(source_indices: scope.type_env.source_indices, node: type_node), source_indices: scope.type_env.source_indices, variant_wire: emit_info.data_variant_wire_spellings)
     } else {
       emit_data_value_json(value: value, source_indices: scope.type_env.source_indices, variant_wire: emit_info.data_variant_wire_spellings)
