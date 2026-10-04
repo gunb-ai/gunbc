@@ -28,6 +28,14 @@ data gfi_refined_prelude: String = "module p\n\nimport v2.std.collection { List 
 data gfi_refined_carrier: String = gfi_refined_prelude + "fn k(a: Ns) -> List<Int> {\n  g(a)\n}\n"
 data gfi_record_wrapper_generic: String = gfi_refined_prelude + "fn k(a: Wrap) -> List<Int> {\n  g(a)\n}\n"
 data gfi_record_wrapper_plain: String = gfi_refined_prelude + "fn k(a: Wrap) -> List<Int> {\n  p(a)\n}\n"
+data gfi_plain_alias_prelude: String = "module p\n\nimport v2.std.collection { List }\nimport std.algebra { FreeMonoid }\n\ntype Pair {\n  target: Int\n}\n\nfn q(a: FreeMonoid<Pair>) -> Int {\n  0\n}\n\n"
+data gfi_plain_alias_agrees: String = gfi_plain_alias_prelude + "fn k(a: List<Pair>) -> Int {\n  q(a)\n}\n"
+data gfi_plain_alias_disagrees: String = gfi_plain_alias_prelude + "fn k(a: List<Int>) -> Int {\n  q(a)\n}\n"
+data gfi_refine_prelude: String = "module p\n\nimport v2.std.collection { List }\n\nfn positive(x: Int) -> Bool {\n  true\n}\n\ntype Pos = Int where positive\n\ntype AliasOfPos = Pos\n\nfn wants_pos(x: Pos) -> Int {\n  0\n}\n\nfn wants_alias_of_pos(x: AliasOfPos) -> Int {\n  0\n}\n\nfn g<T>(a: List<T>, b: List<T>) -> Int {\n  0\n}\n\n"
+data gfi_refined_refuses_raw_plain: String = gfi_refine_prelude + "fn k(x: Int) -> Int {\n  wants_pos(x)\n}\n"
+data gfi_refined_refuses_raw_generic: String = gfi_refine_prelude + "fn k(a: List<Pos>, b: List<Int>) -> Int {\n  g(a, b)\n}\n"
+data gfi_alias_of_refined_refuses_raw: String = gfi_refine_prelude + "fn k(x: Int) -> Int {\n  wants_alias_of_pos(x)\n}\n"
+data gfi_alias_of_refined_admits_refined: String = gfi_refine_prelude + "fn k(x: Pos) -> Int {\n  wants_alias_of_pos(x)\n}\n"
 data gfi_one_instance: String = gfi_prelude + "fn k(a: List<Pair>, b: List<Pair>) -> List<Pair> {\n  g(a, b)\n}\n"
 data gfi_nested_agrees: String = gfi_prelude + "fn k(a: List<List<Int>>, b: Int) -> Int {\n  h(a, b)\n}\n"
 
@@ -46,6 +54,12 @@ fn gfi_nested_agrees_reason() -> Symbol { gfi_reason(src: gfi_nested_agrees) }
 fn gfi_refined_carrier_reason() -> Symbol { gfi_reason(src: gfi_refined_carrier) }
 fn gfi_record_wrapper_generic_reason() -> Symbol { gfi_reason(src: gfi_record_wrapper_generic) }
 fn gfi_record_wrapper_plain_reason() -> Symbol { gfi_reason(src: gfi_record_wrapper_plain) }
+fn gfi_plain_alias_agrees_reason() -> Symbol { gfi_reason(src: gfi_plain_alias_agrees) }
+fn gfi_plain_alias_disagrees_reason() -> Symbol { gfi_reason(src: gfi_plain_alias_disagrees) }
+fn gfi_refined_refuses_raw_plain_reason() -> Symbol { gfi_reason(src: gfi_refined_refuses_raw_plain) }
+fn gfi_refined_refuses_raw_generic_reason() -> Symbol { gfi_reason(src: gfi_refined_refuses_raw_generic) }
+fn gfi_alias_of_refined_refuses_raw_reason() -> Symbol { gfi_reason(src: gfi_alias_of_refined_refuses_raw) }
+fn gfi_alias_of_refined_admits_refined_reason() -> Symbol { gfi_reason(src: gfi_alias_of_refined_admits_refined) }
 fn gfi_alias_agrees_reason() -> Symbol { gfi_reason(src: gfi_alias_agrees) }
 fn gfi_alias_disagrees_reason() -> Symbol { gfi_reason(src: gfi_alias_disagrees) }
 
@@ -95,4 +109,25 @@ test fn gfi_refined_argument_matches_through_its_carrier() -> Bool {
 test fn gfi_record_wrapper_refuses_as_the_plain_formal_does() -> Bool {
   gfi_record_wrapper_generic_reason() == ^application_argument_does_not_inhabit
     && gfi_record_wrapper_plain_reason() == ^application_argument_does_not_inhabit
+}
+
+// ONE ALIAS RULE ON BOTH ROUTES (review 75435): a PLAIN FreeMonoid<Pair> formal takes a List<Pair> argument,
+// as the generic FreeMonoid<T> formal does, and refuses List<Int>.
+test fn gfi_plain_formal_takes_its_alias() -> Bool {
+  gfi_plain_alias_agrees_reason() == ^accepted
+    && gfi_plain_alias_disagrees_reason() == ^application_argument_does_not_inhabit
+}
+
+// A REFINEMENT IS NOT A TRANSPARENT ALIAS (calm-boar-904): a declared Pos refuses a raw Int on the plain route,
+// and List<Pos> / List<Int> at one T refuses on the generic route.
+test fn gfi_refined_type_still_refuses_its_raw_carrier() -> Bool {
+  gfi_refined_refuses_raw_plain_reason() == ^application_argument_does_not_inhabit
+    && gfi_refined_refuses_raw_generic_reason() == ^application_argument_does_not_inhabit
+}
+
+// AN ALIAS OF A REFINED TYPE KEEPS THE REFINEMENT: it unfolds to Pos, not past it, so a raw Int refuses and a
+// Pos is admitted.
+test fn gfi_alias_of_a_refined_type_keeps_the_refinement() -> Bool {
+  gfi_alias_of_refined_refuses_raw_reason() == ^application_argument_does_not_inhabit
+    && gfi_alias_of_refined_admits_refined_reason() == ^accepted
 }
