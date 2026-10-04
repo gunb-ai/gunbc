@@ -30,7 +30,7 @@ import extdeps.networkmanager.nmcli {
 import extdeps.systemd.journalctl { journalctl_kernel_current_boot_argv, journalctl_unit_current_boot_argv }
 import gunbc.spark.dgx_procurement { dgx_spark_procurement_intent }
 import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
-import gunbc.fleet_intent_network {
+import gunbc.fleet_host_identity {
   operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8,
   operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
 }

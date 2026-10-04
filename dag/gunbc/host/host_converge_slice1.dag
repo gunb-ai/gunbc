@@ -22,7 +22,7 @@ import gunbc.systemctl_show_read {
   SystemdPropertyBlank,
   SystemdPropertyCaptureRefused,
 }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
 import gunbc.runner_unit { runner_slot_unit_name }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner_slot_allocation {
