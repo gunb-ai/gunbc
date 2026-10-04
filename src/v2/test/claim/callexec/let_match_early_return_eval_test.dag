@@ -1,0 +1,188 @@
+module v2.test.claim.callexec.let_match_early_return_eval
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.infer { infer, infer_application_callee_use }
+import v2.compiler.eval { eval, inputs_root_only }
+import v2.compiler.refinement_discharge { discharge_refinement_obligations }
+import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Node, NodeFold, Symbol, fold_node }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.collection { List }
+import v2.std.integer { Int, integer_signed_i32_le_bytes_to_int }
+import v2.std.runtime { RuntimePrimitive, RuntimeValue }
+import v2.std.text { String }
+import v2.std.qualified_name { declaration_reference_path_optional }
+
+// THE LOWERING PRESERVES MEANING, NOT ONLY SHAPE. v2.compiler.body_lowering_fold
+// body_lower_let_match_exit_join lowers a let whose value is a match with a returning arm, heading a
+// tail spine, to that match with the rest of the spine under the one binding arm. This module
+// EXECUTES it: `early` is that form, `shaped` is its expression-shaped rewrite (the rest moved into
+// the binding arm by hand), and each row evaluates one named call to each on the same arguments,
+// through assemble -> infer -> refinement discharge -> eval (the route v2.test.claim.callexec.declaration_reference_eval
+// drives), and asserts both execute to the SAME exact value: the exit path (n = 0 returns k = 7) and
+// the binding path (n = 5 binds x = 5 and answers x + 1 = 6). A lowering that bound x to the returned
+// value and continued (the pre-wall `return`-as-operand defect) answers 8 on the exit path; one that
+// dropped the rest answers 5 on the binding path.
+//
+// THE SCRUTINEE IS AN Int because v2 infer types a Match only over a Bool or Int scrutinee
+// (compile_door_cause_ownership infer_match_scrutinee_not_bool), so the binding arm here is the
+// binder-free form (`_ => n`, lowered to Bind(x, n, rest)).
+//
+// ENROLLED AS THE REFUSAL IT IS TODAY, measured at main 80fc619b900 merged into this branch: on this
+// route a declared fn whose body branches on a parameter does not execute. Probed one construct at a
+// time on the same route, a body that is the bare parameter executes; `n + 1` refuses at EVAL; and
+// `match n { 0 => k \n _ => n }` and `if n == 0 { k } else { n }` each refuse at INFER as
+// infer_grounding_not_derived. So `early` and `shaped` both refuse at infer with that reason, on
+// both paths, before the lowering's output can be executed -- the rewrite refuses identically, so
+// the refusal is not this lowering's. The value path is written and run by these rows; what remains
+// when grounding is derived for a branch over a parameter (compile_door_cause_ownership
+// infer_grounding_not_derived) is inverting each row to lmee_both_execute_to, not authoring it.
+
+data lmee_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^let_match_early_return_eval_artifact,
+  file_path: "src/v2/pilot/let_match_early_return_eval_pilot.dag"
+}
+
+data lmee_callees: String = "fn early(n: Int, k: Int) -> Int {\n  let x = match n {\n    0 => return k\n    _ => n\n  }\n  x + 1\n}\n\nfn shaped(n: Int, k: Int) -> Int {\n  match n {\n    0 => k\n    _ => n + 1\n  }\n}\n\n"
+
+fn lmee_assemble(consumer: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: concat("module p\n\n", concat(lmee_callees, consumer)), fidelity: Lossless },
+        artifact: lmee_artifact,
+        compilation_unit: ^let_match_early_return_eval_cu,
+        source_root: V2Tree
+      },
+      tail: Empty
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+fn lmee_calls_to(root: Node, name: Symbol) -> List<Node> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(n0) {
+        match infer_application_callee_use(node: n0) {
+          Absent => []
+          Present { value: callee } =>
+            match declaration_reference_path_optional(node: callee) {
+              Absent => []
+              Present { value: path } =>
+                if path == Cons { head: ^p, tail: Cons { head: name, tail: Empty } } { [n0] } else { [] }
+            }
+        }
+      },
+      step: fn(acc, _e, child) { concat(acc, child) }
+    }
+  )
+}
+
+fn lmee_int_of(v: RuntimeValue) -> Optional<Int> {
+  match v {
+    RuntimePrimitive { value: p } =>
+      match integer_signed_i32_le_bytes_to_int(bytes: p.bytes) {
+        Accepted { value: magnitude, diagnostics: _ } => optional_present(value: magnitude)
+        Rejected { diagnostics: _ } => optional_absent()
+      }
+    _ => optional_absent()
+  }
+}
+
+// What a call to `name` in the consumer executes to, or the stage that refused it and its first
+// reason: a refusal is reported where it happened, never collapsed into "no value".
+type LmeeResult
+  = LmeeValue { value: Int }
+  | LmeeRefusedAt { stage: Symbol, reason: Symbol }
+
+fn lmee_result(o: Outcome<ResolvedTree>, name: Symbol) -> LmeeResult {
+  match o {
+    Rejected { diagnostics: d } => LmeeRefusedAt { stage: ^lmee_assemble, reason: d.head.reason }
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: d } => LmeeRefusedAt { stage: ^lmee_infer, reason: d.head.reason }
+        Accepted { value: obligated, diagnostics: _ } =>
+          match discharge_refinement_obligations(t: obligated) {
+            Rejected { diagnostics: d } => LmeeRefusedAt { stage: ^lmee_discharge, reason: d.head.reason }
+            Accepted { value: inferred, diagnostics: _ } =>
+              match lmee_calls_to(root: inferred.root, name: name) {
+                Cons { head: call, tail: Empty } =>
+                  match eval(tree: inferred, interpretation: v2_evaluator_interpretation(), inputs: inputs_root_only(root: call)) {
+                    Rejected { diagnostics: d } => LmeeRefusedAt { stage: ^lmee_eval, reason: d.head.reason }
+                    Accepted { value: v, diagnostics: _ } =>
+                      match lmee_int_of(v: v) {
+                        Present { value: i } => LmeeValue { value: i }
+                        Absent => LmeeRefusedAt { stage: ^lmee_value, reason: ^lmee_value_not_an_int }
+                      }
+                  }
+                _ => LmeeRefusedAt { stage: ^lmee_call, reason: ^lmee_call_not_found_once }
+              }
+          }
+      }
+  }
+}
+
+// One front end per path, both calls read from it.
+type LmeeReading {
+  early: LmeeResult
+  shaped: LmeeResult
+}
+
+fn lmee_path(n: String) -> LmeeReading {
+  let o = lmee_assemble(consumer: concat("fn use_early() -> Int {\n  early(n: ", concat(n, concat(", k: 7)\n}\n\nfn use_shaped() -> Int {\n  shaped(n: ", concat(n, ", k: 7)\n}\n")))))
+  LmeeReading { early: lmee_result(o: o, name: ^early), shaped: lmee_result(o: o, name: ^shaped) }
+}
+
+fn lmee_exit_path() -> LmeeReading {
+  lmee_path(n: "0")
+}
+
+fn lmee_binding_path() -> LmeeReading {
+  lmee_path(n: "5")
+}
+
+fn lmee_both_execute_to(r: LmeeReading, want: Int) -> Bool {
+  match r.early {
+    LmeeValue { value: a } =>
+      match r.shaped {
+        LmeeValue { value: b } => (a == want) && (b == want)
+        LmeeRefusedAt { stage: _, reason: _ } => false
+      }
+    LmeeRefusedAt { stage: _, reason: _ } => false
+  }
+}
+
+fn lmee_both_refuse_at_infer_grounding(r: LmeeReading) -> Bool {
+  lmee_refused_at_infer_grounding(x: r.early) && lmee_refused_at_infer_grounding(x: r.shaped)
+}
+
+fn lmee_refused_at_infer_grounding(x: LmeeResult) -> Bool {
+  match x {
+    LmeeRefusedAt { stage: st, reason: r } => (st == ^lmee_infer) && (r == ^infer_grounding_not_derived)
+    LmeeValue { value: _ } => false
+  }
+}
+
+// FLIPS to lmee_both_execute_to(r: lmee_exit_path(), want: 7) when grounding is derived.
+test fn the_exit_path_of_a_let_match_and_its_rewrite_refuse_alike_at_infer_grounding() -> Bool {
+  lmee_both_refuse_at_infer_grounding(r: lmee_exit_path())
+}
+
+// FLIPS to lmee_both_execute_to(r: lmee_binding_path(), want: 6) when grounding is derived.
+test fn the_binding_path_of_a_let_match_and_its_rewrite_refuse_alike_at_infer_grounding() -> Bool {
+  lmee_both_refuse_at_infer_grounding(r: lmee_binding_path())
+}
