@@ -426,16 +426,18 @@ fn prepare_emitted_compiler_for_entry(
     }
     // `cargo_verdict_compiled` admitted only the `Completed { status: 0 }` arm, so the fields
     // below are the run's own; a verdict of any other shape refused above.
-    let (exit_status, warning_count, warning_headers) = match &verdict {
+    let (exit_status, warning_count, warning_headers, cargo_network_retries) = match &verdict {
         super::emitted_closure_compile_host::CargoVerdict::Completed {
             status,
             warning_count,
             warning_headers,
+            cargo_network_retries,
             ..
         } => (
             i64::from(*status),
             *warning_count as i64,
             warning_headers.clone(),
+            *cargo_network_retries,
         ),
         other => {
             return Err(format!(
@@ -456,7 +458,8 @@ fn prepare_emitted_compiler_for_entry(
     };
     eprintln!(
         "v2-native-route: emitted crate built — argv={:?} RUSTFLAGS={:?} compiler={} \
-         exit_status={exit_status} warning_count={warning_count} rustc={}",
+         exit_status={exit_status} warning_count={warning_count} \
+         cargo_network_retries={cargo_network_retries} rustc={}",
         build.cargo_argv, build.rustflags, build.compiler_path, build.rustc_identity
     );
     // Under the run's own target dir (`PrivateProbeRoot` `target_dir`), so the executable hashed
@@ -3011,6 +3014,7 @@ mod tests {
             probe_diagnostic: None,
             warning_count: 0,
             warning_headers: Vec::new(),
+            cargo_network_retries: 0,
             first_error: host::first_rustc_error(stderr).map(Box::new),
         };
         let message = emitted_build_failed_refusal(root, &path.join("crate"), &verdict, "argv=[]");
