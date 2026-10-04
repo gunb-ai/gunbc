@@ -14,6 +14,10 @@ import gunbc.runner_group_restriction_observation {
   MicrovmRunnerGroupStanding, RunnerGroupRestrictedToWorkflow, RunnerGroupRestrictionRefused, RestrictedRunnerGroup,
   observe_runner_group_restriction, scope_refusal, runner_group_restriction_refusal_text,
 }
+import gunbc.runner.runner_qualification_ruleset {
+  read_qualification_ruleset, QualificationRulesetEnforced, QualificationRulesetRefused, QualificationRulesetRefusal,
+  QualificationRulesetStanding, QualificationRulesetActive,
+}
 import gunbc.github_effect_perform {
   ControllerInstallationToken, GitRefRead, read_git_ref_with, create_git_ref_with, delete_git_ref_with,
   read_runner_groups_with, update_runner_group_workflows_with,
@@ -51,6 +55,12 @@ import gunbc.github_effect_perform {
 // runner_lifecycle_ruling_scope_interpretation). The token is the gunbai-ci installation token
 // (contents:write for the ref; organization self-hosted-runners write for the group). No workflow
 // fires on creating the branch: see test.claim.runner_qualification_ref_pin_witness.
+//
+// IMMUTABLE UNTIL DELETED. Creation and readback prove the branch named the revision when read; the
+// repository ruleset gunbc.runner.runner_qualification_ruleset (update + non_fast_forward on
+// refs/heads/qualification/**, active, no bypass) makes it unable to move afterwards, so the code the
+// dispatch runs is the revision the pin read back. The ensure refuses before any write unless that
+// ruleset reads back enforced (PinRulesetNotEnforced).
 
 data qualification_branch_prefix: NonEmptyStr = "qualification/"
 
@@ -179,6 +189,7 @@ type QualificationRefPin sole_constructor {
   name: QualificationBranchName
   revision: CommitSha
   group: RestrictedRunnerGroup
+  ruleset: QualificationRulesetActive
 }
 
 type QualificationRefPinRefusal
@@ -191,6 +202,7 @@ type QualificationRefPinRefusal
   | PinGroupNotTargetable { cause: NonEmptyStr }
   | PinGroupWriteNotSucceeded { performance: RestExchangePerformance }
   | PinGroupReadbackRefused { standing: MicrovmRunnerGroupStanding }
+  | PinRulesetNotEnforced { refusal: QualificationRulesetRefusal }
 
 type QualificationRefPinStanding
   = QualificationRefPinned { pin: QualificationRefPin }
@@ -229,6 +241,7 @@ fn qualification_ref_pin_of(
   readback: RestExchangePerformance,
   readback_sha: String,
   group: MicrovmRunnerGroupStanding,
+  ruleset: QualificationRulesetStanding,
 ) -> QualificationRefPinStanding
   admit_callers: [
     decl_ref(module_path: "gunbc.runner.runner_qualification_ref_pin", decl_name: "ensure_qualification_ref_pin"),
@@ -238,6 +251,9 @@ fn qualification_ref_pin_of(
     decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_production_mint_over_todays_fleet_converge_workflow_refuses_at_the_attempt_input"),
   ]
 {
+  match ruleset {
+    QualificationRulesetRefused { refusal: rr } => QualificationRefPinRefused { attempt: name.attempt, refusal: PinRulesetNotEnforced { refusal: rr } }
+    QualificationRulesetEnforced { active: enforced } =>
   match readback {
     RestExchangeSucceeded =>
       if readback_sha != (revision as String) {
@@ -245,11 +261,12 @@ fn qualification_ref_pin_of(
       } else {
         match group {
           RunnerGroupRestrictedToWorkflow { restriction: r } =>
-            QualificationRefPinned { pin: QualificationRefPin { name: name, revision: revision, group: r } }
+            QualificationRefPinned { pin: QualificationRefPin { name: name, revision: revision, group: r, ruleset: enforced } }
           other => QualificationRefPinRefused { attempt: name.attempt, refusal: PinGroupReadbackRefused { standing: other } }
         }
       }
     other => QualificationRefPinRefused { attempt: name.attempt, refusal: PinBranchReadUnreadable { performance: other } }
+  }
   }
 }
 
@@ -265,6 +282,10 @@ fn ensure_qualification_ref_pin(
 ) -> QualificationRefPinStanding uses net: Network {
   let owner = gunbc_repository.owner as NonEmptyStr
   let repo = gunbc_repository.name as NonEmptyStr
+  let ruleset = read_qualification_ruleset(token: token)
+  match ruleset {
+    QualificationRulesetRefused { refusal: r } => pin_refused(attempt: attempt, refusal: PinRulesetNotEnforced { refusal: r })
+    QualificationRulesetEnforced { active: _ } =>
   match qualification_branch_name(attempt: attempt) {
     QualificationBranchNameRefused { attempt: _, cause: c } => pin_refused(attempt: attempt, refusal: PinBranchNameRefused { cause: c })
     QualificationBranchNamed { name: name } => {
@@ -291,6 +312,7 @@ fn ensure_qualification_ref_pin(
                           readback: after.performance,
                           readback_sha: after.reference.object.sha,
                           group: observe_runner_group_restriction(name: qualification_runner_group_name, selected_workflow: selected, listed: read_runner_groups_with(token: token, organization: organization)),
+                          ruleset: ruleset,
                         )
                       other_write => pin_refused(attempt: attempt, refusal: PinGroupWriteNotSucceeded { performance: other_write })
                     }
@@ -300,6 +322,7 @@ fn ensure_qualification_ref_pin(
           }
       }
     }
+  }
   }
 }
 

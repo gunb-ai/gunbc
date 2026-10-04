@@ -12,6 +12,7 @@ import extdeps.github.app {
   ActionsAxis,
   MetadataAxis,
   OrganizationSelfHostedRunnersAxis,
+  AdministrationAxis,
   AppAccessRead,
   AppAccessWrite
 }
@@ -90,6 +91,9 @@ type GitHubEffect
   | DeleteOrganizationRunner {
       organization: GitHubOrganizationRef
     }
+  | ManageRepositoryRulesets {
+      repository: Repository
+    }
 
 data workflow_directory_prefix: NonEmptyStr = ".github/workflows/"
 
@@ -138,6 +142,14 @@ data metadata_read: GitHubAppPermission = GitHubAppPermission {
   access: AppAccessRead
 }
 
+// Repository rulesets are administered under the repository administration permission
+// (docs.github.com/en/rest/repos/rules#create-a-repository-ruleset, "Administration" repository
+// permissions (write), read 2026-10-04).
+data administration_write: GitHubAppPermission = GitHubAppPermission {
+  name: AdministrationAxis,
+  access: AppAccessWrite
+}
+
 data organization_self_hosted_runners_write: GitHubAppPermission = GitHubAppPermission {
   name: OrganizationSelfHostedRunnersAxis,
   access: AppAccessWrite
@@ -163,6 +175,8 @@ fn github_effect_required_permissions(effect: GitHubEffect) -> List<GitHubAppPer
       [organization_self_hosted_runners_write]
     DeleteOrganizationRunner { organization: _ } =>
       [organization_self_hosted_runners_write]
+    ManageRepositoryRulesets { repository: _ } =>
+      [administration_write]
   }
 }
 

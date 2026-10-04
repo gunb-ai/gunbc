@@ -674,6 +674,21 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
+    site: site(module_path: "gunbc.runner.runner_qualification_ruleset", decl_name: "ensure_qualification_ruleset"),
+    effect: PrivilegedEffect {
+      subject: "ensure the repository ruleset runner-qualification-pins (refs/heads/qualification/**, update + non_fast_forward, enforced active, no bypass actors): read every provision, created only when absent and read back, never edited; under the gunbai-ci installation token, gated in code on the App holding repository administration:write (extdeps.github.effect ManageRepositoryRulesets) -- the permission is NOT yet established: fleet-converge app_control_plane_observe run 37215976003 (dispatched to read it) failed at the webhook-config read (AppHookConfigReadRefused, 404) before reporting the registration's permissions, so no live write is admitted until a registration readback shows administration:write; approved by the operator by default through this ensure, conditional on that permission (eager-gull-22, 2026-10-04). administration:write reaches every repository setting, not only rulesets; the confinement to this one ruleset is this module's construction" as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: convergence_principal(),
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
     site: site(module_path: "gunbc.runner_group_restriction_ensure_run", decl_name: "microvm_runner_group_after_gate"),
     effect: PrivilegedEffect {
       subject: "create, only when absent, each runner group on the restricted_runner_groups roster -- the microVM shakedown group, gunbc-private's heal publisher group, and the dedicated runner-qualification group (eager-gull-22, 2026-10-04, under the 2026-10-03 interpretation; created pinned to the reserved unpinned branch) -- each with selected visibility, this repository alone, no public repositories and a workflow restriction, refusing any same-named group of another shape and never editing one, under an org-admin installation token" as NonEmptyStr,

@@ -34,6 +34,8 @@ import extdeps.github.workflow_runs
 import extdeps.github.git_database
 import extdeps.github.git_database { GitRefWire }
 import extdeps.github.org_actions
+import extdeps.github.rulesets
+import extdeps.github.rulesets { RulesetWire, RulesetSummaryWire, RulesetConditionsWire, RulesetRuleWire, RulesetBypassActor }
 import extdeps.github.workflow_runs { WorkflowRun, WorkflowJobRunList }
 import gunbc.auth.github_apps { DeclaredGitHubApp, gunbai_ci_declared }
 import extdeps.github.app { GitHubAppInstallationId }
@@ -394,4 +396,56 @@ fn update_runner_group_workflows_with(token: ControllerInstallationToken, organi
     installation_token: token.token, org: organization, runner_group_id: runner_group_id, selected_workflows: selected_workflows,
   )
   classify_rest_outcome(standing: RestMutationExchange { rest: updated.outcome })
+}
+
+// THE QUALIFICATION RULESET'S EXCHANGES (gunbc.runner.runner_qualification_ruleset), under the same
+// controller installation token. The list and the get are reads; the create is a mutation. Each answer
+// is sealed so the ensure judges only what GitHub returned.
+type RulesetListRead sole_constructor {
+  performance: RestExchangePerformance
+  rulesets: List<RulesetSummaryWire>
+}
+
+fn list_rulesets_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr) -> RulesetListRead uses net: Network {
+  let listed = github.Rulesets.List(auth_token: token.token, owner: owner as String, repo: repo as String)
+  RulesetListRead { performance: classify_rest_outcome(standing: RestReadExchange { rest: listed.outcome }), rulesets: listed.rulesets }
+}
+
+type RulesetRead sole_constructor {
+  performance: RestExchangePerformance
+  ruleset: RulesetWire
+}
+
+fn get_ruleset_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, ruleset_id: Int) -> RulesetRead uses net: Network {
+  let got = github.Rulesets.Get(auth_token: token.token, owner: owner as String, repo: repo as String, ruleset_id: ruleset_id)
+  RulesetRead {
+    performance: classify_rest_outcome(standing: RestReadExchange { rest: got.outcome }),
+    ruleset: RulesetWire {
+      id: got.id, name: got.name, target: got.target, enforcement: got.enforcement,
+      current_user_can_bypass: got.current_user_can_bypass, conditions: got.conditions, rules: got.rules, bypass_actors: got.bypass_actors,
+    },
+  }
+}
+
+type RulesetCreateAnswer sole_constructor {
+  performance: RestExchangePerformance
+  ruleset_id: Int
+}
+
+fn create_ruleset_with(
+  token: ControllerInstallationToken,
+  owner: NonEmptyStr,
+  repo: NonEmptyStr,
+  name: String,
+  target: String,
+  enforcement: String,
+  conditions: RulesetConditionsWire,
+  rules: List<RulesetRuleWire>,
+  bypass_actors: List<RulesetBypassActor>,
+) -> RulesetCreateAnswer uses net: Network {
+  let created = github.Rulesets.Create(
+    auth_token: token.token, owner: owner as String, repo: repo as String, name: name, target: target,
+    enforcement: enforcement, conditions: conditions, rules: rules, bypass_actors: bypass_actors,
+  )
+  RulesetCreateAnswer { performance: classify_rest_outcome(standing: RestMutationExchange { rest: created.outcome }), ruleset_id: created.id }
 }
