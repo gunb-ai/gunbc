@@ -15,7 +15,7 @@ import v2.compiler.source_authority {
 }
 import std.content_hash { Fnv1a64Structural }
 import std.occurrence_identity { scoped_occurrence_allocator }
-import v2.compiler.tokenize { tokenize }
+import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules, tokenize, tokenize_prepared }
 import v2.compiler.parse {
   ParseArtifact,
   parse_module_prepared_seeded,
@@ -169,14 +169,14 @@ fn program_assembly_fold_state_from_located(
 // exactly one phase sequence and no refusal escapes the attribution.
 fn program_assembly_phase_tokenize(
   read: DagSourceReadWitness,
-  lm: LanguageModel
+  lex: PreparedLexRules
 ) -> Outcome<TokenStream> {
   match read.artifact.kind {
     SourceFile =>
-      tokenize(
+      tokenize_prepared(
         text: read.source.carried,
         file: read.compilation_unit,
-        rules: lm.lex
+        prepared: lex
       )
     _ =>
       outcome_rejected(
@@ -374,14 +374,14 @@ type ProgramAssemblySeededReadResult {
 
 fn program_assembly_read_to_normalized_root_seeded(
   read: DagSourceReadWitness,
-  lm: LanguageModel,
+  lex: PreparedLexRules,
   prepared: PreparedGrammar,
   residue: Diagnostics,
   seed: OccurrenceIdAllocator,
   scope: Fnv1a64Structural
 ) -> ProgramAssemblySeededReadResult {
   match bind_outcome(
-    o: program_assembly_phase_tokenize(read: read, lm: lm),
+    o: program_assembly_phase_tokenize(read: read, lex: lex),
     f: fn(token_stream) {
       parse_module_prepared_seeded(
         tokens: token_stream,
@@ -479,7 +479,7 @@ fn program_assembly_fold_failed(pending: Diagnostics, refused: NonEmptyDiagnosti
 fn program_assembly_fold_step(
   state: ProgramAssemblyLocatedFoldState,
   read: DagSourceReadWitness,
-  lm: LanguageModel,
+  lex: PreparedLexRules,
   prepared: PreparedGrammar,
   residue: Diagnostics,
   scope: Fnv1a64Structural
@@ -490,7 +490,7 @@ fn program_assembly_fold_step(
     ProgramAssemblyLocatedFoldOk { located: acc, index: idx, alloc: seed, spans: spans, advisories: advised } =>
       let result = program_assembly_read_to_normalized_root_seeded(
         read: read,
-        lm: lm,
+        lex: lex,
         prepared: prepared,
         residue: residue,
         seed: seed,
@@ -584,6 +584,7 @@ fn program_assembly_fold_ingest_located(
         Rejected { diagnostics: d } =>
           ProgramAssemblyLocatedFoldFailed { diagnostics: d, spans: span_index_empty() }
         Accepted { value: prepared, diagnostics: residue } =>
+          let lex = prepare_lex_rules(rules: lm.lex)
           match program_assembly_ingest_scope(ingest: ingest) {
             SourceRefListDigestNonStructuralRefused { path: _ } =>
               ProgramAssemblyLocatedFoldFailed {
@@ -601,7 +602,7 @@ fn program_assembly_fold_ingest_located(
                   advisories: None
                 },
                 cons: fn(state, read) {
-                  program_assembly_fold_step(state: state, read: read, lm: lm, prepared: prepared, residue: residue, scope: scope)
+                  program_assembly_fold_step(state: state, read: read, lex: lex, prepared: prepared, residue: residue, scope: scope)
                 }
               )
           }

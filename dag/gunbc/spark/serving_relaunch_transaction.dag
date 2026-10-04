@@ -14,7 +14,7 @@ import extdeps.docker.cli {
 }
 import extdeps.vllm.engine_args { vllm_max_num_seqs_flag, vllm_gpu_memory_utilization_flag, vllm_kv_cache_dtype_flag, vllm_argv_without_admission_flags, vllm_argv_scheduler_admission, vllm_argv_indexer_kv_dtype_request, vllm_scheduler_admission_key, vllm_indexer_kv_dtype_key }
 import extdeps.docker.container_inspect {
-  ContainerInspect, HostConfig, ContainerConfig, DockerInspectDevice, DockerInspectUlimit,
+  ContainerInspect, HostConfig, ContainerConfig, DockerInspectDevice, DockerInspectMount, DockerInspectUlimit,
   docker_capability_canonical, docker_memlock_ulimit_name,
 }
 import extdeps.nvidia.nccl {
@@ -313,9 +313,12 @@ fn env_difference_observed_text(d: EnvDifference) -> String {
   }
 }
 
-// THE NAMES THIS COMPARISON MAKES NO CLAIM ABOUT, reported so a reader can see the residue rather
-// than infer that it was checked. It is not consulted by the verdict; it is what the trigger above
-// would turn into evidence.
+// THE NAMES THIS COMPARISON MAKES NO CLAIM ABOUT. The relaunch delta reports them; the native apply's
+// readback CONSULTS them (gunbc.spark.native_serving_apply spark_native_unplanned_assignments): an
+// assignment under one of these names refuses unless it is identical to an assignment in the image's
+// own Config.Env, read by the id the container was created from. (This note said "not consulted by the
+// verdict" while that readback refused on every name here -- including the image's own PATH --
+// Group A fp8-8 launch, run 37172948981.)
 fn env_unclaimed_names(spec: DockerCreateSpec, observed: List<String>, gid_selection: NcclRoceGidSelection) -> List<String> {
   let subject = env_subject_names(spec: spec, gid_selection: gid_selection)
   fold(observed, init: [], f: (acc, a) => {
@@ -402,10 +405,20 @@ fn planned_mount_bind_text(m: DockerMount) -> String {
   }
 }
 
+// The observed mounts rendered in planned_mount_bind_text's own convention, per mount type, from the
+// structured HostConfig.Mounts a `--mount` create records.
+fn observed_mount_text(m: DockerInspectMount) -> String {
+  if (m.kind as String) == "tmpfs" {
+    join(["tmpfs:", m.target as String, ":", match m.tmpfs_size_bytes { Present { value: n } => to_string(n)  Absent => "unset" }], "")
+  } else {
+    join([m.source, ":", m.target as String, if m.read_only { ":ro" } else { ":rw" }], "")
+  }
+}
+
 fn observed_mounts_text(hc: HostConfig) -> String? {
-  match hc.binds {
+  match hc.mounts {
     Absent => none
-    Present { value: bs } => Present { value: join(sorted_text(xs: bs), ",") }
+    Present { value: ms } => Present { value: join(sorted_text(xs: map(ms, m => observed_mount_text(m: m))), ",") }
   }
 }
 
