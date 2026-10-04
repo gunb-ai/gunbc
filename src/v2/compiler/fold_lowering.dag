@@ -65,7 +65,11 @@ import v2.std.node {
   core_edge_label,
   Found,
   Instantiation,
-  arrow_body_target_lookup
+  arrow_body_target_lookup,
+  Ambiguous,
+  Arrow,
+  Cardinality,
+  Disj
 }
 import v2.std.anonymous_binder { fresh_fold_carrier }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -73,7 +77,6 @@ import v2.std.node_query { DeclaredField, declared_field_from_edge, find_named_c
 import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, qualified_name_from_dotted_string, qualified_name_snoc, qualified_name_to_dotted_string }
 import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
 import v2.std.type_binder { type_param_names }
-import v2.std.logic { Bool }
 import v2.std.algebra { any, fold_list, length }
 
 data fold_lowering_note: String = "The un-forked forward lowering for fold — the first slice of the general body producer that replaces both the removed cost-shape fork and the hand-rolled MVP shapes. A surface fold has NO dedicated grammar production; it parses as an ordinary call (a ^dag_surface_primary_expr whose head ident, after the StampLexeme grammar fix, carries its NAME as an atom identity), so its lowering is a SEMANTIC desugaring keyed on the CALLEE identity (DESIGN §4: fold/recursion is sugar over Loop), never a lexeme scan. The input is the fold-call surface subtree — the primary_expr captured child, a sequence(head_ident, call_suffix) — read the homogeneous way cost_coverage locates fn bodies and the qualified-name parser reads sequence heads: fold_call_head_symbol reads the sequence-left head projection (the callee ^fold); fold_call_lowering reads the collection, init and step from their declared slots (named, else at the position std.algebra collection_fold_shape declares), and fold_recurrence_encoding builds the full fold encoding Bind { acc := init, Loop { step, domain, carrier, bound, realized: head } } (gunbc.plans.for_while_loop_sugar §2.3), bounded by the fold-iteration measure ^dag_surface_fold_iteration_measure (registered Strict in v2.std.cardinality.measure_descent_fact_registry, so loop_multiplicity derives its termination). Fail-closed twice: a call whose head is not ^fold refuses with ^fold_lowering_not_a_fold_call, and a fold call carrying no fn-literal iteration body refuses with ^fold_lowering_shape_invalid — never fabricates a loop. Verified end-to-end on real source (v2.test.claim.complexity.fold_lowering): fold(xs, init: 0, f: fn(acc, x) { acc }) lowers to an encoding whose Loop terminates; v2.test.claim.fold_encoding pins each operand at its authored occurrence. This unit is the same desugaring the whole-tree body producer will run on every located fold call once corpus resolution/walking is affordable; the caller supplies the located call subtree."
@@ -427,6 +430,7 @@ type FunctionValueBinder {
 type FunctionLiteralBody
   = FunctionLiteralExprBody { expr: Node }
   | FunctionLiteralBlockBody { fn_body: Node }
+  | FunctionLiteralStatementBody { body: Node }
 
 type FunctionValueParts {
   binders: List<FunctionValueBinder>
@@ -534,6 +538,22 @@ fn fv_block_body_optional(expr: Node) -> Optional<Node> {
   }
 }
 
+// AN ARROW LAMBDA'S BODY IS ONE OF THREE KINDS, decided here once from the production it parsed as
+// (v2.extdeps.languages.dag dag_grammar_arrow_lambda_body_expr): an unbraced statement sequence that
+// begins with a let is its own production, lambda_stmt_body, whose captured child is the statement
+// spine every statement sequence lowers through; a braced block is fn_body (fv_block_body_optional);
+// anything else is an expression.
+fn fv_arrow_body(body: Node) -> FunctionLiteralBody {
+  if fv_production_is(node: body, emitted: ^dag_surface_lambda_stmt_body) {
+    FunctionLiteralStatementBody { body: fv_unwrap(node: body) }
+  } else {
+    match fv_block_body_optional(expr: body) {
+      Present { value: fn_body } => FunctionLiteralBlockBody { fn_body: fn_body }
+      Absent => FunctionLiteralExprBody { expr: body }
+    }
+  }
+}
+
 fn fv_production_is(node: Node, emitted: Symbol) -> Bool {
   match parse_production_emitted_identity_optional(node: fv_unwrap(node: node)) {
     Present { value: id } => id == emitted
@@ -557,10 +577,7 @@ fn fv_expr_parts(binders: List<FunctionValueBinder>, after_binders: Node) -> Opt
         value: FunctionValueParts {
           binders: binders,
           return_clause: fv_empty_return_clause(),
-          body: match fv_block_body_optional(expr: expr) {
-            Present { value: fn_body } => FunctionLiteralBlockBody { fn_body: fn_body }
-            Absent => FunctionLiteralExprBody { expr: expr }
-          }
+          body: fv_arrow_body(body: expr)
         }
       }
   }
@@ -794,6 +811,7 @@ fn fold_step_body(parts: FunctionValueParts) -> Optional<Node> {
   match parts.body {
     FunctionLiteralExprBody { expr: e } => optional_present(value: e)
     FunctionLiteralBlockBody { fn_body: b } => parse_production_captured_child_optional(node: fv_unwrap(node: b))
+    FunctionLiteralStatementBody { body: b } => optional_present(value: b)
   }
 }
 

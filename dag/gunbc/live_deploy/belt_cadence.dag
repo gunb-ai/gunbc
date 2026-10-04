@@ -1,0 +1,26 @@
+module gunbc.live_deploy.belt_cadence
+
+import std.types { String }
+
+// OnUnitInactiveSec, NOT OnUnitActiveSec, and the difference is a fail-closed choice rather than a
+// formatting one. OnUnitActiveSec measures from when the tick STARTED, so a tick that runs longer
+// than the cadence schedules its successor while it is still running and ticks pile up back-to-back
+// — for a unit whose job is spawning agent sessions, that converts a slow tick into overlapping
+// spawns. OnUnitInactiveSec measures from when the previous tick FINISHED, so the gap is real
+// regardless of how long a tick takes and the belt can never outrun itself. systemd additionally
+// refuses to start a Type=oneshot unit that is already active, so the two together make overlap
+// unwritable rather than unlikely.
+//
+// 60s is the operator's stated default for this lane and is deliberately not tuned against
+// anything: a tick against an unchanged frontier is an idempotent reconcile that observes live tmux
+// sessions and does nothing (belt_run_once_note), so the cost of a too-fast cadence is an
+// observation, not an action. AccuracySec=5s keeps systemd from coalescing the timer into a distant
+// wakeup window, which is the default behavior and would otherwise make the effective cadence
+// unpredictable.
+//
+// OnBootSec=2min rather than firing immediately: at boot the tree sync, the serve unit and
+// tailscale are all converging, and a belt tick that spawns before the repo tree is in place
+// produces SpawnFailed rows for a condition that resolves itself within seconds. The delay costs
+// one cadence period and removes a class of self-inflicted refusals from the receipt.
+
+data belt_tick_cadence: String = "60s"

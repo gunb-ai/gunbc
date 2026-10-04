@@ -9,7 +9,6 @@ pub use crate::std_coercion::TypeCheckpoint;
 pub use crate::std_target_representation::{
     RepresentationSpelling, RepresentationValue, SourceTypeTargetBinding,
 };
-use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

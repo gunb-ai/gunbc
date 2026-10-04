@@ -983,7 +983,7 @@ fn publication_helper_run_json(outcomes: List<PublicationHelperOutcome>) -> Stri
   ]))
 }
 
-// EXIT SEMANTICS, on the belt's own precedent (belt_run_once_cli_note): a recorded refusal is a
+// EXIT SEMANTICS, on the belt's own precedent (gunbc.roadmap_belt_tick_cli belt_run_once_cli): a recorded refusal is a
 // counted outcome and not a failure to run, so an answer recording an absent credential exits 0 --
 // the fact reached disk and the requester will read it. Nonzero is reserved for the helper failing
 // to do its job at all: a spool it cannot reach, a request it cannot read, an answer it cannot

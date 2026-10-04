@@ -2413,6 +2413,7 @@ fn staged_post_over_canary(graph: LaunchGraphStanding, standing: LaunchHostStand
     graph: graph,
     merged: [],
     node_id: node_id,
+    request: LaunchAutonomous,
   )
 }
 

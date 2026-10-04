@@ -1,6 +1,7 @@
 module std.termination
 
 import std.algebra { BoundedLattice, Ordering }
+import std.types { List, Map }
 
 type DescentEvidence
   = Strict
@@ -20,14 +21,14 @@ fn descent_evidence_lattice_meet(a: DescentEvidence, b: DescentEvidence) -> Desc
     Strict => match b {
       Strict => Strict
       NonIncreasing => NonIncreasing
-      _ => DescentUnknown
+      DescentUnknown => DescentUnknown
     }
     NonIncreasing => match b {
       Strict => NonIncreasing
       NonIncreasing => NonIncreasing
-      _ => DescentUnknown
+      DescentUnknown => DescentUnknown
     }
-    _ => DescentUnknown
+    DescentUnknown => DescentUnknown
   }
 }
 
@@ -36,7 +37,8 @@ fn descent_evidence_lattice_join(a: DescentEvidence, b: DescentEvidence) -> Desc
     DescentUnknown => b
     NonIncreasing => match b {
       Strict => Strict
-      _ => NonIncreasing
+      NonIncreasing => NonIncreasing
+      DescentUnknown => NonIncreasing
     }
     Strict => Strict
   }
@@ -53,7 +55,7 @@ fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
   match evidence {
     NonIncreasing => NonIncreasing
     Strict => Strict
-    _ => DescentUnknown
+    DescentUnknown => DescentUnknown
   }
 }
 

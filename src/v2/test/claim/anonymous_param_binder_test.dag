@@ -14,7 +14,6 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Diagnostic, NodeLocus, NonEmptyDiagnostics, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Arrow, Hash, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode, content_hash, node_subtree_nodes, well_formed, StructuralLabel }
 import v2.std.node_query { pattern_wildcard_name }
 import v2.std.optional { Absent, Present }

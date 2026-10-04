@@ -22,7 +22,6 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import v2.std.node { Node }
-import v2.std.logic { Bool }
 import v2.std.runtime { RuntimeValue }
 
 // DISCHARGE IS THE ONE ROUTE FROM INFER'S OUTPUT TO AN InferredTree. Infer records a

@@ -21,7 +21,6 @@ import v2.std.grammar {
 }
 import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol, content_hash }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

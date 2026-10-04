@@ -12,7 +12,6 @@ import v2.lens.duplicate_computation {
 }
 import v2.std.algebra { length }
 import std.algebra { list_append }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

@@ -58,9 +58,6 @@ import v2.std.algebra {
 import v2.std.collection {
   Symbol
 }
-import v2.std.logic {
-  Bool
-}
 import v2.std.node {
   Atom,
   Conj,

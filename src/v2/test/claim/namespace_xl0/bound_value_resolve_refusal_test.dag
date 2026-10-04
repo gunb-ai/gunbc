@@ -18,7 +18,6 @@ import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
@@ -48,27 +47,27 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // so reaching resolve is not by itself a refusal and the route did not start refusing what it used
 // to accept; the chained-lets control carries one let's name into the next let's call argument.
 
-data bvr_paren_operand_source: String = "module v2.test.bvr_paren_operand\n\nimport v2.std.logic { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  let bvr_bound = bvr_p && (bvr_undeclared)\n  bvr_bound\n}\n"
+data bvr_paren_operand_source: String = "module v2.test.bvr_paren_operand\n\nimport std.types { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  let bvr_bound = bvr_p && (bvr_undeclared)\n  bvr_bound\n}\n"
 
-data bvr_call_argument_source: String = "module v2.test.bvr_call_argument\n\nimport v2.std.logic { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  let bvr_bound = bvr_g(bvr_q: bvr_undeclared)\n  bvr_bound\n}\n"
+data bvr_call_argument_source: String = "module v2.test.bvr_call_argument\n\nimport std.types { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  let bvr_bound = bvr_g(bvr_q: bvr_undeclared)\n  bvr_bound\n}\n"
 
-data bvr_paren_group_source: String = "module v2.test.bvr_paren_group\n\nimport v2.std.logic { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  let bvr_bound = (bvr_undeclared)\n  bvr_bound\n}\n"
+data bvr_paren_group_source: String = "module v2.test.bvr_paren_group\n\nimport std.types { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  let bvr_bound = (bvr_undeclared)\n  bvr_bound\n}\n"
 
-data bvr_if_value_source: String = "module v2.test.bvr_if_value\n\nimport v2.std.logic { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  let bvr_bound = if bvr_p { bvr_undeclared } else { bvr_p }\n  bvr_bound\n}\n"
+data bvr_if_value_source: String = "module v2.test.bvr_if_value\n\nimport std.types { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  let bvr_bound = if bvr_p { bvr_undeclared } else { bvr_p }\n  bvr_bound\n}\n"
 
-data bvr_declared_paren_operand_source: String = "module v2.test.bvr_declared_paren_operand\n\nimport v2.std.logic { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  let bvr_bound = bvr_p && (bvr_p)\n  bvr_bound\n}\n"
+data bvr_declared_paren_operand_source: String = "module v2.test.bvr_declared_paren_operand\n\nimport std.types { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  let bvr_bound = bvr_p && (bvr_p)\n  bvr_bound\n}\n"
 
-data bvr_declared_call_argument_source: String = "module v2.test.bvr_declared_call_argument\n\nimport v2.std.logic { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  let bvr_bound = bvr_g(bvr_q: bvr_p)\n  bvr_bound\n}\n"
+data bvr_declared_call_argument_source: String = "module v2.test.bvr_declared_call_argument\n\nimport std.types { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  let bvr_bound = bvr_g(bvr_q: bvr_p)\n  bvr_bound\n}\n"
 
-data bvr_declared_if_value_source: String = "module v2.test.bvr_declared_if_value\n\nimport v2.std.logic { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  let bvr_bound = if bvr_p { bvr_p } else { false }\n  bvr_bound\n}\n"
+data bvr_declared_if_value_source: String = "module v2.test.bvr_declared_if_value\n\nimport std.types { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  let bvr_bound = if bvr_p { bvr_p } else { false }\n  bvr_bound\n}\n"
 
-data bvr_chained_lets_source: String = "module v2.test.bvr_chained_lets\n\nimport v2.std.logic { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  let bvr_bound = bvr_g(bvr_q: bvr_p)\n  let bvr_again = bvr_g(bvr_q: bvr_bound)\n  bvr_again\n}\n"
+data bvr_chained_lets_source: String = "module v2.test.bvr_chained_lets\n\nimport std.types { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  let bvr_bound = bvr_g(bvr_q: bvr_p)\n  let bvr_again = bvr_g(bvr_q: bvr_bound)\n  bvr_again\n}\n"
 
-data bvr_else_if_condition_source: String = "module v2.test.bvr_else_if_condition\n\nimport v2.std.logic { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  if bvr_p { bvr_p } else if bvr_p && (bvr_undeclared) { bvr_p } else { false }\n}\n"
+data bvr_else_if_condition_source: String = "module v2.test.bvr_else_if_condition\n\nimport std.types { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  if bvr_p { bvr_p } else if bvr_p && (bvr_undeclared) { bvr_p } else { false }\n}\n"
 
-data bvr_else_after_else_if_source: String = "module v2.test.bvr_else_after_else_if\n\nimport v2.std.logic { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  if bvr_p { bvr_p } else if bvr_p { false } else { bvr_undeclared }\n}\n"
+data bvr_else_after_else_if_source: String = "module v2.test.bvr_else_after_else_if\n\nimport std.types { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  if bvr_p { bvr_p } else if bvr_p { false } else { bvr_undeclared }\n}\n"
 
-data bvr_declared_else_if_source: String = "module v2.test.bvr_declared_else_if\n\nimport v2.std.logic { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  if bvr_p { bvr_p } else if bvr_g(bvr_q: bvr_p) { false } else if bvr_p && (bvr_p) { bvr_p } else { false }\n}\n"
+data bvr_declared_else_if_source: String = "module v2.test.bvr_declared_else_if\n\nimport std.types { Bool }\n\nfn bvr_g(bvr_q: Bool) -> Bool { bvr_q }\n\nfn bvr_probe(bvr_p: Bool) -> Bool {\n  if bvr_p { bvr_p } else if bvr_g(bvr_q: bvr_p) { false } else if bvr_p && (bvr_p) { bvr_p } else { false }\n}\n"
 
 fn bvr_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {

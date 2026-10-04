@@ -79,7 +79,6 @@ import v2.compiler.effect_demand {
   effect_demand_unrealized_rows
 }
 import v2.std.algebra { Empty, any, length }
-import v2.std.logic { Bool }
 
 // THE ORACLE IS A CONTROLLED FIXTURE, not a measurement copied from the current tree (DESIGN section
 // 5). Every probe authors the observed demands, the roster and the realization population by hand,

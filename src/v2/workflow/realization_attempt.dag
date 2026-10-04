@@ -18,7 +18,6 @@ import v2.std.node { Node, Edge, TypeNode, Arrow, Conj, Authored, Symbol, node_s
 import v2.std.optional { Optional, Present, Absent }
 import v2.std.algebra { fold_list, length }
 import std.algebra { Cons, Empty }
-import v2.std.logic { Bool }
 import std.types { Int, List, NonEmptyStr, String }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 

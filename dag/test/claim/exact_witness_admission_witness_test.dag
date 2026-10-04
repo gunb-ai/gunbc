@@ -57,7 +57,6 @@ import std.witness_admission {
 }
 import v2.std.algebra { length }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.dissolution { unbound_dissolution }

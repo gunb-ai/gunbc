@@ -4,7 +4,6 @@ import std.types { List }
 import std.content_hash { Fnv1a64Structural }
 import v2.std.algebra { fold_list }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 

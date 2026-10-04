@@ -28,7 +28,6 @@ import v2.std.diagnostic {
   Rejected,
   diagnostics_singleton
 }
-import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
   Node,

@@ -4,7 +4,6 @@ import std.types { List }
 import v2.std.decl_index { DeclFact, decl_facts }
 import v2.std.node { Atom, Edge, Authored, Node, NodeFold, Positional, Symbol, TypeNode, fold_node, StructuralLabel }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 // Executing consumer for the decl-fact skeleton's record_construction_spelling edge (the marshal

@@ -22,7 +22,6 @@ import v2.std.compilers.body_lowering {
 }
 import v2.std.diagnostic { diagnostics_fatal_reason }
 import v2.std.collection { Absent, Present, list_at_optional }
-import v2.std.logic { Bool }
 
 fn call_carrier_callee_ref() -> Node {
   node_synthetic(

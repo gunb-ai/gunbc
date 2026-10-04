@@ -38,7 +38,7 @@ import v2.std.compilers.lexing {
   lex_rule_set_token_class_member
 }
 import v2.std.collection { Absent, Map, Optional, PointwisePower, Present, empty_map, map_insert }
-import v2.std.logic { Bool, bool_boolean_algebra }
+import v2.std.logic { bool_boolean_algebra }
 import extdeps.languages.lean.overflow { lean_upstream_fixed_width_overflow_returns_rule }
 import std.algebra { Cons, Empty, list_snoc_item }
 import std.integer {
@@ -472,7 +472,7 @@ data lean_primitive_facts_catalog: List<LeanPrimitiveFacts> = [
   lean_facts_bool
 ]
 
-data lean_bool_grounding: BooleanAlgebra<v2.std.logic.Bool> = bool_boolean_algebra
+data lean_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 fn lean_inhabitant_atom(id: Symbol) -> Node {
   Node {

@@ -4,7 +4,6 @@ import std.types { List }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { list_reverse }
 import v2.std.integer { Int, integer_int_to_decimal_string }
-import v2.std.logic { Bool }
 import v2.std.node { Edge, Authored, Positional, Symbol, symbol_intern_lexeme, symbol_lexeme, StructuralLabel }
 import v2.std.node_query { binder_relabelled, pattern_wildcard_name }
 

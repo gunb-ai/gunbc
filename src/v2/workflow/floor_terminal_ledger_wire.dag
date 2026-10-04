@@ -11,7 +11,6 @@ import std.content_hash {
   content_hash_combine_structural
 }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import std.algebra { list_append }
 import v2.std.algebra { filter }

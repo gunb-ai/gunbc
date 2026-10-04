@@ -16,7 +16,6 @@ import v2.std.diagnostic {
   Rejected,
   bind_outcome
 }
-import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
   Atom,
