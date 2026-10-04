@@ -241,3 +241,22 @@ with individual named objects, all printed layer-by-layer. Slower wall speeds an
 acceleration plus a brim address adhesion/motion risk; they do not establish loaded
 joint strength. The durable arbitrary-set batch controller remains the separate
 BATCH-1 through BATCH-6 milestone; a prepared multi-object plate is not that controller.
+
+Final preparation receipt: `artifacts/printing/socket-redesign-2026-10-04/` records
+all compared slices, full project digests, named membership and model checks.
+`overnight-batch` places P1/P2 on their rear edges (long vents vertical), S1/S2
+floor-down and K3/K4/K6/K7 head-down. The deposited-path readback confirms no
+support extrusion attributed to either socket or any of the four pins. All eight
+objects remain separately named in the 3MF. This is a single layer-by-layer plate.
+
+Selected under the operator's preference for fewer handling visits and longer
+prints; the flat alternative remains cheaper in machine time and total material.
+Sliced estimates are in `readback.json`; none is a measured physical print result.
+The selected file is `cassette-socket-redesign/overnight-batch.3mf` in the local
+2026-10-04 print-prep directory. No print was started by this preparation. Fresh
+bed clearance and the reviewed approval/start route still apply at dispatch.
+
+The preparation's independent G-code reader was corrected to include leading-dot
+numbers such as `E.0225`; previous P1–P4 and arms/beam slices were rechecked and
+remain inside bed bounds. Slicer `first_layer_time` XML values were malformed;
+time comparison uses total prediction and the readable G-code header instead.
