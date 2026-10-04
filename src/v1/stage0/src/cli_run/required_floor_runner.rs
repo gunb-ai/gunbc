@@ -7234,6 +7234,28 @@ pub(crate) fn derive_and_install_cross_claim_share(
         }
     };
     v1_interpreter::install_cross_claim_cost_floor_steps(cost_floor_steps);
+    // The floor counts a fill's native work too: its thread CPU, read as steps at the declared
+    // calibration rate. A fill whose cost is native (keying a served producer's argument row) is
+    // otherwise declined on its step count and re-paid by every claim.
+    let cost_floor_steps_per_ms = match v1_interpreter::run_in_context(
+        ctx,
+        &format!("{MODULE}.floor_cross_claim_share_cost_floor_steps_per_millisecond"),
+        false,
+    ) {
+        Ok(Value::Int(n)) if n > 0 => n as u64,
+        other => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=CrossClaimShareCostFloorRateUnreadable -- \
+                 floor_cross_claim_share_cost_floor_steps_per_millisecond must be a positive \
+                 Int, got {}",
+                match other {
+                    Ok(v) => ctx.format_value(&v),
+                    Err(e) => e.to_string(),
+                }
+            ))
+        }
+    };
+    v1_interpreter::install_cross_claim_cost_floor_cpu_rate(cost_floor_steps_per_ms);
     let ns_per_step_ceiling = match v1_interpreter::run_in_context(
         ctx,
         &format!("{MODULE}.floor_cross_claim_fill_wall_per_step_ceiling_nanosecond_count"),

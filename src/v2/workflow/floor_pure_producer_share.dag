@@ -15,6 +15,7 @@ import std.materialization_ladder {
   AcceptedEffectIsTheUse, RefusedNatureConflict
 }
 import std.measure { Nanosecond, byte_size, nanosecond, nanosecond_count }
+import v2.workflow.floor_eval_step_calibration { calibration_rate, floor_eval_step_calibration }
 import v2.std.algebra { any, list_flat_map, list_map }
 
 // THE CROSS-CLAIM PURE-PRODUCER SHARE -- which pure computations the required floor may fill
@@ -393,6 +394,21 @@ fn derive_cross_claim_share(
 // and counts every identity it declines (`BelowCostFloor`).
 fn floor_cross_claim_share_cost_floor_eval_steps() -> Int {
   5000
+}
+
+// THE FLOOR COUNTS NATIVE WORK, as declared policy: a fill's work is the larger of its evaluator
+// steps and its thread CPU read as steps at the floor's own calibration rate
+// (v2.workflow.floor_eval_step_calibration, the one authority that relates steps to time). Steps
+// alone undercount a fill whose cost is native. The measured case: dag_prepared_grammar is a
+// nullary wrapper over prepare_grammar(grammar: dag_grammar()); once prepare_grammar is served the
+// wrapper performs a handful of steps, and still pays the content hash and total reification of
+// the whole grammar value to key that lookup -- 466 ms on main's own fill of it (probe run
+// 37160051963). Judged on steps it was declined at this floor (205 times on probe 37160050318), so
+// every claim that reached it re-paid that keying natively, outside its step budget: the same
+// claims ran with fewer steps and more CPU than on main. Counting CPU retains the wrapper, and a
+// claim's hit is then a nullary key again.
+fn floor_cross_claim_share_cost_floor_steps_per_millisecond() -> Int {
+  calibration_rate(calibration: floor_eval_step_calibration)
 }
 
 // THE IN-FLIGHT FILL WALL CEILING: a declared POLICY budget, in nanoseconds of wall per evaluator

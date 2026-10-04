@@ -2193,6 +2193,7 @@ pub fn clear_cross_claim_pure_memos() {
     CROSS_CLAIM_ADMITTED_SITES.with(|a| a.borrow_mut().clear());
     CROSS_CLAIM_NET_ONLY_SITES.with(|n| n.borrow_mut().clear());
     CROSS_CLAIM_COST_FLOOR_STEPS.with(|c| c.set(0));
+    CROSS_CLAIM_COST_FLOOR_STEPS_PER_MS.with(|c| c.set(0));
     CROSS_CLAIM_STORE_DECLINES.with(|d| d.borrow_mut().clear());
     CROSS_CLAIM_IN_FLIGHT_WALL_CAP_NANOS.with(|c| c.set(0));
     CROSS_CLAIM_FILL_NS_PER_STEP_CEILING.with(|c| c.set(0));
@@ -2303,6 +2304,22 @@ fn cross_claim_site_is_net_only(call_node: &Node) -> bool {
     })
 }
 
+/// A fill's work in evaluator-step units: the larger of the steps it performed and its thread CPU
+/// converted at the declared calibration rate. STEPS ALONE UNDERCOUNT A FILL WHOSE COST IS NATIVE:
+/// a nullary wrapper around an already-served producer performs a handful of steps and still pays
+/// the content hash and total reification of that producer's argument row to key the lookup
+/// (`dag_prepared_grammar` over `prepare_grammar(grammar:)`: 466 ms, measured on main's own fill
+/// of it). Judged on steps it was declined at the floor, so every claim re-paid that keying
+/// natively and outside its step budget. A rate of zero (nothing installed) leaves steps alone.
+fn cross_claim_fill_work_steps(guard: &CrossClaimFillGuard) -> u64 {
+    let steps = evaluator_steps().wrapping_sub(guard.steps_started);
+    let rate = CROSS_CLAIM_COST_FLOOR_STEPS_PER_MS.with(|c| c.get());
+    let cpu_nanos = thread_cpu_nanos().saturating_sub(guard.cpu_started);
+    let cpu_as_steps =
+        u64::try_from(cpu_nanos.saturating_mul(u128::from(rate)) / 1_000_000).unwrap_or(u64::MAX);
+    steps.max(cpu_as_steps)
+}
+
 /// Publish one completed admitted fill: retain it in the tier, or -- at a net-only site -- net its
 /// cost from the paying claim without retaining the value. The cost floor applies to both: a fill
 /// below it is neither retained nor netted. Every declined outcome is counted by producer.
@@ -2318,7 +2335,7 @@ fn publish_cross_claim_fill(
     if net_only {
         if let Some(guard) = fill_guard {
             let floor = CROSS_CLAIM_COST_FLOOR_STEPS.with(|c| c.get());
-            if evaluator_steps().wrapping_sub(guard.steps_started) < floor {
+            if cross_claim_fill_work_steps(guard) < floor {
                 CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow_mut().below_cost_floor += 1);
                 note_cross_claim_store_outcome(
                     func_name,
@@ -2688,12 +2705,13 @@ fn store_cross_claim_pure_memo(
         return CrossClaimStoreOutcome::NotAdmitted;
     }
     // THE COST FLOOR, applied to a derived producer's fill at the moment it would be retained: the
-    // guard measured the fill's evaluator steps, so the decision rests on this fill's own work.
+    // guard measured the fill's evaluator steps AND its thread CPU, so the decision rests on this
+    // fill's own work, native work included (`cross_claim_fill_work_steps`).
     if let Some(guard) = fill_guard {
         let floor = CROSS_CLAIM_COST_FLOOR_STEPS.with(|c| c.get());
         let gated =
             CROSS_CLAIM_SITE_GATED.with(|g| g.borrow().contains(&(Rc::as_ptr(fn_node) as usize)));
-        if gated && evaluator_steps().wrapping_sub(guard.steps_started) < floor {
+        if gated && cross_claim_fill_work_steps(guard) < floor {
             CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow_mut().below_cost_floor += 1);
             return CrossClaimStoreOutcome::RefusedBelowCostFloor;
         }
@@ -3920,6 +3938,59 @@ mod cross_claim_memo_tests {
         );
         drop(guard);
         assert_eq!(stored, CrossClaimStoreOutcome::Stored);
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // THE COST FLOOR COUNTS NATIVE WORK. The pair varies only the CPU rate: one fill that performs
+    // NO evaluator steps but burns thread CPU is declined when CPU is not counted (rate zero) and
+    // retained when it is. This is the `dag_prepared_grammar` shape -- a wrapper whose cost is the
+    // native keying of the producer beneath it -- which a steps-only floor declined on every claim.
+    #[test]
+    fn a_fill_with_native_cost_and_no_steps_clears_the_floor_only_when_cpu_is_counted() {
+        use super::{
+            install_cross_claim_cost_floor_cpu_rate, install_cross_claim_cost_floor_steps,
+            install_cross_claim_derived_share, store_cross_claim_pure_memo, thread_cpu_nanos,
+            CrossClaimFillGuard, CrossClaimStoreOutcome,
+        };
+        fn burn_two_milliseconds_of_cpu() {
+            let started = thread_cpu_nanos();
+            let mut acc = 0u64;
+            while thread_cpu_nanos().saturating_sub(started) < 2_000_000 {
+                acc = std::hint::black_box(acc.wrapping_mul(31).wrapping_add(7));
+            }
+        }
+        for (rate, expected) in [
+            (0u64, CrossClaimStoreOutcome::RefusedBelowCostFloor),
+            (1_000u64, CrossClaimStoreOutcome::Stored),
+        ] {
+            super::clear_cross_claim_pure_memos();
+            let ctx = fresh_ctx();
+            let derived = make_expr_node(
+                Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+                ),
+                Rc::new(ExprData::NoExprData),
+                Rc::new(im_vec![]),
+                None,
+                no_span(),
+            );
+            install_cross_claim_derived_share([derived.clone()], std::collections::HashSet::new());
+            // 1000 steps: 2 ms of CPU at 1000 steps/ms is 2000 steps of work, above the floor.
+            install_cross_claim_cost_floor_steps(1_000);
+            install_cross_claim_cost_floor_cpu_rate(rate);
+            let guard = CrossClaimFillGuard::enter("tm_native");
+            burn_two_milliseconds_of_cpu();
+            let outcome = store_cross_claim_pure_memo(
+                &ctx,
+                &derived,
+                "tm_native",
+                &[],
+                &Value::Int(1),
+                Some(&guard),
+            );
+            drop(guard);
+            assert_eq!(outcome, expected, "cpu rate {rate}");
+        }
         super::clear_cross_claim_pure_memos();
     }
 
@@ -7113,6 +7184,9 @@ thread_local! {
     /// The declared cost floor (evaluator steps) below which a derived share's fill is not
     /// retained. Zero (the default) retains every admitted fill.
     static CROSS_CLAIM_COST_FLOOR_STEPS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    /// The declared calibration rate (evaluator steps per millisecond of CPU) at which a fill's
+    /// thread CPU is read as work against the cost floor. Zero judges on steps alone.
+    static CROSS_CLAIM_COST_FLOOR_STEPS_PER_MS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
 /// Install the in-flight fill excusal: the outer hard cap and the nanoseconds-per-step ceiling.
@@ -7124,6 +7198,12 @@ pub fn install_cross_claim_in_flight_wall_bound(cap_ms: u64, ns_per_step_ceiling
 /// Install the derived share's cost floor (see `CROSS_CLAIM_COST_FLOOR_STEPS`).
 pub fn install_cross_claim_cost_floor_steps(steps: u64) {
     CROSS_CLAIM_COST_FLOOR_STEPS.with(|c| c.set(steps));
+}
+
+/// Install the rate at which a fill's CPU counts toward the cost floor
+/// (see `CROSS_CLAIM_COST_FLOOR_STEPS_PER_MS`).
+pub fn install_cross_claim_cost_floor_cpu_rate(steps_per_ms: u64) {
+    CROSS_CLAIM_COST_FLOOR_STEPS_PER_MS.with(|c| c.set(steps_per_ms));
 }
 
 /// The outermost in-flight admitted fill, as (producer, its own steps so far, its own wall so
