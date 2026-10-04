@@ -5,6 +5,7 @@ use self::AliasDeclArityVerdict::*;
 use self::ClosedAliasPeelVerdict::*;
 use self::FmArmAnalysis::*;
 use self::FmLoweringRefusal::*;
+use self::HostOptionArmReading::*;
 use self::IterOwnedReceiverCloneDisposition::*;
 use self::WitnessCtorPathVerdict::*;
 pub use crate::extdeps_cargo::CargoFeature;
@@ -64,7 +65,8 @@ pub use crate::gunbc_stage0_emitted_population_manifest::{
 pub use crate::gunbc_stage0_executable_assembly_generated::generated_host_shell_partition_dependencies;
 pub use crate::gunbc_stage0_partition_package_graph::stage0_partition_row_is_module_bearing_package;
 pub use crate::gunbc_structural_realization_bindings::{
-    kernel_grounding_rows, structural_ordering_rows,
+    kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name,
+    structural_ordering_rows,
 };
 pub use crate::std_algebra::trim;
 pub use crate::std_algebra::AlgebraFieldTemplate;
@@ -78,11 +80,11 @@ use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
-pub use crate::std_literal_elaboration::kernel_grounding_for;
 use crate::std_literal_elaboration::KernelGroundingLookup::{
     KernelGroundingAbsent, KernelGroundingAmbiguous, KernelGroundingFound,
 };
 use crate::std_literal_elaboration::LiteralSourceKind::KernelIntLiteral;
+pub use crate::std_literal_elaboration::{kernel_grounding_for, kernel_mint_is_bound_to};
 pub use crate::std_literal_elaboration::{KernelGroundingLookup, LiteralSourceKind};
 pub use crate::std_measure::millisecond_count;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
@@ -126,14 +128,17 @@ use crate::std_target_representation::ExactBindingResolution::{
     ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable, ResolvedExactBinding,
 };
 use crate::std_target_representation::VariantParentIdentity::{
-    VariantParentBeforeInference, VariantParentUnrecovered,
+    VariantParentBeforeInference, VariantParentIdentified, VariantParentUnrecovered,
+};
+use crate::std_target_representation::VariantParentKey::{
+    VariantParentDeclaration, VariantParentKernelType,
 };
 use crate::std_target_representation::VariantValueRealization::{
     VariantParentIdentityUnavailable, VariantRealizesAsTargetValue, VariantRealizesStructurally,
     VariantTargetValueAmbiguous, VariantTargetValueUnbound,
 };
 pub use crate::std_target_representation::{
-    ExactBindingResolution, VariantParentIdentity, VariantValueRealization,
+    ExactBindingResolution, VariantParentIdentity, VariantParentKey, VariantValueRealization,
 };
 pub use crate::std_types::SourceSpan;
 pub use crate::std_types::{container_template_algebra, is_container_type, is_kernel_type};
@@ -20872,6 +20877,7 @@ pub fn emit_pattern(
             std::option::Option::None => emit_variant_pattern(
                 n.clone(),
                 parent_enum.clone(),
+                identity.clone(),
                 fbs.clone(),
                 path_prefix.clone(),
                 shared_types.clone(),
@@ -21120,9 +21126,67 @@ pub fn unresolved_variant_pattern_refusal(name: String, scrut_type: String) -> S
     }
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum HostOptionArmReading {
+    HostOptionArmIsHostOption,
+    HostOptionArmIsNot,
+    HostOptionArmSpelledWithoutIdentity,
+}
+
+pub fn host_option_arm_reading(
+    identity: Rc<VariantParentIdentity>,
+    bare_name: String,
+    resolved_parent: Option<String>,
+) -> HostOptionArmReading {
+    match (*identity.clone()).clone() {
+        VariantParentIdentity::VariantParentIdentified { key: key, .. } => {
+            match (*key.clone()).clone() {
+                VariantParentKey::VariantParentDeclaration { declaration: d, .. } => {
+                    if crate::std_literal_elaboration::kernel_mint_is_bound_to(
+                        kernel_mint_declaration_rows(),
+                        kernel_optional_mint_name(),
+                        d.clone(),
+                    ) {
+                        HostOptionArmReading::HostOptionArmIsHostOption
+                    } else {
+                        HostOptionArmReading::HostOptionArmIsNot
+                    }
+                }
+                VariantParentKey::VariantParentKernelType { kernel_name: _, .. } => {
+                    HostOptionArmReading::HostOptionArmIsNot
+                }
+            }
+        }
+        _ => {
+            if !is_optional_variant_name(bare_name.clone()) {
+                HostOptionArmReading::HostOptionArmIsNot
+            } else {
+                match resolved_parent.clone() {
+                    std::option::Option::None => HostOptionArmReading::HostOptionArmIsHostOption,
+                    Some(parent) => {
+                        if (parent.clone() == kernel_optional_mint_name()) {
+                            HostOptionArmReading::HostOptionArmSpelledWithoutIdentity
+                        } else {
+                            if is_optional_like_parent_name(parent.clone()) {
+                                HostOptionArmReading::HostOptionArmIsHostOption
+                            } else {
+                                HostOptionArmReading::HostOptionArmIsNot
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn emit_variant_pattern(
     name: String,
     parent_enum: Option<String>,
+    parent_identity: Rc<VariantParentIdentity>,
     field_bindings: Rc<Vec<Rc<Node>>>,
     path_prefix: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
@@ -21138,6 +21202,7 @@ pub fn emit_variant_pattern(
         emit_resolved_variant_pattern(
             name.clone(),
             parent_enum.clone(),
+            parent_identity.clone(),
             field_bindings.clone(),
             path_prefix.clone(),
             shared_types.clone(),
@@ -21151,6 +21216,7 @@ pub fn emit_variant_pattern(
 pub fn emit_resolved_variant_pattern(
     name: String,
     parent_enum: Option<String>,
+    parent_identity: Rc<VariantParentIdentity>,
     field_bindings: Rc<Vec<Rc<Node>>>,
     path_prefix: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
@@ -21166,9 +21232,18 @@ pub fn emit_resolved_variant_pattern(
             scrut_type.clone(),
             emit_info.type_summaries.clone(),
         );
-        let optional_variant = (is_optional_variant_name(bare_name.clone())
-            && (is_optional_parent(resolved_parent.clone())
-                || (resolved_parent.clone() == std::option::Option::None)));
+        let host_option = host_option_arm_reading(
+            parent_identity.clone(),
+            bare_name.clone(),
+            resolved_parent.clone(),
+        );
+        let spelled_without_identity =
+            (host_option.clone() == HostOptionArmReading::HostOptionArmSpelledWithoutIdentity);
+        if spelled_without_identity.clone() {
+            return emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat("variant realization: the pattern arm `".to_string(), bare_name.clone()), "` names the kernel optional as its parent by spelling, but inference carried no declaration identity for it; the arm is refused rather than lowered by spelling".to_string()));
+        }
+        let optional_variant =
+            (host_option.clone() == HostOptionArmReading::HostOptionArmIsHostOption);
         let rust_name = if optional_variant.clone() {
             rust_optional_variant_spelling(bare_name.clone())
         } else {
@@ -21779,6 +21854,7 @@ pub fn emit_pattern_rc_aware(
             std::option::Option::None => emit_variant_pattern_rc_aware(
                 n.clone(),
                 parent_enum.clone(),
+                identity.clone(),
                 fbs.clone(),
                 path_prefix.clone(),
                 rc_analysis.clone(),
@@ -21795,6 +21871,7 @@ pub fn emit_pattern_rc_aware(
 pub fn emit_variant_pattern_rc_aware(
     name: String,
     parent_enum: Option<String>,
+    parent_identity: Rc<VariantParentIdentity>,
     field_bindings: Rc<Vec<Rc<Node>>>,
     path_prefix: Rc<Vec<String>>,
     rc_analysis: Rc<RcPatternAnalysis>,
@@ -21811,6 +21888,7 @@ pub fn emit_variant_pattern_rc_aware(
         emit_resolved_variant_pattern_rc_aware(
             name.clone(),
             parent_enum.clone(),
+            parent_identity.clone(),
             field_bindings.clone(),
             path_prefix.clone(),
             rc_analysis.clone(),
@@ -21825,6 +21903,7 @@ pub fn emit_variant_pattern_rc_aware(
 pub fn emit_resolved_variant_pattern_rc_aware(
     name: String,
     parent_enum: Option<String>,
+    parent_identity: Rc<VariantParentIdentity>,
     field_bindings: Rc<Vec<Rc<Node>>>,
     path_prefix: Rc<Vec<String>>,
     rc_analysis: Rc<RcPatternAnalysis>,
@@ -21841,9 +21920,18 @@ pub fn emit_resolved_variant_pattern_rc_aware(
             scrut_type.clone(),
             emit_info.type_summaries.clone(),
         );
-        let optional_variant = (is_optional_variant_name(bare_name.clone())
-            && (is_optional_parent(resolved_parent.clone())
-                || (resolved_parent.clone() == std::option::Option::None)));
+        let host_option = host_option_arm_reading(
+            parent_identity.clone(),
+            bare_name.clone(),
+            resolved_parent.clone(),
+        );
+        let spelled_without_identity =
+            (host_option.clone() == HostOptionArmReading::HostOptionArmSpelledWithoutIdentity);
+        if spelled_without_identity.clone() {
+            return emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat("variant realization: the pattern arm `".to_string(), bare_name.clone()), "` names the kernel optional as its parent by spelling, but inference carried no declaration identity for it; the arm is refused rather than lowered by spelling".to_string()));
+        }
+        let optional_variant =
+            (host_option.clone() == HostOptionArmReading::HostOptionArmIsHostOption);
         let rust_name = if optional_variant.clone() {
             rust_optional_variant_spelling(bare_name.clone())
         } else {
@@ -40775,3 +40863,9 @@ pub struct AliasDeclArityAbsent;
 pub struct AliasDeclArityZeroParam;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AliasDeclArityHasParams;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct HostOptionArmIsHostOption;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct HostOptionArmIsNot;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct HostOptionArmSpelledWithoutIdentity;
