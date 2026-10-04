@@ -681,7 +681,24 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // run, a front end plus resolves that exceeds a new-witness budget, and the rehearsal itself is the
 // claims' subject, so supplying its output would leave them asserting nothing. Un-bundled into one
 // producer per run; the shared `xl2_cut_run` is demanded by four claims and is not debt.
+//
+// THE BUNDLE-DISPOSITION MEMBERS (the fold_operand_structure, body_type_annotation_refusal,
+// infer_fold_member_instance, field_projection_stages and value_base_projection claims named
+// beside this note's floor runs) read one field each of the bundles fos_outcomes,
+// btar_fn_literal_outcomes, fmi_record_fold_reading, fps_match_binder_reading and
+// vbp_call_projection_reading, declined as BundleOfDisjointProjections on floor run 37200031313.
+// Un-bundled, each fixture's assembly or parse is one producer every claim over it reads whole and
+// is SHARED; what remains over the new-witness budget on floor run 37207183924 is each claim's OWN
+// stage (its route, infer or front end), which the bundle had been netting from the claim silently.
+// That transfer is named here per claim instead.
 data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.body_lowering.fold_operand_structure",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "a_call_with_a_fold_argument_lowers_as_the_call_over_the_loop", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "the_body_walker_lowers_a_call_with_a_fold_argument_as_the_call_over_the_loop", standing: ActiveFillDebt }
+    ]
+  },
   SingleClaimFillDebtModule {
     module: "test.claim.namespace_xl2_rehearsal_census",
     claims: [
@@ -740,7 +757,9 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     claims: [
       SingleClaimFillDebtClaim { claim: "fmi_fold_member_undeclared_field_refuses", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "fmi_fold_over_records_is_accepted", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "fmi_fold_step_body_not_the_carrier_refuses", standing: ActiveFillDebt }
+      SingleClaimFillDebtClaim { claim: "fmi_fold_step_body_not_the_carrier_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "fmi_fold_member_incompatible_formal_refuses", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "fmi_fold_member_projects_a_declared_field", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
@@ -916,7 +935,9 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     claims: [
       SingleClaimFillDebtClaim { claim: "btar_if_arm_fn_literal_is_not_erased", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "btar_let_annotation_refuses", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "btar_unannotated_let_accepts", standing: ActiveFillDebt }
+      SingleClaimFillDebtClaim { claim: "btar_unannotated_let_accepts", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "btar_fn_literal_return_annotation_reaches_resolve", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "btar_unannotated_fn_literal_is_not_erased", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
@@ -1028,7 +1049,8 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
       SingleClaimFillDebtClaim { claim: "fps_an_absent_field_does_not_infer_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "fps_an_unresolvable_provider_leaves_its_declaration_unavailable_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "fps_the_int_field_grounds_as_an_int_parameter_does_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "fps_two_fields_of_different_types_ground_differently_holds", standing: ActiveFillDebt }
+      SingleClaimFillDebtClaim { claim: "fps_two_fields_of_different_types_ground_differently_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "fps_a_match_binder_receiver_is_not_yet_typed_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
@@ -1318,7 +1340,8 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     module: "v2.test.claim.value_base_projection",
     claims: [
       SingleClaimFillDebtClaim { claim: "vbp_a_param_spelled_like_the_field_is_not_captured", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "vbp_undeclared_field_off_a_call_result_is_carried_on_the_direct_infer_outcome", standing: ActiveFillDebt }
+      SingleClaimFillDebtClaim { claim: "vbp_undeclared_field_off_a_call_result_is_carried_on_the_direct_infer_outcome", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "vbp_call_result_projection_is_accepted_through_the_frontier", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {
