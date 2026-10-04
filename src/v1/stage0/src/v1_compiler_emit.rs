@@ -10,6 +10,7 @@ use self::FileVerb::*;
 use self::FuncBodyShape::*;
 use self::JsonFragmentsAccum::*;
 use self::NativeEffectContract::*;
+use self::NativeEffectDenominatorScope::*;
 use self::NativeEffectHandler::*;
 use self::NativeEffectRealizationAdmission::*;
 use self::NativeEffectUnavailableCause::*;
@@ -3151,15 +3152,52 @@ impl NativeEffectRealizationAdmission {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum NativeEffectDenominatorScope {
+    NativeAdmitAllExcept { excluded: Rc<Vec<String>> },
+    NativeAdmitOnly { admitted: Rc<Vec<String>> },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NativeEffectDenominator {
     pub ruling: String,
-    pub excluded_effects: Rc<Vec<String>>,
+    pub scope: Rc<NativeEffectDenominatorScope>,
+}
+
+pub fn native_effect_outside_denominator(
+    denominator: Rc<NativeEffectDenominator>,
+    effect: String,
+) -> bool {
+    match (*denominator.scope.clone()).clone() {
+        NativeEffectDenominatorScope::NativeAdmitAllExcept { excluded: xs, .. } => {
+            let mut __found = false;
+            for x in xs.iter().cloned() {
+                if (x.clone() == effect.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+        NativeEffectDenominatorScope::NativeAdmitOnly { admitted: xs, .. } => {
+            ({
+                let mut __found = false;
+                for x in xs.iter().cloned() {
+                    if (x.clone() == effect.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } == false)
+        }
+    }
 }
 
 pub fn native_compiler_route_denominator() -> Rc<NativeEffectDenominator> {
     thread_local! {
         static CACHED: Rc<NativeEffectDenominator> = {
-            serde_json::from_str("{\"ruling\": \"native compiler route: demand-engine-program D11 (operator, 2026-09-16)\", \"excluded_effects\": [\"Clock\", \"Network\", \"Entropy\", \"AuthContext\"]}")
+            serde_json::from_str("{\"ruling\": \"native compiler route: demand-engine-program D11 (operator, 2026-09-16)\", \"scope\": {\"_variant\": \"NativeAdmitAllExcept\", \"excluded\": [\"Clock\", \"Network\", \"Entropy\", \"AuthContext\"]}}")
                 .expect("valid data definition")
         };
     }
@@ -3169,7 +3207,17 @@ pub fn native_compiler_route_denominator() -> Rc<NativeEffectDenominator> {
 pub fn native_service_route_denominator() -> Rc<NativeEffectDenominator> {
     thread_local! {
         static CACHED: Rc<NativeEffectDenominator> = {
-            serde_json::from_str("{\"ruling\": \"native service route: D11 (operator, 2026-09-16) extended by gentle-dove-36 (2026-10-04) to admit Clock and Network\", \"excluded_effects\": [\"Entropy\", \"AuthContext\"]}")
+            serde_json::from_str("{\"ruling\": \"native service route: D11 (operator, 2026-09-16) extended by gentle-dove-36 (2026-10-04) to admit Clock and Network\", \"scope\": {\"_variant\": \"NativeAdmitAllExcept\", \"excluded\": [\"Entropy\", \"AuthContext\"]}}")
+                .expect("valid data definition")
+        };
+    }
+    CACHED.with(|c: &Rc<NativeEffectDenominator>| c.clone())
+}
+
+pub fn native_claim_route_denominator() -> Rc<NativeEffectDenominator> {
+    thread_local! {
+        static CACHED: Rc<NativeEffectDenominator> = {
+            serde_json::from_str("{\"ruling\": \"native claim route: std.compiler_entry NativeClaimDriver declares the resource set {Filesystem} (#13180)\", \"scope\": {\"_variant\": \"NativeAdmitOnly\", \"admitted\": [\"Filesystem\"]}}")
                 .expect("valid data definition")
         };
     }
@@ -3216,16 +3264,7 @@ pub fn admit_native_service_effect(
         let contract = Rc::new(NativeEffectContract::NativeServiceEffect {
             service: service.clone(),
         });
-        if {
-            let mut __found = false;
-            for r in denominator.excluded_effects.clone().iter().cloned() {
-                if (r.clone() == service.clone()) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        } {
+        if native_effect_outside_denominator(denominator.clone(), service.clone()) {
             return Rc::new(
                 NativeEffectRealizationAdmission::NativeEffectOutsideProductionDenominator {
                     effect_contract: contract.clone(),
@@ -3336,16 +3375,7 @@ pub fn admit_native_resource_effect(
             binding: binding.clone(),
             resource: resource.clone(),
         });
-        if {
-            let mut __found = false;
-            for r in denominator.excluded_effects.clone().iter().cloned() {
-                if (r.clone() == resource.clone()) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        } {
+        if native_effect_outside_denominator(denominator.clone(), resource.clone()) {
             Rc::new(
                 NativeEffectRealizationAdmission::NativeEffectOutsideProductionDenominator {
                     effect_contract: contract.clone(),
