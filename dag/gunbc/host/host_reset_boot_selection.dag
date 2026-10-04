@@ -2,7 +2,7 @@ module gunbc.host_reset_boot_selection
 
 import product.placement_supply { host_identity_eq }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, IpmiBootSelection, aarch64_uefi_once_boot_selection }
-import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.managed_host { ManagedHost }
 
 // THE BOOT A RESET RETURNS THROUGH IS RESET POLICY, not a fact about the host, so it lives in the

@@ -4,7 +4,7 @@ import std.types { Bool, List, String, NonEmptyStr, list_length }
 import std.algebra { trim }
 import gunbc.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, SurplusSlotsUnobserved }
 import gunbc.runner_slot_population_census { unit_is_owned_by_host, desired_unit_names_range }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv4 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
 import gunbc.runner_width_transition {
   required_retirees_for_host,
   RequiredRetirees, RetireesKnown, RetireesUnresolved,

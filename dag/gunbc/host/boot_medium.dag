@@ -3,7 +3,7 @@ module gunbc.boot_medium
 import std.types { NonEmptyStr, String }
 import v2.std.optional { Present }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64, ubuntu_install_media_filename }
-import gunbc.fleet_intent_network { operator_host_srv2 }
+import gunbc.fleet_host_identity { operator_host_srv2 }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet_posix_accounts { fleet_automation_user }
 import gunbc.fleet_known_hosts_anchor { SshTarget }
