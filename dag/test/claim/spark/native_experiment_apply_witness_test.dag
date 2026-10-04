@@ -19,7 +19,7 @@ import gunbc.spark.serving_arm {
 import gunbc.spark.native_serving_realization { glm_native_rank_unit_name }
 import test.claim.spark.execution_cell_witness_test { fx_actuation, fx_admitted_seconds }
 import gunbc.spark.arm_memory_fit {
-  ArmMemoryFitVerdict, ArmMemoryFitProved, ArmMemoryFitRefused, ArmMemoryFitUnestablished,
+  ArmMemoryFitVerdict, ArmMemoryFitProved, ArmMemoryFitRefused, ArmMemoryFitUnestablished, gb10_memory_tier,
   ArmMemoryExperimentPlan, ArmMemoryExperimentAdmitted, ArmMemoryExperimentRefused,
   ArmPhaseIdleServing, ArmPhaseModelLoad, ArmGraphCapture, ArmKvCache,
   arm_memory_fit_subject_for_launch, arm_memory_fit_verdict, arm_memory_fit_experiment_plan,
@@ -85,14 +85,14 @@ fn fx_unestablished() -> ArmMemoryFitVerdict {
 test fn w_the_actuation_refuses_without_the_unestablished_verdict_with_named_obligations() -> Bool {
   (match arm_experiment_actuation_admission(
     checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
-    verdict: ArmMemoryFitProved { rank: 0, phase: ArmPhaseIdleServing, headroom_bytes: fx_gib(1) },
+    verdict: ArmMemoryFitProved { rank: 0, tier: gb10_memory_tier(), phase: ArmPhaseIdleServing, headroom_bytes: fx_gib(1) },
     plan: fx_restoration_plan()) {
     ArmExperimentActuationRefused { cause: c } => string_contains(s: c as String, pattern: "PROVED")
     ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, workload_phase: _, stop_legs: _, admitted_seconds: _ } => false
   })
     && (match arm_experiment_actuation_admission(
       checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
-      verdict: ArmMemoryFitRefused { rank: 1, phase: ArmPhaseModelLoad, demand_lower: fx_gib(1), supply_upper: fx_gib(1), cause: "fx" as NonEmptyStr },
+      verdict: ArmMemoryFitRefused { rank: 1, tiers: [gb10_memory_tier()], phase: ArmPhaseModelLoad, demand_lower: fx_gib(1), supply_upper: fx_gib(1), cause: "fx" as NonEmptyStr },
       plan: fx_restoration_plan()) {
       ArmExperimentActuationRefused { cause: c } => string_contains(s: c as String, pattern: "REFUSED")
       ArmExperimentActuationAdmitted { cohort: _, prior_generation_actuations: _, preparation_actuations: _, activation_actuations: _, head_readback: _, rank_readbacks: _, workload_phase: _, stop_legs: _, admitted_seconds: _ } => false

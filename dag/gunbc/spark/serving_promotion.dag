@@ -245,8 +245,8 @@ fn memory_refusal(m: ArmMemoryFitVerdict?) -> NonEmptyStr? {
   match m {
     Absent => none
     Present { value: v } => match v {
-      ArmMemoryFitRefused { rank: _, phase: _, demand_lower: _, supply_upper: _, cause: c } => Present { value: c }
-      ArmMemoryFitProved { rank: _, phase: _, headroom_bytes: _ } => none
+      ArmMemoryFitRefused { rank: _, tiers: _, phase: _, demand_lower: _, supply_upper: _, cause: c } => Present { value: c }
+      ArmMemoryFitProved { rank: _, tier: _, phase: _, headroom_bytes: _ } => none
       ArmMemoryFitUnestablished { obligations: _ } => none
     }
   }
@@ -256,8 +256,8 @@ fn memory_missing(m: ArmMemoryFitVerdict?) -> List<NonEmptyStr> {
   match m {
     Absent => ["all-rank memory fit: no verdict for this subject" as NonEmptyStr]
     Present { value: v } => match v {
-      ArmMemoryFitProved { rank: _, phase: _, headroom_bytes: _ } => []
-      ArmMemoryFitRefused { rank: _, phase: _, demand_lower: _, supply_upper: _, cause: _ } => []
+      ArmMemoryFitProved { rank: _, tier: _, phase: _, headroom_bytes: _ } => []
+      ArmMemoryFitRefused { rank: _, tiers: _, phase: _, demand_lower: _, supply_upper: _, cause: _ } => []
       ArmMemoryFitUnestablished { obligations: os } => [join(["all-rank memory fit is unestablished: ", join(map(os, o => o as String), "; ")], "") as NonEmptyStr]
     }
   }

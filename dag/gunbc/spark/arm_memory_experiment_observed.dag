@@ -47,7 +47,7 @@ import gunbc.spark.arm_memory_fit {
   ArmWetGraphAttributionUnestablished, ArmWetBindingAdmission,
   ArmWetReceiptBinding, arm_admit_wet_binding,
   ArmRankCacheSupply,
-  ArmRankDemand, ArmSupplyDeductions,
+  ArmRankDemand, ArmSupplyDeductions, gb10_memory_tier,
   ArmLoaderTransform, ArmFragmentationAllowance,
   ArmMemoryExperimentAdmission, ArmMemoryExperimentAdmitted, ArmMemoryExperimentRefused,
   ArmServingLivenessVerdict, ArmServingLivenessProved, ArmServingLivenessRefused, ArmServingLivenessUnestablished,
@@ -1080,6 +1080,7 @@ fn arm_experiment_kvplan_v2_2026_09_26_fragmentation_obligation() -> NonEmptyStr
 fn arm_experiment_kvplan_v2_2026_09_26_launch_wall_rank(r: ArmExperimentEnvelopeDerivedArenaReading) -> ArmRankDemand {
   ArmRankDemand {
     rank: r.rank,
+    tier: gb10_memory_tier(),
     checkpoint_residency: arm_experiment_kvplan_v2_2026_09_26_checkpoint_projected(),
     loader_transform: arm_experiment_kvplan_v2_2026_09_26_loader_carry(rank: r.rank, host: r.host),
     runtime_fixed: arm_experiment_kvplan_v2_2026_09_26_runtime_fixed_carry(r),

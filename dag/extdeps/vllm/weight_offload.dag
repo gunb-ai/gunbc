@@ -1,0 +1,73 @@
+module extdeps.vllm.weight_offload
+
+import std.types { String, NonEmptyStr }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vllm.runtime_defaults { defaults_source_revision, Vllm8d09804 }
+
+// The revision is read from its one minting row rather than re-spelled here (extdeps.vllm.environment
+// does the same).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: join(["github.com/vllm-project/vllm/blob/", defaults_source_revision(r: Vllm8d09804).full_revision as String, "/vllm/model_executor/offloader"], "")
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vllm.weight_offload",
+      decl_name: "VllmWeightOffloadSplitLaw",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// ── HOW THE ENGINE SPLITS A CHECKPOINT BETWEEN DEVICE AND HOST MEMORY ───────────────────────────
+//
+// vLLM's weight offloaders (vllm.config.offload OffloadConfig, chosen by
+// vllm.model_executor.offloader.base create_offloader) move whole named PARAMETERS. They never
+// move part of a tensor. The wrap is in vllm.model_executor.models.utils make_layers, so only the
+// decoder-layer stack is eligible. So the unit of a split is one parameter of one layer. For a model
+// built on FusedMoE, all routed experts of a layer are one tensor per projection, so a layer's whole
+// expert store moves or stays together.
+//
+// The two backends differ in what stays on the device:
+// - UVA (UVAOffloader) moves the parameter into pinned host memory and hands the kernel a device
+//   view of it. Nothing of an offloaded parameter stays on the device.
+// - prefetch (PrefetchOffloader) keeps the host copy too. Its post_init allocates a
+//   StaticBufferPool with slot_capacity = prefetch_step, so the device holds prefetch_step copies
+//   of each distinct offloaded parameter, and layers take turns using them (slot = index mod
+//   prefetch_step).
+//
+// Both laws are read at the pinned revision. The UVA law holds only while the MoE backend does not
+// re-lay-out the weights after loading. convert_to_fp8_moe_kernel_format allocates new tensors for
+// the DeepGEMM, FlashInfer, Marlin and AITER arms, and those land in device memory. That condition
+// is the launch's to read back. This row does not assume it.
+type VllmWeightOffloadBackend
+  = VllmUvaOffload
+  | VllmPrefetchOffload { prefetch_step: Nat }
+
+type VllmWeightOffloadSplitLaw {
+  backend: VllmWeightOffloadBackend
+  device_copies_per_offloaded_parameter: Nat
+}
+
+fn vllm_weight_offload_split_law(backend: VllmWeightOffloadBackend) -> VllmWeightOffloadSplitLaw {
+  match backend {
+    VllmUvaOffload => VllmWeightOffloadSplitLaw { backend: backend, device_copies_per_offloaded_parameter: 0 }
+    VllmPrefetchOffload { prefetch_step: s } => VllmWeightOffloadSplitLaw { backend: backend, device_copies_per_offloaded_parameter: s }
+  }
+}
+
+fn vllm_weight_offload_backend_wire(b: VllmWeightOffloadBackend) -> NonEmptyStr {
+  match b {
+    VllmUvaOffload => "uva" as NonEmptyStr
+    VllmPrefetchOffload { prefetch_step: _ } => "prefetch" as NonEmptyStr
+  }
+}

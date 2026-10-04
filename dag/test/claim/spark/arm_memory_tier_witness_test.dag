@@ -1,0 +1,332 @@
+module test.claim.spark.arm_memory_tier_witness
+
+import std.types { Bool, NonEmptyStr, List, String }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size, byte_size_count, measure_le, gibibyte, gibibyte_to_byte_size, basis_point, token_count }
+import std.interval { closed_interval, IntervalReady, IntervalRefused }
+import extdeps.vllm.engine_args { PrefixCachingExplicit }
+import extdeps.vllm.weight_offload { VllmUvaOffload, VllmPrefetchOffload, vllm_weight_offload_split_law }
+import v2.std.algebra { filter }
+import v2.std.optional { Present, Absent }
+import extdeps.systems.types {
+  SystemMemoryComponent, coherent_superchip_memory_components, system_memory_component_same,
+  GpuAndCpuShareOnePool, GpuAddressesDirectly, GpuAddressesAcrossCoherentLink,
+}
+import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog }
+import gunbc.spark.serving_arm {
+  ServingLaunchProfile, glm53_native_launch_policy, Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, SingleSparkTp1,
+  serving_checkpoint_wire, serving_topology_wire,
+}
+import gunbc.spark.serving_capacity_intent {
+  ServingCapacityIntent, uniform_cold_seats, profile_for_envelope, envelope_at_cold_floor,
+  ServingCapacityIntentAdmitted, ServingCapacityIntentRefused,
+}
+import gunbc.spark.arm_memory_fit {
+  ArmComponentBound, ComponentBoundExact, ComponentBoundOpen, ComponentBoundNotPlaced, ComponentBoundInterval, ComponentBoundCeiling,
+  ArmRankDemand, ArmSupplyDeductions, ArmPoolBound, ArmPoolBounded, ArmPoolUnbounded, ArmTierSupply,
+  ArmMemorySubjectReady, ArmMemorySubjectRefused, arm_memory_fit_subject_with_rank_demands,
+  arm_memory_fit_verdict, ArmMemoryFitVerdict, ArmMemoryFitProved, ArmMemoryFitRefused, ArmMemoryFitUnestablished,
+  ArmCheckpointTierSplit, ArmCheckpointTierSplitMint, ArmCheckpointTierSplitReady, ArmCheckpointTierSplitRefused, checkpoint_tier_split,
+  arm_readback_observation, ArmObservationConsistent, ArmMemoryModelFalsified, ArmKvCache,
+  gb10_host_memory, gb10_memory_tier,
+}
+
+// ── WHAT THIS WITNESSES, AND WHAT IT DOES NOT ────────────────────────────────────────────────────
+//
+// The memory-tier law of gunbc.spark.arm_memory_fit, at its own interface, with SUPPLIED values. A
+// two-tier subject has no executing producer yet: there is no launch route for a host with a
+// coherent-link tier, and the topology roster names Spark shapes only. That is a DECLARED FRONTIER,
+// and its trigger is the first GH200 launch. These claims therefore build the subject from the
+// catalog's GH200 memory components and from fixture pools. The single-rank topology stands in only
+// because the fold is rank-count generic.
+//
+// The real path stays executed elsewhere. test.claim.spark.serving_arm_launch_witness runs the Spark
+// launch route through arm_memory_fit_subject_for_launch and arm_memory_launch_gate on the one-tier
+// subject.
+//
+// The figures are the hypothesis's own:
+// - GLM-5.3-Flash FP8: 42 MoE layers, 288 experts, hidden 4096, moe_intermediate 2048.
+// - One layer's expert store, with its block scales: 7,249,526,784 bytes.
+// - The checkpoint row's 306 ceil-GiB aggregate.
+// They price the fold's routes. They are not a fit claim about the real unit.
+
+fn tw_ckpt_wire() -> String {
+  serving_checkpoint_wire(c: Glm53NativeFp8) as String
+}
+
+fn tw_tp_wire() -> String {
+  serving_topology_wire(t: SingleSparkTp1) as String
+}
+
+fn tw_how(text: String) -> NonEmptyStr {
+  join([text, " -- supplied value on ", tw_ckpt_wire(), " ", tw_tp_wire()], "") as NonEmptyStr
+}
+
+fn tw_gib(n: Nat) -> ByteSize {
+  gibibyte_to_byte_size(g: gibibyte(count: n))
+}
+
+fn tw_exact(n: Nat, what: String) -> ArmComponentBound {
+  ComponentBoundExact { bytes: tw_gib(n), how: tw_how(text: what) }
+}
+
+fn tw_not_placed() -> ArmComponentBound {
+  ComponentBoundNotPlaced { placement: "the offload choice keeps every non-checkpoint term on the GPU-local tier (supplied placement)" as NonEmptyStr }
+}
+
+fn tw_host_memory() -> List<SystemMemoryComponent> {
+  coherent_superchip_memory_components(row: nvidia_gh200_480gb_catalog)
+}
+
+// The catalog projection is the only producer of these components. A GB10 component stands in on
+// the absent arm only so the function is total: the tier law then refuses it as foreign, so the
+// claims go red rather than green.
+fn tw_is_gpu_local(c: SystemMemoryComponent) -> Bool {
+  match c.addressability {
+    GpuAddressesDirectly => true
+    GpuAddressesAcrossCoherentLink { per_direction: _ } => false
+    GpuAndCpuShareOnePool => false
+  }
+}
+
+fn tw_tier(gpu_local: Bool) -> SystemMemoryComponent {
+  match first(filter(tw_host_memory(), c => tw_is_gpu_local(c: c) == gpu_local)) {
+    Present { value: c } => c
+    Absent => gb10_memory_tier()
+  }
+}
+
+fn tw_pool(bytes: ByteSize) -> ArmPoolBound {
+  match closed_interval(low: bytes, high: bytes, le: measure_le) {
+    IntervalReady { interval: i } => ArmPoolBounded { span: i, how: "fixture: the catalog capacity of this memory, taken whole" as NonEmptyStr }
+    IntervalRefused { reason: r } => ArmPoolUnbounded { obligation: r }
+  }
+}
+
+fn tw_deductions(gib: Nat) -> ArmSupplyDeductions {
+  ArmSupplyDeductions {
+    host_os_control_reserve: ComponentBoundExact { bytes: tw_gib(gib), how: "fixture reserve" as NonEmptyStr },
+    foreign_residency: ComponentBoundExact { bytes: tw_gib(0), how: "fixture: no co-tenant" as NonEmptyStr },
+  }
+}
+
+fn tw_tiers() -> List<ArmTierSupply> {
+  [
+    ArmTierSupply { tier: tw_tier(gpu_local: true), pool: tw_pool(bytes: nvidia_gh200_480gb_catalog.gpu.memory.capacity), deductions: tw_deductions(gib: 1) },
+    ArmTierSupply { tier: tw_tier(gpu_local: false), pool: tw_pool(bytes: nvidia_gh200_480gb_catalog.cpu_memory.memory.capacity), deductions: tw_deductions(gib: 16) },
+  ]
+}
+
+fn tw_intent() -> ServingCapacityIntent {
+  match uniform_cold_seats(each: token_count(count: 65536), seats: 4, max_batched_tokens: token_count(count: 2048)) {
+    ServingCapacityIntentAdmitted { intent: i } => i
+    ServingCapacityIntentRefused { cause: _ } => ServingCapacityIntent { cold_sequence_budgets: [], max_batched_tokens: token_count(count: 1) }
+  }
+}
+
+data tw_store_bytes: ByteSize = byte_size(count: 7249526784)
+
+fn tw_split(offloaded_layers: Nat, prefetch: Bool) -> ArmCheckpointTierSplitMint {
+  checkpoint_tier_split(
+    law: vllm_weight_offload_split_law(backend: if prefetch { VllmPrefetchOffload { prefetch_step: 2 } } else { VllmUvaOffload }),
+    checkpoint_bytes: tw_gib(306),
+    offloaded_layers: offloaded_layers,
+    offloaded_bytes_per_layer: tw_store_bytes,
+    how: tw_how(text: "GLM-5.3-Flash FP8 expert stores, config.json at eb9eb208"))
+}
+
+fn tw_device_row(checkpoint: ArmComponentBound) -> ArmRankDemand {
+  ArmRankDemand {
+    rank: 0,
+    tier: tw_tier(gpu_local: true),
+    checkpoint_residency: checkpoint,
+    loader_transform: tw_exact(n: 1, what: "loader transient"),
+    runtime_fixed: tw_exact(n: 2, what: "runtime fixed"),
+    collective_workspace: tw_exact(n: 0, what: "no collective at tp1"),
+    activation_workspace: tw_exact(n: 4, what: "activation peak"),
+    graph_capture: tw_exact(n: 2, what: "graph capture"),
+    kv_cache: tw_exact(n: 40, what: "kv arena"),
+    fragmentation_allowance: tw_exact(n: 2, what: "fragmentation"),
+  }
+}
+
+fn tw_host_row(checkpoint: ArmComponentBound) -> ArmRankDemand {
+  ArmRankDemand {
+    rank: 0,
+    tier: tw_tier(gpu_local: false),
+    checkpoint_residency: checkpoint,
+    loader_transform: tw_not_placed(),
+    runtime_fixed: tw_not_placed(),
+    collective_workspace: tw_not_placed(),
+    activation_workspace: tw_not_placed(),
+    graph_capture: tw_not_placed(),
+    kv_cache: tw_not_placed(),
+    fragmentation_allowance: tw_not_placed(),
+  }
+}
+
+fn tw_verdict_for(offloaded_layers: Nat) -> ArmMemoryFitVerdict? {
+  match tw_split(offloaded_layers: offloaded_layers, prefetch: false) {
+    ArmCheckpointTierSplitRefused { cause: _ } => none
+    ArmCheckpointTierSplitReady { split: sp } =>
+      match arm_memory_fit_subject_with_rank_demands(
+        checkpoint: Glm53NativeFp8,
+        runtime: GunbcGlm53NopeDerivedGb10,
+        topology: SingleSparkTp1,
+        intent: tw_intent(),
+        requested_profile: tw_profile(),
+        host_memory: tw_host_memory(),
+        tiers: tw_tiers(),
+        ranks: [tw_device_row(checkpoint: sp.device_residency), tw_host_row(checkpoint: sp.host_residency)]) {
+        ArmMemorySubjectRefused { cause: _ } => none
+        ArmMemorySubjectReady { subject: s } => Present { value: arm_memory_fit_verdict(subject: s) }
+      }
+  }
+}
+
+fn tw_profile() -> ServingLaunchProfile {
+  profile_for_envelope(
+    envelope: envelope_at_cold_floor(cold: tw_intent()),
+    policy: glm53_native_launch_policy,
+    decided_gpu_memory_basis_points: basis_point(count: 8400),
+    serve_port: 30000,
+    served_alias: "glm-5.3-flash" as NonEmptyStr,
+    prefix_caching: PrefixCachingExplicit { enabled: true },
+  )
+}
+
+// ALL ROUTES IN ONE PRODUCER, so the fold runs once per offload choice and each claim reads a field.
+type TwVerdicts {
+  all_experts_on_host_proves_on_the_device_tier: Bool
+  too_few_offloaded_refuses_naming_only_the_device_tier: Bool
+  host_tier_is_not_walled_by_the_device_envelope: Bool
+  a_missing_tier_is_refused_at_the_mint: Bool
+  a_foreign_tier_is_refused_at_the_mint: Bool
+}
+
+fn tw_verdicts() -> TwVerdicts {
+  let device = tw_tier(gpu_local: true)
+  let host = tw_tier(gpu_local: false)
+  let all_host = tw_verdict_for(offloaded_layers: 42)
+  let thirty = tw_verdict_for(offloaded_layers: 30)
+  TwVerdicts {
+    all_experts_on_host_proves_on_the_device_tier: match all_host {
+      Present { value: v } =>
+        match v {
+          ArmMemoryFitProved { rank: r, tier: t, phase: _, headroom_bytes: _ } => r == 0 && system_memory_component_same(a: t, b: device)
+          ArmMemoryFitRefused { rank: _, tiers: _, phase: _, demand_lower: _, supply_upper: _, cause: _ } => false
+          ArmMemoryFitUnestablished { obligations: _ } => false
+        }
+      Absent => false
+    },
+    too_few_offloaded_refuses_naming_only_the_device_tier: match thirty {
+      Present { value: v } =>
+        match v {
+          ArmMemoryFitRefused { rank: r, tiers: ts, phase: _, demand_lower: _, supply_upper: _, cause: c } =>
+            r == 0 && count(ts) == 1 && all(ts, t => system_memory_component_same(a: t, b: device))
+              && string_contains(s: c as String, pattern: "gpu-local")
+          ArmMemoryFitProved { rank: _, tier: _, phase: _, headroom_bytes: _ } => false
+          ArmMemoryFitUnestablished { obligations: _ } => false
+        }
+      Absent => false
+    },
+    // About 284 GiB of experts sit on the host tier, well above the device envelope (84% of 96 GiB).
+    // If the envelope wrongly walled that tier, the all-host choice would refuse and not prove. So the
+    // first field already discriminates the route. This one names it, and checks the host row's tier
+    // is really the link tier.
+    host_tier_is_not_walled_by_the_device_envelope: match all_host {
+      Present { value: v } =>
+        match v {
+          ArmMemoryFitProved { rank: _, tier: _, phase: _, headroom_bytes: _ } => !system_memory_component_same(a: host, b: device)
+          ArmMemoryFitRefused { rank: _, tiers: _, phase: _, demand_lower: _, supply_upper: _, cause: _ } => false
+          ArmMemoryFitUnestablished { obligations: _ } => false
+        }
+      Absent => false
+    },
+    a_missing_tier_is_refused_at_the_mint: match arm_memory_fit_subject_with_rank_demands(
+      checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: SingleSparkTp1,
+      intent: tw_intent(), requested_profile: tw_profile(),
+      host_memory: tw_host_memory(),
+      tiers: filter(tw_tiers(), t => system_memory_component_same(a: t.tier, b: device)),
+      ranks: [tw_device_row(checkpoint: tw_exact(n: 306, what: "whole checkpoint"))]) {
+      ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "does not carry exactly one row for each memory")
+      ArmMemorySubjectReady { subject: _ } => false
+    },
+    a_foreign_tier_is_refused_at_the_mint: match arm_memory_fit_subject_with_rank_demands(
+      checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: SingleSparkTp1,
+      intent: tw_intent(), requested_profile: tw_profile(),
+      host_memory: gb10_host_memory(),
+      tiers: tw_tiers(),
+      ranks: [tw_device_row(checkpoint: tw_exact(n: 306, what: "whole checkpoint"))]) {
+      ArmMemorySubjectRefused { cause: _ } => true
+      ArmMemorySubjectReady { subject: _ } => false
+    },
+  }
+}
+
+test fn w_all_experts_on_the_host_tier_proves_with_the_worst_corner_on_the_device_tier() -> Bool {
+  tw_verdicts().all_experts_on_host_proves_on_the_device_tier
+}
+
+test fn w_too_few_offloaded_layers_refuse_on_the_device_tier_alone() -> Bool {
+  tw_verdicts().too_few_offloaded_refuses_naming_only_the_device_tier
+}
+
+test fn w_the_engine_envelope_does_not_wall_the_coherent_link_tier() -> Bool {
+  tw_verdicts().host_tier_is_not_walled_by_the_device_envelope
+}
+
+test fn w_a_subject_that_leaves_out_a_memory_the_host_has_is_refused() -> Bool {
+  tw_verdicts().a_missing_tier_is_refused_at_the_mint
+}
+
+test fn w_a_tier_naming_a_memory_the_host_does_not_have_is_refused() -> Bool {
+  tw_verdicts().a_foreign_tier_is_refused_at_the_mint
+}
+
+// An exact bound's bytes; any other arm reads as a count no split produces, so a wrong arm fails the
+// equalities below rather than passing them.
+fn tw_exact_bytes(b: ArmComponentBound) -> Nat {
+  match b {
+    ComponentBoundExact { bytes: n, how: _ } => byte_size_count(b: n)
+    ComponentBoundOpen { obligation: _ } => 1
+    ComponentBoundNotPlaced { placement: _ } => 1
+    ComponentBoundInterval { lower: _, upper: _, how: _ } => 1
+    ComponentBoundCeiling { bytes: _, receipt: _ } => 1
+  }
+}
+
+// THE SPLIT LAW IS THE ENGINE'S. UVA leaves no device copy of an offloaded store. Prefetch at step 2
+// keeps two, which is exactly two stores' bytes more on the device.
+test fn w_the_split_law_prices_prefetch_device_copies_and_uva_none() -> Bool {
+  match tw_split(offloaded_layers: 42, prefetch: false) {
+    ArmCheckpointTierSplitReady { split: uva } =>
+      match tw_split(offloaded_layers: 42, prefetch: true) {
+        ArmCheckpointTierSplitReady { split: pre } =>
+          tw_exact_bytes(b: pre.device_residency) == tw_exact_bytes(b: uva.device_residency) + 2 * byte_size_count(b: tw_store_bytes)
+            && tw_exact_bytes(b: uva.device_residency) == byte_size_count(b: tw_gib(306)) - 42 * byte_size_count(b: tw_store_bytes)
+            && tw_exact_bytes(b: uva.host_residency) == 42 * byte_size_count(b: tw_store_bytes)
+        ArmCheckpointTierSplitRefused { cause: _ } => false
+      }
+    ArmCheckpointTierSplitRefused { cause: _ } => false
+  }
+}
+
+test fn w_an_offload_choice_larger_than_the_checkpoint_is_refused() -> Bool {
+  match tw_split(offloaded_layers: 50, prefetch: false) {
+    ArmCheckpointTierSplitRefused { cause: c } => string_contains(s: c as String, pattern: "does not describe this checkpoint")
+    ArmCheckpointTierSplitReady { split: _ } => false
+  }
+}
+
+// A NOT-PLACED TERM PREDICTS ZERO IN ITS TIER. Any bytes observed there falsify the placement.
+test fn w_bytes_observed_where_a_term_was_not_placed_falsify_the_placement() -> Bool {
+  (match arm_readback_observation(component: ArmKvCache, predicted: tw_not_placed(), observed: byte_size(count: 1), receipt: "fixture readback" as NonEmptyStr) {
+    ArmMemoryModelFalsified { component: _, predicted_bound: _, observed: _, receipt: _ } => true
+    ArmObservationConsistent { component: _, predicted_bound: _, observed: _, receipt: _ } => false
+  })
+    && (match arm_readback_observation(component: ArmKvCache, predicted: tw_not_placed(), observed: byte_size(count: 0), receipt: "fixture readback" as NonEmptyStr) {
+      ArmObservationConsistent { component: _, predicted_bound: _, observed: _, receipt: _ } => true
+      ArmMemoryModelFalsified { component: _, predicted_bound: _, observed: _, receipt: _ } => false
+    })
+}
