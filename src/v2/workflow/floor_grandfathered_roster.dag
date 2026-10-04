@@ -126,6 +126,10 @@ type GrandfatheredRemoval =
 // by the floored-ratio grounding rather than renamed into it.
 data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
   WitnessDeleted {
+    identity: "v2.test.v2_native_route.an_unattributed_head_advisory_is_refused" as NonEmptyStr,
+    deleted_in: "advisories steps 3+4: HeadGrain deleted; the head-advisory clause (gunbc.witness_v2_native_route native_route_head_advisories_attributed) and its test go with it. Advisories are counted by the accepted-file advisory instrument, not owned" as NonEmptyStr,
+  },
+  WitnessDeleted {
     identity: "v2.test.execution.bind_round_trip.bind_grammar_inverse_holds" as NonEmptyStr,
     deleted_in: "gunbc#12576 (the target model's serialize-source edge deleted; the rules row is the sole authority) removed this claim from src/v2/test/claim/execution/bind_round_trip_test.dag; its gunbc.witness_deferral_freeze row is deleted in the same change as this removal" as NonEmptyStr,
   },
