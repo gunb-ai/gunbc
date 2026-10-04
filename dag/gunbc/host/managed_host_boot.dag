@@ -2,7 +2,7 @@ module gunbc.managed_host_boot
 
 import std.types { List, NonEmptyStr, String }
 import v2.std.optional { Present, Absent }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, IpmiBootSelection, aarch64_uefi_once_boot_selection }
 import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.boot_medium { BootMedium }
