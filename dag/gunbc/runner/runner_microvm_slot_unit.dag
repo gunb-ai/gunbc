@@ -314,6 +314,7 @@ fn microvm_slot_unit_execs_controller(file: SystemdUnitFile) -> Bool {
         ServiceStandardError { stream: _ } => false
         Restart { policy: _ } => false
         Environment { assignment: _ } => false
+        LoadCredential { identifier: _, source: _ } => false
         EnvironmentFile { path: _ } => false
         EnvironmentFileIfPresent { path: _ } => false
         WorkingDirectory { path: _ } => false

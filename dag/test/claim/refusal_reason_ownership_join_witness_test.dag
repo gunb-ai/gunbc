@@ -8,8 +8,6 @@ import v2.std.logic { Bool }
 import v2.std.integer { Int }
 import v2.workflow.compile_door_cause_ownership {
   CauseOwnership,
-  FatalGrain,
-  HeadGrain,
   SharedSelfHostCriticalPath
 }
 import gunbc.refusal_reason_ownership_join {
@@ -113,16 +111,6 @@ fn planted_vocabulary(reasons: List<Symbol>) -> List<StageRefusalVocabulary> {
 fn fatal_row(cause: Symbol) -> CauseOwnership {
   CauseOwnership {
     cause: cause,
-    grain: FatalGrain,
-    lane: SharedSelfHostCriticalPath,
-    flip_trigger: "planted control row"
-  }
-}
-
-fn head_row(cause: Symbol) -> CauseOwnership {
-  CauseOwnership {
-    cause: cause,
-    grain: HeadGrain,
     lane: SharedSelfHostCriticalPath,
     flip_trigger: "planted control row"
   }
@@ -140,21 +128,11 @@ test fn new_reason_without_a_row_refuses() -> Bool {
     && any(xs: findings, predicate: fn(f) { is_unowned(f: f, reason: ^planted_new_fatal_reason) })
 }
 
-// GREEN: the same reason with a FatalGrain row.
+// GREEN: the same reason with an ownership row.
 test fn new_reason_with_a_fatal_row_passes() -> Bool {
   is_empty(xs: refusal_reason_ownership_findings(
     vocabularies: planted_vocabulary(reasons: [^planted_new_fatal_reason]),
     owners: [fatal_row(cause: ^planted_new_fatal_reason)],
-    debt: [],
-    universe_size: 0
-  ))
-}
-
-// RED: ownership at HEAD grain says nothing about the fatal grain.
-test fn head_grain_row_does_not_own_a_fatal_reason() -> Bool {
-  !is_empty(xs: refusal_reason_ownership_findings(
-    vocabularies: planted_vocabulary(reasons: [^planted_new_fatal_reason]),
-    owners: [head_row(cause: ^planted_new_fatal_reason)],
     debt: [],
     universe_size: 0
   ))
@@ -194,7 +172,7 @@ test fn debt_row_removed_after_producer_deletion_still_refuses() -> Bool {
     && any(xs: findings, predicate: fn(f) { is_resized(f: f, pinned: 1, observed: 0) })
 }
 
-// RED: a new producer admitted by adding a debt row instead of a FatalGrain row.
+// RED: a new producer admitted by adding a debt row instead of an ownership row.
 test fn debt_row_added_for_a_new_reason_refuses() -> Bool {
   let findings = refusal_reason_ownership_findings(
     vocabularies: planted_vocabulary(reasons: [^planted_old_reason, ^planted_new_fatal_reason]),

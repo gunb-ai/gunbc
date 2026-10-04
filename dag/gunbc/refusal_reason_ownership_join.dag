@@ -11,7 +11,6 @@ import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node_reflection { coproduct_nullary_inhabitants }
 import v2.workflow.compile_door_cause_ownership {
   CauseOwnership,
-  FatalGrain,
   known_frontier_causes
 }
 import v2.compiler.resolve { ResolveRefusalReason, resolve_refusal_reason_symbol }
@@ -20,7 +19,7 @@ import v2.compiler.resolve { ResolveRefusalReason, resolve_refusal_reason_symbol
 //
 // gunbc.recurring_failure_mode refusal_producer_lands_without_its_ownership_row: a stage gained a
 // fatal refusal reason while v2.workflow.compile_door_cause_ownership known_frontier_causes carried
-// no FatalGrain row for it, and the only join between the two facts was the native route's
+// no ownership row for it, and the only join between the two facts was the native route's
 // admission, which no merge waits on. This module is that join moved onto the landing path.
 //
 // THE PRODUCIBLE SET IS DERIVED FROM THE STAGES' OWN CLOSED VOCABULARIES, never a hand list and
@@ -48,7 +47,7 @@ type StageVocabularyObservation
   | StageVocabularyUnreflectable { stage: String, type_name: Symbol }
 
 // THE DEBT CONTRACT (DESIGN section 5: a monotone debt contract over a closed subject universe). The
-// reasons already producible without a FatalGrain row when this join landed are named here one by
+// reasons already producible without a ownership row when this join landed are named here one by
 // one; the join is set membership at identity grain, never a count. A row is never deleted: when its
 // debt ends it takes the disposition that ended it, so a removal always carries its cause, and the
 // row count is pinned to the universe size below so that a deleted or an added row both refuse.
@@ -75,7 +74,7 @@ type ReasonOwnershipFinding
 
 fn reason_is_fatal_owned(reason: Symbol, owners: List<CauseOwnership>) -> Bool {
   any(xs: owners, predicate: fn(row) {
-    row.cause == reason && discriminant(v: row.grain) == discriminant(v: FatalGrain)
+    row.cause == reason
   })
 }
 
@@ -101,7 +100,7 @@ fn reason_is_producible(reason: Symbol, vocabularies: List<StageRefusalVocabular
   stages_declaring(reason: reason, vocabularies: vocabularies) > 0
 }
 
-// PRODUCER SIDE: every declared reason is owned at FatalGrain or carries open debt.
+// PRODUCER SIDE: every declared reason is owned by an ownership row or carries open debt.
 fn producible_reason_findings(
   vocabularies: List<StageRefusalVocabulary>,
   owners: List<CauseOwnership>,
@@ -229,7 +228,7 @@ fn stage_vocabulary_observations() -> List<StageVocabularyObservation> {
 
 // The size of the closed universe the debt roster was minted over. It changes only with the roster's
 // own rows, and only when a stage vocabulary is first modelled and brings its existing unowned
-// reasons in with it -- never to admit a new producer, which must carry a FatalGrain row instead.
+// reasons in with it -- never to admit a new producer, which must carry a ownership row instead.
 data refusal_reason_ownership_debt_universe_size: Int = 8
 
 data refusal_reason_ownership_debt: List<ReasonOwnershipDebt> = [
