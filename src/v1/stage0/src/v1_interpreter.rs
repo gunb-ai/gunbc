@@ -2038,7 +2038,16 @@ struct CrossClaimPureMemo {
     /// on process-global pointer identity, and equality no longer depends on which frame
     /// interned a spelling. Serving the stored `Value` is therefore the SAME value the walk
     /// used to rebuild per consuming frame, at O(1) instead of O(size).
-    map: HashMap<(usize, u64), Vec<(Vec<(Option<String>, PortableValue)>, Value)>>,
+    map: std::collections::HashMap<(usize, u64), Vec<CrossClaimEntry>>,
+    /// THE SERVED-INSTANCE REGISTRY: the root of every value this tier serves, mapped to the
+    /// content digest computed once, at publication, from its portable form. A served value is
+    /// handed out by `Rc` clone and retained here for the tier's lifetime, so its root pointer
+    /// names it for as long as the entry stands. It lets a caller that passes a served value as
+    /// an ARGUMENT be verified by digest instead of by reifying the whole argument again.
+    served_instances: std::collections::HashMap<ServedInstanceKey, Rc<str>>,
+    /// Argument rows totally reified on the lookup path. A served instance passed as an argument
+    /// adds nothing here; everything else adds one per composite argument per call.
+    lookup_arg_reifies: u64,
     /// Stores refused at `CROSS_CLAIM_PURE_MEMO_ENTRY_CAP` or because the entry would push
     /// `bytes` past `CROSS_CLAIM_PURE_MEMO_BYTE_BUDGET`. Counted, never silent: the producer
     /// recomputes, and the receipt reads the count so saturation is visible, not inferred
@@ -2057,6 +2066,113 @@ struct CrossClaimPureMemo {
     /// Stores refused because the value failed TOTAL reification (`ServeCacheValueNotPortable`).
     /// Counted, and the most recent refusal is retained for the warm path's diagnostics.
     unportable_refusals: u64,
+}
+
+/// One retained call: its argument row in portable form, each composite argument's content digest
+/// (`None` for a scalar, which is compared directly), and the value served.
+struct CrossClaimEntry {
+    args: Vec<(Option<String>, PortableValue)>,
+    arg_digests: Vec<Option<Rc<str>>>,
+    served: Value,
+}
+
+/// The identity of a served value's root: its container pointer, with the kind and the type and
+/// variant symbols beside it, because a record and a re-branded record may share one field vector.
+type ServedInstanceKey = (usize, u8, Option<Symbol>, Option<Symbol>);
+
+fn served_instance_key(v: &Value) -> Option<ServedInstanceKey> {
+    match v {
+        Value::List(xs) => Some((Rc::as_ptr(xs) as usize, 0, None, None)),
+        Value::Map(m) => Some((Rc::as_ptr(m) as usize, 1, None, None)),
+        Value::Set(s) => Some((Rc::as_ptr(s) as usize, 2, None, None)),
+        Value::Record { type_name, fields } => {
+            Some((Rc::as_ptr(fields) as usize, 3, Some(*type_name), None))
+        }
+        Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+        } => Some((
+            Rc::as_ptr(fields) as usize,
+            4,
+            Some(*type_name),
+            Some(*variant_name),
+        )),
+        _ => None,
+    }
+}
+
+fn portable_is_composite(v: &PortableValue) -> bool {
+    matches!(
+        v,
+        PortableValue::List(_)
+            | PortableValue::Map(_)
+            | PortableValue::Set(_)
+            | PortableValue::Record { .. }
+            | PortableValue::Variant { .. }
+    )
+}
+
+/// What the lookup holds for one caller argument: the digest of a served instance (no walk), or
+/// the argument reified in full.
+enum CrossClaimArgProbe {
+    ServedDigest(Rc<str>),
+    Reified(PortableValue),
+}
+
+/// One probe per caller argument. AN ARGUMENT THAT IS ITSELF A VALUE THIS TIER SERVED IS NAMED BY
+/// ITS DIGEST, computed once when it was published; reifying it again on every call re-walked the
+/// whole value each time (a derived site whose argument is a served grammar or target model paid
+/// that per call). Any other argument is reified as before, and refuses the lookup when it is not
+/// portable.
+fn cross_claim_arg_probes(
+    ctx: &InterpContext,
+    args: &[(Option<String>, Value)],
+) -> Option<Vec<CrossClaimArgProbe>> {
+    let mut out = Vec::with_capacity(args.len());
+    for (_, value) in args {
+        let served = served_instance_key(value).and_then(|key| {
+            CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow().served_instances.get(&key).cloned())
+        });
+        match served {
+            Some(digest) => out.push(CrossClaimArgProbe::ServedDigest(digest)),
+            None => {
+                let portable = portable_value_from_ctx(ctx, value)?;
+                if portable_is_composite(&portable) {
+                    CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow_mut().lookup_arg_reifies += 1);
+                }
+                out.push(CrossClaimArgProbe::Reified(portable));
+            }
+        }
+    }
+    Some(out)
+}
+
+/// Whether a retained entry's argument row is the caller's. A digest probe matches the entry's
+/// digest for that argument; a reified probe matches structurally, as it always has.
+fn cross_claim_entry_matches(
+    entry: &CrossClaimEntry,
+    args: &[(Option<String>, Value)],
+    probes: &[CrossClaimArgProbe],
+) -> bool {
+    entry.args.len() == args.len()
+        && entry
+            .args
+            .iter()
+            .zip(entry.arg_digests.iter())
+            .zip(args.iter().zip(probes.iter()))
+            .all(|(((sn, sv), sd), ((an, _), probe))| {
+                sn == an
+                    && match probe {
+                        CrossClaimArgProbe::ServedDigest(d) => sd.as_ref() == Some(d),
+                        CrossClaimArgProbe::Reified(p) => portable_value_eq(sv, p),
+                    }
+            })
+}
+
+/// Composite-argument reifications performed by lookups so far (see `lookup_arg_reifies`).
+pub fn cross_claim_lookup_arg_reify_count() -> u64 {
+    CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow().lookup_arg_reifies)
 }
 
 /// Entry-count admission for the cross-claim tier: distinct (fn, args) keys stop being STORED
@@ -2658,17 +2774,17 @@ fn try_cross_claim_pure_memo(
     };
     let args_hash = cross_claim_args_hash(ctx, args)?;
     let memo_key = (Rc::as_ptr(fn_node) as usize, args_hash);
-    // The per-ctx hit cache is verified the same way the global bucket is: hash first, then
-    // the full portable argument row, so an intra-frame hash collision cannot alias either.
-    let portable_args = portable_args_from_ctx(ctx, args)?;
+    // Hash first, then the argument row itself, so a hash collision cannot alias: each argument
+    // is verified by the digest of the served instance it is, or by its full portable form.
+    let probes = cross_claim_arg_probes(ctx, args)?;
     // A SERVE IS AN `Rc` CLONE. There is no per-frame reconstruction left to amortize, so the
     // per-context hit cache this path used to maintain is gone with the walk it existed to
     // avoid — the DESIGN section 4b(4) dissolution: a climb deletes the lower-rung production
     // machinery it obsoletes.
     let value = CROSS_CLAIM_PURE_MEMO.with(|m| {
         m.borrow().map.get(&memo_key).and_then(|bucket| {
-            bucket.iter().find_map(|(stored_args, stored)| {
-                cross_claim_portable_args_match(stored_args, &portable_args).then(|| stored.clone())
+            bucket.iter().find_map(|entry| {
+                cross_claim_entry_matches(entry, args, &probes).then(|| entry.served.clone())
             })
         })
     })?;
@@ -2802,15 +2918,16 @@ fn store_cross_claim_pure_memo(
     };
     // The evaluated value's content identity, recorded for the caller BEFORE the presence
     // check, so an `AlreadyPresent` warm still reports what THIS evaluation produced.
-    CROSS_CLAIM_LAST_STORE_DIGEST.with(|d| {
-        *d.borrow_mut() = Some((func_name.to_string(), portable_value_digest(&portable)))
-    });
+    let value_digest = portable_value_digest(&portable);
+    CROSS_CLAIM_LAST_STORE_DIGEST
+        .with(|d| *d.borrow_mut() = Some((func_name.to_string(), value_digest.clone())));
     let outcome = CROSS_CLAIM_PURE_MEMO.with(|m| {
         let mut m = m.borrow_mut();
         if let Some(bucket) = m.map.get(&memo_key) {
-            if bucket.iter().any(|(stored_args, _)| {
-                cross_claim_portable_args_match(stored_args, &portable_args)
-            }) {
+            if bucket
+                .iter()
+                .any(|entry| cross_claim_portable_args_match(&entry.args, &portable_args))
+            {
                 return CrossClaimStoreOutcome::AlreadyPresent;
             }
         }
@@ -2834,10 +2951,24 @@ fn store_cross_claim_pure_memo(
         // The portable form has done its two jobs by here — it proved total portability and it
         // measured the entry — and nothing downstream needs it again.
         let served = value_from_portable_ctx(ctx, &portable);
-        m.map
-            .entry(memo_key)
-            .or_default()
-            .push((portable_args, served));
+        // The served value's root is registered under its digest, so a later call that passes
+        // this value as an argument is verified without walking it; and each composite argument
+        // of THIS entry carries its digest for the same comparison from the other side.
+        if let Some(key) = served_instance_key(&served) {
+            m.served_instances
+                .insert(key, Rc::from(value_digest.as_str()));
+        }
+        let arg_digests = portable_args
+            .iter()
+            .map(|(_, v)| {
+                portable_is_composite(v).then(|| Rc::from(portable_value_digest(v).as_str()))
+            })
+            .collect();
+        m.map.entry(memo_key).or_default().push(CrossClaimEntry {
+            args: portable_args,
+            arg_digests,
+            served,
+        });
         CrossClaimStoreOutcome::Stored
     });
     // Only a FRESH store bills a fill: an already-present entry did no work to charge, and
@@ -3998,6 +4129,71 @@ mod cross_claim_memo_tests {
         );
         drop(guard);
         assert_eq!(stored, CrossClaimStoreOutcome::Stored);
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // A SERVED INSTANCE PASSED AS AN ARGUMENT IS VERIFIED BY ITS DIGEST, WITH NO REIFY; anything
+    // else is still reified and still refuses on a mismatch. Producer A's value is published and
+    // served; producer B is published over that served value as its argument. Three lookups of B:
+    // with the served instance (hit, zero reifies), with an equal value built afresh (hit, one
+    // reify -- the old path, still sound), and with a different value (miss).
+    #[test]
+    fn a_served_instance_argument_is_verified_by_digest_and_others_still_reify() {
+        use super::{
+            cross_claim_lookup_arg_reify_count, install_cross_claim_pure_share_roster, list_value,
+            store_cross_claim_pure_memo, try_cross_claim_pure_memo, CrossClaimStoreOutcome,
+        };
+        super::clear_cross_claim_pure_memos();
+        let ctx = fresh_ctx();
+        let node = || {
+            make_expr_node(
+                Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+                ),
+                Rc::new(ExprData::NoExprData),
+                Rc::new(im_vec![]),
+                None,
+                no_span(),
+            )
+        };
+        let (a, b) = (node(), node());
+        install_cross_claim_pure_share_roster([a.clone(), b.clone()]);
+        let built = || list_value(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
+        assert_eq!(
+            store_cross_claim_pure_memo(&ctx, &a, "tm_a", &[], &built(), None),
+            CrossClaimStoreOutcome::Stored
+        );
+        let served = try_cross_claim_pure_memo(&ctx, &a, "tm_a", &[]).expect("A is served");
+        let over = |v: Value| vec![(Some("x".to_string()), v)];
+        assert_eq!(
+            store_cross_claim_pure_memo(
+                &ctx,
+                &b,
+                "tm_b",
+                &over(served.clone()),
+                &Value::Int(7),
+                None
+            ),
+            CrossClaimStoreOutcome::Stored
+        );
+        let before = cross_claim_lookup_arg_reify_count();
+        assert!(try_cross_claim_pure_memo(&ctx, &b, "tm_b", &over(served.clone())).is_some());
+        assert_eq!(
+            cross_claim_lookup_arg_reify_count(),
+            before,
+            "a served instance is named by its digest: no reify"
+        );
+        assert!(try_cross_claim_pure_memo(&ctx, &b, "tm_b", &over(built())).is_some());
+        assert_eq!(
+            cross_claim_lookup_arg_reify_count(),
+            before + 1,
+            "an equal value that is not the served instance is reified, and still hits"
+        );
+        let other = list_value(vec![Value::Int(1), Value::Int(2), Value::Int(4)]);
+        assert!(
+            try_cross_claim_pure_memo(&ctx, &b, "tm_b", &over(other)).is_none(),
+            "a different argument is not served another call's value"
+        );
         super::clear_cross_claim_pure_memos();
     }
 
