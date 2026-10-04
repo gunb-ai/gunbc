@@ -2,21 +2,21 @@ module test.claim.workspace_network_observation_witness_test
 
 import std.types { Bool, String }
 import v2.std.optional { Present, Absent }
-import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.linux.procfs { procfs_status_effective_uid }
 import extdeps.ethtool { ethtool_combined_channels, EthtoolCombinedChannelsCurrent, EthtoolCombinedChannelsUnreadable }
 import extdeps.linux.tun_fdinfo {
-  TunDescriptorCount, TunInterfaceMissing, TunDescriptorUnreadable,
-  TunCensusReaderNotRoot, TunCensusMultiQueue, TunCensusFlagsUnreadable, TunCensusProcUnreadable, TunCensusSubjectInadmissible,
+  TunDescriptorCount, TunDescriptorUnreadable,
+  TunCensusMultiQueue, TunCensusFlagsUnreadable, TunCensusProcUnreadable,
   TunQueuesAttached, TunQueuesRefused, TunSweepComplete, TunSweepRefused,
   TunSingleQueue, TunMultiQueue, TunFlagsMalformed, TunListed, TunListingVanished, TunListingRefused,
   tun_census_join, tun_queue_mode, tun_queue_reading, tun_fdinfo_names_interface, tun_listing,
-  tun_interface_name_admissible, tun_descriptor_census_observe
+  tun_interface_name_admissible
 }
 
-// SUPPLIED AT THE BOUNDARY (DESIGN section 3 witness rule): every claim but the last constructs the
+// SUPPLIED AT THE BOUNDARY (DESIGN section 3 witness rule): every claim here constructs the
 // readings the census folds over, because the subject is the fold and a real tap cannot exist on the
-// floor. The last claim runs the real reader.
+// floor. The real reader runs in
+// test.claim.workspace_network_real_reader_witness_test on the local-repo wet lane.
 
 data channels_one: String = "Channel parameters for tap0:\nPre-set maximums:\nRX:\t\tn/a\nTX:\t\tn/a\nOther:\t\tn/a\nCombined:\t1\nCurrent hardware settings:\nRX:\t\tn/a\nTX:\t\tn/a\nOther:\t\tn/a\nCombined:\t1\n"
 
@@ -109,20 +109,4 @@ test fn effective_uid_is_the_second_uid_field() -> Bool {
     && (match procfs_status_effective_uid(content: "Uid:\t0\t1000\t0\t0\n") { Present { value: u } => u == 1000 other => false })
     && (match procfs_status_effective_uid(content: "Uid:\t0\t0\n") { Absent => true other => false })
     && (match procfs_status_effective_uid(content: "Name:\tx\n") { Absent => true other => false })
-}
-
-// INHABITANCE, BY REAL EXECUTION ON THE FLOOR. The real reader runs against this host for a device
-// that cannot exist. It must take the route the effective uid dictates, which this claim reads
-// independently: as root it reaches tun_flags and answers Missing; otherwise it refuses on the
-// reader identity before touching /proc. Neither route may produce a count.
-test fn real_reader_takes_the_route_the_reader_identity_dictates() -> Bool {
-  let status = Filesystem.Read(path: "/proc/self/status")
-  status.success && (match procfs_status_effective_uid(content: status.content) {
-    Absent => false
-    Present { value: euid } => match tun_descriptor_census_observe(name: "gunbcnotap0") {
-      TunInterfaceMissing => euid == 0
-      TunDescriptorUnreadable { cause: TunCensusReaderNotRoot { euid: seen } } => euid != 0 && seen == euid
-      other => false
-    }
-  }) && (match tun_descriptor_census_observe(name: "bad/name") { TunDescriptorUnreadable { cause: TunCensusSubjectInadmissible } => true other => false })
 }
