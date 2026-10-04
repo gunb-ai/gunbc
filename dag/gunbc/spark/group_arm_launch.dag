@@ -859,24 +859,18 @@ fn group_arm_host_observation(ctx: SparkMaterializeContext, h: HostIdentity) -> 
   ], "")
 }
 
-// THE PINNED RUNTIME'S OWN SOURCES, read-only, on the session host only: the modules that decide
-// admission (scheduler, KV cache manager and coordinator, scheduler config), the metrics that expose
-// waiting reasons, and the warmup that set NVFP4's cold-start time. `python3 -m inspect <module>` in a
+// THE PINNED RUNTIME'S OWN SOURCES, read-only, on the session host only. The admission read (scheduler,
+// KV cache manager/coordinator, metrics, warmup) was taken by run 37205174435; this set reads what a
+// high max_num_seqs costs in this image -- cudagraph capture sizes, persistent batch buffers, the
+// runner's per-sequence allocations and the worker's memory profile -- before any ceiling is proposed. `python3 -m inspect <module>` in a
 // throwaway container of the Group A runtime's pinned digest prints the module's source -- no GPU, no
 // running arm, no quoting. What the capacity plan cites is read from here, never from memory of
 // upstream (valiant-crab-775, 2026-10-04: "establish in the pinned runtime exactly what is reserved").
 data group_arm_runtime_source_modules: List<String> = [
-  "vllm.config.scheduler",
-  "vllm.v1.core.sched.scheduler",
-  "vllm.v1.core.sched.request_queue",
-  "vllm.v1.core.kv_cache_manager",
-  "vllm.v1.core.kv_cache_coordinator",
-  "vllm.v1.core.single_type_kv_cache_manager",
-  "vllm.v1.core.kv_cache_utils",
-  "vllm.v1.metrics.loggers",
-  "vllm.v1.metrics.stats",
-  "vllm.model_executor.warmup.kernel_warmup",
-  "vllm.model_executor.warmup.flashinfer_sparse_mla_warmup",
+  "vllm.config.compilation",
+  "vllm.v1.worker.gpu_input_batch",
+  "vllm.v1.worker.gpu_model_runner",
+  "vllm.v1.worker.gpu_worker",
 ]
 
 fn group_arm_runtime_source_lines(ctx: SparkMaterializeContext) -> String {
