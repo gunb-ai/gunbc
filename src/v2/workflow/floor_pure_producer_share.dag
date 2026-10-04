@@ -231,6 +231,14 @@ import v2.std.algebra { any }
 // census (the demand concentration), plus this run's `[floor-shared-fill]` ledger, which must now
 // show the fill landing at preparation with disposition=Stored and the twelve former fillers
 // serving hits.
+// dag_prepared_lex EARNS ITS ROW ON THE SAME LEDGER. The floor's cross-claim demand census named
+// `lex_compile_rules` at evals equal to its consumer claims (16 of 16 on gunbc#13279's run), never
+// served: the compiled rule set held closures, which publication refuses, so every claim that
+// tokenized .dag text recompiled the language's whole rule set (~9k eval steps) before lexing a
+// single character. The matchers are now pattern data (v2.compiler.tokenize lex_match_pattern),
+// the value is portable, and the nullary producer moves the one compile to strict preparation.
+// The instrument is the same `[cross-claim-demand]` row: lex_compile_rules must stop appearing
+// per claim and dag_prepared_lex must land with disposition=Stored.
 // THE THREE INGESTED-FIXTURE PIPELINE ROWS BELOW EARN THEIR PLACE ON THE v2-self-host BRANCH'S
 // OWN FLOOR RECEIPT, not on inference. That run refused five changed witnesses over the per-claim
 // ceiling at one head: v2.test.long.emit_host_classical_not_ingested_equals_eval's
@@ -1003,6 +1011,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
   "v2.extdeps.languages.bash_command_fold.bash_fold_lex",
   "v2.compiler.program_assembly.dag_prepared_grammar",
+  "v2.compiler.program_assembly.dag_prepared_lex",
   "v2.compiler.body_lowering_fold.body_lower_binary_operator_tokens",
   "v2.compiler.body_lowering_fold.body_lower_prefix_operator_tokens",
   "v2.test.long.emit_host_produced_module_equals_eval.produced_add_module_source",
