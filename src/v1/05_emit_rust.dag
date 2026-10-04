@@ -7532,10 +7532,6 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
         Present { value: data_anno } =>
           match item.body {
             Present { value: data_value } => {
-              // The declaration's `?` lives on the ITEM, not on its annotation node (infer's
-              // declared_type_conformance_note class 4), so the declared type is rebuilt through
-              // the same authority fn returns use. Without it a branded `data d: NonEmptyStr? =
-              // Present { .. }` rendered `-> NonEmptyStr` and every consumer of the row refused.
               emit_data_def(name: item_text, type_node: preserve_outer_optional_cardinality(outer: item, inner: data_anno), value: data_value, registry: registry, scope: scope, depth: 0, shared_types: shared_types, emit_info: emit_info)
             }
             Absent => emit_rust_item_refusal(item_text: item_text, reason: "data item carries no value")
@@ -16715,6 +16711,11 @@ fn data_def_annotation_is_named_refinement(annotation: Node, source_indices: Map
 // declared type decided by the carrier and its wrap decided by the spelling, and needs_rc is
 // threaded into emit_data_def_body, so the value took the same answer as the signature. Routed to
 // the carrier authority; the spelling key is deleted rather than kept beside it.
+// A DATA ROW'S DECLARED `?` LIVES ON THE ITEM, not on its annotation node (infer's
+// declared_type_conformance_note class 4), so the ModuleItemDataValue caller hands this function the
+// annotation rebuilt through preserve_outer_optional_cardinality -- the same authority fn returns use.
+// Without it a branded `data d: NonEmptyStr? = Present { .. }` rendered `-> NonEmptyStr` here (the
+// preserves_declared_brand arm renders from the annotation alone) and every consumer refused.
 fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let annotation_type_node = type_node
   let ann_name = authored_name_at(source_indices: scope.type_env.source_indices, node: annotation_type_node)
