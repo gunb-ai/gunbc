@@ -310,6 +310,7 @@ service github.WorkflowRuns {
     }
     output {
       run: WorkflowRun
+      outcome: RestOutcome
     }
     readonly
     transport rest {

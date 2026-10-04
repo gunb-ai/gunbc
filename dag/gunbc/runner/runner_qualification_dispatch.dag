@@ -1,0 +1,202 @@
+module gunbc.runner.runner_qualification_dispatch
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.resources { Network }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import std.decl_ref { decl_ref }
+import extdeps.transports.rest { RestOutcome, RestOk }
+import extdeps.github.actions { DispatchInput, InputString }
+import extdeps.github.workflows { WorkflowDispatchReceipt }
+import extdeps.github.workflow_runs {
+  WorkflowRun, WorkflowRunStatus, Completed, WorkflowRunConclusion, WorkflowJobRun, WorkflowJobRunList,
+}
+import gunbc.runner_throughput_qualification_route { QualificationInstrument, qualification_instruments }
+
+// THE DISPATCH LEG OF THE QUALIFICATION ROUTE, AND THE COLLECT STAGE THAT READS ITS RUN BACK.
+//
+// The route registers one ephemeral slot whose label set carries a per-boot attempt label
+// (gunbc.runner_throughput_qualification_route ephemeral_slot_labels). Dispatching the floor to that
+// slot is a workflow_dispatch whose input IS the attempt label, so the target workflow's runs-on can
+// name it and no other registration in the organization can serve the job. This module is the
+// production caller of extdeps.github.workflows github.Workflows CreateDispatch; its landing is what
+// dissolved that module's unconsumed-operation frontier.
+//
+// WHICH WORKFLOW IS A PARAMETER. The fleet-converge mode that becomes this route belongs to
+// gunbc.fleet_converge_workflow and lands with the boot leg; naming a workflow file here before that
+// mode exists would be a second spelling of a fact whose home is not yet written. What this module
+// does own is the input the target workflow must declare: qualification_attempt_dispatch_input is
+// the DispatchInput row the workflow side consumes, and the dispatch map is keyed by its name, so
+// the key the dispatch sends and the key the workflow declares are one declaration.
+//
+// AUTHORIZATION IS THE DISPATCHING RUN'S (operator ruling 2026-10-03): CreateDispatch authenticates
+// with the running job's GITHUB_TOKEN (the service config's auth_source), with no per-dispatch
+// approval. gunbc.auth.privileged_effect_census rows dispatch_qualification_floor through
+// gunbc.auth.authorization_pattern_selection.
+
+data qualification_attempt_dispatch_input: DispatchInput = DispatchInput {
+  name: "runner_attempt_label",
+  description: Present { value: "the per-boot attempt label the ephemeral qualification slot registered with; runs-on names it" },
+  required: true,
+  default: none,
+  type: InputString,
+}
+
+type QualificationWorkflowTarget {
+  owner: NonEmptyStr
+  repo: NonEmptyStr
+  workflow_id: NonEmptyStr
+  ref: NonEmptyStr
+}
+
+fn qualification_dispatch_inputs(attempt: NonEmptyStr) -> Map<String, String> {
+  map_insert(m: empty_map(), key: qualification_attempt_dispatch_input.name, value: attempt as String)
+}
+
+// A DISPATCH IS ONE ATTEMPT AND ITS ANSWER IS THE RECEIPT OR THE REFUSAL, never a run assumed to
+// exist. The run id comes from GitHub's 2026-03-10 response (WorkflowDispatchReceipt); a refused or
+// unreached request carries its RestOutcome and mints no run.
+type QualificationDispatch
+  = QualificationDispatched { attempt: NonEmptyStr, receipt: WorkflowDispatchReceipt }
+  | QualificationDispatchRefused { attempt: NonEmptyStr, outcome: RestOutcome }
+
+fn dispatch_qualification_floor(target: QualificationWorkflowTarget, attempt: NonEmptyStr) -> QualificationDispatch uses net: Network {
+  let answered = github.Workflows.CreateDispatch(
+    owner: target.owner as String,
+    repo: target.repo as String,
+    workflow_id: target.workflow_id as String,
+    ref: target.ref as String,
+    inputs: qualification_dispatch_inputs(attempt: attempt),
+  )
+  match answered.outcome {
+    RestOk =>
+      QualificationDispatched {
+        attempt: attempt,
+        receipt: WorkflowDispatchReceipt {
+          workflow_run_id: answered.workflow_run_id,
+          run_url: answered.run_url,
+          html_url: answered.html_url,
+        },
+      }
+    other => QualificationDispatchRefused { attempt: attempt, outcome: other }
+  }
+}
+
+// ── COLLECT: THE RUN READ BACK, ENSURE-STYLE ──────────────────────────────────────────────────
+//
+// A DISPATCH RECEIPT SAYS A RUN EXISTS, NOT THAT THE ATTEMPT'S RUNNER SERVED IT. The collection
+// therefore decides only from what GitHub reports about the run now: the run must be Completed with
+// a conclusion, and at least one of its jobs must carry the attempt label and have started -- that
+// is, been taken by a runner registered under the attempt. A run that finished without that is the
+// typed refusal RunNeverReachedAttemptRunner, carrying every job's labels so the cause is located;
+// it is never collected as a measurement of a host that did not run it.
+//
+// THE CONCLUSION IS READ BACK AND CARRIED, NOT FILTERED: a failed floor on the attempt's runner is
+// still a run of this host and the receipt says how it ended.
+
+type QualificationRunRefusal
+  = RunReadUnreadable { outcome: RestOutcome }
+  | RunNotCompleted { status: WorkflowRunStatus }
+  | RunCompletedWithoutConclusion
+  | RunJobsUnreadable { outcome: RestOutcome }
+  | RunJobsTruncated { returned: Int, total: Int }
+  | RunNeverReachedAttemptRunner { job_labels: List<List<String>> }
+
+// INSTRUMENT EXTRACTION IS A DECLARED FRONTIER, carried on the collected arm as the instruments the
+// run was read for and not yet extracted from (qualification_instrument_extraction_frontier_rows).
+type QualificationRunCollection
+  = QualificationRunCollected {
+      attempt: NonEmptyStr
+      run_id: Int
+      conclusion: WorkflowRunConclusion
+      attempt_jobs: List<WorkflowJobRun>
+      instruments_unextracted: List<QualificationInstrument>
+    }
+  | QualificationRunRefused { attempt: NonEmptyStr, run_id: Int, refusal: QualificationRunRefusal }
+
+fn job_served_by_attempt(job: WorkflowJobRun, attempt: NonEmptyStr) -> Bool {
+  (job.labels |> any(l => l == (attempt as String)))
+    && (match job.started_at { Present { value: _ } => true Absent => false })
+}
+
+fn refuse_run(attempt: NonEmptyStr, run_id: Int, refusal: QualificationRunRefusal) -> QualificationRunCollection {
+  QualificationRunRefused { attempt: attempt, run_id: run_id, refusal: refusal }
+}
+
+fn conclude_qualification_run(
+  attempt: NonEmptyStr,
+  run_id: Int,
+  run_outcome: RestOutcome,
+  run: WorkflowRun,
+  jobs_outcome: RestOutcome,
+  jobs: WorkflowJobRunList,
+) -> QualificationRunCollection {
+  match run_outcome {
+    RestOk =>
+      match run.status {
+        Completed =>
+          match run.conclusion {
+            Absent => refuse_run(attempt: attempt, run_id: run_id, refusal: RunCompletedWithoutConclusion)
+            Present { value: conclusion } =>
+              match jobs_outcome {
+                RestOk =>
+                  if count(jobs.jobs) != jobs.total_count {
+                    refuse_run(attempt: attempt, run_id: run_id, refusal: RunJobsTruncated { returned: count(jobs.jobs), total: jobs.total_count })
+                  } else {
+                    let served = jobs.jobs |> filter(j => job_served_by_attempt(job: j, attempt: attempt))
+                    if count(served) == 0 {
+                      refuse_run(attempt: attempt, run_id: run_id, refusal: RunNeverReachedAttemptRunner { job_labels: jobs.jobs |> map(j => j.labels) })
+                    } else {
+                      QualificationRunCollected {
+                        attempt: attempt,
+                        run_id: run_id,
+                        conclusion: conclusion,
+                        attempt_jobs: served,
+                        instruments_unextracted: qualification_instruments,
+                      }
+                    }
+                  }
+                other => refuse_run(attempt: attempt, run_id: run_id, refusal: RunJobsUnreadable { outcome: other })
+              }
+          }
+        other => refuse_run(attempt: attempt, run_id: run_id, refusal: RunNotCompleted { status: other })
+      }
+    other => refuse_run(attempt: attempt, run_id: run_id, refusal: RunReadUnreadable { outcome: other })
+  }
+}
+
+fn qualification_run_collected(c: QualificationRunCollection) -> Bool {
+  match c {
+    QualificationRunCollected { attempt: _, run_id: _, conclusion: _, attempt_jobs: _, instruments_unextracted: _ } => true
+    QualificationRunRefused { attempt: _, run_id: _, refusal: _ } => false
+  }
+}
+
+fn collect_qualification_run(
+  target: QualificationWorkflowTarget,
+  dispatched: WorkflowDispatchReceipt,
+  attempt: NonEmptyStr,
+) -> QualificationRunCollection uses net: Network {
+  let run_id = dispatched.workflow_run_id as String
+  let read = github.WorkflowRuns.GetRun(auth_token: "", owner: target.owner as String, repo: target.repo as String, run_id: run_id)
+  let jobs = github.WorkflowRuns.ListJobs(auth_token: "", owner: target.owner as String, repo: target.repo as String, run_id: run_id)
+  conclude_qualification_run(
+    attempt: attempt,
+    run_id: dispatched.workflow_run_id,
+    run_outcome: read.outcome,
+    run: read.run,
+    jobs_outcome: jobs.outcome,
+    jobs: jobs.result,
+  )
+}
+
+// THE EXTRACTION FRONTIER, NAMED AT THE CAPABILITY GRAIN. Four instruments are run outputs and are
+// reached through the run's artifacts and job logs; two are not run outputs at all and their sources
+// are named here so the extraction leg does not go looking for them in the run.
+data qualification_instrument_extraction_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "QualificationRunCollection"),
+    reason: "a collected qualification run carries every qualification_instrument as unextracted: extdeps.github has no Actions artifacts or job-logs read operation, no path that follows the logs redirect or opens the artifact archive, and no parser for the [floor-phase] and [floor-cgroup] log rows. Two instruments are not run outputs: GuestIdleMeminfoAndNproc comes from the boot leg's runner-host-up readback, and ConcurrentCohortSeatWindows from product.capacity.cohort_observation seal_cohort",
+    dissolution: unbound_dissolution(description: "the Actions artifacts and job-logs read path (list and download a run's artifacts, download a job's log text) plus the floor row parsers are SUFFICIENT to populate FloorPhaseRows, FloorCgroupRows, ClaimCostArtifactEvalSteps and CalibrationSpecimenWitnessLine from one collected run through the producer each instrument names, with GuestIdleMeminfoAndNproc read from the boot leg's runner-host-up readback and ConcurrentCohortSeatWindows from product.capacity.cohort_observation seal_cohort, so QualificationRunCollected carries readings for every qualification_instrument and no unextracted list. NOT satisfied by an artifacts operation with no parser, nor by a parser exercised only on a fixture"),
+  )
+]

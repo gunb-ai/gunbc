@@ -1,0 +1,150 @@
+module test.claim.runner_qualification_dispatch_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused }
+import extdeps.github.workflow_runs {
+  WorkflowRun, WorkflowJobRun, WorkflowJobRunList, Completed, InProgress, Success, Failure,
+}
+import gunbc.runner_throughput_qualification_route { ephemeral_slot_labels, qualification_instruments }
+import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.runner.runner_qualification_dispatch {
+  qualification_attempt_dispatch_input, qualification_dispatch_inputs,
+  QualificationRunCollection, QualificationRunCollected, QualificationRunRefused,
+  RunReadUnreadable, RunNotCompleted, RunCompletedWithoutConclusion, RunJobsUnreadable,
+  RunJobsTruncated, RunNeverReachedAttemptRunner,
+  conclude_qualification_run, qualification_run_collected,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data attempt: NonEmptyStr = "q-20261004-1"
+
+// THE DISPATCH KEY IS THE DECLARED INPUT'S NAME AND ITS VALUE IS THE ATTEMPT -- the same label the
+// slot registers under (ephemeral_slot_labels), so runs-on fed from this input selects exactly that
+// registration. Renaming the input row, or sending any other value, turns this red.
+test fn the_dispatch_carries_the_attempt_label_under_the_declared_input() -> Bool {
+  let inputs = qualification_dispatch_inputs(attempt: attempt)
+  count(map_keys(inputs)) == 1
+    && match map_get(inputs, qualification_attempt_dispatch_input.name) {
+      Present { value: v } => v == (attempt as String)
+        && (ephemeral_slot_labels(host: operator_host_mtcollins1, attempt: attempt) |> any(l => l == v))
+      Absent => false
+    }
+    && qualification_attempt_dispatch_input.required
+}
+
+fn run(status_completed: Bool, concluded: Bool) -> WorkflowRun {
+  WorkflowRun {
+    id: 77,
+    name: none,
+    path: none,
+    head_sha: "abc123",
+    head_branch: none,
+    event: "workflow_dispatch",
+    status: if status_completed { Completed } else { InProgress },
+    conclusion: if concluded { Present { value: Failure } } else { none },
+    workflow_id: 9,
+    run_number: 1,
+    run_attempt: 1,
+    actor: none,
+    triggering_actor: none,
+    html_url: "https://github.com/gunb-ai/gunbc/actions/runs/77",
+    created_at: "2026-10-04T00:00:00Z",
+    updated_at: "2026-10-04T01:00:00Z",
+    pull_requests: [],
+  }
+}
+
+fn job(labels: List<String>, started: Bool) -> WorkflowJobRun {
+  WorkflowJobRun {
+    id: 500,
+    run_id: 77,
+    run_attempt: 1,
+    name: "floor",
+    status: Completed,
+    conclusion: Present { value: Success },
+    labels: labels,
+    created_at: Present { value: "2026-10-04T00:00:10Z" },
+    started_at: if started { Present { value: "2026-10-04T00:01:00Z" } } else { none },
+    completed_at: Present { value: "2026-10-04T00:50:00Z" },
+  }
+}
+
+fn jobs(js: List<WorkflowJobRun>) -> WorkflowJobRunList {
+  WorkflowJobRunList { total_count: count(js), jobs: js }
+}
+
+fn conclude(run_completed: Bool, concluded: Bool, js: WorkflowJobRunList) -> QualificationRunCollection {
+  conclude_qualification_run(
+    attempt: attempt, run_id: 77,
+    run_outcome: RestOk, run: run(status_completed: run_completed, concluded: concluded),
+    jobs_outcome: RestOk, jobs: js,
+  )
+}
+
+// THE POSITIVE CONTROL: a completed run whose job was taken under the attempt label is collected,
+// its conclusion is the one read back (a FAILED floor is still collected and says so), and every
+// qualification_instrument is carried as unextracted -- the declared extraction frontier, not a
+// silent empty reading.
+test fn a_completed_run_served_by_the_attempt_runner_is_collected_with_its_conclusion() -> Bool {
+  match conclude(run_completed: true, concluded: true, js: jobs(js: [job(labels: ["self-hosted", attempt as String], started: true)])) {
+    QualificationRunCollected { attempt: a, run_id: r, conclusion: c, attempt_jobs: served, instruments_unextracted: u } =>
+      a == attempt && r == 77 && count(served) == 1
+        && (match c { Failure => true _ => false })
+        && count(u) == count(qualification_instruments)
+    QualificationRunRefused { attempt: _, run_id: _, refusal: _ } => false
+  }
+}
+
+// THE BRIEF'S REFUSAL: the run completed but no job carried the attempt label, or the one that did
+// never started (no runner under the attempt took it). Both refuse, and carry the labels observed.
+test fn a_run_the_attempt_runner_never_served_refuses_with_the_labels_it_saw() -> Bool {
+  let other = conclude(run_completed: true, concluded: true, js: jobs(js: [job(labels: ["self-hosted", "srv1"], started: true)]))
+  let unstarted = conclude(run_completed: true, concluded: true, js: jobs(js: [job(labels: [attempt as String], started: false)]))
+  (match other {
+    QualificationRunRefused { attempt: _, run_id: _, refusal: RunNeverReachedAttemptRunner { job_labels: ls } } =>
+      count(ls) == 1 && (ls |> all(l => l |> any(x => x == "srv1")))
+    _ => false
+  })
+    && !qualification_run_collected(c: unstarted)
+    && (match unstarted { QualificationRunRefused { attempt: _, run_id: _, refusal: RunNeverReachedAttemptRunner { job_labels: _ } } => true _ => false })
+}
+
+test fn an_unfinished_or_unconcluded_run_refuses_rather_than_collecting() -> Bool {
+  let served = jobs(js: [job(labels: [attempt as String], started: true)])
+  (match conclude(run_completed: false, concluded: false, js: served) {
+    QualificationRunRefused { attempt: _, run_id: _, refusal: RunNotCompleted { status: InProgress } } => true
+    _ => false
+  })
+    && (match conclude(run_completed: true, concluded: false, js: served) {
+      QualificationRunRefused { attempt: _, run_id: _, refusal: RunCompletedWithoutConclusion } => true
+      _ => false
+    })
+}
+
+// A PAGE SHORTER THAN total_count IS NOT A JOB LISTING: the attempt's job could sit on the unread
+// page, so the fold refuses rather than reporting the runner never reached.
+test fn a_truncated_or_unreadable_readback_refuses() -> Bool {
+  let truncated = WorkflowJobRunList { total_count: 2, jobs: [job(labels: [attempt as String], started: true)] }
+  (match conclude(run_completed: true, concluded: true, js: truncated) {
+    QualificationRunRefused { attempt: _, run_id: _, refusal: RunJobsTruncated { returned: 1, total: 2 } } => true
+    _ => false
+  })
+    && (match conclude_qualification_run(
+      attempt: attempt, run_id: 77,
+      run_outcome: RestStatusRefused { status: 404, body: "Not Found" }, run: run(status_completed: true, concluded: true),
+      jobs_outcome: RestOk, jobs: jobs(js: []),
+    ) {
+      QualificationRunRefused { attempt: _, run_id: _, refusal: RunReadUnreadable { outcome: _ } } => true
+      _ => false
+    })
+    && (match conclude_qualification_run(
+      attempt: attempt, run_id: 77,
+      run_outcome: RestOk, run: run(status_completed: true, concluded: true),
+      jobs_outcome: RestTransportRefused { cause: "unreached" }, jobs: jobs(js: []),
+    ) {
+      QualificationRunRefused { attempt: _, run_id: _, refusal: RunJobsUnreadable { outcome: _ } } => true
+      _ => false
+    })
+}
