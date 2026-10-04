@@ -2,7 +2,7 @@ module test.claim.serve_function_binding_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String, NonEmptyStr, List, CommitSha }
-import extdeps.http.server { ServeWireResponse }
+import extdeps.http.server { ServeWireResponse, ServeRequestHeader }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   public_builtin_dashboard_instances,
@@ -29,17 +29,17 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // fails, and a row naming a handler this table does not carry fails as unbound.
 type ServeHandlerRow {
   name: String
-  handle: fn(String, String, String, String, CommitSha) -> ServeWireResponse
+  handle: fn(String, String, String, String, List<ServeRequestHeader>, CommitSha) -> ServeWireResponse
 }
 
 fn declared_serve_handlers() -> List<ServeHandlerRow> {
   [
-    ServeHandlerRow { name: "roadmap_serve_handle", handle: (m, p, b, t, r) => roadmap_serve_handle(method: m, path: p, body: b, tailscale_identity: t, release_revision: r) },
-    ServeHandlerRow { name: "roadmap_serve_handle_macbook_local", handle: (m, p, b, t, r) => roadmap_serve_handle_macbook_local(method: m, path: p, body: b, tailscale_identity: t, release_revision: r) },
-    ServeHandlerRow { name: "roadmap_serve_handle_srv1_lab", handle: (m, p, b, t, r) => roadmap_serve_handle_srv1_lab(method: m, path: p, body: b, tailscale_identity: t, release_revision: r) },
-    ServeHandlerRow { name: "roadmap_serve_handle_srv2_preview", handle: (m, p, b, t, r) => roadmap_serve_handle_srv2_preview(method: m, path: p, body: b, tailscale_identity: t, release_revision: r) },
-    ServeHandlerRow { name: "roadmap_serve_handle_srv2_deploy", handle: (m, p, b, t, r) => roadmap_serve_handle_srv2_deploy(method: m, path: p, body: b, tailscale_identity: t, release_revision: r) },
-    ServeHandlerRow { name: "roadmap_serve_handle_srv2_lab", handle: (m, p, b, t, r) => roadmap_serve_handle_srv2_lab(method: m, path: p, body: b, tailscale_identity: t, release_revision: r) },
+    ServeHandlerRow { name: "roadmap_serve_handle", handle: (m, p, b, t, h, r) => roadmap_serve_handle(method: m, path: p, body: b, tailscale_identity: t, request_headers: h, release_revision: r) },
+    ServeHandlerRow { name: "roadmap_serve_handle_macbook_local", handle: (m, p, b, t, h, r) => roadmap_serve_handle_macbook_local(method: m, path: p, body: b, tailscale_identity: t, request_headers: h, release_revision: r) },
+    ServeHandlerRow { name: "roadmap_serve_handle_srv1_lab", handle: (m, p, b, t, h, r) => roadmap_serve_handle_srv1_lab(method: m, path: p, body: b, tailscale_identity: t, request_headers: h, release_revision: r) },
+    ServeHandlerRow { name: "roadmap_serve_handle_srv2_preview", handle: (m, p, b, t, h, r) => roadmap_serve_handle_srv2_preview(method: m, path: p, body: b, tailscale_identity: t, request_headers: h, release_revision: r) },
+    ServeHandlerRow { name: "roadmap_serve_handle_srv2_deploy", handle: (m, p, b, t, h, r) => roadmap_serve_handle_srv2_deploy(method: m, path: p, body: b, tailscale_identity: t, request_headers: h, release_revision: r) },
+    ServeHandlerRow { name: "roadmap_serve_handle_srv2_lab", handle: (m, p, b, t, h, r) => roadmap_serve_handle_srv2_lab(method: m, path: p, body: b, tailscale_identity: t, request_headers: h, release_revision: r) },
   ]
 }
 
@@ -48,7 +48,7 @@ fn instance_serves_itself(instance: HostDashboardInstance) -> Bool {
   count(bound) == 1
     && all(bound, h => {
       let serve = h.handle
-      let answer = serve("GET", "/instance.json", "", "", "0000000000000000000000000000000000000000" as CommitSha)
+      let answer = serve("GET", "/instance.json", "", "", [], "0000000000000000000000000000000000000000" as CommitSha)
       answer.status == 200
         && starts_with(s: answer.body, prefix: dashboard_instance_health_identity_prefix(instance_id: instance.instance_id as String))
     })
