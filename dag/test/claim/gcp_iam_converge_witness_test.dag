@@ -40,7 +40,7 @@ import gunbc.fleet_converge_workflow {
   fleet_converge_gcp_iam_request_step, fleet_converge_gcp_iam_actuate_auth_step, fleet_converge_gcp_iam_apply_step,
   fleet_converge_gcp_iam_approved_if,
 }
-import gunbc.auth.gcp_iam_converge_run { iam_converge_token_env, gcp_iam_converge_admission, attempt_identity_of }
+import gunbc.auth.gcp_iam_converge_run { iam_converge_token_env, gcp_iam_converge_admission }
 import gunbc.auth.approval_request_client { ApprovalPollStanding, PollApproved }
 import gunbc.auth.approval_gate { ApprovalGate, GateAdmitted, GateRefused }
 import extdeps.cloud.gcp.iam { gcp_cell_in, gcp_policy_cells }
@@ -388,19 +388,19 @@ test fn only_a_live_approval_admits_the_mint_gate_or_the_apply() -> Bool {
 // the run attempt, so the two requests have different escalation ids -- attempt 2 reads its own slot,
 // never attempt 1's -- while consenting to the same revision. A missing or non-decimal part refuses.
 test fn a_rerun_attempt_files_afresh_and_malformed_attempts_refuse() -> Bool {
-  match attempt_identity_of(run_id: "36235907538", run_attempt: "1") {
+  match gunbc.auth.gcp_iam_converge_run.attempt_identity_of(run_id: "36235907538", run_attempt: "1") {
     Absent => false
     Present { value: a1 } =>
-      match attempt_identity_of(run_id: "36235907538", run_attempt: "2") {
+      match gunbc.auth.gcp_iam_converge_run.attempt_identity_of(run_id: "36235907538", run_attempt: "2") {
         Absent => false
         Present { value: a2 } => {
           let q1 = gcp_iam_converge_request_over(d: one_effect_estate(etag: "e1"), g: digest_a, attempt: a1)
           let q2 = gcp_iam_converge_request_over(d: one_effect_estate(etag: "e1"), g: digest_a, attempt: a2)
           q1.escalation_id != q2.escalation_id
             && request_revision_of(request: q1) == request_revision_of(request: q2)
-            && match attempt_identity_of(run_id: "36235907538", run_attempt: "") { Absent => true  Present { value: _ } => false }
-            && match attempt_identity_of(run_id: "36235907538", run_attempt: "2x") { Absent => true  Present { value: _ } => false }
-            && match attempt_identity_of(run_id: "", run_attempt: "1") { Absent => true  Present { value: _ } => false }
+            && match gunbc.auth.gcp_iam_converge_run.attempt_identity_of(run_id: "36235907538", run_attempt: "") { Absent => true  Present { value: _ } => false }
+            && match gunbc.auth.gcp_iam_converge_run.attempt_identity_of(run_id: "36235907538", run_attempt: "2x") { Absent => true  Present { value: _ } => false }
+            && match gunbc.auth.gcp_iam_converge_run.attempt_identity_of(run_id: "", run_attempt: "1") { Absent => true  Present { value: _ } => false }
         }
       }
   }
