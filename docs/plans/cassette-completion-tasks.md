@@ -7,11 +7,11 @@ This is the current queue; dated gauge and rack-frame plans are historical. No n
 | --- | --- | --- | --- |
 | CAS-1 | Restore green required CI | — | Known declaration/catch-all failures corrected; validation pending |
 | CAS-2 | Finish shared cassette generation | CAS-1 | Shared profiles, layout and bed-allocation graph implemented; solid feature generalization open |
-| CAS-3 | Size rear fans from cassette opening | CAS-2 | Standard-size selector and mounting admission implemented; attachment/guard solids and cooling qualification open |
-| CAS-4 | Complete integrated stacking geometry | CAS-2, CAS-3 | Open |
+| CAS-3 | Size rear fans from cassette opening | CAS-2 | Selector, keyed 140 mm rear mount and guard modeled; geometry checks pass; cooling/retention qualification open |
+| CAS-4 | Complete integrated stacking geometry | CAS-2, CAS-3 | Cassette-owned clip shoes, hollow posts and stack keys modeled; one/two-unit printed collision checks pass; load/retention qualification open |
 | CAS-5 | Complete power cassette and harness layout | CAS-2, CAS-4 | Electrical/interface planning exists; physical placement open |
 | CAS-6 | Validate final loads, airflow and materials | CAS-3, CAS-4, CAS-5 | Preliminary screens exist; final assembly qualification open |
-| CAS-7 | Publish combined review and prepare remaining prints | CAS-6 | Open; previously printed parts remain the compatibility baseline |
+| CAS-7 | Publish combined review and prepare remaining prints | CAS-6 | Tall-cassette joinery review updated; power layout and fabrication release remain open |
 
 ## CAS-1 — Restore green CI
 
@@ -54,3 +54,13 @@ Use selected fans' operating data with restriction/fan-failure cases, header-loa
 Publish assembly and exploded per-piece rotation using the shared emitted model, including power/cable/clearance geometry. Show actual height, fan selection, BOM, assembly steps and qualification status. Compare with P1–P4 and the fitted fan mount; list reusable and superseded parts explicitly.
 
 Only after geometry/solid/bed checks and appropriate material selection: export and slice remaining pieces for both A1 minis, record digests, mass and durations, and schedule a two-printer wave plan. Physical starts still require fresh bed-clear evidence and the reviewed authorization workflow. No new starts are implied by creating this queue.
+
+## 140 mm joinery checkpoint — 4 October 2026
+
+`rear_fan_assembly` now realizes the retained tray arms, two bed-sized crossmember halves, a keyed cradle, an integral-spacer guard and six broad-grip retaining pins. The P14 body uses its vendor 27 mm depth. Two diagonal M4 bolts capture plate, fan and guard; the modeled stack is 40 mm before washers/nuts, so final bolt length remains unresolved. The guard's nominal 7 mm openings are proposed geometry, not certified finger protection.
+
+`stack_joinery` adds four cassette-owned clip shoes, hollow 20/12 mm posts split into lower/upper pieces, four middle-joint pins and keyed stack seats. No separate enclosing frame is present. The post wall area is 256 mm²; the shoe bearing area is only 127.75 mm². These must not be substituted for each other or for the old solid-pillar mechanics screen. Rear shoe relief clears the existing rear-arm pin heads. A middle pop explicitly requires independent support above it.
+
+Validation: three new joinery witnesses passed. The shared CadQuery emitter produced 34 valid positive solids, including 28 connected printed solids, each under the 180 mm bed bound. Exact printed-solid intersection checks found no intersections above 0.01 mm³ within one cassette or between two at 230 mm pitch. These were manual realization checks, not a new durable CAD witness. P1–P4 are imported unchanged. The interactive review preserves piece isolation/rotation and adds a two-unit view. These results do not establish support-free slicing, clipping force, vibration retention, loaded lifting, creep, thermal suitability or a safe stack count.
+
+Remaining before fabrication release: complete power and cable reservations, connect actual hollow/jointed support geometry to the load screen, qualify material/retention and cooling obligations, and slice selected parts. Shared larger-board panel-solid generation remains CAS-2 work; the profiles and partition graph alone do not make those boards printable. Required CI is still pending on the PR; focused local results are not a green merge gate.
