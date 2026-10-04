@@ -65,7 +65,7 @@ import gunbc.clock_read { clock_now_probed_at_or_unknown }
 // dispatch of this lane, after 30 green witnesses and a green corpus resolve. That is DESIGN §5's
 // specification-without-execution in its purest form - the suite proved the decode, the standing
 // and the refusals, and could not prove that the program reaches a controller at all, because the
-// only thing that establishes it is running it. gunbc.machine_intake_mtcollins1_actuate's own
+// only thing that establishes it is running it. gunbc.managed_host_boot_handoff's own
 // header records the identical failure against shell.Env.Get, which is where the explanation came
 // from; this module simply repeated it.
 //

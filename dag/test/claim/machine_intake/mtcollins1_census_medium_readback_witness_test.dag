@@ -3,8 +3,8 @@ module test.claim.machine_intake.mtcollins1_census_medium_readback_witness_test
 import gunbc.machine_intake_mtcollins1_boot_milestone { mtcollins1_census_stages, mtcollins1_one_socket_workload, mtcollins1_dual_socket_workload }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, NonEmptyStr, String }
-import gunbc.machine_intake_mtcollins1_boot_authorization { MtCollins1CensusMedium, MtCollins1StockInstallerMedium }
-import gunbc.machine_intake_mtcollins1_census_image {
+import gunbc.boot_medium { BootMedium, stock_installer_boot_medium }
+import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_boot_medium,
   mtcollins1_census_image, Mtcollins1CensusImage, Mtcollins1CensusImageDerived, Mtcollins1CensusImageRefused,
   mtcollins1_census_image_stem, mtcollins1_census_volume_id, mtcollins1_seeded_image_input,
 }
@@ -29,7 +29,7 @@ data recorded: NonEmptyStr = "30ca88d43f8913995078f6c2c917d5049842f927f3fc886a10
 data other: String = "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555"
 // 64 characters, not hexadecimal: the RED that separates "64 long" from "a digest".
 data sixty_four_non_hex: String = "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
-data census: MtCollins1CensusMedium = MtCollins1CensusMedium { output_digest: recorded }
+data census: BootMedium = mtcollins1_census_boot_medium(output_digest: recorded)
 data srv2: NonEmptyStr = "srv2"
 
 fn ok(stdout: String) -> RemoteAnswer { RemoteAnswer { exit_code: 0, stdout: stdout, stderr: "" } }
@@ -154,7 +154,7 @@ test fn a_file_whose_bytes_differ_from_the_record_diverges() -> Bool {
 }
 
 test fn the_stock_medium_has_no_census_readback() -> Bool {
-  match mtcollins1_census_medium_readback_from_answers(medium: MtCollins1StockInstallerMedium, host: srv2, record: record_ok(), measure: measure_ok()) {
+  match mtcollins1_census_medium_readback_from_answers(medium: stock_installer_boot_medium, host: srv2, record: record_ok(), measure: measure_ok()) {
     CensusMediumReadbackNotCensus => true
     _ => false
   }

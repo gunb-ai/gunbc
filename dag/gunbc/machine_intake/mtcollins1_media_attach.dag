@@ -9,11 +9,9 @@ import gunbc.managed_host_unit_hold { UnitHoldProof, unit_hold_proof_refusal }
 import gunbc.fleet_intent_network { operator_host_mtcollins1 }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_firmware, mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
 import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_secured_account }
-import gunbc.machine_intake_mtcollins1_boot_authorization {
-  MtCollins1BootSubject, mtcollins1_boot_medium, mtcollins1_boot_medium_image_name, mtcollins1_boot_medium_image_sha256,
-}
+import gunbc.managed_host_boot { AdmittedBootSubject, boot_subject_host }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_stem }
-import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_boot_export_dir }
+import gunbc.boot_medium { bmc_boot_image_export }
 import gunbc.fleet_reach { srv2_lan_ipv4 }
 import extdeps.network.ipv4 { render_ipv4_address }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
@@ -64,7 +62,7 @@ import gunbc.machine_intake_megarac_media_attach {
 // THE IMAGE NAME IS IMPORTED RATHER THAN AUTHORED, and it used to be authored here. That made this
 // module and the fetch module two authorities for one fact — the artifact this host boots — which
 // admitted verifying one image and attaching another, with every individual step reporting success.
-// See gunbc.machine_intake_mtcollins1_boot_artifact.
+// The name is now read off the admitted subject's medium (gunbc.boot_medium BootMedium).
 // THE JAR IS ATTEMPT-OWNED, AND A FIXED LITERAL HERE WAS THE DEFECT. extdeps.bmc.megarac's note
 // once claimed that making the jar a parameter meant an attempt owned its own — it does not: a
 // parameter PERMITS a per-attempt path and this wrapper passed a constant, so two concurrent
@@ -86,7 +84,7 @@ data mtcollins1_media_username: NonEmptyStr? = mtcollins1_secured_account()
 // names the unit's hold, and a caller that does not hold the unit cannot construct one.
 fn mtcollins1_attach_diskless_image(
   proof: UnitHoldProof,
-  subject: MtCollins1BootSubject,
+  subject: AdmittedBootSubject,
   password_file: String,
   attempt: String,
 ) -> MtCollins1MediaAttachRecord
@@ -94,16 +92,11 @@ fn mtcollins1_attach_diskless_image(
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
   ]
 {
-  match unit_hold_proof_refusal(proof: proof, host: operator_host_mtcollins1, label: "mtcollins1 media attach") {
+  match unit_hold_proof_refusal(proof: proof, host: boot_subject_host(subject: subject), label: "mtcollins1 media attach") {
     Present { value: why } => return MediaAttachNotAttempted { reason: why as NonEmptyStr }
     Absent => {}
   }
-  if subject.image_name != mtcollins1_boot_medium_image_name(medium: mtcollins1_boot_medium) {
-    MediaAttachNotAttempted { reason: "the boot subject names a different image than the medium row; controller untouched" }
-  } else if subject.image_sha256 != mtcollins1_boot_medium_image_sha256(medium: mtcollins1_boot_medium) {
-    MediaAttachNotAttempted { reason: "the boot subject names a different image digest than the medium row; controller untouched" }
-  } else {
-    match mtcollins1_media_username {
+  match mtcollins1_media_username {
       Absent =>
         MediaAttachNotAttempted { reason: "BMC is not BmcSecured; refusing before any request" }
       Present { value: username } =>
@@ -118,13 +111,13 @@ fn mtcollins1_attach_diskless_image(
             username: username,
             password_file: password_file as NonEmptyStr,
             attempt: attempt as NonEmptyStr,
-            image_name: subject.image_name,
+            image_name: subject.medium.image_name,
           )
           let power = mtcollins1_power_after_stale_power_off(before: before, off: off, username: username, password_file: password_file as NonEmptyStr)
           MediaAttachAttempted {
             attempt: attempt,
-            medium_image_name: subject.image_name,
-            medium_image_sha256: subject.image_sha256,
+            medium_image_name: subject.medium.image_name,
+            medium_image_sha256: subject.medium.digest,
             power: power,
             stale_power_off: off,
             result: megarac_attach_remote_image(
@@ -132,7 +125,7 @@ fn mtcollins1_attach_diskless_image(
               username: username,
               password_file: password_file as NonEmptyStr,
               cookie_jar: mtcollins1_media_cookie_jar(attempt: attempt as NonEmptyStr),
-              image_name: subject.image_name,
+              image_name: subject.medium.image_name,
               firmware: mtcollins1_firmware,
               task: MegaRacConverge {
                 policy: MegaRacReplacementPolicy {
@@ -144,18 +137,17 @@ fn mtcollins1_attach_diskless_image(
             ),
           }
         }
-    }
   }
 }
 
 // THE SHARE THIS UNIT BOOTS FROM, derived from its authorities rather than typed: srv2's LAN
 // address (gunbc.fleet_reach) and the export this lane publishes into
-// (gunbc.machine_intake_mtcollins1_boot_artifact), over NFS. The controller answered exactly this on
+// (gunbc.boot_medium bmc_boot_image_export), over NFS. The controller answered exactly this on
 // 2026-09-27 (15:40Z and 18:37Z reads, test.claim.machine_intake.megarac_media_convergence_witness_test
 // mtcollins1_media_general_2026_09_27).
 data mtcollins1_media_share: MegaRacShareBinding = MegaRacShareBinding {
   server_address: render_ipv4_address(addr: srv2_lan_ipv4),
-  source_path: mtcollins1_boot_export_dir,
+  source_path: bmc_boot_image_export.dir,
   share_type: MegaRacShareNfs,
 }
 

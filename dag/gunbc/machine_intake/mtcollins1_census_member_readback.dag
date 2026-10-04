@@ -22,10 +22,9 @@ import gunbc.host_command_binding {
   CreationNotRequested,
 }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
-import gunbc.machine_intake_mtcollins1_boot_authorization { MtCollins1BootMedium, MtCollins1CensusMedium, MtCollins1StockInstallerMedium, mtcollins1_boot_medium }
-import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_image_stock_path, mtcollins1_census_nocloud_dir }
+import gunbc.boot_medium { BootMedium, bmc_boot_image_export }
+import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_boot_medium, mtcollins1_census_medium_digest, mtcollins1_census_image_stock_path, mtcollins1_census_nocloud_dir }
 import extdeps.provisioning.ubuntu_seeded_install_media_remaster { install_media_remaster_grub_cfg_on_iso }
-import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_boot_export_host_target }
 import gunbc.machine_intake_mtcollins1_census_medium_readback { mtcollins1_census_medium_served_path, RemoteAnswer, remote_answer_of }
 
 // THE PUBLISHED IMAGE'S BOOT CHAIN, READ BACK MEMBER BY MEMBER AGAINST THE STOCK MEDIUM IT WAS
@@ -165,10 +164,10 @@ type CensusPinGate
   = PinsAdmitted { stock_iso: NonEmptyStr, census_iso: NonEmptyStr }
   | PinsRefused { readback: CensusMemberReadback }
 
-fn census_pin_gate(medium: MtCollins1BootMedium, stock_iso: IsoReading, census_iso: IsoReading) -> CensusPinGate {
-  match medium {
-    MtCollins1StockInstallerMedium => PinsRefused { readback: BootChainMediumNotCensus }
-    MtCollins1CensusMedium { output_digest: census_pin } =>
+fn census_pin_gate(medium: BootMedium, stock_iso: IsoReading, census_iso: IsoReading) -> CensusPinGate {
+  match mtcollins1_census_medium_digest(medium: medium) {
+    Absent => PinsRefused { readback: BootChainMediumNotCensus }
+    Present { value: census_pin } =>
       match iso_pin_refusal(side: StockSide, expected: noble_numbat_2404_3_live_server_arm64.content_sha256, reading: stock_iso) {
         Present { value: refused } => PinsRefused { readback: refused }
         Absent =>
@@ -201,7 +200,7 @@ type CensusMemberReadings {
 
 // The pure join over pins and six readings, composed as the producer composes it.
 fn census_member_readback_from_readings(
-  medium: MtCollins1BootMedium,
+  medium: BootMedium,
   stock_iso: IsoReading,
   census_iso: IsoReading,
   stock_grub: MemberReading, census_grub: MemberReading,
@@ -254,7 +253,7 @@ fn render_census_member_readback(readback: CensusMemberReadback) -> String {
 
 // ---- the one producer: read-only legs on srv2 over fleet SSH, like the medium readback ----
 //
-// srv2 has had no runner slots since 2026-09-19 (gunbc.machine_intake_mtcollins1_boot_authorization),
+// srv2 has had no runner slots since 2026-09-19 (gunbc.boot_medium bmc_boot_image_export),
 // so this reaches the host that serves /srv/bmc the way the boot's medium readback does, as the fleet
 // principal over typed argv. ONE TRANSACTION PER ATTEMPT:
 //   1. measure both ISOs; a pin refusal ends the attempt before any extraction;
@@ -365,7 +364,7 @@ fn iso_reading_of(measure: RemoteAnswer) -> IsoReading {
 }
 
 fn census_member_readback_target() -> SshTarget {
-  mtcollins1_boot_export_host_target()
+  bmc_boot_image_export.target
 }
 
 // ONE LEG ON ANY HOST, AS THE ANSWER THE READINGS JOIN OVER. A leg that was never dispatched carries no
@@ -426,7 +425,7 @@ fn remote_leg(target: SshTarget, context: FleetSshExecutionContext, command: Arg
   host_run(host: FleetSshCommandHost { target: target, context: context }, command: command)
 }
 
-fn census_member_readback(medium: MtCollins1BootMedium) -> CensusMemberReadbackAttempt {
+fn census_member_readback(medium: BootMedium) -> CensusMemberReadbackAttempt {
   match prepare_fleet_ssh_agent_context(attempt_raw: census_member_readback_attempt_raw) {
     FleetSshContextRefused { cause: c } =>
       CensusMemberReadbackAttempt { readback: BootChainHostUnreached { reason: c }, workspace: CreationNotRequested }
@@ -474,7 +473,7 @@ fn mtcollins1_census_member_readback_wet() -> ProcessExit {
 // The pinned census ISO's mapped members as the served image records them. A REPORT beside the
 // verdict, not a gate: which user a build baked in is evidence about the build, not about whether the
 // boot chain matches stock.
-fn census_member_mapped_attributes(medium: MtCollins1BootMedium) -> String {
+fn census_member_mapped_attributes(medium: BootMedium) -> String {
   match prepare_fleet_ssh_agent_context(attempt_raw: census_member_readback_attempt_raw) {
     FleetSshContextRefused { cause: c } => concat("UNREAD: no fleet SSH context: ", c)
     FleetSshContextReady { context: context, receipt: _ } =>

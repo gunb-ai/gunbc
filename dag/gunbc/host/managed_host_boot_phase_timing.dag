@@ -1,4 +1,4 @@
-module gunbc.machine_intake_mtcollins1_boot_phase_timing
+module gunbc.managed_host_boot_phase_timing
 
 import std.types { List, NonEmptyStr, String }
 import std.measure { Millisecond, millisecond_count, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
@@ -25,7 +25,7 @@ import v2.std.algebra { any }
 // - a phase that never ran prints as not reached, with no number at all;
 // - the phases that ran PARTITION the actuation: each begins at the reading that ended the one
 //   before, so no interval is counted in two phases.
-type MtCollins1BootPhase
+type BootPhase
   = PhaseSolAcquire
   | PhaseParam5Before
   | PhaseMediaAttach
@@ -36,7 +36,7 @@ type MtCollins1BootPhase
   | PhasePowerAfter
   | PhaseSolRelease
 
-fn mtcollins1_boot_phase_word(phase: MtCollins1BootPhase) -> String {
+fn boot_phase_word(phase: BootPhase) -> String {
   match phase {
     PhaseSolAcquire => "sol_acquire"
     PhaseParam5Before => "param5_before"
@@ -52,7 +52,7 @@ fn mtcollins1_boot_phase_word(phase: MtCollins1BootPhase) -> String {
 
 // WHAT A PHASE THAT RAN ESTABLISHED, decided by the phase's own verdict (its readback, its typed
 // observation), never by its command returning.
-type MtCollins1PhaseRunResult
+type BootPhaseRunResult
   = PhaseVerified
   | PhaseRefused { cause: String }
 
@@ -61,7 +61,7 @@ type MtCollins1PhaseRunResult
 // malformed response, a probe not sent and an unencodable request each establish no register
 // value, so a pass made only of them -- or of nothing -- is refused. Taking the reads is not the
 // same as reading them. Each read's own outcome stays in the bundle's smpro section.
-fn mtcollins1_smpro_pass_result(outcomes: List<SmproProbeOutcome>) -> MtCollins1PhaseRunResult {
+fn boot_smpro_pass_result(outcomes: List<SmproProbeOutcome>) -> BootPhaseRunResult {
   let answered = any(outcomes, o => match o {
     SmproWordRead { raw: _, word: _ } => true
     SmproControllerRefused { raw: _, completion: _ } => false
@@ -77,33 +77,33 @@ fn mtcollins1_smpro_pass_result(outcomes: List<SmproProbeOutcome>) -> MtCollins1
   }
 }
 
-type MtCollins1BootPhaseSpan
-  = PhaseRan { phase: MtCollins1BootPhase, result: MtCollins1PhaseRunResult, begin: ProcUptimeRead, end: ProcUptimeRead }
-  | PhaseNotRan { phase: MtCollins1BootPhase, reason: NonEmptyStr }
+type BootPhaseSpan
+  = PhaseRan { phase: BootPhase, result: BootPhaseRunResult, begin: ProcUptimeRead, end: ProcUptimeRead }
+  | PhaseNotRan { phase: BootPhase, reason: NonEmptyStr }
 
 // COLD OR WARM IS WHAT THE HANDOFF OBSERVED, not a guess: the handoff reads chassis power, selects
 // power-up for an OFF unit or a cycle for an ON one, and returns the transition its read-back saw.
 // A handoff that did not issue has no start to classify.
-type MtCollins1BootStart
+type BootStart
   = BootStartCold
   | BootStartWarm
   | BootStartUnobserved { reason: NonEmptyStr }
 
-fn mtcollins1_boot_start_of(transition: ObservedPowerTransition) -> MtCollins1BootStart {
+fn boot_start_of(transition: ObservedPowerTransition) -> BootStart {
   match transition {
     PoweredOn => BootStartCold
     PowerCycled => BootStartWarm
   }
 }
 
-type MtCollins1BootPhaseTiming {
+type BootPhaseTiming {
   hold_acquired: ProcUptimeRead
-  start: MtCollins1BootStart
-  spans: List<MtCollins1BootPhaseSpan>
+  start: BootStart
+  spans: List<BootPhaseSpan>
 }
 
-fn mtcollins1_boot_phase_timing_not_taken(reason: NonEmptyStr) -> MtCollins1BootPhaseTiming {
-  MtCollins1BootPhaseTiming {
+fn boot_phase_timing_not_taken(reason: NonEmptyStr) -> BootPhaseTiming {
+  BootPhaseTiming {
     hold_acquired: UptimeRefused { detail: reason as String },
     start: BootStartUnobserved { reason: reason },
     spans: [],
@@ -114,24 +114,24 @@ fn mtcollins1_boot_phase_timing_not_taken(reason: NonEmptyStr) -> MtCollins1Boot
 // the same branch that performs (or skips) the phase: a phase that ran carries its verdict and the
 // ONE clock reading taken right after it, and a skipped phase carries its reason and no reading.
 // So the route and its readings cannot disagree: a phase never performed has no reading to misplace.
-type MtCollins1PhaseStep
-  = PhaseStepRan { result: MtCollins1PhaseRunResult, end: ProcUptimeRead }
+type BootPhaseStep
+  = PhaseStepRan { result: BootPhaseRunResult, end: ProcUptimeRead }
   | PhaseStepSkipped { reason: NonEmptyStr }
 
 // THE ROUTE IS FIXED-SHAPE, one field per phase in actuation order, so it cannot omit or reorder one.
-type MtCollins1BootRoute {
-  sol_acquire: MtCollins1PhaseStep
-  param5_before: MtCollins1PhaseStep
-  media_attach: MtCollins1PhaseStep
-  handoff: MtCollins1PhaseStep
-  smpro_power_on: MtCollins1PhaseStep
-  terminal_watch: MtCollins1PhaseStep
-  param5_after: MtCollins1PhaseStep
-  power_after: MtCollins1PhaseStep
-  sol_release: MtCollins1PhaseStep
+type BootRoute {
+  sol_acquire: BootPhaseStep
+  param5_before: BootPhaseStep
+  media_attach: BootPhaseStep
+  handoff: BootPhaseStep
+  smpro_power_on: BootPhaseStep
+  terminal_watch: BootPhaseStep
+  param5_after: BootPhaseStep
+  power_after: BootPhaseStep
+  sol_release: BootPhaseStep
 }
 
-fn mtcollins1_boot_span_of(phase: MtCollins1BootPhase, begin: ProcUptimeRead, step: MtCollins1PhaseStep) -> MtCollins1BootPhaseSpan {
+fn boot_span_of(phase: BootPhase, begin: ProcUptimeRead, step: BootPhaseStep) -> BootPhaseSpan {
   match step {
     PhaseStepRan { result: r, end: e } => PhaseRan { phase: phase, result: r, begin: begin, end: e }
     PhaseStepSkipped { reason: why } => PhaseNotRan { phase: phase, reason: why }
@@ -140,7 +140,7 @@ fn mtcollins1_boot_span_of(phase: MtCollins1BootPhase, begin: ProcUptimeRead, st
 
 // WHERE THE NEXT PHASE BEGINS: the end of this one if it ran, otherwise where this one would have
 // begun. Time between two ran phases therefore belongs to the later one; nothing falls between.
-fn mtcollins1_boot_after(begin: ProcUptimeRead, step: MtCollins1PhaseStep) -> ProcUptimeRead {
+fn boot_phase_after(begin: ProcUptimeRead, step: BootPhaseStep) -> ProcUptimeRead {
   match step {
     PhaseStepRan { result: _, end: e } => e
     PhaseStepSkipped { reason: _ } => begin
@@ -149,33 +149,33 @@ fn mtcollins1_boot_after(begin: ProcUptimeRead, step: MtCollins1PhaseStep) -> Pr
 
 // THE SPANS PARTITION HOLD -> LAST RAN PHASE ON EVERY ROUTE BY CONSTRUCTION: each begin is the
 // previous ran phase's end, threaded through one binding per phase (no loop, no copied accumulator).
-fn mtcollins1_boot_phase_spans(hold: ProcUptimeRead, route: MtCollins1BootRoute) -> List<MtCollins1BootPhaseSpan> {
-  let b1 = mtcollins1_boot_after(begin: hold, step: route.sol_acquire)
-  let b2 = mtcollins1_boot_after(begin: b1, step: route.param5_before)
-  let b3 = mtcollins1_boot_after(begin: b2, step: route.media_attach)
-  let b4 = mtcollins1_boot_after(begin: b3, step: route.handoff)
-  let b5 = mtcollins1_boot_after(begin: b4, step: route.smpro_power_on)
-  let b6 = mtcollins1_boot_after(begin: b5, step: route.terminal_watch)
-  let b7 = mtcollins1_boot_after(begin: b6, step: route.param5_after)
-  let b8 = mtcollins1_boot_after(begin: b7, step: route.power_after)
+fn boot_phase_spans(hold: ProcUptimeRead, route: BootRoute) -> List<BootPhaseSpan> {
+  let b1 = boot_phase_after(begin: hold, step: route.sol_acquire)
+  let b2 = boot_phase_after(begin: b1, step: route.param5_before)
+  let b3 = boot_phase_after(begin: b2, step: route.media_attach)
+  let b4 = boot_phase_after(begin: b3, step: route.handoff)
+  let b5 = boot_phase_after(begin: b4, step: route.smpro_power_on)
+  let b6 = boot_phase_after(begin: b5, step: route.terminal_watch)
+  let b7 = boot_phase_after(begin: b6, step: route.param5_after)
+  let b8 = boot_phase_after(begin: b7, step: route.power_after)
   [
-    mtcollins1_boot_span_of(phase: PhaseSolAcquire, begin: hold, step: route.sol_acquire),
-    mtcollins1_boot_span_of(phase: PhaseParam5Before, begin: b1, step: route.param5_before),
-    mtcollins1_boot_span_of(phase: PhaseMediaAttach, begin: b2, step: route.media_attach),
-    mtcollins1_boot_span_of(phase: PhaseHandoff, begin: b3, step: route.handoff),
-    mtcollins1_boot_span_of(phase: PhaseSmproPowerOn, begin: b4, step: route.smpro_power_on),
-    mtcollins1_boot_span_of(phase: PhaseTerminalWatch, begin: b5, step: route.terminal_watch),
-    mtcollins1_boot_span_of(phase: PhaseParam5After, begin: b6, step: route.param5_after),
-    mtcollins1_boot_span_of(phase: PhasePowerAfter, begin: b7, step: route.power_after),
-    mtcollins1_boot_span_of(phase: PhaseSolRelease, begin: b8, step: route.sol_release),
+    boot_span_of(phase: PhaseSolAcquire, begin: hold, step: route.sol_acquire),
+    boot_span_of(phase: PhaseParam5Before, begin: b1, step: route.param5_before),
+    boot_span_of(phase: PhaseMediaAttach, begin: b2, step: route.media_attach),
+    boot_span_of(phase: PhaseHandoff, begin: b3, step: route.handoff),
+    boot_span_of(phase: PhaseSmproPowerOn, begin: b4, step: route.smpro_power_on),
+    boot_span_of(phase: PhaseTerminalWatch, begin: b5, step: route.terminal_watch),
+    boot_span_of(phase: PhaseParam5After, begin: b6, step: route.param5_after),
+    boot_span_of(phase: PhasePowerAfter, begin: b7, step: route.power_after),
+    boot_span_of(phase: PhaseSolRelease, begin: b8, step: route.sol_release),
   ]
 }
 
 // A SOL ACQUIRE THAT REFUSED is the one route that holds nothing: the acquire ran and refused, and
 // every later phase is skipped, because the actuation writes nothing without the SOL lease.
-fn mtcollins1_boot_route_sol_refused(refused_at: ProcUptimeRead, cause: String) -> MtCollins1BootRoute {
+fn boot_route_sol_refused(refused_at: ProcUptimeRead, cause: String) -> BootRoute {
   let not_ran = PhaseStepSkipped { reason: "the SOL lease was not acquired, so nothing was written" }
-  MtCollins1BootRoute {
+  BootRoute {
     sol_acquire: PhaseStepRan { result: PhaseRefused { cause: cause }, end: refused_at },
     param5_before: not_ran,
     media_attach: not_ran,
@@ -188,19 +188,19 @@ fn mtcollins1_boot_route_sol_refused(refused_at: ProcUptimeRead, cause: String) 
   }
 }
 
-fn mtcollins1_boot_phase_timing_of(hold: ProcUptimeRead, start: MtCollins1BootStart, route: MtCollins1BootRoute) -> MtCollins1BootPhaseTiming {
-  MtCollins1BootPhaseTiming { hold_acquired: hold, start: start, spans: mtcollins1_boot_phase_spans(hold: hold, route: route) }
+fn boot_phase_timing_of(hold: ProcUptimeRead, start: BootStart, route: BootRoute) -> BootPhaseTiming {
+  BootPhaseTiming { hold_acquired: hold, start: start, spans: boot_phase_spans(hold: hold, route: route) }
 }
 
 // A DURATION BETWEEN TWO READINGS IS ONE OF THREE THINGS, never a bare number. The subtraction is
 // std.measure measure_sub, whose refusal arm is the clock-went-back case: the end reading below
 // the begin one is carried as both readings, never as a difference.
-type MtCollins1PhaseDuration
+type BootPhaseDuration
   = PhaseElapsed { elapsed: Millisecond }
   | PhaseClockUnread { detail: String }
   | PhaseClockSteppedBack { begin: Millisecond, end: Millisecond }
 
-fn mtcollins1_boot_phase_duration(from: ProcUptimeRead, to: ProcUptimeRead) -> MtCollins1PhaseDuration {
+fn boot_phase_duration(from: ProcUptimeRead, to: ProcUptimeRead) -> BootPhaseDuration {
   match from {
     UptimeRefused { detail: d } => PhaseClockUnread { detail: d }
     UptimeObserved { uptime: a } =>
@@ -215,7 +215,7 @@ fn mtcollins1_boot_phase_duration(from: ProcUptimeRead, to: ProcUptimeRead) -> M
   }
 }
 
-fn mtcollins1_boot_phase_duration_text(d: MtCollins1PhaseDuration) -> String {
+fn boot_phase_duration_text(d: BootPhaseDuration) -> String {
   match d {
     PhaseElapsed { elapsed: e } => concat(to_string(millisecond_count(m: e)), "ms")
     PhaseClockUnread { detail: x } => concat("unread (", x, ")")
@@ -223,23 +223,23 @@ fn mtcollins1_boot_phase_duration_text(d: MtCollins1PhaseDuration) -> String {
   }
 }
 
-fn mtcollins1_boot_between(from: ProcUptimeRead, to: ProcUptimeRead) -> String {
-  mtcollins1_boot_phase_duration_text(d: mtcollins1_boot_phase_duration(from: from, to: to))
+fn boot_phase_between(from: ProcUptimeRead, to: ProcUptimeRead) -> String {
+  boot_phase_duration_text(d: boot_phase_duration(from: from, to: to))
 }
 
-fn mtcollins1_boot_phase_span_text(hold: ProcUptimeRead, span: MtCollins1BootPhaseSpan) -> String {
+fn boot_phase_span_text(hold: ProcUptimeRead, span: BootPhaseSpan) -> String {
   match span {
-    PhaseNotRan { phase: p, reason: why } => concat("phase ", mtcollins1_boot_phase_word(phase: p), ": not reached (", why as String, ")")
+    PhaseNotRan { phase: p, reason: why } => concat("phase ", boot_phase_word(phase: p), ": not reached (", why as String, ")")
     PhaseRan { phase: p, result: res, begin: b, end: e } =>
-      concat("phase ", mtcollins1_boot_phase_word(phase: p), ": first_action=+", mtcollins1_boot_between(from: hold, to: b),
+      concat("phase ", boot_phase_word(phase: p), ": first_action=+", boot_phase_between(from: hold, to: b),
         match res {
-          PhaseVerified => concat(" verified_after=", mtcollins1_boot_between(from: b, to: e))
-          PhaseRefused { cause: c } => concat(" REFUSED_after=", mtcollins1_boot_between(from: b, to: e), " (", c, ")")
+          PhaseVerified => concat(" verified_after=", boot_phase_between(from: b, to: e))
+          PhaseRefused { cause: c } => concat(" REFUSED_after=", boot_phase_between(from: b, to: e), " (", c, ")")
         })
   }
 }
 
-fn mtcollins1_boot_start_word(start: MtCollins1BootStart) -> String {
+fn boot_start_word(start: BootStart) -> String {
   match start {
     BootStartCold => "cold"
     BootStartWarm => "warm"
@@ -247,9 +247,9 @@ fn mtcollins1_boot_start_word(start: MtCollins1BootStart) -> String {
   }
 }
 
-fn mtcollins1_boot_phase_timing_text(t: MtCollins1BootPhaseTiming) -> String {
+fn boot_phase_timing_text(t: BootPhaseTiming) -> String {
   join(concat(
-    [concat("boot_start=", mtcollins1_boot_start_word(start: t.start)), "clock=/proc/uptime (boot-based; not stepped by NTP)"],
-    if count(t.spans) == 0 { ["phases: none reached"] } else { map(t.spans, s => mtcollins1_boot_phase_span_text(hold: t.hold_acquired, span: s)) },
+    [concat("boot_start=", boot_start_word(start: t.start)), "clock=/proc/uptime (boot-based; not stepped by NTP)"],
+    if count(t.spans) == 0 { ["phases: none reached"] } else { map(t.spans, s => boot_phase_span_text(hold: t.hold_acquired, span: s)) },
   ), "\n")
 }

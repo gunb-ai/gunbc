@@ -1,0 +1,218 @@
+module gunbc.managed_host_boot_handoff
+
+import std.types { List, NonEmptyStr, String }
+import std.decl_ref { decl_ref }
+import v2.std.optional { Present, Absent }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
+import gunbc.managed_host { ManagedHost, ManagedHostBound, ManagedHostAccessUnobserved, ManagedHostNotSecured, ManagedHostEndpointMismatch, managed_host_binding, managed_hosts }
+import gunbc.managed_host_unit_hold { UnitHoldProof, unit_hold_proof_refusal }
+import gunbc.managed_host_boot { AdmittedBootSubject, boot_subject_host }
+import gunbc.managed_host_boot_phase_timing { BootStart, BootStartUnobserved, boot_start_of }
+import gunbc.machine_intake_oob_boot_handoff {
+  BootControlIssued,
+  BootHandoffNotAdmitted,
+  BootSelectionFlagInvalid,
+  BootSelectionNotApplied,
+  BootSelectionFirmwareMismatch,
+  BootSelectionNotOneShot,
+  BootSelectionRefused,
+  BootSelectionUnverifiable,
+  OobBootHandoffOutcome,
+  OobHandoffAdmitted,
+  OobHandoffBootSourceOverrideUnavailable,
+  OobHandoffFirmwareMismatch,
+  OobHandoffPowerControlUnavailable,
+  OobHandoffRouteUnobserved,
+  PowerCommandAcceptedNoTransition,
+  PowerCommandRefused,
+  PowerStateReadFailed,
+  oob_boot_handoff,
+  oob_boot_handoff_admission,
+  oob_power_action_verb,
+  power_transition_progress_text,
+}
+import extdeps.bmc.ipmi_chassis_control { chassis_observation_text }
+
+// THE BOOT'S DRIVE OF A MANAGED HOST'S CONTROLLER: the selection, the account, the controller and the
+// capability row are all read off one AdmittedBootSubject, so the handoff cannot pair one host's
+// account with another's controller or the reset arm's selection with the boot arm's subject. The
+// operation (gunbc.machine_intake_oob_boot_handoff oob_boot_handoff) takes those as parameters because
+// which of them a workflow picks is business policy (DESIGN §3); the policy was decided by the
+// subject's admission, and this module only reads it.
+//
+// THE CREDENTIAL ARRIVES AS AN EXPLICIT PATH ARGUMENT, not from the environment: the credential's
+// location is a declared input the caller must state rather than ambient state the func silently
+// depends on, which matters most for the value that rotates mid-program. AN EMPTY PATH REFUSES BEFORE
+// ANY EFFECT; an earlier form substituted a placeholder filename and handed it to ipmitool, so a
+// caller that supplied nothing produced an authentication failure that read as the controller
+// rejecting a credential.
+//
+// SERVICE OPERATIONS REGISTER FROM THE IMPORT CLOSURE. A first draft of the unit's handoff read the
+// path from BMC_PASSWORD_FILE through shell.Env.Get and refused at run time with `Unimplemented { what:
+// "unknown service operation: shell.Env.Get" }`. That diagnostic is misleading: the operation is
+// implemented and used on the live converge path (gunbc.actions_run_binding), and it refused only
+// because the module did not carry `import extdeps.shell`, so an unimported service compiles clean and
+// refuses at run time naming the operation rather than the import.
+type CredentialPathStanding
+  = CredentialPathGiven { path: NonEmptyStr }
+  | CredentialPathMissing
+
+fn boot_handoff_password_file(raw: String) -> CredentialPathStanding {
+  if raw == "" {
+    CredentialPathMissing
+  } else {
+    CredentialPathGiven { path: raw as NonEmptyStr }
+  }
+}
+
+// ONE RENDERER FOR EVERY ROUTE. Each outcome arm gets its own reason because the refusals leave the
+// host in materially different states: BootSelectionNotApplied means the override never took and
+// must be re-applied; BootSelectionFlagInvalid means the controller reported the selector WHILE
+// declaring its boot flags invalid, so the override is present and will not be honoured;
+// BootSelectionUnverifiable means the read itself failed and establishes nothing about the
+// controller either way; the power arms mean the override APPLIED and the controller now holds
+// an unconsumed next-boot override. Collapsing these into one failure would be the state-space
+// conflation DESIGN's failure-mode list names.
+fn boot_handoff_render_outcome(label: NonEmptyStr, outcome: OobBootHandoffOutcome) -> ProcessExit {
+  match outcome {
+    BootControlIssued { selected: _, power: _ } => ExitSuccess
+    BootSelectionRefused =>
+      exit_failure(reason: concat(label as String, ": controller refused the boot source override"))
+    BootSelectionNotApplied { requested: d, readback: r } =>
+      exit_failure(reason: concat(label as String, ": override for '", d as String, "' did not take; boot parameter 5 read back: ", r))
+    BootSelectionFlagInvalid { requested: d, readback: r } =>
+      exit_failure(reason: concat(label as String, ": override for '", d as String, "' reported alongside an INVALID boot flag, so it will not be honoured; boot parameter 5 read back: ", r))
+    BootSelectionNotOneShot { requested: d, readback: r } =>
+      exit_failure(reason: concat(label as String, ": override for '", d as String, "' is not one-shot next-boot; boot parameter 5 read back: ", r))
+    BootSelectionFirmwareMismatch { requested: d, readback: r } =>
+      exit_failure(reason: concat(label as String, ": override for '", d as String, "' does not match the required firmware mode; boot parameter 5 read back: ", r))
+    BootSelectionUnverifiable { requested: d, readback: r } =>
+      exit_failure(reason: concat(label as String, ": boot parameter 5 read did not succeed, so the override for '", d as String, "' is unverified; output: ", r))
+    PowerStateReadFailed { selected: d, observed_state: o } =>
+      exit_failure(reason: concat(label as String, ": override for '", d as String, "' APPLIED but chassis power state read ", chassis_observation_text(observation: o) as String, ", so no power action was selected or written; the controller holds an unconsumed next-boot override"))
+    PowerCommandRefused { selected: d, action: a } =>
+      exit_failure(reason: concat(label as String, ": override for '", d as String, "' APPLIED but chassis power ", oob_power_action_verb(action: a) as String, " was refused; the controller holds an unconsumed next-boot override"))
+    PowerCommandAcceptedNoTransition { selected: d, action: a, progress: pr, last_observed: o } =>
+      exit_failure(reason: concat(label as String, ": override for '", d as String, "' APPLIED and chassis power ", oob_power_action_verb(action: a) as String, " exited 0, but the transition did not complete within the read-back bound: ", power_transition_progress_text(progress: pr) as String, "; last chassis power state ", chassis_observation_text(observation: o) as String))
+    BootHandoffNotAdmitted { admission: _ } =>
+      exit_failure(reason: concat(label as String, ": controller not admitted for out-of-band drive; no write was attempted"))
+  }
+}
+
+// THE HANDOFF'S EXIT AND THE START IT OBSERVED, so the boot's phase timing can say whether the
+// attempt was a cold or a warm boot (gunbc.managed_host_boot_phase_timing) without a second chassis
+// read.
+type BootHandoffResult {
+  outcome: ProcessExit
+  start: BootStart
+}
+
+fn boot_handoff_not_issued(outcome: ProcessExit) -> BootHandoffResult {
+  BootHandoffResult { outcome: outcome, start: BootStartUnobserved { reason: "the handoff refused before any controller write" } }
+}
+
+fn boot_handoff_start_of(outcome: OobBootHandoffOutcome) -> BootStart {
+  match outcome {
+    BootControlIssued { selected: _, power: p } => boot_start_of(transition: p)
+    BootSelectionRefused => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+    BootSelectionNotApplied { requested: _, readback: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+    BootSelectionUnverifiable { requested: _, readback: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+    BootSelectionFlagInvalid { requested: _, readback: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+    BootSelectionNotOneShot { requested: _, readback: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+    BootSelectionFirmwareMismatch { requested: _, readback: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+    PowerStateReadFailed { selected: _, observed_state: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+    PowerCommandRefused { selected: _, action: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+    PowerCommandAcceptedNoTransition { selected: _, action: _, progress: _, last_observed: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+    BootHandoffNotAdmitted { admission: _ } => BootStartUnobserved { reason: "the handoff did not observe a power transition" }
+  }
+}
+
+// SEALED TO THE BOOT'S ACTUATION, AND IT TAKES THE UNIT-HOLD PROOF: the only roots that reach a managed
+// host's boot device or power are the ones rostered in gunbc.auth.privileged_effect_census. The
+// proof must be for the subject's own host, so a hold taken on one unit cannot license a write to
+// another.
+fn boot_drive_handoff(
+  proof: UnitHoldProof,
+  subject: AdmittedBootSubject,
+  label: NonEmptyStr,
+  password_file_raw: String,
+) -> BootHandoffResult
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_handoff_when_media_ready"),
+  ]
+{
+  match unit_hold_proof_refusal(proof: proof, host: boot_subject_host(subject: subject), label: label as String) {
+    Present { value: why } => return boot_handoff_not_issued(outcome: exit_failure(reason: why))
+    Absent => {}
+  }
+  match boot_handoff_password_file(raw: password_file_raw) {
+    CredentialPathMissing =>
+      boot_handoff_not_issued(outcome: exit_failure(reason: concat(label as String, ": no credential path supplied; refusing before any controller write")))
+    CredentialPathGiven { path: pw } => {
+      let outcome = oob_boot_handoff(
+        observation: subject.binding.observation,
+        capability_row: subject.binding.host.capability_row,
+        username: subject.binding.account,
+        password_file: pw,
+        selection: subject.selection,
+      )
+      BootHandoffResult {
+        outcome: boot_handoff_render_outcome(label: label, outcome: outcome),
+        start: boot_handoff_start_of(outcome: outcome),
+      }
+    }
+  }
+}
+
+// EXECUTES THE ADMISSION FOLD AGAINST EVERY MANAGED HOST'S REAL MEASURED ROWS, and against the
+// control beside each. It answers one question that reading the fold cannot: which arm does live data
+// actually reach. THE DISCRIMINATING RED is the same observation and firmware identity with an EMPTY
+// capability list -- the controller that answered every read and was never shown to accept a write.
+// A probe that only ran the green case would pass just as happily against a fold that returned
+// OobHandoffAdmitted unconditionally (DESIGN §5). The pair is asserted in one func so the two cannot
+// drift apart. A host is probed through its binding, so an unbound row refuses rather than being
+// probed with an observation its secured account does not cover.
+fn boot_handoff_admission_probe_of(host: ManagedHost) -> String? {
+  match managed_host_binding(host: host) {
+    ManagedHostAccessUnobserved { endpoint: _ } => Present { value: concat(host.host as String, ": controller access is unobserved, so there is nothing to probe") }
+    ManagedHostNotSecured { cause: _ } => Present { value: concat(host.host as String, ": controller is not BmcSecured, so the row is not bound") }
+    ManagedHostEndpointMismatch { observed: _, secured: _ } => Present { value: concat(host.host as String, ": observed and secured controllers differ, so the row is not bound") }
+    ManagedHostBound { binding: b } => {
+      let admitted = match oob_boot_handoff_admission(observation: b.observation, capability_row: host.capability_row) {
+        OobHandoffAdmitted { route: _ } => true
+        OobHandoffRouteUnobserved => false
+        OobHandoffBootSourceOverrideUnavailable => false
+        OobHandoffPowerControlUnavailable => false
+        OobHandoffFirmwareMismatch { observed: _, capability: _ } => false
+      }
+      let unexercised = BmcFirmwareReleaseCapabilityRow { firmware: host.capability_row.firmware, capabilities: [] }
+      let refused_without_capability = match oob_boot_handoff_admission(observation: b.observation, capability_row: unexercised) {
+        OobHandoffAdmitted { route: _ } => false
+        OobHandoffRouteUnobserved => false
+        OobHandoffBootSourceOverrideUnavailable => true
+        OobHandoffPowerControlUnavailable => false
+        OobHandoffFirmwareMismatch { observed: _, capability: _ } => false
+      }
+      if admitted == false {
+        Present { value: concat(host.host as String, ": measured rows did NOT admit the controller") }
+      } else if refused_without_capability == false {
+        Present { value: concat(host.host as String, ": empty capability row did NOT refuse -- the fold does not discriminate") }
+      } else {
+        none
+      }
+    }
+  }
+}
+
+fn boot_handoff_admission_probe() -> ProcessExit {
+  let hosts = managed_hosts()
+  let refusals = flat_map(hosts, h => match boot_handoff_admission_probe_of(host: h) { Present { value: why } => [why]  Absent => [] })
+  if count(hosts) == 0 {
+    exit_failure(reason: "boot handoff admission probe: no managed host to probe")
+  } else if count(refusals) == 0 {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("boot handoff admission probe: ", join(refusals, "; ")))
+  }
+}
