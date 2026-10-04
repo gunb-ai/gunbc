@@ -1,0 +1,93 @@
+module test.claim.type_parameter_declaration_scope_witness
+
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  FixtureSource,
+  fixture_source,
+  compile_fixture,
+  fixture_has_class
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CLASS: A TYPE PARAMETER THAT BINDS OUTSIDE ITS OWN DECLARATION.
+//
+// v1.compiler.infer build_type_env used to insert every generic TYPE declaration's parameters into
+// the module's bindings, so `type Box<Q>` made a bare `Q` resolvable anywhere in that module -- and,
+// through an import's exported surface, in its importers, which is why the implicit-name filters
+// (is_type_variable_name over T/K/V/...) existed to strip them again. A function could then write
+// `-> Q` with no `<Q>` of its own and be accepted, and the Rust emitter, which renders only DECLARED
+// parameters, produced a generic function without its type parameters. A parameter now binds only
+// while its own declaration is resolved (v1.compiler.infer_resolve declaration_type_param_names).
+//
+// THE SUBJECT IS AUTHORED MANIFESTS, compiled by tools.multi_module_compile_fixture with no corpus
+// roots, so the claims are about the scoping rule and nothing else in the tree. NO std.types import
+// in any fixture: the manifest has no corpus, and Int is a kernel type every module sees.
+
+data tps_same_module_leak_source: String = "module tps.same\n\ntype TpsBox<Q> {\n  v: Q\n}\n\nfn tps_leak(x: Int) -> Q {\n  x\n}\n"
+
+data tps_definer_source: String = "module tps.definer\n\ntype TpsBox<Q> {\n  v: Q\n}\n"
+
+data tps_cross_import_leak_source: String = "module tps.user\n\nimport tps.definer { TpsBox }\n\nfn tps_unwrap(b: TpsBox<Int>) -> Q {\n  b.v\n}\n"
+
+data tps_declared_source: String = "module tps.user\n\nimport tps.definer { TpsBox }\n\nfn tps_unwrap<Q>(b: TpsBox<Q>) -> Q {\n  b.v\n}\n"
+
+fn tps_run_one(path: String, source: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture { sources: [fixture_source(path, source)], entry: path })
+}
+
+fn tps_run_with_definer(user_source: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("tps/definer.dag", tps_definer_source),
+      fixture_source("tps/user.dag", user_source)
+    ],
+    entry: "tps/user.dag"
+  })
+}
+
+// Read by matching, so FixtureInstrumentRefused -- the harness breaking -- satisfies neither a red
+// nor the control.
+fn tps_diagnosed_as(o: MultiModuleCompileFixtureOutcome, wanted: String) -> Bool {
+  match o {
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      fixture_has_class(rows: rows, wanted: wanted),
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      fixture_has_class(rows: rows, wanted: wanted),
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+fn tps_completed_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(rows) == 0 && count(files) > 0 && n > 0,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+// THE RED, SAME MODULE. `Q` is declared only by TpsBox; tps_leak declares no parameters and names `Q`
+// as its return. Under module-scope binding this was accepted (and returned an Int as a Q).
+test fn a_sibling_type_parameter_does_not_bind_in_another_declaration() -> Bool {
+  tps_diagnosed_as(tps_run_one("tps/same.dag", tps_same_module_leak_source), "UnresolvedType")
+}
+
+// THE RED, ACROSS AN IMPORT. tps.user imports TpsBox and names its parameter `Q` bare. The import
+// carries the type, never the parameter.
+test fn an_imported_type_parameter_does_not_bind_in_the_importer() -> Bool {
+  tps_diagnosed_as(tps_run_with_definer(tps_cross_import_leak_source), "UnresolvedType")
+}
+
+// THE POSITIVE CONTROL, read first in a red: the same importer declaring its own `<Q>` compiles clean,
+// so the reds are refusals of the leak and not a harness that refuses every manifest.
+test fn a_declared_type_parameter_binds_in_its_own_declaration() -> Bool {
+  tps_completed_clean(tps_run_with_definer(tps_declared_source))
+    && !tps_diagnosed_as(tps_run_with_definer(tps_declared_source), "UnresolvedType")
+}

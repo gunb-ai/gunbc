@@ -1311,7 +1311,7 @@ fn sel_channel(channel: NonEmptyStr, s: SelSnapshotReading) -> BmcChannelRead {
   } }
 }
 
-fn members_channel(channel: NonEmptyStr, m: MembersReading<T>) -> BmcChannelRead {
+fn members_channel<T>(channel: NonEmptyStr, m: MembersReading<T>) -> BmcChannelRead {
   BmcChannelRead { channel: channel, standing: match m {
     MembersRead { members: _ } => BmcChannelAnswered
     MembersUnread { cause: c } => BmcChannelFailed { cause: c }
