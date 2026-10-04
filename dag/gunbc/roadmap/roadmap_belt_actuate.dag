@@ -6,7 +6,7 @@ import std.algebra { trim }
 
 import gunbc.output_policy { OutcomeIsData }
 import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, CommitSha, GitRef }
-import gunbc.roadmap_attempt_metering { MeteringPersist, MeteringNotDue, metering_persist_for_attempt }
+import gunbc.roadmap_attempt_metering { MeteringPersist, MeteringPersisted, MeteringNotDue, MeteringPersistRefused, metering_persist_for_attempt }
 import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, node_criteria_digest, node_sizing_derivation }
 import gunbc.roadmap_spawner { SpawnFrontier, spawn_frontier, doc_all_nodes }
 import gunbc.roadmap_status { signoff_accepts, line_ticket, node_title }
@@ -3318,6 +3318,7 @@ type BeltTickReceipt {
   commit_pass: BeltPassOutcome,
   verify_pass: BeltPassOutcome,
   publish_pass: BeltPassOutcome,
+  metering_pass: BeltPassOutcome,
 }
 
 type BeltTickReceiptRead
@@ -3340,7 +3341,7 @@ type BeltTickReceiptRead
 // DispatchStateHostShared, so blue and green resolve it to ONE path and a receipt there would
 // answer for two instances. A note describing a home the implementation did not and could not
 // safely use is the stale-authority class of DESIGN section 3.
-data belt_tick_receipt_schema: String = "roadmap-belt-tick-receipt/v5"
+data belt_tick_receipt_schema: String = "roadmap-belt-tick-receipt/v6"
 
 // THE RECEIPT HAD NO WRITABLE HOME AND HAS NEVER BEEN WRITTEN ON ANY INSTANCE. The path was
 // <instance_root>/belt-last-tick.json; every instance_root on srv1 is root:root 0755 while the belt
@@ -3499,6 +3500,9 @@ fn belt_tick_receipt_decode(raw: String) -> BeltTickReceiptRead {
                                       BeltTickExecutionUnreadable { reason: r } =>
                                         BeltTickReceiptUnreadable { reason: r }
                                       BeltTickExecutionDecoded { execution } => {
+  match belt_pass_outcome_from_member(doc: doc, key: "metering_pass") {
+    BeltPassOutcomeUnreadable { reason: r } => BeltTickReceiptUnreadable { reason: r }
+    BeltPassOutcomeDecoded { outcome: metering_pass } => {
                                         let receipt = BeltTickReceipt {
                                           observed_at: observed_at,
                                           execution: execution,
@@ -3508,6 +3512,7 @@ fn belt_tick_receipt_decode(raw: String) -> BeltTickReceiptRead {
                                           commit_pass: commit_pass,
                                           verify_pass: verify_pass,
                                           publish_pass: publish_pass,
+                                          metering_pass: metering_pass,
                                         }
                                         match json_object_unique_member(v: doc, key: "receipt_identity") {
                                           JsonMemberFound { value: JsonString { value: claimed } } =>
@@ -3526,6 +3531,8 @@ fn belt_tick_receipt_decode(raw: String) -> BeltTickReceiptRead {
                                             BeltTickReceiptUnreadable { reason: "belt tick receipt receipt_identity is missing" }
                                         }
                                       }
+  }
+}
                                     }
                                 }
                             }
@@ -3663,13 +3670,14 @@ fn belt_tick_receipt_identity_text(receipt: BeltTickReceipt) -> String {
     belt_pass_outcome_key(o: receipt.teardown_pass), "|",
     belt_pass_outcome_key(o: receipt.commit_pass), "|",
     belt_pass_outcome_key(o: receipt.verify_pass), "|",
-    belt_pass_outcome_key(o: receipt.publish_pass),
+    belt_pass_outcome_key(o: receipt.publish_pass), "|",
+    belt_pass_outcome_key(o: receipt.metering_pass),
   ], "")
 }
 
 fn belt_tick_receipt_identity_hex(receipt: BeltTickReceipt) -> String {
   content_hash_tagged_structural(
-    tag: "roadmap-belt-tick-receipt-v4" as NonEmptyStr,
+    tag: "roadmap-belt-tick-receipt-v5" as NonEmptyStr,
     payload: content_hash_atom(value: belt_tick_receipt_identity_text(receipt: receipt) as NonEmptyStr),
   ).digest as String
 }
@@ -3747,6 +3755,7 @@ fn belt_tick_receipt_json_value(receipt: BeltTickReceipt) -> JsonValue {
     json_kv(key: "commit_pass", value: belt_pass_outcome_json(o: receipt.commit_pass)),
     json_kv(key: "verify_pass", value: belt_pass_outcome_json(o: receipt.verify_pass)),
     json_kv(key: "publish_pass", value: belt_pass_outcome_json(o: receipt.publish_pass)),
+    json_kv(key: "metering_pass", value: belt_pass_outcome_json(o: receipt.metering_pass)),
   ])
 }
 
@@ -3883,6 +3892,7 @@ type BeltTickResult {
   publish_outcomes: List<BeltPublishOutcome>,
   review_outcomes: List<BeltReviewOutcome>,
   audit_outcomes: List<BeltReviewOutcome>,
+  metering_outcomes: List<MeteringPersist>,
 }
 
 fn belt_tick_empty_reconcile(state: SpawnMode) -> BeltReconcile {
@@ -4190,6 +4200,7 @@ fn belt_tick_for_instance(
         publish_outcomes: [],
         review_outcomes: [],
         audit_outcomes: [],
+        metering_outcomes: [],
       }
     TickPassesRun => {
       let commit_outcomes = belt_commit_attempts_for_instance(instance: instance)
@@ -4207,6 +4218,7 @@ fn belt_tick_for_instance(
         publish_outcomes: belt_publish_attempts_for_instance(instance: instance),
         review_outcomes: review_outcomes,
         audit_outcomes: audit_outcomes,
+        metering_outcomes: belt_metering_attempts_for_instance(instance: instance),
       }
     }
   }
@@ -4450,6 +4462,7 @@ fn belt_run_once_in(
           publish_outcomes: belt_publish_attempts_for_instance(instance: instance),
           review_outcomes: review_outcomes,
           audit_outcomes: audit_outcomes,
+          metering_outcomes: belt_metering_attempts_for_instance(instance: instance),
         }
       }
     RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } =>
@@ -6938,7 +6951,8 @@ fn belt_commit_outcome_persist(
 
 // THE PER-ATTEMPT METERING RECORD (gunbc.roadmap_attempt_metering) is written on every tick once
 // the attempt's worker is terminal, so reviewer, auditor and supervisor rounds and late seat
-// releases that land after that tick are folded into a later rewrite rather than missed.
+// releases that land after that tick are folded into a later rewrite rather than missed. The pass
+// runs after review and audit, and its outcomes are the tick receipt's metering_pass.
 fn belt_metering_for_attempt(
   instance: HostDashboardInstance,
   progress: WorkflowAttemptProgress,
@@ -6950,11 +6964,36 @@ fn belt_metering_for_attempt(
   }
 }
 
+fn belt_metering_attempts_for_instance(
+  instance: HostDashboardInstance,
+) -> List<MeteringPersist> {
+  match belt_workflow_attempts_observe_for_instance(instance: instance) {
+    WorkflowAttemptsRefused { reason } =>
+      [MeteringPersistRefused { cause: join(["the attempts ledger is unobservable, so no attempt can be metered: ", reason], "") }]
+    WorkflowAttemptsObserved { attempts } =>
+      map(attempts, progress => belt_metering_for_attempt(instance: instance, progress: progress))
+  }
+}
+
+// A REFUSED METERING WRITE FAILS THE PASS, counted and named, so a lost record stops the line on the
+// tick receipt rather than surfacing only as an absent record at the reader.
+fn belt_metering_pass_outcome_from(outcomes: List<MeteringPersist>) -> BeltPassOutcome {
+  let refused = outcomes |> flat_map(o => match o {
+    MeteringPersistRefused { cause: c } => [c]
+    MeteringPersisted { path: _ } => [] as List<String>
+    MeteringNotDue => [] as List<String>
+  })
+  match refused.first() {
+    Absent => BeltPassRecorded
+    Present { value: c } =>
+      BeltPassFailed { reason: join([to_string(count(refused)), " metering record(s) refused; first: ", c], "") }
+  }
+}
+
 fn belt_commit_attempt_for_instance(
   instance: HostDashboardInstance,
   progress: WorkflowAttemptProgress,
 ) -> BeltCommitOutcome {
-  let _metering = belt_metering_for_attempt(instance: instance, progress: progress)
   belt_commit_outcome_persist(
     instance: instance,
     node_id: progress.node_id,
@@ -11457,6 +11496,10 @@ fn belt_tick_receipt_from_result(
     publish_pass: (match result.wholesale {
       TickPassesWithheld { refusal } => BeltPassRefused { reason: launch_refusal_reason(r: refusal) }
       TickPassesRun => belt_publish_pass_outcome_from(outcomes: result.publish_outcomes)
+    }),
+    metering_pass: (match result.wholesale {
+      TickPassesWithheld { refusal } => BeltPassRefused { reason: launch_refusal_reason(r: refusal) }
+      TickPassesRun => belt_metering_pass_outcome_from(outcomes: result.metering_outcomes)
     }),
   }
 }

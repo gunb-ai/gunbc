@@ -2,6 +2,9 @@ module gunbc.roadmap_attempt_metering
 
 import std.types { Bool, Int, List, NonEmptyStr, String, EpochSecs }
 import std.algebra { trim }
+import std.measure { Second, second, second_count, TokenCount, token_count }
+import std.checked_arithmetic { checked_int_to_nat }
+import v2.std.optional { Present, Absent }
 import extdeps.languages.json.emit {
   JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, JsonKeyValue, json_kv, json_int, json_string, json_object, json_array, serialize_json,
 }
@@ -116,7 +119,7 @@ fn role_tokens_from_events(role: MeteredRole, body: String) -> RoleTokens {
 // (harness_seat_pointer_path); the pointer carries identity only. Both instants come from the
 // ledger's own events for that reference: PoolAcquired.recorded_at and PoolReleased.recorded_at.
 type SeatHeld
-  = SeatHeldObserved { role: MeteredRole, pointer: HarnessSeatPointer, granted_at: EpochSecs, released_at: EpochSecs, held_seconds: Int }
+  = SeatHeldObserved { role: MeteredRole, pointer: HarnessSeatPointer, granted_at: EpochSecs, released_at: EpochSecs }
   | SeatPointerAbsent { role: MeteredRole }
   | SeatStillHeld { role: MeteredRole, pointer: HarnessSeatPointer, granted_at: EpochSecs }
   | SeatRefused { role: MeteredRole, cause: String }
@@ -158,7 +161,7 @@ fn seat_held_from_events(role: MeteredRole, pointer: HarnessSeatPointer, oldest_
       if r < g {
         SeatRefused { role: role, cause: join(["seat ", seat_ref, " was released before it was acquired"], "") }
       } else {
-        SeatHeldObserved { role: role, pointer: pointer, granted_at: g, released_at: r, held_seconds: r - g }
+        SeatHeldObserved { role: role, pointer: pointer, granted_at: g, released_at: r }
       }
     }
   }
@@ -194,41 +197,85 @@ type AttemptMeteringRecord {
   compute: ComputeUsage
 }
 
-type MeteringTotal
-  = MeteringTotalObserved { value: Int }
-  | MeteringTotalIncomplete { cause: String }
+type MeteringTokenTotal
+  = MeteringTokensObserved { value: TokenCount }
+  | MeteringTokensIncomplete { cause: String }
 
-fn metering_token_total(record: AttemptMeteringRecord, output: Bool) -> MeteringTotal {
-  fold(record.roles, init: MeteringTotalObserved { value: 0 }, f: (acc, r) =>
+type MeteringSeatTimeTotal
+  = MeteringSeatTimeObserved { held: Second }
+  | MeteringSeatTimeIncomplete { cause: String }
+
+type IntTotal
+  = IntTotalObserved { value: Int }
+  | IntTotalIncomplete { cause: String }
+
+fn metering_token_sum(record: AttemptMeteringRecord, output: Bool) -> IntTotal {
+  fold(record.roles, init: IntTotalObserved { value: 0 }, f: (acc, r) =>
     match acc {
-      MeteringTotalIncomplete { cause: _ } => acc
-      MeteringTotalObserved { value: v } =>
+      IntTotalIncomplete { cause: _ } => acc
+      IntTotalObserved { value: v } =>
         match r {
           RoleTokensObserved { role: _, rounds: _, input_tokens: i, output_tokens: o } =>
-            MeteringTotalObserved { value: v + (if output { o } else { i }) }
+            IntTotalObserved { value: v + (if output { o } else { i }) }
           RoleStreamAbsent { role: _ } => acc
           RoleStreamRefused { role: ro, cause: c } =>
-            MeteringTotalIncomplete { cause: join([metered_role_wire(role: ro), ": ", c], "") }
+            IntTotalIncomplete { cause: join([metered_role_wire(role: ro), ": ", c], "") }
         }
     })
 }
 
-fn metering_seat_seconds_total(record: AttemptMeteringRecord) -> MeteringTotal {
-  fold(record.seats, init: MeteringTotalObserved { value: 0 }, f: (acc, s) =>
+fn metering_token_total(record: AttemptMeteringRecord, output: Bool) -> MeteringTokenTotal {
+  match metering_token_sum(record: record, output: output) {
+    IntTotalIncomplete { cause: c } => MeteringTokensIncomplete { cause: c }
+    IntTotalObserved { value: v } =>
+      match checked_int_to_nat(n: v) {
+        Present { value: n } => MeteringTokensObserved { value: token_count(count: n) }
+        Absent => MeteringTokensIncomplete { cause: "the token rows sum to a negative count" }
+      }
+  }
+}
+
+// A seat's held time is derived from its two ledger instants, never stored beside them.
+fn seat_held_seconds(seat: SeatHeld) -> Second? {
+  match seat {
+    SeatHeldObserved { role: _, pointer: _, granted_at: g, released_at: r } =>
+      match checked_int_to_nat(n: r - g) {
+        Present { value: n } => Present { value: second(count: n) }
+        Absent => none
+      }
+    SeatPointerAbsent { role: _ } => none
+    SeatStillHeld { role: _, pointer: _, granted_at: _ } => none
+    SeatRefused { role: _, cause: _ } => none
+  }
+}
+
+fn metering_seat_time_total(record: AttemptMeteringRecord) -> MeteringSeatTimeTotal {
+  let summed = fold(record.seats, init: IntTotalObserved { value: 0 }, f: (acc, s) =>
     match acc {
-      MeteringTotalIncomplete { cause: _ } => acc
-      MeteringTotalObserved { value: v } =>
+      IntTotalIncomplete { cause: _ } => acc
+      IntTotalObserved { value: v } =>
         match s {
-          SeatHeldObserved { role: _, pointer: _, granted_at: _, released_at: _, held_seconds: h } =>
-            MeteringTotalObserved { value: v + h }
+          SeatHeldObserved { role: ro, pointer: _, granted_at: _, released_at: _ } =>
+            match seat_held_seconds(seat: s) {
+              Present { value: h } => IntTotalObserved { value: v + second_count(s: h) }
+              Absent => IntTotalIncomplete { cause: join([metered_role_wire(role: ro), ": the seat was released before it was acquired"], "") }
+            }
           SeatPointerAbsent { role: ro } =>
-            MeteringTotalIncomplete { cause: join([metered_role_wire(role: ro), ": no seat pointer was written"], "") }
+            IntTotalIncomplete { cause: join([metered_role_wire(role: ro), ": no seat pointer was written"], "") }
           SeatStillHeld { role: ro, pointer: _, granted_at: _ } =>
-            MeteringTotalIncomplete { cause: join([metered_role_wire(role: ro), ": the seat is not yet released"], "") }
+            IntTotalIncomplete { cause: join([metered_role_wire(role: ro), ": the seat is not yet released"], "") }
           SeatRefused { role: ro, cause: c } =>
-            MeteringTotalIncomplete { cause: join([metered_role_wire(role: ro), ": ", c], "") }
+            IntTotalIncomplete { cause: join([metered_role_wire(role: ro), ": ", c], "") }
         }
     })
+  match summed {
+    IntTotalIncomplete { cause: c } => MeteringSeatTimeIncomplete { cause: c }
+    IntTotalObserved { value: v } =>
+      match checked_int_to_nat(n: v) {
+        Present { value: n } => MeteringSeatTimeObserved { held: second(count: n) }
+        Absent => MeteringSeatTimeIncomplete { cause: "the seat intervals sum to a negative duration" }
+      }
+  }
 }
 
 // ── codec ─────────────────────────────────────────────────────────────────────────────────────
@@ -258,7 +305,7 @@ fn role_tokens_json(r: RoleTokens) -> JsonValue {
 
 fn seat_held_json(s: SeatHeld) -> JsonValue {
   match s {
-    SeatHeldObserved { role: ro, pointer: p, granted_at: g, released_at: r, held_seconds: _ } => json_object(members: [
+    SeatHeldObserved { role: ro, pointer: p, granted_at: g, released_at: r } => json_object(members: [
       json_kv(key: "role", value: json_string(s: metered_role_wire(role: ro))),
       json_kv(key: "state", value: json_string(s: "released")),
       json_kv(key: "partition", value: json_string(s: p.partition as String)),
@@ -450,7 +497,7 @@ fn seat_held_decode(v: JsonValue) -> RowDecode<SeatHeld> {
                               if r < g {
                                 RowUndecodable { cause: "a seat row is released before it was granted" }
                               } else {
-                                RowDecoded { row: SeatHeldObserved { role: ro, pointer: p, granted_at: g, released_at: r, held_seconds: r - g } }
+                                RowDecoded { row: SeatHeldObserved { role: ro, pointer: p, granted_at: g, released_at: r } }
                               }
                           }
                         }

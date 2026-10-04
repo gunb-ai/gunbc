@@ -3,7 +3,7 @@ module test.claim.roadmap.roadmap_attempt_metering_witness_test
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import product.capacity.event_chain { ChainEnvelope, ChainEvent, EventId, PartitionId, ChainWalked, ChainBudgetExhausted }
 import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolReleased, PoolSettled }
-import std.measure { token_count }
+import std.measure { token_count, token_count_value, second_count }
 import extdeps.clock { ClockUnixMillisObserved }
 import gunbc.harness.harness_turn { harness_event_round_usage }
 import gunbc.harness.harness_seat_pointer {
@@ -13,7 +13,7 @@ import gunbc.roadmap_attempt_metering {
   MeteredWorker, MeteredReviewer, MeteredAuditor, RoleTokens, RoleTokensObserved, RoleStreamAbsent, RoleStreamRefused,
   SeatHeld, SeatHeldObserved, SeatStillHeld, SeatRefused, SeatPointerAbsent,
   AttemptMeteringRecord, ComputeNotAttributable, compute_not_attributable_reason,
-  MeteringTotal, MeteringTotalObserved, MeteringTotalIncomplete, metering_token_total, metering_seat_seconds_total,
+  MeteringTokensObserved, MeteringTokensIncomplete, MeteringSeatTimeObserved, MeteringSeatTimeIncomplete, metering_token_total, metering_seat_time_total, seat_held_seconds,
   AttemptMeteringObservation, MeteringObserved, MeteringRefused, MeteringNotYetWritten,
   role_tokens_from_events, seat_held_from_events, seat_held_from_walk, attempt_metering_json, metering_observe_from_text,
 }
@@ -82,8 +82,8 @@ fn record() -> AttemptMeteringRecord {
 
 // POSITIVE CONTROL: tokens total across roles; an absent role contributes nothing and is not a gap.
 test fn tokens_total_across_every_role_that_ran() -> Bool {
-  (match metering_token_total(record: record(), output: false) { MeteringTotalObserved { value: v } => v == 35, _ => false })
-    && (match metering_token_total(record: record(), output: true) { MeteringTotalObserved { value: v } => v == 307, _ => false })
+  (match metering_token_total(record: record(), output: false) { MeteringTokensObserved { value: v } => token_count_value(t: v) == 35, _ => false })
+    && (match metering_token_total(record: record(), output: true) { MeteringTokensObserved { value: v } => token_count_value(t: v) == 307, _ => false })
 }
 
 // DISCRIMINATING RED: one unreadable round makes that role refuse, and the attempt total is
@@ -94,15 +94,19 @@ test fn an_unreadable_round_refuses_rather_than_totalling_short() -> Bool {
     && (match metering_token_total(record: AttemptMeteringRecord {
           node_id: "node-x", attempt_key: "7", metered_at: 2000, roles: [bad], seats: [],
           compute: ComputeNotAttributable { reason: compute_not_attributable_reason },
-        }, output: true) { MeteringTotalIncomplete { cause: _ } => true, _ => false })
+        }, output: true) { MeteringTokensIncomplete { cause: _ } => true, _ => false })
 }
 
 test fn the_seat_interval_is_its_own_grant_to_release_on_the_ledger() -> Bool {
   (match seat_held_from_events(role: MeteredWorker, pointer: pointer(), oldest_first: ledger()) {
-    SeatHeldObserved { role: _, pointer: _, granted_at: g, released_at: r, held_seconds: h } => g == 1000 && r == 1042 && h == 42
+    SeatHeldObserved { role: _, pointer: _, granted_at: g, released_at: r } => g == 1000 && r == 1042
     _ => false
   })
-    && (match metering_seat_seconds_total(record: record()) { MeteringTotalObserved { value: v } => v == 42, _ => false })
+    && (match seat_held_seconds(seat: seat_held_from_events(role: MeteredWorker, pointer: pointer(), oldest_first: ledger())) {
+      Present { value: h } => second_count(s: h) == 42
+      Absent => false
+    })
+    && (match metering_seat_time_total(record: record()) { MeteringSeatTimeObserved { held: h } => second_count(s: h) == 42, _ => false })
 }
 
 test fn an_unreleased_or_unreadable_seat_is_not_a_zero() -> Bool {
@@ -114,11 +118,11 @@ test fn an_unreleased_or_unreadable_seat_is_not_a_zero() -> Bool {
       SeatRefused { role: _, cause: _ } => true
       _ => false
     })
-    && (match metering_seat_seconds_total(record: AttemptMeteringRecord {
+    && (match metering_seat_time_total(record: AttemptMeteringRecord {
           node_id: "node-x", attempt_key: "7", metered_at: 2000, roles: [],
           seats: [SeatPointerAbsent { role: MeteredWorker }],
           compute: ComputeNotAttributable { reason: compute_not_attributable_reason },
-        }) { MeteringTotalIncomplete { cause: _ } => true, _ => false })
+        }) { MeteringSeatTimeIncomplete { cause: _ } => true, _ => false })
 }
 
 test fn the_seat_pointer_the_harness_writes_is_the_one_the_metering_reads() -> Bool {
@@ -135,8 +139,8 @@ test fn the_reader_returns_the_written_record_for_its_own_attempt_only() -> Bool
   (match metering_observe_from_text(node_id: "node-x", attempt_key: "7", raw: raw) {
     MeteringObserved { record: r } =>
       r.metered_at == 2000
-        && (match metering_token_total(record: r, output: true) { MeteringTotalObserved { value: v } => v == 307, _ => false })
-        && (match metering_seat_seconds_total(record: r) { MeteringTotalObserved { value: v } => v == 42, _ => false })
+        && (match metering_token_total(record: r, output: true) { MeteringTokensObserved { value: v } => token_count_value(t: v) == 307, _ => false })
+        && (match metering_seat_time_total(record: r) { MeteringSeatTimeObserved { held: h } => second_count(s: h) == 42, _ => false })
     _ => false
   })
     && (match metering_observe_from_text(node_id: "node-x", attempt_key: "8", raw: raw) { MeteringRefused { cause: _ } => true, _ => false })
