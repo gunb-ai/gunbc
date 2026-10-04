@@ -1,0 +1,212 @@
+module test.claim.process_lifecycle_wet_witness
+
+import std.types { Bool, String, List, NonEmptyStr }
+import extdeps.posix.process
+import extdeps.posix.signal
+import extdeps.http.client
+import extdeps.tools.sleep
+import extdeps.filesystem.filesystem_io
+import extdeps.shell
+import v2.std.collection { list_at_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import tools.emit_host_transport {
+  node_http_serve_port_seed,
+  node_http_await_ready,
+  node_http_await_reaped
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WET, AND IT HAS TO BE: whether a process can be started, observed, and killed is a fact about
+// the host, and the defect this file pins lived exactly at that boundary (the retired heredoc's
+// `&` / `$!` / `trap` plumbing). The operations it calls carry no mock_response, so this file is
+// excluded from hermetic discovery (gunbc.ci_layer_roots excl_process_lifecycle_reason) and
+// scheduled on the required floor's local-repo wet lane (v2.workflow.local_repo_wet_terminal).
+// Local recipe: claim_batch --wet --source-root dag --source-root src/v2
+// --entry dag/test/claim/process_lifecycle_wet_witness_test.dag
+
+// WET WITNESS for the typed process-lifecycle ops (extdeps.posix.process StartDetached/Reap,
+// http.Client.Probe, posix.Signal.TerminateProcess) that dissolved the last retained_foreign
+// caller. These claims run WET: they start a real process, observe real readiness, and kill it.
+// RED WITHOUT THE CHANGE: on origin/main none of these operations exist, so each claim refuses
+// at evaluation (RuntimeError) -- red. GREEN WITH THE CHANGE, and each refusal arm is asserted
+// as DATA where the ops answer in data (SpawnRefused, ServeNotReady); the kill arm is asserted
+// by CONFIRMATION (Reap must report the signal death the kill must produce), because a kill
+// failure refuses the evaluation loudly rather than surfacing a value -- the heredoc's
+// `kill $SERVER_PID 2>/dev/null` swallow has no typed successor to absorb it.
+
+// The witness's own fixture server: deliberately NOT the product server source (that one is
+// exercised by run_node_http_serve_smoke in the emit-host gate). One line; braces are escaped
+// (`\{`, `\}`) because inside a string literal an unescaped `{` begins interpolation. Binds
+// HOST/PORT from env, answers 200 on everything, logs one line so the stdio files are non-empty.
+data process_lifecycle_witness_server_source: String = "const http=require('http');const server=http.createServer((req,res)=>\{res.writeHead(200,\{'content-type':'text/plain'\});res.end('process-lifecycle-witness');\});server.listen(Number(process.env.PORT),process.env.HOST||'127.0.0.1',()=>\{console.log('witness listening');\});"
+
+// The STALLED-LISTENER control: a peer that ACCEPTS the connection and never answers. curl's
+// `--connect-timeout` bounds only the connect phase, which this peer passes instantly; the bound
+// that must apply is `--max-time`, and the observable difference is the exit code: 28
+// (operation timed out) here, 7 (connection refused) for the no-listener arm above. Without the
+// deadline, a stalled peer leaves the probe unbounded -- exactly the hang shape the heredoc's
+// `until curl` could reach.
+data process_lifecycle_witness_stalled_server_source: String = "const net=require('net');const s=net.createServer((c)=>\{c.on('data',()=>\{\});c.on('error',()=>\{\});\});s.listen(Number(process.env.PORT),process.env.HOST||'127.0.0.1',()=>\{console.log('stalled listening');\});"
+
+// START REFUSAL, typed: a missing binary answers SpawnRefused as a VALUE naming the program and
+// the cause -- not an engine abort, not a fabricated pid. Positive control for the start arm is
+// kill_confirmed_by_reap below, where the same operation starts a real server.
+test fn start_refused_missing_binary_witness() -> Bool {
+  let refused = posix.Process.StartDetached(
+    program: "gunbc-no-such-binary-for-start-refusal-witness" as NonEmptyStr,
+    arguments: [] as List<String>,
+    stdout_file: "/dev/null" as NonEmptyStr,
+    stderr_file: "/dev/null" as NonEmptyStr
+  )
+  match refused.spawn {
+    SpawnRefused { program: refused_program, cause: cause } =>
+      refused_program == "gunbc-no-such-binary-for-start-refusal-witness" && length(cause |> chars) > 0
+    Spawned { pid: _ } => false
+  }
+}
+
+// READINESS TIMEOUT, typed: a port with no listener exhausts the NAMED attempt budget and
+// answers ServeNotReady carrying the last probe observation (curl's 000 no-response marker and
+// a nonzero exit code). Not an unbounded hang (the heredoc's `until curl` loop had only the
+// wall deadline as a backstop), not a fabricated success.
+test fn readiness_timeout_witness() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let seeded = match node_http_serve_port_seed(workdir: dir.path) {
+    Absent => false
+    Present { value: port } => {
+      let readiness = node_http_await_ready(
+        url: concat("http://127.0.0.1:", to_string(port), "/") as NonEmptyStr,
+        attempts_left: 3,
+        attempts_used: 0,
+        last_status: "",
+        last_exit_code: 0
+      )
+      match readiness {
+        ServeReady => false
+        ServeNotReady { attempts_used: used, last_status: status, last_exit_code: code } =>
+          used == 3 && status == "000" && code != 0
+      }
+    }
+  }
+  let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
+  seeded
+}
+
+// FULL LIFECYCLE, confirmed: start a real server, observe it answer 200, kill it, and CONFIRM
+// the signal death by reaping -- Signaled { signal: 15 }, the closed ProcessReapOutcome variant,
+// NOT a folded 128 + 15 exit code (SIGTERM is not an exit 143). This is the positive control for
+// all three arms: start succeeds, readiness is observed, the kill lands and is proven -- not
+// assumed, and nothing is left running or uncleaned.
+test fn kill_confirmed_by_reap_witness() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let witnessed = match node_http_serve_port_seed(workdir: dir.path) {
+    Absent => false
+    Present { value: port } => {
+      let server_js = Filesystem.Write(
+        path: concat(dir.path, "/server.js"),
+        content: process_lifecycle_witness_server_source
+      )
+      let spawn = posix.Process.StartDetached(
+        program: "env" as NonEmptyStr,
+        arguments: ["-C", dir.path, "HOST=127.0.0.1", concat("PORT=", to_string(port)), "node", concat(dir.path, "/server.js")],
+        stdout_file: concat(dir.path, "/server.stdout.log") as NonEmptyStr,
+        stderr_file: concat(dir.path, "/server.stderr.log") as NonEmptyStr
+      )
+      match spawn.spawn {
+        Spawned { pid: pid } => {
+          let readiness = node_http_await_ready(
+            url: concat("http://127.0.0.1:", to_string(port), "/") as NonEmptyStr,
+            attempts_left: 40,
+            attempts_used: 0,
+            last_status: "",
+            last_exit_code: 0
+          )
+          let kill = posix.Signal.TerminateProcess(pid: to_string(pid) as NonEmptyStr)
+          let reap_code = node_http_await_reaped(pid: pid, attempts_left: 20)
+          let cleanup = shell.Remove.RecursiveForce(path: dir.path)
+          server_js.success && cleanup.success
+            && (match readiness {
+              ServeReady => true
+              ServeNotReady { attempts_used: _, last_status: _, last_exit_code: _ } => false
+            })
+            && kill.success
+            && (match reap_code {
+              Absent => false
+              Present { value: outcome } =>
+                match outcome {
+                  Signaled { signal: signal } => signal == 15
+                  StillRunning => false
+                  Exited { code: _ } => false
+                  ReapRefused { cause: _ } => false
+                }
+            })
+        }
+        SpawnRefused { program: _, cause: _ } => false
+      }
+    }
+  }
+  let _ensure_dir_gone = shell.Remove.RecursiveForce(path: dir.path)
+  witnessed
+}
+
+// DEADLINE BOUND, stalled peer: start a real listener that accepts and never answers, and prove
+// the probe is bounded by --max-time -- the observation is ServeNotReady with curl's 000 marker
+// and exit code 28 (operation timed out), not 7 (connection refused, the no-listener arm above)
+// and not an unbounded hang. The peer is then killed and its signal death confirmed by reap, so
+// the control cleans up after itself.
+test fn readiness_stalled_listener_witness() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let bounded = match node_http_serve_port_seed(workdir: dir.path) {
+    Absent => false
+    Present { value: port } => {
+      let stalled_js = Filesystem.Write(
+        path: concat(dir.path, "/stalled.js"),
+        content: process_lifecycle_witness_stalled_server_source
+      )
+      let spawn = posix.Process.StartDetached(
+        program: "env" as NonEmptyStr,
+        arguments: ["-C", dir.path, "HOST=127.0.0.1", concat("PORT=", to_string(port)), "node", concat(dir.path, "/stalled.js")],
+        stdout_file: concat(dir.path, "/stalled.stdout.log") as NonEmptyStr,
+        stderr_file: concat(dir.path, "/stalled.stderr.log") as NonEmptyStr
+      )
+      match stalled_js.success {
+        true =>
+          match spawn.spawn {
+            Spawned { pid: pid } => {
+              let readiness = node_http_await_ready(
+                url: concat("http://127.0.0.1:", to_string(port), "/") as NonEmptyStr,
+                attempts_left: 3,
+                attempts_used: 0,
+                last_status: "",
+                last_exit_code: 0
+              )
+              let kill = posix.Signal.TerminateProcess(pid: to_string(pid) as NonEmptyStr)
+              let reaped = node_http_await_reaped(pid: pid, attempts_left: 20)
+              let cleanup = shell.Remove.RecursiveForce(path: dir.path)
+              cleanup.success && kill.success
+                && (match readiness {
+                  ServeReady => false
+                  ServeNotReady { attempts_used: used, last_status: status, last_exit_code: code } =>
+                    used == 3 && status == "000" && code == 28
+                })
+                && (match reaped {
+                  Absent => false
+                  Present { value: outcome } =>
+                    match outcome {
+                      Signaled { signal: signal } => signal == 15
+                      StillRunning => false
+                      Exited { code: _ } => false
+                      ReapRefused { cause: _ } => false
+                    }
+                })
+            }
+            SpawnRefused { program: _, cause: _ } => false
+          }
+        false => false
+      }
+    }
+  }
+  let _ensure_dir_gone = shell.Remove.RecursiveForce(path: dir.path)
+  bounded
+}
