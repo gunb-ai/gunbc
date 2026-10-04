@@ -32,7 +32,7 @@ import extdeps.units.iso8601_calendar { iso8601_utc_text }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { millisecond }
 import v2.std.operation_argv { InputText, InputTextList }
-import gunbc.machine_intake_mtcollins1_kvm_still {
+import gunbc.machine_intake_megarac_kvm_still {
   KvmInstant, KvmJournalEvent, KvmJournalRendered, KvmJournalRenderRefused, kvm_journal_line,
   KvmJournalConnectionRequested, KvmJournalConnectionOpen, KvmJournalEstablished, KvmJournalStill,
   KvmJournalStopRequested, KvmJournalSessionRelease, KvmJournalBrowserClose, KvmJournalStopped,
@@ -404,7 +404,7 @@ fn boot_advance(w: MtCollins1BootWorld, now: Second) -> MtCollins1BootWorld {
 
 // THE BMC KVM VIEWER AND THE OBSERVER HELD AGAINST IT (gunbc#12492: the boot's handoff is admitted
 // only while the observer it started is established). The observer is the process
-// gunbc.owned_process LaunchOwned starts over gunbc.machine_intake_mtcollins1_kvm_still
+// gunbc.owned_process LaunchOwned starts over gunbc.machine_intake_megarac_kvm_still
 // kvm_observer_launch_in's node command. The model starts it the way the launch does -- a live process
 // in /proc, its "<pid> <start>" record at the pid path -- and writes its journal ONLY through
 // kvm_journal_line, the writer the production parser is the inverse of, so the dry observer cannot
@@ -416,7 +416,7 @@ fn boot_advance(w: MtCollins1BootWorld, now: Second) -> MtCollins1BootWorld {
 // session, the attempt and the generation; then, while it lives, one still per trigger file (the
 // script's 'trigger:'+name reason) and, on the stop file, stop-requested, the session release, the
 // browser close and stopped, after which the process has exited. It takes no periodic still: the
-// boot's attempt ends well inside mtcollins1_kvm_observer_cadence's first period in every scenario
+// boot's attempt ends well inside megarac_kvm_observer_cadence's first period in every scenario
 // the matrix runs, and a longer one reports the gap through kvm_still_gaps as the real journal would.
 //
 // A still's bytes are one fixed modeled frame, and its digest is supplied beside it (the precedent is

@@ -1,4 +1,4 @@
-module test.claim.machine_intake.mtcollins1_stale_power_off_witness_test
+module test.claim.machine_intake.megarac_stale_power_off_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String }
@@ -36,12 +36,12 @@ import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   StalePowerOffNotObserved,
   StalePowerOffObserved,
 }
-import gunbc.machine_intake_mtcollins1_media_attach {
+import gunbc.machine_intake_megarac_boot_media_attach {
   PowerOffForStale,
   PowerOffNotNeeded,
-  mtcollins1_detach_admission,
-  mtcollins1_detach_admission_after_power_off,
-  mtcollins1_stale_power_off_need,
+  megarac_detach_admission,
+  megarac_detach_admission_after_power_off,
+  megarac_stale_power_off_need,
   stale_power_off_look_owed,
   stale_power_off_observed,
 }
@@ -100,7 +100,7 @@ fn step(configurations: String, detach: MegaRacDetachAdmission) -> ConvergenceSt
 // exactly the stale image, and after an OBSERVED off plus a fresh off reading the same converge
 // detaches it. Deleting the arm leaves only the first half, which is the refusal.
 test fn run_36683309058_on_with_stale_refuses_without_the_power_off() -> Bool {
-  match step(configurations: presenting(name: run_stale as String), detach: mtcollins1_detach_admission(power: host_on)) {
+  match step(configurations: presenting(name: run_stale as String), detach: megarac_detach_admission(power: host_on)) {
     ConvergeStepRefuse { outcome: MegaRacStaleDetachNotAdmitted { stale_image: n, reason: _ } } => n == (run_stale as String)
     _ => false
   }
@@ -109,11 +109,11 @@ test fn run_36683309058_on_with_stale_refuses_without_the_power_off() -> Bool {
 test fn run_36683309058_on_with_stale_powers_off_then_detaches() -> Bool {
   let off = StalePowerOffObserved { stale_image: run_stale as String, before: host_on }
   stale_power_off_look_owed(before: host_on)
-    && (match mtcollins1_stale_power_off_need(look: look(configurations: presenting(name: run_stale as String)), image_name: run_desired) {
+    && (match megarac_stale_power_off_need(look: look(configurations: presenting(name: run_stale as String)), image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stem: mtcollins1_census_image_stem) {
       PowerOffForStale { stale_image: n } => n == (run_stale as String)
       _ => false
     })
-    && (match step(configurations: presenting(name: run_stale as String), detach: mtcollins1_detach_admission_after_power_off(power: host_off, off: off)) {
+    && (match step(configurations: presenting(name: run_stale as String), detach: megarac_detach_admission_after_power_off(power: host_off, off: off)) {
       ConvergeStepDetachStale { row: r } => r.image_name == (run_stale as String)
       _ => false
     })
@@ -123,7 +123,7 @@ test fn run_36683309058_on_with_stale_powers_off_then_detaches() -> Bool {
 test fn off_with_stale_needs_no_power_off_and_detaches() -> Bool {
   let off = StalePowerOffNotNeeded { reason: "chassis power before the session: off" }
   !stale_power_off_look_owed(before: host_off)
-    && (match step(configurations: presenting(name: run_stale as String), detach: mtcollins1_detach_admission_after_power_off(power: host_off, off: off)) {
+    && (match step(configurations: presenting(name: run_stale as String), detach: megarac_detach_admission_after_power_off(power: host_off, off: off)) {
       ConvergeStepDetachStale { row: r } => r.image_name == (run_stale as String)
       _ => false
     })
@@ -132,11 +132,11 @@ test fn off_with_stale_needs_no_power_off_and_detaches() -> Bool {
 // POSITIVE CONTROL: on with the desired image presented is never powered off, and stays the no-write
 // readiness route under the on reading.
 test fn on_with_desired_is_never_powered_off_and_stays_a_no_op() -> Bool {
-  (match mtcollins1_stale_power_off_need(look: look(configurations: presenting(name: run_desired as String)), image_name: run_desired) {
+  (match megarac_stale_power_off_need(look: look(configurations: presenting(name: run_desired as String)), image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stem: mtcollins1_census_image_stem) {
     PowerOffNotNeeded { reason: _ } => true
     _ => false
   })
-    && (match step(configurations: presenting(name: run_desired as String), detach: mtcollins1_detach_admission(power: host_on)) {
+    && (match step(configurations: presenting(name: run_desired as String), detach: megarac_detach_admission(power: host_on)) {
       ConvergeStepAwaitReadiness => true
       _ => false
     })
@@ -145,21 +145,21 @@ test fn on_with_desired_is_never_powered_off_and_stays_a_no_op() -> Bool {
 // AN UNKNOWN MEDIUM IS NEVER POWERED OFF FOR: a foreign name, nothing presented, an unreadable
 // configurations document, an unbound share, a session that was not released, no observation.
 test fn a_foreign_image_is_never_powered_off_for() -> Bool {
-  match mtcollins1_stale_power_off_need(look: look(configurations: presenting(name: "someone-elses-installer.iso")), image_name: run_desired) {
+  match megarac_stale_power_off_need(look: look(configurations: presenting(name: "someone-elses-installer.iso")), image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stem: mtcollins1_census_image_stem) {
     PowerOffNotNeeded { reason: _ } => true
     _ => false
   }
 }
 
 test fn nothing_presented_is_never_powered_off_for() -> Bool {
-  match mtcollins1_stale_power_off_need(look: look(configurations: "[]"), image_name: run_desired) {
+  match megarac_stale_power_off_need(look: look(configurations: "[]"), image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stem: mtcollins1_census_image_stem) {
     PowerOffNotNeeded { reason: _ } => true
     _ => false
   }
 }
 
 test fn an_unreadable_presentation_is_never_powered_off_for() -> Bool {
-  match mtcollins1_stale_power_off_need(look: look(configurations: "curl: (28)"), image_name: run_desired) {
+  match megarac_stale_power_off_need(look: look(configurations: "curl: (28)"), image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stem: mtcollins1_census_image_stem) {
     PowerOffNotNeeded { reason: _ } => true
     _ => false
   }
@@ -178,7 +178,7 @@ test fn an_unbound_share_is_never_powered_off_for() -> Bool {
     session_release: l.session_release,
     baseline: none,
   }
-  match mtcollins1_stale_power_off_need(look: unbound, image_name: run_desired) {
+  match megarac_stale_power_off_need(look: unbound, image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stem: mtcollins1_census_image_stem) {
     PowerOffNotNeeded { reason: _ } => true
     _ => false
   }
@@ -187,7 +187,7 @@ test fn an_unbound_share_is_never_powered_off_for() -> Bool {
 test fn a_look_whose_session_leaked_is_never_powered_off_for() -> Bool {
   let l = look(configurations: presenting(name: run_stale as String))
   let leaked = MegaRacAttachResult { outcome: l.outcome, session_release: SessionReleaseRefused { detail: "probe 000" }, baseline: none }
-  match mtcollins1_stale_power_off_need(look: leaked, image_name: run_desired) {
+  match megarac_stale_power_off_need(look: leaked, image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stem: mtcollins1_census_image_stem) {
     PowerOffNotNeeded { reason: _ } => true
     _ => false
   }
@@ -195,7 +195,7 @@ test fn a_look_whose_session_leaked_is_never_powered_off_for() -> Bool {
 
 test fn a_refused_look_is_never_powered_off_for() -> Bool {
   let refused = MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "HTTP 401" }, session_release: SessionReleaseNotAttempted, baseline: none }
-  match mtcollins1_stale_power_off_need(look: refused, image_name: run_desired) {
+  match megarac_stale_power_off_need(look: refused, image_name: run_desired, firmware: mtcollins1_firmware, replaceable_seeded_stem: mtcollins1_census_image_stem) {
     PowerOffNotNeeded { reason: _ } => true
     _ => false
   }
@@ -206,8 +206,8 @@ test fn unreadable_or_undecodable_power_takes_no_look_and_refuses() -> Bool {
   let undecodable = ChassisStatusUndecodable { cause: "no System Power line" }
   !stale_power_off_look_owed(before: ChassisUnreadable)
     && !stale_power_off_look_owed(before: undecodable)
-    && (match mtcollins1_detach_admission(power: ChassisUnreadable) { MegaRacDetachNotAdmitted { reason: _ } => true  _ => false })
-    && (match mtcollins1_detach_admission(power: undecodable) { MegaRacDetachNotAdmitted { reason: _ } => true  _ => false })
+    && (match megarac_detach_admission(power: ChassisUnreadable) { MegaRacDetachNotAdmitted { reason: _ } => true  _ => false })
+    && (match megarac_detach_admission(power: undecodable) { MegaRacDetachNotAdmitted { reason: _ } => true  _ => false })
 }
 
 // A POWER-OFF NOT OBSERVED NEVER ADMITS, even beside an off reading: the read-back is the evidence,
@@ -215,8 +215,8 @@ test fn unreadable_or_undecodable_power_takes_no_look_and_refuses() -> Bool {
 test fn a_power_off_not_observed_or_refused_never_admits() -> Bool {
   let unobserved = StalePowerOffNotObserved { stale_image: run_stale as String, before: host_on, last: ChassisUnreadable }
   let refused = StalePowerOffCommandRefused { stale_image: run_stale as String, before: host_on }
-  (match mtcollins1_detach_admission_after_power_off(power: host_off, off: unobserved) { MegaRacDetachNotAdmitted { reason: _ } => true  _ => false })
-    && (match mtcollins1_detach_admission_after_power_off(power: host_off, off: refused) { MegaRacDetachNotAdmitted { reason: _ } => true  _ => false })
+  (match megarac_detach_admission_after_power_off(power: host_off, off: unobserved) { MegaRacDetachNotAdmitted { reason: _ } => true  _ => false })
+    && (match megarac_detach_admission_after_power_off(power: host_off, off: refused) { MegaRacDetachNotAdmitted { reason: _ } => true  _ => false })
 }
 
 // THE READ-BACK ENDS ONLY ON AN OBSERVED OFF.

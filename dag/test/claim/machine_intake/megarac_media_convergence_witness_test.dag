@@ -117,7 +117,8 @@ import gunbc.machine_intake_megarac_media_attach {
 }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { media_attach_text, media_attach_outcome_reason, MediaAttachAttempted, MtCollins1MediaAttachRecord, detach_evidence_text, HandoffMediaAttempted, HandoffConfirmed, HandoffAttemptedUnconfirmed, MediaAttachNotAttempted, StalePowerOffNotNeeded, end_media_is_owed, HandoffMediaWithheldAtRecheck, handoff_media_harness, harness_finding_text, MtCollins1HandoffMedia, MtCollins1EndMedia, EndMediaObserved, EndMediaNotTaken, media_loss_after_handoff, outcome_attributing_media_loss }
-import gunbc.machine_intake_mtcollins1_media_attach { MediaGateReady, MediaGateWithheld, mtcollins1_media_gate, mtcollins1_media_share }
+import gunbc.machine_intake_megarac_boot_media_attach { MediaGateReady, MediaGateWithheld, megarac_boot_media_gate }
+import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_media_share }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -358,7 +359,7 @@ fn attempted(result: MegaRacAttachResult) -> MtCollins1MediaAttachRecord {
 }
 
 test fn a_timed_out_presentation_withholds_the_handoff_with_its_last_look() -> Bool {
-  match mtcollins1_media_gate(record: attempted(result: MegaRacAttachResult {
+  match megarac_boot_media_gate(record: attempted(result: MegaRacAttachResult {
     outcome: MegaRacReadinessTimedOut { image_name: desired_census, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, last: look(at: 31000, status: "100", session: "0"), deadline: 31000, looks: 15, cd_before_any_write: cd_clean, cd_at_refusal: cd_clean },
     session_release: SessionReleased,
     baseline: none,
@@ -369,7 +370,7 @@ test fn a_timed_out_presentation_withholds_the_handoff_with_its_last_look() -> B
 }
 
 test fn a_refused_presentation_withholds_the_handoff_with_the_wire() -> Bool {
-  match mtcollins1_media_gate(record: attempted(result: MegaRacAttachResult {
+  match megarac_boot_media_gate(record: attempted(result: MegaRacAttachResult {
     outcome: MegaRacReadinessRefused { image_name: desired_census, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, look: look(at: 2000, status: "16", session: "255"), looks: 1, cd_before_any_write: cd_clean, cd_at_refusal: cd_16 },
     session_release: SessionReleased,
     baseline: none,
@@ -388,14 +389,14 @@ fn ready_outcome() -> MegaRacAttachResult {
 }
 
 test fn a_ready_presentation_opens_the_gate_with_its_evidence() -> Bool {
-  match mtcollins1_media_gate(record: attempted(result: ready_outcome())) {
+  match megarac_boot_media_gate(record: attempted(result: ready_outcome())) {
     MediaGateReady { evidence: e } => e.looks == 4 && e.established_at == 13000
     MediaGateWithheld { reason: _ } => false
   }
 }
 
 test fn a_ready_presentation_with_a_leaked_session_withholds() -> Bool {
-  match mtcollins1_media_gate(record: attempted(result: MegaRacAttachResult { outcome: ready_outcome().outcome, session_release: SessionReleaseRefused { detail: "probe still succeeded" }, baseline: none })) {
+  match megarac_boot_media_gate(record: attempted(result: MegaRacAttachResult { outcome: ready_outcome().outcome, session_release: SessionReleaseRefused { detail: "probe still succeeded" }, baseline: none })) {
     MediaGateWithheld { reason: _ } => true
     MediaGateReady { evidence: _ } => false
   }
@@ -512,7 +513,7 @@ fn ready_after(cd_before: CdErrorReading, general: String) -> MegaRacAttachOutco
 }
 
 fn gate_of(outcome: MegaRacAttachOutcome) -> String {
-  match mtcollins1_media_gate(record: attempted(result: MegaRacAttachResult { outcome: outcome, session_release: SessionReleased, baseline: none })) {
+  match megarac_boot_media_gate(record: attempted(result: MegaRacAttachResult { outcome: outcome, session_release: SessionReleased, baseline: none })) {
     MediaGateWithheld { reason: r } => concat("WITHHELD: ", r as String)
     MediaGateReady { evidence: _ } => "READY"
   }
@@ -596,7 +597,7 @@ test fn boot_run_36721915217_readings_now_admit() -> Bool {
         && (match e.cd_at_ready { CdErrorRead { code: CdErrorStopReason { status: st, class: StopReasonNoFault } } => st.code == 16  _ => false })
     _ => false
   })
-    && (match mtcollins1_media_gate(record: MediaAttachAttempted { attempt: "36721915217", medium_image_name: run_36721915217_image, medium_image_sha256: "161b98b9bb389a80", power: ChassisPowerRead { power_on: false }, stale_power_off: StalePowerOffNotNeeded { reason: "the host was read off" }, result: MegaRacAttachResult { outcome: outcome, session_release: SessionReleased, baseline: none } }) {
+    && (match megarac_boot_media_gate(record: MediaAttachAttempted { attempt: "36721915217", medium_image_name: run_36721915217_image, medium_image_sha256: "161b98b9bb389a80", power: ChassisPowerRead { power_on: false }, stale_power_off: StalePowerOffNotNeeded { reason: "the host was read off" }, result: MegaRacAttachResult { outcome: outcome, session_release: SessionReleased, baseline: none } }) {
       MediaGateReady { evidence: _ } => true
       MediaGateWithheld { reason: _ } => false
     })

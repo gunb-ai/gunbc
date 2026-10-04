@@ -19,7 +19,7 @@ import gunbc.machine_intake_mtcollins1_boot_run {
 }
 import gunbc.machine_intake_mtcollins1_boot_authorization { mtcollins1_boot_subject }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { SmproNotTaken }
-import gunbc.machine_intake_mtcollins1_kvm_still { KvmObserverNotStarted }
+import gunbc.machine_intake_megarac_kvm_still { KvmObserverNotStarted }
 import gunbc.machine_intake_mtcollins1_boot_run { SolCollectorUnrecorded }
 import gunbc.machine_intake_mtcollins1_sol_notice {
   SolNoticePaths, SolNoticeDelivery, SolNoticeDelivered, SolNoticeDeliveryFailed, SolNoticeLiveLog,
