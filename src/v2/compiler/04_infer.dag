@@ -3400,7 +3400,7 @@ fn infer_match_generic_formal_or_carrier(formal: Node, produced: Node, type_para
     InferFormalMatched { instances: matched } => InferFormalMatched { instances: matched }
     InferFormalShapeMismatch =>
       match refinement_declared_carrier(index: declarations, source_type: produced) {
-        Present { value: carrier } => infer_match_generic_formal(formal: formal, produced: carrier, type_params: type_params, instances: instances, declarations: declarations)
+        Present { value: carrier } => infer_match_generic_formal(formal: formal, produced: infer_type_alias_normalized(t: carrier, declarations: declarations), type_params: type_params, instances: instances, declarations: declarations)
         Absent => InferFormalShapeMismatch
       }
   }
