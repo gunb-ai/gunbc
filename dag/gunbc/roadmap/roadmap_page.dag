@@ -22,6 +22,8 @@ import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, RoadmapStandings, 
 import gunbc.roadmap.roadmap_event_log {
   EventPrincipal, EventPrincipalAuthenticated, LegacyEmailPrincipal, event_principal_label,
   IssueComment, IssueAssignmentProjection, roadmap_issue_comments, roadmap_issue_assignment, issue_comment_anchor,
+  ResultReturned, AttemptResultOutcome, ResultPublished, ResultVerificationFailed, ResultHandedBack,
+  attempt_result_outcome_word, attempt_result_outcome_text, roadmap_claim_return_to, RoadmapEventId,
 }
 import gunbc.principal_projection {
   PrincipalRef, principal_ref_label, principal_ref_parse_label, principal_ref_eq,
@@ -1895,8 +1897,8 @@ fn issue_event_payload(env: RoadmapEventEnvelope) -> String {
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => "comment created"
     CommentEdited { comment: _, body: _ } => "comment edited"
     CommentDeleted { comment: _ } => "comment deleted"
-    PublicationObserved { pr, head } =>
-      join(["published ", pr as String, " at ", head as String], "")
+    ResultReturned { attempt, claim, outcome } =>
+      join(["result of attempt ", attempt as String, " for claim ", claim as String, ": ", attempt_result_outcome_text(o: outcome)], "")
   }
 }
 
@@ -2044,15 +2046,16 @@ fn comment_time_text(c: IssueComment) -> String {
 }
 
 // ONE STREAM ENTRY, the chronological merge the mandate's Comments tab renders: a durable
-// comment, or the compact automated handoff entry an observed publication appends (PR published,
-// reassigned for merge) — lifecycle events interleave with the narrative, never raw belt noise.
+// comment, or the compact automated entry a returned attempt result appends (published and
+// reassigned for merge, verification failed, or handed back) — the answer the requester
+// is owed interleaves with the narrative, never raw belt noise.
 type IssueStreamEntry
   = StreamComment { comment: IssueComment }
   | StreamPublication { env: RoadmapEventEnvelope }
 
 fn issue_stream_entries(envs: List<RoadmapEventEnvelope>) -> List<IssueStreamEntry> {
   let comments = map(roadmap_issue_comments(envs: envs), c => StreamComment { comment: c })
-  let publications = map(filter(envs, e => match e.event.kind { PublicationObserved { pr: _, head: _ } => true  Claimed { assignee: _, return_to: _ } => false  Released => false  Progress { note: _ } => false  Blocked { reason: _ } => false  HandedBack { reason: _ } => false  ReceiptReferenced { obligation: _, address: _, verdict: _ } => false  CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false  CommentEdited { comment: _, body: _ } => false  CommentDeleted { comment: _ } => false }), e => StreamPublication { env: e })
+  let publications = map(filter(envs, e => match e.event.kind { ResultReturned { attempt: _, claim: _, outcome: _ } => true  Claimed { assignee: _, return_to: _ } => false  Released => false  Progress { note: _ } => false  Blocked { reason: _ } => false  HandedBack { reason: _ } => false  ReceiptReferenced { obligation: _, address: _, verdict: _ } => false  CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false  CommentEdited { comment: _, body: _ } => false  CommentDeleted { comment: _ } => false }), e => StreamPublication { env: e })
   issue_entries_sort_ascending(concat(comments, publications))
 }
 
@@ -2107,16 +2110,19 @@ fn roadmap_comments_of(entries: List<IssueStreamEntry>) -> List<IssueComment> {
   })
 }
 
-// THE COMPACT AUTOMATED HANDOFF ENTRY (owner mandate: one compact automated comment with PR/head,
-// reassigned for merge): fabric's service avatar, the PR and head, and the merge-owner the fold
-// reassigned to — the durable event is the comment; nothing is synthesized twice.
+// THE COMPACT AUTOMATED RESULT ENTRY (owner mandate: one compact automated comment with PR/head,
+// reassigned for merge; operator ruling 2026-10-03: every terminal outcome is returned, not only
+// the published one): fabric's service avatar, the attempt, the outcome sentence, and the
+// principal the result names — the durable event is the comment; nothing is synthesized twice.
 fn issue_publication_entry_row_node(node_id: String, envs: List<RoadmapEventEnvelope>, env: RoadmapEventEnvelope, profiles: List<PrincipalProfile>) -> Fragment {
   match env.event.kind {
-    PublicationObserved { pr, head } =>
+    ResultReturned { attempt, claim, outcome } =>
       let display = event_principal_display_with_profile(p: env.event.author, profiles: profiles)
       el_attrs("div", [
         attr(name: "class", value: "issue-comment issue-publication" ),
-        attr(name: "data-event-kind", value: "publication_observed" ),
+        attr(name: "data-event-kind", value: "result_returned" ),
+        attr(name: "data-result-outcome", value: attempt_result_outcome_word(o: outcome) ),
+        attr(name: "data-attempt", value: attempt as String ),
       ], [
         issue_avatar_chip_node(display: display, workflow: event_principal_is_fabric(p: env.event.author)),
         el_class("div", "issue-comment-main", [
@@ -2126,7 +2132,7 @@ fn issue_publication_entry_row_node(node_id: String, envs: List<RoadmapEventEnve
               [ el_class("span", "issue-comment-at", [ txt(env.event.recorded_at) ]) ],
               [ el_class("span", "issue-comment-detail", [ txt(display.detail) ]) ]))),
           el_class("div", "issue-comment-body", [
-            txt(join(["published ", pr as String, " at ", head as String, " — reassigned for merge to ", issue_publication_merge_target(envs: envs, profiles: profiles)], "")),
+            txt(issue_result_entry_sentence(outcome: outcome, return_to: issue_result_return_to_name(envs: envs, claim: claim, profiles: profiles))),
           ]),
         ]),
       ])
@@ -2151,13 +2157,24 @@ fn issue_publication_entry_row_node(node_id: String, envs: List<RoadmapEventEnve
   }
 }
 
-// THE MERGE TARGET the entry names: the holder the fold now reads (the stored return_to after the
-// publication) — computed from the node's full event set, so the name rides the fold, never a
-// second guess.
-fn issue_publication_merge_target(envs: List<RoadmapEventEnvelope>, profiles: List<PrincipalProfile>) -> String {
-  match roadmap_issue_assignment(envs: envs).holder {
-    Present { value: holder } => event_principal_display_with_profile(p: holder, profiles: profiles).name
-    Absent => "the stored merge owner"
+// THE NAME OF THE PRINCIPAL A RESULT RETURNS TO, read from the claim the result names in the same
+// history. The carrier admits no result whose claim the history lacks, so the absent arm is a
+// history this page was handed incomplete, and it says so rather than naming anyone.
+fn issue_result_return_to_name(envs: List<RoadmapEventEnvelope>, claim: RoadmapEventId, profiles: List<PrincipalProfile>) -> String {
+  match roadmap_claim_return_to(envs: envs, claim: claim) {
+    Present { value: return_to } => event_principal_display_with_profile(p: return_to, profiles: profiles).name
+    Absent => "the requester of a claim this history does not carry"
+  }
+}
+
+// THE ENTRY'S SENTENCE, one per outcome, naming the principal its claim returns to: a published
+// result says who it was reassigned to for merge; every other outcome says who the answer was
+// returned to, because the holder did not move.
+fn issue_result_entry_sentence(outcome: AttemptResultOutcome, return_to: String) -> String {
+  match outcome {
+    ResultPublished { pr: _, head: _ } => join([attempt_result_outcome_text(o: outcome), " — reassigned for merge to ", return_to], "")
+    ResultVerificationFailed { head: _, cause: _ } => join([attempt_result_outcome_text(o: outcome), " — returned to ", return_to], "")
+    ResultHandedBack { reason: _ } => join([attempt_result_outcome_text(o: outcome), " — returned to ", return_to], "")
   }
 }
 

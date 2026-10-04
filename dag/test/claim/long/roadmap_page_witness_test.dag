@@ -811,21 +811,21 @@ test fn witness_parity_wire_carries_the_server_sentence() -> Bool {
 // reds there, and the per-part claims below still cover every group the asset ships.
 fn fx_client_groups() -> List<List<TsStmt>> {
   [
-    [], // shared site client owns sound_preamble_statements
+    [],
     dispatch_preamble_statements(),
     observe_impact_preamble_statements(),
     dispatch_bind_statements(selector: ".dispatch-btn", url_expr: dispatch_fetch_url_expr()),
     issue_action_bind_statements(),
-    [], // shared site client owns sound_toggle_bind_statements
-    [], // shared site client owns theme_toggle_bind_statements
+    [],
+    [],
     disclosure_bind_statements(),
     swatch_toggle_bind_statements(),
     observation_fetch_statements(),
     workflow_fetch_statements(),
     row_selection_bind_statements(),
     issue_filter_bind_statements(),
-    [], // shared site client owns session_read_bind_statements
-    [], // shared site client owns account_swap_statements
+    [],
+    [],
     issue_sort_bind_statements(),
     inline_assignment_bind_statements(),
     dashboard_instance_fetch_statements(),
@@ -2331,7 +2331,7 @@ test fn witness_issue_comment_composer_posts_urlencoded_with_stable_key_and_csrf
   }
 }
 
-// THE PUBLICATION HANDOFF (owner mandate control 9): an observed publication renders ONE compact
+// THE PUBLICATION HANDOFF (owner mandate control 9): a published attempt result renders ONE compact
 // automated entry in the Comments stream — fabric's service avatar, the PR and head, and the
 // merge owner the fold reassigned to (the stored return_to) — while the standing the page reads
 // becomes ready for review and the History tab carries the raw event.
@@ -2343,7 +2343,7 @@ fn fx_handoff_events() -> List<gunbc.roadmap.roadmap_event_log.RoadmapEventEnvel
       node: "issue-detail-specimen" as gunbc.roadmap_model.RoadmapNodeId,
       author: fixture_fabric_principal(),
       parent: Present { value: "ho-1" as gunbc.roadmap.roadmap_event_log.RoadmapEventId },
-      kind: gunbc.roadmap.roadmap_event_log.PublicationObserved { pr: "gunb-ai/gunbc#12210" as NonEmptyStr, head: "52c56a8" as NonEmptyStr },
+      kind: gunbc.roadmap.roadmap_event_log.ResultReturned { attempt: "feedfacefeedface" as NonEmptyStr, claim: "ho-1" as gunbc.roadmap.roadmap_event_log.RoadmapEventId, outcome: gunbc.roadmap.roadmap_event_log.ResultPublished { pr: "gunb-ai/gunbc#12210" as NonEmptyStr, head: "52c56a8" as NonEmptyStr } },
       recorded_at: "2026-09-25T11:00:00Z",
     },
   }
@@ -2364,11 +2364,47 @@ test fn witness_issue_publication_handoff_renders_the_compact_automated_entry() 
     profiles: [])) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      occurrence_count(s: h, pattern: "data-event-kind=\"publication_observed\"") == 2
+      occurrence_count(s: h, pattern: "data-event-kind=\"result_returned\"") == 2
+        && string_contains(s: h, pattern: "data-result-outcome=\"published\" data-attempt=\"feedfacefeedface\"")
         && string_contains(s: h, pattern: "<span class=\"site-avatar site-avatar-workflow\" data-avatar=\"absent\" title=\"Fabric — workflow · fabric@gunb.ai\"><svg class=\"site-avatar-default-mark\" viewBox=\"0 0 64 64\" role=\"img\" aria-label=\"Fabric group\">")
         && string_contains(s: h, pattern: "published gunb-ai/gunbc#12210 at 52c56a8 — reassigned for merge to principal:google-oidc/accounts/sub-viewer")
         && string_contains(s: h, pattern: "ready for review — published gunb-ai/gunbc#12210 at 52c56a8; reassigned for merge to principal:google-oidc/accounts/sub-viewer")
         && string_contains(s: h, pattern: "issue-comment issue-publication")
+  }
+}
+
+// A RESULT THAT IS NOT A PUBLICATION IS STILL RETURNED ON THE PAGE (operator ruling 2026-10-03): a
+// failed verification renders its own entry naming the head, the cause and the principal it was
+// returned to, and it does NOT read as a reassignment for merge -- the standing stays claimed.
+test fn witness_issue_failed_verification_result_renders_without_a_merge_handoff() -> Bool {
+  let claim = fx_event_envelope(id: "rr-1", at: "2026-09-25T10:00:00Z", kind: gunbc.roadmap.roadmap_event_log.Claimed { assignee: fixture_fabric_principal(), return_to: fixture_human_principal() })
+  let failed = gunbc.roadmap.roadmap_event_log.RoadmapEventEnvelope {
+    id: "rr-2" as gunbc.roadmap.roadmap_event_log.RoadmapEventId,
+    event: gunbc.roadmap.roadmap_event_log.RoadmapEvent {
+      node: "issue-detail-specimen" as gunbc.roadmap_model.RoadmapNodeId,
+      author: fixture_fabric_principal(),
+      parent: Present { value: "rr-1" as gunbc.roadmap.roadmap_event_log.RoadmapEventId },
+      kind: gunbc.roadmap.roadmap_event_log.ResultReturned { attempt: "feedfacefeedface" as NonEmptyStr, claim: "rr-1" as gunbc.roadmap.roadmap_event_log.RoadmapEventId, outcome: gunbc.roadmap.roadmap_event_log.ResultVerificationFailed { head: "52c56a8" as NonEmptyStr, cause: "verdict validation-failed" as NonEmptyStr } },
+      recorded_at: "2026-09-25T11:00:00Z",
+    },
+  }
+  match try_serialize_html_source(node: fx_issue_detail_body(
+    view: issue_detail_fixture_view(),
+    panel: issue_detail_fixture_panel(),
+    observation: gunbc.roadmap_presentation.ObservationsNominal,
+    attempts: [],
+    events: [claim, failed],
+    viewer: "principal:google-oidc/accounts/sub-viewer",
+    recents: [ fixture_teammate_legacy() ],
+    expected_revision: "",
+    command_context: IssueFormContext { operation: "", csrf: "" },
+    profiles: [])) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      string_contains(s: h, pattern: "data-result-outcome=\"verification_failed\" data-attempt=\"feedfacefeedface\"")
+        && string_contains(s: h, pattern: "verification failed at 52c56a8: verdict validation-failed — returned to principal:google-oidc/accounts/sub-viewer")
+        && !string_contains(s: h, pattern: "reassigned for merge")
+        && !string_contains(s: h, pattern: "ready for review")
   }
 }
 
@@ -2631,7 +2667,7 @@ test fn witness_issue_detail_rail_and_comments_render_the_profile_identity() -> 
       node: "issue-detail-specimen" as gunbc.roadmap_model.RoadmapNodeId,
       author: fixture_fabric_principal(),
       parent: Present { value: "prof-ho-1" as gunbc.roadmap.roadmap_event_log.RoadmapEventId },
-      kind: gunbc.roadmap.roadmap_event_log.PublicationObserved { pr: "gunb-ai/gunbc#12210" as NonEmptyStr, head: "52c56a8" as NonEmptyStr },
+      kind: gunbc.roadmap.roadmap_event_log.ResultReturned { attempt: "feedfacefeedface" as NonEmptyStr, claim: "prof-ho-1" as gunbc.roadmap.roadmap_event_log.RoadmapEventId, outcome: gunbc.roadmap.roadmap_event_log.ResultPublished { pr: "gunb-ai/gunbc#12210" as NonEmptyStr, head: "52c56a8" as NonEmptyStr } },
       recorded_at: "2026-09-25T11:00:00Z",
     },
   }

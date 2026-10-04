@@ -7,8 +7,14 @@ import v2.std.optional { Absent, Present }
 import gunbc.instrument_dispatch_workflow {
   instrument_dispatch_steps, instrument_dispatch_seed_step_name,
   InstrumentDispatchWorkflowGenerated, InstrumentDispatchWorkflowGenerationRefused,
-  expected_instrument_dispatch_yml, instrument_dispatch_label_options, instrument_dispatch_labels_are_rostered
+  expected_instrument_dispatch_yml, instrument_dispatch_label_options, instrument_dispatch_labels_are_rostered,
+  InstrumentDispatchMemoryDemand, instrument_dispatch_memory_demands, instrument_dispatch_memory_demands_fit,
+  instrument_dispatch_memory_demands_fit_selected_target, instrument_dispatch_memory_demands_are_dispatchable,
+  instrument_dispatch_whole_tree_memory_demand,
 }
+import gunbc.instrument_targets { dependency_demand_census_label, v2_native_census_label }
+import extdeps.bazel.label { render_label }
+import std.measure { byte_size, byte_size_count }
 
 // THE OPERATOR'S CONDITIONS FOR THE DISPATCH-ONLY INSTRUMENT WORKFLOW, AS THE GENERATED TEXT CARRIES
 // THEM. The drift gate (gunbc.generated_artifact) holds the committed file to this generator; these
@@ -72,7 +78,7 @@ fn step_name(step: Step) -> String {
 // step list: the first step is the seed, and the checkout and the build come after it, so a run that dies
 // in the prelude still has a receipt for the always() upload to read.
 test fn the_receipt_is_seeded_before_the_fallible_prelude_holds() -> Bool {
-  let names = map(instrument_dispatch_steps(seed: "", script: ""), s => step_name(step: s))
+  let names = map(instrument_dispatch_steps(seed: "", guard: "", script: ""), s => step_name(step: s))
   let first = fold(names, init: "", f: fn(acc, n) { if acc == "" { n } else { acc } })
   (first == instrument_dispatch_seed_step_name)
     && any(names, n => n == "Checkout")
@@ -83,4 +89,56 @@ test fn the_receipt_is_seeded_before_the_fallible_prelude_holds() -> Bool {
 // row-deletion change can dispatch the census at its own head (review of gunbc#12992).
 test fn the_dispatch_choice_offers_the_dependency_demand_census_holds() -> Bool {
   contains(generated_text(), "//gunbc/instruments:dependency-demand-census")
+}
+
+// THE WHOLE-TREE INSTRUMENTS CARRY A DECLARED MEMORY DEMAND (follow-up to gunbc#13141): each census label
+// has a row, every row is dispatchable, and the selected runner target's budget admits every row.
+test fn the_whole_tree_censuses_declare_a_memory_demand_the_selected_target_admits_holds() -> Bool {
+  let declared = map(instrument_dispatch_memory_demands(), d => render_label(l: d.label))
+  any(declared, l => l == render_label(l: dependency_demand_census_label()))
+    && any(declared, l => l == render_label(l: v2_native_census_label()))
+    && instrument_dispatch_memory_demands_are_dispatchable()
+    && instrument_dispatch_memory_demands_fit_selected_target()
+}
+
+// The discriminating red: a demand above the target's budget does not fit, so the generator refuses
+// rather than emitting a workflow whose runner cannot hold the subject; a demand at the budget fits.
+test fn a_memory_demand_above_the_target_budget_does_not_fit_holds() -> Bool {
+  let row = InstrumentDispatchMemoryDemand { label: v2_native_census_label(), demand: byte_size(21474836481) }
+  !instrument_dispatch_memory_demands_fit(demands: [row], budget: byte_size(21474836480))
+    && instrument_dispatch_memory_demands_fit(demands: [row], budget: byte_size(21474836481))
+}
+
+// THE RUN-TIME WALL PRECEDES THE PRELUDE AND IS BOUND TO ITS LABEL: the generated text carries a guard
+// per declared row, gated on that label's input, refusing with exit 1 below the declared byte count,
+// and the guard runs before the checkout so an under-provisioned runner spends nothing.
+fn step_if(step: Step) -> String {
+  match step {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
+      match c {
+        Present { value: v } => v
+        Absent => ""
+      }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
+      match c {
+        Present { value: v } => v
+        Absent => ""
+      }
+  }
+}
+
+test fn the_memory_guard_is_label_bound_and_precedes_the_prelude_holds() -> Bool {
+  let t = generated_text()
+  let steps = instrument_dispatch_steps(seed: "", guard: "", script: "")
+  let names = map(steps, s => step_name(step: s))
+  let guard = concat("Require the declared memory for ", render_label(l: v2_native_census_label()))
+  let bound = concat(concat("inputs.label == '", render_label(l: v2_native_census_label())), "'")
+  let before_checkout = fold(names, init: "searching", f: fn(acc, n) {
+    if acc != "searching" { acc } else { if n == guard { "guard-first" } else { if n == "Checkout" { "checkout-first" } else { acc } } }
+  })
+  any(steps, s => (step_name(step: s) == guard) && (step_if(step: s) == bound))
+    && contains(t, "REQUIRED_MEMORY_BYTES")
+    && contains(t, to_string(byte_size_count(b: instrument_dispatch_whole_tree_memory_demand)))
+    && contains(t, "InstrumentMemoryBudgetUnmet")
+    && (before_checkout == "guard-first")
 }

@@ -1,18 +1,20 @@
 module gunbc.cloudflare.r2_origin_object
 
+import extdeps.object_storage { ObjectPutPrecondition, PutIfAbsent }
+import extdeps.tools.curl { ReportStatus }
 import std.types { String, NonEmptyStr, Bool, FilePath }
 import std.decl_ref { DeclarationRef }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import gunbc.cloudflare.r2_staged_transfer {
   S3TransferAnswer,
-  R2PutVerdict, R2ObjectStored, R2ObjectAlreadyPresent, R2PutRefused, R2PutOutcomeUnknown,
+  R2PutVerdict, R2ObjectStored, R2ObjectAlreadyPresent, R2ObjectTagMoved, R2PutRefused, R2PutOutcomeUnknown,
   classify_r2_put,
-  R2FetchVerdict, R2FetchStagedAt, R2FetchAbsent, R2FetchRefused,
+  R2FetchVerdict, R2FetchStagedAt, R2FetchAbsent, R2FetchRefused, R2FetchUnanswered,
   classify_r2_fetch,
   R2TransferTarget,
   WriteCredentialCustody, WriteCredentialShredded, WriteCredentialResidueRemains,
   r2_put_staged_file,
-  R2Fetch, R2FetchStaged, R2FetchObjectAbsent, R2FetchUnavailable,
+  R2Fetch, R2FetchStaged, R2FetchObjectAbsent, R2FetchStoreRefused, R2FetchTransportUnanswered, R2FetchLocalFailure,
   r2_fetch_into_staging,
 }
 import extdeps.cloudflare.r2 {
@@ -36,7 +38,7 @@ import gunbc.cloudflare.r2_origin {
   OriginCredentialUnminted,
   OriginCredentialMintEntryUnbuilt,
   bucket_purpose_admission,
-  origin_admission_is_create_only,
+  origin_admission_put_precondition,
 }
 import gunbc.fabric_m0_origin_readback {
   OriginFetchOutcome,
@@ -96,8 +98,9 @@ type OriginPutOutcome
 
 fn origin_put_of(key: NonEmptyStr, verdict: R2PutVerdict) -> OriginPutOutcome {
   match verdict {
-    R2ObjectStored => OriginObjectStored { key: key }
+    R2ObjectStored { tag: _ } => OriginObjectStored { key: key }
     R2ObjectAlreadyPresent => OriginObjectAlreadyPresent { key: key }
+    R2ObjectTagMoved => OriginPutRefused { key: key, cause: "the store answered that an If-Match precondition failed; the origin never sends one, so this is not its protocol" }
     R2PutRefused { cause: cause } => OriginPutRefused { key: key, cause: cause }
     R2PutOutcomeUnknown { cause: cause } => OriginPutOutcomeUnknown { key: key, cause: cause }
   }
@@ -105,7 +108,7 @@ fn origin_put_of(key: NonEmptyStr, verdict: R2PutVerdict) -> OriginPutOutcome {
 
 // THE PUT VERDICT IS PURE so both its unknown arms and its refused arm are reachable from a fixture.
 fn classify_origin_put(key: NonEmptyStr, answer: S3TransferAnswer, stderr: String) -> OriginPutOutcome {
-  origin_put_of(key: key, verdict: classify_r2_put(answer: answer, stderr: stderr))
+  origin_put_of(key: key, verdict: classify_r2_put(precondition: PutIfAbsent, answer: answer, stderr: stderr))
 }
 
 // WHICH ORIGIN, RESOLVED FROM THE DECLARATIONS AND REFUSING ON EVERY UNALLOCATED ARM. The account
@@ -121,7 +124,7 @@ type OriginTarget
       locator: R2ObjectLocator
       access_key_id: NonEmptyStr
       token_value: SecretRef
-      create_only: Bool
+      precondition: ObjectPutPrecondition
     }
   | OriginTargetRefused { cause: NonEmptyStr }
 
@@ -187,7 +190,7 @@ fn resolve_origin_target_under(
                 },
                 access_key_id: access_key_id,
                 token_value: token_value,
-                create_only: origin_admission_is_create_only(admission: bucket_purpose_admission(purpose: bucket.purpose)),
+                precondition: origin_admission_put_precondition(admission: bucket_purpose_admission(purpose: bucket.purpose)),
               }
           }
       }
@@ -205,8 +208,8 @@ type OriginPut {
 fn origin_target_transfer(target: OriginTarget) -> R2TransferTarget? {
   match target {
     OriginTargetRefused { cause: _ } => none
-    OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: token_value, create_only: create_only } =>
-      Present { value: R2TransferTarget { locator: locator, access_key_id: access_key_id, token_value: token_value, create_only: create_only } }
+    OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: token_value, precondition: precondition } =>
+      Present { value: R2TransferTarget { locator: locator, access_key_id: access_key_id, token_value: token_value, precondition: precondition, report: ReportStatus } }
   }
 }
 
@@ -220,9 +223,9 @@ fn put_origin_object(
   match resolve_origin_target(direction: OriginWrite, key: key) {
     OriginTargetRefused { cause: cause } =>
       OriginPut { verdict: OriginPutRefused { key: key, cause: cause }, credential: WriteCredentialShredded }
-    OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: token_value, create_only: create_only } => {
+    OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: token_value, precondition: precondition } => {
       let put = r2_put_staged_file(
-        target: R2TransferTarget { locator: locator, access_key_id: access_key_id, token_value: token_value, create_only: create_only },
+        target: R2TransferTarget { locator: locator, access_key_id: access_key_id, token_value: token_value, precondition: precondition, report: ReportStatus },
         local_path: local_path,
         token_source: token_source,
       )
@@ -249,9 +252,10 @@ type OriginFetchVerdict
 
 fn classify_origin_fetch(answer: S3TransferAnswer, staged_path: NonEmptyStr, stderr: String) -> OriginFetchVerdict {
   match classify_r2_fetch(answer: answer, staged_path: staged_path, stderr: stderr) {
-    R2FetchStagedAt { staged_path: p } => OriginFetchStagedAt { staged_path: p }
+    R2FetchStagedAt { staged_path: p, tag: _ } => OriginFetchStagedAt { staged_path: p }
     R2FetchAbsent => OriginFetchAbsent
     R2FetchRefused { cause: c } => OriginFetchRefused { cause: c }
+    R2FetchUnanswered { cause: c } => OriginFetchRefused { cause: c }
   }
 }
 
@@ -264,14 +268,16 @@ fn fetch_origin_object(
 ) -> OriginFetchOutcome {
   match resolve_origin_target(direction: OriginRead, key: key) {
     OriginTargetRefused { cause: cause } => OriginFetchUnavailable { key: key, cause: cause }
-    OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: token_value, create_only: create_only } =>
+    OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: token_value, precondition: precondition } =>
       match r2_fetch_into_staging(
-        target: R2TransferTarget { locator: locator, access_key_id: access_key_id, token_value: token_value, create_only: create_only },
+        target: R2TransferTarget { locator: locator, access_key_id: access_key_id, token_value: token_value, precondition: precondition, report: ReportStatus },
         token_source: token_source,
       ) {
-        R2FetchObjectAbsent => OriginObjectAbsent { key: key }
-        R2FetchUnavailable { cause: cause } => OriginFetchUnavailable { key: key, cause: cause }
-        R2FetchStaged { staged_path: p } =>
+        R2FetchObjectAbsent { staging: _ } => OriginObjectAbsent { key: key }
+        R2FetchStoreRefused { cause: cause, staging: _ } => OriginFetchUnavailable { key: key, cause: cause }
+        R2FetchTransportUnanswered { cause: cause, staging: _ } => OriginFetchUnavailable { key: key, cause: cause }
+        R2FetchLocalFailure { cause: cause, staging: _ } => OriginFetchUnavailable { key: key, cause: cause }
+        R2FetchStaged { staged_path: p, staging_dir: _, tag: _ } =>
           match read_origin_staged_file(staged_path: p) {
             OriginReadingTaken { reading: reading } => OriginObjectStaged { key: key, reading: reading }
             OriginReadingUnavailable { staged_path: _, cause: cause } => OriginFetchUnavailable { key: key, cause: cause }
