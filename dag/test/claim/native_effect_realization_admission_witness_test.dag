@@ -1,7 +1,6 @@
 module test.claim.native_effect_realization_admission_witness
 
 import std.types { String, Bool, List }
-import v2.std.algebra { contains }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
 import tools.multi_module_compile_fixture {
@@ -69,7 +68,7 @@ fn refused_naming(o: MultiModuleCompileFixtureOutcome, marker: String) -> Bool {
   let rows = refusal_rows(o: o)
   match o {
     FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } =>
-      (rows |> filter(r => r.blocking && contains(r.subject_name, marker)) |> count) == 1
+      (rows |> filter(r => r.blocking && string_contains(s: r.subject_name, pattern: marker)) |> count) == 1
     _ => false
   }
 }
