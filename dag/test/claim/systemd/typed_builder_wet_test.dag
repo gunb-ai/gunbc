@@ -1,0 +1,77 @@
+module test.claim.systemd.typed_builder_wet
+
+import std.types { String, NonEmptyStr, Bool, List, Int }
+import std.resources { Network }
+import extdeps.systemd.systemd_run {
+  SystemdRunCommandReady,
+  SystemdRunCommandRefused,
+  systemd_run_transient_unit_command,
+  systemd_run_transient_retained_unit_command,
+  systemd_run_transient_wait_unit_command,
+  systemd_run_command_argument_words,
+}
+
+// THE TYPED BUILDERS, EXECUTED — the DESIGN 3 pairing the typed-argv cutover owes. The hermetic
+// witness test.claim.fabric.systemd_run_transient_wait_witness_test pins the projected words; it
+// establishes nothing about whether real systemd-run accepts them and behaves. These claims run
+// the typed builders' words through the real transports on the wet lane's host — the host whose
+// microVM lifecycle receipts already execute real transient units under the system manager
+// (systemd is that host's PID 1; the lane's runner classes carry it) — and assert the behavior
+// the --collect decision is about. The user-manager question is answered by that evidence: these
+// claims run against the system manager, which the lane demonstrably has; no --user claim is
+// enrolled, and if a user-manager claim is ever needed the controlled target is the same host
+// under `sudo systemd-run --user` with a private bus assertion, not a hopeful --user.
+//
+// THE DISCRIMINATION IS ONE-HOT ON --collect, EXECUTED: the same failing command, run through the
+// collecting builder and through the retained builder, lands in different terminal states — the
+// collected unit is gone (not-found), the retained unit is still known to the manager (loaded).
+// That is the evidence the retained shape exists to buy, now taken from the wire rather than
+// asserted from the projection.
+
+// The retained invocation: the unit FAILED (exit 86) and is still known to the manager, because
+// no --collect was passed. This is the claim that proves the terminal state stays observable.
+test fn a_real_retained_transient_is_still_known_after_a_failing_exit() -> Bool
+  uses net: Network
+{
+  let unit = "fci1-typed-argv-wet-retained.service" as NonEmptyStr
+  match systemd_run_transient_retained_unit_command(unit: unit, properties: [], command_argv: ["/bin/sh", "-c", "exit 86"]) {
+    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandReady { command: command } => {
+      let started = systemd.SystemdRun.RunTransientRetained(command_argv: systemd_run_command_argument_words(command: command))
+      let load_state = systemd.Systemctl.ShowLoadState(unit: unit)
+      started.success && (trim(s: load_state.value) == "loaded")
+    }
+  }
+}
+
+// The collecting invocation, SAME failing command: the manager no longer knows the unit. Red
+// means the collected and retained shapes stopped discriminating on the wire.
+test fn the_collected_twin_of_that_unit_is_gone() -> Bool
+  uses net: Network
+{
+  let unit = "fci1-typed-argv-wet-collected.service" as NonEmptyStr
+  match systemd_run_transient_unit_command(unit: unit, properties: [], command_argv: ["/bin/sh", "-c", "exit 86"]) {
+    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandReady { command: command } => {
+      let started = systemd.SystemdRun.RunTransient(command_argv: systemd_run_command_argument_words(command: command))
+      let load_state = systemd.Systemctl.ShowLoadState(unit: unit)
+      started.success && (trim(s: load_state.value) == "not-found")
+    }
+  }
+}
+
+// The waited invocation reports the child's exact exit through the typed projection: the
+// pre-cutover contract this cutover had to preserve byte-for-byte in behavior, taken from the
+// wire. 86 is the same sentinel the hermetic fixture pins.
+test fn the_waited_transient_reports_the_exact_exit() -> Bool
+  uses net: Network
+{
+  let unit = "fci1-typed-argv-wet-waited.service" as NonEmptyStr
+  match systemd_run_transient_wait_unit_command(unit: unit, properties: [], command_argv: ["/bin/sh", "-c", "exit 86"]) {
+    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandReady { command: command } => {
+      let waited = systemd.SystemdRun.RunTransientAndWait(command_argv: systemd_run_command_argument_words(command: command))
+      waited.exit_code == 86
+    }
+  }
+}

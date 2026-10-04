@@ -668,6 +668,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_bin_wet_reason,
     dissolution: excl_bin_wet_dissolve},
   WitnessExclusionRow {
+    pattern: "typed_builder_wet_test.dag",
+    classification: LocalRepoWetLane,
+    reason: "The typed systemd-run builders' DESIGN 3 pairing: these three claims execute the projected words through real systemd-run on the lane's host (the same host whose microVM lifecycle receipts run real transient units under the system manager, so a usable manager is evidenced, not assumed) and assert the behavior the --collect decision buys from the wire: a retained unit that failed is still known to the manager (loaded), the collected twin is gone (not-found), and the waited invocation reports the child's exact exit (86). Hermetic discovery correctly refuses these (no mock_response fabricates a manager), so they run on the local-repo wet lane only.",
+    dissolution: unbound_dissolution(description: "when the transports' hermetic mocks model a real manager faithfully enough that the --collect discrimination and the exact-exit pass can be asserted against recorded fixtures without losing the pairing (a mock that always says success would erase exactly the evidence these claims exist for), these re-enroll as ordinary hermetic rows and this exclusion deletes")},
+  WitnessExclusionRow {
     pattern: "self_host_logic_behavioral_witness_test.dag",
     classification: LocalRepoWetLane,
     reason: "CONTROL (a) planted-mutation behavioral receipt for dag/std/logic.dag (rehomed from FalsifierSelfHostWet per operator ruling bright-ram-778): emit dag/std/logic.dag with gunbc, compile emitted Rust with the seed's committed stage0 mirror src/v1/stage0/src/std_logic.rs as the oracle module (no v1-compiler path dependency, so the seed crate is not built) and run the comparison driver + --inject-fault to prove the comparison discriminates. Executed by the required floor local-repo wet lane. Formerly on FalsifierSelfHostWet which had no scheduled route (falsifier.yml deleted at #8283); the DeclaredCadenceUnrealized standing for that cadence is preserved as evidence of the gap.",
