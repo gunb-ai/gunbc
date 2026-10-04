@@ -132,6 +132,7 @@ fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> Comp
 type ComputeExec
   = ComputeExecOk { stdout: String, stderr: String }
   | ComputeExecFailed { exit_code: Int, stdout: String, stderr: String }
+  | ComputeExecRefused { reason: String }
 
 fn compute_exec(program: String, workdir: String, args: List<String>) -> ComputeExec {
   let r = gunbc.WitnessBin.Run(workdir: workdir as FilePath, bin_path: program as FilePath, args: args, expect: OutcomeIsData)
@@ -390,8 +391,10 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
       command_argv: argv,
     ) {
       SystemdRunCommandRefused { reason: why } =>
+        // A refusal means nothing ran: there is no exit code to fabricate, so the observation is
+        // a typed refusal carrying the builder's reason.
         ComputeUnitRun {
-          exec: ComputeExecFailed { exit_code: 126, stdout: "", stderr: concat("systemd-run command refused: ", why) },
+          exec: ComputeExecRefused { reason: why },
           summary: SystemdRunWaitSummary { result: ServiceResultNotReported { absence: SummaryNoInvocation }, memory_peak: MemoryPeakNotReported { absence: SummaryNoInvocation } },
         }
       SystemdRunCommandReady { command: command } => {
