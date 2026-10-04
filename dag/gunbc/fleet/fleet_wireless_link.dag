@@ -5,7 +5,7 @@ import std.algebra { trim }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { filter }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.iw {
   IwPowerSave, IwPowerSaveOn, IwPowerSaveOff, iw_power_save_word,
   IwPowerSaveRead, IwPowerSaveReadValue, IwPowerSaveUnreadable,
@@ -30,7 +30,7 @@ import extdeps.networkmanager.nmcli {
 import extdeps.systemd.journalctl { journalctl_kernel_current_boot_argv, journalctl_unit_current_boot_argv }
 import gunbc.spark.dgx_procurement { dgx_spark_procurement_intent }
 import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
-import gunbc.fleet_intent_network {
+import gunbc.fleet_host_identity {
   operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8,
   operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
 }

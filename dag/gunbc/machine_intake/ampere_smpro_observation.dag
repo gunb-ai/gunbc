@@ -29,7 +29,7 @@ import extdeps.ampere.smpro_internal_error {
 }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import std.decl_ref { decl_ref }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 
 // THE READ-ONLY SMpro PASS OVER AN AMPERE ALTRA BOARD: which boot stage each socket's SMpro reports,

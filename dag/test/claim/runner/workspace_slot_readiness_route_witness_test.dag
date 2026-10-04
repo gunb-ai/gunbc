@@ -1,0 +1,56 @@
+module test.claim.runner.workspace_slot_readiness_route_witness_test
+
+import std.types { Bool }
+import product.fabric.sanitation { CellId, CellQuarantined }
+import gunbc.runner_microvm_cell_readiness {
+  CellIncarnationAdmitted, CellWithdrawn, HostWithdrawn, CellNeverSettled,
+  HostStoreUnreadable, CellSettled, StoreRead, StoreRootOwned, cell_incarnation_admission,
+}
+import gunbc.workspace_allocation_store { WorkspaceWanted, WorkspaceRetired }
+import gunbc.runner_microvm_slot_controller {
+  workspace_slot_readiness_route, WorkspaceSlotRoute, WorkspaceSlotLaunch, WorkspaceSlotRetire, WorkspaceSlotWithdrawn,
+}
+
+fn route_is_launch(route: WorkspaceSlotRoute) -> Bool {
+  match route { WorkspaceSlotLaunch => true _ => false }
+}
+
+fn route_is_withdrawn(route: WorkspaceSlotRoute) -> Bool {
+  match route { WorkspaceSlotWithdrawn => true _ => false }
+}
+
+fn route_is_retire(route: WorkspaceSlotRoute) -> Bool {
+  match route { WorkspaceSlotRetire => true _ => false }
+}
+
+// Positive control: an admitted incarnation that is still wanted launches.
+test fn admitted_wanted_workspace_launches() -> Bool {
+  route_is_launch(route: workspace_slot_readiness_route(
+    readiness: CellIncarnationAdmitted { cell: "srv1-13" as CellId, generation: 3 }, desired: WorkspaceWanted))
+}
+
+// Discriminating red: a withdrawn cell or host is not a clean allocatable slot. Before
+// workspace_slot_readiness_route, both arms fell through a wildcard into the launch path, so
+// this claim was false on that tree.
+test fn withdrawn_readiness_never_launches_a_wanted_workspace() -> Bool {
+  route_is_withdrawn(route: workspace_slot_readiness_route(
+    readiness: CellWithdrawn { cell: "srv1-13" as CellId, withdrawal: CellNeverSettled }, desired: WorkspaceWanted))
+  && route_is_withdrawn(route: workspace_slot_readiness_route(
+    readiness: HostWithdrawn { withdrawal: HostStoreUnreadable { reason: "fixture" } }, desired: WorkspaceWanted))
+}
+
+// Withdrawal only blocks a new incarnation; releasing the hold stays available.
+test fn withdrawn_readiness_still_retires() -> Bool {
+  route_is_retire(route: workspace_slot_readiness_route(
+    readiness: CellWithdrawn { cell: "srv1-13" as CellId, withdrawal: CellNeverSettled }, desired: WorkspaceRetired))
+}
+
+// Inhabitance: the real admission producer, over a quarantined record, emits the withdrawn arm
+// this route refuses -- a stopped, quarantined cell is not supplied as launchable.
+test fn quarantined_store_reaches_the_withdrawn_route() -> Bool {
+  let cell = "srv1-13" as CellId
+  let readiness = cell_incarnation_admission(
+    store: StoreRead { ownership: StoreRootOwned, records: [CellSettled { cell: cell, generation: 3, readiness: CellQuarantined { cell: cell, unproven: [] } }] },
+    cell: cell, allocation_generation: 3)
+  route_is_withdrawn(route: workspace_slot_readiness_route(readiness: readiness, desired: WorkspaceWanted))
+}
