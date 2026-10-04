@@ -1,5 +1,6 @@
 module gunbc.machine_intake_mtcollins1_ui_bundle_observe
 
+import std.decl_ref { decl_ref }
 import extdeps.shell
 import extdeps.bmc.ipmi
 import extdeps.bmc.megarac
@@ -321,7 +322,11 @@ fn served_seed_fetched(rows: List<ServedFileRow>, seed: String) -> Bool {
   any(rows, r => match r { ServedFileFetched { path: p, found_by: _, http: _, size: _, sha256: _, kept_at: _ } => p == seed  _ => false })
 }
 
-fn mtcollins1_ui_bundle_observe_with(username: NonEmptyStr, password_file: NonEmptyStr) -> ProcessExit {
+fn mtcollins1_ui_bundle_observe_with(username: NonEmptyStr, password_file: NonEmptyStr) -> ProcessExit
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_ui_bundle_observe", decl_name: "mtcollins1_ui_bundle_observe_wet"),
+  ]
+{
   let mc = diagnostic.ipmi.Tool.McInfo(
     bmc_host: mtcollins1_endpoint.host,
     username: username,

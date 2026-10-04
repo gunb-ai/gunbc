@@ -1,6 +1,7 @@
 module gunbc.megarac_operation_standing
 
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
+import std.content_hash { ContentHash }
 import std.decl_ref { DeclarationRef, decl_ref }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { filter, any, flat_map }
@@ -73,13 +74,25 @@ type MegaRacFirmwareTransition sole_constructor {
   record: DeclarationRef
 }
 
-// AN OPERATION RECOVERED FROM WHAT A BUILD SERVES, not executed: the KVM canvas still's route is read
-// from the controller's own served UI bundle at a build (extdeps.bmc.megarac MegaRacScreenCaptureRoute),
-// the cited-source arm of the rotation route standing. It grounds the operation at that identity only.
-type MegaRacOperationSourceRecovery sole_constructor {
+// AN OPERATION'S ROUTE RECOVERED FROM AN ARTIFACT THE CONTROLLER SERVES, NOT EXECUTED. The KVM canvas
+// still's route (extdeps.bmc.megarac MegaRacScreenCaptureRoute) was read from the web UI bundle the
+// controller serves to any browser at a given build. That is an OBSERVATION OF WHAT THE DEVICE SERVES --
+// the same standing as gunbc.machine_intake_megarac_served_ui_catalog_observation and
+// gunbc.machine_intake_megarac_ui_features -- not a disassembly of firmware and not a proprietary-notice
+// document, and it is distinct from O1a's cited-source arm, which cites an upstream-published source.
+// WHAT IT DOES NOT ESTABLISH: that the operation was ever executed. It grounds the route at the identity
+// that served it, and nothing that requires an executed standing admits on it
+// (megarac_operation_executed_at, and the current-build gate, refuse this arm).
+type ServedArtifactCapture
+  = ServedArtifactCommitted { evidence: EvidenceRef }
+  | ServedArtifactDigestOnly { digest: ContentHash }
+
+type MegaRacOperationServedArtifactRecovery sole_constructor {
   operation: MegaRacOperation
   identity: BmcObservedIdentity
-  source: EvidenceRef
+  served_by: BmcControllerEndpoint
+  artifact: NonEmptyStr
+  capture: ServedArtifactCapture
   read_at: EpochMs
 }
 
@@ -87,7 +100,7 @@ type MegaRacOperationEvidence {
   readings: List<MegaRacBuildReading>
   receipts: List<MegaRacOperationReceipt>
   transitions: List<MegaRacFirmwareTransition>
-  recoveries: List<MegaRacOperationSourceRecovery>
+  recoveries: List<MegaRacOperationServedArtifactRecovery>
 }
 
 fn megarac_build_reading(endpoint: BmcControllerEndpoint, identity: BmcObservedIdentity, evidence: EvidenceRef, observed_at: EpochMs) -> MegaRacBuildReading
@@ -123,12 +136,12 @@ fn megarac_firmware_transition(endpoint: BmcControllerEndpoint, from: BmcFirmwar
   MegaRacFirmwareTransition { endpoint: endpoint, from: from, to: to, not_before: not_before, not_after: not_after, record: record }
 }
 
-fn megarac_operation_source_recovery(operation: MegaRacOperation, identity: BmcObservedIdentity, source: EvidenceRef, read_at: EpochMs) -> MegaRacOperationSourceRecovery
+fn megarac_operation_served_artifact_recovery(operation: MegaRacOperation, identity: BmcObservedIdentity, served_by: BmcControllerEndpoint, artifact: NonEmptyStr, capture: ServedArtifactCapture, read_at: EpochMs) -> MegaRacOperationServedArtifactRecovery
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_megarac_operation_evidence", decl_name: "mtcollins1_megarac_operation_evidence"),
   ]
 {
-  MegaRacOperationSourceRecovery { operation: operation, identity: identity, source: source, read_at: read_at }
+  MegaRacOperationServedArtifactRecovery { operation: operation, identity: identity, served_by: served_by, artifact: artifact, capture: capture, read_at: read_at }
 }
 
 // ── THE JOIN ─────────────────────────────────────────────────────────────────────────────────────
@@ -165,7 +178,7 @@ fn receipt_joins_reading(evidence: MegaRacOperationEvidence, receipt: MegaRacOpe
 
 type MegaRacOperationGrounding
   = OperationExecutedAtBuild { receipt: MegaRacOperationReceipt, build: MegaRacBuildReading }
-  | OperationRecoveredFromServedSource { recovery: MegaRacOperationSourceRecovery }
+  | OperationRecoveredFromServedArtifact { recovery: MegaRacOperationServedArtifactRecovery }
 
 // ONE OPERATION GROUNDED AT ONE OBSERVED CONTROLLER IDENTITY. sole_constructor and minted only by the
 // join below, so a grounding cannot be authored beside the evidence that would have to produce it.
@@ -181,12 +194,24 @@ fn megarac_operation_standings(evidence: MegaRacOperationEvidence) -> List<MegaR
       flat_map(filter(evidence.readings, rd => receipt_joins_reading(evidence: evidence, receipt: rc, reading: rd)), rd =>
         [MegaRacOperationStanding { operation: rc.operation, identity: rd.identity, grounding: OperationExecutedAtBuild { receipt: rc, build: rd } }])),
     map(evidence.recoveries, rv =>
-      MegaRacOperationStanding { operation: rv.operation, identity: rv.identity, grounding: OperationRecoveredFromServedSource { recovery: rv } }),
+      MegaRacOperationStanding { operation: rv.operation, identity: rv.identity, grounding: OperationRecoveredFromServedArtifact { recovery: rv } }),
   )
 }
 
 fn megarac_operation_grounded_at(evidence: MegaRacOperationEvidence, operation: MegaRacOperation, identity: BmcObservedIdentity) -> Bool {
   any(megarac_operation_standings(evidence: evidence), s => megarac_operation_eq(a: s.operation, b: operation) && megarac_identity_eq(a: s.identity, b: identity))
+}
+
+fn grounding_is_executed(g: MegaRacOperationGrounding) -> Bool {
+  match g {
+    OperationExecutedAtBuild { receipt: _, build: _ } => true
+    OperationRecoveredFromServedArtifact { recovery: _ } => false
+  }
+}
+
+// EXECUTED AT THIS IDENTITY, and only executed: a route recovered from a served artifact does not count.
+fn megarac_operation_executed_at(evidence: MegaRacOperationEvidence, operation: MegaRacOperation, identity: BmcObservedIdentity) -> Bool {
+  any(megarac_operation_standings(evidence: evidence), s => megarac_operation_eq(a: s.operation, b: operation) && megarac_identity_eq(a: s.identity, b: identity) && grounding_is_executed(g: s.grounding))
 }
 
 // ── THE CURRENT BUILD OF A CONTROLLER ────────────────────────────────────────────────────────────

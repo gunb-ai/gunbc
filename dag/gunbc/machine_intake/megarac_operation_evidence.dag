@@ -8,7 +8,7 @@ import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import gunbc.machine_intake_receipt { EvidenceRef }
 import gunbc.megarac_operation_standing {
   MegaRacOperationEvidence, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming,
-  megarac_build_reading, megarac_operation_receipt, megarac_firmware_transition, megarac_operation_source_recovery,
+  megarac_build_reading, megarac_operation_receipt, megarac_firmware_transition, megarac_operation_served_artifact_recovery, ServedArtifactDigestOnly,
 }
 import gunbc.machine_intake_mtcollins1_access_observation {
   mtcollins1_endpoint, mtcollins1_firmware, mtcollins1_identity, mtcollins1_evidence_manifest_digest, mtcollins1_observed_at,
@@ -28,8 +28,12 @@ import gunbc.machine_intake_megarac_served_ui_catalog_observation { megarac_sour
 // MT. COLLINS UNIT 1, AS OF THIS WRITING:
 //   - BMC 0.32 (Foxconn Mt. Collins), read by the 2026-09-05 intake observation. Virtual media ran on it
 //     (the 2026-09-06 diskless boot) and an SDR read with its CPU<n>_ names ran on it (2026-09-11). The
-//     KVM canvas still's route was recovered from the UI bundle that build served on 2026-09-27; no
-//     committed still from that build exists, so it is grounded as recovered, not as executed.
+//     KVM canvas still's route was recovered from the web UI bundle that build SERVES to a browser
+//     (https://192.168.1.228/source.min.js, read 2026-09-27; gunbc.machine_intake_megarac_served_ui_catalog_observation
+//     megarac_source_min_js_sha256_2026_09_27). That is an observation of what the device serves, not a
+//     disassembly or a proprietary-notice document. Its BYTES ARE NOT COMMITTED -- the digest is the only
+//     record, and the row says so (ServedArtifactDigestOnly). No committed still from that build exists,
+//     so the KVM still is grounded at 0.32 as RECOVERED, never as executed.
 //   - Reflashed to BMC 0.45.3 on 2026-10-02 (the firmware converge's recorded credential effect).
 //   - Fleet-converge run 37102391062, 2026-10-03, about 21 h after the reflash, committed its media
 //     attach (diagnostics), its KVM journal with five sha256-bound stills, and a BMC sensor read. Those
@@ -59,10 +63,6 @@ data mtcollins1_sdr_32dimm_evidence: EvidenceRef = EvidenceRef {
 // 2026-09-11T00:00:00Z: the 32-DIMM capture names its day, not its instant.
 data mtcollins1_sdr_32dimm_read_on: EpochMs = 1789084800000
 
-data megarac_served_bundle_0_32_evidence: EvidenceRef = EvidenceRef {
-  label: "https://192.168.1.228/source.min.js as served by mtcollins1's BMC 0.32 (gunbc.machine_intake_megarac_served_ui_catalog_observation; bytes not committed)",
-  digest: Sha256Hash(Sha256Digest { hex: megarac_source_min_js_sha256_2026_09_27 as String }),
-}
 
 // 2026-09-27T00:00:00Z: the bundle read names its day.
 data megarac_served_bundle_0_32_read_on: EpochMs = 1790467200000
@@ -113,7 +113,14 @@ fn mtcollins1_megarac_operation_evidence() -> MegaRacOperationEvidence {
       ),
     ],
     recoveries: [
-      megarac_operation_source_recovery(operation: MegaRacKvmCanvasStill, identity: mtcollins1_identity, source: megarac_served_bundle_0_32_evidence, read_at: megarac_served_bundle_0_32_read_on),
+      megarac_operation_served_artifact_recovery(
+        operation: MegaRacKvmCanvasStill,
+        identity: mtcollins1_identity,
+        served_by: mtcollins1_endpoint,
+        artifact: "https://192.168.1.228/source.min.js" as NonEmptyStr,
+        capture: ServedArtifactDigestOnly { digest: Sha256Hash(Sha256Digest { hex: megarac_source_min_js_sha256_2026_09_27 as String }) },
+        read_at: megarac_served_bundle_0_32_read_on,
+      ),
     ],
   }
 }

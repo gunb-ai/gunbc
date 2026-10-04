@@ -14,7 +14,7 @@ import gunbc.managed_host {
 import gunbc.megarac_operation_standing {
   MegaRacOperation, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming,
   MegaRacOperationEvidence, MegaRacCurrentBuild, CurrentBuildRead, CurrentBuildKnownUnread, CurrentBuildUnobserved,
-  megarac_operation_grounded_at, megarac_current_build,
+  megarac_operation_grounded_at, megarac_operation_executed_at, megarac_current_build,
 }
 import gunbc.machine_intake_megarac_operation_evidence { mtcollins1_megarac_operation_evidence }
 
@@ -82,8 +82,8 @@ fn megarac_binding_step(host: ManagedHost) -> MegaRacBindingStep {
   }
 }
 
-fn megarac_grounded_admission(evidence: MegaRacOperationEvidence, binding: ManagedHostBinding, operation: MegaRacOperation, identity: BmcObservedIdentity) -> MegaRacHostAdmission {
-  if megarac_operation_grounded_at(evidence: evidence, operation: operation, identity: identity) {
+fn megarac_grounded_admission(evidence: MegaRacOperationEvidence, binding: ManagedHostBinding, operation: MegaRacOperation, identity: BmcObservedIdentity, grounded: Bool) -> MegaRacHostAdmission {
+  if grounded {
     MegaRacHostAdmitted { host: AdmittedMegaRacHost { binding: binding, operation: operation, firmware: identity.firmware } }
   } else {
     MegaRacHostRefused { cause: MegaRacOperationNotGrounded { operation: operation, identity: identity } }
@@ -98,14 +98,16 @@ fn admit_megarac_host(host: ManagedHost, operation: MegaRacOperation) -> MegaRac
 fn admit_megarac_host_observed_in(evidence: MegaRacOperationEvidence, host: ManagedHost, operation: MegaRacOperation) -> MegaRacHostAdmission {
   match megarac_binding_step(host: host) {
     MegaRacBindingRefused { cause: c } => MegaRacHostRefused { cause: c }
-    MegaRacBindingAdmissible { binding: b } => megarac_grounded_admission(evidence: evidence, binding: b, operation: operation, identity: b.observation.identity)
+    MegaRacBindingAdmissible { binding: b } => megarac_grounded_admission(evidence: evidence, binding: b, operation: operation, identity: b.observation.identity, grounded: megarac_operation_grounded_at(evidence: evidence, operation: operation, identity: b.observation.identity))
   }
 }
 
 // THE CURRENT-BUILD GATE (SHADOW). The controller's current build is the latest thing known of it: a
 // reading, or a transition recorded after the latest reading. A binding whose observation reads any
 // other build mints no carrier, and neither does a controller whose current build is known but unread
-// or not known at all. Only then is the operation looked up, at the CURRENT reading's identity.
+// or not known at all. Only then is the operation looked up, at the CURRENT reading's identity, and only
+// an EXECUTED grounding admits: a route recovered from a served artifact is not evidence the operation
+// ran, so the cut-over cannot stand on one.
 fn admit_megarac_host_at_current_build(evidence: MegaRacOperationEvidence, host: ManagedHost, operation: MegaRacOperation) -> MegaRacHostAdmission {
   match megarac_binding_step(host: host) {
     MegaRacBindingRefused { cause: c } => MegaRacHostRefused { cause: c }
@@ -117,7 +119,7 @@ fn admit_megarac_host_at_current_build(evidence: MegaRacOperationEvidence, host:
           MegaRacHostRefused { cause: MegaRacObservationNotCurrent { observed: observed, current: t.to } }
         CurrentBuildRead { reading: r } =>
           if bmc_firmware_release_identity_eq(a: r.identity.firmware, b: observed) {
-            megarac_grounded_admission(evidence: evidence, binding: b, operation: operation, identity: r.identity)
+            megarac_grounded_admission(evidence: evidence, binding: b, operation: operation, identity: r.identity, grounded: megarac_operation_executed_at(evidence: evidence, operation: operation, identity: r.identity))
           } else {
             MegaRacHostRefused { cause: MegaRacObservationNotCurrent { observed: observed, current: r.identity.firmware } }
           }
