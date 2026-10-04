@@ -8,9 +8,8 @@ import v2.extdeps.languages.dag { dag_language_model }
 import v2.lens.coverage { dedupe_snoc }
 import v2.std.algebra { fold_list, length }
 import std.algebra { list_append }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected, diagnostics_fatal_reason }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol, symbol_identity_digest }
 import v2.std.text { String, string_eq }
 
@@ -129,6 +128,13 @@ fn grammar_coverage_take_n(paths: List<String>, n: Int) -> List<String> {
   acc.taken
 }
 
+// A refused stage is classified by its FATAL cause, the chain's last element: an advisory that rode
+// along (prepended by rejected_with_pending) heads the chain and is not why the stage refused. One
+// classifier for all three stages, so a claim can supply a chain at this boundary.
+fn grammar_coverage_stage_rejected(stage: String, d: NonEmptyDiagnostics) -> GrammarCoverageParseVerdict {
+  ParseRejected { stage: stage, reason: diagnostics_fatal_reason(d: d) }
+}
+
 fn grammar_coverage_ingest_source_text(
   source_text: String,
   file: Symbol
@@ -136,15 +142,15 @@ fn grammar_coverage_ingest_source_text(
   let lm = dag_language_model()
   match tokenize(text: source_text, file: file, rules: lm.lex) {
     Rejected { diagnostics: d } =>
-      ParseRejected { stage: "tokenize", reason: d.head.reason }
+      grammar_coverage_stage_rejected(stage: "tokenize", d: d)
     Accepted { value: ts, diagnostics: _ } =>
       match parse_module(tokens: ts, grammar: lm.grammar) {
         Rejected { diagnostics: d } =>
-          ParseRejected { stage: "parse", reason: d.head.reason }
+          grammar_coverage_stage_rejected(stage: "parse", d: d)
         Accepted { value: artifact, diagnostics: _ } =>
           match v2.compiler.normalize.normalize(parse_tree: artifact.tree) {
             Rejected { diagnostics: d } =>
-              ParseRejected { stage: "normalize", reason: d.head.reason }
+              grammar_coverage_stage_rejected(stage: "normalize", d: d)
             Accepted { value: _, diagnostics: _ } =>
               ParsedClean
           }

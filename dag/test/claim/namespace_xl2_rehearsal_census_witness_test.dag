@@ -53,19 +53,19 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // THE PROVIDER AND THE CLEAN CONTROL IMPORT NOTHING but kernel names, so the strip leaves them
 // resolving.
-data xl2_provider_control_source: String = "module v2.xl2_control_provider\n\nimport v2.std.logic { Bool }\n\nfn xl2_control_provider_flag(p: Bool) -> Bool { p }\n\nfn xl2_control_provider_other(p: Bool) -> Bool { p }\n"
+data xl2_provider_control_source: String = "module v2.xl2_control_provider\n\nimport std.types { Bool }\n\nfn xl2_control_provider_flag(p: Bool) -> Bool { p }\n\nfn xl2_control_provider_other(p: Bool) -> Bool { p }\n"
 
-data xl2_residual_control_source: String = "module v2.xl2_control_residual\n\nimport v2.std.logic { Bool }\nimport v2.xl2_control_provider { xl2_control_provider_flag }\n\nfn xl2_control_residual_value(p: Bool) -> Bool { xl2_control_provider_flag }\n"
+data xl2_residual_control_source: String = "module v2.xl2_control_residual\n\nimport std.types { Bool }\nimport v2.xl2_control_provider { xl2_control_provider_flag }\n\nfn xl2_control_residual_value(p: Bool) -> Bool { xl2_control_provider_flag }\n"
 
-data xl2_two_failure_control_source: String = "module v2.xl2_control_two\n\nimport v2.std.logic { Bool }\nimport v2.xl2_control_provider { xl2_control_provider_flag, xl2_control_provider_other }\n\nfn xl2_control_two_first(p: Bool) -> Bool { xl2_control_provider_flag }\n\nfn xl2_control_two_second(p: Bool) -> Bool { xl2_control_provider_other }\n"
+data xl2_two_failure_control_source: String = "module v2.xl2_control_two\n\nimport std.types { Bool }\nimport v2.xl2_control_provider { xl2_control_provider_flag, xl2_control_provider_other }\n\nfn xl2_control_two_first(p: Bool) -> Bool { xl2_control_provider_flag }\n\nfn xl2_control_two_second(p: Bool) -> Bool { xl2_control_provider_other }\n"
 
 // THE NESTED CONTROL: a module declared UNDER the provider's namespace, naming the provider's
 // function through an import the strip removes. It is the specimen behind
 // NestingScopedReferencesUncounted: stripped, it still resolves, because nesting grants the
 // namespace's scope, so the cut leaves no residual row for its reference.
-data xl2_nested_control_source: String = "module v2.xl2_control_provider.nested\n\nimport v2.std.logic { Bool }\nimport v2.xl2_control_provider { xl2_control_provider_flag }\n\nfn xl2_control_nested_value(p: Bool) -> Bool { xl2_control_provider_flag }\n"
+data xl2_nested_control_source: String = "module v2.xl2_control_provider.nested\n\nimport std.types { Bool }\nimport v2.xl2_control_provider { xl2_control_provider_flag }\n\nfn xl2_control_nested_value(p: Bool) -> Bool { xl2_control_provider_flag }\n"
 
-data xl2_clean_control_source: String = "module v2.xl2_control_clean\n\nimport v2.std.logic { Bool }\n\nfn xl2_control_clean_value(p: Bool) -> Bool { p }\n"
+data xl2_clean_control_source: String = "module v2.xl2_control_clean\n\nimport std.types { Bool }\n\nfn xl2_control_clean_value(p: Bool) -> Bool { p }\n"
 
 fn xl2_control_source(path: String, content: String) -> FixtureSource {
   FixtureSource { path: path as NonEmptyStr, content: content }

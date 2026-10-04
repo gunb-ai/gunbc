@@ -3,7 +3,6 @@ module v2.std.arrow_contract
 import std.effects { EffectClaim, ReadonlyClaim, IdempotentClaim }
 import std.execution_mode { ExecutionMode, Hermetic, Wet, Record }
 import std.types { List }
-import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
   Conj,

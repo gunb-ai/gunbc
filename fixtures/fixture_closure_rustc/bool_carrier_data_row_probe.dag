@@ -1,7 +1,7 @@
 module fixture.closure.rustc_bool_carrier_data_row_probe
 
 import std.algebra { BooleanAlgebra }
-import v2.std.logic { Bool, True, bool_boolean_algebra }
+import v2.std.logic { bool_boolean_algebra }
 
 // THE V2 BOOL CARRIER AT A DATA ROW'S DECLARED TYPE, POSED TO RUSTC. `v2.std.logic` declares its
 // own `Bool = True | False`, and `bool_boolean_algebra` is a `BooleanAlgebra<Bool>` over THAT
