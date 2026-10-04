@@ -2,14 +2,13 @@ module test.claim.conversion_plan_judgment_test
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.literal_elaboration { UnicodeScalarSequenceUnfold }
 import std.coercion {
   ConversionPlan, ConversionPlanJudgment, ConversionPlanAdmitted, ConversionPlanAbsent,
   ConversionPlanAmbiguous, ConversionPlanEndpointMismatch,
-  UnfoldPhase, ConversionEndpoint, DeclaredCarrier, host_text_endpoint, code_point_sequence_endpoint, judge_conversion_plan, unicode_scalar_unfold, unicode_scalar_fold, judge_text_conversion_plan, ConversionPlanEndpointNotText,
+  UnfoldPhase, ConversionEndpoint, DeclaredCarrier, host_text_endpoint, code_point_sequence_endpoint, judge_conversion_plan, conversion_plan_identity, InverseUnfoldPhase, unicode_scalar_unfold, unicode_scalar_fold, judge_text_conversion_plan, ConversionPlanEndpointNotText,
   HostText, CodePointSequence, NotText, TextRepresentationUnidentified,
 }
-import gunbc.structural_realization_bindings { conversion_plan_rows }
+import gunbc.structural_realization_bindings { conversion_plan_rows, unicode_scalar_literal_homomorphism }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -32,7 +31,7 @@ fn judge_structural_to_host(rows: List<ConversionPlan>, route: DeclarationRef) -
 
 fn admitted_identity(j: ConversionPlanJudgment) -> String {
   match j {
-    ConversionPlanAdmitted { plan: plan } => plan.identity as String
+    ConversionPlanAdmitted { plan: plan } => conversion_plan_identity(plan: plan) as String
     _ => ""
   }
 }
@@ -78,11 +77,8 @@ test fn r_unknown_plan_refuses() -> Bool {
 
 fn unfold_row() -> ConversionPlan {
   ConversionPlan {
-    identity: "unicode_scalar_unfold" as NonEmptyStr,
     route: unfold_route(),
-    source: host_text_endpoint(),
-    target: code_point_sequence_endpoint(),
-    phase: UnfoldPhase { producer: UnicodeScalarSequenceUnfold }
+    phase: UnfoldPhase { row: unicode_scalar_literal_homomorphism }
   }
 }
 
@@ -143,4 +139,16 @@ test fn a_unfold_is_one_element_per_scalar() -> Bool {
 test fn a_fold_inverts_unfold_on_non_ascii_and_astral_text() -> Bool {
   unicode_scalar_fold(xs: unicode_scalar_unfold(s: "hé😀")) == "hé😀"
     && unicode_scalar_fold(xs: unicode_scalar_unfold(s: "")) == ""
+}
+
+// THE MUTATION CONTROL FOR THE CORRELATED-FIELD FORK (calm-boar-904's #13143 objection): the unfold
+// route carrying the INVERSE phase. Endpoints are derived from the phase, so this plan runs
+// code points -> host text and refuses at a host -> code-point site; when endpoints were stored beside
+// the phase, this plan was admitted with every other control green.
+test fn r_unfold_route_carrying_the_inverse_phase_refuses() -> Bool {
+  let mutated = ConversionPlan { route: unfold_route(), phase: InverseUnfoldPhase { row: unicode_scalar_literal_homomorphism } }
+  match judge_host_to_structural(rows: [mutated], route: unfold_route()) {
+    ConversionPlanEndpointMismatch { plan: _ } => true
+    _ => false
+  }
 }
