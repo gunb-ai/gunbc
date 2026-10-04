@@ -349,3 +349,8 @@ dag/extdeps/version/pep440.dag
 dag/extdeps/version/semver.dag
 dag/extdeps/web_audio/web_audio.dag
 dag/extdeps/project_schedule/cpm_pert.dag
+dag/extdeps/docker/container_stats.dag
+dag/extdeps/docker/container_inspect.dag
+dag/extdeps/sec/edgar_rest.dag
+dag/extdeps/sec/edgar.dag
+dag/extdeps/ebay/errors.dag

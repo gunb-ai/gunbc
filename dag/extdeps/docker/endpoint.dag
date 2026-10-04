@@ -36,11 +36,11 @@ data endpoint_string_type_frontier_rows: List<FrontierRow> = [
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "docs.docker.com/engine/api/v1.47"
+    locator: "docs.docker.com/reference/cli/docker/"
   }
 }
 
-// Reading: Docker's Engine documentation owns the daemon's default socket endpoint and the DOCKER_HOST override; data docker_default_endpoint (unix:///var/run/docker.sock) is the documented default consumed by the dispatched docker clients, so the datum is the surface this citation owns.
+// Reading: Docker's CLI reference owns the daemon-selection surface: it documents the rootful default unix:///var/run/docker.sock for macOS/Linux. Data docker_default_endpoint is that documented default, so the datum is the surface this citation owns. The DOCKER_HOST override is a sibling datum (docker_host_env_var), not part of this one.
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef { declaration: DeclarationRef {
     module_path: "extdeps.docker.endpoint", decl_name: "docker_default_endpoint", field: WholeDeclaration

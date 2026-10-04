@@ -11,23 +11,12 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.ietf.http_semantics { HttpMethod }
 import std.resources { Network }
-import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "www.sec.gov/edgar/sec-api-documentation"
   }
-}
-
-// Reading: SEC's EDGAR API documentation owns the companyfacts endpoint (data.sec.gov, CIK##########.json); service sec.Edgar is the dispatched REST client whose GetCompanyFacts operation and entityName output transcribe that documented endpoint, so the service is the surface this citation owns.
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef { declaration: DeclarationRef {
-    module_path: "extdeps.sec.edgar_rest", decl_name: "sec.Edgar", field: WholeDeclaration
-  } },
-  first_citation: extdeps_external_authority_anchor,
-  further_citations: []
 }
 
 // Path templates interpolate operation inputs by name (the current `transport rest` machinery). Upstream requires CIK##########.json segments — derive `cik_path_segment` via extdeps.sec.edgar.cik_url_segment(cik) at the call site; the helper is the single authority for zero-padding and the CIK prefix, not a second transport fork.
