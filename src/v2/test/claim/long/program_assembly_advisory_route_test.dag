@@ -7,7 +7,10 @@ import v2.compiler.program_assembly {
   program_assembly_fold_step,
   program_assembly_ingest_scope_outcome
 }
-import v2.test.provenance.occurrence_file_attribution { attribution_read_a, attribution_read_b }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import extdeps.communication.medium { Lossless, Medium }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.std.provenance { span_index_empty }
@@ -35,12 +38,24 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // overlap residue is empty (gunbc#13056) and body lowering's postfix_suffix_carried advisory has no
 // known reaching source -- so the one advisory input is SUPPLIED at the boundary the fold already
 // takes it through: program_assembly_fold_step's `residue`, which the real parse merges into every
-// file's accepted outcome. Two real reads go through the real fold step; the supplied advisory must
-// reach the fold's chain once per accepted file. Before the fold carried advisories it matched them
-// away, so this reds there. It lives in the long home because two real parses exceed the new-witness
+// file's accepted outcome. One real read goes through the real fold step; the supplied advisory must
+// reach the fold's chain, once. Before the fold carried advisories it matched them
+// away, so this reds there. It lives in the long home because a real parse exceeds the new-witness
 // CPU margin; the extend's own discrimination is the cheap supplied claim
 // v2.test.provenance.occurrence_file_attribution
 // the_assembly_advisory_extend_keeps_every_files_advisories_in_order_holds.
+// ONE minimal accepted read: the claim's subject is the fold's carry, not parsing, so the smallest
+// module the front end accepts is the honest input (two reads measured 280014 eval steps on CI,
+// past the new-witness budget).
+fn advisory_route_read() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: "module v2.test.fixture.advisory_route\n", fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: ^advisory_route_read, file_path: "src/v2/test/fixture/advisory_route.dag" },
+    compilation_unit: ^advisory_route_file,
+    source_root: DagTree
+  }
+}
+
 test fn a_supplied_residue_rides_each_accepted_file_through_the_real_assembly_fold_holds() -> Bool {
   let advisory = Some {
     diagnostics: diagnostics_singleton(d: Diagnostic {
@@ -49,7 +64,7 @@ test fn a_supplied_residue_rides_each_accepted_file_through_the_real_assembly_fo
       correction: Unavailable { reason: ExternalContractUnknown }
     })
   }
-  let reads = [attribution_read_a(), attribution_read_b()]
+  let reads = [advisory_route_read()]
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => false
     Accepted { value: prepared, diagnostics: _ } =>
@@ -63,16 +78,15 @@ test fn a_supplied_residue_rides_each_accepted_file_through_the_real_assembly_fo
             spans: span_index_empty(),
             advisories: None
           }
-          let one = program_assembly_fold_step(state: start, read: attribution_read_a(), lm: dag_language_model(), prepared: prepared, residue: advisory, scope: scope)
-          match program_assembly_fold_step(state: one, read: attribution_read_b(), lm: dag_language_model(), prepared: prepared, residue: advisory, scope: scope) {
+          match program_assembly_fold_step(state: start, read: advisory_route_read(), lm: dag_language_model(), prepared: prepared, residue: advisory, scope: scope) {
             ProgramAssemblyLocatedFoldFailed { diagnostics: _, spans: _ } => false
             ProgramAssemblyLocatedFoldOk { located: located, index: _, alloc: _, spans: _, advisories: carried } =>
-              length(xs: located) == 2
+              length(xs: located) == 1
                 && (match carried {
                   None => false
                   Some { diagnostics: d } =>
                     d.head.reason == ^program_assembly_supplied_advisory
-                      && length(xs: d.tail) == 1
+                      && length(xs: d.tail) == 0
                 })
           }
       }
