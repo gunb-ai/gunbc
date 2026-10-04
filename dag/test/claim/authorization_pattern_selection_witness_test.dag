@@ -409,7 +409,7 @@ test fn the_jit_registration_deregistration_and_dispatch_sites_select_the_federa
 // discharged and the selection stops answering the federated grant. The ruling text is unchanged
 // either way, and its interlock is the host-generic unit hold.
 test fn the_dispatch_is_federated_only_while_the_interpretation_names_it() -> Bool {
-  let row = list_find(privileged_effect_census, r => (r.site.decl_name as String) == "dispatch_qualification_floor")
+  let row = first(filter(privileged_effect_census, r => (r.site.decl_name as String) == "dispatch_qualification_floor"))
   let narrowed = RulingScopeInterpretation {
     ruling: runner_lifecycle_operator_ruling,
     covers: [

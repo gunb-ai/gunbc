@@ -542,7 +542,7 @@ data runner_lifecycle_ruling_scope_interpretation: RulingScopeInterpretation = R
 // A SITE IS DISCHARGED BY THE RULING ONLY WHILE THE INTERPRETATION NAMES IT. Removing a site from
 // covers turns its discharge into NoWitnessDischarge, and the selection then decides it afresh.
 fn ruling_discharge_for(interpretation: RulingScopeInterpretation, site_ref: DeclarationRef) -> WitnessDischarge {
-  if declaration_ref_in_list(ref: site_ref, list: interpretation.covers) {
+  if declaration_ref_in_list(target: site_ref, refs: interpretation.covers) {
     StandingRulingUnderInterlock { ruling: interpretation.ruling }
   } else {
     NoWitnessDischarge

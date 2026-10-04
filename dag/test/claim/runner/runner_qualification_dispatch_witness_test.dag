@@ -48,16 +48,10 @@ data floor_job_id: NonEmptyStr = "qualification-floor"
 // decoded by upstream's own outcome fold (runner id 4242). Nothing below constructs a registration,
 // and every caller of the sealed subject mint is a claim returning Bool (no constructor proxy).
 
-fn host() -> ManagedHost {
-  match list_head(managed_hosts()) {
-    Present { value: h } => h
-    Absent => panic("managed_hosts is empty")
-  }
-}
 
-fn minted(slot_workflow: NonEmptyStr) -> JitMintDispatch {
+fn minted(h: ManagedHost, slot_workflow: NonEmptyStr) -> JitMintDispatch {
   dispatch_jit_mint(
-    binding: HostUnitSlotBinding { standing: host_unit_slot_for(host: managed_host_binding(host: host()), attempt: attempt, workflow: slot_workflow) },
+    binding: HostUnitSlotBinding { standing: host_unit_slot_for(host: managed_host_binding(host: h), attempt: attempt, workflow: slot_workflow) },
     authority: app_credential,
     control_plane: observed_grant(perms: runner_grant),
     organization: gunbai_org_ref,
@@ -66,15 +60,9 @@ fn minted(slot_workflow: NonEmptyStr) -> JitMintDispatch {
   )
 }
 
-fn registration(slot_workflow: NonEmptyStr) -> JitRegistration {
-  match jit_registration_of(dispatch: minted(slot_workflow: slot_workflow)) {
-    Present { value: r } => r
-    Absent => panic("the fixture mint was refused")
-  }
-}
 
-fn delivery(slot_workflow: NonEmptyStr) -> JitCredentialDelivery {
-  receive_jit_mint(dispatch: minted(slot_workflow: slot_workflow), outcome: minted_outcome)
+fn delivery(h: ManagedHost, slot_workflow: NonEmptyStr) -> JitCredentialDelivery {
+  receive_jit_mint(dispatch: minted(h: h, slot_workflow: slot_workflow), outcome: minted_outcome)
 }
 
 fn qualification_slot() -> NonEmptyStr {
@@ -118,17 +106,20 @@ fn workflow_with(declares_input: Bool, runs_on: RunnerSpec) -> Workflow {
 // declared input carrying that attempt, which is a label the slot registered; the effect names the
 // generated fleet-converge workflow file in gunbc_repository at the pinned revision.
 test fn the_subject_binds_the_minted_runner_and_the_attempt_input() -> Bool {
+  match first(managed_hosts()) {
+    Present { value: h } => match jit_registration_of(dispatch: minted(h: h, slot_workflow: qualification_slot())) {
+      Present { value: reg } => {
   match qualification_dispatch_subject_over(
-    registration: registration(slot_workflow: qualification_slot()), delivery: delivery(slot_workflow: qualification_slot()),
+    registration: reg, delivery: delivery(h: h, slot_workflow: qualification_slot()),
     workflow: workflow_with(declares_input: true, runs_on: attempt_runs_on), floor_job_id: floor_job_id, branch: branch, revision: revision,
   ) {
     QualificationSubjectAdmitted { subject: s } =>
       s.attempt == attempt && s.runner_id == minted_runner
         && (s.floor_job_name as String) == "qualification floor"
-        && (s.host as String) == (host().host as String)
+        && (s.host as String) == (h.host as String)
         && count(map_keys(qualification_dispatch_inputs(attempt: s.attempt))) == 1
         && (match map_get(qualification_dispatch_inputs(attempt: s.attempt), qualification_attempt_dispatch_input.name) {
-          Present { value: v } => v == (attempt as String) && (ephemeral_slot_labels(host: host().host, attempt: attempt) |> any(l => l == v))
+          Present { value: v } => v == (attempt as String) && (ephemeral_slot_labels(host: h.host, attempt: attempt) |> any(l => l == v))
           Absent => false
         })
         && (match qualification_dispatch_effect(subject: s) {
@@ -138,21 +129,32 @@ test fn the_subject_binds_the_minted_runner_and_the_attempt_input() -> Bool {
         })
     QualificationSubjectRefused { refusal: _ } => false
   }
-}
-
-fn slot_refuses(slot_workflow: NonEmptyStr) -> Bool {
-  match qualification_dispatch_subject_over(
-    registration: registration(slot_workflow: slot_workflow), delivery: delivery(slot_workflow: slot_workflow),
-    workflow: workflow_with(declares_input: true, runs_on: attempt_runs_on), floor_job_id: floor_job_id, branch: branch, revision: revision,
-  ) {
-    QualificationSubjectRefused { refusal: SubjectSlotForAnotherWorkflow { slot_workflow: sw, qualification_workflow: _ } } => (sw as String) == (slot_workflow as String)
-    _ => false
+    }
+      Absent => false
+    }
+    Absent => false
   }
 }
 
-fn runs_on_refuses(runs_on: RunnerSpec) -> Bool {
+fn slot_refuses(h: ManagedHost, slot_workflow: NonEmptyStr) -> Bool {
+  match jit_registration_of(dispatch: minted(h: h, slot_workflow: slot_workflow)) {
+    Present { value: other_reg } =>
+      match qualification_dispatch_subject_over(
+        registration: other_reg, delivery: delivery(h: h, slot_workflow: slot_workflow),
+        workflow: workflow_with(declares_input: true, runs_on: attempt_runs_on), floor_job_id: floor_job_id, branch: branch, revision: revision,
+      ) {
+        QualificationSubjectRefused { refusal: SubjectSlotForAnotherWorkflow { slot_workflow: sw, qualification_workflow: _ } } => (sw as String) == (slot_workflow as String)
+        _ => false
+      }
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+fn runs_on_refuses(h: ManagedHost, reg: JitRegistration, runs_on: RunnerSpec) -> Bool {
   match qualification_dispatch_subject_over(
-    registration: registration(slot_workflow: qualification_slot()), delivery: delivery(slot_workflow: qualification_slot()),
+    registration: reg, delivery: delivery(h: h, slot_workflow: qualification_slot()),
     workflow: workflow_with(declares_input: true, runs_on: runs_on), floor_job_id: floor_job_id, branch: branch, revision: revision,
   ) {
     QualificationSubjectRefused { refusal: SubjectFloorRunsOnNotTheAttemptInput { job_id: _, runs_on: _ } } => true
@@ -160,9 +162,9 @@ fn runs_on_refuses(runs_on: RunnerSpec) -> Bool {
   }
 }
 
-fn undeclared_input_refuses() -> Bool {
+fn undeclared_input_refuses(h: ManagedHost, reg: JitRegistration) -> Bool {
   match qualification_dispatch_subject_over(
-    registration: registration(slot_workflow: qualification_slot()), delivery: delivery(slot_workflow: qualification_slot()),
+    registration: reg, delivery: delivery(h: h, slot_workflow: qualification_slot()),
     workflow: workflow_with(declares_input: false, runs_on: attempt_runs_on), floor_job_id: floor_job_id, branch: branch, revision: revision,
   ) {
     QualificationSubjectRefused { refusal: SubjectAttemptInputUndeclared { input: _ } } => true
@@ -180,20 +182,28 @@ fn undeclared_input_refuses() -> Bool {
 //   - the production mint, over today's generated fleet-converge model (no qualification mode yet),
 //     refuses rather than admitting anything.
 test fn no_other_workflow_or_label_can_be_dispatched_through_the_ruling() -> Bool {
-  slot_refuses(slot_workflow: "gunb-ai/gunbc/.github/workflows/witnesses.yml@refs/heads/main")
-    && slot_refuses(slot_workflow: qualification_selected_workflow(branch: "feature"))
-    && runs_on_refuses(runs_on: SelfHosted { labels: [attempt as String] })
-    && runs_on_refuses(runs_on: RunsOnExpression { expression: "${{ inputs.runner }}" })
-    && runs_on_refuses(runs_on: RunsOnExpression { expression: "${{ inputs.runner_attempt_label }}-x" })
-    && runs_on_refuses(runs_on: RunsOnExpression { expression: "gunbc-qualification" })
-    && undeclared_input_refuses()
+  match first(managed_hosts()) {
+    Present { value: h } => match jit_registration_of(dispatch: minted(h: h, slot_workflow: qualification_slot())) {
+      Present { value: reg } => {
+  slot_refuses(h: h, slot_workflow: "gunb-ai/gunbc/.github/workflows/witnesses.yml@refs/heads/main")
+    && slot_refuses(h: h, slot_workflow: qualification_selected_workflow(branch: "feature"))
+    && runs_on_refuses(h: h, reg: reg, runs_on: SelfHosted { labels: [attempt as String] })
+    && runs_on_refuses(h: h, reg: reg, runs_on: RunsOnExpression { expression: "${{ inputs.runner }}" })
+    && runs_on_refuses(h: h, reg: reg, runs_on: RunsOnExpression { expression: "${{ inputs.runner_attempt_label }}-x" })
+    && runs_on_refuses(h: h, reg: reg, runs_on: RunsOnExpression { expression: "gunbc-qualification" })
+    && undeclared_input_refuses(h: h, reg: reg)
     && (match qualification_dispatch_subject(
-      registration: registration(slot_workflow: qualification_slot()), delivery: delivery(slot_workflow: qualification_slot()),
+      registration: reg, delivery: delivery(h: h, slot_workflow: qualification_slot()),
       floor_job_id: floor_job_id, branch: branch, revision: revision,
     ) {
       QualificationSubjectAdmitted { subject: _ } => false
       QualificationSubjectRefused { refusal: _ } => true
     })
+    }
+      Absent => false
+    }
+    Absent => false
+  }
 }
 
 fn mutation_standing(rest: RestOutcome) -> QualificationDispatchStanding {
@@ -208,19 +218,27 @@ fn ambiguous(s: QualificationDispatchStanding) -> Bool {
 // an undecodable 200 are commit-ambiguous; only a succeeded exchange dispatches. And the interlock:
 // the hold covers the slot's own host and no other.
 test fn the_dispatch_has_three_standings_and_an_interlock() -> Bool {
+  match first(managed_hosts()) {
+    Present { value: h } => match jit_registration_of(dispatch: minted(h: h, slot_workflow: qualification_slot())) {
+      Present { value: reg } => {
   (match mutation_standing(rest: RestStatusRefused { status: 422, body: "Unexpected inputs provided" }) { DispatchStandingRefused { status: st, body: _ } => st == 422 _ => false })
     && ambiguous(s: mutation_standing(rest: RestTransportRefused { cause: "fixture: connection reset after send" }))
     && ambiguous(s: mutation_standing(rest: RestStatusRefused { status: 503, body: "fixture" }))
     && ambiguous(s: mutation_standing(rest: RestBodyUndecodable { status: 200, cause: "fixture: truncated body" }))
     && (match mutation_standing(rest: RestOk) { DispatchStandingSucceeded => true _ => false })
     && match qualification_dispatch_subject_over(
-      registration: registration(slot_workflow: qualification_slot()), delivery: delivery(slot_workflow: qualification_slot()),
+      registration: reg, delivery: delivery(h: h, slot_workflow: qualification_slot()),
       workflow: workflow_with(declares_input: true, runs_on: attempt_runs_on), floor_job_id: floor_job_id, branch: branch, revision: revision,
     ) {
       QualificationSubjectAdmitted { subject: s } =>
-        hold_covers_subject(held: host().host, subject: s) && !hold_covers_subject(held: "fixture-other-host" as HostIdentity, subject: s)
+        hold_covers_subject(held: h.host, subject: s) && !hold_covers_subject(held: "fixture-other-host" as HostIdentity, subject: s)
       QualificationSubjectRefused { refusal: _ } => false
     }
+    }
+      Absent => false
+    }
+    Absent => false
+  }
 }
 
 // ── THE COLLECTION ─────────────────────────────────────────────────────────────────────────────
@@ -276,6 +294,14 @@ fn jobs(js: List<WorkflowJobRun>) -> WorkflowJobRunList {
   WorkflowJobRunList { total_count: count(js), jobs: js }
 }
 
+fn decide_jobs(s: QualificationDispatchSubject, js: WorkflowJobRunList) -> QualificationRunVerdict {
+  decide_qualification_run(subject: s, run_id: 77, run_performance: RestExchangeSucceeded, run: dispatched_run(attempt_n: 1), jobs_performance: RestExchangeSucceeded, jobs: js)
+}
+
+fn decide_run(s: QualificationDispatchSubject, r: WorkflowRun, js: WorkflowJobRunList) -> QualificationRunVerdict {
+  decide_qualification_run(subject: s, run_id: 77, run_performance: RestExchangeSucceeded, run: r, jobs_performance: RestExchangeSucceeded, jobs: js)
+}
+
 fn never_reached(v: QualificationRunVerdict) -> Bool {
   match v {
     RunVerdictRefused { refusal: RunNeverReachedAttemptRunner { minted_runner_id: m, observed_runner_id: _, observed_runner_name: _, started: _ } } => m == minted_runner
@@ -295,28 +321,35 @@ fn mismatch(v: QualificationRunVerdict) -> Bool {
 // labels on another runner; a helper job on the minted runner while the floor ran elsewhere; a floor
 // on the minted runner that never started; two jobs answering to the floor's name.
 test fn the_collection_joins_the_floor_job_to_the_minted_runner() -> Bool {
+  match first(managed_hosts()) {
+    Present { value: h } => match jit_registration_of(dispatch: minted(h: h, slot_workflow: qualification_slot())) {
+      Present { value: reg } => {
   match qualification_dispatch_subject_over(
-    registration: registration(slot_workflow: qualification_slot()), delivery: delivery(slot_workflow: qualification_slot()),
+    registration: reg, delivery: delivery(h: h, slot_workflow: qualification_slot()),
     workflow: workflow_with(declares_input: true, runs_on: attempt_runs_on), floor_job_id: floor_job_id, branch: branch, revision: revision,
   ) {
     QualificationSubjectAdmitted { subject: s } => {
-      let decide = (js: WorkflowJobRunList) => decide_qualification_run(subject: s, run_id: 77, run_performance: RestExchangeSucceeded, run: dispatched_run(attempt_n: 1), jobs_performance: RestExchangeSucceeded, jobs: js)
-      (match decide(jobs(js: [floor_on(runner_id: minted_runner)])) {
+      (match decide_jobs(s: s, js: jobs(js: [floor_on(runner_id: minted_runner)])) {
         RunVerdictCollected { run: r, floor_job: f, conclusion: c } => r.id == 77 && f.id == 1 && (match c { Failure => true _ => false })
         _ => false
       })
-        && never_reached(v: decide(jobs(js: [floor_on(runner_id: 99)])))
-        && never_reached(v: decide(jobs(js: [
+        && never_reached(v: decide_jobs(s: s, js: jobs(js: [floor_on(runner_id: 99)])))
+        && never_reached(v: decide_jobs(s: s, js: jobs(js: [
           job(id: 2, name: "helper", runner_id: minted_runner, started: true, attempt_n: 1),
           floor_on(runner_id: 99),
         ])))
-        && never_reached(v: decide(jobs(js: [job(id: 1, name: "qualification floor", runner_id: minted_runner, started: false, attempt_n: 1)])))
-        && (match decide(jobs(js: [floor_on(runner_id: minted_runner), job(id: 2, name: "qualification floor", runner_id: minted_runner, started: true, attempt_n: 1)])) {
+        && never_reached(v: decide_jobs(s: s, js: jobs(js: [job(id: 1, name: "qualification floor", runner_id: minted_runner, started: false, attempt_n: 1)])))
+        && (match decide_jobs(s: s, js: jobs(js: [floor_on(runner_id: minted_runner), job(id: 2, name: "qualification floor", runner_id: minted_runner, started: true, attempt_n: 1)])) {
           RunVerdictRefused { refusal: RunFloorJobNotUnique { floor_job_name: _, matching: m } } => m == 2
           _ => false
         })
     }
     QualificationSubjectRefused { refusal: _ } => false
+  }
+    }
+      Absent => false
+    }
+    Absent => false
   }
 }
 
@@ -324,49 +357,58 @@ test fn the_collection_joins_the_floor_job_to_the_minted_runner() -> Bool {
 // job carries the same labels and runner); a job of attempt 2 in the listing; another run id;
 // another event; another workflow path.
 test fn a_rerun_or_another_run_cannot_be_collected_as_the_dispatch() -> Bool {
+  match first(managed_hosts()) {
+    Present { value: h } => match jit_registration_of(dispatch: minted(h: h, slot_workflow: qualification_slot())) {
+      Present { value: reg } => {
   let floor = jobs(js: [floor_on(runner_id: minted_runner)])
   let path = qualification_workflow_path() as String
   match qualification_dispatch_subject_over(
-    registration: registration(slot_workflow: qualification_slot()), delivery: delivery(slot_workflow: qualification_slot()),
+    registration: reg, delivery: delivery(h: h, slot_workflow: qualification_slot()),
     workflow: workflow_with(declares_input: true, runs_on: attempt_runs_on), floor_job_id: floor_job_id, branch: branch, revision: revision,
   ) {
     QualificationSubjectAdmitted { subject: s } => {
-      let decide = (r: WorkflowRun, js: WorkflowJobRunList) => decide_qualification_run(subject: s, run_id: 77, run_performance: RestExchangeSucceeded, run: r, jobs_performance: RestExchangeSucceeded, jobs: js)
-      (match decide(dispatched_run(attempt_n: 2), floor) {
+      (match decide_run(s: s, r: dispatched_run(attempt_n: 2), js: floor) {
         RunVerdictRefused { refusal: RunAdvancedPastDispatchedAttempt { observed_attempt: a } } => a == 2
         _ => false
       })
-        && mismatch(v: decide(dispatched_run(attempt_n: 1), jobs(js: [job(id: 1, name: "qualification floor", runner_id: minted_runner, started: true, attempt_n: 2)])))
-        && mismatch(v: decide(run(id: 78, attempt_n: 1, event: "workflow_dispatch", path: path, sha: revision, completed: true, concluded: true), floor))
-        && mismatch(v: decide(run(id: 77, attempt_n: 1, event: "push", path: path, sha: revision, completed: true, concluded: true), floor))
-        && mismatch(v: decide(run(id: 77, attempt_n: 1, event: "workflow_dispatch", path: ".github/workflows/witnesses.yml", sha: revision, completed: true, concluded: true), floor))
+        && mismatch(v: decide_run(s: s, r: dispatched_run(attempt_n: 1), js: jobs(js: [job(id: 1, name: "qualification floor", runner_id: minted_runner, started: true, attempt_n: 2)])))
+        && mismatch(v: decide_run(s: s, r: run(id: 78, attempt_n: 1, event: "workflow_dispatch", path: path, sha: revision, completed: true, concluded: true), js: floor))
+        && mismatch(v: decide_run(s: s, r: run(id: 77, attempt_n: 1, event: "push", path: path, sha: revision, completed: true, concluded: true), js: floor))
+        && mismatch(v: decide_run(s: s, r: run(id: 77, attempt_n: 1, event: "workflow_dispatch", path: ".github/workflows/witnesses.yml", sha: revision, completed: true, concluded: true), js: floor))
     }
     QualificationSubjectRefused { refusal: _ } => false
+  }
+    }
+      Absent => false
+    }
+    Absent => false
   }
 }
 
 test fn an_unfinished_unpinned_or_unreadable_run_refuses() -> Bool {
+  match first(managed_hosts()) {
+    Present { value: h } => match jit_registration_of(dispatch: minted(h: h, slot_workflow: qualification_slot())) {
+      Present { value: reg } => {
   let floor = jobs(js: [floor_on(runner_id: minted_runner)])
   let path = qualification_workflow_path() as String
   match qualification_dispatch_subject_over(
-    registration: registration(slot_workflow: qualification_slot()), delivery: delivery(slot_workflow: qualification_slot()),
+    registration: reg, delivery: delivery(h: h, slot_workflow: qualification_slot()),
     workflow: workflow_with(declares_input: true, runs_on: attempt_runs_on), floor_job_id: floor_job_id, branch: branch, revision: revision,
   ) {
     QualificationSubjectAdmitted { subject: s } => {
-      let decide = (r: WorkflowRun, js: WorkflowJobRunList) => decide_qualification_run(subject: s, run_id: 77, run_performance: RestExchangeSucceeded, run: r, jobs_performance: RestExchangeSucceeded, jobs: js)
-      (match decide(run(id: 77, attempt_n: 1, event: "workflow_dispatch", path: path, sha: revision, completed: false, concluded: false), floor) {
+      (match decide_run(s: s, r: run(id: 77, attempt_n: 1, event: "workflow_dispatch", path: path, sha: revision, completed: false, concluded: false), js: floor) {
         RunVerdictRefused { refusal: RunNotCompleted { status: InProgress } } => true
         _ => false
       })
-        && (match decide(run(id: 77, attempt_n: 1, event: "workflow_dispatch", path: path, sha: revision, completed: true, concluded: false), floor) {
+        && (match decide_run(s: s, r: run(id: 77, attempt_n: 1, event: "workflow_dispatch", path: path, sha: revision, completed: true, concluded: false), js: floor) {
           RunVerdictRefused { refusal: RunCompletedWithoutConclusion } => true
           _ => false
         })
-        && (match decide(run(id: 77, attempt_n: 1, event: "workflow_dispatch", path: path, sha: "2222222222222222222222222222222222222222", completed: true, concluded: true), floor) {
+        && (match decide_run(s: s, r: run(id: 77, attempt_n: 1, event: "workflow_dispatch", path: path, sha: "2222222222222222222222222222222222222222", completed: true, concluded: true), js: floor) {
           RunVerdictRefused { refusal: RunRevisionNotPinned { pinned: _, observed: _ } } => true
           _ => false
         })
-        && (match decide(dispatched_run(attempt_n: 1), WorkflowJobRunList { total_count: 2, jobs: floor.jobs }) {
+        && (match decide_run(s: s, r: dispatched_run(attempt_n: 1), js: WorkflowJobRunList { total_count: 2, jobs: floor.jobs }) {
           RunVerdictRefused { refusal: RunJobsTruncated { returned: rt, total: t } } => rt == 1 && t == 2
           _ => false
         })
@@ -380,5 +422,10 @@ test fn an_unfinished_unpinned_or_unreadable_run_refuses() -> Bool {
         })
     }
     QualificationSubjectRefused { refusal: _ } => false
+  }
+    }
+      Absent => false
+    }
+    Absent => false
   }
 }

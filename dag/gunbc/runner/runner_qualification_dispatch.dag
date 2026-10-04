@@ -78,7 +78,7 @@ fn qualification_workflow_path() -> NonEmptyStr {
 }
 
 fn qualification_workflow_file_name() -> NonEmptyStr {
-  match list_last(split(qualification_workflow_path() as String, "/")) {
+  match last(split(qualification_workflow_path() as String, "/")) {
     Present { value: f } => f as NonEmptyStr
     Absent => qualification_workflow_path()
   }
@@ -199,7 +199,7 @@ fn qualification_dispatch_subject_over(
             } else if !workflow_declares_dispatch_input(workflow: workflow, input: qualification_attempt_dispatch_input) {
               QualificationSubjectRefused { refusal: SubjectAttemptInputUndeclared { input: qualification_attempt_dispatch_input.name } }
             } else {
-              match list_find(workflow.jobs, j => j.id == (floor_job_id as String)) {
+              match first(filter(workflow.jobs, j => j.id == (floor_job_id as String))) {
                 Absent => QualificationSubjectRefused { refusal: SubjectFloorJobAbsent { job_id: floor_job_id } }
                 Present { value: job } =>
                   if !runs_on_is_exactly_the_input(runner: job.runner, input: qualification_attempt_dispatch_input) {
@@ -413,7 +413,7 @@ type QualificationRunVerdict
 
 fn decide_floor_job(subject: QualificationDispatchSubject, run: WorkflowRun, conclusion: WorkflowRunConclusion, jobs: List<WorkflowJobRun>) -> QualificationRunVerdict {
   let floors = jobs |> filter(j => j.name == (subject.floor_job_name as String))
-  match list_head(floors) {
+  match first(floors) {
     Absent => RunVerdictRefused { refusal: RunFloorJobNotUnique { floor_job_name: subject.floor_job_name, matching: 0 } }
     Present { value: floor } =>
       if count(floors) != 1 {
