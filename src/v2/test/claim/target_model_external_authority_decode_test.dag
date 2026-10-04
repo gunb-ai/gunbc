@@ -4,7 +4,6 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, UriScheme, Http, Https, uri_scheme_inhabitants, uri_scheme_wire }
 import std.algebra { Empty, list_snoc_item }
 import v2.std.algebra { fold_list }
-import v2.std.collection { List }
 import v2.std.compilers.target_model {
   target_external_authority_bundle_node,
   target_external_authority_from_node,
@@ -15,9 +14,8 @@ import v2.std.compilers.target_model {
 }
 import v2.std.diagnostic { Accepted, Diagnostic, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

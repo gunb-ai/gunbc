@@ -31,7 +31,6 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol, node_synthetic }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_to_dotted_string }
 import v2.std.text { String }
@@ -52,30 +51,30 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // The owed claim over the real corpus -- the closure of v2.compiler.compile set-equal with the
 // seed's reference-derived closure -- is the instrument's, not this file's.
 
-data ce_entry_source: String = "module v2.test.ce_entry\n\nimport v2.std.logic { Bool }\n\nfn ce_entry_fn(p: Bool) -> Bool { v2.test.ce_member.ce_member_fn(p: p) }\n"
+data ce_entry_source: String = "module v2.test.ce_entry\n\nimport std.types { Bool }\n\nfn ce_entry_fn(p: Bool) -> Bool { v2.test.ce_member.ce_member_fn(p: p) }\n"
 
-data ce_member_source: String = "module v2.test.ce_member\n\nimport v2.std.logic { Bool }\n\nfn ce_member_fn(p: Bool) -> Bool { p }\n"
+data ce_member_source: String = "module v2.test.ce_member\n\nimport std.types { Bool }\n\nfn ce_member_fn(p: Bool) -> Bool { p }\n"
 
 data ce_logic_source: String = "module v2.std.logic\n\ntype Bool = True | False\n"
 
 // Outside every closure below. Its body is an else-less `if`, which body lowering refuses
 // (v2.compiler.body_lowering_fold body_lower_fn_decl_to_arrow), so a door that lowered it would fail.
-data ce_body_refusing_outsider_source: String = "module v2.test.ce_outsider\n\nimport v2.std.logic { Bool }\n\nfn ce_outsider_fn(p: Bool) -> Bool { if p { p } }\n"
+data ce_body_refusing_outsider_source: String = "module v2.test.ce_outsider\n\nimport std.types { Bool }\n\nfn ce_outsider_fn(p: Bool) -> Bool { if p { p } }\n"
 
 // Two files declaring ONE module identity with INDEPENDENT declarations: the case most likely to pass
 // silently, since neither file's declarations collide with the other's.
-data ce_duplicate_a_source: String = "module v2.test.ce_duplicate\n\nimport v2.std.logic { Bool }\n\nfn ce_duplicate_a(p: Bool) -> Bool { p }\n"
+data ce_duplicate_a_source: String = "module v2.test.ce_duplicate\n\nimport std.types { Bool }\n\nfn ce_duplicate_a(p: Bool) -> Bool { p }\n"
 
-data ce_duplicate_b_source: String = "module v2.test.ce_duplicate\n\nimport v2.std.logic { Bool }\n\nfn ce_duplicate_b(p: Bool) -> Bool { p }\n"
+data ce_duplicate_b_source: String = "module v2.test.ce_duplicate\n\nimport std.types { Bool }\n\nfn ce_duplicate_b(p: Bool) -> Bool { p }\n"
 
 data ce_unparseable_outsider_source: String = "module v2.test.ce_unparseable\nfn ce_broken( -> Int { x }\n"
 
 data ce_second_unparseable_outsider_source: String = "module v2.test.ce_unparseable_two\nfn ce_broken_two( -> Int { y }\n"
 
 // A member whose body does not lower: the entry reaches it, so the refusal is a member's.
-data ce_refusing_entry_source: String = "module v2.test.ce_refusing_entry\n\nimport v2.std.logic { Bool }\n\nfn ce_refusing_entry_fn(p: Bool) -> Bool { v2.test.ce_refusing_member.ce_refusing_fn(p: p) }\n"
+data ce_refusing_entry_source: String = "module v2.test.ce_refusing_entry\n\nimport std.types { Bool }\n\nfn ce_refusing_entry_fn(p: Bool) -> Bool { v2.test.ce_refusing_member.ce_refusing_fn(p: p) }\n"
 
-data ce_refusing_member_source: String = "module v2.test.ce_refusing_member\n\nimport v2.std.logic { Bool }\n\nfn ce_refusing_fn(p: Bool) -> Bool { if p { p } }\n"
+data ce_refusing_member_source: String = "module v2.test.ce_refusing_member\n\nimport std.types { Bool }\n\nfn ce_refusing_fn(p: Bool) -> Bool { if p { p } }\n"
 
 fn ce_read(source: String, id: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {

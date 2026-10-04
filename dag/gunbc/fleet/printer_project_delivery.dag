@@ -1,6 +1,6 @@
 module gunbc.fleet.printer_project_delivery
 
-import gunbc.fleet_printer_access { PrinterCredentialAccess, PrinterProvisioningEvidence, resolve_printer_credential_access }
+import gunbc.fleet_printer_access {PrinterCredentialSession,session_printer,session_credential,session_resolved_version}
 import std.types { NonEmptyStr, String, Bool, Secret, FilePath }
 import std.nat { Nat }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_version_resource }
@@ -55,9 +55,9 @@ import gunbc.fleet_printer_access {
 // DELIVERING A PROJECT TO A PRINTER, AND DELIBERATELY NOTHING ABOUT HOW IT WAS PRODUCED.
 //
 // THE INPUT IS A PAYLOAD, NOT A SLICE PLAN. product.printed_chassis.slicing_toolchain owns whether
-// this repository may run OrcaSlicer. The verified-archive bracket now realizes that producer
-// through product.printed_chassis.slice_run. Coupling delivery to a particular producer would
-// still be a category error: the printer does not care who sliced
+// THIS repository may run OrcaSlicer; that question is currently answered "no" and its positive
+// capability is uninhabited. Coupling delivery to it would make the transport unprovable behind a
+// producer-side blocker, and would also be a category error: the printer does not care who sliced
 // the file. A project that already exists -- sliced elsewhere, by a human, months ago -- is a
 // legitimate input here and says nothing false about this repository's slicing.
 //
@@ -207,8 +207,6 @@ fn identify_project_payload(payload: PrinterProjectPayload) -> PayloadIdentifica
 fn remote_name_for_digest(content: Digest) -> NonEmptyStr {
   concat(concat("gunbc-", content.hex as String), ".3mf") as NonEmptyStr
 }
-
-fn project_payload_digest(payload: IdentifiedProjectPayload) -> Digest { payload.content }
 
 fn project_remote_name(payload: IdentifiedProjectPayload) -> NonEmptyStr {
   remote_name_for_digest(content: payload.content)
@@ -646,17 +644,6 @@ fn deliver_project_to_printer(
   materializations: List<VerifiedVersionForAttempt>,
 ) -> ProjectDelivery
 {
-  deliver_project_to_printer_with_access(printer: printer, payload: payload, token_source: token_source,
-    access: PrinterProvisioningEvidence { materializations: materializations })
-}
-
-fn deliver_project_to_printer_with_access(
-  printer: PhysicalAssetIdentity,
-  payload: IdentifiedProjectPayload,
-  token_source: AccessTokenSource,
-  access: PrinterCredentialAccess,
-) -> ProjectDelivery
-{
   match printer_endpoint_address(printer: printer) {
     PrinterAddressUnknown { printer: p } =>
       refuse_and_drop(printer: p, payload: payload,
@@ -668,7 +655,7 @@ fn deliver_project_to_printer_with_access(
       refuse_and_drop(printer: p, payload: payload,
         cause: "an endpoint names this printer but is not a LAN fabrication appliance, so it is not the file channel and delivery refuses rather than authenticating to it")
     PrinterAddressFound { address: lan_address } =>
-  match resolve_printer_credential_access(printer: printer, token_source: token_source, access: access) {
+  match observe_printer_secret_container(printer: printer, token_source: token_source, materializations: materializations) {
     PrinterCredentialObservationRefused { printer: p, cause: cause } =>
       refuse_and_drop(printer: p, payload: payload, cause: cause)
     PrinterCredentialLocusUndeclared { printer: p } =>
@@ -711,6 +698,21 @@ fn deliver_project_to_printer_with_access(
         SecretCredentialFetchRefused { reason: reason } =>
           refuse_and_drop(printer: printer, payload: payload, cause: reason)
         SecretCredentialReady { credential: credential, resolved_version: credential_version } => {
+          transfer_with_credential(printer:printer,payload:payload,lan_address:lan_address,credential:credential,credential_version:credential_version)
+        }
+      }
+  }
+  }
+}
+
+fn deliver_project_with_session(session:PrinterCredentialSession,payload:IdentifiedProjectPayload) -> ProjectDelivery {
+ let printer=session_printer(s:session)
+ match printer_endpoint_address(printer:printer) {
+  PrinterAddressFound {address:a}=>transfer_with_credential(printer:printer,payload:payload,lan_address:a,credential:session_credential(s:session),credential_version:session_resolved_version(s:session))
+  _=>refuse_and_drop(printer:printer,payload:payload,cause:"Printer endpoint absent or ambiguous")
+ }
+}
+fn transfer_with_credential(printer:PhysicalAssetIdentity,payload:IdentifiedProjectPayload,lan_address:NonEmptyStr,credential:Secret,credential_version:SmResolvedVersionIdentity) -> ProjectDelivery {
           endpoint = bambu_lan_endpoint(host: lan_address)
           match place_netrc_binding_privately(
             machine: endpoint.host,
@@ -749,9 +751,7 @@ fn deliver_project_to_printer_with_access(
                 )
             }
           }
-        }
-      }
-  }
-  }
-  }
 }
+}
+
+fn project_payload_digest(payload:IdentifiedProjectPayload) -> Digest {payload.content}

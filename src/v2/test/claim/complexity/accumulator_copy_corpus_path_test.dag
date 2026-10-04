@@ -1,5 +1,6 @@
 module v2.test.claim.complexity.accumulator_copy_corpus_path_test
 
+import std.types { List }
 import std.algebra { Cons, Empty }
 import v2.lens.complexity_accumulator_copy.corpus_gate {
   CorpusFileNotEstablished,
@@ -22,9 +23,7 @@ import v2.lens.complexity_accumulator_copy.corpus_gate {
   newly_red_difference
 }
 import v2.lens.common.source_analysis_standing { SourceUnreadable }
-import v2.std.collection { List }
 import v2.std.text { String }
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree

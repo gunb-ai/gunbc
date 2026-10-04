@@ -97,27 +97,7 @@ fn place_mosquitto_options_privately(
   password: Secret,
 ) -> MosquittoOptionsPlacement
 {
-  let created = shell.Mktemp.Dir()
-  if created.success == false {
-    MosquittoOptionsRefused {
-      cause: "no private directory could be created for the credential, so none was placed",
-    }
-  } else {
-    let options_path = concat(
-      concat(created.path as String, "/"),
-      mosquitto_pub_options_file_name as String)
-    if Filesystem.WriteOwnerOnly(
-      path: options_path,
-      content: mosquitto_options_content(login: login, password: password)
-    ).success {
-      MosquittoOptionsPlaced {
-        binding: MosquittoOptionsBinding { dir: created.path as FilePath },
-      }
-    } else {
-      mosquitto_options_write_refusal(
-        removed_after_failure: shell.Remove.RecursiveForce(path: created.path as FilePath).success)
-    }
-  }
+  place_mosquitto_named_options(login:login,password:password,filename:mosquitto_pub_options_file_name)
 }
 
 // SHREDDING IS UNCONDITIONAL AT THE CALL SITE, INCLUDING ON THE FAILING ARM. A refused publish that
@@ -129,29 +109,20 @@ fn shred_mosquitto_options_binding(binding: MosquittoOptionsBinding) -> Bool {
   shell.Remove.RecursiveForce(path: binding.dir).success
 }
 
-// Both clients use the same upstream options grammar but distinct fixed filenames.
-fn place_mosquitto_sub_options_privately(login: NonEmptyStr, password: Secret) -> MosquittoOptionsPlacement {
-  match place_mosquitto_options_privately(login: login, password: password) {
-    MosquittoOptionsPlaced { binding: b } => {
-      let source = join([b.dir as String, "/", mosquitto_pub_options_file_name as String], "")
-      let target = join([b.dir as String, "/", mosquitto_sub_options_file_name as String], "")
-      if shell.Copy.File(source: source as FilePath, destination: target as FilePath).success {
-        MosquittoOptionsPlaced { binding: b }
-      } else { mosquitto_options_write_refusal(removed_after_failure: shred_mosquitto_options_binding(binding: b)) }
-    }
-    other => other
-  }
+// All clients use one private placement/cleanup bracket; only the upstream filename varies.
+fn place_mosquitto_named_options(login:NonEmptyStr,password:Secret,filename:NonEmptyStr) -> MosquittoOptionsPlacement {
+ let created=shell.Mktemp.Dir()
+ if !created.success {MosquittoOptionsRefused {cause:"Cannot create private options directory"}}
+ else {
+  let path=join([created.path as String,"/",filename as String],"")
+  if Filesystem.WriteOwnerOnly(path:path,content:mosquitto_options_content(login:login,password:password)).success {
+   MosquittoOptionsPlaced {binding:MosquittoOptionsBinding {dir:created.path as FilePath}}
+  } else {mosquitto_options_write_refusal(removed_after_failure:shell.Remove.RecursiveForce(path:created.path as FilePath).success)}
+ }
 }
-
-fn place_mosquitto_rr_options_privately(login: NonEmptyStr, password: Secret) -> MosquittoOptionsPlacement {
-  match place_mosquitto_options_privately(login: login, password: password) {
-    MosquittoOptionsPlaced { binding: b } => {
-      let source = join([b.dir as String, "/", mosquitto_pub_options_file_name as String], "")
-      let target = join([b.dir as String, "/", mosquitto_rr_options_file_name as String], "")
-      if shell.Copy.File(source: source as FilePath, destination: target as FilePath).success {
-        MosquittoOptionsPlaced { binding: b }
-      } else { mosquitto_options_write_refusal(removed_after_failure: shred_mosquitto_options_binding(binding: b)) }
-    }
-    other => other
-  }
+fn place_mosquitto_sub_options_privately(login:NonEmptyStr,password:Secret) -> MosquittoOptionsPlacement {
+ place_mosquitto_named_options(login:login,password:password,filename:mosquitto_sub_options_file_name)
+}
+fn place_mosquitto_rr_options_privately(login:NonEmptyStr,password:Secret) -> MosquittoOptionsPlacement {
+ place_mosquitto_named_options(login:login,password:password,filename:mosquitto_rr_options_file_name)
 }

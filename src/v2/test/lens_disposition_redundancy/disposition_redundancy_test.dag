@@ -1,5 +1,6 @@
 module v2.test.lens_disposition_redundancy.disposition_redundancy_test
 
+import std.types { List }
 import v2.lens.disposition_redundancy { disposition_redundancy_violation_count, terminal_count }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, NamedField, WholeDeclaration }
@@ -37,9 +38,7 @@ import tools.rust_stage0_gates {
   unit_must_run_staged_note,
   should_run_gates_coverage_note
 }
-import v2.std.collection { List }
 import v2.std.algebra { length }
-import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree

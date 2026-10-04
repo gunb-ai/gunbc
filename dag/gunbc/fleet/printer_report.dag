@@ -12,13 +12,13 @@ import extdeps.tools.mosquitto_rr { mosquitto_snapshot_command }
 import extdeps.printing.bambu_lab_lan_protocol { bambu_status_snapshot_payload, bambu_request_topic, bambu_report_topic, bambu_lan_mqtt_endpoint, bambu_lan_mqtt_user }
 import gunbc.command_runner { run_shell_command_capture }
 import gunbc.fleet_asset_identity { PhysicalAssetIdentity, printer_01, printer_02 }
-import gunbc.fleet.printer_workflow_run { select_printer, PrinterSelected, PrinterSelectionRefused }
+import gunbc.fleet.printer_selection { select_printer, PrinterSelected, PrinterSelectionRefused }
 import gunbc.fleet.printer_project_delivery { printer_endpoint_address, PrinterAddressFound }
 import gunbc.fleet.printer_job_start {
   printer_serial, PrinterSerialFound, acquire_pinned_ca_bundle, CaBundlePinned,
   CaBundleRefused, CaBundleRefusedResidueRemains, pinned_ca_bundle_path,
 }
-import gunbc.fleet_printer_access { printer_access_code_locus, PrinterAccessCodeDesiredLocusFound }
+import gunbc.fleet_printer_access { PrinterCredentialSession, read_existing_printer_session, PrinterSessionReady, PrinterSessionRefused, session_printer, session_credential }
 import gunbc.secret_provision { secret_ref_pin_version }
 import extdeps.cloud.gcp.secret_manager { sm_version_id_is_number }
 import gunbc.auth.access_token_source { AccessTokenSource, OperatorSuppliedToken, read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable }
@@ -32,20 +32,20 @@ import gunbc.auth.mosquitto_options_binding {
 // Read-only status request/response. Topic/endpoint/credential all join through the same fleet identity.
 // It observes current state, not causality or an acknowledgement of a particular start.
 fn report(printer: PhysicalAssetIdentity, version: NonEmptyStr, token_source: AccessTokenSource) -> ProcessOutcome {
-  if !sm_version_id_is_number(version: version as String) { return ProcessRefused { exit_code: 1, stderr: "Report requires an exact credential version" } }
-  match printer_serial(printer: printer) {
-    PrinterSerialFound { serial: serial } => match printer_endpoint_address(printer: printer) {
-      PrinterAddressFound { address: address } => match printer_access_code_locus(printer: printer) {
-        PrinterAccessCodeDesiredLocusFound { locus: locus } => match fetch_secret_ref_credential(secret_ref: secret_ref_pin_version(ref: locus.secret, version: version), token_source: token_source) {
-          SecretCredentialReady { credential: c, resolved_version: _ } => complete_report_with_credential(serial: serial, address: address, credential: c, remaining: 8)
-          _ => ProcessRefused { exit_code: 1, stderr: "Cannot read the requested printer credential" }
-        }
-        _ => ProcessRefused { exit_code: 1, stderr: "Printer credential locus is absent or ambiguous" }
-      }
-      _ => ProcessRefused { exit_code: 1, stderr: "Printer address is absent or ambiguous" }
-    }
-    _ => ProcessRefused { exit_code: 1, stderr: "Printer serial is absent or ambiguous" }
+  match read_existing_printer_session(printer:printer,version:version,token_source:token_source) {
+   PrinterSessionRefused {cause:c}=>ProcessRefused {exit_code:1,stderr:c as String}
+   PrinterSessionReady {session:s}=>report_using_session(session:s)
   }
+}
+fn report_using_session(session:PrinterCredentialSession) -> ProcessOutcome {
+ let printer=session_printer(s:session)
+ match printer_serial(printer:printer) {
+  PrinterSerialFound {serial:serial}=>match printer_endpoint_address(printer:printer) {
+   PrinterAddressFound {address:a}=>complete_report_with_credential(serial:serial,address:a,credential:session_credential(s:session),remaining:8)
+   _=>ProcessRefused {exit_code:1,stderr:"Printer address absent or ambiguous"}
+  }
+  _=>ProcessRefused {exit_code:1,stderr:"Printer serial absent or ambiguous"}
+ }
 }
 
 fn report_with_credential(serial: NonEmptyStr, address: NonEmptyStr, credential: Secret) -> ProcessOutcome {
@@ -85,9 +85,9 @@ fn run(printer: String, version: String, output: String) -> ProcessExit {
   }
 }
 
-fn observe_both(version: String, directory: String) -> ProcessExit {
-  match run(printer: printer_01 as String, version: version, output: concat(directory, "/printer-01.json")) {
-    ExitSuccess => run(printer: printer_02 as String, version: version, output: concat(directory, "/printer-02.json"))
+fn observe_both(printer_01_version: String, printer_02_version: String, directory: String) -> ProcessExit {
+  match run(printer: printer_01 as String, version: printer_01_version, output: concat(directory, "/printer-01.json")) {
+    ExitSuccess => run(printer: printer_02 as String, version: printer_02_version, output: concat(directory, "/printer-02.json"))
     other => other
   }
 }

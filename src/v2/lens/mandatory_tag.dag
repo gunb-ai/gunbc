@@ -1,14 +1,12 @@
 module v2.lens.mandatory_tag
 
+import std.types { List }
 import v2.lens.common.construction_justification { ConstructionJustification, WallNow }
 import std.disposition { SubstrateMandatoryTag }
 import std.decl_ref { decl_ref }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { length }
 import v2.std.integer { Int }
-import v2.std.collection {
-  List
-}
 import v2.std.optional {
   Absent,
   Optional,
@@ -27,7 +25,6 @@ import v2.std.diagnostic {
   node_locus,
   outcome_accepted
 }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Edge, Node, NodeFold, Symbol, TypeNode, fold_node }
 import v2.std.node_query { find_named_child }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }

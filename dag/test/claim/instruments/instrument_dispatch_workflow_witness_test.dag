@@ -28,6 +28,13 @@ fn generated_text() -> String {
 
 // workflow_dispatch is the only trigger; the input is a choice; the job is bounded, serialized and
 // read-only; and the receipt is uploaded on every termination.
+// SERIALIZED MEANS QUEUED, NOT REPLACED: the group carries queue: max with cancel-in-progress false,
+// and the bare scalar form -- under which a pending run is cancelled by the next dispatch with no
+// signal to its owner (gunbc.recurring_failure_mode
+// pending_run_cancelled_by_a_later_dispatch_with_no_signal) -- is refused by name.
+// THE GROUP IS ONE NO PRE-FIX REF NAMES: a scalar-form dispatch cancels every pending run in its own
+// group, so sharing the old group name would leave this queue cancellable from any branch cut before
+// the fix. The old name is refused as a group here for that reason.
 test fn the_workflow_is_dispatch_only_bounded_serialized_and_read_only_holds() -> Bool {
   let t = generated_text()
   contains(t, "workflow_dispatch:")
@@ -37,7 +44,9 @@ test fn the_workflow_is_dispatch_only_bounded_serialized_and_read_only_holds() -
     && !contains(t, "push:")
     && contains(t, "type: choice")
     && contains(t, "timeout-minutes: 240")
-    && contains(t, "concurrency: instrument-dispatch")
+    && contains(t, "concurrency:\n  queue: max\n  group: instrument-dispatch-queued\n  cancel-in-progress: false\n")
+    && !contains(t, "concurrency: instrument-dispatch")
+    && !contains(t, "group: instrument-dispatch\n")
     && contains(t, "contents: read")
     && !contains(t, ": write")
     && contains(t, "instrument-dispatch-receipt")

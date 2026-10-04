@@ -1,11 +1,7 @@
 module gunbc.fleet_printer_access
 
-import extdeps.cloud.gcp.secret_manager { sm_version_id_is_number }
-import gunbc.auth.secret_ref_credential {
-  fetch_secret_ref_credential, SecretCredentialReady, SecretCredentialFetchRefused,
-  SecretCredentialAccessUpsertRequired, SecretCredentialWireDecodeRefused,
-  SecretCredentialResolvedVersionMismatch,
-}
+import extdeps.cloud.gcp.secret_manager {sm_version_id_is_number,SmResolvedVersionIdentity}
+import gunbc.auth.secret_ref_credential {fetch_secret_ref_credential,SecretCredentialReady,SecretCredentialFetchRefused,SecretCredentialAccessUpsertRequired,SecretCredentialWireDecodeRefused,SecretCredentialResolvedVersionMismatch}
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import product.placement_supply { PhysicalAssetIdentity }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending, secret_ref_secret_resource, gcp_resource_names_this_secret }
@@ -494,44 +490,29 @@ fn materialization_lookup_for(
   }
 }
 
-
-// Routine printing reads an existing exact version. Provisioning evidence remains a
-// separate route for onboarding; an ordinary print never acquires it by writing a secret.
-// A requested version is intent only: the positive resolution requires a matching live read.
-type PrinterCredentialAccess
-  = PrinterProvisioningEvidence { materializations: List<VerifiedVersionForAttempt> }
-  | PrinterExistingVersion { version: NonEmptyStr }
-
-fn resolve_printer_credential_access(
-  printer: PhysicalAssetIdentity,
-  token_source: AccessTokenSource,
-  access: PrinterCredentialAccess,
-) -> PrinterCredentialResolution {
-  match access {
-    PrinterProvisioningEvidence { materializations: ms } =>
-      observe_printer_secret_container(printer: printer, token_source: token_source, materializations: ms)
-    PrinterExistingVersion { version: version } =>
-      if !sm_version_id_is_number(version: version as String) {
-        PrinterCredentialObservationRefused { printer: printer,
-          cause: "Routine printing requires an observed numeric credential version; aliases and pending refuse" }
-      } else {
-        match printer_access_code_locus(printer: printer) {
-          PrinterAccessCodeLocusUnknown { printer: p } => PrinterCredentialLocusUndeclared { printer: p }
-          PrinterAccessCodeLocusConflict { printer: p, matches: n } => PrinterCredentialLocusConflicted { printer: p, matches: n }
-          PrinterAccessCodeDesiredLocusFound { locus: locus } => {
-            let exact = secret_ref_pin_version(ref: locus.secret, version: version)
-            match fetch_secret_ref_credential(secret_ref: exact, token_source: token_source) {
-              SecretCredentialReady { credential: c, resolved_version: _ } =>
-                if (c as String) == "" {
-                  PrinterCredentialObservationRefused { printer: printer, cause: "Printer credential is empty" }
-                } else { PrinterCredentialProvisioned { exact: exact } }
-              SecretCredentialFetchRefused { reason: r } => PrinterCredentialObservationRefused { printer: printer, cause: r }
-              SecretCredentialAccessUpsertRequired { plan: _ } => PrinterCredentialObservationRefused { printer: printer, cause: "Printer credential access requires the approval-gated IAM converge" }
-              SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } => PrinterCredentialObservationRefused { printer: printer, cause: "Printer credential response did not decode" }
-              SecretCredentialResolvedVersionMismatch { requested: _, resolved: _ } => PrinterCredentialObservationRefused { printer: printer, cause: "Printer credential response named a different version" }
-            }
-          }
-        }
-      }
-  }
+// Existing-version reads are NOT provisioning evidence. The requested numeric version
+// remains intent until Secret Manager returns that exact identity and nonempty bytes.
+// This separate seal records a performed read, never PrinterCredentialProvisioned or
+// VerifiedVersionForAttempt. One session supplies status, upload and start without refetch.
+type PrinterCredentialSession sole_constructor {
+ printer:PhysicalAssetIdentity, version:NonEmptyStr, credential:Secret, resolved:SmResolvedVersionIdentity,
+}
+type PrinterSessionRead = PrinterSessionReady {session:PrinterCredentialSession} | PrinterSessionRefused {cause:NonEmptyStr}
+fn session_printer(s:PrinterCredentialSession) -> PhysicalAssetIdentity {s.printer}
+fn session_version(s:PrinterCredentialSession) -> NonEmptyStr {s.version}
+fn session_credential(s:PrinterCredentialSession) -> Secret {s.credential}
+fn session_resolved_version(s:PrinterCredentialSession) -> SmResolvedVersionIdentity {s.resolved}
+fn read_existing_printer_session(printer:PhysicalAssetIdentity,version:NonEmptyStr,token_source:AccessTokenSource) -> PrinterSessionRead {
+ if !sm_version_id_is_number(version:version as String) { return PrinterSessionRefused {cause:"An existing-session read requires an exact numeric version"} }
+ match printer_access_code_locus(printer:printer) {
+  PrinterAccessCodeDesiredLocusFound {locus:locus} =>
+   match fetch_secret_ref_credential(secret_ref:secret_ref_pin_version(ref:locus.secret,version:version),token_source:token_source) {
+    SecretCredentialReady {credential:c,resolved_version:r} => if (c as String)=="" {PrinterSessionRefused {cause:"Empty printer credential"}} else {PrinterSessionReady {session:PrinterCredentialSession {printer:printer,version:version,credential:c,resolved:r}}}
+    SecretCredentialFetchRefused {reason:r}=>PrinterSessionRefused {cause:r}
+    SecretCredentialAccessUpsertRequired {plan:_}=>PrinterSessionRefused {cause:"Existing-session read requires credential access; it does not provision access"}
+    SecretCredentialWireDecodeRefused {identity_cause:_,payload_cause:_}=>PrinterSessionRefused {cause:"Credential response did not decode"}
+    SecretCredentialResolvedVersionMismatch {requested:_,resolved:_}=>PrinterSessionRefused {cause:"Credential response names another exact version"}
+   }
+  _=>PrinterSessionRefused {cause:"Printer credential locus absent or ambiguous"}
+ }
 }

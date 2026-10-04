@@ -1,5 +1,6 @@
 module gunbc.fleet.printer_federation
 
+import gunbc.fleet_intent_network {operator_host_srv1}
 import std.types { String, NonEmptyStr, List, Map }
 import v2.std.optional { Present }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifProvider, wif_provider_resource, wif_pool_resource }
@@ -33,3 +34,6 @@ fn printer_provider_resource() -> String {
     attribute_condition: Present { value: printer_attribute_condition() },
   })
 }
+
+// Placement of the printer LAN worker, independent of approval-broker placement.
+fn printer_lan_host_identity() -> NonEmptyStr {operator_host_srv1 as NonEmptyStr}

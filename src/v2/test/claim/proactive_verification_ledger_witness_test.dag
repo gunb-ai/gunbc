@@ -10,7 +10,6 @@ import gunbc.proactive_verification_ledger {
   ledger_total_row_count,
   ledger_v1_delete_required_green_count
 }
-import v2.std.logic { Bool }
 
 // OVERLAP-START structural receipt (sunny-lynx-241, operator no-soak 2026-07-20): the proactive
 // verification ledger is enumerated on dag/gunbc/proactive_verification_ledger.dag (13 rows: 3

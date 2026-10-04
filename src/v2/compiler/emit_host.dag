@@ -1,5 +1,6 @@
 module v2.compiler.emit_host
 
+import std.types { List }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import v2.compiler.emit { emit }
@@ -25,7 +26,7 @@ import v2.compiler.eval {
 }
 import extdeps.communication.medium { Medium }
 import std.algebra { Cons, Empty }
-import v2.std.collection { List, optional_present }
+import v2.std.collection { optional_present }
 import v2.std.host_transport {
   ByteString,
   EmitHostRuntimeRow,
@@ -59,9 +60,9 @@ import std.content_hash { ContentHash }
 import extdeps.realization.emit_on_demand_host {
   native_cache_realization_workspace_root
 }
-import v2.std.logic { Bool }
 import v2.std.integer { Int, integer_signed_i32_le_bytes_to_int }
 import v2.std.diagnostic {
+  diagnostics_fatal,
   Diagnostic,
   Outcome,
   Accepted,
@@ -586,6 +587,13 @@ fn run_emit_host_cached_with_run_args(
   )
 }
 
+// AN ADVISORY ON THE EXPECTED OUTCOME NEVER FAILS THE BUILD. An Accepted expected value is
+// compared on its value; the advisories it carries ride on the `actual` outcome a non-Pass verdict
+// reports, so they are visible and never mistaken for a cause. A refused expectation reports its
+// FATAL diagnostic (the chain's last), not its head, which may be an advisory prepended to it.
+// Before this, any Accepted { diagnostics: Some } became a build failure keyed on the head. No
+// producer on the eval route attaches an advisory today (05_eval, std.runtime and the v2
+// evaluator runtimes mint none), so that arm was unreachable rather than a relied-upon safety.
 fn run_test_claim_emit_vs_eval_verdict(
   subject: TestClaimEvalSubject<Node>,
   target: TargetModel,
@@ -594,15 +602,15 @@ fn run_test_claim_emit_vs_eval_verdict(
   expected: Outcome<RuntimeValue>
 ) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
   match expected {
-    Accepted { value: exp_val, diagnostics: None } =>
+    Accepted { value: exp_val, diagnostics: advisories } =>
       match accepted_runtime_value_outcome_equality(
         a: Accepted { value: host_actual, diagnostics: None },
-        b: expected
+        b: Accepted { value: exp_val, diagnostics: None }
       ) {
         RuntimeValuesEqual => Pass
         RuntimeValuesDiffer =>
           verdict_semantic_mismatch(
-            actual: Accepted { value: host_actual, diagnostics: None },
+            actual: Accepted { value: host_actual, diagnostics: advisories },
             falsification: optional_present(
               value: FalsificationReceipt {
                 subject: subject,
@@ -616,19 +624,14 @@ fn run_test_claim_emit_vs_eval_verdict(
         RuntimeValueEqualityUnavailable { reason: r } =>
           runtime_value_equality_verdict(
             equality: RuntimeValueEqualityUnavailable { reason: r },
-            actual: Accepted { value: host_actual, diagnostics: None },
+            actual: Accepted { value: host_actual, diagnostics: advisories },
             at: subject.input.evaluator_input
           )
       }
     Rejected { diagnostics: ds } =>
       verdict_build_failed(
         actual: expected,
-        diagnostic: ds.head
-      )
-    Accepted { value: _, diagnostics: Some { diagnostics: ds } } =>
-      verdict_build_failed(
-        actual: expected,
-        diagnostic: ds.head
+        diagnostic: diagnostics_fatal(d: ds)
       )
   }
 }
@@ -663,7 +666,7 @@ fn run_test_claim_emit_vs_eval_verdict_from_run(
             Rejected { diagnostics: ds } =>
               verdict_run_failed(
                 actual: Rejected { diagnostics: ds },
-                diagnostic: ds.head
+                diagnostic: diagnostics_fatal(d: ds)
               )
           }
         _ =>

@@ -1,16 +1,16 @@
 module test.claim.printer_operator_approval_witness_test
 
-import test.claim.printer_job_start_witness_test { the_start_payload_selects_ams_slot_one }
+
 
 import gunbc.fleet.printer_report { report_has_state_and_error }
 
 import extdeps.shell.exec { ProcessObservation }
 import extdeps.tools.mosquitto_pub { mosquitto_pub_help_observation_admitted }
 
-import test.claim.approval_request_client_witness_test { submit_and_status_urls_follow_the_writer_cutover }
 
-import std.types { Bool }
-import gunbc.fleet.printer_operator_approval { print_request, report_allows_start }
+
+import std.types { Bool,String }
+import gunbc.fleet.printer_operator_approval { print_request, report_allows_start, start_claim_path }
 import gunbc.fleet_asset_identity { printer_01, printer_02 }
 
 test fn approval_changes_with_device_bytes_version_or_attempt() -> Bool {
@@ -31,7 +31,8 @@ test fn approval_changes_with_device_bytes_version_or_attempt() -> Bool {
 }
 
 test fn only_explicit_idle_without_print_error_admits_start() -> Bool {
-  report_allows_start(text: "{\"print\":{\"gcode_state\":\"FINISH\",\"print_error\":0}}") &&
+  report_allows_start(text: "{\"print\":{\"gcode_state\":\"IDLE\",\"print_error\":0}}") &&
+  !report_allows_start(text: "{\"print\":{\"gcode_state\":\"FINISH\",\"print_error\":0}}") &&
   !report_allows_start(text: "{\"print\":{\"gcode_state\":\"RUNNING\",\"print_error\":0}}") &&
   !report_allows_start(text: "{\"print\":{\"gcode_state\":\"IDLE\",\"print_error\":1}}") &&
   !report_allows_start(text: "{\"print\":{\"gcode_state\":\"IDLE\"}}") &&
@@ -48,17 +49,15 @@ test fn help_exit_one_needs_the_actual_supported_version_banner() -> Bool {
 }
 
 
-test fn approval_submission_follows_the_store_writer() -> Bool {
-  submit_and_status_urls_follow_the_writer_cutover()
-}
-
-
-test fn operator_batch_uses_confirmed_ams_slot() -> Bool {
-  the_start_payload_selects_ams_slot_one()
-}
-
 test fn partial_telemetry_does_not_count_as_a_complete_observation() -> Bool {
   !report_has_state_and_error(text: "{\"print\":{\"nozzle_temper\":25}}") &&
   !report_has_state_and_error(text: "{\"print\":{\"gcode_state\":\"IDLE\"}}") &&
   report_has_state_and_error(text: "{\"print\":{\"gcode_state\":\"IDLE\",\"print_error\":83902511}}")
+}
+
+test fn durable_claim_is_bound_to_approval_identity() -> Bool {
+ let r=print_request(printer:printer_01,digest:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",version:"1",attempt:"attempt-a")
+ match r { Absent=>false Present {value:q}=>
+  start_claim_path(escalation_id:q.escalation_id)==concat(concat("/var/lib/gunbc/printer-starts/",q.escalation_id as String),".claimed") &&
+  start_claim_path(escalation_id:q.escalation_id)!=start_claim_path(escalation_id:"printer-start-different") }
 }

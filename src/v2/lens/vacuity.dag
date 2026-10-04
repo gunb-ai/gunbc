@@ -1,5 +1,6 @@
 module v2.lens.vacuity
 
+import std.types { List }
 import v2.compiler.normalized_tree { NormalizedTree }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
@@ -24,14 +25,13 @@ import v2.lens.common.construction_justification { ConstructionJustification, Wa
 import std.disposition { RealizationDispatch }
 import v2.std.algebra { count_where, Empty, length }
 import std.algebra { list_append }
-import v2.std.collection { List, list_at_optional }
+import v2.std.collection { list_at_optional }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.optional { Absent, optional_absent, optional_present, Present }
 import v2.std.exact_structural_equality_zip_fold_predicate {
   exact_structural_equality_zip_fold
 }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, Symbol, TypeNode, is_empty_conj_root }
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.text { String }

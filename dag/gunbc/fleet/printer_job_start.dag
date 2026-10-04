@@ -1,6 +1,6 @@
 module gunbc.fleet.printer_job_start
 
-import gunbc.fleet_printer_access { PrinterCredentialAccess, PrinterProvisioningEvidence, resolve_printer_credential_access }
+import gunbc.fleet_printer_access {PrinterCredentialSession,session_printer,session_credential}
 import std.types { NonEmptyStr, String, Bool, Secret, FilePath, List }
 import extdeps.shell
 import extdeps.exec.command { ArgvCommand, CommandTransport, LocalExec, env_prefixed_command }
@@ -336,17 +336,6 @@ fn start_print_on_printer(
   materializations: List<VerifiedVersionForAttempt>,
 ) -> PrintStart
 {
-  start_print_on_printer_with_access(printer: printer, remote_name: remote_name, token_source: token_source,
-    access: PrinterProvisioningEvidence { materializations: materializations })
-}
-
-fn start_print_on_printer_with_access(
-  printer: PhysicalAssetIdentity,
-  remote_name: NonEmptyStr,
-  token_source: AccessTokenSource,
-  access: PrinterCredentialAccess,
-) -> PrintStart
-{
   match printer_serial(printer: printer) {
     PrinterSerialUnknown { printer: p } =>
       PrintStartRefused { printer: p,
@@ -369,8 +358,8 @@ fn start_print_on_printer_with_access(
       PrintStartRefused { printer: p,
         cause: "an endpoint names this printer but is not a LAN fabrication appliance, so it is not the control channel and the start refuses rather than authenticating to it" }
     PrinterAddressFound { address: lan_address } =>
-  match resolve_printer_credential_access(
-    printer: printer, token_source: token_source, access: access
+  match observe_printer_secret_container(
+    printer: printer, token_source: token_source, materializations: materializations
   ) {
     PrinterCredentialObservationRefused { printer: p, cause: cause } =>
       PrintStartRefused { printer: p, cause: cause }
@@ -555,4 +544,15 @@ fn start_refusal(printer: PhysicalAssetIdentity, stderr: String, cleaned: Bool) 
         ". Whether the printer received the start command is UNKNOWN and it may be printing; reconcile by reading the report topic, never by publishing again.") as NonEmptyStr,
     }
   }
+}
+
+fn start_print_with_session(session:PrinterCredentialSession,remote_name:NonEmptyStr) -> PrintStart {
+ let printer=session_printer(s:session)
+ match printer_serial(printer:printer) {
+  PrinterSerialFound {serial:serial}=>match printer_endpoint_address(printer:printer) {
+   PrinterAddressFound {address:a}=>publish_start_with_credential(printer:printer,serial:serial,lan_address:a,remote_name:remote_name,credential:session_credential(s:session))
+   _=>PrintStartRefused {printer:printer,cause:"Printer address absent or ambiguous"}
+  }
+  _=>PrintStartRefused {printer:printer,cause:"Printer serial absent or ambiguous"}
+ }
 }

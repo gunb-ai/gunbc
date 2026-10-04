@@ -1,5 +1,6 @@
 module v2.workflow.effect_plan_bash_materialize
 
+import std.types { List }
 import v2.extdeps.languages.bash_build {
   bash_build_and_then,
   bash_build_assign,
@@ -29,7 +30,7 @@ import v2.std.algebra {
   list_head,
   list_tail
 }
-import v2.std.collection { List, list_at_optional }
+import v2.std.collection { list_at_optional }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
 import v2.std.effect_plan {
   Call,

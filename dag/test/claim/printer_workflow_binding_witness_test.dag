@@ -13,19 +13,8 @@ import gunbc.fleet_converge_workflow {
 import gunbc.ci_spec { gunbc_run_step_targets }
 import gunbc.fleet.printer_federation { printer_service_account, printer_provider_resource }
 
-import test.claim.printer_workflow_witness_test {
-  w_print_needs_exact_version_clear_bed_digest_and_first_attempt,
-  w_unknown_printer_never_selects_a_default_machine,
-  w_printer_federation_rejects_other_workflow_branch_and_environment,
-  w_tool_probe_requires_mosquitto_version_two_or_newer,
-}
-import test.claim.printer_job_start_witness_test { no_start_outcome_authorizes_a_second_publish }
-import test.claim.gcp_iam_converge_witness_test {
-  every_target_is_bound_resource_locally_and_the_own_trust_is_not,
-  only_a_live_approval_admits_the_mint_gate_or_the_apply,
-}
 import gunbc.fleet.printer_federation_provision { printer_dedicated_federation }
-import gunbc.fleet.printer_host_tools { converge }
+import gunbc.fleet_printer_access {printer_access_code_loci}
 
 fn auth_step_matches(st: Step) -> Bool {
   match st {
@@ -57,22 +46,9 @@ test fn observer_is_a_registered_dispatch_and_run_target() -> Bool {
     && count(filter(gunbc_run_step_targets(), t => t.entry == "dag/gunbc/fleet/printer_workflow_run.dag" && t.function == "run")) == 1
 }
 
-test fn print_input_and_tool_controls_hold() -> Bool {
-  w_print_needs_exact_version_clear_bed_digest_and_first_attempt() &&
-  w_unknown_printer_never_selects_a_default_machine() &&
-  w_tool_probe_requires_mosquitto_version_two_or_newer()
-}
-
-test fn approval_and_start_replay_regressions_hold() -> Bool {
-  w_printer_federation_rejects_other_workflow_branch_and_environment() &&
-  no_start_outcome_authorizes_a_second_publish() &&
-  every_target_is_bound_resource_locally_and_the_own_trust_is_not() &&
-  only_a_live_approval_admits_the_mint_gate_or_the_apply()
-}
-
 test fn printer_identity_reads_only_the_two_printer_secrets() -> Bool {
   let f = printer_dedicated_federation()
-  length(f.secret_grants) == 2 &&
+  length(f.secret_grants) == length(printer_access_code_loci) &&
   all(f.secret_grants, g => g.role == "roles/secretmanager.secretAccessor" &&
-    ((g.target.secret as String) == "printer-01-lan-access-code" || (g.target.secret as String) == "printer-02-lan-access-code"))
+    any(printer_access_code_loci,p=>(p.secret.secret as String)==(g.target.secret as String)))
 }

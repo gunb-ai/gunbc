@@ -12,7 +12,7 @@ import gunbc.secret_provision { secret_ref_pin_version }
 import gunbc.fleet_asset_identity { PhysicalAssetIdentity, printer_01, printer_02 }
 import gunbc.fleet_printer_access {
   printer_access_code_locus, PrinterAccessCodeDesiredLocusFound,
-  PrinterAccessCodeLocusUnknown, PrinterAccessCodeLocusConflict, PrinterExistingVersion,
+  PrinterAccessCodeLocusUnknown, PrinterAccessCodeLocusConflict,
 }
 import gunbc.auth.access_token_source { AccessTokenSource, WorkloadIdentityToken }
 import gunbc.auth.secret_ref_credential {
@@ -21,58 +21,12 @@ import gunbc.auth.secret_ref_credential {
 }
 import gunbc.actions_run_binding { actions_variable_trimmed }
 import extdeps.languages.json.emit { json_object, json_kv, json_string, serialize_json }
-import gunbc.fleet.printer_project_delivery {
-  PrinterProjectPayload, identify_project_payload, PayloadIdentified, PayloadIdentificationRefused,
-  PayloadIdentificationRefusedResidueRemains, project_payload_digest, abandon_payload,
-  deliver_project_to_printer_with_access, ProjectDelivered, ProjectDeliveryRefused,
-  ProjectDeliveryUnattempted, ProjectTransferredCleanupRefused, ProjectDeliveryProvisionRequired,
-  ProjectDeliveryRefusedResidueRemains, ProjectDeliveryUnattemptedResidueRemains,
-  ProjectDeliveryProvisionRequiredResidueRemains, receipt_remote_name,
-}
-import gunbc.fleet.printer_job_start {
-  start_print_on_printer_with_access, PrintStartPublished, PrintStartRefused,
-  PrintStartOutcomeUnknown, PrintStartOutcomeUnknownResidueRemains,
-  PrintStartRefusedResidueRemains, PrintStartPublishedCleanupRefused,
-}
-
-
-
-type PrinterWorkflowSelection = PrinterSelected { printer: PhysicalAssetIdentity } | PrinterSelectionRefused
-fn select_printer(name: String) -> PrinterWorkflowSelection {
-  if name == (printer_01 as String) { PrinterSelected { printer: printer_01 } }
-  else if name == (printer_02 as String) { PrinterSelected { printer: printer_02 } }
-  else { PrinterSelectionRefused }
-}
-
-// Validate before any credential access, payload copy or network effect. A GitHub rerun
-// is not authority to repeat a physical start; use observation to reconcile it first.
-fn print_inputs_admitted(version: String, digest: String, bed_clear: String, run_attempt: String) -> Bool {
-  sm_version_id_is_number(version: version) && bed_clear == "true" && run_attempt == "1" &&
-    match sha256_hex_digest(hex: digest) { Present { value: _ } => true  Absent => false }
-}
-
-fn write_receipt(printer: PhysicalAssetIdentity, standing: String, version: String, remote: String, digest: String) -> ProcessExit {
-  let content = serialize_json(v: json_object(members: [
-    json_kv(key: "execution_source", value: json_string(s: if actions_variable_trimmed(name: "GITHUB_RUN_ID") == "" { "operator" } else { "github-actions" })),
-    json_kv(key: "printer", value: json_string(s: printer as String)),
-    json_kv(key: "standing", value: json_string(s: standing)),
-    json_kv(key: "credential_version", value: json_string(s: version)),
-    json_kv(key: "remote_name", value: json_string(s: remote)),
-    json_kv(key: "project_sha256", value: json_string(s: digest)),
-    json_kv(key: "run_id", value: json_string(s: actions_variable_trimmed(name: "GITHUB_RUN_ID"))),
-    json_kv(key: "run_attempt", value: json_string(s: actions_variable_trimmed(name: "GITHUB_RUN_ATTEMPT"))),
-    json_kv(key: "revision", value: json_string(s: actions_variable_trimmed(name: "GITHUB_SHA"))),
-  ]))
-  let written = Filesystem.Write(path: printer_workflow_receipt_path, content: content)
-  if written.success { ExitSuccess } else { exit_failure(reason: "Printer operation completed but receipt write failed; do not replay a start") }
-}
+import gunbc.fleet.printer_selection {select_printer,PrinterSelected,PrinterSelectionRefused,print_inputs_admitted}
+import gunbc.fleet.printer_receipt {write_receipt}
+import gunbc.fleet.printer_operator_approval {approve_and_print}
 
 // Discovery reads latest once and records the provider's numeric identity, never the code.
 // Starting is a different operation and requires that exact numeric pin.
-fn observe_credential(printer: PhysicalAssetIdentity) -> ProcessExit {
-  observe_credential_with_source(printer: printer, token_source: WorkloadIdentityToken)
-}
-
 fn observe_credential_with_source(printer: PhysicalAssetIdentity, token_source: AccessTokenSource) -> ProcessExit {
   match printer_access_code_locus(printer: printer) {
     PrinterAccessCodeLocusUnknown { printer: _ } => exit_failure(reason: "Printer credential locus is absent")
@@ -82,56 +36,13 @@ fn observe_credential_with_source(printer: PhysicalAssetIdentity, token_source: 
         SecretCredentialReady { credential: c, resolved_version: version } =>
           if (c as String) == "" { exit_failure(reason: "Printer credential is empty") }
           else { match sm_resolved_version_id(identity: version) {
-            SmVersionIdProjected { version: v } => write_receipt(printer: printer, standing: "credential-observed; printer not contacted", version: v as String, remote: "", digest: "")
+            SmVersionIdProjected { version: v } => write_receipt(printer: printer, standing: "credential-observed; printer not contacted", version: v as String, remote: "", digest: "", token_source:token_source)
             SmVersionIdNotAVersionResource { supplied: _ } => exit_failure(reason: "Credential version identity cannot be projected")
           } }
         SecretCredentialAccessUpsertRequired { plan: _ } => exit_failure(reason: "Printer federation needs the ntfy-approved IAM converge")
         SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } => exit_failure(reason: "Printer credential response did not decode")
         SecretCredentialFetchRefused { reason: r } => exit_failure(reason: r as String)
         SecretCredentialResolvedVersionMismatch { requested: _, resolved: _ } => exit_failure(reason: "Printer credential response names another resource")
-      }
-  }
-}
-
-fn print_project(printer: PhysicalAssetIdentity, path: String, digest: String, version: NonEmptyStr) -> ProcessExit {
-  if !printer_mqtt_tool_ready() {
-    exit_failure(reason: "Printer MQTT tool missing or below version 2; run gunbc.fleet.printer_host_tools converge as the host administrator")
-  } else { print_project_with_tools(printer: printer, path: path, digest: digest, version: version) }
-}
-
-fn print_project_with_tools(printer: PhysicalAssetIdentity, path: String, digest: String, version: NonEmptyStr) -> ProcessExit {
-  print_project_with_source(printer: printer, path: path, digest: digest, version: version, token_source: WorkloadIdentityToken)
-}
-
-fn print_project_with_source(printer: PhysicalAssetIdentity, path: String, digest: String, version: NonEmptyStr, token_source: AccessTokenSource) -> ProcessExit {
-  match identify_project_payload(payload: PrinterProjectPayload { local_path: path as NonEmptyStr }) {
-    PayloadIdentificationRefused { local_path: _, cause: c } => exit_failure(reason: c as String)
-    PayloadIdentificationRefusedResidueRemains { local_path: _, residue_path: residue, cause: c } => exit_failure(reason: join(["Payload residue remains at ", residue as String, ": ", c as String], ""))
-    PayloadIdentified { payload: payload } =>
-      if (project_payload_digest(payload: payload).hex as String) != digest {
-        let cleaned = abandon_payload(payload: payload)
-        exit_failure(reason: if cleaned { "Project digest differs from the requested print; nothing uploaded" } else { "Project digest differs; private payload cleanup also failed" })
-      } else {
-        match deliver_project_to_printer_with_access(printer: printer, payload: payload, token_source: token_source, access: PrinterExistingVersion { version: version }) {
-          ProjectDelivered { receipt: receipt } => {
-            let remote = receipt_remote_name(r: receipt)
-            match start_print_on_printer_with_access(printer: printer, remote_name: remote, token_source: token_source, access: PrinterExistingVersion { version: version }) {
-              PrintStartPublished { receipt: _ } => write_receipt(printer: printer, standing: "start-published; RUNNING not yet observed", version: version as String, remote: remote as String, digest: digest)
-              PrintStartRefused { printer: _, cause: c } => exit_failure(reason: c as String)
-              PrintStartRefusedResidueRemains { printer: _, cause: c } => exit_failure(reason: concat("Start refused; credential residue remains: ", c as String))
-              PrintStartOutcomeUnknown { printer: _, cause: c } => exit_failure(reason: concat("Start outcome unknown; DO NOT REPLAY: ", c as String))
-              PrintStartOutcomeUnknownResidueRemains { printer: _, cause: c } => exit_failure(reason: concat("Start outcome unknown with residue; DO NOT REPLAY: ", c as String))
-              PrintStartPublishedCleanupRefused { receipt: _, cause: c } => exit_failure(reason: concat("Start published but cleanup refused; DO NOT REPLAY: ", c as String))
-            }
-          }
-          ProjectDeliveryRefused { printer: _, cause: c } => exit_failure(reason: c as String)
-          ProjectDeliveryUnattempted { printer: _, cause: c } => exit_failure(reason: c as String)
-          ProjectDeliveryProvisionRequired { printer: _, desired: _ } => exit_failure(reason: "Credential absent; routine printing does not provision it")
-          ProjectTransferredCleanupRefused { receipt: _, cause: c } => exit_failure(reason: concat("Transferred but cleanup failed; start withheld: ", c as String))
-          ProjectDeliveryRefusedResidueRemains { printer: _, cause: c } => exit_failure(reason: concat("Delivery refused with residue: ", c as String))
-          ProjectDeliveryUnattemptedResidueRemains { printer: _, cause: c } => exit_failure(reason: concat("Delivery unattempted with residue: ", c as String))
-          ProjectDeliveryProvisionRequiredResidueRemains { printer: _, desired: _, cause: c } => exit_failure(reason: concat("Credential absent with residue: ", c as String))
-        }
       }
   }
 }
@@ -146,16 +57,16 @@ fn run() -> ProcessExit {
     match select_printer(name: actions_variable_trimmed(name: "PRINTER_TARGET")) {
       PrinterSelectionRefused => exit_failure(reason: "Printer identity is not in the fleet roster")
       PrinterSelected { printer: printer } =>
-        if operation == "observe" { observe_credential(printer: printer) }
+        if operation == "observe" { observe_credential_with_source(printer:printer,token_source:WorkloadIdentityToken) }
         else if operation != "print" { exit_failure(reason: "Unknown printer operation") }
         else {
           let path = actions_variable_trimmed(name: "PRINTER_PROJECT_PATH")
           let digest = actions_variable_trimmed(name: "PRINTER_PROJECT_SHA256")
           let version = actions_variable_trimmed(name: "PRINTER_CREDENTIAL_VERSION")
-          if path == "" || !print_inputs_admitted(version: version, digest: digest,
-            bed_clear: actions_variable_trimmed(name: "PRINTER_BED_CLEAR"), run_attempt: attempt) {
+          if path == "" || attempt != "1" || !print_inputs_admitted(version: version, digest: digest,
+            bed_clear: actions_variable_trimmed(name: "PRINTER_BED_CLEAR")) {
             exit_failure(reason: "Print requires a project path, SHA-256, observed numeric credential version, clear-bed report, and first run attempt")
-          } else { print_project(printer: printer, path: path, digest: digest, version: version as NonEmptyStr) }
+          } else { approve_and_print(printer: printer as String, path: path, digest: digest, version: version, attempt: concat("actions-",run_id), bed_clear: actions_variable_trimmed(name:"PRINTER_BED_CLEAR"), token_source:WorkloadIdentityToken) }
         }
     }
   }
