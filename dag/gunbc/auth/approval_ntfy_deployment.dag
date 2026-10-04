@@ -1,6 +1,6 @@
 module gunbc.auth.approval_ntfy_deployment
 
-import std.types { NonEmptyStr, String, Int, Port }
+import std.types { NonEmptyStr, String, Port }
 import std.logic { Bool }
 import std.human_intervention {
   HumanIntervention, HumanInterventionFrequency, FleetOnce, DeviceOnce, EveryProvision,
@@ -8,8 +8,6 @@ import std.human_intervention {
   InterventionCompletionEvidence, NoDischargeSiteModeled,
 }
 import gunbc.auth.approval_notification { approval_ntfy_topic }
-import extdeps.ntfy.ntfy { NtfyTopic, NtfyPublishReceipt, NtfyErrorShape }
-import extdeps.transports.rest { RestOutcome, RestOk }
 import extdeps.uri { Uri, Https }
 import std.types { Secret }
 import gunbc.executor_privileged_operation {
@@ -17,11 +15,8 @@ import gunbc.executor_privileged_operation {
 }
 import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path }
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerAllGroupTraverse }
-import gunbc.fleet_intent_network { fleet_intent_network, operator_host_srv1 }
 import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_version_resource }
 import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
-import extdeps.ietf.http_semantics { POST }
-import std.resources { Network }
 
 // ── The self-hosted notification server on srv1 ──────────────────────────────────────────────
 // It follows gunbc-publication exactly: its own system account, its own state directory owned by
@@ -386,152 +381,3 @@ fn approval_ntfy_human_burden() -> ProvisioningHumanBurden {
     ],
   }
 }
-
-
-// ── The publish binding: transport and address, in the layer that owns them ──────────────────
-// DESIGN §3 puts the interface shape in extdeps and the TRANSPORT in realization -- "one of N,
-// never a fact about the dependency" -- so the REST binding and the server address live here,
-// with the deployment they belong to, rather than in extdeps.ntfy where they would narrow that
-// module to this one fleet.
-//
-// This is also what makes a second deployment additive: another server is another binding beside
-// this one, and extdeps.ntfy does not change.
-//
-// ── §3c: WHO CONSUMES THIS, AND BY WHAT ROUTE ───────────────────────────────────────────────
-// Stated plainly because the honest answer today is "nothing in production yet", and a reviewer
-// should not have to grep to discover that. `ntfy.Publish.PublishMessage`, the `RestOutcome`
-// opt-in, `ntfy_publish_outcome_of` and `approval_ntfy_human_burden` have NO production caller in
-// this tree. §3c admits exactly three states, and this is the middle one -- a DECLARED FRONTIER --
-// which is admissible only with its trigger stated, so it is stated here.
-//
-// CONSUMED BY EXECUTION TODAY: the publish operation and the outcome fold are exercised against
-// the live self-hosted server by a wet probe (NtfyPublished { message_id: znjShbquiXow }), and
-// every arm of the fold plus every intervention property is exercised by
-// test.claim.ntfy_publish_outcome_witness_test and
-// test.claim.approval_ntfy_deployment_witness_test. That is execution, not a typecheck -- but a
-// witness is not a production consumer and this note does not claim it is.
-//
-// THE NAMED CONSUMER, AND ITS TRIGGER: the approval broker publishes a notification for a pending
-// AccessRequest. It lands when the request-minting path exists -- an AccessRequest produced from a
-// real refusal, its capability signed, and gunbc.roadmap_serve's ApprovalDecideHandler redeeming
-// it rather than answering 501, which it does today. Until that lands, nothing in production has a
-// reason to publish, and manufacturing an intermediate caller would only move the danglingness up
-// one level rather than remove it.
-//
-// If that consumer does not land, THIS BINDING IS THE THING TO DELETE. It is not infrastructure
-// worth keeping on its own: it exists to carry approval requests to a phone, and with no requests
-// it carries nothing.
-
-// THE ADDRESS IS JOINED FROM THE AUTHORITIES THAT ALREADY OWN ITS PARTS, not spelled as one
-// literal. An earlier revision wrote "https://srv1.tailecbe08.ts.net:8443" here, which re-minted
-// two facts the corpus owns elsewhere -- the tailnet domain at gunbc.fleet_intent_network
-// `fleet_intent_network.tailnet_domain`, and srv1's identity at `operator_host_srv1`. Relocating
-// the binding out of extdeps fixed the LAYER; it left the DUPLICATION, which is §3's nicknaming
-// under a different roof. Renaming the tailnet or the host would have left this string stale while
-// every modeled consumer moved.
-//
-// The address a CLIENT dials is a different fact from the address the SERVER listens on
-// (approval_ntfy_listen_address, held to loopback by policy); tailscale serve is what joins them,
-// and each is asserted for its own job.
-//
-// THE ABSENT ARM FAILS LOUD RATHER THAN PLAUSIBLY. tailnet_domain is Optional, and the service
-// config's `endpoint` cannot carry an Optional -- so a deployment whose tailnet domain is
-// undeclared has no address, and the honest encoding of that is a host in the RFC 2606 `.invalid`
-// TLD, which is guaranteed never to resolve. That is a structural failure, not an absorbing
-// fallback: it cannot succeed, cannot widen, and cannot be mistaken for a working endpoint. The
-// arm is witnessed so it is not merely asserted.
-//
-// ONE COMPOSITION FOR EVERY SERVICE TAILSCALE SERVE PUBLISHES ON srv1: the port is the parameter,
-// because that is the only fact that differs between the ntfy address and the roadmap server's
-// (which the approval links point at, gunbc.auth.approval_request_submission). Absent means the
-// default TLS port and no `:port` suffix, which is how tailscale serve renders the 443 listener.
-// THE HOST IS ITS OWN FACT, read by a client that composes the URL itself: the approvals app sets
-// scheme, host and path on URLComponents separately (gunbc.approve_ios_swift_wire ServerConfig), so
-// it needs the bare host and not the base URL. The base URL below is built FROM this, so the two
-// cannot disagree.
-fn srv1_tailnet_host_from(domain: NonEmptyStr?) -> NonEmptyStr {
-  match domain {
-    Present { value: d } => join([operator_host_srv1 as String, ".", d as String], "") as NonEmptyStr
-    Absent => "tailnet-domain-undeclared.invalid" as NonEmptyStr
-  }
-}
-
-fn srv1_tailnet_base_url_from(domain: NonEmptyStr?, port: Port?) -> NonEmptyStr {
-  match domain {
-    Present { value: _ } =>
-      join([
-        "https://",
-        srv1_tailnet_host_from(domain: domain) as String,
-        match port { Present { value: p } => concat(":", to_string(p))  Absent => "" },
-      ], "") as NonEmptyStr
-    Absent => join(["https://", srv1_tailnet_host_from(domain: domain) as String], "") as NonEmptyStr
-  }
-}
-
-fn approval_ntfy_base_url_from(domain: NonEmptyStr?) -> NonEmptyStr {
-  srv1_tailnet_base_url_from(domain: domain, port: Present { value: approval_ntfy_serve_port })
-}
-
-// The TLS port tailscale serve publishes on, distinct from the loopback port ntfy binds. srv1's
-// :443 already carries the dashboard, so the approval server takes its own.
-data approval_ntfy_serve_port: Port = 8443
-
-data approval_ntfy_base_url: NonEmptyStr = approval_ntfy_base_url_from(domain: fleet_intent_network.tailnet_domain)
-
-// THE HERMETIC PUBLISH IS THE DECODED-200 SHAPE AND NOTHING ELSE: mock_response publishes one
-// result, so the hermetic arm is a published message whose id is the fixture's identity -- a live
-// ntfy id is a random 12-character string and cannot be this spelling. It exists so that a claim
-// can run the filing fold THROUGH the publish call: deleting ntfy.Publish.PublishMessage from
-// approval_request_submission must fail a control, not only an annotation.
-data hermetic_ntfy_publish_message_id: String = "hermetic-mock-ntfy-message"
-data hermetic_ntfy_publish_outcome: RestOutcome = RestOk
-
-service ntfy.Publish {
-  config {
-    endpoint: approval_ntfy_base_url
-    auth: Bearer
-    auth_input: access_token
-  }
-
-  operation PublishMessage {
-    requires Network
-    input {
-      access_token: Secret
-      topic: NtfyTopic
-      title: NonEmptyStr
-      body: NonEmptyStr
-      priority: Int
-      click: NonEmptyStr
-      cache: NonEmptyStr
-    }
-    output {
-      message_id: String from "id"
-      outcome: RestOutcome
-    }
-    transport rest {
-      method: POST,
-      path: "/",
-      headers: {
-        "Cache": cache
-      },
-      body: {
-        topic: topic,
-        message: body,
-        title: title,
-        priority: priority,
-        click: click
-      }
-    }
-    response {
-      200 => NtfyPublishReceipt
-      401 => NtfyErrorShape
-      403 => NtfyErrorShape
-      429 => NtfyErrorShape
-      5xx => NtfyErrorShape
-    }
-    mock_response {
-      200 => { message_id: hermetic_ntfy_publish_message_id, outcome: hermetic_ntfy_publish_outcome } "hermetic POST / decoded-200 shape; the id is the fixture identity, not a live ntfy message"
-    }
-  }
-}
-

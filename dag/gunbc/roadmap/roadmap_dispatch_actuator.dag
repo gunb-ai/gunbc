@@ -48,11 +48,12 @@ import gunbc.session_lease {
   classify_process_port_upsert,
 }
 import extdeps.git { shape_git_worktree_add_argv, shape_git_worktree_add_detached_argv }
-import std.measure { ByteSize, byte_size_count }
+import std.measure { ByteSize, byte_size_count, Kibibyte }
 import std.algebra { trim }
 import extdeps.systemd.systemctl
 import extdeps.systemd { systemd_unit_property_wire, SystemdUnitProperty, LoadState, SubState, ExecMainStatus }
 import extdeps.systemd.systemd_run { systemd_run_user_transient_arguments, systemd_run_property }
+import gunbc.compute.unit_bounds { UnitProcessBounds, compute_grant_unit_properties }
 import extdeps.tmux {
   shape_tmux_new_session_argv,
   shape_tmux_new_session_argv_for,
@@ -1560,21 +1561,29 @@ fn dispatch_current_attempt_events_path_for_instance(
   ], "")
 }
 
-fn dispatch_current_attempt_events_projection_argv_for_instance(
+// THE PROVIDER-EVENT PROJECTION OVER ONE EVENTS FILE. The current-attempt projection names the file
+// through the node's current pointer; a reader of a named attempt names it by the attempt's own key.
+// One argv, two addressings.
+fn dispatch_events_projection_argv_at(
   instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
+  events_path: String,
 ) -> HostExecArgv {
   host_exec_argv(
     program: dispatch_capability_program(
       environment: instance.execution_environment,
       cap: ProviderEventProjectionCapability,
     ),
-    args: codex_provider_event_projection_args(
-      path: dispatch_current_attempt_events_path_for_instance(
-        instance: instance,
-        node_id: node_id,
-      ) as FilePath,
-    ),
+    args: codex_provider_event_projection_args(path: events_path as FilePath),
+  )
+}
+
+fn dispatch_current_attempt_events_projection_argv_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+) -> HostExecArgv {
+  dispatch_events_projection_argv_at(
+    instance: instance,
+    events_path: dispatch_current_attempt_events_path_for_instance(instance: instance, node_id: node_id),
   )
 }
 
@@ -2258,7 +2267,10 @@ fn dispatch_attempt_unit_name(node_id: String, attempt_key: String) -> NonEmptyS
 // THE WORKER'S UNIT PROPERTIES, and every one of them answers something the tmux path either could
 // not express or had to fabricate. MemoryMax is the enforceable cgroup bound `gunbc run` requires
 // before it will size its typed-module cache -- without it the worker refuses, which is exactly the
-// failure this container replaces. WorkingDirectory is the controller checkout for the reason
+// failure this container replaces. It is the session's PLACEMENT GRANT (gunbc.roadmap_session_placement),
+// applied through the same grant-to-unit fold the compute provider uses
+// (gunbc.compute.unit_bounds compute_grant_unit_properties), so the memory the ledger counts and the
+// memory the cgroup enforces are one figure; it used to be the instance ceiling read directly. WorkingDirectory is the controller checkout for the reason
 // dispatch_pane_working_directory states. StandardOutput and StandardError append to the attempt's
 // own events path, so capture is a unit property rather than a quoted shell payload piped through
 // a terminal multiplexer.
@@ -2266,21 +2278,21 @@ fn dispatch_worker_unit_properties(
   instance: HostDashboardInstance,
   working_directory: String,
   worker_log_path: String,
+  granted: Kibibyte,
+  process_bounds: UnitProcessBounds,
 ) -> List<String> {
-  [
-    systemd_run_property(
-      name: "MemoryMax",
-      value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)),
-    ),
-    systemd_run_property(name: "WorkingDirectory", value: working_directory),
-    systemd_run_property(name: "StandardOutput", value: join(["append:", worker_log_path], "")),
-    systemd_run_property(name: "StandardError", value: join(["append:", worker_log_path], "")),
-    systemd_run_property(name: "ProtectSystem", value: "strict"),
-    systemd_run_property(name: "ProtectHome", value: "read-only"),
-    systemd_run_property(name: "PrivateTmp", value: "yes"),
-    systemd_run_property(name: "ReadWritePaths", value: dispatch_worker_writable_paths(instance: instance)),
-    systemd_run_property(name: "RemainAfterExit", value: "yes"),
-  ]
+  concat(
+    compute_grant_unit_properties(granted: granted, working_directory: working_directory, process_bounds: Present { value: process_bounds }),
+    [
+      systemd_run_property(name: "StandardOutput", value: join(["append:", worker_log_path], "")),
+      systemd_run_property(name: "StandardError", value: join(["append:", worker_log_path], "")),
+      systemd_run_property(name: "ProtectSystem", value: "strict"),
+      systemd_run_property(name: "ProtectHome", value: "read-only"),
+      systemd_run_property(name: "PrivateTmp", value: "yes"),
+      systemd_run_property(name: "ReadWritePaths", value: dispatch_worker_writable_paths(instance: instance)),
+      systemd_run_property(name: "RemainAfterExit", value: "yes"),
+    ],
+  )
 }
 
 // THE UNIT OUTLIVES ITS PROCESS ON PURPOSE. A transient unit whose main process exits 0 is collected
@@ -2305,26 +2317,38 @@ fn dispatch_worker_writable_paths(instance: HostDashboardInstance) -> String {
   ], "")
 }
 
-fn dispatch_worker_unit_argv(
-  systemd_run_program: FilePath,
-  instance: HostDashboardInstance,
-  node_id: String,
-  attempt_key: String,
-  working_directory: String,
-  worker_log_path: String,
-  inner_argv: List<String>,
-) -> HostExecArgv {
+// THE WORKER UNIT IS PLANNED WITHOUT ITS BOUNDS AND STARTED WITH THEM. Everything about the unit
+// that the spawn plan knows -- program, name, directories, the provider's argv -- is fixed here; the
+// memory bound is the placement grant, which exists only once the belt has acquired it immediately
+// before spawn. So there is no argv to run until a grant is supplied: dispatch_worker_unit_run takes
+// the granted amount as an argument, and a plan cannot be started at the instance ceiling by
+// omission.
+type DispatchWorkerUnitPlan {
+  systemd_run_program: FilePath
+  unit: NonEmptyStr
+  working_directory: String
+  worker_log_path: String
+  inner_argv: List<String>
+}
+
+fn dispatch_worker_unit_properties_for_plan(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, granted: Kibibyte, process_bounds: UnitProcessBounds) -> List<String> {
+  dispatch_worker_unit_properties(
+    instance: instance,
+    working_directory: plan.working_directory,
+    worker_log_path: plan.worker_log_path,
+    granted: granted,
+    process_bounds: process_bounds,
+  )
+}
+
+fn dispatch_worker_unit_run(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan, granted: Kibibyte, process_bounds: UnitProcessBounds) -> HostExecArgv {
   host_exec_argv(
-    program: systemd_run_program as String,
+    program: plan.systemd_run_program as String,
     args: systemd_run_user_transient_arguments(
-      unit: dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key),
-      properties: dispatch_worker_unit_properties(
-        instance: instance,
-        working_directory: working_directory,
-        worker_log_path: worker_log_path,
-      ),
+      unit: plan.unit,
+      properties: dispatch_worker_unit_properties_for_plan(instance: instance, plan: plan, granted: granted, process_bounds: process_bounds),
       setenv_bindings: [],
-      command_argv: inner_argv,
+      command_argv: plan.inner_argv,
     ),
   )
 }
@@ -2370,15 +2394,13 @@ fn dispatch_session_container_for_provider(
         Present { value: program } =>
           DispatchSessionContainerReady {
             container: SystemdUnitContainer {
-              run: dispatch_worker_unit_argv(
+              plan: DispatchWorkerUnitPlan {
                 systemd_run_program: program,
-                instance: instance,
-                node_id: node_id,
-                attempt_key: attempt_key,
+                unit: dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key),
                 working_directory: pane_working_directory,
                 worker_log_path: worker_log_path,
                 inner_argv: provider_inner,
-              ),
+              },
             },
           }
       }
@@ -2645,7 +2667,7 @@ type DispatchSessionContainer
       event_pipe: HostExecArgv
       provider_start: HostExecArgv
     }
-  | SystemdUnitContainer { run: HostExecArgv }
+  | SystemdUnitContainer { plan: DispatchWorkerUnitPlan }
 
 type DispatchSpawnCommands {
   worktree_add: HostExecArgv

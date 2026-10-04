@@ -2,7 +2,7 @@ module extdeps.vllm.engine_args
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.measure { TokenCount, Percent, BasisPoint, basis_point_count, ByteSize, byte_size_count }
+import std.measure { TokenCount, Percent, BasisPoint, basis_point_count, basis_point, ByteSize, byte_size_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -234,7 +234,16 @@ fn vllm_modality_argv(r: VllmModalityRequest) -> List<String> {
 // argument it sent, not the behaviour it got.
 // fp8_ds_mla is the DeepSeek MLA-specific fp8 KV layout; read back from the srv6 front door on
 // 2026-09-03 (gunbc.spark.vllm_observed) and the operator's pair tuple.
-type VllmKvCacheDtypeRequest = KvAuto | KvFp8 | KvFp16 | KvBf16 | KvFp8DsMla
+// NVFP4 JOINED THE REQUEST VOCABULARY WHEN THE SELECTOR'S OWN KV VOCABULARY WAS DELETED
+// (gunbc.spark.serving_deployment_selection's KvLayoutPolicy carried a `KvFp4Layout` rendering "fp4",
+// which is not a value upstream accepts). The canonical spellings are upstream's: CacheDType at
+// revision 8d09804c877c48165c6ba69bc9dc02d09bae0b83 (vllm/config/cache.py) lists both "nvfp4" and
+// "nvfp4_ds_mla". Whether a runtime, backend and device ADMIT either is a capability question with
+// its own refusals, never a property of the spelling.
+// fp8_e4m3 joined with the capability table: the DeepSeek V4.1 sparse MLA backend names it among
+// the dtypes each device major admits (extdeps.vllm.kv_dtype_capability), so the canonical request
+// must be able to say it.
+type VllmKvCacheDtypeRequest = KvAuto | KvFp8 | KvFp8E4m3 | KvFp16 | KvBf16 | KvFp8DsMla | KvNvfp4 | KvNvfp4DsMla
 
 // THE WIRE SPELLINGS, CORRECTED AGAINST THE ENGINE'S OWN CHOICE LIST. This map carried
 // KvFp16 => "fp16" and KvBf16 => "bf16", which no consumer had ever sent -- the pair requests fp8
@@ -250,9 +259,100 @@ fn vllm_kv_cache_dtype_wire(request: VllmKvCacheDtypeRequest) -> NonEmptyStr {
   match request {
     KvAuto => "auto" as NonEmptyStr
     KvFp8 => "fp8" as NonEmptyStr
+    KvFp8E4m3 => "fp8_e4m3" as NonEmptyStr
     KvFp16 => "float16" as NonEmptyStr
     KvBf16 => "bfloat16" as NonEmptyStr
     KvFp8DsMla => "fp8_ds_mla" as NonEmptyStr
+    KvNvfp4 => "nvfp4" as NonEmptyStr
+    KvNvfp4DsMla => "nvfp4_ds_mla" as NonEmptyStr
+  }
+}
+
+// THE CLOSED ROSTER, so a selector enumerates requests rather than re-listing them, and a wire read
+// back from a running engine maps to the request that renders it -- one grammar asked both ways.
+data vllm_kv_cache_dtype_requests: List<VllmKvCacheDtypeRequest> = [KvAuto, KvFp8, KvFp8E4m3, KvFp16, KvBf16, KvFp8DsMla, KvNvfp4, KvNvfp4DsMla]
+
+// WIRE MATCH IS NOT ADMISSION: this names the request a spelling denotes, and nothing about whether
+// any runtime accepts it.
+fn vllm_kv_cache_dtype_request_matching_wire(wire: NonEmptyStr) -> VllmKvCacheDtypeRequest? {
+  fold(vllm_kv_cache_dtype_requests, init: none, f: (acc, k) => match acc {
+    Present { value: _ } => acc
+    Absent => if (vllm_kv_cache_dtype_wire(request: k) as String) == (wire as String) { Present { value: k } } else { acc }
+  })
+}
+
+// ── THE SPARSE-ATTENTION INDEXER'S K CACHE DTYPE, AN AXIS INDEPENDENT OF THE MAIN KV DTYPE ─────
+//
+// vLLM's AttentionConfig.indexer_kv_dtype as upstream ships it, read at revision
+// 8d09804c877c48165c6ba69bc9dc02d09bae0b83 (vllm/config/attention.py): IndexerKVDType =
+// Literal["auto", "bf16", "fp8", "mxfp4", "nvfp4"], default "auto", which "picks the model's default
+// (bf16 for MiniMax M3, fp8 for the DeepSeek sparse indexer)". The DeepSeek sparse indexer admits only
+// ("fp8", "mxfp4") (vllm/v1/attention/backends/mla/indexer.py DSA_INDEXER_KV_DTYPES), and mxfp4 only on
+// sm_10x. It is set through the --attention-config group, whose dotted form
+// (vllm/utils/argparse_utils.py, the same rewrite --engram-config uses) needs no JSON quoting.
+//
+// IT IS A SEPARATE AXIS FROM --kv-cache-dtype ON PURPOSE: the main cache and the indexer cache are two
+// allocations with two dtypes, and a subject that carried one field for both could not tell an fp8
+// main cache with an mxfp4 indexer from the reverse. Per-revision support is
+// extdeps.vllm.runtime_defaults' job: older revisions declare a different default or no field at all.
+type VllmIndexerKvDtype = IndexerKvAuto | IndexerKvBf16 | IndexerKvFp8 | IndexerKvMxfp4 | IndexerKvNvfp4
+
+type VllmIndexerKvDtypeRequest
+  = IndexerKvDtypeOmitted
+  | IndexerKvDtypeExplicit { dtype: VllmIndexerKvDtype }
+
+data vllm_indexer_kv_dtype_flag: String = "--attention-config.indexer_kv_dtype"
+
+fn vllm_indexer_kv_dtype_wire(d: VllmIndexerKvDtype) -> NonEmptyStr {
+  match d {
+    IndexerKvAuto => "auto" as NonEmptyStr
+    IndexerKvBf16 => "bf16" as NonEmptyStr
+    IndexerKvFp8 => "fp8" as NonEmptyStr
+    IndexerKvMxfp4 => "mxfp4" as NonEmptyStr
+    IndexerKvNvfp4 => "nvfp4" as NonEmptyStr
+  }
+}
+
+data vllm_indexer_kv_dtypes: List<VllmIndexerKvDtype> = [IndexerKvAuto, IndexerKvBf16, IndexerKvFp8, IndexerKvMxfp4, IndexerKvNvfp4]
+
+fn vllm_indexer_kv_dtype_matching_wire(wire: String) -> VllmIndexerKvDtype? {
+  fold(vllm_indexer_kv_dtypes, init: none, f: (acc, d) => match acc {
+    Present { value: _ } => acc
+    Absent => if (vllm_indexer_kv_dtype_wire(d: d) as String) == wire { Present { value: d } } else { acc }
+  })
+}
+
+fn vllm_indexer_kv_dtype_argv(r: VllmIndexerKvDtypeRequest) -> List<String> {
+  match r {
+    IndexerKvDtypeOmitted => []
+    IndexerKvDtypeExplicit { dtype: d } => [vllm_indexer_kv_dtype_flag, vllm_indexer_kv_dtype_wire(d: d) as String]
+  }
+}
+
+fn vllm_indexer_kv_dtype_key(r: VllmIndexerKvDtypeRequest) -> String {
+  match r {
+    IndexerKvDtypeOmitted => "indexer_kv:omitted"
+    IndexerKvDtypeExplicit { dtype: d } => join(["indexer_kv:", vllm_indexer_kv_dtype_wire(d: d) as String], "")
+  }
+}
+
+type VllmIndexerKvDtypeRead
+  = IndexerKvDtypeReadOmitted
+  | IndexerKvDtypeReadExplicit { dtype: VllmIndexerKvDtype }
+  | IndexerKvDtypeReadUnread { cause: NonEmptyStr }
+
+fn vllm_argv_indexer_kv_dtype(argv: List<String>) -> VllmIndexerKvDtypeRead {
+  let flag = vllm_indexer_kv_dtype_flag
+  let read = vllm_argv_value(argv: argv, flag: flag)
+  match read {
+    VllmArgvFlagAbsent => IndexerKvDtypeReadOmitted
+    VllmArgvValue { value: v } =>
+      match vllm_indexer_kv_dtype_matching_wire(wire: v) {
+        Present { value: d } => IndexerKvDtypeReadExplicit { dtype: d }
+        Absent => IndexerKvDtypeReadUnread { cause: join([flag, " carries ", v, ", which is not an indexer KV dtype this module models"], "") as NonEmptyStr }
+      }
+    VllmArgvFlagWithoutValue => IndexerKvDtypeReadUnread { cause: vllm_argv_value_text(r: read, flag: flag) as NonEmptyStr }
+    VllmArgvFlagRepeated { values: _ } => IndexerKvDtypeReadUnread { cause: vllm_argv_value_text(r: read, flag: flag) as NonEmptyStr }
   }
 }
 
@@ -455,6 +555,7 @@ fn vllm_argv_value_text(r: VllmArgvValueRead, flag: String) -> String {
 data vllm_node_rank_flag: String = "--node-rank"
 data vllm_gpu_memory_utilization_flag: String = "--gpu-memory-utilization"
 data vllm_max_num_seqs_flag: String = "--max-num-seqs"
+data vllm_kv_cache_dtype_flag: String = "--kv-cache-dtype"
 
 type VllmArgvNatRead
   = VllmArgvNat { value: Nat }
@@ -543,5 +644,203 @@ fn vllm_pad_fraction_to_basis_points(fraction: String) -> String {
     fraction
   } else {
     vllm_pad_fraction_to_basis_points(fraction: join([fraction, "0"], ""))
+  }
+}
+
+// ── THE SCHEDULER'S RUNTIME KV ADMISSION CONTROLS ────────────────────────────────────────────────
+//
+// vLLM's SchedulerConfig as upstream ships it, read at github.com/vllm-project/vllm revision
+// 8d09804c877c48165c6ba69bc9dc02d09bae0b83 (vllm/config/scheduler.py SchedulerConfig): two fields
+// govern whether a WAITING request may enter the running set once the sequence cap admits it.
+//   scheduler_reserve_full_isl: bool = True -- vllm/v1/core/kv_cache_manager.py allocate_slots,
+//     full_sequence_must_fit: the full current sequence (min(num_tokens, max_model_len)) must fit
+//     in the free blocks AFTER the engine's own prefix-cache lookup, or the request is not admitted.
+//     Without it only the first chunk is checked, and chunked prefill can over-admit.
+//   watermark: float = 0.0, range [0.0, 1.0) -- a fraction of total KV blocks held free when
+//     admitting WAITING or PREEMPTED requests while at least one request is already scheduled.
+// vllm/engine/arg_utils.py registers them as --scheduler-reserve-full-isl (argparse
+// BooleanOptionalAction, so --no-scheduler-reserve-full-isl is its negation) and --watermark.
+//
+// WHY THEY ARE MODELLED NOW. A launch that admits more sequences than its cold guarantee prices is
+// safe only through this gate: the sequence cap says how many request states may run, and THIS says
+// whether the next one's actual incremental KV demand fits. Left as inherited defaults, the safety
+// of every above-floor sequence would rest on a value nobody declared and nothing reads back.
+//
+// THE SAME SHAPE AS PREFIX CACHING: omitted is a real state (the revision's default resolves it, and
+// that resolution is extdeps.vllm.runtime_defaults' job), explicit renders exactly one flag.
+type VllmFullInputAdmissionRequest
+  = FullInputAdmissionOmitted
+  | FullInputAdmissionExplicit { enabled: Bool }
+
+type VllmKvWatermarkRequest
+  = KvWatermarkOmitted
+  | KvWatermarkExplicit { fraction: BasisPoint }
+
+type VllmSchedulerAdmissionRequest {
+  full_input_admission: VllmFullInputAdmissionRequest
+  kv_watermark: VllmKvWatermarkRequest
+}
+
+// THE LAUNCH THAT STATES NEITHER CONTROL, which is every launch before this change: the revision's
+// defaults decide both, and extdeps.vllm.runtime_defaults resolve_vllm_scheduler_admission names them.
+data vllm_scheduler_admission_omitted: VllmSchedulerAdmissionRequest = VllmSchedulerAdmissionRequest {
+  full_input_admission: FullInputAdmissionOmitted,
+  kv_watermark: KvWatermarkOmitted,
+}
+
+data vllm_scheduler_reserve_full_isl_flag: String = "--scheduler-reserve-full-isl"
+data vllm_no_scheduler_reserve_full_isl_flag: String = "--no-scheduler-reserve-full-isl"
+data vllm_watermark_flag: String = "--watermark"
+
+// A WATERMARK OF 10000 BASIS POINTS OR MORE IS OUTSIDE UPSTREAM'S DECLARED RANGE (lt=1.0), and the
+// engine refuses it at config validation. The request type cannot exclude it, so this names the
+// defect before anything renders it; a renderer that emitted it would ship a launch that dies at init.
+fn vllm_scheduler_admission_defect(r: VllmSchedulerAdmissionRequest) -> NonEmptyStr? {
+  match r.kv_watermark {
+    KvWatermarkOmitted => none
+    KvWatermarkExplicit { fraction: bp } =>
+      if basis_point_count(bp: bp) >= 10000 {
+        Present { value: join([
+          "a KV watermark of ", to_string(basis_point_count(bp: bp)),
+          " basis points is outside upstream's range [0.0, 1.0): SchedulerConfig.watermark refuses it at validation",
+        ], "") as NonEmptyStr }
+      } else {
+        none
+      }
+  }
+}
+
+fn vllm_scheduler_admission_argv(r: VllmSchedulerAdmissionRequest) -> List<String> {
+  concat(
+    match r.full_input_admission {
+      FullInputAdmissionOmitted => []
+      FullInputAdmissionExplicit { enabled: e } =>
+        if e { [vllm_scheduler_reserve_full_isl_flag] } else { [vllm_no_scheduler_reserve_full_isl_flag] }
+    },
+    match r.kv_watermark {
+      KvWatermarkOmitted => []
+      KvWatermarkExplicit { fraction: bp } => [vllm_watermark_flag, vllm_basis_point_fraction_wire(bp: bp)]
+    })
+}
+
+fn vllm_scheduler_admission_key(r: VllmSchedulerAdmissionRequest) -> String {
+  join([
+    match r.full_input_admission {
+      FullInputAdmissionOmitted => "fullisl:omitted"
+      FullInputAdmissionExplicit { enabled: e } => if e { "fullisl:on" } else { "fullisl:off" }
+    },
+    "/",
+    match r.kv_watermark {
+      KvWatermarkOmitted => "watermark:omitted"
+      KvWatermarkExplicit { fraction: bp } => join(["watermark:", vllm_basis_point_fraction_wire(bp: bp)], "")
+    },
+  ], "")
+}
+
+// ── READING THE CONTROLS BACK OFF A LAUNCHED ARGV ────────────────────────────────────────────────
+//
+// The inverse of the renderer above, so a plan and a container can be compared on these fields
+// rather than assumed equal. DECLARED FRONTIER: in this change only the scheduler-envelope witness calls
+// these readers; their production consumer is gunbc.spark.serving_relaunch_transaction's admission-controls
+// axis, which lands in deforking cut 7 (#12986), and that landing is the trigger. Both spellings of the boolean present at once, or either repeated, is a
+// mis-assembled argv and refuses rather than taking argparse's last-wins answer.
+type VllmFullInputAdmissionRead
+  = FullInputAdmissionReadOmitted
+  | FullInputAdmissionReadExplicit { enabled: Bool }
+  | FullInputAdmissionReadConflict { cause: NonEmptyStr }
+
+fn vllm_argv_full_input_admission(argv: List<String>) -> VllmFullInputAdmissionRead {
+  let on = fold(argv, init: 0, f: (acc, w) => if w == vllm_scheduler_reserve_full_isl_flag { acc + 1 } else { acc })
+  let off = fold(argv, init: 0, f: (acc, w) => if w == vllm_no_scheduler_reserve_full_isl_flag { acc + 1 } else { acc })
+  if on + off > 1 {
+    FullInputAdmissionReadConflict { cause: join([
+      "the argv carries ", vllm_scheduler_reserve_full_isl_flag, " ", to_string(on), " times and ",
+      vllm_no_scheduler_reserve_full_isl_flag, " ", to_string(off), " times; one launch states this once",
+    ], "") as NonEmptyStr }
+  } else if on == 1 {
+    FullInputAdmissionReadExplicit { enabled: true }
+  } else if off == 1 {
+    FullInputAdmissionReadExplicit { enabled: false }
+  } else {
+    FullInputAdmissionReadOmitted
+  }
+}
+
+type VllmKvWatermarkRead
+  = KvWatermarkReadOmitted
+  | KvWatermarkReadExplicit { fraction: BasisPoint }
+  | KvWatermarkReadUnread { cause: NonEmptyStr }
+
+fn vllm_argv_kv_watermark(argv: List<String>) -> VllmKvWatermarkRead {
+  let flag = vllm_watermark_flag
+  let read = vllm_argv_value(argv: argv, flag: flag)
+  match read {
+    VllmArgvFlagAbsent => KvWatermarkReadOmitted
+    VllmArgvValue { value: v } =>
+      match vllm_basis_points_of_fraction(text: v, flag: flag) {
+        VllmArgvNat { value: n } => KvWatermarkReadExplicit { fraction: basis_point(count: n) }
+        VllmArgvNatUnread { cause: c } => KvWatermarkReadUnread { cause: c }
+      }
+    VllmArgvFlagWithoutValue => KvWatermarkReadUnread { cause: vllm_argv_value_text(r: read, flag: flag) as NonEmptyStr }
+    VllmArgvFlagRepeated { values: _ } => KvWatermarkReadUnread { cause: vllm_argv_value_text(r: read, flag: flag) as NonEmptyStr }
+  }
+}
+
+// ── THE ADMISSION FLAGS AS ONE UNIT OF AN ARGV ────────────────────────────────────────────────────
+//
+// The scheduler's admission controls and the indexer dtype are flags a launch may add or omit, so
+// they change an argv's LENGTH -- a word-wise comparison cannot attribute that to an axis. This
+// projection removes exactly those words (the boolean spellings, and each valued flag with the word
+// after it), so a reader compares the rest word for word and compares these through their typed
+// readers. A valued flag at the end with no value is left in place, so the word comparison still
+// sees the malformed argv.
+fn vllm_argv_without_admission_flags(argv: List<String>) -> List<String> {
+  let scan = fold(argv, init: AdmissionStrip { kept: [], skip_next: false }, f: (acc, word) =>
+    if acc.skip_next {
+      AdmissionStrip { kept: acc.kept, skip_next: false }
+    } else if word == vllm_scheduler_reserve_full_isl_flag || word == vllm_no_scheduler_reserve_full_isl_flag {
+      acc
+    } else if word == vllm_watermark_flag || word == vllm_indexer_kv_dtype_flag {
+      AdmissionStrip { kept: acc.kept, skip_next: true }
+    } else {
+      AdmissionStrip { kept: concat(acc.kept, [word]), skip_next: false }
+    })
+  if scan.skip_next { argv } else { scan.kept }
+}
+
+type AdmissionStrip {
+  kept: List<String>
+  skip_next: Bool
+}
+
+// THE ADMISSION CONTROLS AN ARGV CARRIES, read back into the TYPED requests the launch rendered them
+// from (review 74142), or none when either cannot be read (a repeated or conflicting flag). Comparison
+// goes through the renderers' own keys (vllm_scheduler_admission_key, vllm_indexer_kv_dtype_key), so
+// there is one spelling of each control and a reader cannot drift from what a launch renders.
+fn vllm_argv_scheduler_admission(argv: List<String>) -> VllmSchedulerAdmissionRequest? {
+  let full = match vllm_argv_full_input_admission(argv: argv) {
+    FullInputAdmissionReadOmitted => Present { value: FullInputAdmissionOmitted }
+    FullInputAdmissionReadExplicit { enabled: e } => Present { value: FullInputAdmissionExplicit { enabled: e } }
+    FullInputAdmissionReadConflict { cause: _ } => none
+  }
+  let wm = match vllm_argv_kv_watermark(argv: argv) {
+    KvWatermarkReadOmitted => Present { value: KvWatermarkOmitted }
+    KvWatermarkReadExplicit { fraction: bp } => Present { value: KvWatermarkExplicit { fraction: bp } }
+    KvWatermarkReadUnread { cause: _ } => none
+  }
+  match full {
+    Absent => none
+    Present { value: f } => match wm {
+      Absent => none
+      Present { value: w } => Present { value: VllmSchedulerAdmissionRequest { full_input_admission: f, kv_watermark: w } }
+    }
+  }
+}
+
+fn vllm_argv_indexer_kv_dtype_request(argv: List<String>) -> VllmIndexerKvDtypeRequest? {
+  match vllm_argv_indexer_kv_dtype(argv: argv) {
+    IndexerKvDtypeReadOmitted => Present { value: IndexerKvDtypeOmitted }
+    IndexerKvDtypeReadExplicit { dtype: d } => Present { value: IndexerKvDtypeExplicit { dtype: d } }
+    IndexerKvDtypeReadUnread { cause: _ } => none
   }
 }

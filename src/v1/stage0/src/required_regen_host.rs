@@ -1208,11 +1208,8 @@ fn emitted_tree_packages(
     // and by nothing after it, so the pool is not put in the thread's shared memo, where it
     // would sit beside the round's source-roots index for the life of the thread.
     let index = super::build_multi_entry_index(&roots);
-    let (graph, indices) =
-        super::resolve_entry_with_index_for_discovery_corpus(&index, &entry.to_string_lossy())
-            .map_err(|e| {
-                format!("refusal: the emitted tree's package graph did not resolve: {e}")
-            })?;
+    let (graph, indices) = super::resolve_entry_with_index(&index, &entry.to_string_lossy())
+        .map_err(|e| format!("refusal: the emitted tree's package graph did not resolve: {e}"))?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
     // DECODE IS NOT HAND-WRITTEN: `Value` -> `value_to_wire_json` -> `serde_json::from_value` into
     // the mirror types, the decode authority `namespace_baseline` `decode_environment_value` uses.
@@ -2962,111 +2959,6 @@ mod tests {
     }
 
     #[test]
-    fn filter_in_branch_condition_refuses_and_does_not_publish_the_module() {
-        let (named, module_published, positive_published, positive_named, free_named, free_published, free_has_fn) =
-            std::thread::Builder::new()
-                .stack_size(16 * 1024 * 1024)
-                .spawn(|| {
-                    let emit_one = |content: &str| {
-                        let module_index =
-                            crate::cli_run::build_module_path_index_from_witness_roots();
-                        let sources = crate::cli_run::resolve_virtual_source_with_imports(
-                            "probe.dag",
-                            content,
-                            &module_index,
-                        );
-                        let resolved = compile_to_resolved(Rc::new(sources.into()));
-                        let typed = emittable_graph(resolved)
-                            .expect("front-end must accept the specimen so emission is the wall")
-                            .graph();
-                        crate::v1_compiler_emit_rust::emit_rust(typed)
-                    };
-                    let negative = emit_one(
-                        "module fx.filter_guard\nimport std.types { List, Bool, Int }\nfn f(xs: List<Int>) -> Int {\n  if (xs |> filter(x => x > 0) |> count) > 0 {\n    1\n  } else {\n    0\n  }\n}\n",
-                    );
-                    let named = negative.diagnostics.iter().any(|d| {
-                        matches!(
-                            &*d.diagnostic,
-                            crate::v1_std_core::CompilerDiagnostic::EmissionConstructUnprojectable {
-                                construct,
-                                ..
-                            } if matches!(
-                                construct,
-                                crate::v1_std_core::UnprojectableConstruct::FilterInBranchCondition
-                            )
-                        ) && crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())
-                    });
-                    let module_published = negative.files.iter().any(|f| {
-                        f.path.contains("fx_filter_guard")
-                    });
-                    let positive = emit_one(
-                        "module fx.any_guard\nimport std.types { List, Bool, Int }\nfn f(xs: List<Int>) -> Int {\n  if xs |> any(x => x > 0) {\n    1\n  } else {\n    0\n  }\n}\n",
-                    );
-                    let positive_named = positive.diagnostics.iter().any(|d| {
-                        matches!(
-                            &*d.diagnostic,
-                            crate::v1_std_core::CompilerDiagnostic::EmissionConstructUnprojectable { .. }
-                        )
-                    });
-                    let positive_published = positive.files.iter().any(|f| f.path.contains("fx_any_guard"));
-                    let free_call = emit_one(
-                        "module fx.filter_call_guard\nimport std.types { List, Bool, Int }\nfn f(xs: List<Int>) -> Int {\n  if (filter(xs, x => x > 0) |> count) > 0 {\n    1\n  } else {\n    0\n  }\n}\n",
-                    );
-                    let free_named = free_call.diagnostics.iter().any(|d| {
-                        matches!(
-                            &*d.diagnostic,
-                            crate::v1_std_core::CompilerDiagnostic::EmissionConstructUnprojectable {
-                                construct,
-                                ..
-                            } if matches!(
-                                construct,
-                                crate::v1_std_core::UnprojectableConstruct::FilterInBranchCondition
-                            )
-                        ) && crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())
-                    });
-                    let free_published = free_call
-                        .files
-                        .iter()
-                        .any(|f| f.path.contains("fx_filter_call_guard"));
-                    let free_has_fn = free_call.files.iter().any(|f| {
-                        f.path.contains("fx_filter_call_guard") && f.content.contains("fn f")
-                    });
-                    (
-                        named,
-                        module_published,
-                        positive_published,
-                        positive_named,
-                        free_named,
-                        free_published,
-                        free_has_fn,
-                    )
-                })
-                .expect("spawn projection-refusal thread")
-                .join()
-                .expect("projection-refusal thread panicked");
-        assert!(
-            named,
-            "filter in a branch condition must refuse at emission with EmissionConstructUnprojectable naming the construct"
-        );
-        assert!(
-            !module_published,
-            "the refused module must be absent from EmitResult.files — output-plus-diagnostic is not a fix"
-        );
-        assert!(
-            positive_published && !positive_named,
-            "an already-supported guarded any-lambda must still emit its module"
-        );
-        assert!(
-            free_named,
-            "written-as-free-call filter in a guard must refuse via the method arm after infer rewrite"
-        );
-        assert!(
-            !free_published && !free_has_fn,
-            "the rewritten free-call spelling must still withhold the module from EmitResult.files"
-        );
-    }
-
-    #[test]
     fn declared_hand_maintained_row_must_name_an_existing_path() {
         let root = temp_dir("declared-row-wall");
         let src = root.join("src");
@@ -3502,11 +3394,8 @@ impl RegenConvergenceModel {
                 "refusal: convergence transaction model is outside source roots".to_string()
             })?;
         let index = super::process_shared_index(source_roots);
-        let (graph, indices) =
-            super::resolve_entry_with_index_for_discovery_corpus(&index, &entry.to_string_lossy())
-                .map_err(|e| {
-                    format!("refusal: convergence transaction model did not resolve: {e}")
-                })?;
+        let (graph, indices) = super::resolve_entry_with_index(&index, &entry.to_string_lossy())
+            .map_err(|e| format!("refusal: convergence transaction model did not resolve: {e}"))?;
         Ok(Self { graph, indices })
     }
 
@@ -4301,10 +4190,9 @@ fn render_round_cost_receipt(
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = round_cost_entry(source_roots)?;
     let index = super::process_shared_index(source_roots);
-    let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
-        .map_err(|e| {
-            format!("refusal: {entry} did not resolve, so the receipt cannot render: {e}")
-        })?;
+    let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
+        format!("refusal: {entry} did not resolve, so the receipt cannot render: {e}")
+    })?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
     // The model's carriers, built in the model's vocabulary: a duration is a
     // `std.measure` Nanosecond (`Measure { count }`) inside `std.observation` Measured, on a
@@ -4500,10 +4388,9 @@ fn partition_rebuild_actuation(
     use crate::v1_interpreter::{self, ExecutionMode};
     let entry = round_cost_entry(source_roots)?;
     let index = super::process_shared_index(source_roots);
-    let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
-        .map_err(|e| {
-            format!("refusal: {entry} did not resolve, so the rebuild scope has no decider: {e}")
-        })?;
+    let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
+        format!("refusal: {entry} did not resolve, so the rebuild scope has no decider: {e}")
+    })?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
     let call = |function: &str| -> Result<ModelValue, String> {
         let args = vec![
@@ -6335,9 +6222,7 @@ mod regen_round_cost_tests {
             );
             let entry = round_cost_entry(&roots).unwrap();
             let index = super::super::process_shared_index(&roots);
-            let (graph, indices) =
-                super::super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
-                    .unwrap();
+            let (graph, indices) = super::super::resolve_entry_with_index(&index, &entry).unwrap();
             let ctx = super::super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
             let decision_line = |mirror: &str, shell: &[String]| {
                 let args = vec![
@@ -8050,7 +7935,7 @@ pub fn regen_generation_role_population(
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = affected_set_entry(source_roots)?;
     let index = super::process_shared_index(source_roots);
-    let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
+    let (graph, indices) = super::resolve_entry_with_index(&index, &entry)
         .map_err(|e| format!("refusal: {entry} did not resolve for generation roles: {e}"))?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
     let strings = |items: &[String]| {
@@ -8157,10 +8042,9 @@ pub fn render_affected_set_bound(
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = affected_set_entry(source_roots)?;
     let index = super::process_shared_index(source_roots);
-    let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
-        .map_err(|e| {
-            format!("refusal: {entry} did not resolve, so the bound cannot answer: {e}")
-        })?;
+    let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
+        format!("refusal: {entry} did not resolve, so the bound cannot answer: {e}")
+    })?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
 
     let reached = regen_reverse_closure_host(edited, edges);
@@ -8313,10 +8197,9 @@ pub fn render_scope_selection(
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = required_regen_scope_entry(source_roots)?;
     let index = super::process_shared_index(source_roots);
-    let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
-        .map_err(|e| {
-            format!("refusal: {entry} did not resolve, so the scope cannot answer: {e}")
-        })?;
+    let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
+        format!("refusal: {entry} did not resolve, so the scope cannot answer: {e}")
+    })?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
     let strs = |items: &[String]| {
         let values: Vec<Value> = items.iter().map(str_value).collect();

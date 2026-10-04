@@ -1,6 +1,6 @@
 module v2.test.manual.node_minimal_representation_test
 
-import std.occurrence_identity { OccurrenceSynthetic }
+import std.occurrence_identity { OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
 import v2.std.node { Node, TypeNode, Atom }
 import v2.std.node_minimal {
   MnkSubstrateGraph,
@@ -77,29 +77,29 @@ fn witness_substrate_kind_round_trips_v2_node() -> Bool {
     MrnSubstrateGraph { kind: ComputationNode { behavior: _ }, children: _, occurrence_id: OccurrenceSynthetic } => false
     MrnSubstrateGraph { kind: ComputationNode { behavior: _ }, children: _, occurrence_id: OccurrenceMinted { id: _ } } => false
     MrnSubstrateGraph { kind: ComputationNode { behavior: _ }, children: _, occurrence_id: OccurrenceProjected { id: _, caused_by: _ } } => false
+    MrnSubstrateGraph { kind: ComputationNode { behavior: _ }, children: _, occurrence_id: OccurrencePending { caused_by: _ } } => false
     MrnSubstrateGraph { kind: TypeNode { connective: Conj }, children: _, occurrence_id: OccurrenceSynthetic } => false
     MrnSubstrateGraph { kind: TypeNode { connective: Conj }, children: _, occurrence_id: OccurrenceMinted { id: _ } } => false
     MrnSubstrateGraph { kind: TypeNode { connective: Conj }, children: _, occurrence_id: OccurrenceProjected { id: _, caused_by: _ } } => false
+    MrnSubstrateGraph { kind: TypeNode { connective: Conj }, children: _, occurrence_id: OccurrencePending { caused_by: _ } } => false
     MrnSubstrateGraph { kind: TypeNode { connective: Disj }, children: _, occurrence_id: OccurrenceSynthetic } => false
     MrnSubstrateGraph { kind: TypeNode { connective: Disj }, children: _, occurrence_id: OccurrenceMinted { id: _ } } => false
     MrnSubstrateGraph { kind: TypeNode { connective: Disj }, children: _, occurrence_id: OccurrenceProjected { id: _, caused_by: _ } } => false
+    MrnSubstrateGraph { kind: TypeNode { connective: Disj }, children: _, occurrence_id: OccurrencePending { caused_by: _ } } => false
     MrnSubstrateGraph { kind: TypeNode { connective: Arrow }, children: _, occurrence_id: OccurrenceSynthetic } => false
     MrnSubstrateGraph { kind: TypeNode { connective: Arrow }, children: _, occurrence_id: OccurrenceMinted { id: _ } } => false
     MrnSubstrateGraph { kind: TypeNode { connective: Arrow }, children: _, occurrence_id: OccurrenceProjected { id: _, caused_by: _ } } => false
+    MrnSubstrateGraph { kind: TypeNode { connective: Arrow }, children: _, occurrence_id: OccurrencePending { caused_by: _ } } => false
     MrnSubstrateGraph { kind: TypeNode { connective: Cardinality }, children: _, occurrence_id: OccurrenceSynthetic } => false
     MrnSubstrateGraph { kind: TypeNode { connective: Cardinality }, children: _, occurrence_id: OccurrenceMinted { id: _ } } => false
     MrnSubstrateGraph { kind: TypeNode { connective: Cardinality }, children: _, occurrence_id: OccurrenceProjected { id: _, caused_by: _ } } => false
+    MrnSubstrateGraph { kind: TypeNode { connective: Cardinality }, children: _, occurrence_id: OccurrencePending { caused_by: _ } } => false
     MrnSubstrateGraph { kind: TypeNode { connective: Instantiation }, children: _, occurrence_id: OccurrenceSynthetic } => false
     MrnSubstrateGraph { kind: TypeNode { connective: Instantiation }, children: _, occurrence_id: OccurrenceMinted { id: _ } } => false
     MrnSubstrateGraph { kind: TypeNode { connective: Instantiation }, children: _, occurrence_id: OccurrenceProjected { id: _, caused_by: _ } } => false
+    MrnSubstrateGraph { kind: TypeNode { connective: Instantiation }, children: _, occurrence_id: OccurrencePending { caused_by: _ } } => false
     MrnSubstrateGraph { kind: TypeNode { connective: Atom { identity: _ } }, children: _, occurrence_id: OccurrenceMinted { id: _ } } => false
     MrnSubstrateGraph { kind: TypeNode { connective: Atom { identity: _ } }, children: _, occurrence_id: OccurrenceProjected { id: _, caused_by: _ } } => false
-    MrnSubstrateGraph { kind: ComputationNode { behavior: _ }, children: _, occurrence_id: OccurrencePending { caused_by: _ } } => false
-    MrnSubstrateGraph { kind: TypeNode { connective: Conj }, children: _, occurrence_id: OccurrencePending { caused_by: _ } } => false
-    MrnSubstrateGraph { kind: TypeNode { connective: Disj }, children: _, occurrence_id: OccurrencePending { caused_by: _ } } => false
-    MrnSubstrateGraph { kind: TypeNode { connective: Arrow }, children: _, occurrence_id: OccurrencePending { caused_by: _ } } => false
-    MrnSubstrateGraph { kind: TypeNode { connective: Cardinality }, children: _, occurrence_id: OccurrencePending { caused_by: _ } } => false
-    MrnSubstrateGraph { kind: TypeNode { connective: Instantiation }, children: _, occurrence_id: OccurrencePending { caused_by: _ } } => false
     MrnSubstrateGraph { kind: TypeNode { connective: Atom { identity: _ } }, children: _, occurrence_id: OccurrencePending { caused_by: _ } } => false
   }
 }

@@ -1,0 +1,117 @@
+module test.claim.managed_host_witness
+
+import std.types { Bool, NonEmptyStr, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved }
+import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.managed_host {
+  managed_host_fixture,
+  ManagedHostAccessUnobserved,
+  ManagedHostBound,
+  ManagedHostEndpointMismatch,
+  ManagedHostNotSecured,
+  ResetNoUnitHold,
+  ResetUnitHoldRequired,
+  managed_host_binding,
+  managed_hosts,
+}
+import gunbc.host_reset_subject_roster {
+  ResetSubjectAdmitted,
+  ResetSubjectControllerNotAdmitted,
+  ResetSubjectNoSelection,
+  ResetSubjectUnbound,
+  admit_reset_subject,
+  reset_subject_roster,
+  reset_subject_roster_of,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE INHABITANCE CLAIM, AND IT ASSERTS THE ROUTE. The managed set is exactly the mtcollins1 row; its
+// secured account binds to an access observation of the same controller; the reset admission admits
+// it with a selection; its hold is required; and the reset roster is exactly its host. Removing the
+// row, or its secure standing going Absent, turns this red.
+test fn w_reset_roster_is_exactly_mtcollins1_through_the_binding_and_admission() -> Bool {
+  let hosts = managed_hosts()
+  let roster = reset_subject_roster()
+  count(hosts) == 1
+    && hosts |> all(h =>
+      (h.host as String) == (operator_host_mtcollins1 as String)
+        && match managed_host_binding(host: h) {
+          ManagedHostBound { binding: b } => (b.observation.endpoint.host as String) != ""
+          ManagedHostAccessUnobserved { endpoint: _ } => false
+          ManagedHostNotSecured { cause: _ } => false
+          ManagedHostEndpointMismatch { observed: _, secured: _ } => false
+        }
+        && match admit_reset_subject(host: h) {
+          ResetSubjectAdmitted { subject: _ } => true
+          ResetSubjectUnbound { standing: _ } => false
+          ResetSubjectNoSelection { host: _ } => false
+          ResetSubjectControllerNotAdmitted { admission: _ } => false
+        }
+        && match h.unit_hold {
+          ResetUnitHoldRequired { key: _, store_host: _ } => true
+          ResetNoUnitHold => false
+        })
+    && count(roster) == 1
+    && roster |> all(r => (r as String) == (operator_host_mtcollins1 as String))
+}
+
+fn observation_at(o: BmcAccessObservation, host: String) -> BmcAccessObservation {
+  BmcAccessObservation {
+    endpoint: BmcControllerEndpoint { host: host as NonEmptyStr },
+    identity: o.identity,
+    discovered_surfaces: o.discovered_surfaces,
+    boot_control_routes: o.boot_control_routes,
+    redfish_virtual_media_probe: o.redfish_virtual_media_probe,
+    successful_read_surfaces: o.successful_read_surfaces,
+    successful_write_surfaces: o.successful_write_surfaces,
+    raw_response: o.raw_response,
+    observed_at: o.observed_at,
+  }
+}
+
+// RED: A SECURE STANDING FOR CONTROLLER A BESIDE AN ACCESS OBSERVATION OF CONTROLLER B. The real row's
+// secure standing is kept and its access observation is re-pointed at another controller; the
+// binding refuses on the mismatch and the host is absent from the roster, so a secured account can
+// never be sent to a controller it did not secure.
+test fn w_a_secured_account_beside_another_controllers_access_is_not_bound_or_rostered() -> Bool {
+  managed_hosts() |> all(h => {
+    let crossed = match h.access {
+      BmcAccessUnobserved { endpoint: _ } => h
+      BmcAccessObserved { observation: o } =>
+        managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_at(o: o, host: "fixture-other-bmc") }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold)
+    }
+    let mismatched = match managed_host_binding(host: crossed) {
+      ManagedHostEndpointMismatch { observed: ob, secured: _ } => (ob.host as String) == "fixture-other-bmc"
+      ManagedHostBound { binding: _ } => false
+      ManagedHostAccessUnobserved { endpoint: _ } => false
+      ManagedHostNotSecured { cause: _ } => false
+    }
+    mismatched && count(reset_subject_roster_of(hosts: [crossed])) == 0
+  }) && count(managed_hosts()) == 1
+}
+
+// RED: A CAPABLE HOST WITH NO RESET SELECTION. The real row's standings are kept under a host name
+// gunbc.host_reset_boot_selection has no selection for; it binds, but admission refuses it as
+// selection-less and the roster over both hosts is exactly mtcollins1.
+test fn w_a_capable_host_with_no_reset_selection_is_absent_from_the_roster() -> Bool {
+  managed_hosts() |> all(h => {
+    let unselected = managed_host_fixture(host: "fixture-unselected-host", access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold)
+    let bound = match managed_host_binding(host: unselected) {
+      ManagedHostBound { binding: _ } => true
+      ManagedHostAccessUnobserved { endpoint: _ } => false
+      ManagedHostNotSecured { cause: _ } => false
+      ManagedHostEndpointMismatch { observed: _, secured: _ } => false
+    }
+    let refused = match admit_reset_subject(host: unselected) {
+      ResetSubjectNoSelection { host: x } => (x as String) == "fixture-unselected-host"
+      ResetSubjectAdmitted { subject: _ } => false
+      ResetSubjectUnbound { standing: _ } => false
+      ResetSubjectControllerNotAdmitted { admission: _ } => false
+    }
+    let roster = reset_subject_roster_of(hosts: [unselected, h])
+    bound && refused && count(roster) == 1 && roster |> all(r => (r as String) == (operator_host_mtcollins1 as String))
+  }) && count(managed_hosts()) == 1
+}
