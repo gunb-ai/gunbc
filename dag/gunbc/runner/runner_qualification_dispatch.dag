@@ -520,8 +520,23 @@ fn designated_job_log(designated_job_id: Int, log: AttemptJobLog) -> DesignatedJ
 // writes it, and only after reading the designated job's log over the network: the subject it
 // names, the length (in Unicode code points, as the transport hands the body over) and the content
 // digest of the complete log body the rows came from, and the rows. A later assessment does not
-// have to trust rows detached from the job and the bytes that produced them, and a caller cannot
-// author one from invented text -- the decoder above is open, this record is not.
+// have to trust rows detached from the job and the bytes that produced them. The decoder above is
+// open; this record is not.
+//
+// RUNG OF THE SEAL, STATED AT ITS EVIDENCE (DESIGN 4b(1)): CHECKED ONCE, NOT ENROLLED. The seal is
+// the compiler's sole_constructor and admit_callers walls applied to this record, the subject above
+// and job_log_standing. On 2026-10-04, compile_dag_diagnostic_census probes run once with the
+// interpreter gave one SoleConstructorViolation for a forged receipt literal, one for a forged
+// subject literal, one ConstructorCallAdmissionRefused for an outside call to job_log_standing, and
+// zero for a module that only calls the decoder. Nothing re-runs those probes. A probe that compiles
+// against these declarations must import this module, so it is ReadsLiveTree, and the required
+// floor declines ReadsLiveTree claims rather than executing them
+// (gunbc.qualified_pipe_callee_seed_growth); the SubstrateInputsOnly compile harnesses compile only
+// self-contained modules, which would test the compiler's generic wall rather than this seal.
+// NEXT-RUNG TRIGGER, A CAPABILITY: the required floor can enrol and execute a ReadsLiveTree
+// compile-refusal probe, SUFFICIENT FOR those four probes running on every required run, so that
+// removing sole_constructor from either record or the admit list from job_log_standing turns a
+// required lane red.
 type QualificationJobLogReceipt sole_constructor {
   subject: QualificationExtractionSubject
   log_code_points: Int
