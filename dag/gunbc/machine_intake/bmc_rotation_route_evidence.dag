@@ -1,6 +1,7 @@
 module gunbc.machine_intake_bmc_rotation_route_evidence
 
 import std.types { NonEmptyStr, String }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.content_hash { Sha256Hash }
 import std.content_hash { sha256_hex_digest }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
@@ -20,8 +21,8 @@ import gunbc.machine_intake_mtjade1_access_observation {
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_firmware }
 import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_user3_route_evidence }
 import gunbc.machine_intake_bmc_rotation_route {
-  BmcRotationRouteStanding, IpmiSetUserPassword, ObservedSurfaceRead,
-  rotation_route_candidate, rotation_route_from_committed_execution, redfish_account_password_write,
+  BmcRotationRouteStanding, HistoricalRotationRouteObservation, IpmiSetUserPassword, ObservedSurfaceRead,
+  rotation_route_from_committed_execution, redfish_account_password_write,
 }
 
 // THE ROTATION ROUTE STANDING OF EACH CONTROLLER THIS FLEET HAS EVIDENCE FOR, derived from that
@@ -45,14 +46,18 @@ fn mtcollins1_rotation_route_standing() -> BmcRotationRouteStanding {
   )
 }
 
-// MTJADE1: AT MOST A CANDIDATE, AND ONLY WHEN ITS MANAGER READ BINDS. The committed Redfish
-// GET /redfish/v1/Managers/Self proves the controller serves a Redfish Manager surface at the address
-// it was read on and reports the firmware build it reports. It proves no AccountService write and no
-// IPMI user-management request on this controller, so the standing is a qualification candidate for
-// the Redfish account-password write naming that observed surface -- never grounded. The build is
-// read from the capture (its FirmwareVersion) and the family from the same capture's discrimination,
-// so a capture that does not decode, does not bind to this unit's observed link, or does not
-// discriminate a family yields no standing rather than a stand-in.
+// MTJADE1: A HISTORICAL OBSERVATION, NOT A STANDING. The committed Redfish GET
+// /redfish/v1/Managers/Self was read on 2026-10-03 at the controller's FACTORY address 10.0.7.2; the
+// controller has since been moved to DHCP, so that address is not its current endpoint and a standing
+// keyed on it would describe a controller nobody can reach there. The read proves a Redfish Manager
+// surface at the build it reports, and proves no AccountService write and no IPMI user-management
+// request. So this module states only what the capture is entitled to: a historical route
+// observation naming the observed surface, the address and build it was read at, and the Redfish
+// account write that makes it worth qualifying. NO CURRENT mtjade1 STANDING IS MINTED IN THIS CUT:
+// AccessDiscover (cut O1c-1) mints it from a current read at the current endpoint
+// (mtjade1_current_route_standing_frontier). A capture that does not decode, does not bind to this
+// unit's observed link, or does not discriminate a family yields no observation rather than a
+// stand-in.
 fn mtjade1_observed_endpoint(network: ObservedBmcNetwork) -> BmcControllerEndpoint? {
   match network {
     BmcNetworkObservedStatic { address: a, prefix: _, gateway: _, link: _, basis: _ } => Present { value: BmcControllerEndpoint { host: render_ipv4_address(addr: a) } }
@@ -68,7 +73,7 @@ fn manager_read_receipt(read: RecordedManagerIdentityObservation) -> EvidenceRef
   }
 }
 
-fn rotation_route_standing_from_manager_read(read: RecordedManagerIdentityObservation) -> BmcRotationRouteStanding? {
+fn historical_route_observation_from_manager_read(read: RecordedManagerIdentityObservation) -> HistoricalRotationRouteObservation? {
   match read.decoded {
     RecordedManagerRefused { gap: _ } => none
     RecordedManagerDecoded { observation: o } =>
@@ -85,12 +90,12 @@ fn rotation_route_standing_from_manager_read(read: RecordedManagerIdentityObserv
                   Absent => none
                   Present { value: receipt } =>
                     Present {
-                      value: rotation_route_candidate(
-                        endpoint: endpoint,
+                      value: HistoricalRotationRouteObservation {
+                        observed_endpoint: endpoint,
                         firmware: bmc_firmware_release_identity_of_wire(family: f, wire: o.firmware_version as NonEmptyStr),
                         request: redfish_account_password_write(),
                         evidence: ObservedSurfaceRead { surface: SurfaceManagerIdentity, receipt: receipt },
-                      ),
+                      },
                     }
                 }
             }
@@ -99,6 +104,10 @@ fn rotation_route_standing_from_manager_read(read: RecordedManagerIdentityObserv
   }
 }
 
-fn mtjade1_rotation_route_standing() -> BmcRotationRouteStanding? uses fs: std.resources.Filesystem {
-  rotation_route_standing_from_manager_read(read: read_mtjade1_recorded_manager_identity())
+fn mtjade1_historical_rotation_route_observation() -> HistoricalRotationRouteObservation? uses fs: std.resources.Filesystem {
+  historical_route_observation_from_manager_read(read: read_mtjade1_recorded_manager_identity())
 }
+
+data mtjade1_current_route_standing_frontier: DissolutionCondition = unbound_dissolution(
+  description: "dissolves when cut O1c-1's AccessDiscover phase mints mtjade1's current BmcRotationRouteStanding from a current read at the controller's current endpoint, joined to this unit by its observed BMC link; NOT satisfied by re-keying mtjade1_historical_rotation_route_observation onto a new address, or by any standing whose endpoint was not read in the same run" as NonEmptyStr,
+)
