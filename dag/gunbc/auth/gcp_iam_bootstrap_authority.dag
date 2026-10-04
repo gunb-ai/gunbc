@@ -22,8 +22,8 @@ data iam_bootstrap_operator_member: String = concat("user:", iam_bootstrap_opera
 
 fn bootstrap_operator_matches(subject: String, claims: OidcStandardClaims) -> Bool {
   subject == iam_bootstrap_operator_subject
-    && match claims.email_verified { Present { value: true } => true _ => false }
-    && match claims.email { Present { value: email } => (email as String) == iam_bootstrap_operator_email _ => false }
+    && match claims.email_verified { Present { value: v } => v  Absent => false }
+    && match claims.email { Present { value: email } => (email as String) == iam_bootstrap_operator_email  Absent => false }
 }
 
 type BootstrapAuthorityIntent { operation: String, expires_at: Timestamp }
@@ -95,13 +95,15 @@ fn bootstrap_parent_name_valid(name: String, kind: String) -> Bool {
 fn bootstrap_authority_publication_refused(outcome: RestOutcome) -> Bool {
   match outcome {
     RestStatusRefused { status, body: _ } => (status as Int) >= 400 && !mutation_status_is_commit_ambiguous(status: status)
-    _ => false
+    RestOk => false
+    RestTransportRefused { cause: _ } => false
+    RestBodyUndecodable { status: _, cause: _ } => false
   }
 }
 
 
 fn bootstrap_deny_retry_admitted(outcome: RestOutcome, remaining: Int, live: Bool) -> Bool {
-  remaining > 1 && live && match outcome { RestStatusRefused { status, body: _ } => (status as Int) == 403 _ => false }
+  remaining > 1 && live && match outcome { RestStatusRefused { status, body: _ } => (status as Int) == 403  RestOk => false  RestTransportRefused { cause: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false }
 }
 
 
