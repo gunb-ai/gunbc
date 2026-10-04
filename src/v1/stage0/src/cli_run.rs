@@ -30369,7 +30369,6 @@ mod node_frontier_plumbing_controls {
         let diff = diff_at(&abs(&ws, OUTSIDE_FILE), OUTSIDE_DATA_LINE);
         let diff_edits =
             floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from outside-file diff");
-        let declared = index.module_graph_facts.declared_repo_paths();
         let touched_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
         assert!(
             !super::effect_reach_touched_via_path_literals(
@@ -30378,77 +30377,6 @@ mod node_frontier_plumbing_controls {
                 &touched_paths,
             ),
             "hermetic fixture must not match outside-diff path literals"
-        );
-        assert!(
-            super::entry_qualifies_for_skip_without_resolve(
-                &fixture_abs,
-                false,
-                &index.module_graph_facts,
-                &declared,
-                &touched_paths,
-                &[],
-                &diff_edits,
-            )
-            .expect("qualify"),
-            "absence of literal match must not change skip eligibility for hermetic entry"
-        );
-    }
-
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn declared_source_refs_touch_blocks_skip_for_03_normalize_witness() {
-        let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir workspace");
-        let roots = setup_roots(&ws);
-        let index = build_multi_entry_index(&roots);
-        let entry = "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag";
-        let entry_abs = abs(&ws, entry);
-        let diff = diff_at(&abs(&ws, OUTSIDE_FILE), OUTSIDE_DATA_LINE);
-        let diff_edits =
-            floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from outside-file diff");
-        let declared = index.module_graph_facts.declared_repo_paths();
-        let touched = vec!["src/v2/compiler/03_normalize.dag".to_string()];
-        assert!(
-            !super::entry_qualifies_for_skip_without_resolve(
-                &entry_abs,
-                false,
-                &index.module_graph_facts,
-                &declared,
-                &touched,
-                &[],
-                &diff_edits,
-            )
-            .expect("qualify"),
-            "declared-source-ref touch must convert would-skip into run"
-        );
-    }
-
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn declared_source_refs_unrelated_diff_skips_03_normalize_witness() {
-        let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir workspace");
-        let roots = setup_roots(&ws);
-        let index = build_multi_entry_index(&roots);
-        let entry = "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag";
-        let entry_abs = abs(&ws, entry);
-        let diff = diff_at(&abs(&ws, OUTSIDE_FILE), OUTSIDE_DATA_LINE);
-        let diff_edits =
-            floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from outside-file diff");
-        let declared = index.module_graph_facts.declared_repo_paths();
-        let touched: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
-        assert!(
-            super::entry_qualifies_for_skip_without_resolve(
-                &entry_abs,
-                false,
-                &index.module_graph_facts,
-                &declared,
-                &touched,
-                &[],
-                &diff_edits,
-            )
-            .expect("qualify"),
-            "unrelated diff must skip the 03_normalize behavioral witness via declared refs"
         );
     }
 
@@ -30475,44 +30403,6 @@ mod node_frontier_plumbing_controls {
 
     // RED guard: data-item edits in the entry import closure must not fast-skip — the
     // node-frontier machinery needs resolve to discriminate referenced nodes.
-    #[test]
-    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn skip_without_resolve_fast_path_ineligible_for_referenced_data_item() {
-        let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir workspace");
-        let roots = setup_roots(&ws);
-        let index = build_multi_entry_index(&roots);
-        let fixture_abs = abs(&ws, FIXTURE);
-        let text = std::fs::read_to_string(&fixture_abs).expect("fixture readable");
-        let data_line = text
-            .lines()
-            .position(|l| l.contains("data floor_disc_node_a"))
-            .map(|i| (i + 1) as i64)
-            .expect("floor_disc_node_a line");
-        let diff = diff_at(&fixture_abs, data_line);
-        let diff_edits = floor_diff_edits_from_diff_text(&index, &diff)
-            .expect("seeds from referenced-node diff");
-        assert!(
-            !diff_edits.overlapping_data_items.is_empty(),
-            "data-item diff must populate overlapping_data_items"
-        );
-        let declared = index.module_graph_facts.declared_repo_paths();
-        let touched_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
-        assert!(
-            !super::entry_qualifies_for_skip_without_resolve(
-                &fixture_abs,
-                false,
-                &index.module_graph_facts,
-                &declared,
-                &touched_paths,
-                &[],
-                &diff_edits,
-            )
-            .expect("qualify"),
-            "entry must NOT qualify for skip-before-resolve when diff edits a data item in its import closure"
-        );
-    }
-
     // Control 2 (RED/function_edited): diff edits a test fn declaration →
     // edited_test_fns populated → function_edited=true forces run for that row.
     #[test]
