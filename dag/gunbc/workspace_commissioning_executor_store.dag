@@ -5,7 +5,7 @@ import std.decl_ref { decl_ref }
 import std.durable_compare_and_set {
   CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
   CasObservedReadable, CasReadableAbsent, CasReadablePresent,
-  CasCommitted, CasPreconditionFailed,
+  CasCommitted, CasPreconditionFailed, CasStoreRefused, CasObservedUnreadable,
 }
 import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
 import gunbc.workspace_commissioning_executor_journal {
@@ -13,11 +13,11 @@ import gunbc.workspace_commissioning_executor_journal {
   workspace_executor_record_coherent, workspace_executor_record_follows,
   workspace_executor_record_decode, workspace_executor_record_text,
 }
-import gunbc.runner_microvm_cell_readiness { StoreRootOwned }
-import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead }
+import gunbc.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
+import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
 import gunbc.durable_cas_file_store {
   observe_cas_slot_state, cas_file_slot_path, admit_cas_attempt_for_derived_payload,
-  DerivedPayloadAdmitted, file_compare_and_set, OwnerOnlyCreateOnly,
+  DerivedPayloadAdmitted, file_compare_and_set, OwnerOnlyCreateOnly, DerivedPayloadKeyNotSlotAddressable,
 }
 
 type WorkspaceExecutorJournalSnapshot sole_constructor {
@@ -57,13 +57,15 @@ fn workspace_executor_journal_observe(slot_key: NonEmptyStr) -> WorkspaceExecuto
           } else { WorkspaceExecutorJournalObserved { snapshot: WorkspaceExecutorJournalSnapshot {
             slot_key: slot_key, expected: ExpectSlotGeneration { generation: version.generation }, record: Present { value: record },
           } } }
-          _ => WorkspaceExecutorJournalUnreadable { reason: "executor journal payload is malformed or noncanonical" }
+          Absent => WorkspaceExecutorJournalUnreadable { reason: "executor journal payload is malformed or noncanonical" }
         }
-        _ => WorkspaceExecutorJournalUnreadable { reason: "executor journal generation is outside protected root custody" }
+        OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => WorkspaceExecutorJournalUnreadable { reason: "executor journal generation is outside protected root custody" }
+        OwnershipUnread { reason: _ } => WorkspaceExecutorJournalUnreadable { reason: "executor journal generation is outside protected root custody" }
       }
-      _ => WorkspaceExecutorJournalUnreadable { reason: "executor journal head is unreadable" }
+      CasObservedUnreadable { cause: _ } => WorkspaceExecutorJournalUnreadable { reason: "executor journal head is unreadable" }
     }
-    _ => WorkspaceExecutorJournalUnreadable { reason: "executor journal root is absent, unreadable or outside protected custody" }
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => WorkspaceExecutorJournalUnreadable { reason: "executor journal root is absent, unreadable or outside protected custody" }
+    OwnershipUnread { reason: _ } => WorkspaceExecutorJournalUnreadable { reason: "executor journal root is absent, unreadable or outside protected custody" }
   }
 }
 
@@ -89,7 +91,7 @@ fn workspace_executor_journal_publish(snapshot: WorkspaceExecutorJournalSnapshot
       Present { value: previous } => workspace_executor_record_follows(previous: previous, next: record)
     })
   if !admitted { WorkspaceExecutorJournalRefused { reason: "executor journal transition changes bindings, skips an obligation or regresses" } }
-  else if (match snapshot.record { Present { value: previous } => previous == record _ => false }) {
+  else if (match snapshot.record { Present { value: previous } => previous == record Absent => false }) {
     workspace_executor_journal_readback(slot_key: snapshot.slot_key, record: record)
   } else {
     let root = workspace_commissioning_store_location as NonEmptyStr
@@ -101,11 +103,12 @@ fn workspace_executor_journal_publish(snapshot: WorkspaceExecutorJournalSnapshot
           CasCommitted { committed: _ } => workspace_executor_journal_readback(slot_key: snapshot.slot_key, record: record)
           CasPreconditionFailed { expected: _, observed: _ } => workspace_executor_journal_readback(
             slot_key: snapshot.slot_key, record: record)
-          _ => WorkspaceExecutorJournalRefused { reason: "executor journal conditional publication is unsettled; reread before retry" }
+          CasStoreRefused { cause: _ } => WorkspaceExecutorJournalRefused { reason: "executor journal conditional publication is unsettled; reread before retry" }
         }
-        _ => WorkspaceExecutorJournalRefused { reason: "executor journal key is not addressable" }
+        DerivedPayloadKeyNotSlotAddressable { key: _ } => WorkspaceExecutorJournalRefused { reason: "executor journal key is not addressable" }
       }
-      _ => WorkspaceExecutorJournalRefused { reason: "executor journal custody changed before publication" }
+      OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => WorkspaceExecutorJournalRefused { reason: "executor journal custody changed before publication" }
+      OwnershipUnread { reason: _ } => WorkspaceExecutorJournalRefused { reason: "executor journal custody changed before publication" }
     }
   }
 }
@@ -115,7 +118,7 @@ fn workspace_executor_journal_readback(slot_key: NonEmptyStr, record: WorkspaceE
     WorkspaceExecutorJournalObserved { snapshot } => match snapshot.record {
       Present { value: observed } => if observed == record { WorkspaceExecutorJournalPublished { snapshot: snapshot } }
         else { WorkspaceExecutorJournalConflict }
-      _ => WorkspaceExecutorJournalRefused { reason: "executor journal publication is not visible" }
+      Absent => WorkspaceExecutorJournalRefused { reason: "executor journal publication is not visible" }
     }
     WorkspaceExecutorJournalUnreadable { reason } => WorkspaceExecutorJournalRefused { reason: reason }
   }

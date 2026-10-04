@@ -2,17 +2,17 @@ module gunbc.workspace_slot_mutation
 
 import std.types { Bool, NonEmptyStr, String }
 import std.decl_ref { decl_ref }
-import std.durable_compare_and_set { CasGeneration, cas_generation_successor, CasSuccessorGeneration }
-import std.durable_exclusive_hold { DurableHoldObservation, DurableHoldOwnerRef, DurableHoldReleaseRef, HoldSlotFree, HoldSlotHeld }
+import std.durable_compare_and_set { CasGeneration, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
+import std.durable_exclusive_hold { DurableHoldObservation, DurableHoldOwnerRef, DurableHoldReleaseRef, HoldSlotFree, HoldSlotHeld, HoldObservationUnavailable, HoldSlotUndecodable, HoldSlotAbsent }
 import gunbc.build_cache_instance { runner_slot_instance_name }
 import gunbc.runner_slot_allocation { workspace_execution_slot_identities }
 import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
-import gunbc.runner_microvm_cell_readiness { StoreRootOwned }
-import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead }
+import gunbc.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
+import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
 import gunbc.durable_exclusive_hold_file_store {
   file_hold_acquire, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldAcquireStoreUnavailable,
   FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable, file_hold_release_assess, FileHoldReleasePlanned,
-  file_hold_release_commit, FileHoldReleased, observe_file_hold,
+  file_hold_release_commit, FileHoldReleased, observe_file_hold, FileHoldReleaseKeyNotSlotAddressable, FileHoldReleaseLost, FileHoldReleaseNotEligible, FileHoldReleaseStoreUnavailable,
 }
 
 // The existing exclusive-hold/CAS authority serializes workspace slot mutations. This is a
@@ -63,7 +63,8 @@ fn workspace_slot_mutation_acquire(slot_key: NonEmptyStr, owner: DurableHoldOwne
           FileHoldKeyNotSlotAddressable { slot_key: _ } => WorkspaceSlotMutationRefused { reason: "workspace mutation key is not addressable" }
         }
       }
-      _ => WorkspaceSlotMutationRefused { reason: "workspace slot mutation store is outside protected custody or unreadable" }
+      OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => WorkspaceSlotMutationRefused { reason: "workspace slot mutation store is outside protected custody or unreadable" }
+      OwnershipUnread { reason: _ } => WorkspaceSlotMutationRefused { reason: "workspace slot mutation store is outside protected custody or unreadable" }
     }
   }
 }
@@ -95,13 +96,19 @@ fn workspace_slot_mutation_release_fenced(lease: WorkspaceSlotMutationLease) -> 
           FileHoldReleasePlanned { plan } => match file_hold_release_commit(plan: plan) {
             FileHoldReleased { slot_key: _, generation } => match observe_file_hold(root: root, key: held.key) {
               HoldSlotFree { generation: observed, released_by } => observed == generation && released_by == reason
-              _ => false
+              HoldSlotAbsent => false
+              HoldSlotHeld { generation: _, owner: _ } => false
+              HoldSlotUndecodable { generation: _, detail: _ } => false
+              HoldObservationUnavailable { cause: _ } => false
             }
-            _ => false
+            FileHoldReleaseLost { slot_key: _ } => false
+            FileHoldReleaseStoreUnavailable { slot_key: _, cause: _ } => false
+            FileHoldReleaseKeyNotSlotAddressable { slot_key: _ } => false
           }
-          _ => false
+          FileHoldReleaseNotEligible { slot_key: _, refusal: _ } => false
         }
-        _ => false
+        OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => false
+        OwnershipUnread { reason: _ } => false
       }
     }
   }
@@ -116,9 +123,13 @@ fn workspace_commissioning_mutation_held(slot_key: NonEmptyStr, plan_hash: NonEm
   match read_store_ownership(path: root as String) {
     OwnershipRead { ownership: StoreRootOwned } => match observe_file_hold(root: root, key: workspace_slot_mutation_key(slot_key: slot_key)) {
       HoldSlotHeld { generation: _, owner } => owner == workspace_commissioning_mutation_owner(plan_hash: plan_hash)
-      _ => false
+      HoldSlotAbsent => false
+      HoldSlotFree { generation: _, released_by: _ } => false
+      HoldSlotUndecodable { generation: _, detail: _ } => false
+      HoldObservationUnavailable { cause: _ } => false
     }
-    _ => false
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => false
+    OwnershipUnread { reason: _ } => false
   }
 }
 
@@ -129,9 +140,13 @@ fn workspace_slot_mutation_supply_open(slot_key: NonEmptyStr) -> Bool {
   match read_store_ownership(path: root as String) {
     OwnershipRead { ownership: StoreRootOwned } => match observe_file_hold(root: root, key: workspace_slot_mutation_key(slot_key: slot_key)) {
       HoldSlotFree { generation: _, released_by: _ } => true
-      _ => false
+      HoldSlotAbsent => false
+      HoldSlotHeld { generation: _, owner: _ } => false
+      HoldSlotUndecodable { generation: _, detail: _ } => false
+      HoldObservationUnavailable { cause: _ } => false
     }
-    _ => false
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => false
+    OwnershipUnread { reason: _ } => false
   }
 }
 
@@ -140,9 +155,13 @@ fn workspace_slot_mutation_still_owned(held: WorkspaceSlotMutationHeld) -> Bool 
   match read_store_ownership(path: root as String) {
     OwnershipRead { ownership: StoreRootOwned } => match observe_file_hold(root: root, key: held.key) {
       HoldSlotHeld { generation, owner } => generation == held.generation && owner == held.owner
-      _ => false
+      HoldSlotAbsent => false
+      HoldSlotFree { generation: _, released_by: _ } => false
+      HoldSlotUndecodable { generation: _, detail: _ } => false
+      HoldObservationUnavailable { cause: _ } => false
     }
-    _ => false
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => false
+    OwnershipUnread { reason: _ } => false
   }
 }
 
@@ -164,9 +183,11 @@ fn workspace_mutation_recovery_standing(observed: DurableHoldObservation,
         && released_by == (concat("mutation-completed:", owner as String) as DurableHoldReleaseRef) {
         WorkspaceMutationRecoveryReleased
       } else { WorkspaceMutationRecoveryRefused }
-      _ => WorkspaceMutationRecoveryRefused
+      CasSuccessorExhausted { head: _ } => WorkspaceMutationRecoveryRefused
     }
-    _ => WorkspaceMutationRecoveryRefused
+    HoldSlotAbsent => WorkspaceMutationRecoveryRefused
+    HoldSlotUndecodable { generation: _, detail: _ } => WorkspaceMutationRecoveryRefused
+    HoldObservationUnavailable { cause: _ } => WorkspaceMutationRecoveryRefused
   }
 }
 
@@ -193,8 +214,9 @@ fn workspace_commissioning_mutation_recover(slot_key: NonEmptyStr, plan_hash: No
         } },
       }
       WorkspaceMutationRecoveryReleased => WorkspaceCommissioningMutationReleased
-      _ => WorkspaceCommissioningMutationRecoveryRefused
+      WorkspaceMutationRecoveryRefused => WorkspaceCommissioningMutationRecoveryRefused
     }
-    _ => WorkspaceCommissioningMutationRecoveryRefused
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => WorkspaceCommissioningMutationRecoveryRefused
+    OwnershipUnread { reason: _ } => WorkspaceCommissioningMutationRecoveryRefused
   }
 }

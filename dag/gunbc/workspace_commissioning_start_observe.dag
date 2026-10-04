@@ -5,7 +5,7 @@ import v2.std.algebra { for_all, filter }
 import extdeps.systemd { IdProperty, LoadState, ActiveState, MainPID, InvocationIDProperty, JobProperty }
 import extdeps.systemd.systemctl { systemctl_show_properties_command, systemctl_show_property_value }
 import extdeps.exec.command { LocalExec }
-import extdeps.shell.exec { ProcessOutputPresent }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import gunbc.command_runner { run_shell_command_capture }
 
 // systemctl's named output distinguishes Job= (no queued job) from a missing/unsupported
@@ -42,17 +42,17 @@ fn workspace_commissioning_start_decode(unit: NonEmptyStr, text: String) -> Work
               Present { value: job } => WorkspaceCommissioningStartObserved { snapshot: WorkspaceCommissioningStartSnapshot {
                 unit: unit, invocation: invocation, load: load, active: active, main_pid: pid, job: job,
               } }
-              _ => WorkspaceCommissioningStartUnreadable { reason: "Job property unreadable" }
+              Absent => WorkspaceCommissioningStartUnreadable { reason: "Job property unreadable" }
             }
-            _ => WorkspaceCommissioningStartUnreadable { reason: "MainPID property unreadable" }
+            Absent => WorkspaceCommissioningStartUnreadable { reason: "MainPID property unreadable" }
           }
-          _ => WorkspaceCommissioningStartUnreadable { reason: "ActiveState property unreadable" }
+          Absent => WorkspaceCommissioningStartUnreadable { reason: "ActiveState property unreadable" }
         }
-        _ => WorkspaceCommissioningStartUnreadable { reason: "LoadState property unreadable" }
+        Absent => WorkspaceCommissioningStartUnreadable { reason: "LoadState property unreadable" }
       }
-      _ => WorkspaceCommissioningStartUnreadable { reason: "InvocationID property unreadable" }
+      Absent => WorkspaceCommissioningStartUnreadable { reason: "InvocationID property unreadable" }
     } }
-    _ => WorkspaceCommissioningStartUnreadable { reason: "Id property unreadable" }
+    Absent => WorkspaceCommissioningStartUnreadable { reason: "Id property unreadable" }
   } }
 }
 
@@ -60,7 +60,8 @@ fn workspace_commissioning_start_observe(unit: NonEmptyStr) -> WorkspaceCommissi
   match run_shell_command_capture(command: systemctl_show_properties_command(unit: unit,
     properties: [IdProperty, LoadState, ActiveState, MainPID, InvocationIDProperty, JobProperty]), transport: LocalExec) {
     ProcessOutputPresent { text } => workspace_commissioning_start_decode(unit: unit, text: text)
-    _ => WorkspaceCommissioningStartUnreadable { reason: "systemd start observation command failed or returned no output" }
+    ProcessOutputAbsent => WorkspaceCommissioningStartUnreadable { reason: "systemd start observation command failed or returned no output" }
+    ProcessRefused { exit_code: _, stderr: _ } => WorkspaceCommissioningStartUnreadable { reason: "systemd start observation command failed or returned no output" }
   }
 }
 

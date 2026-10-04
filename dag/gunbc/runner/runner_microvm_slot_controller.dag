@@ -9,7 +9,7 @@ import gunbc.workspace_slot_mutation {
 }
 import std.decl_ref { decl_ref }
 
-import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_field_string, FieldRead }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_field_string, FieldRead, FieldMalformed, JsonDocumentUnreadable }
 import gunbc.workspace_commissioning_directive { workspace_commissioning_directive_from_text, WorkspaceCommissioningDirectiveReady, WorkspaceCommissioningDirectiveRefused }
 import gunbc.workspace_commissioning_admission_observe { workspace_observe_commissioning_admission }
 import gunbc.workspace_commissioning { WorkspaceCommissioningReady, WorkspaceCommissioningRefused }
@@ -773,9 +773,10 @@ fn workspace_slot_dispatch_directive(text: String, instance: String, release_dir
   let commissioning = match parse_json_document(s: text) {
     JsonDocumentParsed { value: body } => match json_field_string(obj: body, key: "schema") {
       FieldRead { value: schema } => schema == "workspace-commissioning/v1"
-      _ => false
+      FieldAbsent => false
+      FieldMalformed { cause: _ } => false
     }
-    _ => false
+    JsonDocumentUnreadable { gap: _ } => false
   }
   if commissioning {
     match workspace_commissioning_directive_from_text(text: text) {
@@ -797,7 +798,7 @@ fn workspace_slot_dispatch_directive(text: String, instance: String, release_dir
                 admitted: commissioned, provenance: provenance, network: subject, execution: permit) {
                 WorkspaceCommissioningComplete => SlotControllerCommissioned
                 WorkspaceCommissioningReconciliationRefused { reason } => workspace_commissioning_slot_refused(reason: reason)
-                _ => workspace_commissioning_slot_refused(reason: "commissioning has an outstanding phase")
+                WorkspaceCommissioningProgress => workspace_commissioning_slot_refused(reason: "commissioning has an outstanding phase")
               }
               }
             }

@@ -4,11 +4,11 @@ import std.types { String, NonEmptyStr, Bool, List }
 import v2.std.algebra { filter }
 import gunbc.fleet_plan_bundle { fleet_plan_bundle_hash }
 import gunbc.fleet_converge_receipt {
-  FleetConvergePlanReceipt, fleet_converge_plan_receipt_decode, FleetConvergePlanReceiptDecoded,
+  FleetConvergePlanReceipt, fleet_converge_plan_receipt_decode, FleetConvergePlanReceiptDecoded, FleetConvergePlanReceiptUnreadable,
 }
 import gunbc.fleet_converge_terminal { FullyApplied }
 import gunbc.workspace_commissioning_directive {
-  workspace_commissioning_directive_from_text, WorkspaceCommissioningDirectiveReady,
+  workspace_commissioning_directive_from_text, WorkspaceCommissioningDirectiveReady, WorkspaceCommissioningDirectiveRefused,
 }
 import gunbc.workspace_commissioning_transaction { WorkspaceCommissioningProvenance, WorkspaceCommissioningPrepared }
 import gunbc.workspace_commissioning_store { workspace_commissioning_record_text }
@@ -41,7 +41,7 @@ fn workspace_executor_plan_has_exact_credential(plan_body: String, provenance: W
   let first: String? = rows.first()
   rows.count() == 1 && (match first {
     Present { value: row } => row == workspace_executor_credential_row(provenance: provenance)
-    _ => false
+    Absent => false
   })
 }
 
@@ -52,7 +52,7 @@ fn workspace_executor_plan_prestate(plan_body: String) -> String? {
   if rows.count() != 1 { none } else { match first {
     Present { value: row } => if string_length(s: row) <= string_length(s: marker) { none }
       else { Present { value: substring(s: row, start: string_length(s: marker), end: string_length(s: row)) } }
-    _ => none
+    Absent => none
   } }
 }
 
@@ -75,13 +75,13 @@ fn workspace_executor_plan_bytes(plan_body: String, apply_shell: String,
           Present { value: prestate } => WorkspaceExecutorPlanBytesVerified { verified: WorkspaceExecutorPlanBytes {
             provenance: provenance, receipt: receipt, bundle: hash.digest as NonEmptyStr, prestate: prestate as NonEmptyStr,
           } }
-          _ => WorkspaceExecutorPlanBytesRefused { reason: "reviewed commissioning prestate is missing or ambiguous" }
+          Absent => WorkspaceExecutorPlanBytesRefused { reason: "reviewed commissioning prestate is missing or ambiguous" }
         } }
-        _ => WorkspaceExecutorPlanBytesRefused { reason: "reviewed fleet bundle identity is unavailable" }
+        Absent => WorkspaceExecutorPlanBytesRefused { reason: "reviewed fleet bundle identity is unavailable" }
       } }
-      _ => WorkspaceExecutorPlanBytesRefused { reason: "reviewed fleet plan receipt is unreadable" }
+      FleetConvergePlanReceiptUnreadable { reason: _ } => WorkspaceExecutorPlanBytesRefused { reason: "reviewed fleet plan receipt is unreadable" }
     }
-    _ => WorkspaceExecutorPlanBytesRefused { reason: "commissioning credential is not canonical" }
+    WorkspaceCommissioningDirectiveRefused { reason: _ } => WorkspaceExecutorPlanBytesRefused { reason: "commissioning credential is not canonical" }
   }
 }
 
@@ -90,6 +90,6 @@ fn workspace_executor_plan_credential(plan_body: String) -> String? {
   let first: String? = rows.first()
   if rows.count() != 1 { none } else { match first {
     Present { value: row } => Present { value: substring(s: row, start: string_length(s: workspace_executor_credential_row_prefix), end: string_length(s: row)) }
-    _ => none
+    Absent => none
   } }
 }

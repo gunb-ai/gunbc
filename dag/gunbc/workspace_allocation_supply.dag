@@ -7,8 +7,8 @@ import extdeps.tools.hostname { hostname_short_read_command }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import gunbc.command_runner { run_shell_command_capture }
 import std.decl_ref { DeclarationRef }
-import std.durable_compare_and_set { cas_generation_count, cas_generation_successor, CasSuccessorGeneration }
-import std.durable_exclusive_hold { HoldSlotAbsent, HoldSlotFree }
+import std.durable_compare_and_set { cas_generation_count, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
+import std.durable_exclusive_hold { HoldSlotAbsent, HoldSlotFree, HoldObservationUnavailable, HoldSlotHeld, HoldSlotUndecodable }
 import product.placement_supply { HostIdentity }
 import product.fabric.identity { fabric_identity_eq }
 import product.fabric.provider_route { CompliancePostureRevision }
@@ -17,17 +17,17 @@ import product.fabric.offer_route { OfferRouteRow }
 import product.fabric.route_readiness { RouteExercise, RouteReadinessRequirement }
 import product.fabric.candidate_field { CandidateField, FieldRequest, assemble_candidate_field }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
-import gunbc.runner_slot_allocation { workspace_execution_slot_identities, identity_is_workspace_execution_member, gunbc_committed_host_runner_slot_allocation, HostSlotAllocationAdmitted }
+import gunbc.runner_slot_allocation { workspace_execution_slot_identities, identity_is_workspace_execution_member, gunbc_committed_host_runner_slot_allocation, HostSlotAllocationAdmitted, HostSlotAllocationWidthUnresolved }
 import gunbc.fabric_executor_class { fleet_cell_sanction }
-import gunbc.fabric_control_plane { fabric_cell_allocation_key, bind_fabric_cell_candidate, CellCandidateBound }
+import gunbc.fabric_control_plane { fabric_cell_allocation_key, bind_fabric_cell_candidate, CellCandidateBound, OfferExecutorIsNotTheCell }
 import gunbc.fabric_cell_converge { fabric_cell_id_for_slot }
-import gunbc.fabric_required_build_cell { members_for_slot, fabric_cell_shape, FabricCellShaped }
+import gunbc.fabric_required_build_cell { members_for_slot, fabric_cell_shape, FabricCellShaped, FabricCellShapeIncomplete }
 import gunbc.fabric_cell_observation_admission {
   FabricCellObservationDecision, fabric_cell_observation_outcome, FabricCellObservationAdmitted,
-  fabric_cell_observed_population_members, fabric_cell_observed_population_host, admit_fabric_cell_probe,
+  fabric_cell_observed_population_members, fabric_cell_observed_population_host, admit_fabric_cell_probe, FabricCellObservationDenied, FabricCellObservationNotApplicable,
 }
 import gunbc.fabric_cell_acquire { fabric_cell_probe_wet }
-import gunbc.runner_microvm_cell_readiness { CellReadinessStoreRead, cell_incarnation_admission, CellIncarnationAdmitted }
+import gunbc.runner_microvm_cell_readiness { CellReadinessStoreRead, cell_incarnation_admission, CellIncarnationAdmitted, CellRecoveryRequired, CellWithdrawn, HostWithdrawn }
 import gunbc.runner_microvm_cell_readiness_store { read_cell_readiness_store }
 import gunbc.durable_exclusive_hold_file_store { observe_file_hold }
 import gunbc.clock_read { clock_now_probed_at }
@@ -97,23 +97,28 @@ fn workspace_slot_observation_refusal(root: NonEmptyStr, slot: RunnerSlotIdentit
               HoldSlotAbsent => Present { value: 1 }
               HoldSlotFree { generation, released_by: _ } => match cas_generation_successor(g: generation) {
                 CasSuccessorGeneration { generation: successor } => Present { value: cas_generation_count(g: successor) }
-                _ => none
+                CasSuccessorExhausted { head: _ } => none
               }
-              _ => none
+              HoldSlotHeld { generation: _, owner: _ } => none
+              HoldSlotUndecodable { generation: _, detail: _ } => none
+              HoldObservationUnavailable { cause: _ } => none
             }
             match next {
               Absent => Present { value: "allocation slot is held, unreadable, or generation exhausted" }
               Present { value: incarnation } => match cell_incarnation_admission(store: observation.readiness, cell: fabric_cell_id_for_slot(slot: slot), allocation_generation: incarnation) {
                 CellIncarnationAdmitted { cell: _, generation: _ } => none
-                _ => Present { value: "cell sanitation/readiness does not admit the next incarnation" }
+                CellRecoveryRequired { bound: _ } => Present { value: "cell sanitation/readiness does not admit the next incarnation" }
+                CellWithdrawn { cell: _, withdrawal: _ } => Present { value: "cell sanitation/readiness does not admit the next incarnation" }
+                HostWithdrawn { withdrawal: _ } => Present { value: "cell sanitation/readiness does not admit the next incarnation" }
               }
             }
           }
-          _ => Present { value: "cell substrate lacks its exact owned members" }
+          FabricCellShapeIncomplete => Present { value: "cell substrate lacks its exact owned members" }
         } }
-      _ => Present { value: "host cell substrate has not converged" }
+      FabricCellObservationDenied { host: _, blocked: _ } => Present { value: "host cell substrate has not converged" }
+      FabricCellObservationNotApplicable { host: _ } => Present { value: "host cell substrate has not converged" }
     }
-    _ => Present { value: "host capacity commitment is unresolved; no workspace offer admitted" }
+    HostSlotAllocationWidthUnresolved { host: _, cause: _ } => Present { value: "host capacity commitment is unresolved; no workspace offer admitted" }
   } }
 }
 
@@ -130,7 +135,7 @@ fn workspace_supply_from_field(root: NonEmptyStr, field: CandidateField<NonEmpty
           Absent => acc
           Present { value: candidate } => match bind_fabric_cell_candidate(slot: slot, candidate: candidate) {
             CellCandidateBound { bound } => WorkspaceSupplyProjection { supply: WorkspaceDedicatedSupply { roster: acc.supply.roster + [bound], sanctions: acc.supply.sanctions + [fleet_cell_sanction(slot: slot)] }, refused: acc.refused }
-            _ => WorkspaceSupplyProjection { supply: acc.supply, refused: acc.refused + [WorkspaceSupplyRefusal { slot: slot, reason: "offer executor is not the designated slot" }] }
+            OfferExecutorIsNotTheCell { slot_key: _, executor: _ } => WorkspaceSupplyProjection { supply: acc.supply, refused: acc.refused + [WorkspaceSupplyRefusal { slot: slot, reason: "offer executor is not the designated slot" }] }
           }
         }
       }

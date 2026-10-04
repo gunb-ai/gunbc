@@ -4,7 +4,7 @@ import gunbc.workspace_commissioning_start_identity { workspace_commissioning_sn
 
 import std.types { NonEmptyStr, String, Bool }
 import std.decl_ref { decl_ref }
-import std.durable_exclusive_hold { HoldSlotHeld }
+import std.durable_exclusive_hold { HoldSlotHeld, HoldObservationUnavailable, HoldSlotFree, HoldSlotUndecodable }
 import gunbc.build_cache_instance { runner_slot_instance_name }
 import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
 import gunbc.workspace_slot_mutation { workspace_slot_mutation_key, workspace_commissioning_mutation_owner }
@@ -12,11 +12,11 @@ import gunbc.durable_exclusive_hold_file_store { observe_file_hold }
 import gunbc.workspace_commissioning_transaction { WorkspaceCommissioningProvenance }
 import gunbc.workspace_commissioning_executor_journal {
   WorkspaceExecutorRecord, ExecutorSubmissionRecorded, ExecutorInvocationRecorded,
-  workspace_executor_record_coherent,
+  workspace_executor_record_coherent, ExecutorGenerationCommitted, ExecutorReadbackAccepted, ExecutorReleaseObserved, ExecutorSubmissionFenced,
 }
 import gunbc.workspace_commissioning_executor_store {
   workspace_executor_journal_observe, WorkspaceExecutorJournalObserved,
-  workspace_executor_journal_publish, WorkspaceExecutorJournalPublished,
+  workspace_executor_journal_publish, WorkspaceExecutorJournalPublished, WorkspaceExecutorJournalConflict, WorkspaceExecutorJournalRefused, WorkspaceExecutorJournalUnreadable,
 }
 
 // Fencing is enforced where commissioning effects begin, not solely by the submitting process.
@@ -35,7 +35,10 @@ fn workspace_executor_mutation_matches(record: WorkspaceExecutorRecord) -> Bool 
     key: workspace_slot_mutation_key(slot_key: record.subject.slot)) {
     HoldSlotHeld { owner, generation } => owner == workspace_commissioning_mutation_owner(plan_hash: record.subject.plan_hash)
       && generation == record.subject.mutation_generation
-    _ => false
+    HoldSlotAbsent => false
+    HoldSlotFree { generation: _, released_by: _ } => false
+    HoldSlotUndecodable { generation: _, detail: _ } => false
+    HoldObservationUnavailable { cause: _ } => false
   }
 }
 
@@ -61,17 +64,21 @@ fn workspace_executor_claim_controller(provenance: WorkspaceCommissioningProvena
             WorkspaceExecutorJournalPublished { snapshot: _ } => if workspace_executor_mutation_matches(record: bound) {
               WorkspaceExecutorControllerAdmitted { permit: WorkspaceExecutorControllerPermit { record: bound } }
             } else { WorkspaceExecutorControllerRefused { reason: "mutation exclusion changed while binding the controller" } }
-            _ => WorkspaceExecutorControllerRefused { reason: "controller invocation lost the journal CAS or could not read it back" }
+            WorkspaceExecutorJournalConflict => WorkspaceExecutorControllerRefused { reason: "controller invocation lost the journal CAS or could not read it back" }
+            WorkspaceExecutorJournalRefused { reason: _ } => WorkspaceExecutorControllerRefused { reason: "controller invocation lost the journal CAS or could not read it back" }
           } }
         }
         ExecutorInvocationRecorded => if record.invocation == (invocation as String) {
           WorkspaceExecutorControllerAdmitted { permit: WorkspaceExecutorControllerPermit { record: record } }
         } else { WorkspaceExecutorControllerRefused { reason: "another invocation already owns commissioning; this delayed start is fenced" } }
-        _ => WorkspaceExecutorControllerRefused { reason: "commissioning is already in settlement; no controller may restart it" }
+        ExecutorSubmissionFenced => WorkspaceExecutorControllerRefused { reason: "commissioning is already in settlement; no controller may restart it" }
+        ExecutorReadbackAccepted => WorkspaceExecutorControllerRefused { reason: "commissioning is already in settlement; no controller may restart it" }
+        ExecutorReleaseObserved => WorkspaceExecutorControllerRefused { reason: "commissioning is already in settlement; no controller may restart it" }
+        ExecutorGenerationCommitted => WorkspaceExecutorControllerRefused { reason: "commissioning is already in settlement; no controller may restart it" }
       } }
-      _ => WorkspaceExecutorControllerRefused { reason: "commissioning has no durable executor submission" }
+      Absent => WorkspaceExecutorControllerRefused { reason: "commissioning has no durable executor submission" }
     }
-    _ => WorkspaceExecutorControllerRefused { reason: "commissioning executor journal is unreadable" }
+    WorkspaceExecutorJournalUnreadable { reason: _ } => WorkspaceExecutorControllerRefused { reason: "commissioning executor journal is unreadable" }
   }
 }
 
@@ -79,9 +86,9 @@ fn workspace_executor_controller_still_owned(permit: WorkspaceExecutorController
   match workspace_executor_journal_observe(slot_key: permit.record.subject.slot) {
     WorkspaceExecutorJournalObserved { snapshot } => match snapshot.record {
       Present { value: record } => record == permit.record && workspace_executor_mutation_matches(record: record)
-      _ => false
+      Absent => false
     }
-    _ => false
+    WorkspaceExecutorJournalUnreadable { reason: _ } => false
   }
 }
 
@@ -90,6 +97,6 @@ fn workspace_executor_controller_still_owned(permit: WorkspaceExecutorController
 fn workspace_executor_submission_identity_matches(record: WorkspaceExecutorRecord, submitter: NonEmptyStr?) -> Bool {
   match submitter {
     Present { value } => record.submitter == value
-    _ => false
+    Absent => false
   }
 }

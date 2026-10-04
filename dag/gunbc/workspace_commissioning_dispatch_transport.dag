@@ -9,7 +9,7 @@ import gunbc.runner_microvm_slot_unit { microvm_controller_root }
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.exec.command { LocalExec }
 import extdeps.languages.bash.invocation { bash_program_command }
-import extdeps.shell.exec { ProcessOutputPresent }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 
 import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, RunGunbcEntryAs, executor_privileged_operation_shell_command }
 import gunbc.runner_microvm_slot_unit { microvm_controller_gunbc_binary, microvm_controller_owner }
@@ -75,7 +75,8 @@ fn workspace_dispatch_observe(host: NonEmptyStr, revision: CommitSha) -> Workspa
     executor_privileged_operation_shell_command(op: workspace_dispatch_operation(release_dir: installed, function: "workspace_dispatch_plan_cli"))], "")
   match run_shell_command_capture(command: bash_program_command(script: command), transport: LocalExec) {
     ProcessOutputPresent { text } => workspace_commissioning_basis_from_privileged(text: text, host: host, revision: revision)
-    _ => WorkspaceCommissioningFleetRefused { reason: "installed privileged commissioning observer refused" }
+    ProcessOutputAbsent => WorkspaceCommissioningFleetRefused { reason: "installed privileged commissioning observer refused" }
+    ProcessRefused { exit_code: _, stderr: _ } => WorkspaceCommissioningFleetRefused { reason: "installed privileged commissioning observer refused" }
   }
 }
 

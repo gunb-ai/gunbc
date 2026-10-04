@@ -2,35 +2,35 @@ module gunbc.workspace_commissioning_executor_submission
 
 import std.types { String, NonEmptyStr, Bool }
 import std.decl_ref { decl_ref }
-import std.durable_exclusive_hold { HoldSlotHeld, HoldSlotAbsent }
+import std.durable_exclusive_hold { HoldSlotHeld, HoldSlotAbsent, HoldObservationUnavailable, HoldSlotFree, HoldSlotUndecodable }
 import std.content_hash { content_hash_validate_lower_hex_length }
 import std.durable_compare_and_set { CasGeneration }
-import extdeps.filesystem.filesystem_io { Filesystem, filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathKindUnrecognized, FilesystemExactPathUnreadable }
 import extdeps.access.posix { FileMode, PermissionBits, file_mode_bits }
-import gunbc.workspace_commissioning_executor_input { WorkspaceExecutorInput, workspace_executor_input_observe, WorkspaceExecutorInputObserved }
+import gunbc.workspace_commissioning_executor_input { WorkspaceExecutorInput, workspace_executor_input_observe, WorkspaceExecutorInputObserved, WorkspaceExecutorInputRefused }
 import gunbc.workspace_commissioning_executor_journal {
   WorkspaceExecutorRecord, WorkspaceExecutorSubject, ExecutorSubmissionRecorded, ExecutorSubmissionFenced,
-  workspace_executor_recorded_directive,
+  workspace_executor_recorded_directive, ExecutorGenerationCommitted, ExecutorInvocationRecorded, ExecutorReadbackAccepted, ExecutorReleaseObserved,
 }
 import gunbc.workspace_commissioning_executor_store {
   WorkspaceExecutorJournalSnapshot, workspace_executor_journal_observe, WorkspaceExecutorJournalObserved,
-  workspace_executor_journal_publish, WorkspaceExecutorJournalPublished,
+  workspace_executor_journal_publish, WorkspaceExecutorJournalPublished, WorkspaceExecutorJournalConflict, WorkspaceExecutorJournalRefused, WorkspaceExecutorJournalUnreadable,
 }
 import gunbc.workspace_commissioning_executor_fence { workspace_executor_mutation_matches }
 import gunbc.workspace_commissioning_executor_helper { workspace_executor_actor_observe, WorkspaceExecutorActorObserved }
 import gunbc.workspace_commissioning_start_observe {
-  workspace_commissioning_start_observe, workspace_commissioning_start_quiescent, WorkspaceCommissioningStartObserved,
+  workspace_commissioning_start_observe, workspace_commissioning_start_quiescent, WorkspaceCommissioningStartObserved, WorkspaceCommissioningStartUnreadable,
 }
 import gunbc.workspace_slot_mutation {
   workspace_slot_mutation_acquire, workspace_slot_mutation_key, workspace_commissioning_mutation_owner,
-  WorkspaceSlotMutationAdmitted, WorkspaceSlotMutationLeaseHeld,
+  WorkspaceSlotMutationAdmitted, WorkspaceSlotMutationLeaseHeld, WorkspaceSlotMutationRefused,
 }
 import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
 import gunbc.durable_exclusive_hold_file_store { observe_file_hold }
-import gunbc.runner_microvm_cell_readiness { StoreRootOwned }
-import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead }
+import gunbc.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
+import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
 import gunbc.workspace_commissioning_admission_observe { workspace_observe_commissioning_admission }
-import gunbc.workspace_commissioning { WorkspaceCommissioningReady }
+import gunbc.workspace_commissioning { WorkspaceCommissioningReady, WorkspaceCommissioningRefused }
 import gunbc.workspace_commissioning_transaction { WorkspaceCommissioningPrepared }
 import gunbc.workspace_commissioning_store { workspace_commissioning_record_text }
 import gunbc.workspace_commissioning_start_identity { workspace_commissioning_submitter_path }
@@ -40,9 +40,9 @@ import gunbc.build_cache_instance { runner_slot_instance_name }
 import gunbc.fleet_generation_execution { fleet_generation_publication_as_owner }
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.exec.command { LocalExec }
-import extdeps.shell.exec { ProcessOutputPresent }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import std.algebra { trim }
-import gunbc.workspace_commissioning_fleet { workspace_commissioning_basis_observe, WorkspaceCommissioningFleetObserved }
+import gunbc.workspace_commissioning_fleet { workspace_commissioning_basis_observe, WorkspaceCommissioningFleetObserved, WorkspaceCommissioningFleetRefused }
 
 type WorkspaceExecutorPreparation
   = WorkspaceExecutorPrepared { directive: String }
@@ -67,23 +67,26 @@ fn workspace_executor_credential_publish(path: String, previous: String?, desire
       let absent = match filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind) {
         FilesystemExactPathAbsent { path: _ } => true
         FilesystemExactPathRead { path: _, content } => if content == desired { false }
-          else if (match previous { Present { value } => content == value _ => false }) {
+          else if (match previous { Present { value } => content == value Absent => false }) {
             match read_store_ownership(path: path) {
               OwnershipRead { ownership: StoreRootOwned } => Filesystem.Delete(path: path).success
-              _ => false
+              OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => false
+              OwnershipUnread { reason: _ } => false
             }
           } else { false }
-        _ => false
+        FilesystemExactPathUnreadable { path: _, kind: _, error: _ } => false
+        FilesystemExactPathKindUnrecognized { path: _, observed: _, error: _ } => false
       }
       let wrote = if absent { Filesystem.WriteCreateNewWithMode(path: path, content: desired,
         mode: file_mode_bits(mode: workspace_executor_credential_mode)).success } else { false }
       if !wrote && (!read.success || read.content != desired) { false } else {
         let back = Filesystem.Read(path: path)
         back.success && back.content == desired
-          && (match read_store_ownership(path: path) { OwnershipRead { ownership: StoreRootOwned } => true _ => false })
+          && (match read_store_ownership(path: path) { OwnershipRead { ownership: StoreRootOwned } => true OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => false OwnershipUnread { reason: _ } => false })
       }
     }
-    _ => false
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => false
+    OwnershipUnread { reason: _ } => false
   }
 }
 
@@ -101,11 +104,15 @@ fn workspace_executor_initial_guard(slot: NonEmptyStr, plan: NonEmptyStr) -> Cas
       } else { none }
       HoldSlotAbsent => match workspace_slot_mutation_acquire(slot_key: slot, owner: workspace_commissioning_mutation_owner(plan_hash: plan)) {
         WorkspaceSlotMutationAdmitted { lease: WorkspaceSlotMutationLeaseHeld { held } } => Present { value: held.generation }
-        _ => none
+        WorkspaceSlotMutationAdmitted { lease: WorkspaceSlotMutationNotApplicable } => none
+        WorkspaceSlotMutationRefused { reason: _ } => none
       }
-      _ => none
+      HoldSlotFree { generation: _, released_by: _ } => none
+      HoldSlotUndecodable { generation: _, detail: _ } => none
+      HoldObservationUnavailable { cause: _ } => none
     }
-    _ => none
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => none
+    OwnershipUnread { reason: _ } => none
   }
 }
 
@@ -123,11 +130,12 @@ fn workspace_executor_prepare(slot: NonEmptyStr, executor: NonEmptyStr) -> Works
               WorkspaceExecutorPreparationRefused { reason: "commissioning prestate changed since the reviewed fleet plan" }
             } else { match workspace_executor_initial_guard(slot: slot, plan: input.plan.provenance.plan_hash) {
               Present { value: generation } => workspace_executor_arm(input: input, executor: executor, snapshot: snapshot, generation: generation)
-              _ => WorkspaceExecutorPreparationRefused { reason: "initial mutation generation is unavailable" }
+              Absent => WorkspaceExecutorPreparationRefused { reason: "initial mutation generation is unavailable" }
             } }
-            _ => WorkspaceExecutorPreparationRefused { reason: "reviewed commissioning prestate is not established" }
+            WorkspaceCommissioningFleetRefused { reason: _ } => WorkspaceExecutorPreparationRefused { reason: "reviewed commissioning prestate is not established" }
           } }
-          _ => WorkspaceExecutorPreparationRefused { reason: "fleet generation does not admit the reviewed submission" }
+          ProcessOutputAbsent => WorkspaceExecutorPreparationRefused { reason: "fleet generation does not admit the reviewed submission" }
+          ProcessRefused { exit_code: _, stderr: _ } => WorkspaceExecutorPreparationRefused { reason: "fleet generation does not admit the reviewed submission" }
         }
         Present { value: record } => if record.subject.plan_hash != input.plan.provenance.plan_hash
           || record.subject.fleet_bundle_hash != input.plan.bundle {
@@ -137,15 +145,27 @@ fn workspace_executor_prepare(slot: NonEmptyStr, executor: NonEmptyStr) -> Works
           ExecutorSubmissionFenced => if workspace_executor_mutation_matches(record: record) && record.submitter != executor {
             WorkspaceExecutorPrepared { directive: "drain:none" }
           } else { WorkspaceExecutorPreparationRefused { reason: "fenced submission has no replacement actor and exact guard" } }
-          _ => match workspace_executor_recorded_directive(record: record) {
+          ExecutorInvocationRecorded => match workspace_executor_recorded_directive(record: record) {
+            Present { value } => WorkspaceExecutorPrepared { directive: value }
+            _ => WorkspaceExecutorPreparationRefused { reason: "recorded submission has no recovery action" }
+          }
+          ExecutorReadbackAccepted => match workspace_executor_recorded_directive(record: record) {
+            Present { value } => WorkspaceExecutorPrepared { directive: value }
+            _ => WorkspaceExecutorPreparationRefused { reason: "recorded submission has no recovery action" }
+          }
+          ExecutorReleaseObserved => match workspace_executor_recorded_directive(record: record) {
+            Present { value } => WorkspaceExecutorPrepared { directive: value }
+            _ => WorkspaceExecutorPreparationRefused { reason: "recorded submission has no recovery action" }
+          }
+          ExecutorGenerationCommitted => match workspace_executor_recorded_directive(record: record) {
             Present { value } => WorkspaceExecutorPrepared { directive: value }
             _ => WorkspaceExecutorPreparationRefused { reason: "recorded submission has no recovery action" }
           }
         } }
       }
-      _ => WorkspaceExecutorPreparationRefused { reason: "executor journal is unreadable" }
+      WorkspaceExecutorJournalUnreadable { reason: _ } => WorkspaceExecutorPreparationRefused { reason: "executor journal is unreadable" }
     }
-    _ => WorkspaceExecutorPreparationRefused { reason: "reviewed executor input is unavailable" }
+    WorkspaceExecutorInputRefused { reason: _ } => WorkspaceExecutorPreparationRefused { reason: "reviewed executor input is unavailable" }
   }
 }
 
@@ -162,7 +182,8 @@ fn workspace_executor_fence_submission(snapshot: WorkspaceExecutorJournalSnapsho
     invocation: "", phase: ExecutorSubmissionFenced,
   }) {
     WorkspaceExecutorJournalPublished { snapshot: _ } => WorkspaceExecutorPrepared { directive: "drain:none" }
-    _ => WorkspaceExecutorPreparationRefused { reason: "submission fence lost CAS; reread the winner without stopping it" }
+    WorkspaceExecutorJournalConflict => WorkspaceExecutorPreparationRefused { reason: "submission fence lost CAS; reread the winner without stopping it" }
+    WorkspaceExecutorJournalRefused { reason: _ } => WorkspaceExecutorPreparationRefused { reason: "submission fence lost CAS; reread the winner without stopping it" }
   } }
 }
 
@@ -177,11 +198,11 @@ fn workspace_executor_rearm(slot: NonEmptyStr, executor: NonEmptyStr) -> Workspa
           || record.subject.fleet_bundle_hash != input.plan.bundle || !workspace_executor_mutation_matches(record: record) {
           WorkspaceExecutorPreparationRefused { reason: "rearm has no matching fenced submission" }
         } else { workspace_executor_arm(input: input, executor: executor, snapshot: snapshot, generation: record.subject.mutation_generation) }
-        _ => WorkspaceExecutorPreparationRefused { reason: "rearm has no recorded fence" }
+        Absent => WorkspaceExecutorPreparationRefused { reason: "rearm has no recorded fence" }
       }
-      _ => WorkspaceExecutorPreparationRefused { reason: "rearm journal is unreadable" }
+      WorkspaceExecutorJournalUnreadable { reason: _ } => WorkspaceExecutorPreparationRefused { reason: "rearm journal is unreadable" }
     }
-    _ => WorkspaceExecutorPreparationRefused { reason: "rearm input is unavailable" }
+    WorkspaceExecutorInputRefused { reason: _ } => WorkspaceExecutorPreparationRefused { reason: "rearm input is unavailable" }
   }
 }
 
@@ -225,14 +246,15 @@ fn workspace_executor_arm(input: WorkspaceExecutorInput, executor: NonEmptyStr,
               WorkspaceExecutorJournalPublished { snapshot: _ } => WorkspaceExecutorPrepared {
                 directive: concat("start:", if after.invocation == "" { "none" } else { after.invocation }),
               }
-              _ => WorkspaceExecutorPreparationRefused { reason: "submission publication is unsettled; do not start" }
+              WorkspaceExecutorJournalConflict => WorkspaceExecutorPreparationRefused { reason: "submission publication is unsettled; do not start" }
+              WorkspaceExecutorJournalRefused { reason: _ } => WorkspaceExecutorPreparationRefused { reason: "submission publication is unsettled; do not start" }
             } }
           }
-          _ => WorkspaceExecutorPreparationRefused { reason: "controller became unreadable during preparation" }
+          WorkspaceCommissioningStartUnreadable { reason: _ } => WorkspaceExecutorPreparationRefused { reason: "controller became unreadable during preparation" }
         } }
       }
-      _ => WorkspaceExecutorPreparationRefused { reason: "fresh commissioning admission refused; mutation retained" }
+      WorkspaceCommissioningRefused { reason: _ } => WorkspaceExecutorPreparationRefused { reason: "fresh commissioning admission refused; mutation retained" }
     } }
-    _ => WorkspaceExecutorPreparationRefused { reason: "controller prestate is unreadable" }
+    WorkspaceCommissioningStartUnreadable { reason: _ } => WorkspaceExecutorPreparationRefused { reason: "controller prestate is unreadable" }
   }
 }

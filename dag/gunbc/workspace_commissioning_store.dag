@@ -4,7 +4,7 @@ import gunbc.workspace_commissioning { WorkspaceCommissionedSlot, WorkspaceCommi
 import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
 import std.decl_ref { decl_ref }
 import gunbc.workspace_slot_mutation { workspace_slot_mutation_supply_open }
-import gunbc.workspace_commissioning_executor_store { workspace_executor_journal_observe, WorkspaceExecutorJournalObserved }
+import gunbc.workspace_commissioning_executor_store { workspace_executor_journal_observe, WorkspaceExecutorJournalObserved, WorkspaceExecutorJournalUnreadable }
 import gunbc.workspace_commissioning_executor_journal { ExecutorGenerationCommitted }
 import std.types { String, NonEmptyStr, Bool }
 import std.measure { byte_size_count, hardware_thread_count_value }
@@ -14,18 +14,18 @@ import gunbc.workspace_commissioning_transaction {
   WorkspaceCommissioningProvenance, WorkspaceCommissioningRecord,
   WorkspaceCommissioningPrepared, WorkspaceCommissioningCommitted,
   workspace_commissioning_next, WorkspaceCommissioningPrepare, WorkspaceCommissioningCommit, WorkspaceCommissioningAlreadyCommitted, WorkspaceCommissioningTransitionRefused,
-  WorkspaceCommissioningRecordReading, WorkspaceCommissioningRecordAbsent, WorkspaceCommissioningRecordRead, WorkspaceCommissioningRecordUnreadable,
+  WorkspaceCommissioningRecordReading, WorkspaceCommissioningRecordAbsent, WorkspaceCommissioningRecordRead, WorkspaceCommissioningRecordUnreadable, WorkspaceCommissioningWriteReadiness,
 }
-import gunbc.runner_microvm_cell_readiness { StoreRootOwned }
-import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, read_cell_readiness_store }
+import gunbc.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
+import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, read_cell_readiness_store, OwnershipUnread }
 import std.durable_compare_and_set {
   CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
   CasObservedReadable, CasReadableAbsent, CasReadablePresent,
-  CasCommitted, CasPreconditionFailed, CasStoreRefused,
+  CasCommitted, CasPreconditionFailed, CasStoreRefused, CasObservedUnreadable,
 }
 import gunbc.durable_cas_file_store {
   observe_cas_slot_state, cas_file_slot_path, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted,
-  file_compare_and_set, OwnerOnlyCreateOnly,
+  file_compare_and_set, OwnerOnlyCreateOnly, DerivedPayloadKeyNotSlotAddressable,
 }
 
 data workspace_commissioning_store_root: NonEmptyStr = workspace_commissioning_store_location as NonEmptyStr
@@ -103,14 +103,17 @@ fn workspace_commissioning_store_observe(root: NonEmptyStr, provenance: Workspac
                   expected: ExpectSlotGeneration { generation: version.generation },
                   reading: WorkspaceCommissioningRecordRead { record: record } },
               }
-              _ => WorkspaceCommissioningStoreRefused { reason: "commissioning record is malformed or belongs to different provenance" }
+              WorkspaceCommissioningRecordAbsent => WorkspaceCommissioningStoreRefused { reason: "commissioning record is malformed or belongs to different provenance" }
+              WorkspaceCommissioningRecordUnreadable { reason: _ } => WorkspaceCommissioningStoreRefused { reason: "commissioning record is malformed or belongs to different provenance" }
             }
-          _ => WorkspaceCommissioningStoreRefused { reason: "commissioning record is not root-owned and protected from other writers" }
+          OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => WorkspaceCommissioningStoreRefused { reason: "commissioning record is not root-owned and protected from other writers" }
+          OwnershipUnread { reason: _ } => WorkspaceCommissioningStoreRefused { reason: "commissioning record is not root-owned and protected from other writers" }
         }
       }
-      _ => WorkspaceCommissioningStoreRefused { reason: "commissioning CAS head is unreadable; no absent transaction was established" }
+      CasObservedUnreadable { cause: _ } => WorkspaceCommissioningStoreRefused { reason: "commissioning CAS head is unreadable; no absent transaction was established" }
     }
-    _ => WorkspaceCommissioningStoreRefused { reason: "commissioning store is absent, unreadable or writable outside root" }
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => WorkspaceCommissioningStoreRefused { reason: "commissioning store is absent, unreadable or writable outside root" }
+    OwnershipUnread { reason: _ } => WorkspaceCommissioningStoreRefused { reason: "commissioning store is absent, unreadable or writable outside root" }
   }
 }
 
@@ -130,7 +133,9 @@ fn workspace_commissioning_store_publish(snapshot: WorkspaceCommissioningStoreSn
       publication: WorkspaceCommissioningPhasePublication { snapshot: snapshot, record: record })
     WorkspaceCommissioningCommit { record } => workspace_commissioning_publish_phase(
       publication: WorkspaceCommissioningPhasePublication { snapshot: snapshot, record: record })
-    _ => WorkspaceCommissioningStorePublicationRefused { reason: "fresh commissioning/readiness observations do not admit a phase publication" }
+    WorkspaceCommissioningWriteReadiness { write: _ } => WorkspaceCommissioningStorePublicationRefused { reason: "fresh commissioning/readiness observations do not admit a phase publication" }
+    WorkspaceCommissioningAlreadyCommitted => WorkspaceCommissioningStorePublicationRefused { reason: "fresh commissioning/readiness observations do not admit a phase publication" }
+    WorkspaceCommissioningTransitionRefused { reason: _ } => WorkspaceCommissioningStorePublicationRefused { reason: "fresh commissioning/readiness observations do not admit a phase publication" }
   }
 }
 
@@ -146,9 +151,10 @@ fn workspace_commissioning_publish_phase(publication: WorkspaceCommissioningPhas
         CasPreconditionFailed { expected: _, observed: _ } => WorkspaceCommissioningStoreConflict
         CasStoreRefused { cause: _ } => WorkspaceCommissioningStorePublicationRefused { reason: "commissioning CAS refused; reread before retrying" }
       }
-      _ => WorkspaceCommissioningStorePublicationRefused { reason: "commissioning slot is not addressable by the CAS store" }
+      DerivedPayloadKeyNotSlotAddressable { key: _ } => WorkspaceCommissioningStorePublicationRefused { reason: "commissioning slot is not addressable by the CAS store" }
     }
-    _ => WorkspaceCommissioningStorePublicationRefused { reason: "commissioning store custody changed before publication" }
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => WorkspaceCommissioningStorePublicationRefused { reason: "commissioning store custody changed before publication" }
+    OwnershipUnread { reason: _ } => WorkspaceCommissioningStorePublicationRefused { reason: "commissioning store custody changed before publication" }
   }
 }
 
@@ -186,9 +192,9 @@ fn workspace_commissioning_executor_complete(provenance: WorkspaceCommissioningP
     WorkspaceExecutorJournalObserved { snapshot } => match snapshot.record {
       Present { value: record } => record.phase == ExecutorGenerationCommitted
         && record.subject.plan_hash == provenance.plan_hash
-      _ => false
+      Absent => false
     }
-    _ => false
+    WorkspaceExecutorJournalUnreadable { reason: _ } => false
   }
 }
 
@@ -204,10 +210,15 @@ fn workspace_commissioning_current_supply(snapshot: WorkspaceCommissioningStoreS
         WorkspaceCommissioningAlreadyCommitted => WorkspaceCommissioningSupplyReady {
           committed: WorkspaceCommittedCommissioning { admitted: admitted, provenance: provenance },
         }
-        _ => WorkspaceCommissioningSupplyRefused { reason: "committed provenance has no coherent readiness readback" }
+        WorkspaceCommissioningPrepare { record: _ } => WorkspaceCommissioningSupplyRefused { reason: "committed provenance has no coherent readiness readback" }
+        WorkspaceCommissioningWriteReadiness { write: _ } => WorkspaceCommissioningSupplyRefused { reason: "committed provenance has no coherent readiness readback" }
+        WorkspaceCommissioningCommit { record: _ } => WorkspaceCommissioningSupplyRefused { reason: "committed provenance has no coherent readiness readback" }
+        WorkspaceCommissioningTransitionRefused { reason: _ } => WorkspaceCommissioningSupplyRefused { reason: "committed provenance has no coherent readiness readback" }
       }
     }
-    _ => WorkspaceCommissioningSupplyRefused { reason: "commissioning is not committed; partial publication cannot expose supply" }
+    WorkspaceCommissioningRecordAbsent => WorkspaceCommissioningSupplyRefused { reason: "commissioning is not committed; partial publication cannot expose supply" }
+    WorkspaceCommissioningRecordRead { record: WorkspaceCommissioningPrepared { provenance: _ } } => WorkspaceCommissioningSupplyRefused { reason: "commissioning is not committed; partial publication cannot expose supply" }
+    WorkspaceCommissioningRecordUnreadable { reason: _ } => WorkspaceCommissioningSupplyRefused { reason: "commissioning is not committed; partial publication cannot expose supply" }
   }
 }
 
@@ -227,10 +238,14 @@ fn workspace_commissioning_store_restore_admission(snapshot: WorkspaceCommission
           match workspace_commissioning_next(admitted: admitted, provenance: p,
             transaction: current.reading, readiness: read_cell_readiness_store()) {
             WorkspaceCommissioningTransitionRefused { reason } => WorkspaceCommissioningRefused { reason: reason }
-            _ => WorkspaceCommissioningReady { commissioned: admitted }
+            WorkspaceCommissioningPrepare { record: _ } => WorkspaceCommissioningReady { commissioned: admitted }
+            WorkspaceCommissioningWriteReadiness { write: _ } => WorkspaceCommissioningReady { commissioned: admitted }
+            WorkspaceCommissioningCommit { record: _ } => WorkspaceCommissioningReady { commissioned: admitted }
+            WorkspaceCommissioningAlreadyCommitted => WorkspaceCommissioningReady { commissioned: admitted }
           }
         }
-        _ => WorkspaceCommissioningRefused { reason: "no recorded commissioning authority exists to recover" }
+        WorkspaceCommissioningRecordAbsent => WorkspaceCommissioningRefused { reason: "no recorded commissioning authority exists to recover" }
+        WorkspaceCommissioningRecordUnreadable { reason: _ } => WorkspaceCommissioningRefused { reason: "no recorded commissioning authority exists to recover" }
       } }
   }
 }

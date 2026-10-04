@@ -8,6 +8,7 @@ import gunbc.workspace_commissioning { WorkspaceCommissionedSlot }
 import gunbc.runner_microvm_cell_readiness {
   CellReadinessStoreRead, StoreRead, StoreRootOwned, CellSettled, CellAttemptInFlight,
   CellReadinessWrite, WriteCommissioned, record_cell,
+ record_ready_cell_at, StoreNotRootOwned, StoreUnreadable,
 }
 import product.fabric.sanitation { CellReady }
 
@@ -75,10 +76,9 @@ fn workspace_commissioning_next(
               WorkspaceCommissioningTransitionRefused { reason: "another commissioning subject owns the prepared transition" }
             } else if own.count() == 0 {
               WorkspaceCommissioningWriteReadiness { write: WriteCommissioned { permit: admitted.initial_readiness } }
-            } else if own.count() == 1 && any(own, r => match r {
-              CellSettled { cell: _, generation: 0, readiness: CellReady { cell: ready_cell } } =>
-                (ready_cell as String) == (runner_slot_instance_name(slot: admitted.slot) as String)
-              _ => false
+            } else if own.count() == 1 && any(own, r => match record_ready_cell_at(record: r, generation: 0) {
+              Present { value: ready_cell } => (ready_cell as String) == (runner_slot_instance_name(slot: admitted.slot) as String)
+              Absent => false
             }) {
               WorkspaceCommissioningCommit { record: WorkspaceCommissioningCommitted { provenance: provenance } }
             } else { WorkspaceCommissioningTransitionRefused { reason: "prepared commissioning cannot overwrite an attempt, quarantine or advanced generation" } }
@@ -91,7 +91,8 @@ fn workspace_commissioning_next(
           WorkspaceCommissioningRecordUnreadable { reason } => WorkspaceCommissioningTransitionRefused { reason: reason }
         }
       }
-      _ => WorkspaceCommissioningTransitionRefused { reason: "readiness is unreadable or not root-owned" }
+      StoreRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ }, records: _ } => WorkspaceCommissioningTransitionRefused { reason: "readiness is unreadable or not root-owned" }
+      StoreUnreadable { reason: _ } => WorkspaceCommissioningTransitionRefused { reason: "readiness is unreadable or not root-owned" }
     }
   } }
 }

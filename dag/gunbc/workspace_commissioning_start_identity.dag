@@ -22,6 +22,6 @@ fn workspace_commissioning_snapshotted_submitter() -> NonEmptyStr? {
         Present { value: read.content as NonEmptyStr }
       } else { none }
     }
-    _ => none
+    Absent => none
   }
 }

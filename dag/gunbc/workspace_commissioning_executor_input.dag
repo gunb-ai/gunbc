@@ -1,6 +1,6 @@
 module gunbc.workspace_commissioning_executor_input
 
-import gunbc.workspace_commissioning_input_store { workspace_commissioning_input_read, WorkspaceCommissioningInputPresent }
+import gunbc.workspace_commissioning_input_store { workspace_commissioning_input_read, WorkspaceCommissioningInputPresent, WorkspaceCommissioningInputRefused }
 
 import gunbc.workspace_commissioning_dispatch_operations { workspace_dispatch_grant_path, workspace_dispatch_grant_content }
 
@@ -12,19 +12,19 @@ import gunbc.workspace_commissioning_executor_artifact { workspace_executor_help
 import gunbc.workspace_commissioning_executor_unit { workspace_executor_script_name, workspace_executor_helper_name, workspace_executor_unit_path, workspace_executor_unit_text, workspace_executor_unit_instance_name, workspace_executor_wait_bound }
 import gunbc.fleet_generation_execution { fleet_generation_lock }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.runner_microvm_cell_readiness { StoreRootOwned }
-import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead }
+import gunbc.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
+import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
 import gunbc.workspace_commissioning_executor_plan {
   WorkspaceExecutorPlanBytes, workspace_executor_plan_bytes, WorkspaceExecutorPlanBytesVerified,
 }
-import gunbc.workspace_commissioning_executor_helper { workspace_executor_actor_observe, WorkspaceExecutorActorObserved }
+import gunbc.workspace_commissioning_executor_helper { workspace_executor_actor_observe, WorkspaceExecutorActorObserved, WorkspaceExecutorActorRefused }
 import gunbc.build_cache_instance { runner_slot_instance_name }
 import gunbc.runner_microvm_slot_unit { microvm_controller_root }
 import gunbc.live_deploy.release_locus { approval_broker_release_dir, RevisionBoundAtEmission }
 import gunbc.runner_microvm_slot_controller {
-  bind_slot_host, resolve_network_subject, NetworkSubjectResolved,
+  bind_slot_host, resolve_network_subject, NetworkSubjectResolved, NetworkSubjectRefused,
 }
-import gunbc.runner_microvm_host_ready { MicrovmHostBound }
+import gunbc.runner_microvm_host_ready { MicrovmHostBound, MicrovmHostBindingRefused }
 import gunbc.runner_microvm_network { SlotNetworkSanitationSubject }
 
 // The reviewed artifacts are one immutable protected CAS value, published by fleet dispatch.
@@ -45,7 +45,8 @@ fn workspace_executor_protected_text(path: String) -> String? {
       let read = Filesystem.Read(path: path)
       if read.success { Present { value: read.content } } else { none }
     }
-    _ => none
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => none
+    OwnershipUnread { reason: _ } => none
   }
 }
 
@@ -55,9 +56,10 @@ fn workspace_executor_input_observe(slot: NonEmptyStr, executor: NonEmptyStr) ->
       WorkspaceExecutorInputRefused { reason: "input reader is not this executor" }
     } else { match workspace_commissioning_input_read(slot: slot) {
       WorkspaceCommissioningInputPresent { bytes: _, plan } => workspace_executor_input_from_plan(plan: plan)
-      _ => WorkspaceExecutorInputRefused { reason: "protected reviewed input is unavailable" }
+      WorkspaceCommissioningInputAbsent => WorkspaceExecutorInputRefused { reason: "protected reviewed input is unavailable" }
+      WorkspaceCommissioningInputRefused { reason: _ } => WorkspaceExecutorInputRefused { reason: "protected reviewed input is unavailable" }
     } }
-    _ => WorkspaceExecutorInputRefused { reason: "input reader is outside the actual executor" }
+    WorkspaceExecutorActorRefused { reason: _ } => WorkspaceExecutorInputRefused { reason: "input reader is outside the actual executor" }
   }
 }
 
@@ -74,16 +76,16 @@ fn workspace_executor_input_from_plan(plan: WorkspaceExecutorPlanBytes) -> Works
           plan: plan, release_dir: installed as NonEmptyStr, login: spec.job_user, network: subject,
         } } }
       }
-      _ => WorkspaceExecutorInputRefused { reason: "commissioning network subject is unavailable" }
+      NetworkSubjectRefused { refusal: _ } => WorkspaceExecutorInputRefused { reason: "commissioning network subject is unavailable" }
     }
-    _ => WorkspaceExecutorInputRefused { reason: "commissioning input is not on its selected host" }
+    MicrovmHostBindingRefused { cause: _ } => WorkspaceExecutorInputRefused { reason: "commissioning input is not on its selected host" }
   }
 }
 
 fn workspace_executor_owned_text_equals(path: String, expected: String) -> Bool {
   match workspace_executor_protected_text(path: path) {
     Present { value } => value == expected
-    _ => false
+    Absent => false
   }
 }
 

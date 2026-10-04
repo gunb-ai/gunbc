@@ -2,7 +2,7 @@ module gunbc.workspace_commissioning_executor_recovery
 
 import std.types { String, NonEmptyStr, Bool }
 import gunbc.workspace_commissioning_executor_helper {
-  workspace_executor_actor_observe, WorkspaceExecutorActorObserved,
+  workspace_executor_actor_observe, WorkspaceExecutorActorObserved, WorkspaceExecutorActorRefused,
 }
 import gunbc.workspace_commissioning_executor_journal {
   WorkspaceExecutorRecord, WorkspaceExecutorPhase, ExecutorSubmissionRecorded, ExecutorSubmissionFenced,
@@ -10,11 +10,11 @@ import gunbc.workspace_commissioning_executor_journal {
   ExecutorGenerationCommitted, workspace_executor_record_coherent,
 }
 import gunbc.workspace_commissioning_executor_store {
-  workspace_executor_journal_observe, WorkspaceExecutorJournalObserved,
+  workspace_executor_journal_observe, WorkspaceExecutorJournalObserved, WorkspaceExecutorJournalUnreadable,
 }
 import gunbc.workspace_commissioning_executor_fence { workspace_executor_mutation_matches }
 import gunbc.workspace_commissioning_start_observe {
-  workspace_commissioning_start_observe, WorkspaceCommissioningStartObserved,
+  workspace_commissioning_start_observe, WorkspaceCommissioningStartObserved, WorkspaceCommissioningStartUnreadable,
 }
 import gunbc.runner_microvm_slot_unit_identity { microvm_slot_unit_instance_name }
 
@@ -67,13 +67,13 @@ fn workspace_executor_recover(slot: NonEmptyStr, executor: NonEmptyStr,
               || current.invocation != record.invocation {
               WorkspaceExecutorRecoveryRefused { reason: "recorded controller is not the manager's current invocation" }
             } else { workspace_executor_recovery_phase(record: record) }
-            _ => WorkspaceExecutorRecoveryRefused { reason: "recorded controller is unreadable" }
+            WorkspaceCommissioningStartUnreadable { reason: _ } => WorkspaceExecutorRecoveryRefused { reason: "recorded controller is unreadable" }
           } }
         } else { workspace_executor_recovery_phase(record: record) }
-        _ => WorkspaceExecutorRecoveryRefused { reason: "recovery has no durable executor submission" }
+        Absent => WorkspaceExecutorRecoveryRefused { reason: "recovery has no durable executor submission" }
       }
-      _ => WorkspaceExecutorRecoveryRefused { reason: "recovery journal is unreadable" }
+      WorkspaceExecutorJournalUnreadable { reason: _ } => WorkspaceExecutorRecoveryRefused { reason: "recovery journal is unreadable" }
     } }
-    _ => WorkspaceExecutorRecoveryRefused { reason: "recovery caller is outside the live executor" }
+    WorkspaceExecutorActorRefused { reason: _ } => WorkspaceExecutorRecoveryRefused { reason: "recovery caller is outside the live executor" }
   }
 }

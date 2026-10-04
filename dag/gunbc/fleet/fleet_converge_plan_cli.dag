@@ -3,10 +3,10 @@ module gunbc.fleet_converge_plan_cli
 import gunbc.fleet_converge_scope { WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly, FleetConvergeScope, FullHost, FabricExecutionCellsOnly, FabricAllocationStoreOnly, LiveDeploy, LaunchEnvironment }
 import gunbc.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
 
-import gunbc.workspace_commissioning_fleet { WorkspaceCommissioningFleetObserved }
+import gunbc.workspace_commissioning_fleet { WorkspaceCommissioningFleetObserved, WorkspaceCommissioningFleetRefused }
 import gunbc.workspace_commissioning_dispatch_transport { workspace_dispatch_captured_command, workspace_dispatch_observe }
-import gunbc.workspace_commissioning_executor_plan { workspace_executor_scope_wire, workspace_executor_plan_credential, workspace_executor_plan_bytes, WorkspaceExecutorPlanBytesVerified }
-import gunbc.workspace_commissioning_directive { workspace_commissioning_directive_from_text, WorkspaceCommissioningDirectiveReady }
+import gunbc.workspace_commissioning_executor_plan { workspace_executor_scope_wire, workspace_executor_plan_credential, workspace_executor_plan_bytes, WorkspaceExecutorPlanBytesVerified, WorkspaceExecutorPlanBytesRefused }
+import gunbc.workspace_commissioning_directive { workspace_commissioning_directive_from_text, WorkspaceCommissioningDirectiveReady, WorkspaceCommissioningDirectiveRefused }
 import gunbc.workspace_commissioning_input_store { WorkspaceCommissioningInputBytes, workspace_commissioning_input_text }
 import gunbc.fleet_converge_terminal { FullyApplied, PartiallyApplied }
 import extdeps.posix.shell_command_language { posix_single_quote }
@@ -876,7 +876,7 @@ fn fleet_converge_plan_scoped_bound_wet(
   let observed = if (scope == WorkspaceSlotCommissioningOnly) {
     match workspace_dispatch_observe(host: subject_host, revision: run.run_revision as CommitSha) {
       WorkspaceCommissioningFleetObserved { basis } => FleetConvergeRequestObserved { request: WorkspaceSlotCommissioningConverge { basis: basis } }
-      _ => FleetConvergeRequestUnobserved { reason: "commissioning privileged observation refused" }
+      WorkspaceCommissioningFleetRefused { reason: _ } => FleetConvergeRequestUnobserved { reason: "commissioning privileged observation refused" }
     }
   } else { observe_fleet_converge_request_wet(scope_wire: fleet_converge_scope_wire(scope: scope), host: subject_host) }
   match observed {
@@ -1568,11 +1568,11 @@ fn observe_fleet_converge_request_from_plan_wet(scope_wire: String, host: NonEmp
       Present { value: credential } => match workspace_commissioning_directive_from_text(text: credential) {
         WorkspaceCommissioningDirectiveReady { provenance } => match workspace_dispatch_observe(host: host, revision: provenance.source_revision as CommitSha) {
           WorkspaceCommissioningFleetObserved { basis } => FleetConvergeRequestObserved { request: WorkspaceSlotCommissioningConverge { basis: basis } }
-          _ => FleetConvergeRequestUnobserved { reason: "commissioning no-op readback refused" }
+          WorkspaceCommissioningFleetRefused { reason: _ } => FleetConvergeRequestUnobserved { reason: "commissioning no-op readback refused" }
         }
-        _ => FleetConvergeRequestUnobserved { reason: "commissioning provenance unreadable" }
+        WorkspaceCommissioningDirectiveRefused { reason: _ } => FleetConvergeRequestUnobserved { reason: "commissioning provenance unreadable" }
       }
-      _ => FleetConvergeRequestUnobserved { reason: "commissioning credential missing" }
+      Absent => FleetConvergeRequestUnobserved { reason: "commissioning credential missing" }
     }
     ScopeDecoded { scope: WorkspaceAllocationOnly } => {
       let marker = "workspace-launch-directive:"
@@ -1701,33 +1701,40 @@ fn fleet_converge_apply_commissioning_bound_wet(run: ActionsRunBinding, plan_run
                       bundle: verified.bundle as String, payload: workspace_commissioning_input_text(bytes: bytes))
                     run_shell_commands(commands: [bash_program_command(script: command)], transport: LocalExec)
                   }
-                  _ => exit_failure(reason: "commissioning apply principal unreadable")
+                  Absent => exit_failure(reason: "commissioning apply principal unreadable")
                 }
                 let receipt = FleetConvergeApplyReceipt { run: run, plan_run_id: plan_run_id,
                   plan_receipt_identity: fleet_converge_plan_receipt_identity_hex(r: plan_receipt), plan_artifact_hash: verified.bundle as String,
                   observed_host: actual_host as String, prior_generation: plan_receipt.prior_generation, planned_generation: plan_receipt.planned_generation,
                   expected_revision_admitted: expected_revision_admitted,
-                  terminal: match applied { ExitSuccess => FullyApplied _ => PartiallyApplied { refused_axis_count: 1, detail: "commissioning executor completion not established; recover the same bundle" } },
+                  terminal: match applied { ExitSuccess => FullyApplied ExitFailure { code: _, reason: _ } => PartiallyApplied { refused_axis_count: 1, detail: "commissioning executor completion not established; recover the same bundle" } },
                   locked_apply_exit_code: match applied { ExitSuccess => 0 ExitFailure { code, reason: _ } => code },
                 }
                 match run_shell_commands(commands: [mkdir_parents_command(path: fleet_converge_apply_receipt_dir)], transport: LocalExec) {
                   ExitSuccess => match write_fleet_converge_apply_receipt(r: receipt) {
                     ReceiptWritten { path: _ } => applied
-                    _ => exit_failure(reason: "commissioning completed or refused but apply receipt publication failed; retry readback")
+                    ReceiptWriteRefused { path: _, error: _ } => exit_failure(reason: "commissioning completed or refused but apply receipt publication failed; retry readback")
                   }
-                  _ => exit_failure(reason: "commissioning apply receipt directory refused")
+                  ExitFailure { code: _, reason: _ } => exit_failure(reason: "commissioning apply receipt directory refused")
                 }
               }
-              _ => exit_failure(reason: "commissioning plan bytes failed binding")
+              WorkspaceExecutorPlanBytesRefused { reason: _ } => exit_failure(reason: "commissioning plan bytes failed binding")
             }
           }
-          _ => exit_failure(reason: "commissioning plan lacks a unique credential")
+          Absent => exit_failure(reason: "commissioning plan lacks a unique credential")
         }
-        _ => exit_failure(reason: "commissioning plan run/revision/repository binding refused")
+        PlanBindingRunIdMismatch { planned: _, requested: _ } => exit_failure(reason: "commissioning plan run/revision/repository binding refused")
+        PlanBindingHashMismatch { receipt: _, on_disk: _ } => exit_failure(reason: "commissioning plan run/revision/repository binding refused")
+        PlanBindingRevisionMismatch { plan: _, apply: _ } => exit_failure(reason: "commissioning plan run/revision/repository binding refused")
+        PlanBindingRepositoryMismatch { plan: _, apply: _ } => exit_failure(reason: "commissioning plan run/revision/repository binding refused")
       } }
-      _ => exit_failure(reason: "commissioning artifact sidecars or bundle digest diverged")
+      PayloadScopeUndecodableInReceipt { cause: _ } => exit_failure(reason: "commissioning artifact sidecars or bundle digest diverged")
+      PayloadSidecarDiverged { field: _, receipt_value: _, on_disk_value: _ } => exit_failure(reason: "commissioning artifact sidecars or bundle digest diverged")
+      PayloadGenerationTextCorrupt { field: _, on_disk_value: _ } => exit_failure(reason: "commissioning artifact sidecars or bundle digest diverged")
+      PayloadBundleDigestMismatch { receipt_value: _, on_disk_value: _ } => exit_failure(reason: "commissioning artifact sidecars or bundle digest diverged")
+      PayloadDigestUncomputable { path: _ } => exit_failure(reason: "commissioning artifact sidecars or bundle digest diverged")
     } }
-    _ => exit_failure(reason: "commissioning host identity unreadable")
+    Absent => exit_failure(reason: "commissioning host identity unreadable")
   } }
 }
 

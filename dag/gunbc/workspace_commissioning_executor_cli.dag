@@ -9,9 +9,9 @@ import gunbc.workspace_commissioning_executor_submission {
   workspace_executor_prepare, workspace_executor_rearm, WorkspaceExecutorPrepared, WorkspaceExecutorPreparationRefused,
 }
 import gunbc.workspace_commissioning_executor_helper {
-  workspace_executor_helper_bind, workspace_executor_helper_finish, WorkspaceExecutorHelperAccepted,
+  workspace_executor_helper_bind, workspace_executor_helper_finish, WorkspaceExecutorHelperAccepted, WorkspaceExecutorHelperRefused,
 }
-import gunbc.workspace_commissioning_executor_input { workspace_executor_input_observe, WorkspaceExecutorInputObserved }
+import gunbc.workspace_commissioning_executor_input { workspace_executor_input_observe, WorkspaceExecutorInputObserved, WorkspaceExecutorInputRefused }
 
 fn workspace_executor_cli_refused(reason: String) -> CliWireResponse {
   CliWirePrintable { bytes: "", exit: exit_failure(reason: reason) }
@@ -36,7 +36,7 @@ fn workspace_executor_cli_main() -> CliWireResponse {
           } else if action == "bind" {
             match workspace_executor_helper_bind(slot: slot as NonEmptyStr, executor: actor as NonEmptyStr, controller: controller as NonEmptyStr) {
               WorkspaceExecutorHelperAccepted => CliWirePrintable { bytes: "", exit: ExitSuccess }
-              _ => workspace_executor_cli_refused(reason: "controller binding refused")
+              WorkspaceExecutorHelperRefused { reason: _ } => workspace_executor_cli_refused(reason: "controller binding refused")
             }
           } else if action == "finish" {
             match workspace_executor_input_observe(slot: slot as NonEmptyStr, executor: actor as NonEmptyStr) {
@@ -44,17 +44,17 @@ fn workspace_executor_cli_main() -> CliWireResponse {
                 controller: controller as NonEmptyStr, bundle: input.plan.bundle, provenance: input.plan.provenance,
                 release_dir: input.release_dir, login: input.login, network: input.network) {
                 WorkspaceExecutorHelperAccepted => CliWirePrintable { bytes: "commissioning-fleet-generation-committed\n", exit: ExitSuccess }
-                _ => workspace_executor_cli_refused(reason: "strong commissioning finish or publication refused")
+                WorkspaceExecutorHelperRefused { reason: _ } => workspace_executor_cli_refused(reason: "strong commissioning finish or publication refused")
               }
-              _ => workspace_executor_cli_refused(reason: "finish input is unreadable")
+              WorkspaceExecutorInputRefused { reason: _ } => workspace_executor_cli_refused(reason: "finish input is unreadable")
             }
           } else { workspace_executor_cli_refused(reason: "unknown executor action") }
-          _ => workspace_executor_cli_refused(reason: "controller invocation argument is absent")
+          Absent => workspace_executor_cli_refused(reason: "controller invocation argument is absent")
         } }
-        _ => workspace_executor_cli_refused(reason: "executor invocation argument is absent")
+        Absent => workspace_executor_cli_refused(reason: "executor invocation argument is absent")
       }
-      _ => workspace_executor_cli_refused(reason: "executor action is absent")
+      Absent => workspace_executor_cli_refused(reason: "executor action is absent")
     }
-    _ => workspace_executor_cli_refused(reason: "executor slot environment is absent")
+    Absent => workspace_executor_cli_refused(reason: "executor slot environment is absent")
   }
 }

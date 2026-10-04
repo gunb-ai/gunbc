@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Int, Bool }
 import std.durable_compare_and_set { CasGeneration, cas_generation_count }
 import std.content_hash { content_hash_validate_lower_hex_length, parse_content_hash }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, serialize_json }
-import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_field_string, json_field_int, FieldRead }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_field_string, json_field_int, FieldRead, FieldMalformed, JsonDocumentUnreadable }
 
 // This journal belongs to the enclosing fleet transaction. It is NOT the controller's
 // Prepared/Committed readiness journal, and a journal record by itself is never a start permit.
@@ -65,7 +65,7 @@ fn workspace_executor_phase_from_wire(text: String) -> WorkspaceExecutorPhase? {
 fn workspace_executor_record_coherent(record: WorkspaceExecutorRecord) -> Bool {
   let subject = record.subject
   (subject.slot as String) != "" && (subject.plan_hash as String) != ""
-    && (match parse_content_hash(wire: subject.fleet_bundle_hash as String) { Present { value: _ } => true _ => false })
+    && (match parse_content_hash(wire: subject.fleet_bundle_hash as String) { Present { value: _ } => true Absent => false })
     && subject.prior_fleet_generation >= 0 && subject.planned_fleet_generation > 0
     && subject.prior_fleet_generation == subject.planned_fleet_generation - 1
     && cas_generation_count(g: subject.mutation_generation) > 0
@@ -74,7 +74,10 @@ fn workspace_executor_record_coherent(record: WorkspaceExecutorRecord) -> Bool {
     && (match record.phase {
       ExecutorSubmissionRecorded => record.invocation == ""
       ExecutorSubmissionFenced => record.invocation == ""
-      _ => content_hash_validate_lower_hex_length(text: record.invocation, expected_hex_digits: 32)
+      ExecutorInvocationRecorded => content_hash_validate_lower_hex_length(text: record.invocation, expected_hex_digits: 32)
+      ExecutorReadbackAccepted => content_hash_validate_lower_hex_length(text: record.invocation, expected_hex_digits: 32)
+      ExecutorReleaseObserved => content_hash_validate_lower_hex_length(text: record.invocation, expected_hex_digits: 32)
+      ExecutorGenerationCommitted => content_hash_validate_lower_hex_length(text: record.invocation, expected_hex_digits: 32)
         && record.invocation != record.previous_invocation
     })
 }
@@ -88,13 +91,18 @@ fn workspace_executor_record_follows(previous: WorkspaceExecutorRecord, next: Wo
     && (previous == next || (match previous.phase {
       ExecutorSubmissionFenced => next.phase == ExecutorSubmissionRecorded
         && previous.submitter != next.submitter
-      _ => previous.submitter == next.submitter && previous.previous_invocation == next.previous_invocation
+      ExecutorSubmissionRecorded => previous.submitter == next.submitter && previous.previous_invocation == next.previous_invocation
+      ExecutorInvocationRecorded => previous.submitter == next.submitter && previous.previous_invocation == next.previous_invocation
+      ExecutorReadbackAccepted => previous.submitter == next.submitter && previous.previous_invocation == next.previous_invocation
+      ExecutorReleaseObserved => previous.submitter == next.submitter && previous.previous_invocation == next.previous_invocation
+      ExecutorGenerationCommitted => previous.submitter == next.submitter && previous.previous_invocation == next.previous_invocation
         && (match previous.phase {
           ExecutorSubmissionRecorded => next.phase == ExecutorInvocationRecorded || next.phase == ExecutorSubmissionFenced
           ExecutorInvocationRecorded => next.phase == ExecutorReadbackAccepted && previous.invocation == next.invocation
           ExecutorReadbackAccepted => next.phase == ExecutorReleaseObserved && previous.invocation == next.invocation
           ExecutorReleaseObserved => next.phase == ExecutorGenerationCommitted && previous.invocation == next.invocation
-          _ => false
+          ExecutorSubmissionFenced => false
+          ExecutorGenerationCommitted => false
         })
     }))
 }
@@ -122,7 +130,7 @@ fn workspace_executor_record_text(record: WorkspaceExecutorRecord) -> NonEmptySt
 fn workspace_executor_record_decode(text: String) -> WorkspaceExecutorRecord? {
   match parse_json_document(s: text) {
     JsonDocumentParsed { value: body } => workspace_executor_record_decode_body(body: body)
-    _ => none
+    JsonDocumentUnreadable { gap: _ } => none
   }
 }
 
@@ -130,9 +138,10 @@ fn workspace_executor_record_decode_body(body: JsonValue) -> WorkspaceExecutorRe
   match json_field_string(obj: body, key: "fleet_bundle_hash") {
     FieldRead { value: bundle } => match parse_content_hash(wire: bundle) {
       Present { value: _ } => workspace_executor_record_decode_bound(body: body, bundle: bundle as NonEmptyStr)
-      _ => none
+      Absent => none
     }
-    _ => none
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
   }
 }
 
@@ -174,31 +183,40 @@ fn workspace_executor_record_decode_bound(body: JsonValue, bundle: NonEmptyStr) 
       }
       }
     }
-    _ => none
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
   }
     }
-    _ => none
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
   }
     }
-    _ => none
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
   }
     }
-    _ => none
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
   }
     }
-    _ => none
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
   }
     }
-    _ => none
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
   }
     }
-    _ => none
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
   }
     }
-    _ => none
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
   }
     }
-    _ => none
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
   }
 }
 

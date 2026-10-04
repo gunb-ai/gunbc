@@ -19,7 +19,7 @@ fn fleet_generation_publication_decode(content: String) -> FleetGenerationPublic
     match parse_int(s: text) {
       Present { value: generation } => if generation >= 0 { FleetGenerationLegacy { generation: generation } }
         else { FleetGenerationUnreadable }
-      _ => FleetGenerationUnreadable
+      Absent => FleetGenerationUnreadable
     }
   } else if fields.count() == 2 {
     match fields.first() {
@@ -28,13 +28,13 @@ fn fleet_generation_publication_decode(content: String) -> FleetGenerationPublic
           else { match fields.get(index: 1) {
             Present { value: identity } => match parse_content_hash(wire: identity) {
               Present { value: plan_hash } => FleetGenerationPublished { generation: generation, plan_hash: plan_hash }
-              _ => FleetGenerationUnreadable
+              Absent => FleetGenerationUnreadable
             }
-            _ => FleetGenerationUnreadable
+            Absent => FleetGenerationUnreadable
           } }
-        _ => FleetGenerationUnreadable
+        Absent => FleetGenerationUnreadable
       }
-      _ => FleetGenerationUnreadable
+      Absent => FleetGenerationUnreadable
     }
   } else { FleetGenerationUnreadable }
 }
@@ -62,7 +62,8 @@ fn fleet_generation_publication_owned(observed: FleetGenerationPublication, gene
   match observed {
     FleetGenerationPublished { generation: recorded, plan_hash: owner } => recorded == generation
       && serialize_content_hash(hash: owner) == serialize_content_hash(hash: plan_hash)
-    _ => false
+    FleetGenerationLegacy { generation: _ } => false
+    FleetGenerationUnreadable => false
   }
 }
 

@@ -124,6 +124,20 @@ fn record_cell(record: CellReadinessRecord) -> CellId {
   }
 }
 
+// The cell a record proves READY at exactly this generation; an in-flight attempt, a quarantine or
+// any other generation proves nothing, so initial commissioning can ask for generation zero only.
+fn record_ready_cell_at(record: CellReadinessRecord, generation: Int) -> CellId? {
+  match record {
+    CellAttemptInFlight { cell: _, generation: _, attempt: _ } => none
+    CellSettled { cell: _, generation: g, readiness: readiness } => if g != generation { none } else {
+      match readiness {
+        CellReady { cell: ready } => Present { value: ready }
+        CellQuarantined { cell: _, unproven: _ } => none
+      }
+    }
+  }
+}
+
 fn record_generation(record: CellReadinessRecord) -> Int {
   match record {
     CellAttemptInFlight { cell: _, generation: g, attempt: _ } => g

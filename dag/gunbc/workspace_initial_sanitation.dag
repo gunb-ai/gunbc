@@ -1,5 +1,6 @@
 module gunbc.workspace_initial_sanitation
 
+import extdeps.shell.exec { ProcessOutputAbsent, ProcessRefused }
 import std.types { String, NonEmptyStr, Bool, List, Timestamp }
 import std.algebra { trim }
 import std.decl_ref { decl_ref }
@@ -101,7 +102,8 @@ fn workspace_observe_initial_sanitation(subject: SlotNetworkSanitationSubject) -
     ProcessOutputPresent { text: host } => if trim(s: host) != (subject.subject.slot.host as String) {
       WorkspaceInitialSanitationUnavailable { reason: "initial sanitation must execute on the slot's host" }
     } else { workspace_observe_initial_sanitation_on_host(subject: subject) }
-    _ => WorkspaceInitialSanitationUnavailable { reason: "initial sanitation host identity is unreadable" }
+    ProcessOutputAbsent => WorkspaceInitialSanitationUnavailable { reason: "initial sanitation host identity is unreadable" }
+    ProcessRefused { exit_code: _, stderr: _ } => WorkspaceInitialSanitationUnavailable { reason: "initial sanitation host identity is unreadable" }
   }
 }
 

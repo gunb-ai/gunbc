@@ -4,9 +4,9 @@ import std.types { String }
 import gunbc.workspace_commissioning_executor_fence { WorkspaceExecutorControllerPermit, workspace_executor_controller_still_owned }
 import v2.std.algebra { filter }
 import gunbc.workspace_slot_mutation { workspace_commissioning_mutation_held }
-import gunbc.runner_microvm_cell_readiness { StoreRead, StoreRootOwned, CellSettled, record_cell }
+import gunbc.runner_microvm_cell_readiness { StoreRead, StoreRootOwned, CellSettled, record_cell , record_ready_cell_at, StoreNotRootOwned, StoreUnreadable }
 import gunbc.build_cache_instance { runner_slot_instance_name }
-import product.fabric.sanitation { CellId, CellReady, SlotScopedNetwork, cell_readiness_from_observations }
+import product.fabric.sanitation { CellId, CellReady, SlotScopedNetwork, cell_readiness_from_observations, CellQuarantined }
 import gunbc.runner_microvm_network { SlotNetworkSanitationSubject }
 import gunbc.workspace_initial_sanitation { workspace_observe_initial_sanitation, WorkspaceInitialSanitationReadback, WorkspaceInitialSanitationUnavailable }
 import std.decl_ref { decl_ref }
@@ -25,7 +25,7 @@ import gunbc.workspace_commissioning_store {
   WorkspaceCommissioningSupplyReady, WorkspaceCommissioningSupplyRefused,
 }
 import gunbc.runner_microvm_cell_readiness_store {
-  read_cell_readiness_store, persist_cell_readiness_write, StorePersisted,
+  read_cell_readiness_store, persist_cell_readiness_write, StorePersisted, StorePersistCellNotAddressable, StorePersistReadbackFailed, StorePersistReadbackMismatch, StorePersistRefusedByStore, StorePersistWriteFailed,
 }
 
 type WorkspaceCommissioningReconciliation
@@ -83,16 +83,24 @@ fn workspace_commissioning_controller_step(admitted: WorkspaceCommissionedSlot,
             let cell = runner_slot_instance_name(slot: provenance.slot) as String
             let own = filter(records, r => (record_cell(record: r) as String) == cell)
             if own.count() == 1 && (match own.first() {
-              Present { value: CellSettled { cell: _, generation: 0, readiness: CellReady { cell: ready } } } => (ready as String) == cell
-              _ => false
+              Absent => false
+              Present { value: record } => match record_ready_cell_at(record: record, generation: 0) {
+                Present { value: ready } => (ready as String) == cell
+                Absent => false
+              }
             }) { WorkspaceCommissioningComplete }
             else { WorkspaceCommissioningReconciliationRefused { reason: "controller commit has no matching generation-zero readiness" } }
           }
-          _ => WorkspaceCommissioningReconciliationRefused { reason: "controller commit readiness is unreadable" }
+          StoreRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ }, records: _ } => WorkspaceCommissioningReconciliationRefused { reason: "controller commit readiness is unreadable" }
+          StoreUnreadable { reason: _ } => WorkspaceCommissioningReconciliationRefused { reason: "controller commit readiness is unreadable" }
         }
         WorkspaceCommissioningWriteReadiness { write } => match persist_cell_readiness_write(write: write) {
           StorePersisted { record: _ } => WorkspaceCommissioningProgress
-          _ => WorkspaceCommissioningReconciliationRefused { reason: "initial readiness publication/readback refused; prepared provenance remains for recovery" }
+          StorePersistRefusedByStore { result: _ } => WorkspaceCommissioningReconciliationRefused { reason: "initial readiness publication/readback refused; prepared provenance remains for recovery" }
+          StorePersistCellNotAddressable { spelling: _ } => WorkspaceCommissioningReconciliationRefused { reason: "initial readiness publication/readback refused; prepared provenance remains for recovery" }
+          StorePersistWriteFailed { path: _ } => WorkspaceCommissioningReconciliationRefused { reason: "initial readiness publication/readback refused; prepared provenance remains for recovery" }
+          StorePersistReadbackFailed { reason: _ } => WorkspaceCommissioningReconciliationRefused { reason: "initial readiness publication/readback refused; prepared provenance remains for recovery" }
+          StorePersistReadbackMismatch { path: _ } => WorkspaceCommissioningReconciliationRefused { reason: "initial readiness publication/readback refused; prepared provenance remains for recovery" }
         }
         WorkspaceCommissioningPrepare { record: _ } => match workspace_commissioning_store_publish(snapshot: snapshot, admitted: admitted) {
           WorkspaceCommissioningStorePublished => WorkspaceCommissioningProgress
@@ -108,7 +116,7 @@ fn workspace_commissioning_controller_step(admitted: WorkspaceCommissionedSlot,
     }
   }
       }
-      _ => WorkspaceCommissioningReconciliationRefused { reason: "fresh initial sanitation is incomplete; commissioning remains outstanding" }
+      CellQuarantined { cell: _, unproven: _ } => WorkspaceCommissioningReconciliationRefused { reason: "fresh initial sanitation is incomplete; commissioning remains outstanding" }
     } }
   }
     }

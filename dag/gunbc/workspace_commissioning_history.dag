@@ -5,8 +5,8 @@ import std.algebra { trim }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.runner_microvm_slot_unit { microvm_slot_controller_receipt_dir }
-import gunbc.runner_microvm_cell_readiness { StoreRootOwned }
-import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead }
+import gunbc.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
+import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
 
 // A receipt which says the controller never acquired a reservation carries no attempt subject.
 // Any executed attempt, unknown receipt or unreadable file requires recovery, not generation zero.
@@ -38,12 +38,14 @@ fn workspace_initial_controller_history_refusal(slot: RunnerSlotIdentity) -> Str
                 if !read.success { Present { value: "a slot controller receipt is unreadable" } }
                 else { workspace_initial_receipt_refusal(content: read.content) }
               }
-              _ => Present { value: "a slot controller receipt is not root-authoritative" }
+              OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => Present { value: "a slot controller receipt is not root-authoritative" }
+              OwnershipUnread { reason: _ } => Present { value: "a slot controller receipt is not root-authoritative" }
             }
           }
         })
       }
     }
-    _ => Present { value: "slot controller history is absent, unreadable or outside root custody" }
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => Present { value: "slot controller history is absent, unreadable or outside root custody" }
+    OwnershipUnread { reason: _ } => Present { value: "slot controller history is absent, unreadable or outside root custody" }
   }
 }
