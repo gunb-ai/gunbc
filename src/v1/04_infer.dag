@@ -4360,13 +4360,11 @@ fn required_produced_at_optional_declared(declared: Node, produced: Node, scope:
   let produced_name = authored_name_at(source_indices: source_indices, node: produced)
   let produced_carries_optional = produced.return_cardinality == CardOptional
     || qualified_last_segment(name: produced_name) == "Optional"
-  let produced_is_generic = (produced.params |> count) > 0
-    || produced.inferred == none
-    || is_compiler_error(inferred: produced.inferred.value)
-    || match produced.inferred {
-      Present { value: TypeVariable { id: _ } } => true
-      _ => false
-    }
+  let produced_is_generic = (produced.params |> count) > 0 || match produced.inferred {
+    Present { value: TypeVariable { id: _ } } => true
+    Present { value: inferred } => is_compiler_error(inferred: inferred)
+    _ => true
+  }
   declared.return_cardinality == CardOptional
     && !produced_carries_optional
     && !produced_is_generic
