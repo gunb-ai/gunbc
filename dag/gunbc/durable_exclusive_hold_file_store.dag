@@ -348,7 +348,7 @@ fn file_hold_recovery_assess(
   released_by: DurableHoldReleaseRef,
 ) -> FileHoldRecoveryAssessment
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_maintenance_hold", decl_name: "unit_hold_recover_dead_holder"),
+    decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_recover_dead_holder"),
   ]
 {
   match durable_hold_recovery_assess(observed: observe_file_hold(root: root, key: slot_key), report: report) {

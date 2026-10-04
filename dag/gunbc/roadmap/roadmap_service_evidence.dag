@@ -16,7 +16,7 @@ import gunbc.roadmap_dispatch_actuator { dispatch_attempt_launch_path_for_instan
 import std.measure { Kibibyte, kibibyte_count }
 import gunbc.roadmap_session_placement {
   SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign,
-  SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign,
+  SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionPlacementRecord,
   session_placement_observe_for_attempt,
 }
 import gunbc.roadmap_launch_admission {
@@ -168,12 +168,27 @@ type ServiceEvidenceInputs {
   session_placement: SessionPlacementInput
 }
 
-fn reader_pending_pr(r: ServiceEvidenceReader) -> Int {
+// THE READERS NOT YET ON MAIN, as their own coproduct: a landed reader (G5) has no arm here, so a
+// field cannot be recorded as pending a reader that has already landed (side-chat note on b422c05).
+// A reader's landing deletes its arm here and adds its member to ServiceEvidenceInputs.
+type PendingServiceReader
+  = PendingMetering
+  | PendingSharedComputation
+  | PendingResultReturned
+
+fn pending_reader(r: PendingServiceReader) -> ServiceEvidenceReader {
   match r {
-    MeteringReader => 13073
-    SessionPlacementReader => 13074
-    SharedComputationReader => 13097
-    ResultReturnedReader => 13075
+    PendingMetering => MeteringReader
+    PendingSharedComputation => SharedComputationReader
+    PendingResultReturned => ResultReturnedReader
+  }
+}
+
+fn reader_pending_pr(r: PendingServiceReader) -> Int {
+  match r {
+    PendingMetering => 13073
+    PendingSharedComputation => 13097
+    PendingResultReturned => 13075
   }
 }
 
@@ -190,128 +205,156 @@ type ServiceEvidenceReceipt {
   inputs: ServiceEvidenceInputs
 }
 
-// ── 3. THE CLOSED PER-FIELD READING, derived; there is no default and no zero ──
-// PendingReader: the reader is not on main (its PR is derived, reader_pending_pr).
-// ReaderRecordAbsent: the reader is on main and has written nothing for this attempt yet.
-// UnbuiltProducer: no producer exists anywhere; the named node owns building it.
-type ServiceEvidenceProducer
-  = PendingReader { reader: ServiceEvidenceReader }
-  | ReaderRecordAbsent { reader: ServiceEvidenceReader }
-  | UnbuiltProducer { owner_node: String }
-
-type ServiceEvidenceReading
-  = EvidenceObserved { value: String, source: ServiceEvidenceReader }
-  | EvidenceOwed { producer: ServiceEvidenceProducer }
+// ── 3. THE CLOSED PER-FIELD READING, typed per field; there is no default and no zero ──
+// Two slot kinds (review 75015, DESIGN §2: a String leaf hiding named parts is anemic modeling):
+//   a field whose reader has LANDED holds ServiceEvidenceReading<T>, where T is the typed carrier the
+//     reader's record establishes (a placement with named parts, the work-class grant, Kibibyte);
+//   a field with no landed source holds ServiceEvidenceOwed, which has NO observed arm, so nothing can
+//     be observed for it until its reader lands and that change gives the field its typed carrier.
+// Values become text only in the wire encoder (service_evidence_entries / service_evidence_entry_json).
+type ServiceEvidenceReading<T>
+  = EvidenceObserved { value: T }
+  | EvidenceRecordAbsent
   | EvidenceRefused { reason: NonEmptyStr }
 
-fn pending_reader_owed(reader: ServiceEvidenceReader) -> ServiceEvidenceReading {
-  EvidenceOwed { producer: PendingReader { reader: reader } }
+type ServiceEvidenceOwed
+  = OwedToPendingReader { reader: PendingServiceReader }
+  | OwedToUnbuiltProducer { owner_node: String }
+
+fn pending_reader_owed(reader: PendingServiceReader) -> ServiceEvidenceOwed {
+  OwedToPendingReader { reader: reader }
 }
 
-fn refused_reading(reason: String) -> ServiceEvidenceReading {
-  if reason == "" { EvidenceRefused { reason: "the reader refused without a reason" as NonEmptyStr } }
-  else { EvidenceRefused { reason: reason as NonEmptyStr } }
+// A field with no producer anywhere yet is owed to the node that owns building it. Where no other
+// node owns it, that is this node, whose later slices build it.
+fn owed_to(owner_node: String) -> ServiceEvidenceOwed {
+  OwedToUnbuiltProducer { owner_node: owner_node }
+}
+
+fn refusal_reason(reason: String) -> NonEmptyStr {
+  if reason == "" { "the reader refused without a reason" as NonEmptyStr } else { reason as NonEmptyStr }
 }
 
 // G5 (gunbc.roadmap_session_placement). What its grant record ESTABLISHES, and nothing else:
 //   placement        -- host, capacity partition and unit of the granted session;
 //   workload_class   -- the work-class grant the session was admitted under;
-//   resource_request -- the amount the grant admitted (the request as granted).
+//   resource_request -- the amount the grant admitted (the request as granted), as Kibibyte.
 // It does not establish wait time (no request-enqueued instant is recorded) or seat utilization (no
 // usage against the grant is recorded); those stay owed to this node (service_evidence_readings).
-// Every arm is mapped: Absent and a slot with no grant record yet are owed to G5 at runtime;
+// Every arm is mapped: Absent and a slot with no grant record yet are a record not yet written;
 // Unreadable, Foreign, an unreadable or foreign grant, and a record naming another (node, attempt)
 // than the binding are refused. None of them can produce an observed reading.
-type SessionPlacementFact = PlacementFact | WorkloadClassFact | ResourceRequestFact
-
-fn session_placement_fact_value(fact: SessionPlacementFact, host: String, partition: String, unit: String, class_grant: String, amount: Kibibyte) -> String {
-  match fact {
-    PlacementFact => join(["host ", host, ", partition ", partition, ", unit ", unit], "")
-    WorkloadClassFact => class_grant
-    ResourceRequestFact => join([to_string(kibibyte_count(k: amount)), " KiB granted"], "")
-  }
+type PlacementObserved {
+  host: String
+  partition: String
+  unit: String
 }
 
-fn session_placement_reading(i: SessionPlacementInput, binding: AttemptBinding, fact: SessionPlacementFact) -> ServiceEvidenceReading {
+type WorkloadClassObserved {
+  class_grant: String
+}
+
+// The grant record of THIS attempt, or why there is none: one fold, read by all three G5 fields.
+type SessionGrantOfAttempt
+  = GrantOfAttempt { record: SessionPlacementRecord }
+  | GrantNotYetWritten
+  | GrantRefused { reason: NonEmptyStr }
+
+fn session_grant_of_attempt(i: SessionPlacementInput, binding: AttemptBinding) -> SessionGrantOfAttempt {
   match i {
     SessionPlacementRead { observation } =>
       match observation {
-        SessionPlacementAbsent { unit: _ } => EvidenceOwed { producer: ReaderRecordAbsent { reader: SessionPlacementReader } }
-        SessionPlacementUnreadable { unit: _, detail } => refused_reading(reason: join(["the session placement is unreadable: ", detail], ""))
-        SessionPlacementForeign { unit: _, detail } => refused_reading(reason: join(["the session placement is not this attempt's: ", detail], ""))
+        SessionPlacementAbsent { unit: _ } => GrantNotYetWritten
+        SessionPlacementUnreadable { unit: _, detail } => GrantRefused { reason: refusal_reason(reason: join(["the session placement is unreadable: ", detail], "")) }
+        SessionPlacementForeign { unit: _, detail } => GrantRefused { reason: refusal_reason(reason: join(["the session placement is not this attempt's: ", detail], "")) }
         SessionPlacementObserved { slot: _, grant, returned: _ } =>
           match grant {
-            SessionGrantNotRecorded { path: _ } => EvidenceOwed { producer: ReaderRecordAbsent { reader: SessionPlacementReader } }
-            SessionGrantUnreadable { path: _, detail } => refused_reading(reason: join(["the session grant record is unreadable: ", detail], ""))
-            SessionGrantForeign { path: _, detail } => refused_reading(reason: join(["the session grant record is not this attempt's: ", detail], ""))
+            SessionGrantNotRecorded { path: _ } => GrantNotYetWritten
+            SessionGrantUnreadable { path: _, detail } => GrantRefused { reason: refusal_reason(reason: join(["the session grant record is unreadable: ", detail], "")) }
+            SessionGrantForeign { path: _, detail } => GrantRefused { reason: refusal_reason(reason: join(["the session grant record is not this attempt's: ", detail], "")) }
             SessionGrantRecorded { record } =>
               if record.node_id != (binding.node_id as String) || record.attempt_key != (binding.attempt_key as String) {
-                refused_reading(reason: join(["the session grant record names ", record.node_id, " attempt ", record.attempt_key, ", not the bound attempt"], ""))
+                GrantRefused { reason: refusal_reason(reason: join(["the session grant record names ", record.node_id, " attempt ", record.attempt_key, ", not the bound attempt"], "")) }
               } else {
-                EvidenceObserved {
-                  value: session_placement_fact_value(fact: fact, host: record.host, partition: record.partition, unit: record.unit, class_grant: record.class_grant, amount: record.amount),
-                  source: SessionPlacementReader,
-                }
+                GrantOfAttempt { record: record }
               }
           }
       }
   }
 }
 
-// A field with no producer anywhere yet is owed to the node that owns building it. Where no other
-// node owns it, that is this node, whose later slices build it.
-fn owed_to(owner_node: String) -> ServiceEvidenceReading {
-  EvidenceOwed { producer: UnbuiltProducer { owner_node: owner_node } }
+fn placement_reading(g: SessionGrantOfAttempt) -> ServiceEvidenceReading<PlacementObserved> {
+  match g {
+    GrantOfAttempt { record } => EvidenceObserved { value: PlacementObserved { host: record.host, partition: record.partition, unit: record.unit } }
+    GrantNotYetWritten => EvidenceRecordAbsent
+    GrantRefused { reason } => EvidenceRefused { reason: reason }
+  }
+}
+
+fn workload_class_reading(g: SessionGrantOfAttempt) -> ServiceEvidenceReading<WorkloadClassObserved> {
+  match g {
+    GrantOfAttempt { record } => EvidenceObserved { value: WorkloadClassObserved { class_grant: record.class_grant } }
+    GrantNotYetWritten => EvidenceRecordAbsent
+    GrantRefused { reason } => EvidenceRefused { reason: reason }
+  }
+}
+
+fn resource_request_reading(g: SessionGrantOfAttempt) -> ServiceEvidenceReading<Kibibyte> {
+  match g {
+    GrantOfAttempt { record } => EvidenceObserved { value: record.amount }
+    GrantNotYetWritten => EvidenceRecordAbsent
+    GrantRefused { reason } => EvidenceRefused { reason: reason }
+  }
 }
 
 // THE POPULATION: exactly the node's 21 fields, one named member each. A record literal must set
 // every member exactly once, so the population is checked by the compiler, not by a count.
 type ServiceEvidenceReadings {
-  workload_class: ServiceEvidenceReading
-  resource_request: ServiceEvidenceReading
-  wait_time: ServiceEvidenceReading
-  execution_time: ServiceEvidenceReading
-  completion_time: ServiceEvidenceReading
-  cache_hits: ServiceEvidenceReading
-  cache_misses: ServiceEvidenceReading
-  cache_shared_misses: ServiceEvidenceReading
-  cache_corrupt_hit_refusals: ServiceEvidenceReading
-  placement: ServiceEvidenceReading
-  seat_utilization: ServiceEvidenceReading
-  artifact_bytes: ServiceEvidenceReading
-  egress: ServiceEvidenceReading
-  failure_attribution: ServiceEvidenceReading
-  recovery_action: ServiceEvidenceReading
-  operator_intervention_time: ServiceEvidenceReading
-  hardware_health: ServiceEvidenceReading
-  billable_usage: ServiceEvidenceReading
-  billable_credits: ServiceEvidenceReading
-  workspace_recovery_point: ServiceEvidenceReading
-  workspace_recovery_time: ServiceEvidenceReading
+  workload_class: ServiceEvidenceReading<WorkloadClassObserved>
+  resource_request: ServiceEvidenceReading<Kibibyte>
+  wait_time: ServiceEvidenceOwed
+  execution_time: ServiceEvidenceOwed
+  completion_time: ServiceEvidenceOwed
+  cache_hits: ServiceEvidenceOwed
+  cache_misses: ServiceEvidenceOwed
+  cache_shared_misses: ServiceEvidenceOwed
+  cache_corrupt_hit_refusals: ServiceEvidenceOwed
+  placement: ServiceEvidenceReading<PlacementObserved>
+  seat_utilization: ServiceEvidenceOwed
+  artifact_bytes: ServiceEvidenceOwed
+  egress: ServiceEvidenceOwed
+  failure_attribution: ServiceEvidenceOwed
+  recovery_action: ServiceEvidenceOwed
+  operator_intervention_time: ServiceEvidenceOwed
+  hardware_health: ServiceEvidenceOwed
+  billable_usage: ServiceEvidenceOwed
+  billable_credits: ServiceEvidenceOwed
+  workspace_recovery_point: ServiceEvidenceOwed
+  workspace_recovery_time: ServiceEvidenceOwed
 }
 
 // THE ONE SOURCE AUTHORITY PER FIELD: which input (and so which reader) or which owning node.
 fn service_evidence_readings(r: ServiceEvidenceReceipt) -> ServiceEvidenceReadings {
-  let i = r.inputs
+  let g5 = session_grant_of_attempt(i: r.inputs.session_placement, binding: r.binding)
   ServiceEvidenceReadings {
-    workload_class: session_placement_reading(i: i.session_placement, binding: r.binding, fact: WorkloadClassFact),
-    resource_request: session_placement_reading(i: i.session_placement, binding: r.binding, fact: ResourceRequestFact),
+    workload_class: workload_class_reading(g: g5),
+    resource_request: resource_request_reading(g: g5),
     wait_time: owed_to(owner_node: "service-evidence-capture"),
-    execution_time: pending_reader_owed(reader: MeteringReader),
-    completion_time: pending_reader_owed(reader: ResultReturnedReader),
-    cache_hits: pending_reader_owed(reader: SharedComputationReader),
-    cache_misses: pending_reader_owed(reader: SharedComputationReader),
-    cache_shared_misses: pending_reader_owed(reader: SharedComputationReader),
-    cache_corrupt_hit_refusals: pending_reader_owed(reader: SharedComputationReader),
-    placement: session_placement_reading(i: i.session_placement, binding: r.binding, fact: PlacementFact),
+    execution_time: pending_reader_owed(reader: PendingMetering),
+    completion_time: pending_reader_owed(reader: PendingResultReturned),
+    cache_hits: pending_reader_owed(reader: PendingSharedComputation),
+    cache_misses: pending_reader_owed(reader: PendingSharedComputation),
+    cache_shared_misses: pending_reader_owed(reader: PendingSharedComputation),
+    cache_corrupt_hit_refusals: pending_reader_owed(reader: PendingSharedComputation),
+    placement: placement_reading(g: g5),
     seat_utilization: owed_to(owner_node: "service-evidence-capture"),
-    artifact_bytes: pending_reader_owed(reader: SharedComputationReader),
+    artifact_bytes: pending_reader_owed(reader: PendingSharedComputation),
     egress: owed_to(owner_node: "service-evidence-capture"),
-    failure_attribution: pending_reader_owed(reader: ResultReturnedReader),
+    failure_attribution: pending_reader_owed(reader: PendingResultReturned),
     recovery_action: owed_to(owner_node: "service-evidence-capture"),
     operator_intervention_time: owed_to(owner_node: "service-evidence-capture"),
     hardware_health: owed_to(owner_node: "fleet-health-0-live-receipt"),
-    billable_usage: pending_reader_owed(reader: MeteringReader),
+    billable_usage: pending_reader_owed(reader: PendingMetering),
     billable_credits: owed_to(owner_node: "failure-billing-outcomes"),
     workspace_recovery_point: owed_to(owner_node: "fabric-storage"),
     workspace_recovery_time: owed_to(owner_node: "fabric-storage"),
@@ -319,41 +362,98 @@ fn service_evidence_readings(r: ServiceEvidenceReceipt) -> ServiceEvidenceReadin
 }
 
 // THE ONE ORDERED VIEW of the product, read by the wire AND the closing contract (no second list).
-// The language has no record-member iteration, so this enumeration is the one place a member could
-// be repeated or dropped; the witness compares its names, by identity and in order, against the
-// node's list, and a count-preserving duplicate-plus-omission is its discriminating red (rung 2).
+// This is the encoder's view: each typed reading becomes its wire standing here, and a typed value
+// becomes JSON here and nowhere earlier. The language has no record-member iteration, so this
+// enumeration is the one place a member could be repeated or dropped; the witness compares its
+// names, by identity and in order, against the node's list, and a count-preserving
+// duplicate-plus-omission is its discriminating red (rung 2).
+//
+// ReaderRecordAbsent: the reader is on main and has written nothing for this attempt yet.
+type ServiceEvidenceProducer
+  = PendingReader { reader: PendingServiceReader }
+  | ReaderRecordAbsent { reader: ServiceEvidenceReader }
+  | UnbuiltProducer { owner_node: String }
+
+type ServiceEvidenceStanding
+  = StandingObserved { value: JsonValue, source: ServiceEvidenceReader }
+  | StandingOwed { producer: ServiceEvidenceProducer }
+  | StandingRefused { reason: NonEmptyStr }
+
 type ServiceEvidenceEntry {
   field: String
-  reading: ServiceEvidenceReading
+  standing: ServiceEvidenceStanding
 }
 
-fn entry(field: String, reading: ServiceEvidenceReading) -> ServiceEvidenceEntry {
-  ServiceEvidenceEntry { field: field, reading: reading }
+fn owed_entry(field: String, o: ServiceEvidenceOwed) -> ServiceEvidenceEntry {
+  ServiceEvidenceEntry { field: field, standing: StandingOwed { producer: match o {
+    OwedToPendingReader { reader } => PendingReader { reader: reader }
+    OwedToUnbuiltProducer { owner_node } => UnbuiltProducer { owner_node: owner_node }
+  } } }
+}
+
+fn placement_json(v: PlacementObserved) -> JsonValue {
+  json_object([
+    json_kv(key: "host", value: json_string(s: v.host)),
+    json_kv(key: "partition", value: json_string(s: v.partition)),
+    json_kv(key: "unit", value: json_string(s: v.unit)),
+  ])
+}
+
+fn workload_class_json(v: WorkloadClassObserved) -> JsonValue {
+  json_object([json_kv(key: "class_grant", value: json_string(s: v.class_grant))])
+}
+
+fn kibibyte_json(v: Kibibyte) -> JsonValue {
+  json_object([json_kv(key: "kib", value: json_int(n: kibibyte_count(k: v)))])
+}
+
+fn placement_entry(field: String, r: ServiceEvidenceReading<PlacementObserved>) -> ServiceEvidenceEntry {
+  ServiceEvidenceEntry { field: field, standing: match r {
+    EvidenceObserved { value } => StandingObserved { value: placement_json(v: value), source: SessionPlacementReader }
+    EvidenceRecordAbsent => StandingOwed { producer: ReaderRecordAbsent { reader: SessionPlacementReader } }
+    EvidenceRefused { reason } => StandingRefused { reason: reason }
+  } }
+}
+
+fn workload_class_entry(field: String, r: ServiceEvidenceReading<WorkloadClassObserved>) -> ServiceEvidenceEntry {
+  ServiceEvidenceEntry { field: field, standing: match r {
+    EvidenceObserved { value } => StandingObserved { value: workload_class_json(v: value), source: SessionPlacementReader }
+    EvidenceRecordAbsent => StandingOwed { producer: ReaderRecordAbsent { reader: SessionPlacementReader } }
+    EvidenceRefused { reason } => StandingRefused { reason: reason }
+  } }
+}
+
+fn kibibyte_entry(field: String, r: ServiceEvidenceReading<Kibibyte>) -> ServiceEvidenceEntry {
+  ServiceEvidenceEntry { field: field, standing: match r {
+    EvidenceObserved { value } => StandingObserved { value: kibibyte_json(v: value), source: SessionPlacementReader }
+    EvidenceRecordAbsent => StandingOwed { producer: ReaderRecordAbsent { reader: SessionPlacementReader } }
+    EvidenceRefused { reason } => StandingRefused { reason: reason }
+  } }
 }
 
 fn service_evidence_entries(r: ServiceEvidenceReadings) -> List<ServiceEvidenceEntry> {
   [
-    entry(field: "workload_class", reading: r.workload_class),
-    entry(field: "resource_request", reading: r.resource_request),
-    entry(field: "wait_time", reading: r.wait_time),
-    entry(field: "execution_time", reading: r.execution_time),
-    entry(field: "completion_time", reading: r.completion_time),
-    entry(field: "cache_hits", reading: r.cache_hits),
-    entry(field: "cache_misses", reading: r.cache_misses),
-    entry(field: "cache_shared_misses", reading: r.cache_shared_misses),
-    entry(field: "cache_corrupt_hit_refusals", reading: r.cache_corrupt_hit_refusals),
-    entry(field: "placement", reading: r.placement),
-    entry(field: "seat_utilization", reading: r.seat_utilization),
-    entry(field: "artifact_bytes", reading: r.artifact_bytes),
-    entry(field: "egress", reading: r.egress),
-    entry(field: "failure_attribution", reading: r.failure_attribution),
-    entry(field: "recovery_action", reading: r.recovery_action),
-    entry(field: "operator_intervention_time", reading: r.operator_intervention_time),
-    entry(field: "hardware_health", reading: r.hardware_health),
-    entry(field: "billable_usage", reading: r.billable_usage),
-    entry(field: "billable_credits", reading: r.billable_credits),
-    entry(field: "workspace_recovery_point", reading: r.workspace_recovery_point),
-    entry(field: "workspace_recovery_time", reading: r.workspace_recovery_time),
+    workload_class_entry(field: "workload_class", r: r.workload_class),
+    kibibyte_entry(field: "resource_request", r: r.resource_request),
+    owed_entry(field: "wait_time", o: r.wait_time),
+    owed_entry(field: "execution_time", o: r.execution_time),
+    owed_entry(field: "completion_time", o: r.completion_time),
+    owed_entry(field: "cache_hits", o: r.cache_hits),
+    owed_entry(field: "cache_misses", o: r.cache_misses),
+    owed_entry(field: "cache_shared_misses", o: r.cache_shared_misses),
+    owed_entry(field: "cache_corrupt_hit_refusals", o: r.cache_corrupt_hit_refusals),
+    placement_entry(field: "placement", r: r.placement),
+    owed_entry(field: "seat_utilization", o: r.seat_utilization),
+    owed_entry(field: "artifact_bytes", o: r.artifact_bytes),
+    owed_entry(field: "egress", o: r.egress),
+    owed_entry(field: "failure_attribution", o: r.failure_attribution),
+    owed_entry(field: "recovery_action", o: r.recovery_action),
+    owed_entry(field: "operator_intervention_time", o: r.operator_intervention_time),
+    owed_entry(field: "hardware_health", o: r.hardware_health),
+    owed_entry(field: "billable_usage", o: r.billable_usage),
+    owed_entry(field: "billable_credits", o: r.billable_credits),
+    owed_entry(field: "workspace_recovery_point", o: r.workspace_recovery_point),
+    owed_entry(field: "workspace_recovery_time", o: r.workspace_recovery_time),
   ]
 }
 
@@ -384,7 +484,7 @@ fn service_evidence_producer_json(p: ServiceEvidenceProducer) -> JsonValue {
   match p {
     PendingReader { reader } => json_object([
       json_kv(key: "kind", value: json_string(s: "pending_reader")),
-      json_kv(key: "reader", value: json_string(s: service_evidence_reader_wire(r: reader))),
+      json_kv(key: "reader", value: json_string(s: service_evidence_reader_wire(r: pending_reader(r: reader)))),
       json_kv(key: "pr", value: json_int(n: reader_pending_pr(r: reader))),
     ])
     ReaderRecordAbsent { reader } => json_object([
@@ -400,24 +500,24 @@ fn service_evidence_producer_json(p: ServiceEvidenceProducer) -> JsonValue {
 
 fn service_evidence_entry_json(x: ServiceEvidenceEntry) -> JsonValue {
   let field = json_kv(key: "field", value: json_string(s: x.field))
-  match x.reading {
-    EvidenceObserved { value, source } => json_object([field,
+  match x.standing {
+    StandingObserved { value, source } => json_object([field,
       json_kv(key: "standing", value: json_string(s: "observed")),
-      json_kv(key: "value", value: json_string(s: value)),
+      json_kv(key: "value", value: value),
       json_kv(key: "source", value: json_string(s: service_evidence_reader_wire(r: source))),
     ])
-    EvidenceOwed { producer } => json_object([field,
+    StandingOwed { producer } => json_object([field,
       json_kv(key: "standing", value: json_string(s: "owed")),
       json_kv(key: "producer", value: service_evidence_producer_json(p: producer)),
     ])
-    EvidenceRefused { reason } => json_object([field,
+    StandingRefused { reason } => json_object([field,
       json_kv(key: "standing", value: json_string(s: "refused")),
       json_kv(key: "reason", value: json_string(s: reason as String)),
     ])
   }
 }
 
-data service_evidence_receipt_schema: String = "service-evidence-receipt/v1"
+data service_evidence_receipt_schema: String = "service-evidence-receipt/v2"
 
 fn service_evidence_receipt_wire(r: ServiceEvidenceReceipt) -> String {
   serialize_json(v: json_object([
@@ -443,10 +543,10 @@ fn service_evidence_receipt_digest(r: ServiceEvidenceReceipt) -> String {
 // readers report no record (the weakest runtime standing), so it measures sources and nothing else.
 // Read from the same ordered view as the wire. RED today: 18 of 21 fields are unsourced (G5 sources 3).
 fn service_evidence_unsourced_fields(r: ServiceEvidenceReadings) -> List<String> {
-  map(filter(service_evidence_entries(r: r), x => match x.reading {
-    EvidenceObserved { value: _, source: _ } => false
-    EvidenceRefused { reason: _ } => false
-    EvidenceOwed { producer } => match producer {
+  map(filter(service_evidence_entries(r: r), x => match x.standing {
+    StandingObserved { value: _, source: _ } => false
+    StandingRefused { reason: _ } => false
+    StandingOwed { producer } => match producer {
       PendingReader { reader: _ } => true
       UnbuiltProducer { owner_node: _ } => true
       ReaderRecordAbsent { reader: _ } => false

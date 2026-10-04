@@ -56,7 +56,7 @@ import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
 }
 import std.nat { Nat }
 import std.measure { Second, second_count, byte_size_count }
-import gunbc.machine_intake_mtcollins1_smpro_observation { SmproProbeOutcome, smpro_outcome_word, smpro_outcome_text }
+import gunbc.machine_intake_ampere_smpro_observation { SmproProbeOutcome, smpro_outcome_word, smpro_outcome_text }
 import gunbc.fleet.mtcollins_firmware_baseline {
   FirmwareBaseline, BaselineAdmissionRefusal, baseline_release_for, baseline_admission_refusal,
 }
