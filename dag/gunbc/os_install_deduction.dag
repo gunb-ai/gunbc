@@ -103,7 +103,10 @@ fn runtime_verdict_from_kvm_attestation(
       match preflight {
         AutoinstallIncompleteNotBootable => InstallerAwaitingStorage
         RequiresStoragePolicy => InstallerAwaitingStorage
-        _ => InstallerRunning
+        CompleteForUnattended => InstallerRunning
+        NotUnattendedByPolicy => InstallerRunning
+        RequiresDiskObservation => InstallerRunning
+        IncompleteSeedDelivery => InstallerRunning
       }
     SubiquityInstalling => InstallerRunning
     LoginPrompt => KvmSuggestsOsBooted
