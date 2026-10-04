@@ -177,7 +177,10 @@ type QualificationRefPinStanding
 fn branch_absent(performance: RestExchangePerformance) -> Bool {
   match performance {
     RestExchangeStatusRefused { status: s, body: _ } => (s as Int) == 404
-    _ => false
+    RestExchangeSucceeded => false
+    RestExchangeCommitAmbiguous { detail: _ } => false
+    RestExchangeUnreached { cause: _ } => false
+    RestExchangeUndecodable { status: _, cause: _ } => false
   }
 }
 
