@@ -851,3 +851,60 @@ fn argv_words_diagnostic_fact_decls(path: String) -> List<String> {
       }
   }
 }
+
+// ── THROWAWAY CONTEXT READOUT (strip before commit) ─────────────────────────────────────────────
+// The atom window ENDING at the FIRST occurrence of needle, oldest-first, capped at span — so the
+// classifiers' adjacency guesses are replaced by the observed sequence.
+type CtxFold {
+  buf: List<String>
+  found: List<String>
+  seen: Bool
+}
+
+type CappedFold {
+  kept: List<String>
+  seen: Int
+}
+
+type PairFold {
+  prev: String
+  hit: Bool
+}
+
+fn context_trim_newest(buf: List<String>, keep: Int) -> List<String> {
+  // buf is newest-first; keep only its first `keep` elements (the newest atoms).
+  fold_list(xs: buf, empty: CappedFold { kept: Empty, seen: 0 }, cons: fn(acc, x) {
+    match acc.seen < keep {
+      true => CappedFold { kept: Cons { head: x, tail: acc.kept }, seen: acc.seen + 1 }
+      false => acc
+    }
+  }).kept
+}
+
+fn context_of_atoms(atoms: List<String>, needle: String, span: Int) -> List<String> {
+  fold_list(xs: atoms, empty: CtxFold { buf: Empty, found: Empty, seen: false }, cons: fn(acc, a) {
+    match acc.seen {
+      true => acc
+      false => {
+        let buf2 = context_trim_newest(buf: Cons { head: a, tail: acc.buf }, keep: span)
+        match a == needle {
+          true => CtxFold { buf: buf2, found: list_reverse(xs: buf2), seen: true }
+          false => CtxFold { buf: buf2, found: Empty, seen: false }
+        }
+      }
+    }
+  }).found
+}
+
+fn argv_words_diagnostic_context(path: String, needle: String, span: Int) -> List<String> {
+  context_of_atoms(atoms: argv_words_diagnostic_stream(path: path), needle: needle, span: span)
+}
+
+fn window_has_pair(window: List<String>, x: String, y: String) -> Bool {
+  fold_list(xs: window, empty: PairFold { prev: "", hit: false }, cons: fn(acc, a) {
+    match acc.hit {
+      true => acc
+      false => PairFold { prev: a, hit: (acc.prev == x) && (a == y) }
+    }
+  }).hit
+}

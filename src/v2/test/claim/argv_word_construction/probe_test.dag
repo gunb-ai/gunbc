@@ -1,7 +1,8 @@
 module test.claim.argv_word_construction.probe_test
 
 import std.types { Bool, Int, String, List }
-import v2.lens.argv_word_construction { argv_words_diagnostic_stream, argv_words_diagnostic_fact_decls }
+import v2.std.algebra { length }
+import v2.lens.argv_word_construction { argv_words_diagnostic_stream, argv_words_diagnostic_fact_decls, argv_words_diagnostic_context, window_has_pair }
 
 data probe_path: String = "test/fixture_roots/argv_word_construction/host_words.dag"
 
@@ -52,3 +53,111 @@ test fn probe_facts_include_wait_flags() -> Bool {
 test fn probe_facts_count_at_least_one() -> Bool {
   count(argv_words_diagnostic_fact_decls(path: probe_path)) >= 1
 }
+
+// ── ROUND 1: which atoms are IN the 40-atom window ending at the data decl's first "--wait" ──────
+fn context_window() -> List<String> {
+  argv_words_diagnostic_context(path: probe_path, needle: "--wait", span: 40)
+}
+
+test fn probe_window_not_refused() -> Bool {
+  !member(xs: context_window(), needle: "READ-REFUSED") && !member(xs: context_window(), needle: "RAW-NOT-ESTABLISHED")
+}
+
+test fn probe_window_contains_needle() -> Bool { member(xs: context_window(), needle: "--wait") }
+
+test fn probe_window_contains_identifier() -> Bool { member(xs: context_window(), needle: "fixture_wait_flags") }
+
+test fn probe_window_contains_dag_token_colon() -> Bool { member(xs: context_window(), needle: "dag_token_colon") }
+
+test fn probe_window_contains_colon_raw() -> Bool { member(xs: context_window(), needle: ":") }
+
+test fn probe_window_contains_dag_token_eq() -> Bool { member(xs: context_window(), needle: "dag_token_eq") }
+
+test fn probe_window_contains_eq_raw() -> Bool { member(xs: context_window(), needle: "=") }
+
+test fn probe_window_contains_dag_token_lbracket() -> Bool { member(xs: context_window(), needle: "dag_token_lbracket") }
+
+test fn probe_window_contains_lbracket_raw() -> Bool { member(xs: context_window(), needle: "[") }
+
+test fn probe_window_contains_dag_token_string_literal() -> Bool { member(xs: context_window(), needle: "dag_token_string_literal") }
+
+test fn probe_window_contains_list_string_spelling() -> Bool { member(xs: context_window(), needle: "List<String>") }
+
+test fn probe_window_contains_list_atom() -> Bool { member(xs: context_window(), needle: "List") }
+
+test fn probe_window_contains_string_atom() -> Bool { member(xs: context_window(), needle: "String") }
+
+test fn probe_window_contains_lt_raw() -> Bool { member(xs: context_window(), needle: "<") }
+
+test fn probe_window_contains_gt_raw() -> Bool { member(xs: context_window(), needle: ">") }
+
+test fn probe_window_contains_data_decl_production() -> Bool { member(xs: context_window(), needle: "dag_surface_data_decl") }
+
+test fn probe_window_contains_data_kw() -> Bool { member(xs: context_window(), needle: "data") }
+
+test fn probe_window_contains_dag_token_identifier() -> Bool { member(xs: context_window(), needle: "dag_token_identifier") }
+
+test fn probe_window_contains_dag_token_comma() -> Bool { member(xs: context_window(), needle: "dag_token_comma") }
+
+test fn probe_window_contains_comma_raw() -> Bool { member(xs: context_window(), needle: ",") }
+
+test fn probe_window_contains_dag_token_rbracket() -> Bool { member(xs: context_window(), needle: "dag_token_rbracket") }
+
+test fn probe_window_contains_rbracket_raw() -> Bool { member(xs: context_window(), needle: "]") }
+
+test fn probe_window_contains_quiet() -> Bool { member(xs: context_window(), needle: "--quiet") }
+
+test fn probe_window_contains_collect() -> Bool { member(xs: context_window(), needle: "--collect") }
+
+test fn probe_window_full_at_40() -> Bool { length(xs: context_window()) == 40 }
+
+test fn probe_window_at_least_20() -> Bool { length(xs: context_window()) >= 20 }
+
+// ── ROUND 1b: adjacency pairs over the plausible spine ───────────────────────────────────────────
+test fn probe_pair_ident_colon_token() -> Bool { window_has_pair(window: context_window(), x: "fixture_wait_flags", y: "dag_token_colon") }
+
+test fn probe_pair_ident_colon_raw() -> Bool { window_has_pair(window: context_window(), x: "fixture_wait_flags", y: ":") }
+
+test fn probe_pair_ident_type() -> Bool { window_has_pair(window: context_window(), x: "fixture_wait_flags", y: "List<String>") }
+
+test fn probe_pair_colon_token_type() -> Bool { window_has_pair(window: context_window(), x: "dag_token_colon", y: "List<String>") }
+
+test fn probe_pair_colon_raw_type() -> Bool { window_has_pair(window: context_window(), x: ":", y: "List<String>") }
+
+test fn probe_pair_type_eq_token() -> Bool { window_has_pair(window: context_window(), x: "List<String>", y: "dag_token_eq") }
+
+test fn probe_pair_type_eq_raw() -> Bool { window_has_pair(window: context_window(), x: "List<String>", y: "=") }
+
+test fn probe_pair_eq_token_lbracket_token() -> Bool { window_has_pair(window: context_window(), x: "dag_token_eq", y: "dag_token_lbracket") }
+
+test fn probe_pair_eq_raw_lbracket_token() -> Bool { window_has_pair(window: context_window(), x: "=", y: "dag_token_lbracket") }
+
+test fn probe_pair_lbracket_token_stringlit() -> Bool { window_has_pair(window: context_window(), x: "dag_token_lbracket", y: "dag_token_string_literal") }
+
+test fn probe_pair_lbracket_raw_stringlit() -> Bool { window_has_pair(window: context_window(), x: "[", y: "dag_token_string_literal") }
+
+test fn probe_pair_lbracket_token_wait() -> Bool { window_has_pair(window: context_window(), x: "dag_token_lbracket", y: "--wait") }
+
+test fn probe_pair_lbracket_raw_wait() -> Bool { window_has_pair(window: context_window(), x: "[", y: "--wait") }
+
+test fn probe_pair_eq_raw_wait() -> Bool { window_has_pair(window: context_window(), x: "=", y: "--wait") }
+
+test fn probe_pair_stringlit_wait() -> Bool { window_has_pair(window: context_window(), x: "dag_token_string_literal", y: "--wait") }
+
+test fn probe_pair_wait_comma_token() -> Bool { window_has_pair(window: context_window(), x: "--wait", y: "dag_token_comma") }
+
+test fn probe_pair_wait_comma_raw() -> Bool { window_has_pair(window: context_window(), x: "--wait", y: ",") }
+
+test fn probe_pair_wait_quiet() -> Bool { window_has_pair(window: context_window(), x: "--wait", y: "--quiet") }
+
+test fn probe_pair_quiet_collect() -> Bool { window_has_pair(window: context_window(), x: "--quiet", y: "--collect") }
+
+test fn probe_pair_collect_rbracket_token() -> Bool { window_has_pair(window: context_window(), x: "--collect", y: "dag_token_rbracket") }
+
+test fn probe_pair_collect_rbracket_raw() -> Bool { window_has_pair(window: context_window(), x: "--collect", y: "]") }
+
+test fn probe_pair_datadecl_data_kw() -> Bool { window_has_pair(window: context_window(), x: "dag_surface_data_decl", y: "data") }
+
+test fn probe_pair_data_kw_ident() -> Bool { window_has_pair(window: context_window(), x: "data", y: "fixture_wait_flags") }
+
+test fn probe_pair_datadecl_ident() -> Bool { window_has_pair(window: context_window(), x: "dag_surface_data_decl", y: "fixture_wait_flags") }
