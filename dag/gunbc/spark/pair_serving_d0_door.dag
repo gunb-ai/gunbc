@@ -5,7 +5,8 @@ import gunbc.auth.standing_operator_grant { standing_grant_authorization, Standi
 import extdeps.git
 import gunbc.output_policy { ExpectSuccess }
 
-import std.types { String, Bool, Int, NonEmptyStr, List, Timestamp, EpochSecs, GitRef }
+import std.types { String, Bool, Int, NonEmptyStr, List, Timestamp, EpochSecs, GitRef, FilePath }
+import std.algebra { trim }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.measure { Second, second, second_count, Minute, minute }
 import v2.std.optional { Present, Absent }
@@ -250,13 +251,36 @@ fn executed_grant_row() -> ExecutedGrantRow {
 
 // THE ROW'S STANDING NOW, for an effect with no frozen lifecycle to resume (a launch, a recovery): the
 // executed row against origin/main, read fresh at that effect's admission.
+// THE COMPARISON IS OF GIT BLOB IDS, NOT OF CAPTURED TEXT (fp8-8 launch run 37161565980, 2026-10-03). The
+// first shape compared the file's bytes with `git show`'s CAPTURED stdout, and the capture normalizes the
+// trailing newline, so an identical row read as "differs from origin/main's" and the launch refused. The id of
+// the bytes the run actually reads (`git hash-object <path>` on the working file -- no HEAD in between, so a
+// modified working file refuses rather than passing on a committed blob) against the blob id on origin/main
+// (`git rev-parse origin/main:<path>`) is exact and carries no text at all.
+fn grant_row_blob(target: String) -> GrantRowBlob {
+  let r = git.Core.RevParseInRepo(repo: "." as FilePath, target: join([target, ":", standing_grant_row_path], "") as GitRef)
+  if r.exit_code != 0 { GrantRowBlobUnread { cause: join(["git rev-parse ", target, ":", standing_grant_row_path, " exited ", to_string(r.exit_code), ": ", trim(s: r.stderr)], "") } }
+  else { GrantRowBlobRead { blob: trim(s: r.revision) } }
+}
+
+type GrantRowBlob
+  = GrantRowBlobRead { blob: String }
+  | GrantRowBlobUnread { cause: String }
+
+fn executed_grant_row_blob() -> GrantRowBlob {
+  let r = git.Core.HashObjectInRepo(repo: "." as FilePath, path: standing_grant_row_path as FilePath)
+  if r.exit_code != 0 { GrantRowBlobUnread { cause: join(["git hash-object ", standing_grant_row_path, " exited ", to_string(r.exit_code), ": ", trim(s: r.stderr)], "") } }
+  else { GrantRowBlobRead { blob: trim(s: r.blob) } }
+}
+
 fn fresh_grant_row_standing() -> StandingGrantRowStanding {
-  match executed_grant_row() {
-    ExecutedGrantRowUnread { cause: c } => StandingGrantRowNotOnMain { cause: c }
-    ExecutedGrantRowRead { content: mine, digest: _ } => {
-      let main = git.Core.Show(ref: standing_grant_main_ref as GitRef, path: standing_grant_row_path, expect: ExpectSuccess)
-      standing_grant_row_judged(executed: mine, executed_read: true, on_main: main.content, main_read: main.success, main_stderr: main.stderr)
-    }
+  match executed_grant_row_blob() {
+    GrantRowBlobUnread { cause: c } => StandingGrantRowNotOnMain { cause: join(["the grant row this run executes could not be identified: ", c], "") }
+    GrantRowBlobRead { blob: mine } =>
+      match grant_row_blob(target: standing_grant_main_ref) {
+        GrantRowBlobUnread { cause: c } => standing_grant_row_judged(executed: mine, executed_read: true, on_main: "", main_read: false, main_stderr: c)
+        GrantRowBlobRead { blob: theirs } => standing_grant_row_judged(executed: mine, executed_read: true, on_main: theirs, main_read: true, main_stderr: "")
+      }
   }
 }
 
@@ -264,13 +288,11 @@ fn fresh_grant_row_standing() -> StandingGrantRowStanding {
 fn fresh_grant_row_proof(executed: ExecutedGrantRow) -> D0GrantRowProof {
   match executed {
     ExecutedGrantRowUnread { cause: _ } => D0GrantRowUnproven
-    ExecutedGrantRowRead { content: c, digest: d } => {
-      let main = git.Core.Show(ref: standing_grant_main_ref as GitRef, path: standing_grant_row_path, expect: ExpectSuccess)
-      match standing_grant_row_judged(executed: c, executed_read: true, on_main: main.content, main_read: main.success, main_stderr: main.stderr) {
+    ExecutedGrantRowRead { content: _, digest: d } =>
+      match fresh_grant_row_standing() {
         StandingGrantRowNotOnMain { cause: _ } => D0GrantRowUnproven
         StandingGrantRowOnMain => D0GrantRowApproved { row_digest: d }
       }
-    }
   }
 }
 
