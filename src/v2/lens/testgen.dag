@@ -520,7 +520,87 @@ fn testgen_emit_refinement_preservation_claim(
         },
         diagnostics: None,
       }
-    _ =>
+    ManualTcConjEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcDisjEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcArrowTwoConj =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcCardinalityEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcInstantiationEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcArrowEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcTransformEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcBranchEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcLoopEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcBindZeroChildren =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcConjEqualsRefl =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatAddLeftIdentity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatAddRightIdentity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatAddAssociativity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatMulLeftIdentity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatMulAnnihilator =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatMulAssociativity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualLbeConjDagSurface =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualLbeDisjDagSurface =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualLbeTransformDagSurface =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualAnchorAbsent =>
       Rejected {
         diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
       }
@@ -629,7 +709,79 @@ fn testgen_emit_language_behavior_equivalence_claim(
         },
         diagnostics: None,
       }
-    _ =>
+    ManualTcConjEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcDisjEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcArrowTwoConj =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcCardinalityEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcInstantiationEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcArrowEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcTransformEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcBranchEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcLoopEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcBindZeroChildren =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualTcConjEqualsRefl =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatAddLeftIdentity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatAddRightIdentity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatAddAssociativity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatMulLeftIdentity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatMulAnnihilator =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualNatMulAssociativity =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualRefinementNonEmptyListBase =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
+      }
+    ManualAnchorAbsent =>
       Rejected {
         diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
       }
@@ -743,7 +895,157 @@ fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<Alg
         },
         diagnostics: None,
       }
-    _ =>
+    ManualTcConjEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcDisjEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcArrowTwoConj =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcCardinalityEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcInstantiationEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcArrowEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcTransformEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcBranchEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcLoopEmpty =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcBindZeroChildren =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualTcConjEqualsRefl =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualLbeConjDagSurface =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualLbeDisjDagSurface =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualLbeTransformDagSurface =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualRefinementNonEmptyListBase =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: ^algebra_law_anchor_mismatch,
+            at: Textual { file: ^testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    ManualAnchorAbsent =>
       Rejected {
         diagnostics: diagnostics_singleton(
           d: Diagnostic {

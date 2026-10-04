@@ -212,7 +212,14 @@ fn runtime_value_signed_i32_le_as_int(value: RuntimeValue) -> Outcome<Int> {
   match value {
     RuntimePrimitive { value: p } =>
       integer_signed_i32_le_bytes_to_int(bytes: p.bytes)
-    _ => outcome_rejected(d: emit_host_run_unsupported_target_diagnostic())
+    RuntimeAggregate { value: _ } =>
+      outcome_rejected(d: emit_host_run_unsupported_target_diagnostic())
+    RuntimeReference { value: _ } =>
+      outcome_rejected(d: emit_host_run_unsupported_target_diagnostic())
+    RuntimeClosure { value: _ } =>
+      outcome_rejected(d: emit_host_run_unsupported_target_diagnostic())
+    RuntimeUnit { value: _ } =>
+      outcome_rejected(d: emit_host_run_unsupported_target_diagnostic())
   }
 }
 

@@ -68,7 +68,8 @@ fn anchor_is(a: ClaimAnchorKey, coproduct_type: Symbol, omitted_variant: Symbol)
   match a {
     GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { coproduct_type: ct, omitted_variant: ov } } =>
       (ct == coproduct_type) && (ov == omitted_variant)
-    _ => false
+    GeneratedClaimAnchor { generated_anchor: GeneratedCrossRepresentationEquality { modeled_coproduct: _, native_realization: _ } } => false
+    ManualClaimAnchor { manual_anchor: _ } => false
   }
 }
 

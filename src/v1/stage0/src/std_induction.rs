@@ -237,7 +237,10 @@ pub fn is_strict_style_structural(r: Rc<SubValueRelation>) -> bool {
         SubValueRelation::IteratedSubValue { field: _, .. } => true,
         SubValueRelation::ArithmeticDescent { .. } => true,
         SubValueRelation::StrictAxisErased => true,
-        _ => false,
+        SubValueRelation::PreservedValue => false,
+        SubValueRelation::NonIncreasingValue => false,
+        SubValueRelation::MixedTop => false,
+        SubValueRelation::SubValueUnknown => false,
     }
 }
 
@@ -334,7 +337,33 @@ pub fn compose_sub_value(
 ) -> Rc<SubValueRelation> {
     match (*base.clone()).clone() {
         SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
-        _ => Rc::new(SubValueRelation::StrictSubValue {
+        SubValueRelation::PreservedValue => Rc::new(SubValueRelation::StrictSubValue {
+            field: field.clone(),
+            factor: Rc::new(ShrinkFactor::UnitShrink),
+        }),
+        SubValueRelation::NonIncreasingValue => Rc::new(SubValueRelation::StrictSubValue {
+            field: field.clone(),
+            factor: Rc::new(ShrinkFactor::UnitShrink),
+        }),
+        SubValueRelation::StrictSubValue { .. } => Rc::new(SubValueRelation::StrictSubValue {
+            field: field.clone(),
+            factor: Rc::new(ShrinkFactor::UnitShrink),
+        }),
+        SubValueRelation::IteratedSubValue { field: _, .. } => {
+            Rc::new(SubValueRelation::StrictSubValue {
+                field: field.clone(),
+                factor: Rc::new(ShrinkFactor::UnitShrink),
+            })
+        }
+        SubValueRelation::ArithmeticDescent { .. } => Rc::new(SubValueRelation::StrictSubValue {
+            field: field.clone(),
+            factor: Rc::new(ShrinkFactor::UnitShrink),
+        }),
+        SubValueRelation::StrictAxisErased => Rc::new(SubValueRelation::StrictSubValue {
+            field: field.clone(),
+            factor: Rc::new(ShrinkFactor::UnitShrink),
+        }),
+        SubValueRelation::MixedTop => Rc::new(SubValueRelation::StrictSubValue {
             field: field.clone(),
             factor: Rc::new(ShrinkFactor::UnitShrink),
         }),
@@ -350,7 +379,19 @@ pub fn compose_sub_value_relations(
         SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
         SubValueRelation::NonIncreasingValue => match (*arg_rel.clone()).clone() {
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
-            _ => Rc::new(SubValueRelation::NonIncreasingValue),
+            SubValueRelation::PreservedValue => Rc::new(SubValueRelation::NonIncreasingValue),
+            SubValueRelation::StrictSubValue { .. } => {
+                Rc::new(SubValueRelation::NonIncreasingValue)
+            }
+            SubValueRelation::IteratedSubValue { field: _, .. } => {
+                Rc::new(SubValueRelation::NonIncreasingValue)
+            }
+            SubValueRelation::ArithmeticDescent { .. } => {
+                Rc::new(SubValueRelation::NonIncreasingValue)
+            }
+            SubValueRelation::StrictAxisErased => Rc::new(SubValueRelation::NonIncreasingValue),
+            SubValueRelation::MixedTop => Rc::new(SubValueRelation::NonIncreasingValue),
+            SubValueRelation::NonIncreasingValue => Rc::new(SubValueRelation::NonIncreasingValue),
         },
         SubValueRelation::StrictAxisErased => match (*arg_rel.clone()).clone() {
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
@@ -369,7 +410,14 @@ pub fn compose_sub_value_relations(
         SubValueRelation::MixedTop => match (*arg_rel.clone()).clone() {
             SubValueRelation::SubValueUnknown => Rc::new(SubValueRelation::SubValueUnknown),
             SubValueRelation::NonIncreasingValue => Rc::new(SubValueRelation::NonIncreasingValue),
-            _ => Rc::new(SubValueRelation::MixedTop),
+            SubValueRelation::PreservedValue => Rc::new(SubValueRelation::MixedTop),
+            SubValueRelation::StrictSubValue { .. } => Rc::new(SubValueRelation::MixedTop),
+            SubValueRelation::IteratedSubValue { field: _, .. } => {
+                Rc::new(SubValueRelation::MixedTop)
+            }
+            SubValueRelation::ArithmeticDescent { .. } => Rc::new(SubValueRelation::MixedTop),
+            SubValueRelation::StrictAxisErased => Rc::new(SubValueRelation::MixedTop),
+            SubValueRelation::MixedTop => Rc::new(SubValueRelation::MixedTop),
         },
         SubValueRelation::StrictSubValue { .. } => match (*arg_rel.clone()).clone() {
             SubValueRelation::PreservedValue => callee_rel.clone(),
@@ -428,7 +476,13 @@ pub fn compose_sub_value_relations(
             SubValueRelation::NonIncreasingValue => Rc::new(SubValueRelation::NonIncreasingValue),
             SubValueRelation::StrictAxisErased => Rc::new(SubValueRelation::StrictAxisErased),
             SubValueRelation::MixedTop => Rc::new(SubValueRelation::MixedTop),
-            _ => Rc::new(SubValueRelation::SubValueUnknown),
+            SubValueRelation::StrictSubValue { .. } => Rc::new(SubValueRelation::SubValueUnknown),
+            SubValueRelation::IteratedSubValue { field: _, .. } => {
+                Rc::new(SubValueRelation::SubValueUnknown)
+            }
+            SubValueRelation::ArithmeticDescent { .. } => {
+                Rc::new(SubValueRelation::SubValueUnknown)
+            }
         },
     }
 }

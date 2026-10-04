@@ -11,9 +11,15 @@ type ReduceVerdict
 fn reduce_verdict_combine(a: ReduceVerdict, b: ReduceVerdict) -> ReduceVerdict {
   match a {
     Unknown { missing: ma } => Unknown { missing: ma }
-    _ => match b {
+    Reduced { last_parts: _ } => match b {
       Unknown { missing: mb } => Unknown { missing: mb }
-      _ => b
+      Reduced { last_parts: _ } => b
+      Irreducible { witness: _ } => b
+    }
+    Irreducible { witness: _ } => match b {
+      Unknown { missing: mb } => Unknown { missing: mb }
+      Reduced { last_parts: _ } => b
+      Irreducible { witness: _ } => b
     }
   }
 }

@@ -1835,7 +1835,12 @@ fn mtcollins1_boot_screen_liveness_lines(standing: KvmObserverStanding) -> List<
     KvmObserverProcessNotRunning { process: _ } => [kvm_standing_text(s: standing)]
     KvmObserverJournalUnread { cause: _ } => [kvm_standing_text(s: standing)]
     KvmObserverStopped { at: _ } => [kvm_standing_text(s: standing)]
-    _ => []
+    KvmObserverEstablished { at: _, host: _, session: _, attempt: _ } => []
+    KvmObserverLost { at: _, established_at: _ } => []
+    KvmObserverMismatch { at: _, detail: _ } => []
+    KvmObserverRefused { at: _, refusal: _ } => []
+    KvmObserverFailed { at: _, detail: _ } => []
+    KvmObserverPending => []
   }
 }
 

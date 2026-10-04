@@ -264,7 +264,10 @@ fn program_runtime_bool_true(value: RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
       (p.primitive_type == program_bool_type()) && (count(p.bytes) == 1)
-    _ => false
+    RuntimeAggregate { value: _ } => false
+    RuntimeReference { value: _ } => false
+    RuntimeClosure { value: _ } => false
+    RuntimeUnit { value: _ } => false
   }
 }
 
@@ -272,7 +275,10 @@ fn program_runtime_bool_false(value: RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
       (p.primitive_type == program_bool_type()) && (count(p.bytes) == 0)
-    _ => false
+    RuntimeAggregate { value: _ } => false
+    RuntimeReference { value: _ } => false
+    RuntimeClosure { value: _ } => false
+    RuntimeUnit { value: _ } => false
   }
 }
 
