@@ -4,6 +4,7 @@ import std.types { Bool, FilePath }
 import gunbc.host_layout { srv1_host_layout }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardObserveOnly, DashboardLocalProvision }
 import gunbc.roadmap_serve { roadmap_serve_request_security }
+import gunbc.auth.tailnet_serve_readback { TailnetServeReadback, TailnetServeReadbackUntaken }
 import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid }
 import gunbc.auth.session { SessionCookieMalformed, SessionCookieValid, SessionCookieExpired, SessionCookieAbsent, SessionCookieUnknown, SessionCookieUnread }
 
@@ -17,6 +18,10 @@ fn fixture_instance() -> HostDashboardInstance {
     serve_function: "unused", listen_port: 18745, source_anchor_ref: "refs/heads/fixture", actuation: DashboardObserveOnly, provision_transport: DashboardLocalProvision)
 }
 
+fn no_readback() -> TailnetServeReadback {
+  TailnetServeReadbackUntaken { reason: "this claim is about the cookie" }
+}
+
 fn is_auth_absent(e: RequestAuthenticationEvidence) -> Bool {
   match e {
     AuthAbsent => true
@@ -27,16 +32,16 @@ fn is_auth_absent(e: RequestAuthenticationEvidence) -> Bool {
 }
 
 test fn an_absent_cookie_header_reads_as_auth_absent() -> Bool {
-  is_auth_absent(e: roadmap_serve_request_security(instance: fixture_instance(), tailscale_identity: "").authentication)
+  is_auth_absent(e: roadmap_serve_request_security(instance: fixture_instance(), tailscale_identity: "", readback: no_readback(), decided_at: "").authentication)
 }
 
 test fn a_header_with_only_other_cookies_reads_as_auth_absent() -> Bool {
-  is_auth_absent(e: roadmap_serve_request_security(instance: fixture_instance(), tailscale_identity: "", cookie_header: "theme=dark; __Host-gunbc-login=x").authentication)
+  is_auth_absent(e: roadmap_serve_request_security(instance: fixture_instance(), tailscale_identity: "", readback: no_readback(), decided_at: "", cookie_header: "theme=dark; __Host-gunbc-login=x").authentication)
 }
 
 // The discriminating neighbour: a session cookie that is present but malformed is NOT absence.
 test fn a_duplicated_session_cookie_is_a_typed_invalid_standing_not_absence() -> Bool {
-  match roadmap_serve_request_security(instance: fixture_instance(), tailscale_identity: "", cookie_header: "gunbc_session=a; gunbc_session=b").authentication {
+  match roadmap_serve_request_security(instance: fixture_instance(), tailscale_identity: "", readback: no_readback(), decided_at: "", cookie_header: "gunbc_session=a; gunbc_session=b").authentication {
     SessionStandingInvalid { standing: SessionCookieMalformed { detail: _ } } => true
     SessionStandingInvalid { standing: SessionCookieValid { session: _ } } => false
     SessionStandingInvalid { standing: SessionCookieExpired { session: _, observed_at: _ } } => false
