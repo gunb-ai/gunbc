@@ -1834,7 +1834,8 @@ fn infer_bind_node_with_binder_site(root: Node, binder_site: NodeOccurrenceIdent
           }
         Absent => infer_bind_node_with_binder_site_over_children(children: root.children, binder_site: binder_site)
       }
-    _ => infer_bind_node_with_binder_site_over_children(children: root.children, binder_site: binder_site)
+    TypeNode { connective: _ } => infer_bind_node_with_binder_site_over_children(children: root.children, binder_site: binder_site)
+    ComputationNode { behavior: _ } => infer_bind_node_with_binder_site_over_children(children: root.children, binder_site: binder_site)
   }
 }
 
@@ -2059,7 +2060,8 @@ fn infer_coproduct_coverage_obligation(
         } else {
           acc
         }
-      _ => acc
+      StructuralLabel { label: _ } => acc
+      Positional => acc
     }
   })
   let covered_carrier = node_rebuild(n: coproduct.variants, children: covered_children)

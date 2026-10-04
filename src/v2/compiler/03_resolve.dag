@@ -2629,7 +2629,8 @@ fn resolve_pattern_binder_declared_type(ctx: ResolveContext, pat: Node, field: E
                 Present { value: f } => optional_present(value: f.type_node)
                 Absent => optional_absent()
               }
-            _ => optional_absent()
+            StructuralLabel { label: _ } => optional_absent()
+            Positional => optional_absent()
           }
       }
   }
