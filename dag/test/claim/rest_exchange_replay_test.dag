@@ -458,13 +458,15 @@ test fn a_text_response_format_reads_a_plain_body_as_text() -> Bool {
       operation: "TextBody",
       observation: RestResponseObserved { status: 200, body: RestBodyRead { body: "diff --git a/x b/x\n+plain text, not JSON" } }
     )]),
-    subject: fn(_scope) { test.RestReplay.TextBody() }
+    subject: fn(_scope) {
+      match test.RestReplay.TextBody() {
+        RestAnswered { answer } => answer.text == "diff --git a/x b/x\n+plain text, not JSON"
+        RestRefused { refusal: _ } => false
+      }
+    }
   )
   match result {
-    WitnessReturned { value } => match value {
-      RestAnswered { answer } => answer.text == "diff --git a/x b/x\n+plain text, not JSON"
-      RestRefused { refusal: _ } => false
-    }
+    WitnessReturned { value } => value
     WitnessRefused { diagnostic } => false
     WitnessInterrupted { at: _, route: _, state: _ } => false
   }
