@@ -4641,30 +4641,10 @@ fn body_lower_admit_roster_node(clause: Node) -> Optional<Node> {
               match body_lower_admit_projection(node: after_colon, name: ^grammar_sequence_right_node_projection) {
                 Absent => optional_absent()
                 Present { value: entry_sequence } =>
-                  match body_lower_admit_projection(node: entry_sequence, name: ^grammar_sequence_left_node_projection) {
+                  match body_lower_comma_list_items_optional(list_capture: entry_sequence) {
                     Absent => optional_absent()
-                    Present { value: first_entry } =>
-                      match body_lower_admit_projection(node: entry_sequence, name: ^grammar_sequence_right_node_projection) {
-                        Absent => optional_absent()
-                        Present { value: after_first } =>
-                          match body_lower_admit_projection(node: after_first, name: ^grammar_sequence_left_node_projection) {
-                            Absent => optional_absent()
-                            Present { value: repeat_capture } =>
-                              match parse_repeat_capture_items_with(
-                                repeat_capture: repeat_capture,
-                                root: clause,
-                                item: fn(entry, _root) { outcome_accepted(value: entry) }
-                              ) {
-                                Rejected { diagnostics: _ } => optional_absent()
-                                Accepted { value: suffixes, diagnostics: _ } =>
-                                  body_lower_admit_roster_from_entries(
-                                    first_entry: first_entry,
-                                    suffixes: suffixes,
-                                    template: first_entry
-                                  )
-                              }
-                          }
-                      }
+                    Present { value: entries } =>
+                      body_lower_admit_roster_from_entries(entries: entries, template: entry_sequence)
                   }
               }
           }
@@ -4672,32 +4652,22 @@ fn body_lower_admit_roster_node(clause: Node) -> Optional<Node> {
   }
 }
 
-fn body_lower_admit_roster_from_entries(first_entry: Node, suffixes: List<Node>, template: Node) -> Optional<Node> {
-  match body_lower_admit_record_edge(entry: first_entry) {
+fn body_lower_admit_roster_from_entries(entries: List<Node>, template: Node) -> Optional<Node> {
+  match body_lower_admit_record_edges(entries: entries, template: template) {
     Absent => optional_absent()
-    Present { value: head_edge } =>
-      match body_lower_admit_record_edges(entries: suffixes) {
-        Absent => optional_absent()
-        Present { value: tail_edges } =>
-          optional_present(
-            value: sugar_type_node(
-              connective: Conj,
-              children: Cons { head: head_edge, tail: tail_edges },
-              n: template
-            )
-          )
-      }
+    Present { value: edges } =>
+      optional_present(value: sugar_type_node(connective: Conj, children: edges, n: template))
   }
 }
 
-fn body_lower_admit_record_edges(entries: List<Node>) -> Optional<List<Edge>> {
+fn body_lower_admit_record_edges(entries: List<Node>, template: Node) -> Optional<List<Edge>> {
   match entries {
     Empty => optional_present(value: Empty)
     Cons { head: h, tail: t } =>
       match body_lower_admit_record_edge(entry: h) {
         Absent => optional_absent()
         Present { value: e } =>
-          match body_lower_admit_record_edges(entries: t) {
+          match body_lower_admit_record_edges(entries: t, template: template) {
             Absent => optional_absent()
             Present { value: rest } => optional_present(value: Cons { head: e, tail: rest })
           }
