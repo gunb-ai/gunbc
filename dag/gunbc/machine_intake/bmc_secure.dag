@@ -1652,7 +1652,8 @@ fn fetched_generation_reference(fetched: ManagedCredentialGenerationFetched) -> 
 // by gunbc.machine_intake_bmc_rotation_route admit_rotation_apply from the route standing, the
 // controller and build being written and the operator's approval; an admission is never received.
 // Every arm other than RotationApplyAdmitted refuses before any write is planned, which is what
-// is the consumer that retired that module's rotation_route_consumption_frontier.
+// is that module's rotation_route_consumption_frontier consumer in code; the frontier stands until this
+// planner runs on a production path (the held cut-over).
 
 type AccountWriteTarget
   = ManagedAccountTarget
