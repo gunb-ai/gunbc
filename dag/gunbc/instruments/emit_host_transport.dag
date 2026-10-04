@@ -12,7 +12,7 @@ import extdeps.node
 import extdeps.typescript
 import extdeps.gunbc
 import extdeps.communication.medium { Lossless, Medium }
-import std.measure { byte_size_count }
+import std.measure { byte_size_count, second }
 import std.render_repeat_string_bootstrap { repeat_string }
 import v2.compiler.emit_host {
   emit_host_octets_byte_string,
@@ -232,7 +232,7 @@ type NodeServeReadiness
 
 fn node_http_await_ready(url: NonEmptyStr, attempts_left: Int, attempts_used: Int, last_status: String, last_exit_code: Int) -> NodeServeReadiness {
   if attempts_left <= 0 { ServeNotReady { attempts_used: attempts_used, last_status: last_status, last_exit_code: last_exit_code } } else {
-    let probe = http.Client.Probe(url: url, connect_seconds: "1")
+    let probe = http.Client.Probe(url: url, connect_time: second(count: 1))
     if probe.answered && probe.status == "200" { ServeReady } else {
       let _pause = sleep.Delay.Seconds(seconds: "0.25" as NonEmptyStr)
       node_http_await_ready(url: url, attempts_left: attempts_left - 1, attempts_used: attempts_used + 1, last_status: probe.status, last_exit_code: probe.exit_code)

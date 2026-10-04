@@ -81,8 +81,5 @@ service posix.Process {
       exit_code: Int? from "exit_code"
     }
     readonly
-    mock_response {
-      0 => { exited: false, exit_code: none } "hermetic posix.Process.Reap: no child was started"
-    }
   }
 }
