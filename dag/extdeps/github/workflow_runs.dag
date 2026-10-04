@@ -16,6 +16,7 @@ import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
 import std.algebra { Cons, Empty }
 import std.resources { Network }
+import std.serialization { Text }
 
 // WorkflowJobRun.labels are read by gunbc.public_workload_census (observed_job_labels) to
 // settle observed architecture and provider. run_attempt is modeled here and copied onto
@@ -442,7 +443,7 @@ service github.WorkflowRuns {
     transport rest {
       method: GET,
       path: "/repos/\{owner\}/\{repo\}/actions/jobs/\{job_id\}/logs",
-      response_format: "Text"
+      response_format: Text
     }
     response {
       200 => String

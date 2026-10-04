@@ -8,6 +8,7 @@ import extdeps.uri { Uri, Https }
 import std.credentials { EnvVar }
 import std.types { Bool, Bytes, Int, List, String, Timestamp }
 import std.resources { Network }
+import std.serialization { Text }
 
 // THE GITHUB ACTIONS ARTIFACTS REST API, as the upstream names it: "List workflow run artifacts"
 // (operationId actions/list-workflow-run-artifacts) and "Download an artifact"
@@ -110,7 +111,7 @@ service github.Artifacts {
     transport rest {
       method: GET,
       path: "/repos/\{owner\}/\{repo\}/actions/artifacts/\{artifact_id\}/zip",
-      response_format: "Text"
+      response_format: Text
     }
     response {
       200 => Bytes
