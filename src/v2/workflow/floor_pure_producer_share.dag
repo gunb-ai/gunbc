@@ -542,8 +542,33 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // Five members were added from the later probe pair 37147337255 against 37147367276, which also
 // planned the modules behind rows main added to the hand roster while this change was open
 // (dependency_demand_census, infer_fold_member_instance, one more kernel_value_type_roster claim).
+// Seven members were added from probe 37177499463, which planned the three modules behind the
+// eleven rows main added to the hand roster after the comparison (gunbc#13118, #13069, #13120): each is
+// the one claim demanding a nullary producer that roster had warmed.
 // Re-derive with that probe; do not extend by hand.
 data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.callexec.let_match_early_return_eval",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "the_binding_path_of_a_let_match_and_its_rewrite_refuse_alike_at_infer_grounding", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "the_exit_path_of_a_let_match_and_its_rewrite_refuse_alike_at_infer_grounding", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.compiler.collection_callback_realization",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "ccr_all_head_binds_its_row", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "ccr_declared_any_stays_an_ordinary_call", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "ccr_map_undeclared_field_refuses_at_the_field", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "ccr_piped_map_head_binds_its_row", standing: ActiveFillDebt }
+    ]
+  },
+  SingleClaimFillDebtModule {
+    module: "v2.test.claim.native_census.cascade_root_fan_out",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "census_diamond_cascade_counts_modules_not_paths_holds", standing: ActiveFillDebt }
+    ]
+  },
   SingleClaimFillDebtModule {
     module: "v2.test.claim.compiler.dependency_demand_census",
     claims: [
