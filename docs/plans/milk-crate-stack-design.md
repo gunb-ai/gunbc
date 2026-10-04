@@ -199,3 +199,15 @@ support-assisted extraction mechanism are a **named frontier for the next CAD re
 claimed to have been printed, strength-tested, or incorporated into the hosted r06/r07 meshes.
 Their landing must replace the old fixed-rack review root, bind the mass ledger to finalized
 parts, and run collision/continuous-sweep/bed-fit checks before another cassette print.
+
+## Interchangeable PSU assemblies
+
+The power cassette uses replaceable mechanical inserts and PSU-specific electrical adapters behind a common protected node-facing interface. See [the server-PSU investigation and topology](cassette-server-psu-interface.md) for documented assembly references, AC-input derating, redundancy arithmetic and unresolved interface obligations. This supersedes treating a PSU body envelope alone as a complete power-station design.
+
+## Residential cooler variant
+
+Use NH-U14S AMP-4926 as the requested quiet-cooler reference, not a fixed 4U height. [Noctua's specifications](https://www.noctua.at/en/products/nh-u14s-amp-4926/specifications) give **165 × 150 × 111 mm** (height × width × depth) and **1136 g with both fans**. The vendor lists 5U compatibility and discontinued status. The 160 mm / 797 g heatsink-only figures and packaging dimensions are not assembly inputs. Its airflow is perpendicular to the socket long axis; final placement must align that with the rear exhaust route. The three 80 mm rear fans remain separate components.
+
+`cooler_configuration.residential_cooler` selects this variant; `stack_geometry.stack_pitch_for_cooler` substitutes the vendor envelope, and `node_components_for_cooler` substitutes its mass once, including both fans. The existing W1 fleet observations remain intact. The review report includes the Noctua variant's derived pitch and component fold. Contact-plane height (currently a 30 mm review assumption), pose, clips, DIMM interference, connector routing and service clearance remain unresolved. The body box is a clearance reservation, not detailed heatsink CAD or proven compatibility. No rack-unit rounding is imposed. A taller/heavier variant must use its own pitch, harness lengths and placed mass in later column analysis; the W1 height result cannot qualify it. Printed corner geometry still requires implementation.
+
+Validation: all 10 server-power/cooler witnesses passed, and `stack_mass_review` emitted the combined report. At the current provisional 30 mm contact plane, 15 mm underside projection and 20 mm service clearance, the Noctua planning pitch is 230 mm (not a required rack size or a final minimum). The hardware-only subtotal becomes 2563–4001 g with the existing board/DIMM planning ranges; prints, connectors and the station remain additional modeled obligations.

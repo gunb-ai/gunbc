@@ -1,5 +1,7 @@
 module product.printed_chassis.component_mass
 
+import product.printed_chassis.cooler_configuration {CoolerConfiguration,DynatronW1,NoctuaU14sAmp4926,noctua_envelope}
+import extdeps.cooling.noctua_ampere {nh_u14s_amp_4926}
 import std.types {Bool,Int,List,String,NonEmptyStr}
 import std.measure {Gram,gram,gram_count}
 import std.affine_space {Point3,signed_frame_component_count}
@@ -118,4 +120,12 @@ data board_planning_mass: MassEvidence = PlanningMassRange {
 data dimm_planning_mass: MassEvidence = PlanningMassRange {
  lower:gram(count:20),upper:gram(count:100),
  basis:"Engineering sensitivity allowance, 20-100 g per bare Samsung M393A8G40D40-CRB-family DIMM. Samsung Rev1.3 section18 specifies a 133.35 x 31.25 x 3.9 mm maximum envelope, not mass. No supplier shipping weight is promoted to component weight; endpoints are assumed, not certified.",
+}
+
+// Swap the cooler assembly once; its two fans are already included in vendor mass.
+fn node_components_for_cooler(population:HostMemoryPopulation,cooler:CoolerConfiguration,contact_plane_um:Int) -> List<MassComponent> {
+ map(node_components(population:population),r=>if r.id=="COOLER" {match cooler {
+  DynatronW1=>r
+  NoctuaU14sAmp4926=>MassComponent {id:r.id,quantity:1,mass:VendorNominal {mass:nh_u14s_amp_4926.mass},at:envelope_centre(p:noctua_envelope(contact_plane_um:contact_plane_um)),position:EnvelopeCentre}
+ }} else {r})
 }

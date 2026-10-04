@@ -1,5 +1,6 @@
 module product.printed_chassis.stack_geometry
 
+import product.printed_chassis.cooler_configuration {CoolerConfiguration,DynatronW1,NoctuaU14sAmp4926,noctua_envelope}
 import std.types { Bool, Int, List }
 import std.nat { Nat }
 import std.affine_space { signed_frame_component_count }
@@ -64,3 +65,14 @@ fn pillar_height() -> Int { stack_pitch() - panel_t }
 // Half-extents of the footprint the stack stands on, for the tipping derivation.
 fn footprint_half_depth() -> Int { tray_d / 2 }
 fn footprint_half_width() -> Int { tray_w / 2 }
+
+// Preserve the W1 review while deriving the residential variant from its own envelope.
+fn cassette_parts_for_cooler(cooler:CoolerConfiguration,contact_plane_um:Int) -> List<AssemblyPart> {
+ map(cassette_parts(),p=>if p.id=="CPU" {match cooler {DynatronW1=>p NoctuaU14sAmp4926=>noctua_envelope(contact_plane_um:contact_plane_um)}} else {p})
+}
+fn stack_pitch_for_cooler(cooler:CoolerConfiguration,contact_plane_um:Int) -> Int {
+ let parts=cassette_parts_for_cooler(cooler:cooler,contact_plane_um:contact_plane_um)
+ let top=fold(parts,init:0,f:(n,p)=>if part_top(p:p)>n {part_top(p:p)} else {n})
+ let bottom=fold(parts,init:0,f:(n,p)=>if part_bottom(p:p)<n {part_bottom(p:p)} else {n})
+ top-bottom+service_clearance
+}

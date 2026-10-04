@@ -271,6 +271,8 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/storage/te_m2_ngff_connector.dag",
   "dag/extdeps/memory/te_ddr4_dimm_socket.dag",
   "dag/extdeps/land_pattern/types.dag",
+  "dag/extdeps/power/fsp_crps.dag",
+    "dag/extdeps/cooling/noctua_ampere.dag",
   "dag/extdeps/power/ti_tps3808.dag",
   "dag/extdeps/power/ti_tps53688.dag",
   "dag/extdeps/clock/ti_cdce913.dag",

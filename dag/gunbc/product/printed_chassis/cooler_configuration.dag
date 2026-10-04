@@ -1,0 +1,15 @@
+module product.printed_chassis.cooler_configuration
+import std.types {Int}
+import std.measure {micrometer_count}
+import extdeps.cooling.noctua_ampere {nh_u14s_amp_4926}
+import product.printed_chassis.assembly_geometry {AssemblyPart,Purchased,Cassette,LayOnXZ,block,part}
+type CoolerConfiguration = DynatronW1 | NoctuaU14sAmp4926
+// User's residential design selection. Existing fleet observations still use W1.
+data residential_cooler:CoolerConfiguration=NoctuaU14sAmp4926
+// Contact-plane height and pose remain review assumptions. The envelope is vendor
+// data; a rectangular box is not a socket/RAM collision qualification or exact CG.
+fn noctua_envelope(contact_plane_um:Int) -> AssemblyPart {
+ let c=nh_u14s_amp_4926
+ let h=micrometer_count(m:c.height)
+ part(id:"CPU",name:"Noctua NH-U14S AMP-4926 dual-fan envelope",kind:Purchased,scope:Cassette,adds:[block(w:micrometer_count(m:c.width),h:h,d:micrometer_count(m:c.depth),x:0,y:h/2,z:0)],cuts:[],x:0,y:contact_plane_um,z:0,ex:0,ey:200000,ez:0,plane:LayOnXZ,notes:"Vendor 165 x 150 x 111 mm with both fans. Pose/contact plane provisional; airflow perpendicular to socket long axis requires board-specific alignment. RAM, clips, cable and extraction clearances unresolved.")
+}
