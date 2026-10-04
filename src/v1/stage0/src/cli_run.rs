@@ -9177,6 +9177,10 @@ struct BareCandidates {
     /// Unbound callees. The pull discriminator: the census strips fn bodies, so a 0-arg fn and
     /// a type alias share a census shape, but only the fn is called.
     call_position: BTreeSet<String>,
+    /// Names with at least one occurrence that is NOT a callee (`BarePositions::non_call`, plus
+    /// authored types and dotted heads). `call_position` minus this set is the names used ONLY
+    /// as callees.
+    non_call: BTreeSet<String>,
     /// Field chains and method-call chains (`cron.Tab.List` in `cron.Tab.List()`): a SERVICE
     /// reference's prefix is a services-census key (`cron.Tab`, `llm.Codex`) with no module
     /// spelling, so the consumer tries each dot-prefix against the services census.
@@ -9284,9 +9288,13 @@ fn bare_candidates_from_references(refs: &entry_resolve::ParsedFileReferences) -
         .collect();
     let mut names = refs.positions.undotted.clone();
     names.extend(refs.authored_types.iter().cloned());
+    let mut non_call = refs.positions.non_call.clone();
+    non_call.extend(refs.authored_types.iter().cloned());
+    non_call.extend(refs.positions.dotted_heads.iter().cloned());
     BareCandidates {
         names,
         call_position: refs.positions.callees.clone(),
+        non_call,
         dotted_chains,
         dotted_heads: refs.positions.dotted_heads.clone(),
         self_declared: refs.self_declared.clone(),
@@ -9356,7 +9364,7 @@ fn bare_reference_pull_paths_for_source(
         sf,
         index,
         |root| closure_name_census(index, root),
-        |_name, _module, provider| {
+        |_name, _module, provider, _role| {
             for path in import_closure_live_paths_with_facts(provider, &index.module_graph_facts) {
                 let path = workspace_relative_repo_path(&path);
                 if seen.insert(path.clone()) {
@@ -9382,6 +9390,21 @@ pub(crate) struct UnimportedBareProvider {
     pub(crate) provider: String,
 }
 
+/// One file's judgment: the pairs it owes, and the pairs the compiler's non-declaration predicate
+/// suppressed, counted by WHY. `suppressed_kernel_method_only` is the declared COVERAGE FRONTIER: a
+/// kernel-method name is admitted by name because the receiver's type is unknown before typecheck,
+/// so a call on a receiver without that profile is a genuine unresolved call that this gate no
+/// longer reports. Typecheck still refuses it, but only in typed files. The count is printed on every
+/// gate run so its growth is visible. It dissolves when the gate judges post-typecheck call semantics
+/// for typed files, or when method resolution can be receiver-typed before typecheck (calm-boar-904
+/// ruling, gunbc#12951).
+#[derive(Default)]
+pub(crate) struct UnimportedBareProviderJudgment {
+    pub(crate) rows: Vec<UnimportedBareProvider>,
+    pub(crate) suppressed_builtin: usize,
+    pub(crate) suppressed_kernel_method_only: usize,
+}
+
 /// The pairs `UnimportedBareProvider` names for ONE file, derived by the loader's own provider
 /// selection (`visit_bare_reference_providers`) rather than a second scanner, so the check and
 /// the pull can never disagree about which names are bare-pullable. A zero-import file is on the
@@ -9390,8 +9413,15 @@ pub(crate) fn unimported_bare_providers(
     sf: &Rc<v1_compiler_compile::SourceFile>,
     index: &MultiEntryIndex,
 ) -> Result<Vec<UnimportedBareProvider>, String> {
+    Ok(unimported_bare_provider_judgment(sf, index)?.rows)
+}
+
+pub(crate) fn unimported_bare_provider_judgment(
+    sf: &Rc<v1_compiler_compile::SourceFile>,
+    index: &MultiEntryIndex,
+) -> Result<UnimportedBareProviderJudgment, String> {
     if !source_declares_import_lines(&sf.content) {
-        return Ok(Vec::new());
+        return Ok(UnimportedBareProviderJudgment::default());
     }
     let file = workspace_relative_repo_path(&sf.path);
     let closure: HashSet<String> =
@@ -9400,23 +9430,60 @@ pub(crate) fn unimported_bare_providers(
             .map(|p| workspace_relative_repo_path(p))
             .collect();
     let mut out = BTreeSet::new();
+    let (mut suppressed_builtin, mut suppressed_kernel_method_only) = (0usize, 0usize);
     visit_bare_reference_providers(
         sf,
         index,
         |root| closure_name_census(index, root),
-        |name, module, provider| {
+        |name, module, provider, role| {
+            // A name the compiler can bind WITHOUT a declaration (a kernel method, an empty-collection
+            // constructor, a builtin) is not a read of a same-spelled declaration outside this file's
+            // closure: call inference never binds an out-of-scope declarer, and this file's import
+            // lines switch the global-bare fallback off. The predicate is the compiler's own
+            // (`v1.compiler.infer_method` `bare_call_non_declaration_binding`), not a list here, and the
+            // frontier counters are split by its own arms, so they cannot drift from it.
+            // Before it, positional `map_get(m, k)` calls were reported as unimported reads of
+            // v2.std.collection's `map_get`, a different contract, and the refusal told the author
+            // to add the import that would rebind the call to it (gunbc#12951).
             if provider != file && !closure.contains(provider) {
-                out.insert(UnimportedBareProvider {
-                    file: file.clone(),
-                    name: name.to_string(),
-                    provider_module: module.to_string(),
-                    provider: provider.to_string(),
-                });
+                use crate::v1_compiler_infer_method::NonDeclarationBinding as B;
+                // The classification describes CALL inference only, so it is consulted only when
+                // every occurrence of the name in this file is a callee. A value, pattern, type or
+                // dotted use reads the declaration whatever the calls bind, so a name with any
+                // non-call use is judged as a declaration read (calm-boar-904, gunbc#13116).
+                let binding = match role {
+                    BareUseRole::CallOnly => {
+                        crate::v1_compiler_infer_method::bare_call_non_declaration_binding(
+                            name.to_string(),
+                        )
+                    }
+                    BareUseRole::HasNonCallUse => B::DeclarationOnly,
+                };
+                match binding {
+                    B::EmptyCollectionConstructor | B::BuiltinFunction => {
+                        suppressed_builtin += 1;
+                    }
+                    B::KernelMethodOnly => {
+                        suppressed_kernel_method_only += 1;
+                    }
+                    B::DeclarationOnly => {
+                        out.insert(UnimportedBareProvider {
+                            file: file.clone(),
+                            name: name.to_string(),
+                            provider_module: module.to_string(),
+                            provider: provider.to_string(),
+                        });
+                    }
+                }
             }
             Ok(())
         },
     )?;
-    Ok(out.into_iter().collect())
+    Ok(UnimportedBareProviderJudgment {
+        rows: out.into_iter().collect(),
+        suppressed_builtin,
+        suppressed_kernel_method_only,
+    })
 }
 
 /// What the required whole-pool phase's PRODUCER established, recorded by the producer itself.
@@ -9528,7 +9595,7 @@ fn admit_bare_references_of_file(
             source,
             index,
             |root| closure_name_census(index, root),
-            |_, _, _| Ok(()),
+            |_, _, _, _| Ok(()),
         )
     };
     index
@@ -9644,11 +9711,23 @@ fn pool_census_for_name_uncounted(
 /// One resolver, two consumers: admission discards selected providers, and a demanded
 /// edge row expands them. Candidate classification remains `closure_bare_disposition`,
 /// which consumes `v1.compiler.infer_env::global_bare_chain_candidates`.
+/// How a file uses one bare name, over ALL its occurrences. Call inference's
+/// `bare_call_non_declaration_binding` describes a CALL only, so a consumer may apply it only to
+/// `CallOnly`; any other use of the spelling reads whatever the name resolves to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum BareUseRole {
+    /// Every occurrence of the name in the file is an unbound callee.
+    CallOnly,
+    /// At least one occurrence is a value, a dotted head, a record literal's type, a variant
+    /// pattern or a type: a read of a declaration whatever the calls bind.
+    HasNonCallUse,
+}
+
 fn visit_bare_reference_providers(
     sf: &Rc<v1_compiler_compile::SourceFile>,
     index: &MultiEntryIndex,
     census_for: impl Fn(Option<&str>) -> Result<Rc<SymbolIndex>, String>,
-    mut visit: impl FnMut(&str, &str, &str) -> Result<(), String>,
+    mut visit: impl FnMut(&str, &str, &str, BareUseRole) -> Result<(), String>,
 ) -> Result<(), String> {
     use crate::v1_compiler_infer_env::GlobalBareLookupState;
     let file_rel = workspace_relative_repo_path(&sf.path);
@@ -9952,7 +10031,15 @@ fn visit_bare_reference_providers(
                  (fail-closed)"
             ));
         }
-        visit(&name, &module_path, &dep_rel)?;
+        let role = if !service_head
+            && candidates.call_position.contains(&name)
+            && !candidates.non_call.contains(&name)
+        {
+            BareUseRole::CallOnly
+        } else {
+            BareUseRole::HasNonCallUse
+        };
+        visit(&name, &module_path, &dep_rel, role)?;
     }
     // The whole-pool name reading forces the same shared
     // parse. In practice the census above has already forced it, so this delta is
@@ -10195,12 +10282,107 @@ mod closure_edge_demand_tests {
                     closure_name_census(index, root)
                 }
             },
-            |_name, _module, path| {
+            |_name, _module, path, _role| {
                 providers.push(path.to_string());
                 Ok(())
             },
         )?;
         Ok(providers)
+    }
+
+    /// A BUILTIN CALL IS NOT AN UNIMPORTED READ OF A SAME-SPELLED DECLARATION (gunbc#12951). The
+    /// consumer declares an import, so its bare channel is off. It calls the builtin `map_get(m, k)`
+    /// positionally and `empty_map()`, while a module outside its closure declares functions with
+    /// those spellings. Discriminating RED: before the predicate, both were reported, and the
+    /// refusal advised importing the declarations, which would rebind the calls to a different
+    /// contract. Positive control: a NON-builtin function declared only there and called bare is
+    /// still reported, so the exemption is the compiler's precedence and not a widened list.
+    /// THE CLASSIFICATION DESCRIBES CALLS ONLY (calm-boar-904 objection on gunbc#13116). A
+    /// same-spelled builtin used in a NON-call position (a value, a pattern, a type) is a read of
+    /// the declaration, so its provider is still owed. Two shapes: a file that uses the name ONLY
+    /// as a value, and a file that BOTH calls it and uses it as a value. Discriminating RED:
+    /// before occurrence roles reached the gate, both were suppressed by spelling.
+    #[test]
+    fn a_non_call_use_of_a_builtin_spelling_still_reports_the_provider() {
+        let helper = "module far.helper\n\
+                      fn map_get(store: Int, at: Int) -> Int { store }\n";
+        let near = "module near.types\ntype Unused = { id: Int }\n";
+        let value_only = "module near.consumer\nimport near.types { Unused }\n\
+                          fn pick() -> Int { let f = map_get\n f(store: 1, at: 2) }\n";
+        let fx = Fixture::new(&[
+            ("consumer.dag", value_only),
+            ("helper.dag", helper),
+            ("near.dag", near),
+        ]);
+        let index = fx.index();
+        let found =
+            unimported_bare_providers(&index.source_files["near.consumer"], &index).unwrap();
+        assert!(
+            found
+                .iter()
+                .any(|v| v.name == "map_get" && v.provider_module == "far.helper"),
+            "a value-only use of a builtin spelling must still owe its provider: {found:?}"
+        );
+        let mixed = "module near.consumer\nimport near.types { Unused }\n\
+                     fn lookup_it(m: Map<String, Int>) -> Int? { map_get(m, \"k\") }\n\
+                     fn pick() -> Int { let f = map_get\n f(store: 1, at: 2) }\n";
+        let fx = Fixture::new(&[
+            ("consumer.dag", mixed),
+            ("helper.dag", helper),
+            ("near.dag", near),
+        ]);
+        let index = fx.index();
+        let found =
+            unimported_bare_providers(&index.source_files["near.consumer"], &index).unwrap();
+        assert!(
+            found.iter().any(|v| v.name == "map_get" && v.provider_module == "far.helper"),
+            "a file that both calls a builtin spelling and uses it as a value still owes the value use's provider: {found:?}"
+        );
+    }
+
+    #[test]
+    fn a_builtin_call_is_not_an_unimported_read_of_a_same_spelled_declaration() {
+        let helper = "module far.helper\n\
+                      fn map_get(store: Int, at: Int) -> Int { store }\n\
+                      fn empty_map(seed: Int) -> Int { seed }\n\
+                      fn far_only(value: Int) -> Int { value }\n";
+        let near = "module near.types\ntype Unused = { id: Int }\n";
+        let consumer = |extra: &str| {
+            format!(
+                "module near.consumer\nimport near.types {{ Unused }}\n\
+                 fn lookup_it(m: Map<String, Int>) -> Int? {{ map_get(m, \"k\") }}\n\
+                 fn fresh() -> Map<String, Int> {{ empty_map() }}\n{extra}"
+            )
+        };
+        let clean = Fixture::new(&[
+            ("consumer.dag", consumer("").as_str()),
+            ("helper.dag", helper),
+            ("near.dag", near),
+        ]);
+        let index = clean.index();
+        let found =
+            unimported_bare_providers(&index.source_files["near.consumer"], &index).unwrap();
+        assert!(
+            found.iter().all(|v| v.name != "map_get" && v.name != "empty_map"),
+            "a builtin call was reported as an unimported read of a same-spelled declaration: {found:?}"
+        );
+        let control = Fixture::new(&[
+            (
+                "consumer.dag",
+                consumer("fn reach() -> Int { far_only(value: 1) }\n").as_str(),
+            ),
+            ("helper.dag", helper),
+            ("near.dag", near),
+        ]);
+        let index = control.index();
+        let found =
+            unimported_bare_providers(&index.source_files["near.consumer"], &index).unwrap();
+        assert!(
+            found
+                .iter()
+                .any(|v| v.name == "far_only" && v.provider_module == "far.helper"),
+            "a genuine unimported bare call to a non-builtin must still be reported: {found:?}"
+        );
     }
 
     /// A service's `response { .. }` clause is grammar structure (`parse_op_body_entries`
@@ -33895,6 +34077,10 @@ fn collect_type_ref_names_positioned(
         .bare_positions
         .undotted
         .extend(names.iter().cloned());
+    classify
+        .bare_positions
+        .non_call
+        .extend(names.iter().cloned());
     bare.extend(names);
 }
 
@@ -34079,6 +34265,10 @@ pub(crate) struct BarePositions {
     pub(crate) dotted_heads: BTreeSet<String>,
     /// Unbound callee names (`f` in `f(x)`).
     pub(crate) callees: BTreeSet<String>,
+    /// Names with at least one occurrence that is NOT a callee: a free variable, a dotted head, a
+    /// record literal's type, a variant pattern's constructor. A name in `callees` and not here is
+    /// used ONLY as a callee, which is the one role call inference's classification describes.
+    pub(crate) non_call: BTreeSet<String>,
     /// Receiver chain plus method (`cron.Tab.List` in `cron.Tab.List()`), which `chains` does not
     /// carry because it records field-access chains only.
     pub(crate) method_chains: Vec<Vec<String>>,
@@ -34362,6 +34552,7 @@ fn collect_node_refs_inner(
                         } else {
                             positions.undotted.insert(node.name.clone());
                         }
+                        positions.non_call.insert(node.name.clone());
                         // A free `ExprVar` IS a value-position read: nothing binds it here, so
                         // the interpreter resolves it through the file's declarations, then the
                         // author's imports, then the shared slot.
@@ -34395,6 +34586,7 @@ fn collect_node_refs_inner(
                 if !node.name.is_empty() {
                     bare.insert(node.name.clone());
                     classify.bare_positions.undotted.insert(node.name.clone());
+                    classify.bare_positions.non_call.insert(node.name.clone());
                 }
                 for c in node.children.iter() {
                     collect_node_refs_inner(
@@ -34430,6 +34622,7 @@ fn collect_node_refs_inner(
                 if !name.is_empty() {
                     bare.insert(name.clone());
                     classify.bare_positions.undotted.insert(name.clone());
+                    classify.bare_positions.non_call.insert(name.clone());
                 }
             }
         }
