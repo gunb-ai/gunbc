@@ -1167,3 +1167,35 @@ The missing hardware dimensions remain unknown; the geometry is a visual proposa
 admitted fabrication result. Source project details are recorded in `sites/README.md`.
 Desktop/mobile rendering and the principal interactions were exercised successfully.
 All temporary copies of the operator's GCP token were removed after printing work ended.
+
+### Cassette hardware and airflow study — 4 October 2026
+
+Operator clarification: the target cooler is Dynatron (W1 in the preceding question), and PSUs
+must be interchangeable rather than tied to one model. Roughly 400–600 W was an example range,
+not a finalized electrical qualification. PSU compatibility must include accepted physical envelope,
+mounting adapters, connector requirements, intake/exhaust clearance and service access; wattage
+alone is insufficient. The inventory's unread PSU identities remain unread.
+
+Concept 02 adds a rear cassette-resident adjustable metal PSU cradle, a variable PSU envelope,
+Dynatron W1 geometry, DIMM clearance zones, one to three front 80 mm fans with individual carrier
+feet, side airflow guides, a schematic internal harness corridor and front-to-rear direction arrows.
+The operator proposed cassette-mounted fans. All these components travel with the cassette in the
+2×2 frame view. Three fans is a layout default, not an established cooling requirement.
+
+The [Dynatron manufacturer page](https://www.dynatron.co/product-page/w1), checked 4 October,
+publishes active dimensions 141.1 × 84 × 72 mm and passive dimensions 116 × 84 × 72 mm.
+The study depicts the active envelope with simplified fins/fan; active versus passive operation,
+actual socket position/orientation and installed offset are not established by that depiction.
+The P8 PWM PST uses its catalog 80 × 80 × 25 mm envelope; the existing 71.5 mm hole pitch and
+4.4 mm clearance remain convention-unverified. Fan count, ducting and header/PST-chain electrical
+admission still require evidence. Airflow arrows are not simulation results.
+
+PSU slider defaults (150 × 85 × 150 mm), DIMM zones, the 50 mm rear service gap, adjustable cradle
+interfaces and harness route are design proposals. They are not measured hardware or a claim that
+all 400–600 W PSUs fit. No drive or expansion-card configuration has been invented. A height check
+flags simple study-pitch conflicts; it does not prove full assembly clearance or powered suitability.
+
+Source commit: `8c944389c0dbcb25639d4c6069587863ae0d0fd5` in the separate Sites repository.
+Browser checks passed for selectable parts, PSU isolation, fan-count changes, height-conflict
+feedback, airflow visibility, orbit, rack withdrawal, requirements and mobile overflow.
+No additional gauge or chassis print was started.
