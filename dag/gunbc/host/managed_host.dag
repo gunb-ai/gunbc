@@ -125,6 +125,7 @@ fn managed_host_fixture(
     decl_ref(module_path: "test.claim.managed_host_witness", decl_name: "w_a_row_whose_smpro_site_names_another_controller_mints_no_subject"),
     decl_ref(module_path: "test.claim.managed_host_boot_witness", decl_name: "w_a_boot_of_an_unbound_host_is_refused"),
     decl_ref(module_path: "test.claim.managed_host_boot_witness", decl_name: "w_a_bound_host_with_no_boot_selection_is_refused"),
+    decl_ref(module_path: "test.claim.managed_host_boot_witness", decl_name: "w_the_handoff_admission_discriminates_on_every_managed_hosts_rows"),
   ]
 {
   ManagedHost { host: host, access: access, capability_row: capability_row, secure: secure, unit_hold: unit_hold, smpro: smpro }
