@@ -4692,7 +4692,7 @@ fn body_lower_admit_roster_from_entries(first_entry: Node, suffixes: List<Node>,
 
 fn body_lower_admit_record_edges(entries: List<Node>) -> Optional<List<Edge>> {
   match entries {
-    Empty => optional_present(value: [])
+    Empty => optional_present(value: Empty)
     Cons { head: h, tail: t } =>
       match body_lower_admit_record_edge(entry: h) {
         Absent => optional_absent()
