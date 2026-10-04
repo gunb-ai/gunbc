@@ -9,10 +9,13 @@ import gunbc.durable_exclusive_hold_file_store {
   file_hold_acquire, file_hold_release_assess, file_hold_release_commit,
 }
 import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_stdin_digest_via_shell }
+import extdeps.crypto.hash { Digest }
 import gunbc.host_boot_attempt_admission {
   SlotConsumption, SlotConsumed, SlotRefused,
   AttemptReceiptRefusal, AttemptAlreadyConsumed, ReceiptHostHasNoRoute, ReceiptExecutorForAnotherHost, ReceiptExecutorNotOnStoreHost, ReceiptHostUnbound, ReceiptNonceMissing,
-  ReceiptNonceNotSlotSafe, ReceiptHostNotSlotSafe, ReceiptPathOutsideReceipts, ReceiptFileAbsent, ReceiptFileUnreadable, ReceiptNotJson,
+  ReceiptNonceNotSlotSafe, ReceiptHostNotSlotSafe, ReceiptPathOutsideReceipts, ReceiptFileUnreadable, ReceiptNotJson,
+  ReceiptNotTracked, ReceiptNotRegularFile, ReceiptDigestUnavailable, ReceiptCpusNotTheExpectedSockets, ReceiptDimmUnknownSlot, ReceiptDimmOnWrongSocket, ReceiptDimmSlotOmitted,
   ReceiptSchemaMismatch, ReceiptFieldUnreadable, ReceiptTimeUnreadable, ReceiptSubjectMismatch, ReceiptAttemptMismatch, ReceiptPlanMismatch,
   ReceiptOrderingViolated, AttemptSlotKeyNotAddressable, AttemptSlotPreconditionIncoherent, AttemptSlotStoreRefused,
   consume_attempt_slot, attempt_slot_key,
@@ -48,7 +51,13 @@ fn refused_as_consumed(cause: AttemptReceiptRefusal) -> Bool {
     ReceiptNonceNotSlotSafe { nonce: _ } => false
     ReceiptHostNotSlotSafe { host: _ } => false
     ReceiptPathOutsideReceipts { path: _ } => false
-    ReceiptFileAbsent { path: _ } => false
+    ReceiptNotTracked { path: _, commit: _ } => false
+    ReceiptNotRegularFile { path: _, mode: _, kind: _ } => false
+    ReceiptDigestUnavailable { path: _, reason: _ } => false
+    ReceiptCpusNotTheExpectedSockets { expected: _, recorded: _ } => false
+    ReceiptDimmUnknownSlot { label: _ } => false
+    ReceiptDimmOnWrongSocket { label: _, recorded: _, roster: _ } => false
+    ReceiptDimmSlotOmitted { label: _ } => false
     ReceiptFileUnreadable { path: _, detail: _ } => false
     ReceiptNotJson { path: _, detail: _ } => false
     ReceiptSchemaMismatch { observed: _ } => false
@@ -108,4 +117,28 @@ test fn an_attempt_slot_admits_each_nonce_once_across_later_attempts_and_hold_re
   let held = attempt_slot_controls(root: root_path as NonEmptyStr)
   let removed = shell.Remove.RecursiveForce(path: root_path)
   held && removed.success
+}
+
+// THE RECEIPT'S EVIDENCE IS THE SHA-256 OF ITS BYTES, taken by the same authority admission uses: one
+// changed byte changes it, and the same bytes give the same digest.
+fn digest_of(content: String) -> Digest? {
+  match sha256sum_stdin_digest_via_shell(content: content) {
+    Sha256FileDigest { digest: d } => Present { value: d }
+    Sha256FileDigestUnavailable { path: _, reason: _ } => none
+  }
+}
+
+test fn one_changed_byte_changes_the_receipt_digest_by_real_execution() -> Bool {
+  match digest_of(content: "{\"schema\":\"gunbc.boot_attempt_receipt.v1\"}") {
+    Absent => false
+    Present { value: a } =>
+      match digest_of(content: "{\"schema\":\"gunbc.boot_attempt_receipt.v2\"}") {
+        Absent => false
+        Present { value: b } =>
+          match digest_of(content: "{\"schema\":\"gunbc.boot_attempt_receipt.v1\"}") {
+            Absent => false
+            Present { value: a2 } => (a.hex as String) != (b.hex as String) && (a.hex as String) == (a2.hex as String)
+          }
+      }
+  }
 }

@@ -374,19 +374,29 @@ The pre-power-on firmware readback is bound to the same plan (`FirmwareReadBefor
 
 ### 12a. Slice B1 as built
 
-Slice B1 is `gunbc.host_boot_attempt_admission`. It holds the plan and inspection records, the fail-closed reader, the create-once attempt slot, and the projection into `AttemptConfigurationReceipt`. It is host-generic and names no unit in its procedure; mtcollins1 appears only as its route row, in the `gunbc.host_maintenance_hold_reason` pattern. It returns one sealed `BootAttemptClearance`, which the boot entry must hold before any pre-power read or actuation.
+Slice B1 is `gunbc.host_boot_attempt_admission`. It holds the plan and inspection records, the reader, the create-once attempt slot, and the projection into `AttemptConfigurationReceipt`. It is host-generic: mtcollins1 appears only as its route row (the receipt variables and the slot roster), in the `gunbc.host_maintenance_hold_reason` pattern. It returns one sealed `BootAttemptClearance`.
 
-**Placement** (agreed with warm-crane-577): the module sits beside the boot authorization, not inside it, and runs behind boot admission, boot authorization and the unit hold, because it consumes the unit hold's store-host executor. Untangle cuts 4a and 4d move its call site and do not delete it, and cut O2 carries its refusals.
+**Placement** (agreed with warm-crane-577): the module sits beside the boot authorization. `mtcollins1_boot_under_live_unit_hold` calls `admit_boot_attempt(proof, revision)` right after `UnitHeld`, so admission runs under the hold and **before any controller read**.
+- **Baseline:** the SDR cache and SEL baseline (`mtcollins1_boot_baseline`) are taken only after clearance.
+- **Refused receipt:** the boot reads nothing from the controller, releases the hold, writes nothing, and fails with the typed cause. The matrix control is `a_refused_named_receipt_reads_no_baseline_and_writes_nothing`.
+- **Configuration record:** the frozen configuration travels on the attempt record into the bundle. Slice A's always-`NotRecorded` placeholder is deleted.
+- **Untangle cuts:** cuts 4a and 4d move the call site, and O2 carries its refusals.
 
-**Wiring.** `gunbc.machine_intake_mtcollins1_boot_run` `mtcollins1_boot_under_live_unit_hold` calls `admit_boot_attempt(proof, revision)` immediately after `UnitHeld`. That is after the boot subject and the unit hold, and before `mtcollins1_boot_actuate`, so before any pre-power read or write.
-- **Executor and binding:** admission mints the store-host executor from the hold proof's own admitted subject, and binds the host through `managed_host_binding`.
-- **Refused receipt:** the hold is released, nothing is written, and the run fails with the typed cause.
-- **Configuration record:** the frozen `AttemptConfigurationReceipt` travels on the attempt record into the diagnostic bundle, and the power-on account reads it there. Slice A's always-`NotRecorded` placeholder (`mtcollins1_attempt_configuration_receipt`) is deleted, not kept beside it.
-- **Attempts that never reach admission:** if the unit hold is refused or the attempt ends before the hold, the attempt records the configuration as `NotRecorded` with that reason.
+**The receipt is a tracked blob, digested.**
+- **Revision binding:** admission reads the receipt at the boot's bound revision, not from the worktree. `extdeps.git.inspect` `ListTreeEntryAtPath` finds the entry, decoded by the existing `gunbc.namespace_step0_subject_collector` ls-tree reader. `git show <rev>:<path>` reads the content.
+- **Refusals:** no entry is `ReceiptNotTracked`. A symlink, gitlink or directory is `ReceiptNotRegularFile`.
+- **Evidence:** `ReceiptEvidence { path, digest: Sha256FileDigest, commit }` carries the SHA-256 of exactly those bytes, from `extdeps.tools.sha256sum`.
+- **Follow-up:** the step0 decoder belongs in `extdeps.git`. Extracting it is left to the namespace lane rather than forked here.
+
+**Times** are admitted only as canonical UTC instants, using `gunbc.auth.approval_capability` `utc_instant_is_canonical`, which checks calendar-valid fields. They are ordered with `utc_instant_before`, and equal instants are admitted.
+
+**Populations join exactly, or the receipt refuses.**
+- **CPUs:** the CPU rows name exactly the plan's expected sockets.
+- **DIMMs:** the DIMM rows name exactly the host's slot roster. For Mt. Collins that is the Getting Started Guide's 32 connectors (`dimm_figure_banks`), labelled by connector number and placed on their bank's socket. Every label must be known and on its roster socket, and every slot must appear, populated or not.
+- **Refusal causes:** a missing socket, an unknown label, a label on another socket, and an omitted slot each refuse with their own cause.
+
+**The slot store** is `/var/lib/gunbc/boot-attempts`, provisioned by `gunbc.runner_host_grants` `unit_hold_store_operations` beside the unit-hold store: same hosts, owner and mode. It is a separate directory, so a hold's release or recovery cannot reach it. Its executed control on the real store host is the first grant convergence followed by a receipt-carrying boot on srv1.
 
 Where the build differs from the plan above, with reasons:
-- **Slot key.** The key is `attempt-<len(host)>-<host>-<nonce>`, with the host and nonce both admitted only over `[A-Za-z0-9_-]`. That makes it injective by construction. It is not a hash: the corpus's `content_hash_of_value` is a 64-bit structural hash, which does not meet "collision-safe" against a chosen nonce. A nonce outside that set refuses before any read.
-- **Evidence commit.** The commit is the boot run's own bound execution revision (`GITHUB_SHA`, which the run already refuses to proceed without), passed into admission. The file is the reviewed one at that revision.
-- **Firmware readback.** The pre-power-on `hpm check` read and the controller population read (`PopulationControllerReading`) are slice B2. Until B2 lands, the projection keeps firmware `NotRecorded` with that trigger.
+- **Slot key.** The key is `attempt-<len(host)>-<host>-<nonce>`, with the host and nonce admitted only over `[A-Za-z0-9_-]`. It is injective by construction and is not a hash: the corpus's `content_hash_of_value` is a 64-bit structural hash, which does not meet "collision-safe" against a chosen nonce.
 - **The plan's identity.** The inspection names its plan by `plan_subject` and `plan_attempt`. Because an attempt identity admits one boot, that pair identifies the plan.
-- **Times.** Times are admitted only as `YYYY-MM-DDTHH:MM:SSZ`, the one shape whose text order is its time order.

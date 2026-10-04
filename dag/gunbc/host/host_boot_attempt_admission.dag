@@ -1,11 +1,10 @@
 module gunbc.host_boot_attempt_admission
 
 import v2.std.algebra { any }
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, FilePath, GitRef, Int, List, NonEmptyStr, String }
 import v2.std.optional { Present, Absent }
 import std.decl_ref { decl_ref }
 import std.algebra { trim }
-import std.content_hash { content_hash_of_value, serialize_content_hash }
 import std.human_intervention { HumanIntervention, EveryProvision, DischargedAt }
 import std.durable_compare_and_set {
   ExpectSlotAbsent, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasReadableAbsent, CasReadablePresent,
@@ -16,10 +15,10 @@ import gunbc.durable_cas_file_store {
   DefaultAccessCreateOnly, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
   admit_cas_attempt_for_derived_payload, file_compare_and_set,
 }
-import extdeps.filesystem.filesystem_io {
-  Filesystem, FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable,
-  FilesystemExactPathKindUnrecognized, filesystem_exact_read,
-}
+import extdeps.git.inspect
+import extdeps.git
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_stdin_digest_via_shell }
+import gunbc.namespace_step0_subject_collector { Step0TreeEntryDecoded, Step0TreeEntryUndecodable, step0_decode_tree_entry, step0_entry_is_regular_blob, step0_subject_entries_at }
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
 import extdeps.languages.json.parse {
   JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text,
@@ -27,6 +26,8 @@ import extdeps.languages.json.parse {
   JsonMemberPresence, JsonMemberMissing, JsonMemberNull, JsonMemberValue, JsonMemberUnreadable, json_member_presence,
 }
 import product.placement_supply { HostIdentity, host_identity_eq }
+import extdeps.ampere.mt_collins_getting_started_guide.dimm_layout { MtCollinsDimmFigureBank, dimm_figure_banks }
+import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_before }
 import gunbc.actions_run_binding { ActionsVariableRead, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_read }
 import gunbc.fleet_intent_network { operator_host_mtcollins1 }
 import gunbc.managed_host {
@@ -35,7 +36,7 @@ import gunbc.managed_host {
 }
 import gunbc.managed_host_unit_hold { UnitHoldProof, UnitHoldStoreExecutor, UnitHoldOnStoreHost, UnitHoldNotOnStoreHost, unit_hold_store_executor }
 import gunbc.machine_intake_mtcollins1_power_on_account {
-  AttemptConfigurationReceipt, ExpectedTopology, ExpectedSockets, ExpectedTopologyNotRecorded,
+  AttemptConfigurationReceipt, digest_label, ExpectedTopology, ExpectedSockets, ExpectedTopologyNotRecorded,
   StimulusRequest, StimulusRequested, NoStimulusRequested, StimulusRequestNotRecorded,
   StimulusApplication, StimulusAppliedByReceipt, StimulusApplicationNotRecorded,
   SocketCpuRow, SlotRow, PopulationReading, PopulationOperatorAttested, PopulationNotRecorded,
@@ -72,14 +73,31 @@ data boot_attempt_receipt_env_name: NonEmptyStr = "GUNBC_BOOT_ATTEMPT_RECEIPT"
 
 data boot_attempt_nonce_env_name: NonEmptyStr = "GUNBC_BOOT_ATTEMPT_NONCE"
 
+// THE HOST'S STATIC SLOT ROSTER: every DIMM slot the board has, by the label an inspection names it
+// with and the socket it belongs to. An inspection's DIMM rows are joined to it exactly -- known
+// label, that label's socket, every slot once -- so a partial or mislabelled list never becomes an
+// attested population.
+type RosterSlot {
+  label: NonEmptyStr
+  socket: Int
+}
+
 type AttemptReceiptRoute {
   receipt_env: NonEmptyStr
   nonce_env: NonEmptyStr
+  slots: List<RosterSlot>
+}
+
+// Mt. Collins: the 32 memory connectors of the Getting Started Guide's Figure 9
+// (extdeps.ampere.mt_collins_getting_started_guide.dimm_layout dimm_figure_banks), labelled by
+// connector number and placed on the socket of the bank that carries them.
+fn mt_collins_slot_roster(banks: List<MtCollinsDimmFigureBank>) -> List<RosterSlot> {
+  flat_map(banks, b => map(b.connectors_left_to_right, c => RosterSlot { label: to_string(c as Int) as NonEmptyStr, socket: b.processor_socket as Int }))
 }
 
 fn attempt_receipt_route(host: ManagedHost) -> AttemptReceiptRoute? {
   if host_identity_eq(a: host.host, b: operator_host_mtcollins1) {
-    Present { value: AttemptReceiptRoute { receipt_env: boot_attempt_receipt_env_name, nonce_env: boot_attempt_nonce_env_name } }
+    Present { value: AttemptReceiptRoute { receipt_env: boot_attempt_receipt_env_name, nonce_env: boot_attempt_nonce_env_name, slots: mt_collins_slot_roster(banks: dimm_figure_banks) } }
   } else {
     none
   }
@@ -101,18 +119,20 @@ data boot_attempt_inspection_step: HumanIntervention = HumanIntervention {
 // ── THE RECORDS ─────────────────────────────────────────────────────────────────────────────────
 // A TIME A PERSON WROTE, NEVER AN OBSERVER CLOCK READING. It is ordered only against another attested
 // time; "before the power write" is structural (admission completes before actuation), never a
-// comparison with a clock. The rendering is admitted only as RFC 3339 UTC to the second
-// (YYYY-MM-DDTHH:MM:SSZ), the one shape whose text order is its time order.
+// comparison with a clock. The rendering is admitted only as a canonical UTC instant
+// (gunbc.auth.approval_capability utc_instant_is_canonical: YYYY-MM-DDTHH:MM:SSZ with calendar-valid
+// fields), and ordered only by that module's utc_instant_before.
 type OperatorAttestedTime {
   rendering: NonEmptyStr
   attested_by: NonEmptyStr
 }
 
-// THE FILE THE RUN READ: its checkout path, the digest of the bytes read, and the revision the run
-// checked out (the boot run's own bound execution revision, so the receipt is the reviewed file at it).
+// THE BLOB THE RUN READ: the regular file tracked at `path` in the bound revision (the boot run's own
+// execution revision), and the SHA-256 of exactly those bytes. A worktree file, an untracked file or a
+// symlink is not this, so none can mint one.
 type ReceiptEvidence {
   path: NonEmptyStr
-  digest: NonEmptyStr
+  digest: Sha256FileDigest
   commit: NonEmptyStr
 }
 
@@ -145,8 +165,10 @@ type AttemptReceiptRefusal
   | ReceiptNonceNotSlotSafe { nonce: NonEmptyStr }
   | ReceiptHostNotSlotSafe { host: HostIdentity }
   | ReceiptPathOutsideReceipts { path: NonEmptyStr }
-  | ReceiptFileAbsent { path: NonEmptyStr }
+  | ReceiptNotTracked { path: NonEmptyStr, commit: NonEmptyStr }
+  | ReceiptNotRegularFile { path: NonEmptyStr, mode: String, kind: String }
   | ReceiptFileUnreadable { path: NonEmptyStr, detail: String }
+  | ReceiptDigestUnavailable { path: NonEmptyStr, reason: String }
   | ReceiptNotJson { path: NonEmptyStr, detail: String }
   | ReceiptSchemaMismatch { observed: String }
   | ReceiptFieldUnreadable { field: NonEmptyStr, cause: String }
@@ -155,6 +177,10 @@ type AttemptReceiptRefusal
   | ReceiptAttemptMismatch { receipt: String, dispatched: NonEmptyStr }
   | ReceiptPlanMismatch { field: NonEmptyStr, plan: String, inspection: String }
   | ReceiptOrderingViolated { fixed_at: NonEmptyStr, completed_at: NonEmptyStr }
+  | ReceiptCpusNotTheExpectedSockets { expected: List<Int>, recorded: List<Int> }
+  | ReceiptDimmUnknownSlot { label: NonEmptyStr }
+  | ReceiptDimmOnWrongSocket { label: NonEmptyStr, recorded: Int, roster: Int }
+  | ReceiptDimmSlotOmitted { label: NonEmptyStr }
   | AttemptAlreadyConsumed { slot: NonEmptyStr, consumed_by: String }
   | AttemptSlotKeyNotAddressable { slot: NonEmptyStr }
   | AttemptSlotPreconditionIncoherent { slot: NonEmptyStr }
@@ -192,25 +218,44 @@ fn receipt_path_admitted(path: String) -> Bool {
     && string_length(s: path) > string_length(s: boot_attempt_receipt_dir as String) + 5
 }
 
-fn validate_attempt_receipt(subject: HostIdentity, nonce: NonEmptyStr, path: NonEmptyStr, commit: NonEmptyStr, read: FilesystemExactRead) -> ReceiptValidation {
-  match read {
-    FilesystemExactPathAbsent { path: _ } => ReceiptRefused { cause: ReceiptFileAbsent { path: path } }
-    FilesystemExactPathUnreadable { path: _, kind: _, error: e } => ReceiptRefused { cause: ReceiptFileUnreadable { path: path, detail: e } }
-    FilesystemExactPathKindUnrecognized { path: _, observed: o, error: e } => ReceiptRefused { cause: ReceiptFileUnreadable { path: path, detail: concat(concat(o, ": "), e) } }
-    FilesystemExactPathRead { path: _, content: text } =>
-      match parse_json_document(s: text) {
+fn validate_attempt_receipt(subject: HostIdentity, nonce: NonEmptyStr, path: NonEmptyStr, commit: NonEmptyStr, slots: List<RosterSlot>, content: String, digest: Sha256FileDigest) -> ReceiptValidation {
+  match digest {
+    Sha256FileDigestUnavailable { path: _, reason: r } => ReceiptRefused { cause: ReceiptDigestUnavailable { path: path, reason: r } }
+    Sha256FileDigest { digest: _ } =>
+      match parse_json_document(s: content) {
         JsonDocumentUnreadable { gap: g } => ReceiptRefused { cause: ReceiptNotJson { path: path, detail: json_document_gap_text(gap: g) } }
-        JsonDocumentParsed { value: doc } => validate_document(subject: subject, nonce: nonce, evidence: receipt_evidence(path: path, commit: commit, text: text), doc: doc)
+        JsonDocumentParsed { value: doc } => validate_document(subject: subject, nonce: nonce, evidence: ReceiptEvidence { path: path, digest: digest, commit: commit }, slots: slots, doc: doc)
       }
   }
 }
 
-fn receipt_evidence(path: NonEmptyStr, commit: NonEmptyStr, text: String) -> ReceiptEvidence {
-  let digest = if trim(s: text) == "" { "empty" as NonEmptyStr } else { serialize_content_hash(hash: content_hash_of_value(value: text as NonEmptyStr)) }
-  ReceiptEvidence { path: path, digest: digest, commit: commit }
+// THE TREE ENTRY AT `path` IN THE REVISION, decoded by the step0 collector's ls-tree reader: no entry
+// is an untracked path, and an entry that is not a regular blob (a symlink, a gitlink, a directory) is
+// not a receipt.
+fn tracked_entry_refusal(path: NonEmptyStr, commit: NonEmptyStr, entries_nul: String) -> AttemptReceiptRefusal? {
+  let records: List<String> = step0_subject_entries_at(entries_nul: entries_nul)
+  match records.first() {
+    Absent => Present { value: ReceiptNotTracked { path: path, commit: commit } }
+    Present { value: record } =>
+      if count(records) != 1 {
+        Present { value: ReceiptNotRegularFile { path: path, mode: "", kind: concat(to_string(count(records)), " tree entries") } }
+      } else {
+        match step0_decode_tree_entry(record: record) {
+          Step0TreeEntryUndecodable { record: r } => Present { value: ReceiptFileUnreadable { path: path, detail: concat("undecodable ls-tree record: ", r) } }
+          Step0TreeEntryDecoded { entry: e } =>
+            if e.path != (path as String) {
+              Present { value: ReceiptNotTracked { path: path, commit: commit } }
+            } else if !step0_entry_is_regular_blob(entry: e) {
+              Present { value: ReceiptNotRegularFile { path: path, mode: e.mode, kind: e.kind } }
+            } else {
+              none
+            }
+        }
+      }
+  }
 }
 
-fn validate_document(subject: HostIdentity, nonce: NonEmptyStr, evidence: ReceiptEvidence, doc: JsonValue) -> ReceiptValidation {
+fn validate_document(subject: HostIdentity, nonce: NonEmptyStr, evidence: ReceiptEvidence, slots: List<RosterSlot>, doc: JsonValue) -> ReceiptValidation {
   match required_string(obj: doc, key: "schema") {
     TextRefused { cause: c } => ReceiptRefused { cause: c }
     TextRead { value: schema } =>
@@ -225,7 +270,7 @@ fn validate_document(subject: HostIdentity, nonce: NonEmptyStr, evidence: Receip
               PlanRead { plan: plan } =>
                 match required_object(obj: doc, key: "inspection") {
                   ValueRefused { cause: c } => ReceiptRefused { cause: c }
-                  ValueRead { value: inspection_doc } => inspection_of(plan: plan, evidence: evidence, doc: inspection_doc)
+                  ValueRead { value: inspection_doc } => inspection_of(plan: plan, evidence: evidence, slots: slots, doc: inspection_doc)
                 }
             }
         }
@@ -269,7 +314,7 @@ fn plan_of(subject: HostIdentity, nonce: NonEmptyStr, doc: JsonValue) -> PlanOf 
   }
 }
 
-fn inspection_of(plan: AttemptConfigurationPlan, evidence: ReceiptEvidence, doc: JsonValue) -> ReceiptValidation {
+fn inspection_of(plan: AttemptConfigurationPlan, evidence: ReceiptEvidence, slots: List<RosterSlot>, doc: JsonValue) -> ReceiptValidation {
   match required_string(obj: doc, key: "plan_subject") {
     TextRefused { cause: c } => ReceiptRefused { cause: c }
     TextRead { value: ps } =>
@@ -282,14 +327,14 @@ fn inspection_of(plan: AttemptConfigurationPlan, evidence: ReceiptEvidence, doc:
             if pa != (plan.attempt as String) {
               ReceiptRefused { cause: ReceiptPlanMismatch { field: "attempt", plan: plan.attempt as String, inspection: pa } }
             } else {
-              inspection_body(plan: plan, evidence: evidence, doc: doc)
+              inspection_body(plan: plan, evidence: evidence, slots: slots, doc: doc)
             }
         }
       }
   }
 }
 
-fn inspection_body(plan: AttemptConfigurationPlan, evidence: ReceiptEvidence, doc: JsonValue) -> ReceiptValidation {
+fn inspection_body(plan: AttemptConfigurationPlan, evidence: ReceiptEvidence, slots: List<RosterSlot>, doc: JsonValue) -> ReceiptValidation {
   match required_string(obj: doc, key: "applied") {
     TextRefused { cause: c } => ReceiptRefused { cause: c }
     TextRead { value: applied } =>
@@ -299,13 +344,16 @@ fn inspection_body(plan: AttemptConfigurationPlan, evidence: ReceiptEvidence, do
           match dimm_rows(obj: doc) {
             DimmsRefused { cause: c } => ReceiptRefused { cause: c }
             DimmsRead { rows: dimms } =>
+              match population_join_refusal(expected: plan.expected, cpus: cpus, slots: slots, dimms: dimms) {
+                Present { value: c } => ReceiptRefused { cause: c }
+                Absent =>
               match required_string(obj: doc, key: "witnessed_by") {
                 TextRefused { cause: c } => ReceiptRefused { cause: c }
                 TextRead { value: witness } =>
                   match attested_time(obj: doc, key: "completed_at", by_key: "witnessed_by") {
                     TimeRefused { cause: c } => ReceiptRefused { cause: c }
                     TimeRead { time: completed } =>
-                      if (plan.fixed_at.rendering as String) > (completed.rendering as String) {
+                      if utc_instant_before(a: completed.rendering as String, b: plan.fixed_at.rendering as String) {
                         ReceiptRefused { cause: ReceiptOrderingViolated { fixed_at: plan.fixed_at.rendering, completed_at: completed.rendering } }
                       } else {
                         ReceiptValidated {
@@ -319,6 +367,31 @@ fn inspection_body(plan: AttemptConfigurationPlan, evidence: ReceiptEvidence, do
               }
           }
       }
+              }
+  }
+}
+
+// ── THE POPULATION JOINS ─────────────────────────────────────────────────────────────────────────
+// CPU rows name exactly the plan's expected sockets, once each. DIMM rows name exactly the host's
+// roster: every label known, on its roster socket, and every slot present.
+fn population_join_refusal(expected: List<Int>, cpus: List<SocketCpuRow>, slots: List<RosterSlot>, dimms: List<SlotRow>) -> AttemptReceiptRefusal? {
+  let recorded = map(cpus, r => r.socket)
+  let wrong_socket: List<AttemptReceiptRefusal> = flat_map(dimms, d => flat_map(slots, sl => if (sl.label as String) == (d.label as String) && sl.socket != d.socket { [ReceiptDimmOnWrongSocket { label: d.label, recorded: d.socket, roster: sl.socket }] } else { [] }))
+  if count(recorded) != count(expected) || any(expected, k => !any(recorded, j => j == k)) || any(recorded, k => !any(expected, j => j == k)) {
+    Present { value: ReceiptCpusNotTheExpectedSockets { expected: expected, recorded: recorded } }
+  } else {
+    match filter(dimms, d => !any(slots, sl => (sl.label as String) == (d.label as String))).first() {
+      Present { value: d } => Present { value: ReceiptDimmUnknownSlot { label: d.label } }
+      Absent =>
+        match wrong_socket.first() {
+          Present { value: c } => Present { value: c }
+          Absent =>
+            match filter(slots, sl => !any(dimms, d => (d.label as String) == (sl.label as String))).first() {
+              Present { value: sl } => Present { value: ReceiptDimmSlotOmitted { label: sl.label } }
+              Absent => none
+            }
+        }
+    }
   }
 }
 
@@ -396,7 +469,7 @@ fn attested_time(obj: JsonValue, key: String, by_key: String) -> TimeOf {
   match required_string(obj: obj, key: key) {
     TextRefused { cause: c } => TimeRefused { cause: c }
     TextRead { value: t } =>
-      if !rfc3339_utc_seconds(s: t) {
+      if !utc_instant_is_canonical(t: t) {
         TimeRefused { cause: ReceiptTimeUnreadable { field: key as NonEmptyStr, rendering: t } }
       } else {
         match required_string(obj: obj, key: by_key) {
@@ -405,22 +478,6 @@ fn attested_time(obj: JsonValue, key: String, by_key: String) -> TimeOf {
         }
       }
   }
-}
-
-fn digit_at(s: String, i: Int) -> Bool {
-  let c = char_at(s: s, pos: i)
-  c >= "0" && c <= "9"
-}
-
-fn rfc3339_utc_seconds(s: String) -> Bool {
-  string_length(s: s) == 20
-    && digit_at(s: s, i: 0) && digit_at(s: s, i: 1) && digit_at(s: s, i: 2) && digit_at(s: s, i: 3)
-    && char_at(s: s, pos: 4) == "-" && digit_at(s: s, i: 5) && digit_at(s: s, i: 6)
-    && char_at(s: s, pos: 7) == "-" && digit_at(s: s, i: 8) && digit_at(s: s, i: 9)
-    && char_at(s: s, pos: 10) == "T" && digit_at(s: s, i: 11) && digit_at(s: s, i: 12)
-    && char_at(s: s, pos: 13) == ":" && digit_at(s: s, i: 14) && digit_at(s: s, i: 15)
-    && char_at(s: s, pos: 16) == ":" && digit_at(s: s, i: 17) && digit_at(s: s, i: 18)
-    && char_at(s: s, pos: 19) == "Z"
 }
 
 fn socket_number(v: JsonValue) -> Int? {
@@ -626,7 +683,7 @@ type SlotConsumption
   | SlotRefused { cause: AttemptReceiptRefusal }
 
 fn slot_consumption_payload(receipt: AttemptInspectionReceipt) -> NonEmptyStr {
-  join(["consumed by ", receipt.evidence.path as String, " ", receipt.evidence.digest as String], "") as NonEmptyStr
+  join(["consumed by ", receipt_label(e: receipt.evidence) as String], "") as NonEmptyStr
 }
 
 // THE ONLY WRITE, reachable only from admit_named_receipt (itself reachable only from
@@ -680,7 +737,7 @@ fn admit_boot_attempt(proof: UnitHoldProof, revision: NonEmptyStr) -> BootAttemp
                   } else {
                     match actions_variable_read(name: route.nonce_env as String) {
                       ActionsVariableAbsent { variable: v, detail: d } => BootAttemptRefused { cause: ReceiptNonceMissing { variable: v as NonEmptyStr, detail: d } }
-                      ActionsVariablePresent { value: nonce } => admit_named_receipt(host: b.host.host, nonce: nonce, path: path, revision: revision)
+                      ActionsVariablePresent { value: nonce } => admit_named_receipt(host: b.host.host, nonce: nonce, path: path, revision: revision, slots: route.slots)
                     }
                   }
               }
@@ -690,10 +747,10 @@ fn admit_boot_attempt(proof: UnitHoldProof, revision: NonEmptyStr) -> BootAttemp
 }
 
 // REACHABLE ONLY FROM admit_boot_attempt, which established the store-host executor for this host.
-fn admit_named_receipt(host: HostIdentity, nonce: String, path: String, revision: NonEmptyStr) -> BootAttemptAdmission
+fn admit_named_receipt(host: HostIdentity, nonce: String, path: String, revision: NonEmptyStr, slots: List<RosterSlot>) -> BootAttemptAdmission
   admit_callers: [decl_ref(module_path: "gunbc.host_boot_attempt_admission", decl_name: "admit_boot_attempt")]
 {
-  match named_receipt_validation(host: host, nonce: nonce, path: path, revision: revision) {
+  match named_receipt_validation(host: host, nonce: nonce, path: path, revision: revision, slots: slots) {
     ReceiptRefused { cause: c } => BootAttemptRefused { cause: c }
     ReceiptValidated { receipt: r } =>
       match consume_attempt_slot(root: boot_attempt_slot_root, key: attempt_slot_key(host: host, nonce: r.plan.attempt), payload: slot_consumption_payload(receipt: r)) {
@@ -703,8 +760,9 @@ fn admit_named_receipt(host: HostIdentity, nonce: String, path: String, revision
   }
 }
 
-// EVERYTHING BEFORE THE SLOT, as one fold over the named values and the one file read.
-fn named_receipt_validation(host: HostIdentity, nonce: String, path: String, revision: NonEmptyStr) -> ReceiptValidation {
+// EVERYTHING BEFORE THE SLOT: the named values, then the tracked blob at the bound revision and its
+// SHA-256, then the document.
+fn named_receipt_validation(host: HostIdentity, nonce: String, path: String, revision: NonEmptyStr, slots: List<RosterSlot>) -> ReceiptValidation {
   if !slot_safe(s: host as String) {
     ReceiptRefused { cause: ReceiptHostNotSlotSafe { host: host } }
   } else if !slot_safe(s: nonce) {
@@ -712,11 +770,25 @@ fn named_receipt_validation(host: HostIdentity, nonce: String, path: String, rev
   } else if !receipt_path_admitted(path: path) {
     ReceiptRefused { cause: ReceiptPathOutsideReceipts { path: path as NonEmptyStr } }
   } else {
-    let read = Filesystem.Read(path: path)
-    validate_attempt_receipt(
-      subject: host, nonce: nonce as NonEmptyStr, path: path as NonEmptyStr, commit: revision,
-      read: filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind),
-    )
+    let listed = git.Inspect.ListTreeEntryAtPath(ref: revision as GitRef, path: path)
+    if !listed.success {
+      ReceiptRefused { cause: ReceiptFileUnreadable { path: path as NonEmptyStr, detail: trim(s: listed.stderr) } }
+    } else {
+      match tracked_entry_refusal(path: path as NonEmptyStr, commit: revision, entries_nul: listed.entries_nul) {
+        Present { value: c } => ReceiptRefused { cause: c }
+        Absent => {
+          let shown = git.Core.Show(ref: revision as GitRef, path: path as FilePath)
+          if !shown.success {
+            ReceiptRefused { cause: ReceiptFileUnreadable { path: path as NonEmptyStr, detail: trim(s: shown.stderr) } }
+          } else {
+            validate_attempt_receipt(
+              subject: host, nonce: nonce as NonEmptyStr, path: path as NonEmptyStr, commit: revision, slots: slots,
+              content: shown.content, digest: sha256sum_stdin_digest_via_shell(content: shown.content),
+            )
+          }
+        }
+      }
+    }
   }
 }
 
@@ -732,7 +804,7 @@ fn boot_attempt_receipt_not_named_reason() -> NonEmptyStr {
 data boot_attempt_firmware_frontier: NonEmptyStr = "the pre-power-on firmware readback is slice B2 of docs/plans/power-on-sequence-model.md section 12 and is not read yet"
 
 fn receipt_label(e: ReceiptEvidence) -> NonEmptyStr {
-  join([e.path as String, "@", e.commit as String, " (", e.digest as String, ")"], "") as NonEmptyStr
+  join([e.path as String, "@", e.commit as String, " (", digest_label(d: e.digest) as String, ")"], "") as NonEmptyStr
 }
 
 fn attempt_configuration_receipt(clearance: BootAttemptClearance, attempt: NonEmptyStr) -> AttemptConfigurationReceipt {
@@ -796,7 +868,9 @@ fn attempt_receipt_refusal_text(cause: AttemptReceiptRefusal) -> String {
     ReceiptNonceNotSlotSafe { nonce: n } => join(["the attempt nonce '", n as String, "' is outside [A-Za-z0-9_-]"], "")
     ReceiptHostNotSlotSafe { host: h } => join(["the host identity '", h as String, "' is outside [A-Za-z0-9_-]"], "")
     ReceiptPathOutsideReceipts { path: p } => join(["the attempt receipt '", p as String, "' is not a .json file under ", boot_attempt_receipt_dir as String], "")
-    ReceiptFileAbsent { path: p } => join(["the attempt receipt '", p as String, "' is not in the checkout"], "")
+    ReceiptNotTracked { path: p, commit: c } => join(["the attempt receipt '", p as String, "' is not tracked at ", c as String], "")
+    ReceiptNotRegularFile { path: p, mode: m, kind: k } => join(["the attempt receipt '", p as String, "' is not a regular file at the revision (mode ", m, ", ", k, ")"], "")
+    ReceiptDigestUnavailable { path: p, reason: r } => join(["the attempt receipt '", p as String, "' could not be digested: ", r], "")
     ReceiptFileUnreadable { path: p, detail: d } => join(["the attempt receipt '", p as String, "' could not be read: ", d], "")
     ReceiptNotJson { path: p, detail: d } => join(["the attempt receipt '", p as String, "' is ", d], "")
     ReceiptSchemaMismatch { observed: o } => join(["the attempt receipt's schema is '", o, "', expected '", boot_attempt_receipt_schema as String, "'"], "")
@@ -806,6 +880,10 @@ fn attempt_receipt_refusal_text(cause: AttemptReceiptRefusal) -> String {
     ReceiptAttemptMismatch { receipt: r, dispatched: d } => join(["the attempt receipt is for attempt '", r, "' and this dispatch is attempt '", d as String, "'"], "")
     ReceiptPlanMismatch { field: f, plan: p, inspection: i } => join(["the inspection names plan ", f as String, " '", i, "' and the plan's is '", p, "'"], "")
     ReceiptOrderingViolated { fixed_at: a, completed_at: b } => join(["the inspection completed at ", b as String, ", before the plan was fixed at ", a as String], "")
+    ReceiptCpusNotTheExpectedSockets { expected: e, recorded: r } => join(["the inspection's CPU rows name sockets [", join(map(r, k => to_string(k)), ", "), "] and the plan expects [", join(map(e, k => to_string(k)), ", "), "]"], "")
+    ReceiptDimmUnknownSlot { label: l } => join(["the inspection names DIMM slot '", l as String, "', which the host's slot roster does not have"], "")
+    ReceiptDimmOnWrongSocket { label: l, recorded: r, roster: k } => join(["the inspection places DIMM slot '", l as String, "' on socket ", to_string(r), " and the host's roster puts it on socket ", to_string(k)], "")
+    ReceiptDimmSlotOmitted { label: l } => join(["the inspection omits DIMM slot '", l as String, "'; every slot is recorded, populated or not"], "")
     AttemptAlreadyConsumed { slot: k, consumed_by: c } => join(["attempt slot ", k as String, " was already consumed (", c, "); a nonce admits one boot"], "")
     AttemptSlotKeyNotAddressable { slot: k } => join(["attempt slot key ", k as String, " does not address a slot"], "")
     AttemptSlotPreconditionIncoherent { slot: k } => join(["attempt slot ", k as String, ": the store refused a create against a slot it reported absent"], "")

@@ -53,6 +53,7 @@ import gunbc.runner_host_deploy { runner_index_seq }
 import gunbc.runner_microvm_network_converge { microvm_network_granted_operations }
 import gunbc.runner_unit { runner_unit_name_of_registration }
 import gunbc.managed_host_unit_hold { unit_hold_store_root, unit_hold_store_hosts }
+import gunbc.host_boot_attempt_admission { boot_attempt_slot_root }
 
 // THE MANAGED STATE DIRECTORY, DECLARED ONCE. It is currently spelled THREE times in
 // gunbc.fleet_converge_plan and named nowhere: once as a bare literal in the lease guard's argv, and
@@ -326,11 +327,22 @@ fn runner_host_wide_refused_operations(spec: RunnerHostSpec) -> List<ExecutorPri
 // publishes DefaultAccessCreateOnly (gunbc.durable_exclusive_hold_file_store), so the directory
 // carries no confidentiality requirement beyond the executor's managed mode. Every other host
 // contributes nothing: a store root on a host no hold-owner runs on would be an unused authority.
+//
+// THE BOOT ATTEMPT ADMISSION STORE IS ITS NEIGHBOUR, NOT ITS CHILD (gunbc.host_boot_attempt_admission
+// boot_attempt_slot_root). Admission writes through the same store-host executor, so the root lives on
+// the same hosts with the same owner and mode; it is a separate directory because a hold's release or
+// recovery must never reach an attempt's create-once slot.
 fn unit_hold_store_operations(spec: RunnerHostSpec) -> List<ExecutorPrivilegedOperation> {
   if any(unit_hold_store_hosts(), h => (h as String) == (spec.host_label as String)) {
     [
       EnsureOwnedDirectory {
         path: unit_hold_store_root,
+        owner: spec.job_user,
+        group: spec.job_user,
+        mode: executor_managed_directory_mode,
+      },
+      EnsureOwnedDirectory {
+        path: boot_attempt_slot_root,
         owner: spec.job_user,
         group: spec.job_user,
         mode: executor_managed_directory_mode,
