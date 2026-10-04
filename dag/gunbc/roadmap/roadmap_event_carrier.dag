@@ -12,9 +12,9 @@ import extdeps.filesystem.filesystem_io {
   FilesystemReadOutcome,
   FilesystemReadRefused,
   FilesystemReadSucceeded,
-  filesystem_file_observation_of_path,
   filesystem_read_outcome,
 }
+import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import std.algebra { trim }
 import std.content_hash { content_hash_of_value }
 import std.durable_compare_and_set { CasGeneration, CasReadableSlot, CasReadableAbsent, CasReadablePresent, CasSlotVersion, ExpectSlotAbsent, ExpectSlotGeneration, cas_expectation_admits }

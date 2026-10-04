@@ -12,8 +12,8 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileIndeterminate,
   FilesystemFileObservationsDisagree,
   FilesystemFileSubjectRefused,
-  filesystem_file_observation_of_path,
 }
+import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import std.algebra { trim }
 import std.content_hash { content_hash_tagged_structural, content_hash_atom }
 import extdeps.http.server { MediaType, text_html_utf8, text_plain_utf8, application_json_utf8, ServeHttpResponse }

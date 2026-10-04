@@ -559,7 +559,6 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileIndeterminate,
   FilesystemFileObservationsDisagree,
   FilesystemFileSubjectRefused,
-  filesystem_file_observation_of_path,
   filesystem_listing_observation,
   filesystem_listing_names_entry,
   filesystem_entry_presence,
@@ -569,6 +568,7 @@ import extdeps.filesystem.filesystem_io {
   filesystem_read_outcome,
   filesystem_file_observation,
 }
+import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import extdeps.llm.cli {
   shape_codex_login_status_env_args_for_program,
   shape_codex_version_env_args_for_program,
