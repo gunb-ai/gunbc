@@ -14,8 +14,8 @@ import std.materialization_ladder {
   RefusedUnmodeledWorldRead, ExemptFreshEffect, AcceptedBelowCostFloor, AcceptedSingleRecompute,
   AcceptedEffectIsTheUse, RefusedNatureConflict
 }
-import std.measure { Nanosecond, byte_size, nanosecond, nanosecond_count }
-import v2.workflow.floor_eval_step_calibration { calibration_rate, floor_eval_step_calibration }
+import std.measure { Millisecond, Nanosecond, byte_size, millisecond_count, nanosecond, nanosecond_count }
+import v2.workflow.required_floor { required_floor_new_witness_envelope_ms }
 import v2.std.algebra { any, list_flat_map, list_map }
 
 // THE CROSS-CLAIM PURE-PRODUCER SHARE -- which pure computations the required floor may fill
@@ -396,19 +396,28 @@ fn floor_cross_claim_share_cost_floor_eval_steps() -> Int {
   5000
 }
 
-// THE FLOOR COUNTS NATIVE WORK, as declared policy: a fill's work is the larger of its evaluator
-// steps and its thread CPU read as steps at the floor's own calibration rate
-// (v2.workflow.floor_eval_step_calibration, the one authority that relates steps to time). Steps
-// alone undercount a fill whose cost is native. The measured case: dag_prepared_grammar is a
-// nullary wrapper over prepare_grammar(grammar: dag_grammar()); once prepare_grammar is served the
-// wrapper performs a handful of steps, and still pays the content hash and total reification of
-// the whole grammar value to key that lookup -- 466 ms on main's own fill of it (probe run
-// 37160051963). Judged on steps it was declined at this floor (205 times on probe 37160050318), so
-// every claim that reached it re-paid that keying natively, outside its step budget: the same
-// claims ran with fewer steps and more CPU than on main. Counting CPU retains the wrapper, and a
-// claim's hit is then a nullary key again.
-fn floor_cross_claim_share_cost_floor_steps_per_millisecond() -> Int {
-  calibration_rate(calibration: floor_eval_step_calibration)
+// THE FLOOR HAS A CPU ARM, as declared policy: a fill is below the floor only when it is below the
+// step floor above AND its thread CPU is below this one. Steps alone undercount a fill whose cost
+// is native. The measured case: dag_prepared_grammar is a nullary wrapper over
+// prepare_grammar(grammar: dag_grammar()); once prepare_grammar is served the wrapper performs a
+// handful of steps and still pays the content hash and total reification of the whole grammar
+// value to key that lookup -- 466 ms and 1140 ms on two measured fills (probe runs 37160051963 and
+// 37199261433). Judged on steps it was declined (205 times on probe 37160050318), so every claim
+// that reached it re-paid that keying natively, outside its step budget.
+//
+// WHY THE VALUE IS THE NEW-WITNESS ENVELOPE AND NOT THE STEP FLOOR CONVERTED TO TIME. Converting
+// 5000 steps at the calibration rate gives about 7 ms, and that was tried: it retained some sixty
+// further producers whose fills are tens of milliseconds and whose values are large trees, the
+// tier reached its byte budget, and seven claims ran over budget only with this change (probe
+// 37199261433). The arm exists for a fill whose native cost by itself is a claim's whole
+// allowance, so its value is that allowance: v2.workflow.required_floor
+// required_floor_new_witness_envelope_ms, one authority, not a second literal.
+fn floor_cross_claim_share_cost_floor_cpu() -> Millisecond {
+  required_floor_new_witness_envelope_ms()
+}
+
+fn floor_cross_claim_share_cost_floor_cpu_millisecond_count() -> Int {
+  millisecond_count(m: floor_cross_claim_share_cost_floor_cpu())
 }
 
 // THE IN-FLIGHT FILL WALL CEILING: a declared POLICY budget, in nanoseconds of wall per evaluator
