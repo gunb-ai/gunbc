@@ -5,7 +5,7 @@ import std.resources { Network }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
-import extdeps.transports.rest { RestOutcome, RestOk }
+import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.github.actions { DispatchInput, InputString }
 import extdeps.github.workflows { WorkflowDispatchReceipt }
 import extdeps.github.workflow_runs {
@@ -285,7 +285,9 @@ fn qualification_instrument_source(i: QualificationInstrument) -> QualificationI
 fn qualification_instrument_read_from_job_log(i: QualificationInstrument) -> Bool {
   match qualification_instrument_source(i: i) {
     ReadFromAttemptJobLog => true
-    _ => false
+    ReadFromClaimCostArtifact => false
+    ReadFromBootLegReadback => false
+    ReadFromCohortObservation => false
   }
 }
 
@@ -434,7 +436,9 @@ type ClaimCostArtifactRead
 fn claim_cost_artifact_listed(outcome: RestOutcome, listed: ActionsArtifactList) -> ActionsArtifact? {
   match outcome {
     RestOk => listed.artifacts |> filter(a => a.name == required_floor_claim_cost_artifact_name) |> first
-    _ => none
+    RestStatusRefused { status: _, body: _ } => none
+    RestTransportRefused { cause: _ } => none
+    RestBodyUndecodable { status: _, cause: _ } => none
   }
 }
 
