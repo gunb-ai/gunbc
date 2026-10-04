@@ -6,7 +6,6 @@ import v2.std.arrow_signature { ArrowParameterOrderMalformed, arrow_declared_par
 import v2.std.compilers.target_model { arrow_domain_binder_names, realized_closure_ordered_params }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node_query { binder_edge }
 import v2.std.node {
   Arrow,

@@ -27,7 +27,6 @@ import v2.std.diagnostic {
   Outcome,
   Rejected
 }
-import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
   Bind,

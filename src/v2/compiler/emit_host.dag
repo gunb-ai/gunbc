@@ -60,7 +60,6 @@ import std.content_hash { ContentHash }
 import extdeps.realization.emit_on_demand_host {
   native_cache_realization_workspace_root
 }
-import v2.std.logic { Bool }
 import v2.std.integer { Int, integer_signed_i32_le_bytes_to_int }
 import v2.std.diagnostic {
   diagnostics_fatal,
