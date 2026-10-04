@@ -11901,7 +11901,8 @@ mod pure_producer_share_tests {
     /// The base-comparison half of the unimported-bare-provider gate, executed through the path the
     /// floor takes: each roster is evaluated ALONE from its source, its rows cross into the real
     /// verdict frame as values, and the `.dag` edit judgment decides. An unchanged roster admits;
-    /// a gained row refuses by name; a rewritten retirement cause refuses. Two reads at distinct
+    /// a gained row refuses by name; a rewritten retirement cause refuses, except a retirement
+    /// moving to FileDeleted. Two reads at distinct
     /// scratch paths also pin the memoization defect this path once had.
     #[test]
     fn unimported_bare_provider_roster_edit_is_judged_across_frames() {
@@ -11964,12 +11965,21 @@ mod pure_producer_share_tests {
                     .expect("verdict"),
                 vec!["RosterRemovedIdentity dag/b.dag#g (was ActiveDebt)".to_string()]
             );
+            // A retirement whose file was later deleted may become FileDeleted (gunbc#12787, the
+            // one admitted transition in `unimported_bare_provider_roster_edit`); any other
+            // rewritten cause, including the reverse, refuses.
             assert_eq!(
                 judge
                     .judge_edit(&read(roster(&a_fixed)), &read(roster(&a_deleted)))
                     .expect("verdict"),
+                Vec::<String>::new()
+            );
+            assert_eq!(
+                judge
+                    .judge_edit(&read(roster(&a_deleted)), &read(roster(&a_fixed)))
+                    .expect("verdict"),
                 vec![
-                "RosterRetirementChanged dag/a.dag#f (Retired ImportsFixed -> Retired FileDeleted)"
+                "RosterRetirementChanged dag/a.dag#f (Retired FileDeleted -> Retired ImportsFixed)"
                     .to_string()
             ]
             );

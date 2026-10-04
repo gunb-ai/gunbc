@@ -26,7 +26,7 @@ import v2.std.grammar_choice_ambiguity {
   GrammarChoiceAmbiguityRow,
   NonEmptyGrammarChoiceAmbiguityRows
 }
-import v2.std.optional { Optional, Present, optional_absent, optional_present }
+import v2.std.optional { Optional, Present, optional_absent, optional_present, Absent }
 
 // ParseDiagnosticEvidence is parse-stage evidence orthogonal to the universal Diagnostic carrier. Grammar-choice overlap rows live here — never on Correction, Locus, or Diagnostic itself.
 type ParseDiagnosticEvidence

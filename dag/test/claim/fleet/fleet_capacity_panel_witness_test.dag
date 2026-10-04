@@ -16,9 +16,7 @@ import gunbc.runner_slot_allocation {
   host_binding_width_axes, host_width_binding_label,
   width_axis_binds_at,
 }
-import gunbc.fleet_intent_network {
-  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
-}
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 
 // THE SUBJECT FOLLOWED THE PANEL TO /fleet.
 //
