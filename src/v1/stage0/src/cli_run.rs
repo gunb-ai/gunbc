@@ -23856,15 +23856,6 @@ pub struct DeferredDiscoveryRow {
     pub reads_live_tree: bool,
 }
 
-impl DeferredAdmissionCause {
-    fn label(self) -> &'static str {
-        match self {
-            Self::UnexecutedDeferredWitness => "UnexecutedDeferredWitness",
-            Self::UnclassifiedPathDeferral => "UnclassifiedPathDeferral",
-        }
-    }
-}
-
 #[derive(Debug)]
 pub struct DiscoverySummary {
     pub total: usize,
