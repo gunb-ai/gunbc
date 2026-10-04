@@ -7,7 +7,7 @@ import v2.std.optional { Present, Absent }
 import std.measure { kibibyte, mebibyte, second }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, content_hash_equal, content_hash_of_value }
 import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpected }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.systemd { Active }
 import extdeps.nvidia.system_management_interface { UsedMemoryReported }
 import extdeps.linux.proc_net_tcp { TcpSocketRow }

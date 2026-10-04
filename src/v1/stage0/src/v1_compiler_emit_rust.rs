@@ -4047,7 +4047,22 @@ pub fn type_node_has_closure_unbound_generic_atom(
                     }
                     __found
                 }
-                std::option::Option::None => false,
+                std::option::Option::None => {
+                    let mut __found = false;
+                    for p in n.params.clone().iter().cloned() {
+                        if !type_var_in_fn_generic_scope(
+                            crate::v1_std_core::generic_param_name_at(
+                                p.clone(),
+                                source_indices.clone(),
+                            ),
+                            generic_param_names.clone(),
+                        ) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                }
             }
         }
     })
@@ -7074,7 +7089,8 @@ pub fn emit_rust_selected(
             crate_name.clone(),
             EmittedCrateDependencyDemand {
                 renders_clap_cli: has_pipeline.clone(),
-                renders_async_services: has_services.clone(),
+                renders_async_services: (has_services.clone()
+                    || closure_renders_async_trait_resource(typed.clone())),
             },
         );
         let main_file = emit_main_rs(
@@ -38699,6 +38715,34 @@ pub fn emit_local_call(op_name: String) -> String {
     )
 }
 
+pub fn resource_item_renders_async_trait(item: Rc<Node>) -> bool {
+    ((item.children.clone().len() as i64) > 0)
+}
+
+pub fn closure_renders_async_trait_resource(typed: Rc<ResolvedGraph>) -> bool {
+    {
+        let mut __found = false;
+        for tm in typed.modules.clone().iter().cloned() {
+            if {
+                let mut __found = false;
+                for item in tm.items.clone().iter().cloned() {
+                    if ((item.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemResource)
+                        && resource_item_renders_async_trait(item.clone()))
+                    {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
 pub fn emit_resource_def(
     item: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
@@ -38707,7 +38751,7 @@ pub fn emit_resource_def(
     {
         let item_text = crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone());
         let cap_children = item.children.clone();
-        if ((cap_children.clone().len() as i64) == 0) {
+        if !resource_item_renders_async_trait(item.clone()) {
             v1_rt::concat(
                 v1_rt::concat(
                     "#[derive(Debug, Clone)]\npub struct ".to_string(),
@@ -38793,12 +38837,41 @@ pub fn emit_capability_method(
         } else {
             v1_rt::concat("&self, ".to_string(), params_str.clone())
         };
-        let ret = render_rust_type(
-            crate::v1_compiler_infer_types::resolved_type(cap_node.clone()),
-            shared_types.clone(),
-            env.source_indices.clone(),
-            crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
-        );
+        let out = crate::v1_compiler_infer_types::resolved_type(cap_node.clone());
+        let ret = if ((out.connective.clone() == Connective::Conj)
+            && (out.ident_span.clone() == std::option::Option::None))
+        {
+            v1_rt::concat(
+                v1_rt::concat(
+                    "(".to_string(),
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for f in out.children.clone().iter().cloned() {
+                            __result.push(render_rust_fn_sig_type(
+                                crate::v1_compiler_infer_types::child_type_node(f.clone()),
+                                Rc::new(vec![]),
+                                shared_types.clone(),
+                                env.source_indices.clone(),
+                                v1_rt::rc_empty_map::<String, String>(),
+                                env.clone(),
+                            ));
+                        }
+                        __result
+                    })
+                    .join(&", ".to_string()),
+                ),
+                ")".to_string(),
+            )
+        } else {
+            render_rust_fn_sig_type(
+                out.clone(),
+                Rc::new(vec![]),
+                shared_types.clone(),
+                env.source_indices.clone(),
+                v1_rt::rc_empty_map::<String, String>(),
+                env.clone(),
+            )
+        };
         let items = rust_items();
         v1_rt::concat(
             v1_rt::concat(
