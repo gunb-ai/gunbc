@@ -90,10 +90,12 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   auxiliary_connector: "J20, a black shrouded two-row power-style receptacle on the left edge; rating and pin assignment unread",
   auxiliary_connector_positions: 16,
   edge_high_speed_connectors: CensusPartial {
-    counted_at_least: 11,
-    obligation: "count the narrow shrouded high-speed connectors along both long edges and read one housing's markings to name the family (MCIO SFF-TA-1016 or SlimSAS SFF-8654)",
+    counted_at_least: 10,
+    obligation: "confirm the count on this unit and name the family by reading one housing's marking or test-fitting a known MCIO 8i cable unpowered (MCIO SFF-TA-1016 and SlimSAS SFF-8654 do not mate). A listing photograph of a P4261 (Central Valley watermark, label reading -DAAF-000 rather than this unit's -A01) shows ten narrow shrouded receptacles: two on one long edge's centre, three plus one at that edge's far corner, one mid-way down the short edge and three on the opposite corner. GH200 exposes 64 PCIe Gen5 lanes (whitepaper Table 1), which would fill eight x8 connectors, a consistency check rather than an identification",
   },
-  management_io_observed: [],
+  management_io_observed: [
+    "one small metal receptacle on the edge beside the two thin white flat-cable connectors, shaped like micro-USB (seen in the listing photograph; unconfirmed on this unit); a micro-USB console is the pattern NVIDIA's MGX GH200 guide uses for its BMC UART, but no controller behind it is identified",
+  ],
   power_components: [
     ObservedComponent {
       designators: [],
@@ -167,6 +169,9 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   unresolved_parts: [
     "U4, the one heatsinked device (bottom-centre, below J4): marking hidden under a finned heatsink held by two plastic push-pins, with its own local power stage (inductors 1R0, 2R2, 4R7 and three '330' polymer capacitors), so it takes several rails. Consistent with an FPGA, a management SoC or a PCIe switch; a community guess of an Intel Cyclone 10 GX FPGA is labelled inference by its own author. Read by removing the push-pin heatsink, unpowered, and refitting it with a new pad",
     "a 2x5 pin header and a small shrouded connector below U4: function unread; candidates for JTAG or a UART console, unconfirmed",
+    "three small BGAs beside U4 marked '2FA17 / RW186' (two) and 'RW251': two-line marks in Micron's FBGA format, read through Micron's FBGA decoder; a neighbouring code (RW187) is identified elsewhere as Micron serial NOR boot flash, so configuration or firmware flash is the leading reading, undecoded",
+    "two thin white flat-cable connectors at one corner: low-speed sideband by shape, function unread",
+    "PCB fab mark 'TTM 94V0 RFB1 2923' in the listing photograph: TTM Technologies, UL 94V-0; '2923' reads as a week-29-of-2023 date code, format unconfirmed",
     "U522 and the 28-pin TSSOP below the lower capacitor: markings not legible in the close-up",
   ],
 }
@@ -294,7 +299,7 @@ fn carrier_input_reading(layout: CarrierLayoutObservation) -> String {
 fn management_io_text(layout: CarrierLayoutObservation) -> String {
   match layout.management_io_observed.first() {
     Absent => "the photographed P4261 shows no RJ45, USB, video, console header or coin cell"
-    Present { value: _ } => join(["the P4261 shows ", join(map(layout.management_io_observed, s => s as String), ", ")], "")
+    Present { value: _ } => join(["the photographed P4261 shows no RJ45, video or coin cell; it shows ", join(map(layout.management_io_observed, s => s as String), "; ")], "")
   }
 }
 
