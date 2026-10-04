@@ -1,11 +1,19 @@
 module gunbc.fabric_storage_binding
 
+import gunbc.live_deploy.desired { prod_role_actuated_realization }
 import std.types { String, NonEmptyStr }
 import gunbc.fabric_storage_address { fabric_storage_state_suffix, fabric_storage_route_prefix }
-import gunbc.fabric_storage_placement { fabric_storage_placement, FabricStoragePlacement, FabricStoragePlaced, FabricStorageUnplaced, FabricStoragePlacementRefused }
+import gunbc.fabric_storage_placement { fabric_storage_placement_under, FabricStoragePlacement, FabricStoragePlaced, FabricStorageUnplaced, FabricStoragePlacementRefused }
 import gunbc.roadmap_dashboard_instance { prod_role_realization_refusal_detail }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageBindingUnplaced, FabricStorageBindingRefused, FabricStorageDoorSocket, FabricStorageServed }
+
+// THE STORE'S RUNTIME PLACEMENT, over the prod role as something that can be actuated
+// (gunbc.live_deploy.desired prod_role_actuated_realization): a holder with no desired deployment row
+// refuses here rather than placing the store on a host nothing installs it on.
+fn fabric_storage_placement() -> FabricStoragePlacement {
+  fabric_storage_placement_under(realization: prod_role_actuated_realization())
+}
 
 fn fabric_storage_binding_for(placement: FabricStoragePlacement, executor: HostIdentity) -> FabricStorageBinding {
   match placement {

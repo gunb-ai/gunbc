@@ -62,7 +62,7 @@ import gunbc.live_deploy.spec {
   deployment_step_teardown_disposition,
   gunbc_service_user,
 }
-import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
+import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec, prod_role_actuated_realization }
 import gunbc.host_layout { srv1_dispatch_attempt_state_root, belt_spawn_workdir_env_var, srv1_attempt_state_directory }
 import gunbc.managed_directory {
   managed_directory_mode_octal,
@@ -1114,6 +1114,7 @@ fn preserve_removal_client_target() -> DeploymentHostTarget {
 
 fn spec_with_target(target: DeploymentHostTarget) -> DeploymentSpec {
   deployment_spec_for(
+    realization: prod_role_actuated_realization(),
     instance: srv1_live_dashboard_instance(),
     target: target,
     names: srv1_live_deployment_names(instance: srv1_live_dashboard_instance()),

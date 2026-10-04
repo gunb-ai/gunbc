@@ -1,5 +1,6 @@
 module gunbc.fabric_storage_serve
 
+import gunbc.fabric_storage_binding { fabric_storage_placement }
 import gunbc.fabric_storage_protocol { fabric_storage_closure_bound_cap, text_response, ok, words, trim_line, word, head_name, malformed, fabric_storage_respond, AdvanceRequest, advance_request }
 import gunbc.fabric_storage_state_serve { fabric_storage_state_serve_over }
 
@@ -20,7 +21,7 @@ import gunbc.fabric_storage_file_store {
 import gunbc.fabric_storage_wire { FabricDoorPrincipal, DoorProxied, DoorLocalPeer, DoorUnattested, fabric_storage_wire_head, fabric_storage_wire_put, fabric_storage_wire_advance, fabric_storage_wire_closure, fabric_storage_wire_identity }
 import gunbc.fabric_writer_roster { fabric_door_writer_admission_over, fabric_door_principal_of, fabric_served_writer_roster, fabric_door_local_roster, FabricDoorWriterAdmitted, FabricDoorWriterRefused }
 import gunbc.roadmap_dashboard_instance { prod_role_realization_refusal_detail }
-import gunbc.fabric_storage_placement { fabric_storage_placement, FabricStoragePlaced, FabricStorageUnplaced, FabricStoragePlacementRefused, fabric_storage_route_prefix, fabric_storage_placed_file_root, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused }
+import gunbc.fabric_storage_placement { FabricStoragePlaced, FabricStorageUnplaced, FabricStoragePlacementRefused, fabric_storage_route_prefix, fabric_storage_placed_file_root, FabricStoragePlacedRootReady, FabricStoragePlacedRootRefused }
 
 // THE FABRIC DB ENDPOINT: the store side of the served handler bound to std.fabric_storage. One
 // `gunbc serve` process on the placed host, compiled once, answers each request by running the

@@ -1,5 +1,6 @@
 module gunbc.fleet_converge_workflow
 
+import gunbc.live_deploy.desired { prod_role_actuated_realization }
 import extdeps.github.expressions { Expression, ContextAccess, Github, StringLiteral, Equals, LogicalOr, LogicalAnd, interpolate }
 
 
@@ -4353,7 +4354,7 @@ fn fleet_converge_gcp_iam_apply_step() -> Step {
 // still EMITTED, so a dispatch of this mode is not silently absent, but as a refused job whose only
 // step fails with the typed cause: no federation, no approval filing, no host it could be pinned to.
 fn fleet_converge_gcp_iam_converge_job() -> Job {
-  fleet_converge_gcp_iam_converge_job_under(realization: prod_role_realization())
+  fleet_converge_gcp_iam_converge_job_under(realization: prod_role_actuated_realization())
 }
 
 fn fleet_converge_gcp_iam_converge_job_under(realization: ProdRoleRealization) -> Job {

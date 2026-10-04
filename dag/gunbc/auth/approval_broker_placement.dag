@@ -1,5 +1,6 @@
 module gunbc.auth.approval_broker_placement
 
+import gunbc.live_deploy.desired { prod_role_actuated_realization }
 import std.types { NonEmptyStr }
 import gunbc.roadmap_dashboard_instance {
   ProdRoleHolder,
@@ -65,5 +66,5 @@ fn approval_broker_base_url_under(realization: ProdRoleRealization) -> ApprovalB
 }
 
 fn approval_broker_public_host_from(domain: NonEmptyStr?) -> ApprovalBrokerAddress {
-  approval_broker_public_host_under(realization: prod_role_realization(), domain: domain)
+  approval_broker_public_host_under(realization: prod_role_actuated_realization(), domain: domain)
 }

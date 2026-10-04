@@ -15,6 +15,7 @@ import std.content_hash {
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
 import gunbc.host_layout { srv1_devboot_artifact_store_root }
 import gunbc.live_deploy.spec {
+  EnsuredOwnershipMarker,
   DeploymentStep,
   Dependency,
   ArtifactStep,
@@ -729,6 +730,7 @@ fn devboot_ensured_step_projects_layout(acc: Int, step: DeploymentDependencyStep
       if (path as String) == (srv1_devboot_artifact_store_root as String) { acc + 1 } else { acc }
     EnsuredPackage { package } => acc
     EnsuredManagedHostDirectory { admission: _ } => acc
+    EnsuredOwnershipMarker { path: _, owner: _ } => acc
   }
 }
 

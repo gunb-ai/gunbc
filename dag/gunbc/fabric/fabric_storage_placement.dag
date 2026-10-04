@@ -6,7 +6,7 @@ import std.types { String, NonEmptyStr, FilePath, Int, Bool, Port, List }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { fleet_intent_network }
 import gunbc.roadmap_dashboard_instance {
-  HostDashboardInstance, dashboard_instance_fabric_storage_root, dashboard_instance_child,
+  HostDashboardInstance, dashboard_instance_fabric_storage_root, dashboard_instance_child, dashboard_ownership_marker_in,
   ProdRoleRealization, ProdRoleRealizedBy, ProdRoleRealizationRefused, ProdRoleRealizationRefusal, prod_role_realization,
 }
 import std.effect_grant { Read, Write, Execute }
@@ -77,6 +77,15 @@ fn fabric_storage_store_root(instance: HostDashboardInstance) -> NonEmptyStr {
   dashboard_instance_fabric_storage_root(instance: instance) as String as NonEmptyStr
 }
 
+// THE STORE'S OWNERSHIP MARKER, by the instance ownership-marker rule
+// (gunbc.roadmap_dashboard_instance dashboard_ownership_marker_in) applied to the store root. The
+// store root, auth state and door directories are Ensured and no retract removes them, so a unit file
+// alone cannot say whether a host holds a store; the marker can, and the role-singleton observation
+// reads it (gunbc.live_deploy.role_singleton_convergence).
+fn fabric_storage_ownership_marker_path(instance: HostDashboardInstance) -> NonEmptyStr {
+  dashboard_ownership_marker_in(root: dashboard_instance_fabric_storage_root(instance: instance), instance_id: instance.instance_id) as String as NonEmptyStr
+}
+
 fn fabric_storage_endpoint_for(host: HostIdentity) -> NonEmptyStr? {
   match fleet_intent_network.tailnet_domain {
     Absent => none
@@ -103,9 +112,9 @@ fn fabric_storage_placement_under(realization: ProdRoleRealization) -> FabricSto
   }
 }
 
-fn fabric_storage_placement() -> FabricStoragePlacement {
-  fabric_storage_placement_under(realization: prod_role_realization())
-}
+// THE RUNTIME PLACEMENT (fabric_storage_placement, over the ACTUATED realization) lives in
+// gunbc.fabric_storage_binding: this module is imported by gunbc.live_deploy.spec, so it cannot see
+// the desired roster that decides whether the holder can be actuated.
 
 // ── WHO WRITES THE STORE, AND SO WHAT ITS DIRECTORIES ARE ────────────────────────────────────────
 //

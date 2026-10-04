@@ -1424,6 +1424,9 @@ fn ensure_dependency_steps(dep: DeploymentDependencyStep, privileged: Bool) -> L
     EnsuredManagedHostDirectory { admission } =>
       concat([deploy_raw(command: ensure_managed_directory_command(admission: admission))],
         map(managed_directory_entry_repair_commands(admission: admission), c => deploy_raw(command: c)))
+    EnsuredOwnershipMarker { path, owner } => [
+      deploy_raw(command: install_file_owned_command(mode: "0644" as NonEmptyStr, owner: owner, group: owner, source: "/dev/null", dest: path as String)),
+    ]
   }
 }
 

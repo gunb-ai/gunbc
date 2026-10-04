@@ -17,7 +17,7 @@ import gunbc.live_deploy.spec {
   deployment_plan_listen_port,
   deployment_plan_host_identity,
 }
-import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.desired { deployment_spec_srv1, prod_role_actuated_realization }
 import std.types { String, CommitSha, NonEmptyStr }
 import gunbc.live_deploy.candidate {
   CandidateRelease,
@@ -68,10 +68,9 @@ import gunbc.host_effect_realize { host_effect_apply_gated }
 import gunbc.live_deploy.member_observe { deployment_effect_plan, deployment_identity_readback, IdentityReadbackConverged, IdentityReadbackDrift, IdentityReadbackRefused }
 import gunbc.live_deploy.member_identity { EffectsDerived, EffectsRefused, decision_label }
 import gunbc.live_deploy.role_singleton_convergence {
-  role_singleton_convergence, observe_role_singletons, role_singleton_refusal_detail,
-  RoleSingletonNoop, RoleSingletonInstall, RoleSingletonRefused,
+  assess_and_admit, role_singleton_refusal_detail, admitted_spec,
+  RoleSingletonAdmission, RoleSingletonAdmitted, RoleSingletonNotAdmitted,
 }
-import gunbc.roadmap_dashboard_instance { prod_role_realization }
 import gunbc.auth.approval_broker_cutover {
   CutoverAdmission, StageAdmitted, StageRefused,
   dark_install_release_discharged, cutover_refusal_reason,
@@ -272,25 +271,17 @@ fn live_deploy_ensure_dependency(
   )
 }
 
-// THE ROLE SINGLETONS ARE ASSESSED BEFORE ANYTHING ELSE (gunbc.live_deploy.role_singleton_convergence):
-// the desired prod-role realization against an observation of every roster host. A move, a removal,
-// an unobservable host, two holders or an unmapped broker stops the line here, before any member is
-// planned -- so no apply starts a second, empty singleton while the old one still runs.
+// THE MUTATION ACTS ON THE ADMITTED SPEC ONLY. live_deploy_apply_via_transport admits the caller's
+// spec against the role-singleton assessment first (gunbc.live_deploy.role_singleton_convergence
+// assess_and_admit); this takes the admission token, so there is no route by which a spec the
+// assessment did not admit -- one built before the role moved -- reaches member planning.
 fn live_deploy_apply_mutation_via_transport(
-  spec: DeploymentSpec,
+  admission: RoleSingletonAdmission,
   candidate: CandidateRelease,
   transport: HostEffectTransport,
   access: DeployAccess
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  match role_singleton_convergence(desired: prod_role_realization(), observed: observe_role_singletons(applying: spec, own: transport)) {
-    RoleSingletonRefused { cause } =>
-      NotConverged {
-        reason: join(["live_deploy: ", role_singleton_refusal_detail(cause: cause)], ""),
-        applied: live_deploy_preflight_intent(access: access),
-      }
-    RoleSingletonNoop => live_deploy_apply_member_plan_via_transport(spec: spec, candidate: candidate, transport: transport, access: access)
-    RoleSingletonInstall { holder: _ } => live_deploy_apply_member_plan_via_transport(spec: spec, candidate: candidate, transport: transport, access: access)
-  }
+  live_deploy_apply_member_plan_via_transport(spec: admitted_spec(admission: admission), candidate: candidate, transport: transport, access: access)
 }
 
 // THE PLAN IS DERIVED FROM THE HOST BEFORE THE MUTATION IS BUILT (gunbc.live_deploy.member_observe):
@@ -421,8 +412,30 @@ fn live_deploy_apply_via_transport(
   transport: HostEffectTransport,
   access: DeployAccess
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match assess_and_admit(spec: spec, desired: prod_role_actuated_realization(), own: transport) {
+    RoleSingletonNotAdmitted { cause } =>
+      NotConverged {
+        reason: join(["live_deploy: ", role_singleton_refusal_detail(cause: cause)], ""),
+        applied: live_deploy_preflight_intent(access: access),
+      }
+    RoleSingletonAdmitted { admission } => live_deploy_apply_admitted_via_transport(admission: admission, candidate: candidate, transport: transport, access: access)
+  }
+}
+
+// THE ROLE SINGLETONS ARE ASSESSED BEFORE ANYTHING ELSE: the desired (actuated) prod-role realization
+// against an observation of every roster host, and the caller's spec is admitted only when its holding
+// agrees. A move, a removal, an unobservable host, a multiplicity, a partial realization or a stale
+// spec stops the line above, before any member is planned. From here on every step reads the ADMITTED
+// spec, never the caller's.
+fn live_deploy_apply_admitted_via_transport(
+  admission: RoleSingletonAdmission,
+  candidate: CandidateRelease,
+  transport: HostEffectTransport,
+  access: DeployAccess
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let spec = admitted_spec(admission: admission)
   let mutation = live_deploy_apply_mutation_via_transport(
-    spec: spec,
+    admission: admission,
     candidate: candidate,
     transport: transport,
     access: access,

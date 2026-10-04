@@ -41,7 +41,7 @@ import gunbc.host_layout {
   srv1_dispatch_attempt_state_root,
   srv1_devboot_artifact_store_root,
 }
-import gunbc.fabric_storage_placement { fabric_storage_store_directories_for, fabric_storage_https_port, fabric_storage_door_socket }
+import gunbc.fabric_storage_placement { fabric_storage_store_directories_for, fabric_storage_ownership_marker_path, fabric_storage_https_port, fabric_storage_door_socket }
 import gunbc.managed_directory { ManagedDirectoryAdmission, managed_directory_admission_path }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
@@ -49,7 +49,6 @@ import gunbc.roadmap_dashboard_instance {
   DashboardInstanceIdUnknown,
   dashboard_instance_for_id,
   ProdRoleRealization,
-  prod_role_realization,
   ProdRoleHolder,
   ProdRoleRealizedBy,
   ProdRoleRealizationRefused,
@@ -121,6 +120,7 @@ type EnsuredDependencyKind =
   | DevbootArtifactStoreDirectory
   | CodexRuntimeReleaseDirectory
   | FabricStorageStoreDirectory
+  | FabricStorageOwnershipMarker
   | ProviderStateRootDirectory
 
 // ONE CONCEPT -- AN ENSURED HOST RESOURCE -- WITH N KINDS, not a second ensured mechanism beside
@@ -146,12 +146,14 @@ type EnsuredSubject
   = EnsuredPackage { package: NonEmptyStr }
   | EnsuredHostDirectory { path: NonEmptyStr, owner: NonEmptyStr }
   | EnsuredManagedHostDirectory { admission: ManagedDirectoryAdmission }
+  | EnsuredOwnershipMarker { path: NonEmptyStr, owner: NonEmptyStr }
 
 fn ensured_subject_identity(subject: EnsuredSubject) -> NonEmptyStr {
   match subject {
     EnsuredPackage { package } => package
     EnsuredHostDirectory { path, owner } => path
     EnsuredManagedHostDirectory { admission } => managed_directory_admission_path(a: admission) as String as NonEmptyStr
+    EnsuredOwnershipMarker { path, owner: _ } => path
   }
 }
 
@@ -1126,10 +1128,15 @@ fn deployment_fabric_storage_steps(holding: RoleSingletonHolding, names: Deploym
 // on srv1. Derived from the same holding, they land on exactly the target that gets the unit.
 fn deployment_role_singleton_directories(holding: RoleSingletonHolding) -> List<DeploymentDependencyStep> {
   match holding {
-    HoldsProdRoleSingletons { holder } => map(fabric_storage_store_directories_for(instance: holder.instance), a => DeploymentDependencyStep {
+    HoldsProdRoleSingletons { holder } => concat(map(fabric_storage_store_directories_for(instance: holder.instance), a => DeploymentDependencyStep {
       kind: FabricStorageStoreDirectory,
       subject: EnsuredManagedHostDirectory { admission: a },
-    })
+    }), [
+      DeploymentDependencyStep {
+        kind: FabricStorageOwnershipMarker,
+        subject: EnsuredOwnershipMarker { path: fabric_storage_ownership_marker_path(instance: holder.instance), owner: gunbc_service_user },
+      },
+    ])
     HoldsNoRoleSingleton => []
   }
 }
@@ -1400,17 +1407,11 @@ fn deployment_service_config(
 // two machines shares instance and identity and differs in target. Neither case needs a new
 // function, which is the property that was missing.
 
-fn deployment_spec_for(
-  instance: HostDashboardInstance,
-  target: DeploymentHostTarget,
-  names: DeploymentNames,
-) -> DeploymentSpec {
-  deployment_spec_for_under(realization: prod_role_realization(), instance: instance, target: target, names: names)
-}
 
-// THE SAME CONSTRUCTION OVER A SUPPLIED REALIZATION, so a witness can move the role and read every
-// spec the roster would apply without editing the production selection.
-fn deployment_spec_for_under(
+// THE REALIZATION IS SUPPLIED, never resolved here: the spec cannot see the desired roster that decides
+// whether the holder is actuatable, so gunbc.live_deploy.desired resolves it
+// (prod_role_actuated_realization) and every caller passes it in. A witness passes a moved one.
+fn deployment_spec_for(
   realization: ProdRoleRealization,
   instance: HostDashboardInstance,
   target: DeploymentHostTarget,

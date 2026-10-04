@@ -1,5 +1,6 @@
 module gunbc.auth.approval_request_client
 
+import gunbc.live_deploy.desired { prod_role_actuated_realization }
 import std.types { Bool, NonEmptyStr, String, Timestamp, Secret }
 import std.scoped_authorization { AuthorizationRequest }
 import extdeps.crypto.mac {
@@ -46,7 +47,7 @@ fn approval_loopback_origin_under(realization: ProdRoleRealization) -> ApprovalL
 }
 
 fn approval_loopback_origin() -> ApprovalLoopbackOrigin {
-  approval_loopback_origin_under(realization: prod_role_realization())
+  approval_loopback_origin_under(realization: prod_role_actuated_realization())
 }
 
 fn approval_loopback_origin_refusal_detail(cause: ProdRoleRealizationRefusal) -> NonEmptyStr {

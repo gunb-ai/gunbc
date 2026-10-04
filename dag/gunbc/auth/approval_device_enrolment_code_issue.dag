@@ -1,5 +1,6 @@
 module gunbc.auth.approval_device_enrolment_code_issue
 
+import gunbc.live_deploy.desired { prod_role_actuated_realization }
 import std.types { NonEmptyStr, String, List, Bool, CommitSha }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
@@ -166,7 +167,7 @@ fn approval_device_enrolment_code_issue_wet() -> CliWireResponse
 {
   match actions_variable_read(name: fleet_converge_expected_host_env_name) {
     ActionsVariableAbsent { variable: v, detail: d } => CliWireUnprintable { cause: ("approval device enrolment code: " + v + " " + d + "; one host per run, named by the dispatch") as NonEmptyStr }
-    ActionsVariablePresent { value: host } => match enrolment_code_issue_placement_under(realization: prod_role_realization()) {
+    ActionsVariablePresent { value: host } => match enrolment_code_issue_placement_under(realization: prod_role_actuated_realization()) {
       EnrolmentCodeIssueUnplaced { detail } => CliWireUnprintable { cause: detail }
       EnrolmentCodeIssuePlaced { host: broker_host, base_url } =>
         match enrolment_code_issue_refuses_off_broker_host(host: host, broker_host: broker_host) {

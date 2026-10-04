@@ -374,9 +374,17 @@ fn dashboard_instance_dispatch_platform_executables(
 }
 
 fn dashboard_instance_ownership_marker_path(instance: HostDashboardInstance) -> FilePath {
+  dashboard_ownership_marker_in(root: instance.instance_root, instance_id: instance.instance_id)
+}
+
+// THE OWNERSHIP MARKER'S ONE NAMING RULE: an empty file under a root, named for the instance that
+// owns the root. The instance root carries it (above), and so does the prod-role holder's fabric
+// store root (gunbc.fabric_storage_placement fabric_storage_ownership_marker_path), so an old store
+// with no unit is still observably someone's state rather than reading as nothing.
+fn dashboard_ownership_marker_in(root: FilePath, instance_id: NonEmptyStr) -> FilePath {
   dashboard_instance_child(
-    root: instance.instance_root,
-    child: join([".gunbc-dashboard-instance-", instance.instance_id as String], ""),
+    root: root,
+    child: join([".gunbc-dashboard-instance-", instance_id as String], ""),
   )
 }
 
@@ -774,6 +782,7 @@ type ProdRoleRealizationRefusal
   = ProdRoleUnheld
   | ProdRoleHolderUnrealized { deployment: DeploymentId }
   | ProdRoleHolderAmbiguous { deployment: DeploymentId, count: Int }
+  | ProdRoleHolderUnactuatable { deployment: DeploymentId }
 
 // THE HOLDER TOKEN. sole_constructor, so only this module -- and in it only prod_role_realization_in
 // -- can mint one: a role-following singleton is built FROM a holder, and no caller can claim
@@ -819,6 +828,8 @@ fn prod_role_realization_refusal_detail(cause: ProdRoleRealizationRefusal) -> St
       join(["prod role refused: holder ", deployment.name as String, " has no HostDashboardInstance"], "")
     ProdRoleHolderAmbiguous { deployment, count: n } =>
       join(["prod role refused: holder ", deployment.name as String, " has ", integer_int_to_decimal_string(value: n), " instances"], "")
+    ProdRoleHolderUnactuatable { deployment } =>
+      join(["prod role refused: holder ", deployment.name as String, " has no desired deployment row (gunbc.live_deploy.desired desired_deployment_roster), so nothing can actuate it"], "")
   }
 }
 
