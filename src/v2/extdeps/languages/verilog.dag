@@ -1,5 +1,6 @@
 module v2.extdeps.languages.verilog
 
+import v2.std.algebra { list_reverse }
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.nat { Nat }
@@ -1047,7 +1048,7 @@ fn verilog_relation_row_for_productions(
 // byte-identical row; if it did not, the grammar would be an ordered table pretending to be a
 // relation and the first matching row would win.
 fn verilog_emission_formal_productions_reversed() -> List<FormalProduction> {
-  reverse(verilog_emission_formal_productions())
+  list_reverse(xs: verilog_emission_formal_productions())
 }
 
 fn verilog_relation_row_for(lhs: Symbol, emitted: Node) -> Witness<Node> {
