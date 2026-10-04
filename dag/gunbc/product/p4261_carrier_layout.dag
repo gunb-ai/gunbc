@@ -165,7 +165,8 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     },
   ],
   unresolved_parts: [
-    "the heatsinked IC near the bottom-centre: identity hidden under its heatsink (a community guess of an Intel Cyclone 10 GX FPGA is labelled inference by its own author)",
+    "U4, the one heatsinked device (bottom-centre, below J4): marking hidden under a finned heatsink held by two plastic push-pins, with its own local power stage (inductors 1R0, 2R2, 4R7 and three '330' polymer capacitors), so it takes several rails. Consistent with an FPGA, a management SoC or a PCIe switch; a community guess of an Intel Cyclone 10 GX FPGA is labelled inference by its own author. Read by removing the push-pin heatsink, unpowered, and refitting it with a new pad",
+    "a 2x5 pin header and a small shrouded connector below U4: function unread; candidates for JTAG or a UART console, unconfirmed",
     "U522 and the 28-pin TSSOP below the lower capacitor: markings not legible in the close-up",
   ],
 }
