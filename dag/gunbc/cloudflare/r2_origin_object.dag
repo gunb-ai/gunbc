@@ -14,6 +14,7 @@ import gunbc.cloudflare.r2_staged_transfer {
   R2TransferTarget,
   WriteCredentialCustody, WriteCredentialShredded, WriteCredentialResidueRemains,
   r2_put_staged_file,
+  R2StagingCustody, R2StagingNotCreated, r2_release_staging,
   R2Fetch, R2FetchStaged, R2FetchObjectAbsent, R2FetchStoreRefused, R2FetchTransportUnanswered, R2FetchLocalFailure,
   r2_fetch_into_staging,
 }
@@ -45,6 +46,7 @@ import gunbc.fabric_m0_origin_readback {
   OriginObjectStaged,
   OriginObjectAbsent,
   OriginFetchUnavailable,
+  OriginReadingOutcome,
   OriginReadingTaken,
   OriginReadingUnavailable,
   read_origin_staged_file,
@@ -63,7 +65,8 @@ import gunbc.fabric_m0_origin_readback {
 // it; there is no peer, no replica and no cache standing in for it on either path. A local cache is
 // a different subject with a different authority, and a read served from one cannot produce the
 // value fetch_origin_object returns, because that value carries an OriginReading digested over
-// bytes THIS function received from the origin at a path THIS function minted.
+// bytes THIS function received from the origin at a path THIS function minted (and has since
+// released).
 //
 // THE GET STAGES ITS OWN OUTPUT. The caller names a KEY. The transfer mints a private directory,
 // points the transport at a file inside it, and -- only
@@ -73,10 +76,13 @@ import gunbc.fabric_m0_origin_readback {
 // returned. That is the capability gunbc.fabric_m0_origin_readback's trigger named; what it does
 // and does not close for the enclosing class is stated there, once.
 //
-// THE STAGED FILE IS THE PRODUCT AND IS NOT REMOVED. Its directory is minted per fetch, so two
-// concurrent fetches of one key cannot collide, and the OriginReading names the path for whoever
-// needs the bytes (a manifest's members are read from it). The CREDENTIAL beside it is shredded on
-// every arm out of the bracket, including the ones that never reached the transport.
+// THE STAGED FILE IS DIGESTED AND THEN RELEASED, INSIDE THE FETCH. Its directory is minted per
+// fetch, so two concurrent fetches of one key cannot collide. No consumer reads the staged bytes
+// after the digest is taken -- key and digest are what identify the read -- so the directory is
+// removed before the fetch returns, on every arm including a staged file sha256sum could not read,
+// and the removal's answer is carried out as OriginFetch.staging: a refused removal is Residue
+// naming the directory, never dropped. The CREDENTIAL beside it is shredded on every arm out of the
+// bracket, including the ones that never reached the transport.
 //
 // THE PUT IS CREATE-IF-ABSENT, DERIVED FROM THE ADMISSION RATHER THAN CHOSEN. The origin admits
 // commit manifests and content-addressed outputs (gunbc.cloudflare.r2_origin
@@ -259,29 +265,47 @@ fn classify_origin_fetch(answer: S3TransferAnswer, staged_path: NonEmptyStr, std
   }
 }
 
-// THE READ. The caller names a key and receives an OriginFetchOutcome; it never names, sees in
+// THE READ'S WHOLE ANSWER: what the origin said about this key, and whether the directory its
+// bytes were staged in is gone. outcome is gunbc.fabric_m0_origin_readback's, unchanged, so the
+// pure folds over it do not move; staging is the custody they do not judge and the caller must
+// not lose -- the same split as OriginPut's verdict and credential.
+type OriginFetch {
+  outcome: OriginFetchOutcome
+  staging: R2StagingCustody
+}
+
+// The staged arm, pure over the reading and the release so a residue beside a confirmed reading
+// (and beside an unreadable staged file) is reachable from a fixture.
+fn origin_fetch_of_staged(key: NonEmptyStr, read: OriginReadingOutcome, released: R2StagingCustody) -> OriginFetch {
+  match read {
+    OriginReadingTaken { reading: reading } => OriginFetch { outcome: OriginObjectStaged { key: key, reading: reading }, staging: released }
+    OriginReadingUnavailable { staged_path: _, cause: cause } => OriginFetch { outcome: OriginFetchUnavailable { key: key, cause: cause }, staging: released }
+  }
+}
+
+// THE READ. The caller names a key and receives an OriginFetch; it never names, sees in
 // advance, or can influence the path the bytes land at -- the transfer stages them -- and only a
-// staged file reaches read_origin_staged_file, the sole mint of a confirming reading.
+// staged file reaches read_origin_staged_file, the sole mint of a confirming reading. The digest is
+// taken first and the directory released second, so the release cannot race the read.
 fn fetch_origin_object(
   key: NonEmptyStr,
   token_source: AccessTokenSource,
-) -> OriginFetchOutcome {
+) -> OriginFetch {
   match resolve_origin_target(direction: OriginRead, key: key) {
-    OriginTargetRefused { cause: cause } => OriginFetchUnavailable { key: key, cause: cause }
+    OriginTargetRefused { cause: cause } => OriginFetch { outcome: OriginFetchUnavailable { key: key, cause: cause }, staging: R2StagingNotCreated }
     OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: token_value, precondition: precondition } =>
       match r2_fetch_into_staging(
         target: R2TransferTarget { locator: locator, access_key_id: access_key_id, token_value: token_value, precondition: precondition, report: ReportStatus },
         token_source: token_source,
       ) {
-        R2FetchObjectAbsent { staging: _ } => OriginObjectAbsent { key: key }
-        R2FetchStoreRefused { cause: cause, staging: _ } => OriginFetchUnavailable { key: key, cause: cause }
-        R2FetchTransportUnanswered { cause: cause, staging: _ } => OriginFetchUnavailable { key: key, cause: cause }
-        R2FetchLocalFailure { cause: cause, staging: _ } => OriginFetchUnavailable { key: key, cause: cause }
-        R2FetchStaged { staged_path: p, staging_dir: _, tag: _ } =>
-          match read_origin_staged_file(staged_path: p) {
-            OriginReadingTaken { reading: reading } => OriginObjectStaged { key: key, reading: reading }
-            OriginReadingUnavailable { staged_path: _, cause: cause } => OriginFetchUnavailable { key: key, cause: cause }
-          }
+        R2FetchObjectAbsent { staging: c } => OriginFetch { outcome: OriginObjectAbsent { key: key }, staging: c }
+        R2FetchStoreRefused { cause: cause, staging: c } => OriginFetch { outcome: OriginFetchUnavailable { key: key, cause: cause }, staging: c }
+        R2FetchTransportUnanswered { cause: cause, staging: c } => OriginFetch { outcome: OriginFetchUnavailable { key: key, cause: cause }, staging: c }
+        R2FetchLocalFailure { cause: cause, staging: c } => OriginFetch { outcome: OriginFetchUnavailable { key: key, cause: cause }, staging: c }
+        R2FetchStaged { staged_path: p, staging_dir: d, tag: _ } => {
+          let read = read_origin_staged_file(staged_path: p)
+          origin_fetch_of_staged(key: key, read: read, released: r2_release_staging(dir: d))
+        }
       }
   }
 }

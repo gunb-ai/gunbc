@@ -114,6 +114,7 @@ fn tailscale_serve_unix_target(path: NonEmptyStr) -> NonEmptyStr {
   concat(tailscale_serve_unix_target_prefix, path as String) as NonEmptyStr
 }
 
+<<<<<<< HEAD
 // The socket path a unix target names, or nothing for a port backend: the inverse of
 // tailscale_serve_unix_target.
 fn tailscale_serve_unix_target_path(endpoint: TailscaleServeEndpoint) -> NonEmptyStr? {
@@ -125,6 +126,8 @@ fn tailscale_serve_unix_target_path(endpoint: TailscaleServeEndpoint) -> NonEmpt
   }
 }
 
+=======
+>>>>>>> origin/main
 // THE PEER A UNIX TARGET SEES. tailscaled runs as root and it is tailscaled that dials the target,
 // so a connection Serve proxies to a unix socket arrives with root as its kernel-attested peer;
 // since v1.98.9 only root may configure a unix target at all (TS-2026-005).

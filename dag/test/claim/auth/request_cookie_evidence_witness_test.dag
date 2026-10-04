@@ -1,7 +1,8 @@
 module test.claim.auth.request_cookie_evidence_witness_test
 
-import std.types { Bool, FilePath }
+import std.types { NonEmptyStr, Bool, FilePath }
 import gunbc.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardObserveOnly, DashboardLocalProvision }
 import gunbc.roadmap_serve { roadmap_serve_request_security }
 import gunbc.auth.tailnet_serve_readback { TailnetServeReadback, TailnetServeReadbackUntaken }
@@ -14,7 +15,7 @@ import gunbc.auth.session { SessionCookieMalformed, SessionCookieValid, SessionC
 // and never reach the session store, because no session id parses. RED if an absent header, or a
 // header carrying only other cookies, ever reads as anything but AuthAbsent.
 fn fixture_instance() -> HostDashboardInstance {
-  isolated_dashboard_instance(instance_id: "cookie-seam-fixture", layout: srv1_host_layout(), root: "/fixture-never-read" as FilePath,
+  isolated_dashboard_instance(deployment: deployment_id(name: "cookie-seam-fixture" as NonEmptyStr), instance_id: "cookie-seam-fixture", layout: srv1_host_layout(), root: "/fixture-never-read" as FilePath,
     serve_function: "unused", listen_port: 18745, source_anchor_ref: "refs/heads/fixture", actuation: DashboardObserveOnly, provision_transport: DashboardLocalProvision)
 }
 

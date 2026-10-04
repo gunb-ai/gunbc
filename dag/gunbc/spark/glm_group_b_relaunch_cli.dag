@@ -6,7 +6,7 @@ import std.measure { token_count_value }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { trim }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.docker.cli { DockerCreateSpec }
 import extdeps.docker.container_inspect { ContainerInspect }
 import gunbc.spark.collective_memory_path_standing {

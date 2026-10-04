@@ -1,0 +1,74 @@
+module v2.test.claim.self_host_contract.compile_emitted_contract
+
+import std.logic { Bool }
+import std.algebra { Cons, Empty, list_snoc_item }
+import v2.compiler.compile {
+  CompileLens, CompileLensRoot, CompileLensSubtree, LensGateWitness,
+  RequiredLensCoverageClosed, RequiredLensCoverageRefused,
+  RequiredLensRosterEmpty, RegistrationDuplicated, RegistrationUnobserved, ObservationUnregistered,
+  ObservedAtWrongGrain, RootLensObservedMoreThanOnce,
+  required_compile_lens_roster, join_required_lens_coverage
+}
+import v2.std.node { ComputationNode, Value, node_synthetic }
+import v2.std.witness { Holds }
+
+// THE 00_compile ROW'S CONTRACT, STATED ONCE AND REALIZED TWICE. Read off the authority:
+// v2.compiler.compile join_required_lens_coverage closes when every registered lens is observed
+// once, and refuses (RootLensObservedMoreThanOnce) when a root-grain lens is observed twice.
+fn cmc_held(lens: CompileLens) -> LensGateWitness {
+  LensGateWitness {
+    lens: lens.identity,
+    grain: lens.grain,
+    witness: Holds { value: node_synthetic(kind: ComputationNode { behavior: Value }, children: []) }
+  }
+}
+
+fn cmc_is_root(lens: CompileLens) -> Bool {
+  match lens.grain {
+    CompileLensRoot => true
+    CompileLensSubtree => false
+  }
+}
+
+fn cmc_once() -> List<LensGateWitness> {
+  required_compile_lens_roster() |> map(l => cmc_held(lens: l))
+}
+
+type CmcJoinReading = CmcClosed | CmcRefusedAsRootRepeat | CmcRefusedOtherwise | CmcNoRootLens
+
+fn cmc_join(witnesses: List<LensGateWitness>) -> CmcJoinReading {
+  match join_required_lens_coverage(lenses: required_compile_lens_roster(), witnesses: witnesses) {
+    RequiredLensCoverageClosed { roster_digest: _, rows: _ } => CmcClosed
+    RequiredLensCoverageRefused { cause: c } => match c {
+      RootLensObservedMoreThanOnce { lens: _ } => CmcRefusedAsRootRepeat
+      RequiredLensRosterEmpty => CmcRefusedOtherwise
+      RegistrationDuplicated { lens: _ } => CmcRefusedOtherwise
+      RegistrationUnobserved { lens: _ } => CmcRefusedOtherwise
+      ObservationUnregistered { lens: _ } => CmcRefusedOtherwise
+      ObservedAtWrongGrain { lens: _ } => CmcRefusedOtherwise
+    }
+  }
+}
+
+fn cmc_root_observed_twice() -> CmcJoinReading {
+  match required_compile_lens_roster() |> filter(l => cmc_is_root(lens: l)) {
+    Empty => CmcNoRootLens
+    Cons { head: root, tail: _ } => cmc_join(witnesses: list_snoc_item(xs: cmc_once(), item: cmc_held(lens: root)))
+  }
+}
+
+// The planted fault asserts ONLY the wrong acceptance: coverage closing although a root-grain lens
+// was observed twice.
+fn compile_emitted_contract_holds(inject_fault: Bool) -> Bool {
+  if inject_fault {
+    cmc_root_observed_twice() == CmcClosed
+  } else {
+    cmc_join(witnesses: cmc_once()) == CmcClosed
+      && cmc_root_observed_twice() == CmcRefusedAsRootRepeat
+  }
+}
+
+test fn compile_emitted_contract_holds_and_its_planted_fault_does_not() -> Bool {
+  compile_emitted_contract_holds(inject_fault: false)
+    && !compile_emitted_contract_holds(inject_fault: true)
+}
