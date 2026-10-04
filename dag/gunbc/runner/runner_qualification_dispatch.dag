@@ -677,20 +677,12 @@ fn designated_job_log(designated_job_id: Int, log: AttemptJobLog) -> DesignatedJ
 // have to trust rows detached from the job and the bytes that produced them. The decoder above is
 // open; this record is not.
 //
-// RUNG OF THE SEAL, STATED AT ITS EVIDENCE (DESIGN 4b(1)): CHECKED ONCE, NOT ENROLLED. The seal is
-// the compiler's sole_constructor and admit_callers walls applied to this record and
-// job_log_standing. On 2026-10-04, compile_dag_diagnostic_census probes run once with the
-// interpreter gave one SoleConstructorViolation for a forged receipt literal (and one for a since-
-// deleted subject record, whose role the sealed CollectedQualificationRun now plays), one ConstructorCallAdmissionRefused for an outside call to job_log_standing, and
-// zero for a module that only calls the decoder. Nothing re-runs those probes. A probe that compiles
-// against these declarations must import this module, so it is ReadsLiveTree, and the required
-// floor declines ReadsLiveTree claims rather than executing them
-// (gunbc.qualified_pipe_callee_seed_growth); the SubstrateInputsOnly compile harnesses compile only
-// self-contained modules, which would test the compiler's generic wall rather than this seal.
-// NEXT-RUNG TRIGGER, A CAPABILITY: the required floor can enrol and execute a ReadsLiveTree
-// compile-refusal probe, SUFFICIENT FOR those four probes running on every required run, so that
-// removing sole_constructor from the record or the admit list from job_log_standing turns a
-// required lane red.
+// THE SEAL IS ENROLLED AS EXECUTED REDS. test.claim.qualification_job_log_receipt_forged_probe_witness
+// compiles test.probe.qualification_job_log_receipt_forged_probe -- a receipt written from invented
+// readings, and job_log_standing called from outside the collect stage -- and requires a
+// SoleConstructorViolation at QualificationJobLogReceipt and a ConstructorCallAdmissionRefused at
+// job_log_standing, beside a control that only names this module and refuses at neither. Removing
+// sole_constructor from this record or the admit list from job_log_standing turns that witness red.
 type QualificationJobLogReceipt sole_constructor {
   collected: CollectedQualificationRun
   slot: HostUnitSlot
