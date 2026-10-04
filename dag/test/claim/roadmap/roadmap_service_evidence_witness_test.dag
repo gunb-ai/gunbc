@@ -33,6 +33,7 @@ import gunbc.fabric_storage_file_store { fabric_storage_file_root }
 import gunbc.compute.work_class_grant { WorkClassAgentSession, GrantAtCeiling, ClassUnmeasured }
 import gunbc.compute.attempt_lifecycle { AttemptRecord, AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld }
 import gunbc.roadmap_session_placement {
+  SessionPlacementAbsent,
   SessionPlacementGrant, SessionPlacementObservation, SessionPlacementUnreadable,
   session_unit, session_attempt_record, session_placement_record_of, session_placement_record_json,
   session_placement_record_basename, session_placement_release_basename, session_placement_observation_of,
@@ -391,7 +392,7 @@ test fn the_canonical_population_decodes() -> Bool {
 }
 
 test fn the_live_wire_round_trips_with_its_digest_and_binding() -> Bool {
-  let r = ServiceEvidenceReceipt { binding: binding_for(node: node_a, attempt: key_a), inputs: inputs_with(o: g5_observe(slot: g5_held(), record_node: node_a, record_key: key_a)) }
+  let r = ServiceEvidenceReceipt { binding: binding_for(node: node_a, attempt: key_a), inputs: inputs_with(o: SessionPlacementAbsent { unit: "gunbc-session-g5-node-a" }) }
   match service_evidence_snapshot_of_receipt(r: r) {
     SnapshotDecoded { snapshot } => snapshot.node_id == node_a && snapshot.attempt_key == key_a && length(snapshot.fields) == 21 && snapshot.digest != ""
     SnapshotInvalid { reason: _ } => false
