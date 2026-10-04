@@ -1376,7 +1376,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
   } else {
     resolve_node(n: item.type_annotation.value, env: env, module_name: module_name)
   }
-  let resolved_anno = if item.type_annotation == none { none } else { Present { value: preserve_outer_optional_cardinality(outer: item.type_annotation.value, inner: anno_resolved.resolved) } }
+  let resolved_anno = if item.type_annotation == none { none } else { Present { value: anno_resolved.resolved } }
   let anno_diags = anno_resolved.diagnostics
 
   let transport_resolved = if item.transport == none {
