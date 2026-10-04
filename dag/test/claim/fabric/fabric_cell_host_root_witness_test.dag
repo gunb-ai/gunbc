@@ -2,8 +2,8 @@ module test.claim.fabric_cell_host_root_witness
 
 import std.types { Bool, String, NonEmptyStr, Int, List, list_length }
 import gunbc.ownership { Ownership, Owned, Ensured }
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
+import product.host_identity { HostIdentity }
+import gunbc.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
 import gunbc.fabric_cell_converge {
   fabric_cell_base_dir,
   FabricCellMember,

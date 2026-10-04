@@ -30,6 +30,13 @@ import v2.std.node { Symbol }
 //   DeclarationMarkerNotTest       -- an identifier other than `test` stands where the declaration
 //                                     marker goes, before `fn` or `data` (`probe fn ..`); located at
 //                                     the marker and the keyword after it.
+//   TokenStartsNotIncreasing       -- the token stream handed to the parse does not have strictly
+//                                     increasing token starts. A stream position IS its token's
+//                                     start (v2.compiler.parse parse_current_position keys the memo
+//                                     and decides repeat progress), so two tokens at one start would
+//                                     be one position and the parse would silently serve one's
+//                                     answer for the other. Located at the first token whose start
+//                                     does not exceed its predecessor's.
 type ParseRefusalReason =
     FnExpressionBodyMissingAfterEq
   | DataValueMissingAfterEq
@@ -38,6 +45,7 @@ type ParseRefusalReason =
   | NewlineBeforeDualRoleOperator
   | LetInExpressionDropped
   | DeclarationMarkerNotTest
+  | TokenStartsNotIncreasing
 
 // The diagnostic identity each reason refuses under (`v2.std.diagnostic` `Diagnostic.reason`).
 fn parse_refusal_reason_symbol(reason: ParseRefusalReason) -> Symbol {
@@ -49,5 +57,6 @@ fn parse_refusal_reason_symbol(reason: ParseRefusalReason) -> Symbol {
     NewlineBeforeDualRoleOperator => ^parse_newline_before_dual_role_operator
     LetInExpressionDropped => ^parse_let_in_expression_dropped
     DeclarationMarkerNotTest => ^parse_declaration_marker_not_test
+    TokenStartsNotIncreasing => ^parse_token_starts_not_increasing
   }
 }

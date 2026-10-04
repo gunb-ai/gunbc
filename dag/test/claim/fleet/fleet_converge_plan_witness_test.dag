@@ -71,9 +71,9 @@ import gunbc.fabric_cell_converge {
   FabricCellObservationRefusal,
   FabricCellUnexpectedCellEvidence,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.ownership { Owned }
 import gunbc.fleet_converge_workflow {
   fleet_converge_microvm_host_converge_step, fleet_converge_microvm_boot_probe_step,

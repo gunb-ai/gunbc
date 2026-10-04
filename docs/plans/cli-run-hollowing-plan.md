@@ -102,7 +102,6 @@
 ## 3. Gaps (no v2 home yet — named, not invented)
 
 - **Union-resolve once-per-node receipt counter** — process-wide resolve counting for union-resolve MUB contract tests; no modeled carrier; stays HAND until resolve orchestration emits from workflow (.dag issue tracked in reconcile-defork fence).
-- **Pre-resolve discovery skip before modeled `floor_kernel_precompute_would_skip`** — `cli_run_discovery_skip_before_resolve` scaffold; unblock named in ROADMAP `2-provenance-ingest` / affected-set precompute pruning.
 
 ## 4. What this doc is not
 
