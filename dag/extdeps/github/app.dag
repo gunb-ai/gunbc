@@ -37,7 +37,7 @@ import extdeps.languages.html { HtmlEmitResult, EmitOk, EmitRejected, try_serial
 import v2.std.algebra { fold_list }
 import std.resources { Network }
 import extdeps.transports.rest { RestResult }
-import v2.std.collection { map_get }
+import v2.std.collection { map_lookup }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -820,7 +820,7 @@ fn observed_permissions_from_wire_map(m: Map<String, String>) -> ObservedPermiss
         ObservedPermissionKeyUnanswered { wire_name } =>
           ObservedPermissionKeyUnanswered { wire_name: wire_name }
         ObservedPermissionsDecoded { permissions } =>
-          match map_get(m, key) {
+          match map_lookup(m: m, key: key) {
             Absent => ObservedPermissionKeyUnanswered { wire_name: key as NonEmptyStr }
             Present { value: raw } =>
               match permission_access_from_wire(name: raw) {
