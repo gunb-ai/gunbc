@@ -2079,6 +2079,71 @@ pub fn v1_item_ord_propagated_param_names(
     })
 }
 
+pub fn v1_set_element_bound_spellings() -> Rc<Vec<String>> {
+    crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
+        let mut __result = Vec::new();
+        for row in rust_btree_set_supplemental_generic_bound_rows()
+            .iter()
+            .cloned()
+        {
+            __result.push(
+                crate::extdeps_languages_rust_emit::rust_trait_derive_spelling(
+                    row.required.clone(),
+                ),
+            );
+        }
+        __result
+    }))
+}
+
+pub fn v1_fn_signature_set_element_param_names(
+    signature_type_exprs: Rc<Vec<Rc<Node>>>,
+    generic_param_names: Rc<Vec<String>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    {
+        let direct = v1_set_element_params(
+            generic_param_names.clone(),
+            signature_type_exprs.clone(),
+            source_indices.clone(),
+        );
+        let propagated = v1_item_ord_propagated_param_names(
+            generic_param_names.clone(),
+            signature_type_exprs.clone(),
+            type_decl_items.clone(),
+            source_indices.clone(),
+        );
+        Rc::new({
+            let mut __result = Vec::new();
+            for g in generic_param_names.iter().cloned() {
+                if ({
+                    let mut __found = false;
+                    for d in direct.iter().cloned() {
+                        if (d.clone() == g.clone()) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } || {
+                    let mut __found = false;
+                    for d in propagated.iter().cloned() {
+                        if (d.clone() == g.clone()) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                }) {
+                    __result.push(g);
+                }
+            }
+            __result
+        })
+    }
+}
+
 pub fn v1_set_struct_debug_impl(
     name: String,
     generic_param_names: Rc<Vec<String>>,

@@ -95,8 +95,8 @@ fn origin_reading_probe_source(body: String) -> String {
 }
 
 // RED 1: an ordinary module pairs a digest with a file it never read. This is the laundering in its
-// exact production shape -- a real 64-hex SHA-256 stamped onto a path of the author's choosing.
-data forged_reading_source: String = "OriginReadingTaken { reading: OriginReading { staged_path: \"/var/cache/gunbc/objects/aaaa\", observed_digest: Sha256Digest { hex: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" as Sha256DigestHex } } }"
+// exact production shape -- a real 64-hex SHA-256 stamped with no read of any file behind it.
+data forged_reading_source: String = "OriginReadingTaken { reading: OriginReading { observed_digest: Sha256Digest { hex: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" as Sha256DigestHex } } }"
 
 // The GREEN arm of the same producer: the sanctioned route, identical in every respect above.
 data sanctioned_body: String = "read_origin_staged_file(staged_path: p)"
@@ -111,7 +111,7 @@ test fn a_forged_origin_reading_is_refused_at_compile() -> Bool {
 // boundary's ManifestRead is an ordinary coproduct variant, so nothing refuses it directly; the
 // refusal has to come from the reading it must carry. This is what distinguishes "the record is
 // sealed" from "the state a caller can reach is unwritable".
-data forged_manifest_read_source: String = "module probe_fabric_m0_forged_manifest_read\nimport gunbc.fabric_m0_origin_readback { OriginReading }\nimport gunbc.fabric_m0_commit { ManifestReadbackObservation, ManifestRead }\nimport std.content_hash { Sha256Digest, Sha256DigestHex }\nfn forged() -> ManifestReadbackObservation {\n  ManifestRead { reading: OriginReading { staged_path: \"/var/cache/gunbc/objects/aaaa\", observed_digest: Sha256Digest { hex: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" as Sha256DigestHex } } }\n}\n"
+data forged_manifest_read_source: String = "module probe_fabric_m0_forged_manifest_read\nimport gunbc.fabric_m0_origin_readback { OriginReading }\nimport gunbc.fabric_m0_commit { ManifestReadbackObservation, ManifestRead }\nimport std.content_hash { Sha256Digest, Sha256DigestHex }\nfn forged() -> ManifestReadbackObservation {\n  ManifestRead { reading: OriginReading { observed_digest: Sha256Digest { hex: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" as Sha256DigestHex } } }\n}\n"
 
 test fn a_forged_manifest_read_is_refused_at_compile() -> Bool {
   sole_constructor_on_origin_reading(source: forged_manifest_read_source) == 1
@@ -120,7 +120,7 @@ test fn a_forged_manifest_read_is_refused_at_compile() -> Bool {
 // RED 3: the completion authority's own confirming arm, for the same reason. The manifest is one
 // subject among several, and a repair that closed only the manifest would leave every required
 // object's readback authorable -- the half-repair the rostered class warns about.
-data forged_readback_confirmed_source: String = "module probe_fabric_m0_forged_confirmed\nimport gunbc.fabric_m0_origin_readback { OriginReading }\nimport gunbc.fabric_m0_completion { OriginReadback, ReadbackConfirmed }\nimport std.content_hash { Sha256Digest, Sha256DigestHex }\nfn forged() -> OriginReadback {\n  ReadbackConfirmed { reading: OriginReading { staged_path: \"/var/cache/gunbc/objects/aaaa\", observed_digest: Sha256Digest { hex: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" as Sha256DigestHex } } }\n}\n"
+data forged_readback_confirmed_source: String = "module probe_fabric_m0_forged_confirmed\nimport gunbc.fabric_m0_origin_readback { OriginReading }\nimport gunbc.fabric_m0_completion { OriginReadback, ReadbackConfirmed }\nimport std.content_hash { Sha256Digest, Sha256DigestHex }\nfn forged() -> OriginReadback {\n  ReadbackConfirmed { reading: OriginReading { observed_digest: Sha256Digest { hex: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" as Sha256DigestHex } } }\n}\n"
 
 test fn a_forged_confirmed_readback_is_refused_at_compile() -> Bool {
   sole_constructor_on_origin_reading(source: forged_readback_confirmed_source) == 1

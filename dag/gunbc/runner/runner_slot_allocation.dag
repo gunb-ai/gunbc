@@ -6,11 +6,11 @@ import std.measure { ByteSize, byte_size, byte_size_count, measure_add, measure_
 import std.realization_width { byte_size_saturating_sub }
 import std.disposition { Disposition, Terminal, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.github.actions { runner_labels_equivalent }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_public_root_peak }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.session_reservation_policy { ReservationBytes, ReservationBytesNotApplicable, ReservationBytesUnestablished, session_reservation_bytes }
 import gunbc.host_memory_observation { HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured, gunbc_ci_host_usable_ram_for, gunbc_ci_host_fixed_overhead_for, oomd_actuation_floor }
 import gunbc.fabric_control_plane_charge { ControlPlaneNotPlaced, ControlPlaneClaimResolved, ControlPlaneClaimUnmeasured, host_fabric_control_plane_claim }
@@ -19,7 +19,10 @@ import gunbc.ci_failure_class { FloorOutcome, NoFailure, FloorFailed, Structural
 import product.fabric.envelope { ResourceEnvelope, memory_envelope }
 import gunbc.floor_demand { gunbc_floor_measured_peak_observation, gunbc_floor_measured_peak_is_uncensored }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
-import gunbc.runner_slot_desired { RunnerSlotDesired, gunbc_runner_slot_desired, gunbc_runner_slot_memory_max }
+import gunbc.ci_fleet { fleet_compute_offer_for }
+import gunbc.fleet_intent { ComputeHost, compute_host_cpu_threads }
+import gunbc.runner_slot_desired { RunnerSlotDesired, gunbc_runner_slot_desired, gunbc_runner_slot_memory_max, CpuQuotaResolved }
+import gunbc.workspace_allocation { workspace_profile_vcpus, LargeWorkspace }
 
 type HostRunnerSlotAllocation {
   host: HostIdentity
@@ -90,6 +93,8 @@ fn slot_is_microvm_shakedown_slot(slot: RunnerSlotIdentity) -> Bool {
 // (gunbc.fabric_cell_converge) and the guest shape (gunbc.runner_microvm). A consumer with no slot in
 // hand -- width arithmetic, the fleet offer envelope -- keeps reading gunbc_runner_slot_desired,
 // because the fleet row IS the answer to a question asked of no particular slot.
+// A workspace-designated shakedown cell has the finite CPU envelope of its largest admitted
+// profile. CI-purpose cells retain the runner policy; guest sizing consumes this same boundary.
 fn gunbc_runner_slot_desired_for(slot: RunnerSlotIdentity) -> RunnerSlotDesired {
   let fleet = gunbc_runner_slot_desired()
   if slot_is_microvm_shakedown_slot(slot: slot) {
@@ -99,7 +104,9 @@ fn gunbc_runner_slot_desired_for(slot: RunnerSlotIdentity) -> RunnerSlotDesired 
       memory_high: gunbc_microvm_shakedown_slot_memory_max,
       tasks_max: fleet.tasks_max,
       cpu_weight: fleet.cpu_weight,
-      cpu_quota: fleet.cpu_quota,
+      cpu_quota: if identity_is_workspace_execution_member(identity: slot) {
+        CpuQuotaResolved { threads: hardware_thread_count(count: workspace_profile_vcpus(profile: LargeWorkspace) as Int) }
+      } else { fleet.cpu_quota },
       labels: fleet.labels,
     }
   } else {
@@ -494,12 +501,19 @@ fn host_disk_admitted_width(host: HostIdentity) -> HostDiskWidthConstraint {
 // with disk DiskWidthUnconstrained on both the minimum would have degenerated to memory alone and
 // committed twenty-nine 6-core slots on a 128-core machine.
 //
-// THE HOST CORE COUNT IS CITED, NOT AUTHORED. It reads extdeps.cpu.ampere altra_max_m12830_catalog
-// cores, the Ampere product fact, rather than a 128 written down here -- which also means a host
-// that is not an M128-30 cannot silently inherit this width, because the premise it rests on is
-// named. That the whole fleet IS M128-30 is not assumed either: gunbc.fleet_physical_inventory
-// fleet_processor_verdicts reconciles every host's observed model number against that same catalog
-// row, so the uniformity this function relies on is checked somewhere rather than believed here.
+// THE HOST CORE COUNT IS READ FROM THE HOST'S OWN OFFER, NOT FROM ONE CATALOG ROW FOR EVERY HOST.
+// The previous revision divided extdeps.cpu.ampere altra_max_m12830_catalog cores for every
+// HostIdentity it was asked about and never looked at the host, so a host carrying a different
+// part, or a different number of sockets, inherited 128 cores from a row about some other machine:
+// the board spec standing where the host's own processors were available. The width is now the
+// threads of every CpuProcessor in the host's gunbc.ci_fleet offer (gunbc.fleet_intent
+// compute_host_cpu_threads), so the part and the socket count both reach the axis. Every current
+// host's offer carries one fleet_intent_cpu (M128-30, 128 threads), so no current width moves.
+//
+// A HOST WITH NO FLEET OFFER HAS NO CPU WIDTH, WHICH IS NOT A WIDTH OF ZERO (review 75298). A zero
+// here would sit inside the minimum over axes and read as a host with no cores -- the zero-sentinel
+// gunbc.recurring_failure_mode state_space_conflation names -- so the absent offer is its own arm,
+// and gunbc_runner_committed_width carries it out as WidthComputeOfferAbsent.
 //
 // WHAT THIS DOES NOT MODEL, said plainly because the number looks more complete than it is: there
 // is no CPU RESERVATION. Every core is offered to runner slots, so 128 cores at 1 per slot admits
@@ -511,11 +525,20 @@ fn host_disk_admitted_width(host: HostIdentity) -> HostDiskWidthConstraint {
 // core), so the gap has no width consequence today; it is kept as an axis so a host that is not an
 // M128-30, or a future cores_per_slot policy above 1, is charged by construction.
 //
-// THE AXIS CANNOT REFUSE. It used to carry an unresolved arm for a vendor survey that could fail to
-// read; cores_per_slot is now an authored policy, so the only inputs are two cited constants and
-// the quotient is total.
-fn host_cpu_admitted_width(host: HostIdentity) -> Int {
-  altra_max_m12830_catalog.cores / hardware_thread_count_value(t: gunbc_runner_cores_per_slot())
+// THE QUOTIENT STAYS IN THE CARRIER: threads over threads-per-slot, both HardwareThreadCount.
+fn compute_host_cpu_admitted_width(host: ComputeHost) -> Int {
+  measure_fit_count_floor(capacity: compute_host_cpu_threads(host: host), each: gunbc_runner_cores_per_slot()) as Int
+}
+
+type HostCpuWidthResolution
+  = CpuWidthDerived { slots: Int }
+  | CpuWidthOfferAbsent { host: HostIdentity }
+
+fn host_cpu_admitted_width(host: HostIdentity) -> HostCpuWidthResolution {
+  match fleet_compute_offer_for(host: host) {
+    Absent => CpuWidthOfferAbsent { host: host }
+    Present { value: o } => CpuWidthDerived { slots: compute_host_cpu_admitted_width(host: o.supply.physical) }
+  }
 }
 
 data width_minimum_now_spans_three_axes_note: String = "THE MINIMUM IS OVER THREE AXES AND THE THIRD ONE IS WHY THIS CHANGE IS SAFE. Memory admits 29 on the upgraded hosts, CPU admits 21, disk admits nothing numeric, so the commitment is 21 -- and the two answers coexist under their own names instead of one of them being suppressed to keep the other honest. width_is_a_minimum_over_axes_note records what happens when they are collapsed: the committed width once returned the memory verdict under a name that read as the full commitment, and srv4's roster and its prose disagreed as a result.\n\nSo host_memory_admitted_width saying 29 is not a claim that 29 runners may exist. It is the true answer to the question that function asks, and it is the minimum's job -- not the literal's -- to keep the fleet from acting on it."
@@ -593,7 +616,11 @@ fn host_width_axes(host: HostIdentity) -> List<WidthAxisStanding> {
         reason: join(["session reservation unestablished on this host, so the memory subtraction has no denominator and states no width: ", c as String], "") as NonEmptyStr,
       }
   }
-  let cpu = AxisAdmits { axis: "cores" as NonEmptyStr, slots: host_cpu_admitted_width(host: host) }
+  let cpu = match host_cpu_admitted_width(host: host) {
+    CpuWidthDerived { slots: n } => AxisAdmits { axis: "cores" as NonEmptyStr, slots: n }
+    CpuWidthOfferAbsent { host: _ } =>
+      AxisUnmeasured { axis: "cores" as NonEmptyStr, reason: "the host has no gunbc.ci_fleet compute offer, so its processors are unknown and the cores axis states no width" as NonEmptyStr }
+  }
   let disk = match host_disk_admitted_width(host: host) {
     DiskAdmitsWidth { slots: d, provenance: _ } =>
       AxisAdmits { axis: "disk" as NonEmptyStr, slots: d }
@@ -736,6 +763,7 @@ fn runner_slot_shape_standing(d: RunnerSlotDesired) -> RunnerSlotShapeStanding {
 type RunnerWidthUnresolvedCause
   = WidthMemoryDenominatorUnestablished { host: HostIdentity, cause: NonEmptyStr }
   | WidthSlotShapeInadmissible { reason: NonEmptyStr }
+  | WidthComputeOfferAbsent { host: HostIdentity }
 
 type RunnerWidthResolution
   = RunnerWidthDerived { slots: Int }
@@ -757,6 +785,11 @@ fn runner_width_unresolved_cause_text(cause: RunnerWidthUnresolvedCause) -> Stri
         "no committed runner width is derivable on any host because the fleet slot shape is inadmissible: ",
         r as String,
       ], "")
+    WidthComputeOfferAbsent { host: h } =>
+      join([
+        "the committed runner width of ", h as String,
+        " is UNRESOLVED, not zero: the host has no gunbc.ci_fleet compute offer, so its processors are unknown and the cores axis states no width",
+      ], "")
   }
 }
 
@@ -775,13 +808,17 @@ fn gunbc_runner_committed_width(host: HostIdentity) -> RunnerWidthResolution {
             cause: WidthMemoryDenominatorUnestablished { host: host, cause: c },
           }
         MemoryDenominatorEstablished =>
-          RunnerWidthDerived { slots: gunbc_derived_runner_slots_per_host(host: host) }
+          match host_cpu_admitted_width(host: host) {
+            CpuWidthOfferAbsent { host: h } =>
+              RunnerWidthUnresolved { cause: WidthComputeOfferAbsent { host: h } }
+            CpuWidthDerived { slots: by_cpu } =>
+              RunnerWidthDerived { slots: gunbc_derived_runner_slots_per_host(host: host, by_cpu: by_cpu) }
+          }
       }
   }
 }
 
-fn gunbc_derived_runner_slots_per_host(host: HostIdentity) -> Int {
-  let by_cpu = host_cpu_admitted_width(host: host)
+fn gunbc_derived_runner_slots_per_host(host: HostIdentity, by_cpu: Int) -> Int {
   let by_memory = host_memory_admitted_width(host: host)
   let by_mem_cpu = if by_cpu < by_memory { by_cpu } else { by_memory }
   match host_disk_admitted_width(host: host) {
@@ -1703,4 +1740,19 @@ fn host_github_slot_count(host: HostIdentity) -> RunnerWidthResolution {
     CommittedPopulationDerived { members: m } =>
       RunnerWidthDerived { slots: count_github_members(identities: m) }
   }
+}
+
+// Operator-authorized desired transfer of one existing budgeted cell to workspace use.
+// This withdraws new CI work through the shared purpose sanction; it is not a commissioning
+// receipt. Current history, sanitation, host budget, image and access must still be observed
+// before workspace_offer_from_observations can offer the cell. Requests remain host-agnostic.
+data workspace_dedicated_slot_designations: List<RunnerSlotIdentity> = [srv1_microvm_shakedown_slot()]
+
+fn identity_is_workspace_execution_member(identity: RunnerSlotIdentity) -> Bool {
+  identity_is_fabric_execution_member(identity: identity)
+    && identity_in_list(identity: identity, members: workspace_dedicated_slot_designations)
+}
+
+fn workspace_execution_slot_identities() -> List<RunnerSlotIdentity> {
+  filter(fabric_execution_slot_identities(), slot => identity_is_workspace_execution_member(identity: slot))
 }

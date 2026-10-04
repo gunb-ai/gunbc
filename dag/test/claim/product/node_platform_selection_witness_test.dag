@@ -1,0 +1,344 @@
+module test.claim.product.node_platform_selection_witness
+
+import v2.std.algebra { any, filter }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { Watt, byte_size_count, gibibyte, gibibyte_to_byte_size, watt, watt_count }
+import std.pareto { ParetoEntry, PairDominates, PairNoDominance, compare_pair }
+import std.decision {
+  SelectedWithin,
+  SelectionNeedsEvidence,
+  SubjectClosureIncomplete,
+  UnfundedAxis,
+  SelectionEvidenceNeed,
+  PreferSurvivor,
+  UniqueSurvivorRequired,
+}
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority, TranscribedUncited }
+import extdeps.systems.types { CoherentSuperchipCatalogRow, coherent_superchip_coherent_capacity, SuperchipServerCatalogRow, ServerPowerSupplies, SuppliesNonRedundant, server_supply_ceiling_at }
+import extdeps.systems.nvidia { nvidia_dgx_spark_4tb_catalog }
+import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog, nvidia_gh200_624gb_hbm3e_catalog }
+import extdeps.systems.asrock_rack_mecai_gh200 { asrock_rack_mecai_gh200 }
+import extdeps.systems.gigabyte_xh23_vg0_aaj1 { gigabyte_xh23_vg0_aaj1 }
+import product.node_platform_selection {
+  NodePlatformEvidence,
+  NodeRoute,
+  NodeSupply,
+  RetainIncumbentSpark,
+  ModuleOnDevCarrier,
+  FactoryServer,
+  RouteRefused,
+  PowerCited,
+  PowerUnread,
+  ReplacementAdmitted,
+  ReplacementHeld,
+  node_platform_selection,
+  node_platform_selection_given,
+  node_platform_axes,
+  node_platform_policy,
+  node_platform_live_routes,
+  replacement_gate,
+  route_entry,
+  route_power,
+  route_standing,
+  incumbent_spark_standing,
+  candidate_dgx_spark_node,
+  candidate_gh200_p4261_node,
+  candidate_mecai_gh200_480gb,
+  gpu_local_capacity_axis,
+  gpu_local_bandwidth_axis,
+  coherent_capacity_axis,
+  node_power_ceiling_axis,
+  factory_route_obligation,
+  complete_server_line,
+}
+import product.superchip_assembly_qualification { SuperchipAssembly, first_assembly }
+import test.claim.product.superchip_assembly_qualification_witness { booted_and_measured, booted_and_measured_at, a_workload_below_the_incumbent_assembly }
+
+fn need_mentions(need: SelectionEvidenceNeed, fragment: String) -> Bool {
+  match need {
+    SubjectClosureIncomplete { subject: _, obligation: o } => (o as String).contains(fragment)
+    UnfundedAxis { gap: g } => (g.cause as String).contains(fragment)
+    _ => false
+  }
+}
+
+// THE REAL PATH, executed: the live routes through the real root. It must not settle, and its needs
+// must be PER ROUTE -- the dev-carrier assembly blocked at its first stage and unmeasured, its supply
+// unchosen, the factory routes undelivered -- beside prices and the served model. Retaining the Sparks
+// is qualified and contributes no need. This is the inhabitance claim for the supplied scenarios below.
+test fn live_selection_waits_on_each_route_by_its_own_evidence() -> Bool {
+  match node_platform_selection() {
+    SelectionNeedsEvidence { needs: ns } =>
+      any(ns, n => need_mentions(need: n, fragment: "route gh200-dv5-a on p4261-k1-a (P4261 dev carrier, as built) is not yet qualified: blocked at mechanically mated"))
+        && any(ns, n => need_mentions(need: n, fragment: "the memory of gh200-dv5-a is unmeasured"))
+        && any(ns, n => need_mentions(need: n, fragment: "no supply is chosen for the dev-carrier route"))
+        && any(ns, n => need_mentions(need: n, fragment: "no MECAI-GH200 in its factory GH200 Hopper GPU (96GB HBM3) configuration has been delivered"))
+        && any(ns, n => need_mentions(need: n, fragment: "Spark resale value"))
+        && any(ns, n => need_mentions(need: n, fragment: "the model the fleet will serve"))
+        && !any(ns, n => need_mentions(need: n, fragment: "retain DGX Spark"))
+    _ => false
+  }
+}
+
+// ── SUPPLIED SCENARIOS THROUGH THE ROOT ──────────────────────────────────────────────────────
+
+data supplied_supply: NodeSupply = NodeSupply {
+  rated_output: watt(count: 1200),
+  authority: ExternalAuthority { uri: Uri { scheme: Https, locator: "supplied.example/psu-datasheet" } },
+}
+
+fn spark_route() -> NodeRoute {
+  RetainIncumbentSpark { candidate: candidate_dgx_spark_node, row: nvidia_dgx_spark_4tb_catalog, standing: incumbent_spark_standing }
+}
+
+fn dev_route(a: SuperchipAssembly) -> NodeRoute {
+  ModuleOnDevCarrier { candidate: candidate_gh200_p4261_node, assembly: a, supply: Present { value: supplied_supply } }
+}
+
+fn mecai_route() -> NodeRoute {
+  FactoryServer {
+    candidate: candidate_mecai_gh200_480gb, server: asrock_rack_mecai_gh200, configuration: nvidia_gh200_480gb_catalog,
+    standing: factory_route_obligation(server: asrock_rack_mecai_gh200, configuration: nvidia_gh200_480gb_catalog),
+  }
+}
+
+fn evidence_of(routes: List<NodeRoute>, prices: NonEmptyStr?, prefer_gh200: Bool) -> NodePlatformEvidence {
+  NodePlatformEvidence {
+    routes: routes,
+    prices: prices,
+    served_model: Present { value: "supplied: the served model's acceptance subject" },
+    policy: if prefer_gh200 { PreferSurvivor { identity: node_platform_policy, preferred: candidate_gh200_p4261_node } } else { UniqueSurvivorRequired { identity: node_platform_policy } },
+  }
+}
+
+// THE SUPPLIED SETTLEMENT the private sale gate consumes: the incumbent and a qualified dev-carrier
+// assembly with a cited supply, prices bound, the served model defined, and a policy preferring the
+// GH200 among non-dominated survivors.
+fn settled_replacement_evidence() -> NodePlatformEvidence {
+  evidence_of(routes: [spark_route(), dev_route(a: booted_and_measured())], prices: Present { value: "supplied: bound from the private procurement tree" }, prefer_gh200: true)
+}
+
+// THE DECISION CAN CLOSE, and only with its inputs. The supplied settlement reaches SelectedWithin the
+// GH200 route through the real root and the replacement gate admits it; the same evidence with prices
+// removed waits on prices, and the gate holds.
+test fn a_supplied_scenario_settles_through_the_root_and_one_missing_input_holds_it() -> Bool {
+  let settled = match node_platform_selection_given(evidence: settled_replacement_evidence()) {
+    SelectedWithin { candidate: c, receipt: _ } => declaration_ref_eq(a: c.identity, b: candidate_gh200_p4261_node)
+    _ => false
+  }
+  let admitted = match replacement_gate(evidence: settled_replacement_evidence()) {
+    ReplacementAdmitted { route: r, receipt: _ } => declaration_ref_eq(a: r, b: candidate_gh200_p4261_node)
+    ReplacementHeld { reason: _ } => false
+  }
+  let unpriced = evidence_of(routes: [spark_route(), dev_route(a: booted_and_measured())], prices: Absent, prefer_gh200: true)
+  let waits = match node_platform_selection_given(evidence: unpriced) {
+    SelectionNeedsEvidence { needs: ns } => any(ns, n => need_mentions(need: n, fragment: "Spark resale value"))
+    _ => false
+  }
+  let held = match replacement_gate(evidence: unpriced) {
+    ReplacementHeld { reason: r } => (r as String).contains("needs evidence")
+    ReplacementAdmitted { route: _, receipt: _ } => false
+  }
+  settled && admitted && waits && held
+}
+
+// A REFUSED ROUTE ELIMINATES ONLY ITSELF. A dev-carrier assembly refused at workload qualification is
+// excluded before Pareto, and the decision settles on retaining the Sparks -- it is not blocked -- and
+// the sale gate holds because the selection retained them.
+test fn a_refused_dev_carrier_route_does_not_eliminate_the_alternatives() -> Bool {
+  let refused = dev_route(a: a_workload_below_the_incumbent_assembly())
+  let is_refused = match route_standing(r: refused) {
+    RouteRefused { reason: r } => (r as String).contains("refused at workload-qualified")
+    _ => false
+  }
+  let ev = evidence_of(routes: [spark_route(), refused], prices: Present { value: "supplied" }, prefer_gh200: false)
+  let retained = match node_platform_selection_given(evidence: ev) {
+    SelectedWithin { candidate: c, receipt: _ } => declaration_ref_eq(a: c.identity, b: candidate_dgx_spark_node)
+    _ => false
+  }
+  let held = match replacement_gate(evidence: ev) {
+    ReplacementHeld { reason: r } => (r as String).contains("retaining the Sparks")
+    ReplacementAdmitted { route: _, receipt: _ } => false
+  }
+  is_refused && retained && held
+}
+
+// QUALIFYING ONE ROUTE DOES NOT QUALIFY ANOTHER. With the dev-carrier assembly workload-qualified, a
+// factory MECAI-GH200 route in the same field is still unqualified -- an OEM catalog row is not a
+// delivered unit's acceptance -- so the decision waits on THAT route, and not on the qualified one.
+test fn qualifying_one_route_does_not_satisfy_another() -> Bool {
+  let ev = evidence_of(routes: [spark_route(), dev_route(a: booted_and_measured()), mecai_route()], prices: Present { value: "supplied" }, prefer_gh200: true)
+  match node_platform_selection_given(evidence: ev) {
+    SelectionNeedsEvidence { needs: ns } =>
+      any(ns, n => need_mentions(need: n, fragment: "route MECAI-GH200 factory server (GH200 Hopper GPU (96GB HBM3)) is not yet qualified"))
+        && !any(ns, n => need_mentions(need: n, fragment: "route gh200-dv5-a on p4261-k1-a"))
+    _ => false
+  }
+}
+
+// A FACTORY ROUTE NAMES A CONFIGURATION ITS SERVER SUPPORTS: the MECAI-GH200 at the 144GB HBM3e
+// configuration -- announced, not listed as supported -- is refused rather than silently substituted.
+test fn a_factory_route_at_an_unsupported_configuration_is_refused() -> Bool {
+  let wrong = FactoryServer {
+    candidate: candidate_mecai_gh200_480gb, server: asrock_rack_mecai_gh200, configuration: nvidia_gh200_624gb_hbm3e_catalog,
+    standing: factory_route_obligation(server: asrock_rack_mecai_gh200, configuration: nvidia_gh200_624gb_hbm3e_catalog),
+  }
+  match route_standing(r: wrong) {
+    RouteRefused { reason: r } => (r as String).contains("is not a configuration MECAI-GH200 lists as supported")
+    _ => false
+  }
+}
+
+// ── THE AS-BUILT CANDIDATE ───────────────────────────────────────────────────────────────────
+
+fn reading_low(e: ParetoEntry, axis: DeclarationRef) -> Int {
+  fold(e.readings, init: 0 - 1, f: (acc, r) => if declaration_ref_eq(a: r.axis, b: axis) { r.interval_micro.low } else { acc })
+}
+
+fn gaps_on(e: ParetoEntry, axis: DeclarationRef) -> Nat {
+  count(filter(e.missing_inputs, g => declaration_ref_eq(a: g.axis, b: axis)))
+}
+
+// THE CANDIDATE IS THE MEASURED UNIT. The same assembly measured at 480 GiB and at 120 GiB of LPDDR5X
+// yields different coherent capacities -- and the larger dominates the smaller with everything else
+// equal (as a second candidate: compare_pair never ranks an entry against its own identity), which is
+// also the comparison's discriminating control. An unmeasured unit (the live first
+// assembly) ranks on nothing from the catalog: all three memory axes are declared missing. A measured
+// HBM size that is not the row's GPU tier keeps its capacities and loses the row's bandwidth.
+data candidate_smaller_unit: DeclarationRef = decl_ref(module_path: "test.claim.product.node_platform_selection_witness", decl_name: "candidate_smaller_unit")
+
+test fn the_dev_carrier_candidate_follows_the_measured_inventory() -> Bool {
+  let full = route_entry(r: dev_route(a: booted_and_measured_at(gpu_gib: 96, cpu_gib: 480)))
+  let small = route_entry(r: ModuleOnDevCarrier { candidate: candidate_smaller_unit, assembly: booted_and_measured_at(gpu_gib: 96, cpu_gib: 120), supply: Present { value: supplied_supply } })
+  let odd = route_entry(r: dev_route(a: booted_and_measured_at(gpu_gib: 80, cpu_gib: 480)))
+  let unmeasured = route_entry(r: ModuleOnDevCarrier { candidate: candidate_gh200_p4261_node, assembly: first_assembly, supply: Present { value: supplied_supply } })
+  let gib = 1073741824
+  reading_low(e: full, axis: coherent_capacity_axis) == 576 * gib
+    && reading_low(e: small, axis: coherent_capacity_axis) == 216 * gib
+    && match compare_pair(a: full, b: small, axes: node_platform_axes()) {
+      PairDominates { winning_axes: _ } => true
+      _ => false
+    }
+    && reading_low(e: odd, axis: gpu_local_capacity_axis) == 80 * gib
+    && gaps_on(e: odd, axis: gpu_local_bandwidth_axis) == 1
+    && gaps_on(e: unmeasured, axis: gpu_local_capacity_axis) == 1
+    && gaps_on(e: unmeasured, axis: gpu_local_bandwidth_axis) == 1
+    && gaps_on(e: unmeasured, axis: coherent_capacity_axis) == 1
+}
+
+// The 480GB product's coherent memory is derived, not read off the name: 96 GiB HBM + 480 GiB LPDDR5X.
+test fn gh200_coherent_capacity_is_both_tiers() -> Bool {
+  byte_size_count(b: coherent_superchip_coherent_capacity(row: nvidia_gh200_480gb_catalog))
+    == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 576)))
+}
+
+// A qualified, measured GH200 and the Spark trade off: the GH200 wins GPU-local bandwidth and coherent
+// capacity, the Spark wins GPU-local capacity (128 vs 96 GiB) and provisioned supply. Neither dominates,
+// which is why the supplied settlement needs a stated policy to choose.
+test fn spark_and_a_measured_gh200_trade_off_rather_than_dominate() -> Bool {
+  match compare_pair(a: route_entry(r: dev_route(a: booted_and_measured())), b: route_entry(r: spark_route()), axes: node_platform_axes()) {
+    PairNoDominance => true
+    _ => false
+  }
+}
+
+// An UNCITED configuration may not rank: the same row typed as a bet declares its three memory axes
+// missing on a factory route (DESIGN §4d).
+test fn an_uncited_configuration_cannot_rank() -> Bool {
+  let uncited = CoherentSuperchipCatalogRow {
+    vendor: nvidia_gh200_480gb_catalog.vendor,
+    model: nvidia_gh200_480gb_catalog.model,
+    board_designation: nvidia_gh200_480gb_catalog.board_designation,
+    cpu_architecture: nvidia_gh200_480gb_catalog.cpu_architecture,
+    cpu_core_clusters: nvidia_gh200_480gb_catalog.cpu_core_clusters,
+    gpu: nvidia_gh200_480gb_catalog.gpu,
+    cpu_memory: nvidia_gh200_480gb_catalog.cpu_memory,
+    chip_to_chip_bandwidth_per_direction: nvidia_gh200_480gb_catalog.chip_to_chip_bandwidth_per_direction,
+    module_power_floor: nvidia_gh200_480gb_catalog.module_power_floor,
+    module_power_ceiling: nvidia_gh200_480gb_catalog.module_power_ceiling,
+    figure_standing: TranscribedUncited { read_obligation: "datasheet unread" as NonEmptyStr },
+  }
+  let e = route_entry(r: FactoryServer {
+    candidate: candidate_mecai_gh200_480gb, server: asrock_rack_mecai_gh200, configuration: uncited,
+    standing: factory_route_obligation(server: asrock_rack_mecai_gh200, configuration: uncited),
+  })
+  gaps_on(e: e, axis: gpu_local_capacity_axis) == 1 && gaps_on(e: e, axis: gpu_local_bandwidth_axis) == 1 && gaps_on(e: e, axis: coherent_capacity_axis) == 1
+}
+
+// ── COMPLETE SERVERS ─────────────────────────────────────────────────────────────────────────
+
+// AT THE OPERATOR'S 120 V, the cited ASRock row's provisioned supply is 1000 W (one CRPS of the 1+1
+// pair, at its low-line rating); the uncited Gigabyte row's is unread, carrying its read obligation.
+// The live field holds four routes.
+test fn cited_servers_read_power_at_the_site_and_uncited_ones_declare_it() -> Bool {
+  let asrock_ok = match route_power(r: mecai_route()) {
+    PowerCited { ceiling: w, authority: _ } => watt_count(w: w) == 1000
+    PowerUnread { cause: _ } => false
+  }
+  let gigabyte = FactoryServer {
+    candidate: candidate_mecai_gh200_480gb, server: gigabyte_xh23_vg0_aaj1, configuration: nvidia_gh200_624gb_hbm3e_catalog,
+    standing: factory_route_obligation(server: gigabyte_xh23_vg0_aaj1, configuration: nvidia_gh200_624gb_hbm3e_catalog),
+  }
+  let gigabyte_ok = match route_power(r: gigabyte) {
+    PowerUnread { cause: c } => (c as String).contains("404")
+    PowerCited { ceiling: _, authority: _ } => false
+  }
+  asrock_ok && gigabyte_ok && count(node_platform_live_routes()) == 4
+}
+
+fn ceiling_or_zero(w: Watt?) -> Int {
+  match w {
+    Present { value: x } => watt_count(w: x)
+    Absent => 0
+  }
+}
+
+// The ceiling DISCRIMINATES on input voltage and redundancy: ASRock reads 1000 W at 120 V and 2000 W at
+// 230 V, nothing at 150 V (no stated range covers it); a rating with no input range answers nothing at
+// 120 V; the same supplies non-redundant sum to 2000 W at 120 V.
+test fn the_ceiling_follows_mains_voltage_and_redundancy() -> Bool {
+  let doubled = SuperchipServerCatalogRow {
+    vendor: asrock_rack_mecai_gh200.vendor,
+    model: asrock_rack_mecai_gh200.model,
+    form_factor: asrock_rack_mecai_gh200.form_factor,
+    dimensions: asrock_rack_mecai_gh200.dimensions,
+    supported_superchips: asrock_rack_mecai_gh200.supported_superchips,
+    announced_superchips: asrock_rack_mecai_gh200.announced_superchips,
+    module_power_ceiling: asrock_rack_mecai_gh200.module_power_ceiling,
+    carrier: asrock_rack_mecai_gh200.carrier,
+    power_supplies: ServerPowerSupplies {
+      form: "supplied",
+      count: 2,
+      redundancy: SuppliesNonRedundant,
+      output_ratings: asrock_rack_mecai_gh200.power_supplies.output_ratings,
+    },
+    management: asrock_rack_mecai_gh200.management,
+    host_network: asrock_rack_mecai_gh200.host_network,
+    storage_bays: asrock_rack_mecai_gh200.storage_bays,
+    expansion_slots: asrock_rack_mecai_gh200.expansion_slots,
+    front_panel: asrock_rack_mecai_gh200.front_panel,
+    fans: asrock_rack_mecai_gh200.fans,
+    operating_temperature: asrock_rack_mecai_gh200.operating_temperature,
+    non_operating_temperature: asrock_rack_mecai_gh200.non_operating_temperature,
+    non_operating_humidity: asrock_rack_mecai_gh200.non_operating_humidity,
+    figure_standing: asrock_rack_mecai_gh200.figure_standing,
+  }
+  ceiling_or_zero(w: server_supply_ceiling_at(row: asrock_rack_mecai_gh200, mains_vac: 120)) == 1000
+    && ceiling_or_zero(w: server_supply_ceiling_at(row: asrock_rack_mecai_gh200, mains_vac: 230)) == 2000
+    && ceiling_or_zero(w: server_supply_ceiling_at(row: asrock_rack_mecai_gh200, mains_vac: 150)) == 0
+    && ceiling_or_zero(w: server_supply_ceiling_at(row: gigabyte_xh23_vg0_aaj1, mains_vac: 120)) == 0
+    && ceiling_or_zero(w: server_supply_ceiling_at(row: doubled, mains_vac: 120)) == 2000
+}
+
+// The rendering carries every field and names what is unread instead of dropping it.
+test fn server_lines_name_what_is_unread() -> Bool {
+  let a = complete_server_line(row: asrock_rack_mecai_gh200)
+  let g = complete_server_line(row: gigabyte_xh23_vg0_aaj1)
+  a.contains("420 x 438 x 87 mm") && a.contains("1000 W @ 100-127 VAC / 2000 W @ 200-240 VAC") && a.contains("carrier ARLINGTON-MB")
+    && a.contains("Micro USB (COM)") && a.contains("operating 10 to 35 C") && a.contains("non-operating -40 to 70 C")
+    && a.contains("announced GH200 Hopper GPU (144GB HBM3e)") && a.contains("-- cited")
+    && g.contains("BMC unread") && g.contains("width unread") && g.contains("2000 W (input range unstated)") && g.contains("carrier unread") && g.contains("UNCITED")
+}

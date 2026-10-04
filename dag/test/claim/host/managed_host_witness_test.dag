@@ -4,7 +4,7 @@ import std.types { Bool, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved }
-import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.managed_host {
   managed_host_fixture,
   ManagedHostAccessUnobserved,
@@ -14,7 +14,13 @@ import gunbc.managed_host {
   ResetNoUnitHold,
   ResetUnitHoldRequired,
   managed_host_binding,
+  managed_host_smpro_subject,
   managed_hosts,
+}
+import extdeps.bmc.ipmi_master_write_read { MasterWriteReadBus, PrivateBus }
+import gunbc.machine_intake_ampere_smpro_observation {
+  SmproTarget, SiteFromOperatorBrief, smpro_site_admit,
+  SmproPassSubjectBound, SmproPassSiteRefused, SmproPassEndpointMismatch,
 }
 import gunbc.host_reset_subject_roster {
   ResetSubjectAdmitted,
@@ -81,7 +87,7 @@ test fn w_a_secured_account_beside_another_controllers_access_is_not_bound_or_ro
     let crossed = match h.access {
       BmcAccessUnobserved { endpoint: _ } => h
       BmcAccessObserved { observation: o } =>
-        managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_at(o: o, host: "fixture-other-bmc") }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold)
+        managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_at(o: o, host: "fixture-other-bmc") }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
     }
     let mismatched = match managed_host_binding(host: crossed) {
       ManagedHostEndpointMismatch { observed: ob, secured: _ } => (ob.host as String) == "fixture-other-bmc"
@@ -98,7 +104,7 @@ test fn w_a_secured_account_beside_another_controllers_access_is_not_bound_or_ro
 // selection-less and the roster over both hosts is exactly mtcollins1.
 test fn w_a_capable_host_with_no_reset_selection_is_absent_from_the_roster() -> Bool {
   managed_hosts() |> all(h => {
-    let unselected = managed_host_fixture(host: "fixture-unselected-host", access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold)
+    let unselected = managed_host_fixture(host: "fixture-unselected-host", access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
     let bound = match managed_host_binding(host: unselected) {
       ManagedHostBound { binding: _ } => true
       ManagedHostAccessUnobserved { endpoint: _ } => false
@@ -113,5 +119,53 @@ test fn w_a_capable_host_with_no_reset_selection_is_absent_from_the_roster() -> 
     }
     let roster = reset_subject_roster_of(hosts: [unselected, h])
     bound && refused && count(roster) == 1 && roster |> all(r => (r as String) == (operator_host_mtcollins1 as String))
+  }) && count(managed_hosts()) == 1
+}
+
+// THE REAL PATH: the one row binds, and its SMpro site joins that binding's controller into a pass
+// subject whose control is socket 0 behind the controller the binding read. This is the inhabitance
+// claim for gunbc.machine_intake_ampere_smpro_observation SmproPassSubject: the subject every SMpro
+// pass reads through is minted from the real row, not supplied.
+test fn w_the_real_row_mints_its_smpro_subject_through_its_binding() -> Bool {
+  managed_hosts() |> all(h => match managed_host_binding(host: h) {
+    ManagedHostBound { binding: b } => match managed_host_smpro_subject(binding: b) {
+      SmproPassSubjectBound { subject: s } =>
+        (s.endpoint.host as String) == (b.observation.endpoint.host as String)
+          && (s.site.endpoint.host as String) == (b.observation.endpoint.host as String)
+          && s.site.control.socket == 0
+          && (s.host as String) == (operator_host_mtcollins1 as String)
+      SmproPassSiteRefused { cause: _ } => false
+      SmproPassEndpointMismatch { bound: _, site: _ } => false
+    }
+    ManagedHostAccessUnobserved { endpoint: _ } => false
+    ManagedHostNotSecured { cause: _ } => false
+    ManagedHostEndpointMismatch { observed: _, secured: _ } => false
+  }) && count(managed_hosts()) == 1
+}
+
+// RED: A ROW WHOSE SMpro SITE IS EVIDENCE ABOUT ANOTHER CONTROLLER. The real row is kept whole, so it
+// still binds, but its site is admitted behind "fixture-other-bmc"; the subject mint refuses it with
+// both controllers named, so the pass that would have read this host's BMC against another board's
+// addresses has no subject to read with.
+test fn w_a_row_whose_smpro_site_names_another_controller_mints_no_subject() -> Bool {
+  managed_hosts() |> all(h => {
+    let crossed = managed_host_fixture(host: h.host, access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold,
+      smpro: smpro_site_admit(
+        endpoint: BmcControllerEndpoint { host: "fixture-other-bmc" },
+        bus: MasterWriteReadBus { channel: 0, bus_id: 2, bus_type: PrivateBus },
+        targets: [SmproTarget { socket: 0, seven_bit_address: 79 }],
+        control_socket: 0,
+        evidence: SiteFromOperatorBrief { relay: "fixture", private_bus_is_a_bet: true },
+      ))
+    match managed_host_binding(host: crossed) {
+      ManagedHostBound { binding: b } => match managed_host_smpro_subject(binding: b) {
+        SmproPassEndpointMismatch { bound: bd, site: st } => (st.host as String) == "fixture-other-bmc" && (bd.host as String) == (b.observation.endpoint.host as String)
+        SmproPassSubjectBound { subject: _ } => false
+        SmproPassSiteRefused { cause: _ } => false
+      }
+      ManagedHostAccessUnobserved { endpoint: _ } => false
+      ManagedHostNotSecured { cause: _ } => false
+      ManagedHostEndpointMismatch { observed: _, secured: _ } => false
+    }
   }) && count(managed_hosts()) == 1
 }

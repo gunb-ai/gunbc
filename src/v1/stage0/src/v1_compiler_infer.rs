@@ -186,7 +186,8 @@ pub use crate::v1_compiler_infer_lookup::{
 };
 pub use crate::v1_compiler_infer_method::{
     builtin_host_text_param_names, builtin_kernel_seed_diagnostics, builtin_param_names,
-    infer_builtin_call_type, resolve_builtin_call_type,
+    infer_builtin_call_type, is_empty_map_constructor, is_empty_set_constructor,
+    resolve_builtin_call_type,
 };
 use crate::v1_compiler_infer_patterns::PatternSubject::*;
 pub use crate::v1_compiler_infer_patterns::{
@@ -284,8 +285,9 @@ use crate::v1_std_core::CompilerDiagnostic::{
     MethodExistenceUndecided, MethodNotFound, MissingField, OptionalCastNotEliminated,
     ReceiverTypeUnestablished, ServiceConfigReferenceJudgmentDeferred,
     SiblingOperandEffectOrderUndetermined, SoleConstructorViolation,
-    TextRepresentationUnidentifiedAtBoundary, TypeArgumentArityMismatch, TypeMismatch,
-    TypeParameterInValuePosition, UnlistedVariantValueUse, UnresolvedType, VariantCollision,
+    TextCrossingHasNoImplicitRoute, TextRepresentationUnidentifiedAtBoundary,
+    TypeArgumentArityMismatch, TypeMismatch, TypeParameterInValuePosition, UnlistedVariantValueUse,
+    UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::DeclarationMarker::Unmarked;
@@ -1863,6 +1865,74 @@ pub fn constructor_reference_admission_early_refusal(
     }
 }
 
+pub fn text_crossing_or_type_mismatch_error(
+    expected: Rc<Node>,
+    got: Rc<Node>,
+    env: Rc<TypeEnv>,
+    span: Rc<SourceSpan>,
+    module_name: String,
+) -> Rc<ErrorNode> {
+    {
+        let si = env.source_indices.clone();
+        let plain = type_mismatch_error(
+            crate::v1_compiler_infer_types::node_type_shape(expected.clone(), si.clone()),
+            crate::v1_compiler_infer_types::node_type_shape(got.clone(), si.clone()),
+            span.clone(),
+            module_name.clone(),
+        );
+        if crate::v1_compiler_infer_env::text_crossing_by_identity(
+            expected.clone(),
+            got.clone(),
+            env.clone(),
+        ) {
+            match crate::v1_compiler_infer_env::text_representation_by_identity(
+                got.clone(),
+                env.clone(),
+            ) {
+                TextRepresentation::HostText => text_crossing_route_error(
+                    expected.clone(),
+                    got.clone(),
+                    "unicode_scalar_unfold".to_string(),
+                    si.clone(),
+                    span.clone(),
+                    module_name.clone(),
+                ),
+                TextRepresentation::CodePointSequence => text_crossing_route_error(
+                    expected.clone(),
+                    got.clone(),
+                    "unicode_scalar_fold".to_string(),
+                    si.clone(),
+                    span.clone(),
+                    module_name.clone(),
+                ),
+                TextRepresentation::NotText => plain,
+                TextRepresentation::TextRepresentationUnidentified => plain,
+            }
+        } else {
+            plain
+        }
+    }
+}
+
+pub fn text_crossing_route_error(
+    expected: Rc<Node>,
+    got: Rc<Node>,
+    route: String,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    span: Rc<SourceSpan>,
+    module_name: String,
+) -> Rc<ErrorNode> {
+    crate::v1_std_core::make_error_node(
+        Rc::new(CompilerDiagnostic::TextCrossingHasNoImplicitRoute {
+            expected: crate::v1_compiler_infer_types::node_type_shape(expected.clone(), si.clone()),
+            got: crate::v1_compiler_infer_types::node_type_shape(got.clone(), si.clone()),
+            route: route.clone(),
+            span: span.clone(),
+        }),
+        module_name.clone(),
+    )
+}
+
 pub fn type_mismatch_error(
     expected: String,
     got: String,
@@ -2207,9 +2277,10 @@ pub fn declared_type_conformance_diags_core(
                 produced.clone(),
                 scope.type_env.clone(),
             ) {
-                Rc::new(vec![type_mismatch_error(
-                    crate::v1_compiler_infer_types::node_type_shape(declared.clone(), si.clone()),
-                    crate::v1_compiler_infer_types::node_type_shape(produced.clone(), si.clone()),
+                Rc::new(vec![text_crossing_or_type_mismatch_error(
+                    declared.clone(),
+                    produced.clone(),
+                    scope.type_env.clone(),
                     span.clone(),
                     scope.module_name.clone(),
                 )])
@@ -7838,7 +7909,7 @@ if (!direct_call_formal_has_unbound_type_variable(app.formal.clone().substitutio
                     {
                         let actual_raw = crate::v1_compiler_infer_types::resolved_type(actual_expr.clone());
 let actual = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(actual_raw.clone(), type_env.clone(), module_name.clone());
-Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(formal.clone(), source_indices.clone()), crate::v1_compiler_infer_types::node_type_shape(actual.clone(), source_indices.clone()), actual_expr.span.clone(), module_name.clone())])
+Rc::new(vec![text_crossing_or_type_mismatch_error(formal.clone(), actual.clone(), type_env.clone(), actual_expr.span.clone(), module_name.clone())])
 }
                 } else {
                     Rc::new(vec![])
@@ -13457,13 +13528,10 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                         })
                                     }
                                 } else {
-                                    if (!callee_is_body_binding.clone()
-                                        && (func_name.clone() == "empty_map".to_string()))
-                                    {
-                                        {
-                                            let bare_m =
-                                                crate::v1_compiler_infer_types::bare_map_node();
-                                            match expected.clone() {
+                                    if (!callee_is_body_binding.clone() && crate::v1_compiler_infer_method::is_empty_map_constructor(func_name.clone())) {
+                            {
+                                let bare_m = crate::v1_compiler_infer_types::bare_map_node();
+match expected.clone() {
     Some(exp) => if crate::v1_compiler_infer_types::node_is_keyed_collection(exp.clone(), scope.type_env.clone().source_indices.clone()) {
                                     Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
@@ -13547,15 +13615,12 @@ match bare_m.clone() {
 }),
 },
 }
-                                        }
-                                    } else {
-                                        if (!callee_is_body_binding.clone()
-                                            && (func_name.clone() == "empty_set".to_string()))
-                                        {
-                                            {
-                                                let bare_s =
-                                                    crate::v1_compiler_infer_types::bare_set_node();
-                                                match expected.clone() {
+}
+                        } else {
+                            if (!callee_is_body_binding.clone() && crate::v1_compiler_infer_method::is_empty_set_constructor(func_name.clone())) {
+                                {
+                                    let bare_s = crate::v1_compiler_infer_types::bare_set_node();
+match expected.clone() {
     Some(exp) => if crate::v1_compiler_infer_types::node_is_set_collection(exp.clone(), scope.type_env.clone().source_indices.clone()) {
                                         Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
@@ -13624,9 +13689,9 @@ match bare_s.clone() {
 }),
 },
 }
-                                            }
-                                        } else {
-                                            if (!callee_is_body_binding.clone() && (crate::v1_compiler_infer_method::infer_builtin_call_type(func_name.clone()) != std::option::Option::None)) {
+}
+                            } else {
+                                if (!callee_is_body_binding.clone() && (crate::v1_compiler_infer_method::infer_builtin_call_type(func_name.clone()) != std::option::Option::None)) {
                                     {
                                         let tier2b = infer_tier2b_builtin_with_kernel_diags(func_name.clone(), typed_args.clone(), scope.clone(), span.clone());
 let bt = tier2b.bt.clone();
@@ -13759,8 +13824,8 @@ Rc::new(InferResult {
                                         }
 }
                                 }
-                                        }
-                                    }
+                            }
+                        }
                                 }
                             }
                         }
@@ -17332,10 +17397,19 @@ if kernel_value_declared_type_mismatch(formal_peeled.clone(), actual_peeled.clon
                                             if structured_application_site_type_mismatch(expected_node.clone(), crate::v1_std_core::field_init_node_value(fi.clone()), scope.clone()) {
                                                 Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(formal_peeled.clone(), scope.type_env.clone().source_indices.clone()), crate::v1_compiler_infer_types::node_type_shape(actual_peeled.clone(), scope.type_env.clone().source_indices.clone()), ar_typed.span.clone(), scope.module_name.clone())])
                                             } else {
-                                                if ((expected_node.return_cardinality.clone() != Cardinality::CardOptional) && coproduct_payload_where_parent_required(formal_peeled.clone(), actual_peeled.clone(), scope.clone())) {
-                                                    Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(formal_peeled.clone(), scope.type_env.clone().source_indices.clone()), crate::v1_compiler_infer_types::node_type_shape(actual_peeled.clone(), scope.type_env.clone().source_indices.clone()), ar_typed.span.clone(), scope.module_name.clone())])
+                                                if (nominal_product_inhabitance_refusal(crate::v1_std_core::with_required_cardinality(expected_node.clone()), got_node.clone(), scope.clone()) != std::option::Option::None) {
+                                                    Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::DeclaredTypeNotInhabited {
+    position: declared_type_position_label(DeclaredTypePosition::PositionRecordLiteralField, fi_name.clone()),
+    expected: obligation_type_shape(expected_node.clone(), scope.type_env.clone().source_indices.clone()),
+    got: obligation_type_shape(got_node.clone(), scope.type_env.clone().source_indices.clone()),
+    span: ar_typed.span.clone(),
+}), scope.module_name.clone())])
                                                 } else {
-                                                    Rc::new(vec![])
+                                                    if ((expected_node.return_cardinality.clone() != Cardinality::CardOptional) && coproduct_payload_where_parent_required(formal_peeled.clone(), actual_peeled.clone(), scope.clone())) {
+                                                        Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(formal_peeled.clone(), scope.type_env.clone().source_indices.clone()), crate::v1_compiler_infer_types::node_type_shape(actual_peeled.clone(), scope.type_env.clone().source_indices.clone()), ar_typed.span.clone(), scope.module_name.clone())])
+                                                    } else {
+                                                        Rc::new(vec![])
+                                                    }
                                                 }
                                             }
                                         }

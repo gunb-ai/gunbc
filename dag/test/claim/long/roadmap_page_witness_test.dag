@@ -2330,7 +2330,7 @@ test fn witness_issue_comment_composer_posts_urlencoded_with_stable_key_and_csrf
   }
 }
 
-// THE PUBLICATION HANDOFF (owner mandate control 9): an observed publication renders ONE compact
+// THE PUBLICATION HANDOFF (owner mandate control 9): a published attempt result renders ONE compact
 // automated entry in the Comments stream — fabric's service avatar, the PR and head, and the
 // merge owner the fold reassigned to (the stored return_to) — while the standing the page reads
 // becomes ready for review and the History tab carries the raw event.
@@ -2342,7 +2342,7 @@ fn fx_handoff_events() -> List<gunbc.roadmap.roadmap_event_log.RoadmapEventEnvel
       node: "issue-detail-specimen" as gunbc.roadmap_model.RoadmapNodeId,
       author: fixture_fabric_principal(),
       parent: Present { value: "ho-1" as gunbc.roadmap.roadmap_event_log.RoadmapEventId },
-      kind: gunbc.roadmap.roadmap_event_log.PublicationObserved { pr: "gunb-ai/gunbc#12210" as NonEmptyStr, head: "52c56a8" as NonEmptyStr },
+      kind: gunbc.roadmap.roadmap_event_log.ResultReturned { attempt: "feedfacefeedface" as NonEmptyStr, claim: "ho-1" as gunbc.roadmap.roadmap_event_log.RoadmapEventId, outcome: gunbc.roadmap.roadmap_event_log.ResultPublished { pr: "gunb-ai/gunbc#12210" as NonEmptyStr, head: "52c56a8" as NonEmptyStr } },
       recorded_at: "2026-09-25T11:00:00Z",
     },
   }
@@ -2363,11 +2363,47 @@ test fn witness_issue_publication_handoff_renders_the_compact_automated_entry() 
     profiles: [])) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      occurrence_count(s: h, pattern: "data-event-kind=\"publication_observed\"") == 2
+      occurrence_count(s: h, pattern: "data-event-kind=\"result_returned\"") == 2
+        && string_contains(s: h, pattern: "data-result-outcome=\"published\" data-attempt=\"feedfacefeedface\"")
         && string_contains(s: h, pattern: "<span class=\"issue-avatar issue-avatar-workflow\" data-avatar=\"absent\" title=\"Fabric — workflow · fabric@gunb.ai\"><svg class=\"issue-avatar-mark\" viewBox=\"0 0 120 120\" role=\"img\" aria-label=\"Fabric\">")
         && string_contains(s: h, pattern: "published gunb-ai/gunbc#12210 at 52c56a8 — reassigned for merge to principal:google-oidc/accounts/sub-viewer")
         && string_contains(s: h, pattern: "ready for review — published gunb-ai/gunbc#12210 at 52c56a8; reassigned for merge to principal:google-oidc/accounts/sub-viewer")
         && string_contains(s: h, pattern: "issue-comment issue-publication")
+  }
+}
+
+// A RESULT THAT IS NOT A PUBLICATION IS STILL RETURNED ON THE PAGE (operator ruling 2026-10-03): a
+// failed verification renders its own entry naming the head, the cause and the principal it was
+// returned to, and it does NOT read as a reassignment for merge -- the standing stays claimed.
+test fn witness_issue_failed_verification_result_renders_without_a_merge_handoff() -> Bool {
+  let claim = fx_event_envelope(id: "rr-1", at: "2026-09-25T10:00:00Z", kind: gunbc.roadmap.roadmap_event_log.Claimed { assignee: fixture_fabric_principal(), return_to: fixture_human_principal() })
+  let failed = gunbc.roadmap.roadmap_event_log.RoadmapEventEnvelope {
+    id: "rr-2" as gunbc.roadmap.roadmap_event_log.RoadmapEventId,
+    event: gunbc.roadmap.roadmap_event_log.RoadmapEvent {
+      node: "issue-detail-specimen" as gunbc.roadmap_model.RoadmapNodeId,
+      author: fixture_fabric_principal(),
+      parent: Present { value: "rr-1" as gunbc.roadmap.roadmap_event_log.RoadmapEventId },
+      kind: gunbc.roadmap.roadmap_event_log.ResultReturned { attempt: "feedfacefeedface" as NonEmptyStr, claim: "rr-1" as gunbc.roadmap.roadmap_event_log.RoadmapEventId, outcome: gunbc.roadmap.roadmap_event_log.ResultVerificationFailed { head: "52c56a8" as NonEmptyStr, cause: "verdict validation-failed" as NonEmptyStr } },
+      recorded_at: "2026-09-25T11:00:00Z",
+    },
+  }
+  match try_serialize_html_source(node: fx_issue_detail_body(
+    view: issue_detail_fixture_view(),
+    panel: issue_detail_fixture_panel(),
+    observation: gunbc.roadmap_presentation.ObservationsNominal,
+    attempts: [],
+    events: [claim, failed],
+    viewer: "principal:google-oidc/accounts/sub-viewer",
+    recents: [ fixture_teammate_legacy() ],
+    expected_revision: "",
+    command_context: IssueFormContext { operation: "", csrf: "" },
+    profiles: [])) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      string_contains(s: h, pattern: "data-result-outcome=\"verification_failed\" data-attempt=\"feedfacefeedface\"")
+        && string_contains(s: h, pattern: "verification failed at 52c56a8: verdict validation-failed — returned to principal:google-oidc/accounts/sub-viewer")
+        && !string_contains(s: h, pattern: "reassigned for merge")
+        && !string_contains(s: h, pattern: "ready for review")
   }
 }
 
@@ -2467,24 +2503,30 @@ test fn witness_issue_current_plan_collapses_once_done() -> Bool {
 
 // THE HEADER ACCOUNT AREA, DYNAMIC CONTRACT (owner defect 2026-09-27: the main page body is the
 // belt's pre-rendered static body, so the account area personalizes client-side). THE STATIC
-// BODY renders a HIDDEN, EMPTY session target — the session span carries hidden with EMPTY avatar
-// and name fields (no identity claim in the static bytes). DISCRIMINATING ABSENCE (#12787): the
-// Google login, callback and logout routes moved to a follow-up PR, so the page must address
-// none of them — no href to /auth/login (Sign in, Switch account), no form action /auth/logout
-// (Sign out), and no account menu; a link to a route this server does not serve is a dead control.
-test fn witness_header_account_static_body_carries_hidden_target_and_no_login_controls() -> Bool {
+// BODY always renders the Sign-in link plus a HIDDEN, EMPTY session target — witnessed here: the
+// Sign-in href is /auth/login, the session span carries hidden with EMPTY avatar and name fields
+// (no identity claim in the static bytes), and the account menu (owner ask 2026-09-27) nests the
+// Google-account actions under the chip: the trigger button (avatar + name, aria-haspopup=menu),
+// the hidden menu, Switch account riding the one admitted login prompt, and the sign-out form
+// posting /auth/logout natively. THE HIDDEN-RULE PIN reads the live selector (the
+// allocation-page repair broadened it to cover the sign-in link too — the old single-selector
+// pin went stale on the merged tree and is re-transcribed here), and the avatar pins land the
+// PFP slice: the chip becomes the image's positioning context and clips it, and the
+// .issue-avatar img rule paints any image inside a chip — the projection the assignee avatar
+// slots reuse.
+test fn witness_header_account_static_body_carries_signin_and_hidden_target() -> Bool {
   match issue_detail_fixture_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       let body = match (split(s: h, delimiter: "</style>")).skip(n: 1).first() { Present { value: b } => b  Absent => h }
-      occurrence_count(s: body, pattern: "<span class=\"header-account header-account-session\" data-account-session=\"\" hidden=\"\">") == 1
-        && occurrence_count(s: body, pattern: "<button class=\"header-account-trigger\" type=\"button\" data-account-trigger=\"\">") == 1
+      occurrence_count(s: body, pattern: "<a class=\"header-account header-account-signin\" href=\"/auth/login\" data-account-signin=\"\"") == 1
+        && occurrence_count(s: body, pattern: "<span class=\"header-account header-account-session\" data-account-session=\"\" hidden=\"\">") == 1
+        && occurrence_count(s: body, pattern: "<button class=\"header-account-trigger\" type=\"button\" data-account-trigger=\"\" aria-haspopup=\"menu\" aria-expanded=\"false\">") == 1
         && occurrence_count(s: body, pattern: "<span class=\"issue-avatar\" data-account-avatar=\"\" data-avatar=\"absent\"></span>") == 1
         && occurrence_count(s: body, pattern: "<span class=\"header-account-name\" data-account-name=\"\"></span>") == 1
-        && !string_contains(s: body, pattern: "/auth/login")
-        && !string_contains(s: body, pattern: "/auth/logout")
-        && !string_contains(s: body, pattern: "data-account-menu")
-        && !string_contains(s: body, pattern: "data-account-signin")
+        && occurrence_count(s: body, pattern: "<span class=\"header-account-menu\" data-account-menu=\"\" role=\"menu\" hidden=\"\">") == 1
+        && string_contains(s: body, pattern: "<a class=\"header-account-menu-item\" href=\"/auth/login?prompt=select_account\" role=\"menuitem\">Switch account</a>")
+        && string_contains(s: body, pattern: "<form class=\"header-account-signout\" method=\"post\" action=\"/auth/logout\">")
   }
 }
 
@@ -2492,9 +2534,8 @@ test fn witness_header_account_static_body_carries_hidden_target_and_no_login_co
 // rules); the static body claim above reads the markup.
 test fn witness_header_account_rules_hide_and_crop() -> Bool {
   let css = fx_css_rule_blocks()
-  string_contains(s: css, pattern: ".header-account-session[hidden] { display: none }")
-    && !string_contains(s: css, pattern: "header-account-signin")
-    && !string_contains(s: css, pattern: "header-account-menu")
+  string_contains(s: css, pattern: ".header-account-session[hidden], .header-account-signin[hidden] { display: none }")
+    && string_contains(s: css, pattern: ".header-account-menu[hidden] { display: none }")
     && string_contains(s: css, pattern: ".issue-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover }")
     && string_contains(s: css, pattern: "var(--issue-text-dim); position: relative; overflow: hidden }")
 }
@@ -2523,12 +2564,12 @@ test fn witness_header_account_swap_table() -> Bool {
   occurrence_count(s: js, pattern: "fetch('/auth/session'") == 1
     && string_contains(s: js, pattern: "const gunbcSessionRead = fetch('/auth/session', { credentials: 'same-origin', cache: 'no-store' })")
     && string_contains(s: js, pattern: "if (!response.ok)")
-    && string_contains(s: js, pattern: "if (gunbcAccountSlot)")
-    && !string_contains(s: js, pattern: "gunbcAccountSignin")
+    && string_contains(s: js, pattern: "if (gunbcAccountSlot && gunbcAccountSignin)")
     && string_contains(s: js, pattern: "gunbcSessionRead.then((s) =>")
     && string_contains(s: js, pattern: "gunbcSessionRead.then(assignmentSetSession)")
     && !string_contains(s: js, pattern: "=> if (")
     && string_contains(s: js, pattern: "s && s.authenticated && s.authenticated === true")
+    && string_contains(s: js, pattern: "gunbcAccountSignin.hidden = true")
     && string_contains(s: js, pattern: "gunbcAccountSlot.hidden = false")
     && string_contains(s: js, pattern: "s.name || s.viewer || s.principal")
     && string_contains(s: js, pattern: "if (s.picture) {")
@@ -2537,7 +2578,10 @@ test fn witness_header_account_swap_table() -> Bool {
     && string_contains(s: js, pattern: "gunbcAvatarImg.alt = '';")
     && string_contains(s: js, pattern: ".setAttribute('data-avatar', 'resolved');")
     && string_contains(s: js, pattern: ".appendChild(gunbcAvatarImg);")
-    && !string_contains(s: js, pattern: "data-account-menu")
+    && string_contains(s: js, pattern: "document.querySelector('[data-account-trigger]')")
+    && string_contains(s: js, pattern: "document.querySelector('[data-account-menu]')")
+    && string_contains(s: js, pattern: "gunbcAccountMenu.hidden = !gunbcMenuOpen;")
+    && string_contains(s: js, pattern: "gunbcAccountMenu.hidden = true;")
 }
 // THE RAIL-FIT LAW (owner polish 2026-09-26: the Assign button clipped the rail's right edge):
 // the input flexes with min-width 0 — it shrinks below its default intrinsic size instead of
@@ -2626,7 +2670,7 @@ test fn witness_issue_detail_rail_and_comments_render_the_profile_identity() -> 
       node: "issue-detail-specimen" as gunbc.roadmap_model.RoadmapNodeId,
       author: fixture_fabric_principal(),
       parent: Present { value: "prof-ho-1" as gunbc.roadmap.roadmap_event_log.RoadmapEventId },
-      kind: gunbc.roadmap.roadmap_event_log.PublicationObserved { pr: "gunb-ai/gunbc#12210" as NonEmptyStr, head: "52c56a8" as NonEmptyStr },
+      kind: gunbc.roadmap.roadmap_event_log.ResultReturned { attempt: "feedfacefeedface" as NonEmptyStr, claim: "prof-ho-1" as gunbc.roadmap.roadmap_event_log.RoadmapEventId, outcome: gunbc.roadmap.roadmap_event_log.ResultPublished { pr: "gunb-ai/gunbc#12210" as NonEmptyStr, head: "52c56a8" as NonEmptyStr } },
       recorded_at: "2026-09-25T11:00:00Z",
     },
   }

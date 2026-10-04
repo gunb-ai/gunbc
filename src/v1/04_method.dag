@@ -10,7 +10,7 @@ import std.algebra {
   AlgebraTypeTemplate, ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue,
   NamedTemplate, ContainerOf, ContainerSource, SameAsReceiver, Named,
   OptionalOf, WitnessOf, TupleOf, CallableOf, AlgebraTypeVariable,
-  free_monoid_scalar_templates
+  free_monoid_scalar_templates, kernel_algebra_profile
 }
 
 import v1.std.core { Unmarked,
@@ -445,6 +445,54 @@ data builtin_function_registry: Map<String, BuiltinSignature> = {
   "is_xid_start": BuiltinSignature { params: [BuiltinParam { name: "cp", ty: NamedTemplate { name: "Int" } }], returns: bool_type },
   "is_xid_continue": BuiltinSignature { params: [BuiltinParam { name: "cp", ty: NamedTemplate { name: "Int" } }], returns: bool_type },
   "is_emoji_ident": BuiltinSignature { params: [BuiltinParam { name: "cp", ty: NamedTemplate { name: "Int" } }], returns: bool_type }
+}
+
+// WHICH BARE CALL NAMES CAN BIND TO SOMETHING OTHER THAN A DECLARATION. When a call's name has no
+// declared signature in the file's scope, v1.compiler.infer's call inference tries, in order: a
+// structural method of the first argument's kernel profile, the two empty-collection constructors,
+// and the builtin registry. These predicates are the one authority for that name set. The
+// inference arms read them in place of their own literals. The loader's unimported-bare-provider
+// gate reads `bare_call_non_declaration_binding` below, so it no longer reports a primitive call as
+// an unimported read of a same-spelled declaration that the compiler never binds there
+// (gunbc#12951).
+fn is_empty_map_constructor(name: String) -> Bool {
+  name == "empty_map"
+}
+
+fn is_empty_set_constructor(name: String) -> Bool {
+  name == "empty_set"
+}
+
+// The kernel-profile method names, read from the SAME template table the structural method lookup
+// reads (algebra_templates_for_profile over kernel_algebra_profile), so the two cannot drift. Only a
+// name is known before typecheck. Which receiver a method needs is decided by inference.
+fn is_kernel_method_name(name: String) -> Bool {
+  kernel_algebra_profile |> map_values |> any(profile =>
+    algebra_templates_for_profile(profile: profile) |> any(t => t.name == name)
+  )
+}
+
+// What a bare call name can bind WITHOUT a declaration, one arm per binding kind, in the order call
+// inference tries them after a declared signature. The kernel-method arm is reached only by a name
+// that is none of the others, so `KernelMethodOnly` is the set admitted by spelling before the
+// receiver's type is known (`gunbc.rung_drop`
+// `unimported_bare_provider_gate_admits_kernel_method_names_untyped`).
+type NonDeclarationBinding =
+    EmptyCollectionConstructor
+  | BuiltinFunction
+  | KernelMethodOnly
+  | DeclarationOnly
+
+fn bare_call_non_declaration_binding(name: String) -> NonDeclarationBinding {
+  if is_empty_map_constructor(name: name) || is_empty_set_constructor(name: name) {
+    EmptyCollectionConstructor
+  } else {
+    if builtin_signature(name: name) != none {
+      BuiltinFunction
+    } else {
+      if is_kernel_method_name(name: name) { KernelMethodOnly } else { DeclarationOnly }
+    }
+  }
 }
 
 fn builtin_signature(name: String) -> BuiltinSignature? {

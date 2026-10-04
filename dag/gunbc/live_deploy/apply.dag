@@ -1,5 +1,13 @@
 module gunbc.live_deploy.apply
 
+import gunbc.workspace_commissioning_executor_input { workspace_executor_installed_adapter_matches }
+import gunbc.workspace_commissioning_executor_unit { workspace_executor_unit_instance_name }
+import gunbc.runner_microvm_slot_unit { microvm_controller_requires_ci_reservation_unit }
+
+import gunbc.runner_microvm_cell_readiness_location { cell_readiness_store_location }
+import gunbc.workspace_commissioning_location { workspace_commissioning_store_location }
+import gunbc.runner_microvm_cell_readiness_store { read_store_ownership, OwnershipRead, OwnershipUnread }
+import gunbc.runner_microvm_cell_readiness { StoreRootOwned, StoreNotRootOwned }
 import gunbc.live_deploy.deployed_tree_scope {
   RepositoryTransitionRealization,
   RepositoryTransitionAdmission,
@@ -877,7 +885,14 @@ fn microvm_controller_install_readback_exit(candidate: CandidateRelease) -> Proc
       if (r as String) != (candidate.revision as String) {
         exit_failure(reason: join(["microvm_controller_install: the locus tree receipt names ", r as String, " and this install's candidate is ", candidate.revision as String], ""))
       } else {
-        microvm_controller_vmm_readback_exit(revision: revision)
+        match microvm_controller_vmm_readback_exit(revision: revision) {
+          ExitSuccess => if workspace_executor_installed_adapter_matches(
+            release_dir: approval_broker_release_dir(root: microvm_controller_root, revision: revision),
+            slot: runner_slot_instance_name(slot: srv1_microvm_shakedown_slot())) {
+            ExitSuccess
+          } else { exit_failure(reason: "microvm_controller_install: executor scripts or loaded unit failed exact readback") }
+          refused => refused
+        }
       }
   }
 }
@@ -889,7 +904,28 @@ fn microvm_controller_vmm_readback_exit(revision: ReleaseRevisionBinding) -> Pro
   } else if !string_contains(s: vmm.content, pattern: microvm_controller_vmm_name) || !string_contains(s: vmm.content, pattern: microvm_controller_jailer_name) {
     exit_failure(reason: join(["microvm_controller_install: the VMM receipt does not name both binaries: ", vmm.content], ""))
   } else {
-    microvm_slot_unit_load_readback_exit()
+    microvm_readiness_store_substrate_readback_exit()
+  }
+}
+
+// Verify only the directory's write authority. Existing records are preserved and no cell
+// becomes ready here; initial commissioning still owes history and sanitation admission.
+fn microvm_readiness_store_substrate_readback_exit() -> ProcessExit {
+  match read_store_ownership(path: cell_readiness_store_location) {
+    OwnershipUnread { reason: detail } => exit_failure(reason: join(["microvm_controller_install: readiness directory unreadable: ", detail as String], ""))
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } =>
+      exit_failure(reason: "microvm_controller_install: readiness directory is not root-authoritative")
+    OwnershipRead { ownership: StoreRootOwned } => microvm_commissioning_store_substrate_readback_exit()
+  }
+}
+
+// Directory custody is an installation fact, not commissioning completion or capacity admission.
+fn microvm_commissioning_store_substrate_readback_exit() -> ProcessExit {
+  match read_store_ownership(path: workspace_commissioning_store_location) {
+    OwnershipUnread { reason: detail } => exit_failure(reason: join(["microvm_controller_install: commissioning directory unreadable: ", detail as String], ""))
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } =>
+      exit_failure(reason: "microvm_controller_install: commissioning directory is not root-authoritative")
+    OwnershipRead { ownership: StoreRootOwned } => microvm_slot_unit_load_readback_exit()
   }
 }
 
@@ -899,7 +935,13 @@ fn microvm_controller_vmm_readback_exit(revision: ReleaseRevisionBinding) -> Pro
 // is not what the manager parses.
 fn microvm_slot_unit_load_readback_exit() -> ProcessExit {
   match microvm_unit_load_readback(unit: microvm_slot_unit_instance_name(slot_instance: runner_slot_instance_name(slot: srv1_microvm_shakedown_slot()))) {
-    ExitSuccess => microvm_unit_load_readback(unit: microvm_slot_reserve_unit_name)
+    ExitSuccess => match microvm_unit_load_readback(unit: workspace_executor_unit_instance_name(
+      slot: runner_slot_instance_name(slot: srv1_microvm_shakedown_slot()))) {
+      ExitSuccess => if microvm_controller_requires_ci_reservation_unit() {
+        microvm_unit_load_readback(unit: microvm_slot_reserve_unit_name)
+      } else { ExitSuccess }
+      refused => refused
+    }
     refused => refused
   }
 }

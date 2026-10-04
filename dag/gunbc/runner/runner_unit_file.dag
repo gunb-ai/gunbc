@@ -7,7 +7,7 @@ import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, Cit
 import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression }
 import extdeps.docker.endpoint { docker_host_env_var, docker_rootless_unix_endpoint }
 import extdeps.cache.sccache { sccache_idle_timeout_never_env_assignment }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.github.actions_runner { actions_runner_base_dir }
 import extdeps.languages.json.emit { json_string, json_array, serialize_json }
 import extdeps.jobserver { jobserver_makeflags_fifo_auth, jobserver_makeflags_env_name }

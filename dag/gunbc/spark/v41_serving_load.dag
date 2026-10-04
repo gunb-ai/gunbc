@@ -6,7 +6,7 @@ import std.algebra { trim }
 import std.measure { token_count, microsecond_count }
 import v2.std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { argv_words }
 import extdeps.vllm.bench_serve { VllmBenchServeRequest, SendAllImmediately, RandomDatasetSpec, OpenaiChat, vllm_bench_serve_request }
@@ -16,7 +16,8 @@ import extdeps.linux.diskstats { DiskstatsReading, DiskReadMeasured, DiskReadUnm
 import extdeps.linux.cgroup_v2_memory { parse_cgroup_memory_stat, CgroupMemoryStatRead, CgroupMemoryStatIncomplete }
 import extdeps.docker.cli { docker_container_inspect_command, docker_container_inspect_identity_from_stdout, DockerContainerInspectIdentity, DockerContainerInspectIdentityUnreadable }
 import extdeps.container.oci.digest { render_oci_content_digest_wire }
-import gunbc.fleet_intent_network { operator_host_srv6, srv6_host_lan_endpoint }
+import gunbc.fleet_intent_network { srv6_host_lan_endpoint }
+import gunbc.fleet_host_identity { operator_host_srv6 }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_multi_principal_probe { spark_converge_target_selection, SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, fabric_group_hosts }
@@ -218,7 +219,7 @@ type V41RemoteText
 
 fn v41_remote_text(ctx: SparkMaterializeContext, what: String, argv: List<String>) -> V41RemoteText {
   match spark_remote_run(ctx: ctx, argv: argv) {
-    RemoteUnreachable { cause: c } => V41RemoteTextRefused { cause: join([what, " unreachable: ", c], "") }
+    RemoteUnreachable { cause: c, reach: _ } => V41RemoteTextRefused { cause: join([what, " unreachable: ", c], "") }
     RemoteRan { exit_code: code, stdout: out, stderr: err } =>
       if code != 0 {
         V41RemoteTextRefused { cause: join([what, " exited ", to_string(code), ": ", err], "") }

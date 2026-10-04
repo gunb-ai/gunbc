@@ -42,7 +42,8 @@ import gunbc.runner_browser_toolchain {
   TreeAdmission, TreeAdmitted, TreeAbsent, VersionMatches, HostLibrariesResolved, BrowserLaunchRendered,
   runner_browser_toolchain_node, runner_browser_toolchain_automation, browser_toolchain_probe_title, browser_toolchain_probe_width_px,
 }
-import gunbc.machine_intake_mtcollins1_maintenance_hold { boot_run_owner, unit_hold_store_root, mtcollins1_unit_hold_key }
+import gunbc.managed_host_unit_hold { boot_run_owner, unit_hold_store_root }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -384,14 +385,14 @@ test fn a_second_run_for_a_held_unit_writes_nothing_to_the_controller() -> Bool 
   let other_running = with_fs(w: base, fs: fs_with_file(fs: base.fs, path: proc_stat_path(pid: 2900), content: proc_stat_line(p: worker_process(pid: 2900, start_ticks: 100))))
   let prior = evaluate_in_witness_frame(
     frame: matrix_frame(world: other_running),
-    subject: fn(_scope) { file_hold_acquire(root: unit_hold_store_root, slot_key: mtcollins1_unit_hold_key, requested_owner: boot_run_owner(run_id: "4141" as NonEmptyStr, process: ProcessIdentity { boot_id: worker_boot_id as NonEmptyStr, pid: 2900, start_time: "100" as NonEmptyStr }, pid_namespace: worker_pid_namespace as NonEmptyStr)) }
+    subject: fn(_scope) { file_hold_acquire(root: unit_hold_store_root, slot_key: operator_host_mtcollins1 as NonEmptyStr, requested_owner: boot_run_owner(run_id: "4141" as NonEmptyStr, process: ProcessIdentity { boot_id: worker_boot_id as NonEmptyStr, pid: 2900, start_time: "100" as NonEmptyStr }, pid_namespace: worker_pid_namespace as NonEmptyStr)) }
   )
   match prior {
     WitnessReturned { state } => match state {
       Absent => false
       Present { value: held } => match run_attempt(world: held) {
         WitnessReturned { value, route } =>
-          string_contains(s: outcome_reason(a: value), pattern: "is held by 'mtcollins1-boot:4141@")
+          string_contains(s: outcome_reason(a: value), pattern: "is held by 'boot-run:4141@")
             && string_contains(s: outcome_reason(a: value), pattern: "which is alive")
             && count(filter(route, r => is_controller_write(r: r))) == 0
             && count_named(route: route, name: "gunbc.machine_intake.sol_hold.ActivateHeld") == 0
@@ -891,6 +892,29 @@ test fn a_foreign_presented_image_is_not_stopped() -> Bool {
       string_contains(s: outcome_reason(a: value), pattern: "it is not this workflow's to stop, so nothing was written")
         && count_named(route: route, name: "megarac.Media.StopMedia") == 0
         && count_named(route: route, name: "megarac.Media.StartMedia") == 0
+        && reached_no_power_action(route: route)
+    _ => false
+  }
+}
+
+// A NAMED RECEIPT THAT REFUSES READS NOTHING FROM THE CONTROLLER AND WRITES NOTHING: admission
+// (gunbc.host_boot_attempt_admission) runs under the unit hold and before the SDR/SEL baseline, so a
+// receipt path outside artifacts/receipts/ refuses before any BMC read or power action.
+fn with_named_receipt(w: MtCollins1BootWorld, path: String, nonce: String) -> MtCollins1BootWorld {
+  MtCollins1BootWorld {
+    bmc: w.bmc, fs: w.fs,
+    environment: concat(w.environment, [ModeledVariable { name: "GUNBC_BOOT_ATTEMPT_RECEIPT", value: path }, ModeledVariable { name: "GUNBC_BOOT_ATTEMPT_NONCE", value: nonce }]),
+    agent: w.agent, remote_hosts: w.remote_hosts, clock: w.clock, worker: w.worker, console: w.console, media: w.media, screen: w.screen,
+  }
+}
+
+test fn a_refused_named_receipt_reads_no_baseline_and_writes_nothing() -> Bool {
+  match run_attempt(world: with_named_receipt(w: world_with_console(lines: console_of(capture: one_socket_census_capture, begin_after: 60, end_after: 240)), path: "artifacts/receipts/../escape.json", nonce: "n1")) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "attempt receipt refused")
+        && count_named(route: route, name: "diagnostic.ipmi.Tool.SdrDumpAuthenticated") == 0
+        && count_named(route: route, name: "diagnostic.ipmi.Tool.SelListAuthenticated") == 0
+        && count_named(route: route, name: "diagnostic.ipmi.Tool.SelListAuthenticatedCached") == 0
         && reached_no_power_action(route: route)
     _ => false
   }

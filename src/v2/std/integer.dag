@@ -1,5 +1,6 @@
 module v2.std.integer
 
+import std.coercion { unicode_scalar_unfold }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty, FreeMonoid, AbelianGroup, GroupCompletion, OrderedRing, Ordering, Less, Equal, Greater, list_snoc_item }
 import std.error_primitives { DivError, Result, DivideByZero, Ok, Err }
@@ -14,7 +15,7 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, outcome_accepted, outcome_rejected, invariant_port_locus, port_refusal_locus, Unavailable }
+import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, outcome_accepted, outcome_rejected, invariant_port_locus, port_refusal_locus, Unavailable, AmbiguousIntent }
 import v2.std.node { Arrow, Atom, Cardinality, ComputationNode, Conj, Disj, Edge, Instantiation, Authored, Node, Symbol, TypeNode, is_empty_conj_root }
 import v2.std.node_query { find_named_child }
 import std.integer { Signedness, Signed, Unsigned }
@@ -1179,7 +1180,7 @@ fn integer_string_to_decimal_digits_step(
 }
 
 fn integer_string_to_decimal_digits_optional(s: String) -> Optional<FreeMonoid<DecimalDigit>> {
-  integer_string_to_decimal_digits_step(s: chars(s: s), acc: Empty)
+  integer_string_to_decimal_digits_step(s: unicode_scalar_unfold(s: s), acc: Empty)
 }
 
 fn integer_decimal_nonzero_magnitude_to_int(m: DecimalNonZeroMagnitude) -> Int {

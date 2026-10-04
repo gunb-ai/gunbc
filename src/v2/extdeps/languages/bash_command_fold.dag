@@ -396,11 +396,27 @@ fn bash_fold_with_redir_fixed_rhs(redir_binding: Symbol, redir_token: Symbol) ->
 }
 
 fn bash_fold_with_redir_to_file_rhs(path_word_kind: Symbol) -> List<FormalGrammarSymbol> {
+  bash_fold_with_redir_file_rhs(
+    redir_binding: ^bash_production_fold_redir_to_file,
+    redir_token: ^bash_fold_redir_to_file,
+    path_word_kind: path_word_kind
+  )
+}
+
+fn bash_fold_with_redir_stderr_to_file_rhs(path_word_kind: Symbol) -> List<FormalGrammarSymbol> {
+  bash_fold_with_redir_file_rhs(
+    redir_binding: ^bash_production_fold_redir_stderr_to_file,
+    redir_token: ^bash_fold_redir_stderr_to_file,
+    path_word_kind: path_word_kind
+  )
+}
+
+fn bash_fold_with_redir_file_rhs(redir_binding: Symbol, redir_token: Symbol, path_word_kind: Symbol) -> List<FormalGrammarSymbol> {
   [
     bash_fold_stmt_kind_tag_terminal(binding: ^bash_production_fold_with_redir),
     grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_operand),
-    bash_fold_stmt_kind_tag_terminal(binding: ^bash_production_fold_redir_to_file),
-    grammar_formal_terminal(identity: ^bash_fold_redir_to_file),
+    bash_fold_stmt_kind_tag_terminal(binding: redir_binding),
+    grammar_formal_terminal(identity: redir_token),
     grammar_formal_nonterminal_occurrence(identity: path_word_kind)
   ]
 }
@@ -424,7 +440,9 @@ fn bash_fold_with_redir_rhs_alternatives() -> List<List<FormalGrammarSymbol>> {
       redir_token: ^bash_fold_redir_stdout_to_stderr
     ),
     bash_fold_with_redir_to_file_rhs(path_word_kind: ^bash_production_fold_lit_word),
-    bash_fold_with_redir_to_file_rhs(path_word_kind: ^bash_production_fold_var_word)
+    bash_fold_with_redir_to_file_rhs(path_word_kind: ^bash_production_fold_var_word),
+    bash_fold_with_redir_stderr_to_file_rhs(path_word_kind: ^bash_production_fold_lit_word),
+    bash_fold_with_redir_stderr_to_file_rhs(path_word_kind: ^bash_production_fold_var_word)
   ]
 }
 
@@ -784,7 +802,8 @@ fn bash_fold_lex_rules() -> LexRuleSet {
       bash_fold_lex_rule(token_class: ^bash_fold_redir_stdout_and_stderr_null, text: " >/dev/null 2>&1"),
       bash_fold_lex_rule(token_class: ^bash_fold_redir_stdout_null, text: " >/dev/null"),
       bash_fold_lex_rule(token_class: ^bash_fold_redir_stdout_to_stderr, text: " >&2"),
-      bash_fold_lex_rule(token_class: ^bash_fold_redir_to_file, text: " > ")
+      bash_fold_lex_rule(token_class: ^bash_fold_redir_to_file, text: " > "),
+      bash_fold_lex_rule(token_class: ^bash_fold_redir_stderr_to_file, text: " 2> ")
     ],
     modes: []
   }
@@ -833,7 +852,7 @@ fn bash_ingest_lex_rules() -> LexRuleSet {
 }
 
 fn bash_fold_emit_transforms() -> Map<Symbol, TokenClassEmitTransform> {
-  let m0 = bash_token_class_emit_transforms()
+  let m0 = bash_token_class_emit_transforms_carried
   let m1 = map_insert(m0, ^bash_fold_word_kind_lit, EmitSpellingConstant { value: "" })
   let m2 = map_insert(m1, ^bash_fold_word_kind_var, EmitSpellingConstant { value: "" })
   let m3 = map_insert(m2, ^bash_fold_stmt_kind_tag, EmitSpellingConstant { value: "" })

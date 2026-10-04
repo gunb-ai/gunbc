@@ -90,8 +90,14 @@ import std.measure {
 // this partition admits. Its `.dag` entry declares one fold, `native_claim_report() ->
 // NativeClaimReport`, which computes every case, renders one row per case identity and decides the
 // terminal;
-// the rendered main performs only the two operations no fold can -- writing stdout and setting the
-// status -- and reads no argv and no file. It exists because a claim that must EXECUTE natively has
+// the rendered main performs only the operations no fold can -- writing stdout and setting the
+// status -- and reads no argv. Its DECLARED RESOURCE SET is {Filesystem}: a report that reaches no
+// effect gets a synchronous main that binds nothing, and a report whose only demand is the
+// Filesystem service gets that service bound to the existing extdeps.filesystem.filesystem_io
+// handler, the binding NativeCliDriver's main already performs, with a transport error reported as
+// no observation. Any other demand is refused at emission in place of a main
+// (v1.compiler.emit_rust native_claim_report_effect_demand), so a claim cannot reach an effect this
+// driver has not declared. It exists because a claim that must EXECUTE natively has
 // no other door: the required-v2-native lane runs v2.test.* claims inside the emitted compiler's own
 // evaluator, which interprets the claim's closure rather than emitting it, and NativeCliDriver's main
 // is the compile CLI's (source-root walk and plan folds), so reusing it would give one arm two
@@ -118,12 +124,27 @@ type NativeClaimReport {
   terminal: NativeClaimTerminal
 }
 
+// NativeServeDriver -- a NATIVELY EMITTED HTTP REQUEST/RESPONSE SERVICE, the native route for
+// every program `gunbc serve` (a seed verb, DESIGN section 7) serves today. Its `.dag` entry
+// declares `native_serve_handle(method, path, body, tailscale_identity, release_revision) ->
+// ServeWireResponse` -- the seed's handler contract unchanged -- and imports gunbc.native_serve,
+// whose folds decide everything between the bytes: which address to bind and which release the
+// process is (argv in, a refusal before any bind), whether a request head is admissible and how
+// many body bytes follow, and whether the request is answered before the handler (/livez). The
+// rendered main performs only what no fold can -- read argv, bind and accept the TCP listener,
+// read the request line, header lines and exactly the body length it was handed within the
+// contract's byte limits and timeout, call the handler once per request, write the returned
+// value -- serially, one request at a time, as the seed does. It is a fifth arm and not a mode on
+// NativeCliDriver for the reason that arm gives for itself: one crate has one entry point, and a
+// served program's main shares nothing with the compile CLI's. Instrument:
+// `gunbc test //gunbc/instruments:native-serve`.
 type CompilerEntryDriver
   = RetainedHostCliKernel
   | DirectIngestDriver
   | SourceRootEvalDriver
   | NativeCliDriver
   | NativeClaimDriver
+  | NativeServeDriver
 
 // MODULE RELEASE IS ITS OWN ROW BECAUSE RELEASE IS NOT FREE AND WAS NOT ATTRIBUTED. The per-module
 // loop closed its prepare span and then let the module's resolved tree fall out of scope at the end
