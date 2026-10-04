@@ -376,11 +376,14 @@ test fn w_a_precondition_is_not_satisfied_by_a_receipt_from_another_run() -> Boo
 test fn w_identity_bind_refuses_an_access_receipt_from_another_run() -> Bool {
   match established_access(o: real_access(run: run_b, subject: mtjade1_key, read: read_mtjade1_current_manager_read())) {
     Absent => false
-    Present { value: earlier } =>
-      match step_outcome_refusal(outcome: identity_bind_provisional(key: step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: mtjade1_key), access: earlier, inputs: supplied_identity_inputs())) {
+    Present { value: earlier } => {
+      let outcome: StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal> = identity_bind_provisional(key: step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: mtjade1_key), access: earlier, inputs: supplied_identity_inputs())
+      let refusal: ArrivalStepRefusal? = step_outcome_refusal(outcome: outcome)
+      match refusal {
         Present { value: c } => match c { IdentityBindAccessForAnotherInstance { access: k } => ((k.run as NonEmptyStr) as String) == "o1c1-witness-run-b"  _ => false }
         Absent => false
       }
+    }
   }
 }
 
