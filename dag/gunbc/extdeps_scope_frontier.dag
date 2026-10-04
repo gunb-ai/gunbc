@@ -596,6 +596,11 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/auth/jwt.dag",
   "dag/extdeps/uuid/uuid.dag",
   "dag/extdeps/time/rfc3339.dag",
+  "dag/extdeps/languages/json/emit.dag",
+  "dag/extdeps/process/posix_exit.dag",
+  "dag/extdeps/network/ipv6.dag",
+  "dag/extdeps/github/gists.dag",
+  "dag/extdeps/filesystem/posix.dag",
 ]
 
 data scope_machinery_exempt_paths: List<String> = [
