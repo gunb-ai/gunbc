@@ -1,0 +1,75 @@
+module gunbc.workspace_offer_producer
+
+import std.types { NonEmptyStr, String, Timestamp, List }
+import std.measure { Second, hardware_thread_count_value, byte_size_count, gibibyte_to_byte_size }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+import product.fabric.identity { FabricIdentity, OfferKey, fabric_identity_eq }
+import product.fabric.provider_route { ProviderRoute }
+import product.fabric.supply { SupplierOffer, OfferQuote, ObservedSupply }
+import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.selection { DispatchInputs }
+import product.fabric.candidate_field { FieldRequest }
+import product.fabric.node_qualification { OfferDoesNotClaimNodeDelivery }
+import gunbc.workspace_commissioning_store { WorkspaceCommittedCommissioning }
+import gunbc.workspace_guest_image { VerifiedWorkspaceImage }
+import gunbc.runner_microvm { gunbc_runner_microvm_declared_realization_allowance }
+import gunbc.workspace_tool_observer { WorkspaceToolsObserved, workspace_tools_refusal }
+import gunbc.workspace_allocation { WorkspaceRequest, workspace_execution_requirements, workspace_profile_vcpus, workspace_profile_memory }
+import gunbc.workspace_allocation_supply { WorkspaceHostSupplyObservation, workspace_slot_observation_refusal }
+import gunbc.workspace_gateway_admission { WorkspaceGatewayEvidence, workspace_gateway_refusal }
+import gunbc.fabric_control_plane { fabric_cell_allocation_key }
+
+// Commercial observations remain supplied evidence; no zero-cost quote or regulatory permit is
+// invented here. Commissioning, installed image, host observation and access each retain their
+// authority. The resulting offer still passes the ordinary candidate-field route admission.
+type WorkspaceOfferTerms {
+  supplier: NonEmptyStr
+  route: ProviderRoute
+  quote: OfferQuote
+  billing_quantum: Second
+  dispatch: DispatchInputs<NonEmptyStr>
+}
+type WorkspaceOfferProduction
+  = WorkspaceOfferProduced { request: FieldRequest<NonEmptyStr> }
+  | WorkspaceOfferUnmet { reason: NonEmptyStr }
+
+fn workspace_offer_from_observations(root: NonEmptyStr, request: WorkspaceRequest,
+  commissioned: WorkspaceCommittedCommissioning, image: VerifiedWorkspaceImage,
+  host: WorkspaceHostSupplyObservation, tools: WorkspaceToolsObserved,
+  gateway: WorkspaceGatewayEvidence, terms: WorkspaceOfferTerms, now: Timestamp) -> WorkspaceOfferProduction {
+  let required = workspace_execution_requirements(profile: request.profile)
+  let guest_bytes = byte_size_count(b: workspace_profile_memory(profile: request.profile))
+  let realization_bytes = byte_size_count(b: gibibyte_to_byte_size(g: gunbc_runner_microvm_declared_realization_allowance))
+  if image.identity != request.image { WorkspaceOfferUnmet { reason: "installed image does not match admitted request" } }
+  else if hardware_thread_count_value(t: commissioned.admitted.cpu_budget) < workspace_profile_vcpus(profile: request.profile)
+    || byte_size_count(b: commissioned.admitted.attempt_envelope) < guest_bytes + realization_bytes {
+    WorkspaceOfferUnmet { reason: "commissioned exclusive slot budget cannot contain the selected guest and realization reserve" }
+  } else if (match workspace_tools_refusal(observation: tools, slot: commissioned.admitted.slot, now: now) { Present { value: _ } => true Absent => false }) { WorkspaceOfferUnmet { reason: "controller tools are stale, unobserved, or belong to another host" } }
+  else { match workspace_slot_observation_refusal(root: root, slot: commissioned.admitted.slot, observation: host, now: now) {
+    Present { value: detail } => WorkspaceOfferUnmet { reason: detail }
+    Absent => match workspace_gateway_refusal(slot: commissioned.admitted.slot, evidence: gateway, now: now) {
+      Present { value: detail } => WorkspaceOfferUnmet { reason: detail }
+      Absent => {
+        let offer_id = workspace_observed_offer_identity(commissioned: commissioned, request: request, host: host, gateway: gateway, supplier: terms.supplier)
+        if !fabric_identity_eq(left: terms.dispatch.offer, right: offer_id) { WorkspaceOfferUnmet { reason: "commercial observations name another observed offer" } }
+        else {
+        let offer = SupplierOffer {
+          id: offer_id, executor: fabric_cell_allocation_key(slot: commissioned.admitted.slot), route: terms.route,
+          shape: required.shape, capabilities: required.capabilities, trust_domain: required.trust_domain, isolation: required.isolation,
+          quantity_bound: 1, ready_at: now, quote: terms.quote, billing_quantum: terms.billing_quantum,
+          evidence: ObservedSupply { observed_at: host.observed_at, receipt: commissioned.admitted.commissioning_plan_hash as ObservationReceiptRef },
+        }
+        WorkspaceOfferProduced { request: FieldRequest { offer: offer, dispatch: terms.dispatch, delivery: OfferDoesNotClaimNodeDelivery } }
+        }
+      }
+    }
+  } }
+}
+
+
+fn workspace_observed_offer_identity(commissioned: WorkspaceCommittedCommissioning, request: WorkspaceRequest,
+  host: WorkspaceHostSupplyObservation, gateway: WorkspaceGatewayEvidence, supplier: NonEmptyStr) -> FabricIdentity<NonEmptyStr, OfferKey> {
+  FabricIdentity { principal: supplier, key: serialize_content_hash(hash: content_hash_of_value(value: concat(
+    commissioned.admitted.commissioning_plan_hash as String, fabric_cell_allocation_key(slot: commissioned.admitted.slot) as String,
+    request.image as String, to_string(request.profile), gateway.receipt as String, host.observed_at))) as OfferKey }
+}

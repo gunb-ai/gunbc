@@ -1,0 +1,80 @@
+module gunbc.workspace_commissioning_executor_recovery
+
+import std.types { String, NonEmptyStr, Bool }
+import gunbc.workspace_commissioning_executor_helper {
+  workspace_executor_actor_observe, WorkspaceExecutorActorObserved, WorkspaceExecutorActorRefused,
+}
+import gunbc.workspace_commissioning_executor_journal {
+  WorkspaceExecutorRecord, WorkspaceExecutorPhase, ExecutorSubmissionRecorded, ExecutorSubmissionFenced,
+  ExecutorInvocationRecorded, ExecutorControllerRetryFenced, ExecutorReadbackAccepted, ExecutorReleaseObserved,
+  ExecutorGenerationCommitted, workspace_executor_record_coherent,
+}
+import gunbc.workspace_commissioning_executor_store {
+  workspace_executor_journal_observe, WorkspaceExecutorJournalObserved, WorkspaceExecutorJournalUnreadable,
+}
+import gunbc.workspace_commissioning_executor_fence { workspace_executor_mutation_matches }
+import gunbc.workspace_commissioning_start_observe {
+  workspace_commissioning_start_observe, WorkspaceCommissioningStartObserved, WorkspaceCommissioningStartUnreadable,
+}
+import gunbc.runner_microvm_slot_unit_identity { microvm_slot_unit_instance_name }
+
+// Recovery never authorizes a new StartUnit. A submission without a bound winner can still
+// have an outstanding start request, even when systemd currently reports inactive. That case
+// remains an explicit drainage obligation instead of being reclassified as an unused slot.
+type WorkspaceExecutorRecovery
+  = WorkspaceExecutorResumeWait { invocation: NonEmptyStr }
+  | WorkspaceExecutorResumeSettlement { invocation: NonEmptyStr }
+  | WorkspaceExecutorResumeCompletion { invocation: NonEmptyStr }
+  | WorkspaceExecutorRecoveryRefused { reason: String }
+
+fn workspace_executor_recovery_needs_controller(phase: WorkspaceExecutorPhase) -> Bool {
+  phase == ExecutorInvocationRecorded
+}
+
+fn workspace_executor_recovery_phase(record: WorkspaceExecutorRecord) -> WorkspaceExecutorRecovery {
+  if !workspace_executor_record_coherent(record: record) {
+    WorkspaceExecutorRecoveryRefused { reason: "executor recovery record is incoherent" }
+  } else { match record.phase {
+    ExecutorSubmissionRecorded => WorkspaceExecutorRecoveryRefused {
+      reason: "submission has no bound controller; queued start must be fenced or drained before another start",
+    }
+    ExecutorSubmissionFenced => WorkspaceExecutorRecoveryRefused { reason: "fenced submission must finish drainage before rearming" }
+    ExecutorControllerRetryFenced => WorkspaceExecutorRecoveryRefused { reason: "retry-fenced controller must finish drainage before rearming" }
+    ExecutorInvocationRecorded => WorkspaceExecutorResumeWait { invocation: record.invocation as NonEmptyStr }
+    ExecutorReadbackAccepted => WorkspaceExecutorResumeSettlement { invocation: record.invocation as NonEmptyStr }
+    ExecutorReleaseObserved => WorkspaceExecutorResumeSettlement { invocation: record.invocation as NonEmptyStr }
+    ExecutorGenerationCommitted => WorkspaceExecutorResumeCompletion { invocation: record.invocation as NonEmptyStr }
+  } }
+}
+
+// The current helper must actually belong to the named executor. The original submitter stays
+// immutable in the journal; resuming settlement does not rewrite history or mint a start permit.
+// Readback/release recovery deliberately avoids inspecting a subsequently reused guest.
+fn workspace_executor_recover(slot: NonEmptyStr, executor: NonEmptyStr,
+  plan: NonEmptyStr, bundle: NonEmptyStr) -> WorkspaceExecutorRecovery {
+  match workspace_executor_actor_observe(slot: slot) {
+    WorkspaceExecutorActorObserved { actor } => if actor.invocation != executor {
+      WorkspaceExecutorRecoveryRefused { reason: "recovery caller does not name its actual executor" }
+    } else { match workspace_executor_journal_observe(slot_key: slot) {
+      WorkspaceExecutorJournalObserved { snapshot } => match snapshot.record {
+        Present { value: record } => if record.subject.plan_hash != plan || record.subject.fleet_bundle_hash != bundle {
+          WorkspaceExecutorRecoveryRefused { reason: "recovery belongs to another reviewed transaction" }
+        } else if workspace_executor_recovery_needs_controller(phase: record.phase) {
+          if !workspace_executor_mutation_matches(record: record) {
+            WorkspaceExecutorRecoveryRefused { reason: "controller recovery lost the exact mutation exclusion" }
+          } else { match workspace_commissioning_start_observe(
+            unit: microvm_slot_unit_instance_name(slot_instance: slot as String)) {
+            WorkspaceCommissioningStartObserved { snapshot: current } => if current.load != "loaded"
+              || current.invocation != record.invocation {
+              WorkspaceExecutorRecoveryRefused { reason: "recorded controller is not the manager's current invocation" }
+            } else { workspace_executor_recovery_phase(record: record) }
+            WorkspaceCommissioningStartUnreadable { reason: _ } => WorkspaceExecutorRecoveryRefused { reason: "recorded controller is unreadable" }
+          } }
+        } else { workspace_executor_recovery_phase(record: record) }
+        Absent => WorkspaceExecutorRecoveryRefused { reason: "recovery has no durable executor submission" }
+      }
+      WorkspaceExecutorJournalUnreadable { reason: _ } => WorkspaceExecutorRecoveryRefused { reason: "recovery journal is unreadable" }
+    } }
+    WorkspaceExecutorActorRefused { reason: _ } => WorkspaceExecutorRecoveryRefused { reason: "recovery caller is outside the live executor" }
+  }
+}

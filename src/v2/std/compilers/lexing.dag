@@ -1,5 +1,6 @@
 module v2.std.compilers.lexing
 
+import std.coercion { unicode_scalar_unfold }
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Empty, list_append, list_snoc_item }
@@ -208,7 +209,7 @@ fn phrase_to_lex_rule_set(p: LexicalPhrase) -> LexRuleSet {
           xs: acc,
           item: TokenRule {
             token_class: s.token_class,
-            pattern: LiteralPattern { text: chars(s: s.fragment) }
+            pattern: LiteralPattern { text: unicode_scalar_unfold(s: s.fragment) }
           }
         )
       }
