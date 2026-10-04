@@ -25,7 +25,8 @@ import gunbc.toolchain_home_standing {
   admit_workflow_toolchain_homes, WorkflowToolchainHomesAdmitted, WorkflowToolchainHomeRefused,
   toolchain_home_refusal_reason,
 }
-import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
+import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec, ci_runner_target_ram_speed_budget, selected_ci_runner_target }
+import std.measure { ByteSize, byte_size, byte_size_count }
 import gunbc.compiler_gate_workflow { compiler_gate_hosted_build_prelude_bound_steps }
 import gunbc.witness_floor_workflow { witness_toolchain_homes_isolated_guard_step }
 import gunbc.instrument_targets {
@@ -37,7 +38,9 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes,
   bash_build_assign_lit, bash_build_assign_var, bash_build_or_else,
   bash_build_command_from_lits, bash_build_command_with_words,
-  bash_build_test_bracket, bash_build_with_redir_to_file,
+  bash_build_test_bracket, bash_build_with_redir_to_file, bash_build_with_redir_stderr_to_file,
+  bash_build_with_redir, bash_build_word_cmdsubst, bash_build_pipe, bash_build_and_then, bash_build_assign,
+  bash_build_exit, bash_build_if_from_stmts,
 }
 
 // ONE OPERATOR-DISPATCHED RUN OF ONE ROSTERED INSTRUMENT, ON THE FLEET, AND NOTHING ELSE.
@@ -145,6 +148,166 @@ fn instrument_dispatch_labels_are_rostered() -> Bool {
   })) == 0
 }
 
+// THE MEMORY A DISPATCHED SUBJECT NEEDS IS A DECLARED FACT OF ITS LABEL, NOT A FACT OF WHICHEVER HOST
+// PICKS THE JOB UP (follow-up to gunbc#13141). A whole-tree census held run 37119024146 on srv1 because
+// that slot's cgroup happened to admit it; nothing said it needed to. Each row here names a label and
+// the memory its run must be granted, and the requirement is held twice from this one row:
+//   - at GENERATION, against the selected runner target's memory regime
+//     (gunbc.ci_runner_target ci_runner_target_ram_speed_budget -- the existing vocabulary, so a
+//     runner switch that cannot hold a row refuses the workflow instead of emitting it);
+//   - at RUN TIME, by a guard step bound to that label which reads the job's effective memory bound
+//     (the least numeric memory.high/memory.max on its cgroup path, and MemTotal) and refuses before
+//     the prelude spends anything, so an under-provisioned runner stops loudly rather than OOM-killing
+//     the instrument at hour two.
+// The demand is per label, not one job-wide number: a gate sized for the largest subject refuses every
+// smaller one (gunbc.recurring_failure_mode a_gate_sized_for_the_largest_subject_refuses_every_smaller_one).
+// A label with no row carries no memory wall; the rows cover the whole-tree instruments, which are the
+// subjects whose demand scales with the corpus.
+type InstrumentDispatchMemoryDemand {
+  label: Label
+  demand: ByteSize
+}
+
+// 20 GiB: an explicit policy budget for a whole-tree pass (about 20GB, gunbc#13141 and the follow-up
+// that raised this row), sized under the fleet slot's memory.high so the selected target admits it.
+data instrument_dispatch_whole_tree_memory_demand: ByteSize = byte_size(21474836480)
+
+fn instrument_dispatch_memory_demands() -> List<InstrumentDispatchMemoryDemand> {
+  [
+    InstrumentDispatchMemoryDemand { label: dependency_demand_census_label(), demand: instrument_dispatch_whole_tree_memory_demand },
+    InstrumentDispatchMemoryDemand { label: v2_native_census_label(), demand: instrument_dispatch_whole_tree_memory_demand },
+  ]
+}
+
+fn instrument_dispatch_memory_demands_fit(demands: List<InstrumentDispatchMemoryDemand>, budget: ByteSize) -> Bool {
+  length(xs: filter(xs: demands, predicate: fn(d) { byte_size_count(b: d.demand) > byte_size_count(b: budget) })) == 0
+}
+
+fn instrument_dispatch_memory_demands_fit_selected_target() -> Bool {
+  instrument_dispatch_memory_demands_fit(demands: instrument_dispatch_memory_demands(), budget: ci_runner_target_ram_speed_budget(target: selected_ci_runner_target()))
+}
+
+fn instrument_dispatch_memory_demands_are_dispatchable() -> Bool {
+  let options = instrument_dispatch_label_options()
+  length(xs: filter(xs: instrument_dispatch_memory_demands(), predicate: fn(d) {
+    length(xs: filter(xs: options, predicate: fn(o) { o == render_label(l: d.label) })) == 0
+  })) == 0
+}
+
+// THE GUARD IS ONE SCRIPT, EMITTED THROUGH v2.workflow.bash_emit LIKE ITS SIBLINGS; each declared row
+// binds it to a label and hands it the row's byte count through the step environment, so the number has
+// one home (the row) and the script one emission. It refuses when the machine's memory (free -b) or a
+// numeric memory.high / memory.max on the job's own cgroup is below the requirement. A bound set only on
+// an ANCESTOR cgroup of the step is not read: bash_emit carries no loop to walk the path, and the
+// runner's bound sits on the runner unit's own cgroup, which its steps inherit.
+fn instrument_dispatch_memory_refusal(source: String) -> List<Node> {
+  [
+    bash_build_with_redir(
+      inner: bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "echo"),
+        bash_build_word_concat_from_nodes(parts: [
+          bash_build_word_lit(text: "::error::InstrumentMemoryBudgetUnmet label="),
+          bash_build_word_var(name: "INSTRUMENT_LABEL"),
+          bash_build_word_lit(text: join([" ", source, "="], "")),
+          bash_build_word_var(name: source),
+          bash_build_word_lit(text: " required="),
+          bash_build_word_var(name: "REQUIRED_MEMORY_BYTES"),
+          bash_build_word_lit(text: " -- this runner cannot hold the dispatched subject (gunbc.instrument_dispatch_workflow instrument_dispatch_memory_demands)"),
+        ]),
+      ]),
+      redir: ^bash_production_fold_redir_stdout_to_stderr,
+    ),
+    bash_build_exit(code: "1"),
+  ]
+}
+
+fn instrument_dispatch_cgroup_read(file: String) -> Node {
+  bash_build_word_cmdsubst(body: bash_build_or_else(
+    left: bash_build_with_redir(
+      inner: bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "cat"),
+        bash_build_word_concat_from_nodes(parts: [
+          bash_build_word_lit(text: "/sys/fs/cgroup"),
+          bash_build_word_var(name: "cg"),
+          bash_build_word_lit(text: join(["/", file], "")),
+        ]),
+      ]),
+      redir: ^bash_production_fold_redir_stderr_null,
+    ),
+    right: bash_build_command_from_lits(lits: ["echo", "max"]),
+  ))
+}
+
+fn instrument_dispatch_below_required(var: String) -> Node {
+  bash_build_test_bracket(words: [bash_build_word_var(name: var), bash_build_word_lit(text: "-lt"), bash_build_word_var(name: "REQUIRED_MEMORY_BYTES")])
+}
+
+fn instrument_dispatch_cgroup_bound_below_required(var: String) -> Node {
+  bash_build_and_then(
+    left: bash_build_test_bracket(words: [bash_build_word_var(name: var), bash_build_word_lit(text: "!="), bash_build_word_lit(text: "max")]),
+    right: instrument_dispatch_below_required(var: var),
+  )
+}
+
+fn instrument_dispatch_memory_guard_statements() -> List<Node> {
+  [
+    bash_build_assign(name: "machine", value: bash_build_word_cmdsubst(body: bash_build_pipe(
+      left: bash_build_pipe(
+        left: bash_build_pipe(left: bash_build_command_from_lits(lits: ["free", "-b"]), right: bash_build_command_from_lits(lits: ["grep", "^Mem:"])),
+        right: bash_build_command_from_lits(lits: ["tr", "-s", " "]),
+      ),
+      right: bash_build_command_from_lits(lits: ["cut", "-d", " ", "-f", "2"]),
+    ))),
+    bash_build_assign(name: "cg", value: bash_build_word_cmdsubst(body: bash_build_pipe(
+      left: bash_build_command_from_lits(lits: ["cut", "-d", ":", "-f", "3", "/proc/self/cgroup"]),
+      right: bash_build_command_from_lits(lits: ["head", "-n", "1"]),
+    ))),
+    bash_build_assign(name: "memory_high", value: instrument_dispatch_cgroup_read(file: "memory.high")),
+    bash_build_assign(name: "memory_max", value: instrument_dispatch_cgroup_read(file: "memory.max")),
+    bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "echo"),
+      bash_build_word_concat_from_nodes(parts: [
+        bash_build_word_lit(text: "instrument memory: machine="),
+        bash_build_word_var(name: "machine"),
+        bash_build_word_lit(text: " cgroup="),
+        bash_build_word_var(name: "cg"),
+        bash_build_word_lit(text: " memory.high="),
+        bash_build_word_var(name: "memory_high"),
+        bash_build_word_lit(text: " memory.max="),
+        bash_build_word_var(name: "memory_max"),
+        bash_build_word_lit(text: " required="),
+        bash_build_word_var(name: "REQUIRED_MEMORY_BYTES"),
+      ]),
+    ]),
+    bash_build_if_from_stmts(cond: instrument_dispatch_below_required(var: "machine"), then_stmts: instrument_dispatch_memory_refusal(source: "machine")),
+    bash_build_if_from_stmts(cond: instrument_dispatch_cgroup_bound_below_required(var: "memory_high"), then_stmts: instrument_dispatch_memory_refusal(source: "memory_high")),
+    bash_build_if_from_stmts(cond: instrument_dispatch_cgroup_bound_below_required(var: "memory_max"), then_stmts: instrument_dispatch_memory_refusal(source: "memory_max")),
+  ]
+}
+
+fn instrument_dispatch_memory_guard_script() -> Outcome<String> {
+  bash_emit_stmts(statements: instrument_dispatch_memory_guard_statements(), set_e: true)
+}
+
+fn instrument_dispatch_memory_guard_step(d: InstrumentDispatchMemoryDemand, guard: String) -> Step {
+  RunStep {
+    name: Present { value: join(["Require the declared memory for ", render_label(l: d.label)], "") },
+    id: none,
+    run: guard,
+    shell: Present { value: Bash },
+    env: Present {
+      value: [
+        kv(key: "INSTRUMENT_LABEL", value: yaml_string(s: instrument_dispatch_label_expression())),
+        kv(key: "REQUIRED_MEMORY_BYTES", value: yaml_string(s: to_string(byte_size_count(b: d.demand)))),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: join(["inputs.", instrument_dispatch_label_input, " == '", render_label(l: d.label), "'"], "") },
+    continue_on_error: none,
+    timeout_minutes: none,
+  }
+}
+
 fn instrument_dispatch_label_expression() -> String {
   join(["${{ inputs.", instrument_dispatch_label_input, " }}"], "")
 }
@@ -172,7 +335,7 @@ fn instrument_dispatch_echo_to(words: List<Node>, file: String) -> Node {
 }
 
 // THE SEED: the receipt line, and placeholders the instrument step overwrites. A run that never reaches
-// the instrument uploads stdout `not-started` and exit `not-started`, never an absent artifact and never
+// the instrument uploads stdout, stderr and exit `not-started`, never an absent artifact and never
 // a fabricated exit code.
 fn instrument_dispatch_seed_statements() -> List<Node> {
   [
@@ -188,6 +351,7 @@ fn instrument_dispatch_seed_statements() -> List<Node> {
       bash_build_word_var(name: "GITHUB_RUN_ATTEMPT"),
     ], file: "receipt.txt"),
     instrument_dispatch_echo_to(words: [bash_build_word_lit(text: "not-started")], file: "stdout.txt"),
+    instrument_dispatch_echo_to(words: [bash_build_word_lit(text: "not-started")], file: "stderr.txt"),
     instrument_dispatch_echo_to(words: [bash_build_word_lit(text: "exit=not-started")], file: "exit.txt"),
   ]
 }
@@ -213,24 +377,32 @@ fn instrument_dispatch_seed_step(script: String) -> Step {
 }
 
 // THE RUN SCRIPT. The seed step has already written the receipt; this overwrites the placeholders with
-// the instrument's stdout (also replayed into the log) and its exit, and the step fails exactly when the
-// instrument did not hold. The
-// instrument's stderr is left on the log, where its progress lines belong.
+// the instrument's stdout and stderr (each replayed into the log on its own stream) and its exit, and the
+// step fails exactly when the instrument did not hold. stderr is captured, not left on the log alone:
+// `gunbc test` writes its verdict there on a non-zero exit, so a run that did not hold would otherwise
+// upload an empty stdout and keep its receipt only in the lossy job log.
 fn instrument_dispatch_statements() -> List<Node> {
   [
     bash_build_assign_lit(name: "status", text: "0"),
     bash_build_or_else(
-      left: bash_build_with_redir_to_file(
-        inner: bash_build_command_with_words(words: [
-          bash_build_word_lit(text: "target/release/gunbc"),
-          bash_build_word_lit(text: "test"),
-          bash_build_word_var(name: "INSTRUMENT_LABEL"),
-        ]),
-        path: instrument_dispatch_path_word(file: "stdout.txt"),
+      left: bash_build_with_redir_stderr_to_file(
+        inner: bash_build_with_redir_to_file(
+          inner: bash_build_command_with_words(words: [
+            bash_build_word_lit(text: "target/release/gunbc"),
+            bash_build_word_lit(text: "test"),
+            bash_build_word_var(name: "INSTRUMENT_LABEL"),
+          ]),
+          path: instrument_dispatch_path_word(file: "stdout.txt"),
+        ),
+        path: instrument_dispatch_path_word(file: "stderr.txt"),
       ),
       right: bash_build_assign_var(name: "status", var_name: "?"),
     ),
     bash_build_command_with_words(words: [bash_build_word_lit(text: "cat"), instrument_dispatch_path_word(file: "stdout.txt")]),
+    bash_build_with_redir(
+      inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "cat"), instrument_dispatch_path_word(file: "stderr.txt")]),
+      redir: ^bash_production_fold_redir_stdout_to_stderr,
+    ),
     instrument_dispatch_echo_to(words: [bash_build_word_lit(text: "exit="), bash_build_word_var(name: "status")], file: "exit.txt"),
     bash_build_test_bracket(words: [bash_build_word_var(name: "status"), bash_build_word_lit(text: "="), bash_build_word_lit(text: "0")]),
   ]
@@ -275,9 +447,9 @@ fn instrument_dispatch_upload_step() -> Step {
   }
 }
 
-fn instrument_dispatch_steps(seed: String, script: String) -> List<Step> {
+fn instrument_dispatch_steps(seed: String, guard: String, script: String) -> List<Step> {
   list_append(
-    left: [instrument_dispatch_seed_step(script: seed)],
+    left: list_append(left: [instrument_dispatch_seed_step(script: seed)], right: list_map(xs: instrument_dispatch_memory_demands(), f: fn(d) { instrument_dispatch_memory_guard_step(d: d, guard: guard) })),
     right: list_append(
       left: list_map(xs: compiler_gate_hosted_build_prelude_bound_steps(), f: fn(b) { b.step }),
       right: [witness_toolchain_homes_isolated_guard_step(), instrument_dispatch_run_step(script: script), instrument_dispatch_upload_step()],
@@ -285,13 +457,13 @@ fn instrument_dispatch_steps(seed: String, script: String) -> List<Step> {
   )
 }
 
-fn instrument_dispatch_job(seed: String, script: String) -> Job {
+fn instrument_dispatch_job(seed: String, guard: String, script: String) -> Job {
   Job {
     id: instrument_dispatch_job_id,
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
     environment: none,
-    steps: instrument_dispatch_steps(seed: seed, script: script),
+    steps: instrument_dispatch_steps(seed: seed, guard: guard, script: script),
     needs: [],
     env: none,
     outputs: none,
@@ -311,7 +483,7 @@ fn instrument_dispatch_job(seed: String, script: String) -> Job {
   }
 }
 
-fn instrument_dispatch_workflow(seed: String, script: String) -> Workflow {
+fn instrument_dispatch_workflow(seed: String, guard: String, script: String) -> Workflow {
   Workflow {
     name: instrument_dispatch_workflow_name,
     run_name: Present { value: join(["instrument-dispatch ", instrument_dispatch_label_expression()], "") },
@@ -339,7 +511,7 @@ fn instrument_dispatch_workflow(seed: String, script: String) -> Workflow {
         id_token: none,
       }
     },
-    jobs: [instrument_dispatch_job(seed: seed, script: script)],
+    jobs: [instrument_dispatch_job(seed: seed, guard: guard, script: script)],
   }
 }
 
@@ -348,7 +520,11 @@ type InstrumentDispatchWorkflowGenerationOutcome
   | InstrumentDispatchWorkflowGenerationRefused { reason: String }
 
 fn expected_instrument_dispatch_yml() -> InstrumentDispatchWorkflowGenerationOutcome {
-  if instrument_dispatch_labels_are_rostered() {
+  if !instrument_dispatch_memory_demands_are_dispatchable() {
+    InstrumentDispatchWorkflowGenerationRefused { reason: "gunbc.instrument_dispatch_workflow: a memory demand names a label that is not dispatchable" }
+  } else if !instrument_dispatch_memory_demands_fit_selected_target() {
+    InstrumentDispatchWorkflowGenerationRefused { reason: "gunbc.instrument_dispatch_workflow: a dispatchable label's declared memory demand exceeds the selected runner target's budget (gunbc.ci_runner_target ci_runner_target_ram_speed_budget), so no runner this workflow targets can hold it" }
+  } else if instrument_dispatch_labels_are_rostered() {
     match instrument_dispatch_seed_script() {
       Rejected { diagnostics: _ } =>
         InstrumentDispatchWorkflowGenerationRefused { reason: "gunbc.instrument_dispatch_workflow: v2.workflow.bash_emit refused the seed script, so no workflow is emitted" }
@@ -357,7 +533,12 @@ fn expected_instrument_dispatch_yml() -> InstrumentDispatchWorkflowGenerationOut
           Rejected { diagnostics: _ } =>
             InstrumentDispatchWorkflowGenerationRefused { reason: "gunbc.instrument_dispatch_workflow: v2.workflow.bash_emit refused the run script, so no workflow is emitted" }
           Accepted { value: script, diagnostics: _ } =>
-            expected_instrument_dispatch_yml_with(workflow: instrument_dispatch_workflow(seed: seed, script: script))
+            match instrument_dispatch_memory_guard_script() {
+              Rejected { diagnostics: _ } =>
+                InstrumentDispatchWorkflowGenerationRefused { reason: "gunbc.instrument_dispatch_workflow: v2.workflow.bash_emit refused the memory guard script, so no workflow is emitted" }
+              Accepted { value: guard, diagnostics: _ } =>
+                expected_instrument_dispatch_yml_with(workflow: instrument_dispatch_workflow(seed: seed, guard: guard, script: script))
+            }
         }
     }
   } else {

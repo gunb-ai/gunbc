@@ -76,14 +76,30 @@ fn w_struct_propagates_ord_through_declared_coproduct_field() -> Bool {
     [
       "enum AudienceSet<P>",
       "struct PublicationContext<C: Clone, P>",
-      "impl<C: std::fmt::Debug, P: Ord + std::fmt::Debug> std::fmt::Debug for PublicationContext<C, P>",
-      "impl<C: PartialEq, P: Ord + PartialEq> PartialEq for PublicationContext<C, P>"
+      "impl<C: Clone + std::fmt::Debug, P: Ord + std::fmt::Debug> std::fmt::Debug for PublicationContext<C, P>",
+      "impl<C: Clone + PartialEq, P: Ord + PartialEq> PartialEq for PublicationContext<C, P>"
     ],
     [
       "enum AudienceSet<P: Ord>",
       "struct PublicationContext<C: Ord, P: Ord>",
-      "struct PublicationContext<C, P: Ord>"
+      "struct PublicationContext<C, P: Ord>",
+      "impl<C: std::fmt::Debug, P",
+      "impl<C: PartialEq, P"
     ]
+  )
+}
+
+// A FN GENERIC OVER A SET ELEMENT CARRIES Ord, read from the signature through both reaches the
+// item path recognises: the declared-coproduct hop (`subset`, the std.authorization_profile
+// audience_subset shape, whose body unions and compares the sets) and a direct Set<P> parameter
+// (`direct`). `unrelated` is the negative control in the same module -- a generic that reaches no
+// Set stays free of Ord, so a rule that bounded every generic in a Set-using module reds here.
+fn w_fn_generic_over_set_element_carries_ord() -> Bool {
+  compile_dag_rust_emit_check(
+    "module generic_item_ord_witness.fn_bound\nimport std.types { Bool }\n\ntype AudienceSet<P>\n  = UniversalAudience\n  | EnumeratedAudience { members: Set<P> }\n\nfn subset<P>(left: AudienceSet<P>, right: AudienceSet<P>) -> Bool {\n  match left {\n    UniversalAudience => false\n    EnumeratedAudience { members: l } => match right {\n      UniversalAudience => true\n      EnumeratedAudience { members: r } => set_union(l, r) == r\n    }\n  }\n}\n\nfn direct<P>(a: Set<P>, b: Set<P>) -> Set<P> { set_union(a, b) }\n\nfn unrelated<Q>(x: Q) -> Q { x }\n",
+    "src/generic_item_ord_witness_fn_bound.rs",
+    ["pub fn subset<P: Clone + Ord>", "pub fn direct<P: Clone + Ord>"],
+    ["pub fn subset<P: Clone>", "pub fn direct<P: Clone>", "Q: Ord", "Q: Clone + Ord"]
   )
 }
 
@@ -127,6 +143,10 @@ test fn bare_field_negative_control() -> Bool {
 
 test fn struct_propagation_positive() -> Bool {
   w_struct_propagates_ord_through_declared_coproduct_field()
+}
+
+test fn fn_generic_over_set_element_carries_ord() -> Bool {
+  w_fn_generic_over_set_element_carries_ord()
 }
 
 test fn propagation_one_hop_only_negative_control() -> Bool {

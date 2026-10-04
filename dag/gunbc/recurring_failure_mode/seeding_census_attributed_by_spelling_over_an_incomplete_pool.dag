@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.seeding_census_attributed_by_spelling_over_an_incomplete_pool
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data seeding_census_attributed_by_spelling_over_an_incomplete_pool: RecurringFailureMode = RecurringFailureMode {
+  identity: "seeding_census_attributed_by_spelling_over_an_incomplete_pool" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a monotone debt roster seeded from a census whose pool is smaller than the compiler's resolution scope, and which picks a provider by spelling. The unimported-bare-provider roster (v2.workflow.floor_unimported_bare_provider_debt_roster) was seeded from a tree census over the dag and src/v2 roots. It had no src/v1 root, so a declaration imported from a v1.compiler module was invisible to it. It also attributed a bare name to a unique same-spelled declarer OUTSIDE the file's import closure, even when the name bound a declaration INSIDE it (a variant of an imported coproduct). Such a pair was never debt, but it was rostered as ActiveDebt.",
+    "HARM: the roster counts debt that does not exist, so the debt it reports is inflated by an unknown amount. The roster's `seeded once, never regenerated` contract (correct for real debt) makes such a row permanent. It stays latent until something re-checks its file, and then the floor refuses a change that did not touch the pair (RosterStale), sending its author to choose a retirement cause that is not true.",
+    "SPECIMEN, gunbc#13116 (2026-10-03): the floor refused systemd_property_directive_overlap.dag#User, a variant of SystemdUnitProperty imported from extdeps.systemd, with the import present at seeding. It also refused src/v2/test/manual/ownership_movable_test.dag#Read, a variant of EdgeKind imported from v1.compiler.ownership, whose declarer lies in src/v1. Both surfaced because #13116 retired a sibling pair in the same files, which made the floor re-check them. Both retire as Retired { cause: ResolvesInClosure } (calm-boar-904 ruling 2026-10-03). The population is measured by the probe branch calm-pike-525/roster-census-probe, classify_active_rows, which classifies every ActiveDebt row.",
+    "DISTINGUISHING FACTS: the row's name binds a declaration in the file's own import closure, or in a module the census pool did not contain. A row whose name genuinely resolves only to an out-of-closure declarer is real debt and is not this class.",
+    "RUNG FOUND AT: silent -- found only when an unrelated change re-checked the file. RUNG NOW: mitigatable -- each instance is retired by a typed disposition held to its claim on every run, but only once something re-checks its file. CEILING: structurally impossible -- the gate and any seeding census decide a reference by the compiler's own resolution over the compiler's own scope, not by spelling over a narrower pool. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the unimported-bare-provider gate derives its provider from the resolved reference (the declaration the compiler binds), so a pair whose binding is in-closure or non-declaration cannot be derived at all.",
+  ],
+
+  evidence: [],
+}
