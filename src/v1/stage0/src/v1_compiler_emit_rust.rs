@@ -275,10 +275,12 @@ pub use crate::v1_compiler_trait_derive_emit::{
     trait_derive_emit_fn_clone_bound_keyed_carrier_module, v1_clone_bounded_type_params,
     v1_clone_impl_required_type_params, v1_emit_enum_derives, v1_emit_enum_supplemental_impls,
     v1_emit_struct_from_capability_table, v1_emit_type_params_with_bounds,
-    v1_emit_type_params_with_clone_bounds, v1_generic_params_needing_clone_bound,
-    v1_item_clone_bounded_param_names, v1_item_clone_undecided_head, v1_item_field_type_exprs,
+    v1_emit_type_params_with_clone_bounds, v1_fn_signature_set_element_param_names,
+    v1_generic_params_needing_clone_bound, v1_item_clone_bounded_param_names,
+    v1_item_clone_undecided_head, v1_item_field_type_exprs,
     v1_item_wf_propagated_clone_bounded_param_names, v1_map_key_head_names_in_type_expr,
-    v1_map_key_required_type_names, v1_trait_derive_refuse, v1_with_map_key_requirement,
+    v1_map_key_required_type_names, v1_set_element_bound_spellings, v1_trait_derive_refuse,
+    v1_with_map_key_requirement,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -18447,6 +18449,7 @@ pub fn v1_fn_bounds_by_param(
     clone_param_names: Rc<Vec<String>>,
     eq_param_names: Rc<Vec<String>>,
     map_key_param_names: Rc<Vec<String>>,
+    set_element_param_names: Rc<Vec<String>>,
     static_param_names: Rc<Vec<String>>,
 ) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     {
@@ -18486,8 +18489,27 @@ pub fn v1_fn_bounds_by_param(
                 }
             },
         );
-        static_param_names.iter().cloned().fold(
+        let with_set = set_element_param_names.iter().cloned().fold(
             with_key.clone(),
+            |m: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| match v1_rt::map_get(&m, n.clone())
+            {
+                Some(traits) => v1_rt::rc_map_insert(
+                    m.clone(),
+                    n.clone(),
+                    crate::v1_compiler_emit_core_support::unique_strings(v1_rt::concat(
+                        traits.clone(),
+                        crate::v1_compiler_trait_derive_emit::v1_set_element_bound_spellings(),
+                    )),
+                ),
+                std::option::Option::None => v1_rt::rc_map_insert(
+                    m.clone(),
+                    n.clone(),
+                    crate::v1_compiler_trait_derive_emit::v1_set_element_bound_spellings(),
+                ),
+            },
+        );
+        static_param_names.iter().cloned().fold(
+            with_set.clone(),
             |m: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| match v1_rt::map_get(&m, n.clone())
             {
                 Some(traits) => v1_rt::rc_map_insert(
@@ -19154,6 +19176,22 @@ pub fn emit_fn_def(
             generic_param_names.clone(),
             si.clone(),
         );
+        let set_element_param_names =
+            crate::v1_compiler_trait_derive_emit::v1_fn_signature_set_element_param_names(
+                v1_rt::rc_list_push(
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for p in value_params.iter().cloned() {
+                            __result.push(crate::v1_std_core::param_node_type_expr(p.clone()));
+                        }
+                        __result
+                    }),
+                    inferred.clone(),
+                ),
+                generic_param_names.clone(),
+                emit_info.type_decl_items.clone(),
+                si.clone(),
+            );
         let returns_fn_field_record = type_has_fn_fields(
             rust_fn_sig_leaf_name(si.clone(), inferred.clone()),
             emit_info.clone(),
@@ -19177,11 +19215,13 @@ pub fn emit_fn_def(
             clone_param_names.clone(),
             eq_param_names.clone(),
             map_key_param_names.clone(),
+            set_element_param_names.clone(),
             static_param_names.clone(),
         );
-        let needs_bound = (((((clone_param_names.clone().len() as i64) > 0)
+        let needs_bound = ((((((clone_param_names.clone().len() as i64) > 0)
             || ((eq_param_names.clone().len() as i64) > 0))
             || ((map_key_param_names.clone().len() as i64) > 0))
+            || ((set_element_param_names.clone().len() as i64) > 0))
             || ((static_param_names.clone().len() as i64) > 0));
         let type_params_str = if needs_bound.clone() {
             crate::v1_compiler_trait_derive_emit::v1_emit_type_params_with_bounds(
@@ -25398,6 +25438,18 @@ pub fn rust_param_type_is_type_variable(
     }
 }
 
+pub fn rust_call_arg_is_function_value(arg: Rc<Node>) -> bool {
+    match (*arg.expr_data.clone()).clone() {
+        ExprData::ExprLambda => true,
+        _ => {
+            (crate::v1_compiler_infer_types::resolved_type(arg.clone())
+                .connective
+                .clone()
+                == Connective::Arrow)
+        }
+    }
+}
+
 pub fn rust_call_arg_fail_closed_unwrap(
     arg_str: String,
     arg: Rc<Node>,
@@ -25422,10 +25474,11 @@ pub fn rust_call_arg_fail_closed_unwrap(
                         param_type.clone(),
                         source_indices.clone(),
                     ));
-                let arg_optional = (crate::v1_compiler_infer_types::resolved_type(arg.clone())
+                let arg_optional = ((crate::v1_compiler_infer_types::resolved_type(arg.clone())
                     .return_cardinality
                     .clone()
-                    == Cardinality::CardOptional);
+                    == Cardinality::CardOptional)
+                    && !rust_call_arg_is_function_value(arg.clone()));
                 if (param_required.clone() && arg_optional.clone()) {
                     v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(arg_str.clone(), ".expect(\"fail-closed: an optional value flowed into non-optional parameter ".to_string()), crate::v1_compiler_emit_core_support::to_string(idx.clone())), " of ".to_string()), func.clone()), " (empty Optional at runtime)\")".to_string())
                 } else {
