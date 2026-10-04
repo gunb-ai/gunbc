@@ -31,7 +31,6 @@ import v2.std.algebra { length, list_head, HeadAbsent, HeadFound }
 import v2.std.artifact { Artifact, SourceFile }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.std.cross_tree.import_model { DagTree }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
@@ -424,9 +423,9 @@ test fn an_emit_refusal_exits_general_error_holds() -> Bool {
 // the diagnostic file) and the byte extent of the first remaining token. Before this change the `reason` field carried the head,
 // which on every such refusal is the same grammar-global advisory, so three different broken
 // entries refused with one indistinguishable reason (gunbc#11507 measured it on the built binary).
-data cli_probe_entry_source: String = "module v2.cli_probe.entry\n\nimport v2.std.logic { Bool }\n\nfn cli_probe_entry_value(p: Bool) -> Bool { p }\n"
+data cli_probe_entry_source: String = "module v2.cli_probe.entry\n\nimport std.types { Bool }\n\nfn cli_probe_entry_value(p: Bool) -> Bool { p }\n"
 
-data cli_probe_trailing_source: String = "module v2.cli_probe.trailing\n\nimport v2.std.logic { Bool }\n\nfn cli_probe_trailing_value(p: Bool) -> Bool { p }\n) ) )\n"
+data cli_probe_trailing_source: String = "module v2.cli_probe.trailing\n\nimport std.types { Bool }\n\nfn cli_probe_trailing_value(p: Bool) -> Bool { p }\n) ) )\n"
 
 fn cli_probe_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
