@@ -1310,7 +1310,7 @@ test fn witness_a_minted_credential_is_bound_to_the_dispatched_attempt() -> Bool
         slot: a,
         credential: c,
         runner_id: id,
-        dispatch: _,
+        minted_for: _,
       } =>
         match dispatched(owned: true, perms: runner_grant) {
           JitMintDispatchAuthorized { dispatch: d } => a == d.slot

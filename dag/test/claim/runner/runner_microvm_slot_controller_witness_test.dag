@@ -1,7 +1,8 @@
 module test.claim.runner.runner_microvm_slot_controller_witness_test
 
-import test.claim.github_app_registry { dispatched, runner_grant }
-import gunbc.runner.runner_jit_perform { JitMintDispatchAuthorized, JitMintDispatchRefused }
+import gunbc.runner.runner_jit_perform { JitMintIdentity }
+import gunbc.auth.github_apps { gunbai_ci_declared, gunbai_ci_declared_installation_id }
+import extdeps.github.effect { GitHubOrganizationRef }
 import v2.std.algebra { any }
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat }
@@ -296,11 +297,7 @@ fn delivered_mint() -> Bool {
     Present { value: a } =>
       match jit_config_mint_outcome(status: 201, encoded: "ZmFrZS1qaXQtY29uZmlnLXRoYXQtaXMtbG9uZy1lbm91Z2gtdG8tcGFzcy10aGUtZmxvb3ItY2hlY2stZm9yLXRoZS13aXRuZXNz", runner_id: 4242, error_body: "") {
         JitConfigMinted { config: c, runner_id: id } =>
-          match dispatched(owned: true, perms: runner_grant) {
-            JitMintDispatchAuthorized { dispatch: d } =>
-              minted_registration(mint: JitMintReceived { delivery: JitCredentialBoundToAttempt { slot: MicroVmJitSlot { attempt: a }, credential: c, runner_id: id, dispatch: d } }) == Present { value: 4242 }
-            JitMintDispatchRefused { refusal: _ } => false
-          }
+          minted_registration(mint: JitMintReceived { delivery: JitCredentialBoundToAttempt { slot: MicroVmJitSlot { attempt: a }, credential: c, runner_id: id, minted_for: JitMintIdentity { app: gunbai_ci_declared, installation: gunbai_ci_declared_installation_id, organization: GitHubOrganizationRef { login: "gunb-ai" }, runner_name: "fixture-jit-runner" } } }) == Present { value: 4242 }
         _ => false
       }
   }

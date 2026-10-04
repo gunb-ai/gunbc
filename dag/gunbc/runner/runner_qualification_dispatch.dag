@@ -31,7 +31,7 @@ import gunbc.auth.github_credential {
   GitHubCredentialAuthority, CredentialCapability, credential_authorizes, unsatisfied_capabilities,
 }
 import gunbc.runner_jit_mint { HostUnitJitSlot, MicroVmJitSlot }
-import gunbc.runner.runner_jit_perform { AuthorizedJitMintDispatch, JitMintDispatchAuthorized, JitCredentialDelivery, JitCredentialBoundToAttempt, authority_installation }
+import gunbc.runner.runner_jit_perform { AuthorizedJitMintDispatch, JitMintDispatchAuthorized, JitCredentialDelivery, JitCredentialBoundToAttempt, authority_installation, jit_mint_identity_of }
 import gunbc.runner.runner_jit_deregistration { JitRegistration, jit_registration_of }
 import gunbc.managed_host_unit_hold { UnitHoldProof }
 import gunbc.github_effect_perform {
@@ -53,8 +53,10 @@ import gunbc.runner.runner_qualification_ref_pin {
 // THE SUBJECT IS SEALED AND ITS SCOPE IS FIXED BY CONSTRUCTION. QualificationDispatchSubject is
 // minted only by qualification_dispatch_subject_over, and only from:
 //   - the sealed AuthorizedJitMintDispatch (gunbc.runner.runner_jit_perform), whose only mint is
-//     dispatch_jit_mint's authorized arm, its registration (jit_registration_of), and the credential
-//     delivered for that same slot -- so
+//     dispatch_jit_mint's authorized arm, its registration (jit_registration_of), and a credential
+//     delivered by THAT mint -- the delivery's JitMintIdentity (App, installation, organization,
+//     runner name) and slot must equal the dispatch's, so a same-slot delivery from another mint
+//     refuses -- so
 //     the attempt is the slot's own and the runner the collection joins on is that registration's;
 //   - the qualification workflow, which is not a parameter of the request: its path is the generated
 //     fleet-converge artifact (gunbc.generated_artifact FleetConvergeYamlArtifact) and production
@@ -245,8 +247,8 @@ fn qualification_dispatch_subject_over(
     Absent => QualificationSubjectRefused { refusal: SubjectNoRegistration }
     Present { value: registration } =>
   match delivery {
-    JitCredentialBoundToAttempt { slot: _, credential: _, runner_id: runner_id, dispatch: delivered_by } =>
-      if delivered_by != dispatch {
+    JitCredentialBoundToAttempt { slot: delivered_slot, credential: _, runner_id: runner_id, minted_for: minted_for } =>
+      if minted_for != jit_mint_identity_of(dispatch: dispatch) || delivered_slot != dispatch.slot {
         QualificationSubjectRefused { refusal: SubjectDeliveryForAnotherDispatch }
       } else {
         match registration.slot {
