@@ -198,10 +198,6 @@ fn megarac_operation_standings(evidence: MegaRacOperationEvidence) -> List<MegaR
   )
 }
 
-fn megarac_operation_grounded_at(evidence: MegaRacOperationEvidence, operation: MegaRacOperation, identity: BmcObservedIdentity) -> Bool {
-  any(megarac_operation_standings(evidence: evidence), s => megarac_operation_eq(a: s.operation, b: operation) && megarac_identity_eq(a: s.identity, b: identity))
-}
-
 fn grounding_is_executed(g: MegaRacOperationGrounding) -> Bool {
   match g {
     OperationExecutedAtBuild { receipt: _, build: _ } => true
@@ -209,9 +205,17 @@ fn grounding_is_executed(g: MegaRacOperationGrounding) -> Bool {
   }
 }
 
+fn standings_ground(standings: List<MegaRacOperationStanding>, operation: MegaRacOperation, identity: BmcObservedIdentity, executed_only: Bool) -> Bool {
+  any(standings, s => megarac_operation_eq(a: s.operation, b: operation) && megarac_identity_eq(a: s.identity, b: identity) && (!executed_only || grounding_is_executed(g: s.grounding)))
+}
+
+fn megarac_operation_grounded_at(evidence: MegaRacOperationEvidence, operation: MegaRacOperation, identity: BmcObservedIdentity) -> Bool {
+  standings_ground(standings: megarac_operation_standings(evidence: evidence), operation: operation, identity: identity, executed_only: false)
+}
+
 // EXECUTED AT THIS IDENTITY, and only executed: a route recovered from a served artifact does not count.
 fn megarac_operation_executed_at(evidence: MegaRacOperationEvidence, operation: MegaRacOperation, identity: BmcObservedIdentity) -> Bool {
-  any(megarac_operation_standings(evidence: evidence), s => megarac_operation_eq(a: s.operation, b: operation) && megarac_identity_eq(a: s.identity, b: identity) && grounding_is_executed(g: s.grounding))
+  standings_ground(standings: megarac_operation_standings(evidence: evidence), operation: operation, identity: identity, executed_only: true)
 }
 
 // ── THE CURRENT BUILD OF A CONTROLLER ────────────────────────────────────────────────────────────
@@ -222,18 +226,20 @@ type MegaRacCurrentBuild
   | CurrentBuildKnownUnread { transition: MegaRacFirmwareTransition }
   | CurrentBuildUnobserved
 
+fn latest_of_readings(rs: List<MegaRacBuildReading>) -> MegaRacBuildReading? {
+  filter(rs, r => !any(rs, o => o.observed_at > r.observed_at)).first()
+}
+
 fn latest_reading(readings: List<MegaRacBuildReading>, endpoint: BmcControllerEndpoint) -> MegaRacBuildReading? {
-  fold(filter(readings, r => same_controller(a: r.endpoint, b: endpoint)), init: none, f: (acc, r) => match acc {
-    Absent => Present { value: r }
-    Present { value: best } => if r.observed_at > best.observed_at { Present { value: r } } else { acc }
-  })
+  latest_of_readings(rs: filter(readings, r => same_controller(a: r.endpoint, b: endpoint)))
+}
+
+fn latest_of_transitions(ts: List<MegaRacFirmwareTransition>) -> MegaRacFirmwareTransition? {
+  filter(ts, t => !any(ts, o => o.not_after > t.not_after)).first()
 }
 
 fn latest_transition_after(transitions: List<MegaRacFirmwareTransition>, endpoint: BmcControllerEndpoint, after: EpochMs) -> MegaRacFirmwareTransition? {
-  fold(filter(transitions, t => same_controller(a: t.endpoint, b: endpoint) && t.not_after > after), init: none, f: (acc, t) => match acc {
-    Absent => Present { value: t }
-    Present { value: best } => if t.not_after > best.not_after { Present { value: t } } else { acc }
-  })
+  latest_of_transitions(ts: filter(transitions, t => same_controller(a: t.endpoint, b: endpoint) && t.not_after > after))
 }
 
 fn megarac_current_build(evidence: MegaRacOperationEvidence, endpoint: BmcControllerEndpoint) -> MegaRacCurrentBuild {
