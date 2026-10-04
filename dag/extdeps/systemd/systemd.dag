@@ -56,6 +56,7 @@ type SystemdUnitProperty
   | CPUQuota
   | CPUQuotaPerSecUSec
   | MemoryCurrent
+  | MemoryPeak
   | TasksMax
   | TasksCurrent
   | ControlGroup
@@ -130,6 +131,7 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     CPUQuota => "CPUQuota" as NonEmptyStr
     CPUQuotaPerSecUSec => "CPUQuotaPerSecUSec" as NonEmptyStr
     MemoryCurrent => "MemoryCurrent" as NonEmptyStr
+    MemoryPeak => "MemoryPeak" as NonEmptyStr
     TasksMax => "TasksMax" as NonEmptyStr
     TasksCurrent => "TasksCurrent" as NonEmptyStr
     ControlGroup => "ControlGroup" as NonEmptyStr

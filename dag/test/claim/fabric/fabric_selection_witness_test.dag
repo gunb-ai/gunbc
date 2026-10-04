@@ -14,7 +14,7 @@ import std.measure {
   HardwareThreadCount, hardware_thread_count,
 }
 import extdeps.currency.currency { Usd }
-import product.fabric.identity { FabricIdentity, OfferKey }
+import product.fabric.identity { FabricIdentity, OfferKey, DemandKey }
 import product.fabric.work {
   Shape, HardRequirements, ExecutionRequirements, CapabilityManifestRef, TrustDomainRef,
   CapacityClass, ControlPlaneCapacity, CustomerExecutableCapacity,
@@ -27,6 +27,8 @@ import product.fabric.supply {
   GrantDuration, ExactGrantDuration, UnobservedGrantDuration,
 }
 import product.fabric.selection {
+  ResourceBudgetPolicy, ResourceBudgetSelected, ResourceBudgetRefused, select_resource_budget_supply,
+  CommitmentUnread, StartCostUnread, TransitionCostUnread, OperatingCostUnread,
   CandidateOffer, DispatchInputs, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer,
   OfferNotAdmittedForUse, PermitNamesAnotherOffer, PermitNamesAnotherRoute,
   PermitNamesAnotherWork, PermitNamesAnotherDemand,
@@ -1357,6 +1359,97 @@ test fn the_roster_arm_still_answers_for_one_key_under_two_principals() -> Bool 
   let shared = concat(t_candidate_under(principal: "tenant-a", key: "offer-shared"), t_candidate_under(principal: "tenant-b", key: "offer-shared"))
   match t_select_tie(candidates: shared, tie: StableRosterOrder, affinity: "d" as PlacementAffinityKey) {
     OfferSelected { candidate: sel, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => (sel.candidate.offer.id.principal as String) == "tenant-a"
+    _ => false
+  }
+}
+
+fn t_resource_policy() -> ResourceBudgetPolicy<NonEmptyStr> {
+  let offer = t_owned_offer()
+  ResourceBudgetPolicy { authority: "test.operator", revision: "test.resource-budget-v1",
+    demand: fixture_demand_for(offer: offer.id), work: fixture_work_for(offer: offer.id), allowed_offers: [offer.id] }
+}
+fn t_unknown_cost_candidates(availability: AvailabilityObservation) -> List<CandidateOffer<NonEmptyStr>> {
+  let offer = t_owned_offer()
+  t_bound(offer: offer, inputs: DispatchInputs { offer: offer.id, availability: availability,
+    commitment: CommitmentUnread { obligation: "not measured" },
+    start: StartCostUnread { obligation: "not measured" },
+    transition: TransitionCostUnread { obligation: "not measured" },
+    operating: OperatingCostUnread { obligation: "not measured" },
+    opportunity: AlternativeUseUnread { obligation: "not measured" } })
+}
+test fn resource_budget_preserves_unknown_costs_without_economic_ranking() -> Bool {
+  let policy = t_resource_policy()
+  let candidates = t_unknown_cost_candidates(availability: t_ready_now())
+  match select_resource_budget_supply(policy: policy, demand: policy.demand, work: policy.work,
+    requirements: t_requirements(), duration: t_ninety_seconds(), candidates: candidates) {
+    ResourceBudgetSelected { candidate, policy: selected_policy } =>
+      selected_policy == policy && (match candidate.dispatch.operating {
+        OperatingCostUnread { obligation: _ } => true
+        _ => false
+      }) && (match t_select(candidates: candidates) {
+        NoAdmissibleOffer { considered: _ } => true
+        _ => false
+      })
+    _ => false
+  }
+}
+test fn resource_budget_still_requires_observed_availability() -> Bool {
+  let policy = t_resource_policy()
+  match select_resource_budget_supply(policy: policy, demand: policy.demand, work: policy.work,
+    requirements: t_requirements(), duration: t_ninety_seconds(),
+    candidates: t_unknown_cost_candidates(availability: AvailabilityUnobserved { obligation: "not observed" })) {
+    ResourceBudgetRefused { reason: _ } => true
+    _ => false
+  }
+}
+test fn resource_budget_cannot_authorize_another_demand() -> Bool {
+  let policy = t_resource_policy()
+  match select_resource_budget_supply(policy: policy, demand: FabricIdentity { principal: "gunbc", key: "different-demand" as DemandKey }, work: policy.work,
+    requirements: t_requirements(), duration: t_ninety_seconds(), candidates: t_unknown_cost_candidates(availability: t_ready_now())) {
+    ResourceBudgetRefused { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn resource_budget_cannot_buy_paid_capacity() -> Bool {
+  let offer = t_rented_offer()
+  let policy = ResourceBudgetPolicy { authority: "test.operator", revision: "test.resource-budget-v1",
+    demand: fixture_demand_for(offer: offer.id), work: fixture_work_for(offer: offer.id), allowed_offers: [offer.id] }
+  let candidates = t_bound(offer: offer, inputs: t_inputs(key: offer.id.key, availability: t_ready_now(),
+    commitment: PayAsYouGo, operating: OperatingCostBorneBySupplier, opportunity: t_idle()))
+  match select_resource_budget_supply(policy: policy, demand: policy.demand, work: policy.work,
+    requirements: t_requirements(), duration: t_ninety_seconds(), candidates: candidates) {
+    ResourceBudgetRefused { reason: _ } => true
+    _ => false
+  }
+}
+test fn resource_budget_requires_an_explicit_allowed_offer() -> Bool {
+  let original = t_resource_policy()
+  let policy = ResourceBudgetPolicy { authority: original.authority, revision: original.revision,
+    demand: original.demand, work: original.work, allowed_offers: [] }
+  match select_resource_budget_supply(policy: policy, demand: policy.demand, work: policy.work,
+    requirements: t_requirements(), duration: t_ninety_seconds(), candidates: t_unknown_cost_candidates(availability: t_ready_now())) {
+    ResourceBudgetRefused { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn resource_budget_refuses_duplicate_offer_identity() -> Bool {
+  let policy = t_resource_policy()
+  let candidates = t_unknown_cost_candidates(availability: t_ready_now())
+  match select_resource_budget_supply(policy: policy, demand: policy.demand, work: policy.work,
+    requirements: t_requirements(), duration: t_ninety_seconds(), candidates: candidates + candidates) {
+    ResourceBudgetRefused { reason: _ } => true
+    _ => false
+  }
+}
+test fn resource_budget_requires_availability_for_the_whole_lease() -> Bool {
+  let policy = t_resource_policy()
+  match select_resource_budget_supply(policy: policy, demand: policy.demand, work: policy.work,
+    requirements: t_requirements(), duration: t_ninety_seconds(),
+    candidates: t_unknown_cost_candidates(availability: AvailableForInterval {
+      delay: second(count: 0), interval: second(count: 89), receipt: "test.availability" })) {
+    ResourceBudgetRefused { reason: _ } => true
     _ => false
   }
 }

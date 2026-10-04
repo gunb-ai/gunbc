@@ -19,6 +19,7 @@ import gunbc.target_binding {
   EvaluationStoreAddressExactHeadProducer,
   EmittedCrateWorkspaceProducer,
   NativeClaimProgramProducer,
+  NativeServeProgramProducer,
   CompileCleanDiagnosticCensusStanding,
   CompileCleanDiagnosticCensusCompleted,
   CompileCleanDiagnosticCensusRefused,
@@ -327,6 +328,25 @@ fn native_app_attest_entry() -> String {
 // drop gunbc.rung_drop.dag_emit_real_grammar_round_trips_off_floor, which names this label as the
 // route that still runs them; run by name, not a merge gate.
 // `gunbc test //gunbc/instruments:dag-emit-real-grammar-round-trips`.
+// THE NATIVE SERVE DOOR: std.compiler_entry NativeServeDriver exercised end to end. The seed emits
+// and builds the fixture service gunbc.instruments.native_serve_fixture, starts it on a loopback
+// port the OS chooses, sends gunbc.native_serve_probe's requests over real TCP and lets that module
+// judge the answers -- handler routes, the handler's own refusal, the door's 400 refusals, /livez
+// read back through gunbc.serve_liveness observe_serve_liveness -- plus a launch with a branch name
+// for a release, which must refuse before binding. Run by name, not a merge gate.
+// `gunbc test //gunbc/instruments:native-serve`.
+fn native_serve_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "native-serve" } }
+}
+
+fn native_serve_entry() -> String {
+  "dag/gunbc/instruments/native_serve_fixture.dag"
+}
+
+fn native_serve_binding() -> TargetBinding {
+  TargetBinding { target: native_serve_label() producer: NativeServeProgramProducer { entry: native_serve_entry() } }
+}
+
 fn dag_emit_real_grammar_round_trips_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "dag-emit-real-grammar-round-trips" } }
 }
@@ -710,7 +730,7 @@ fn instrument_targets() -> List<Label> {
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
     native_materialization_store_closure_label(),
-    native_emission_controls_label()
+    native_emission_controls_label(), native_serve_label()
   ]
 }
 
@@ -727,7 +747,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
-    native_emission_controls_binding()
+    native_emission_controls_binding(), native_serve_binding()
   ]
 }
 

@@ -5,6 +5,7 @@ import extdeps.languages.json.parse {
   JsonMemberLookup, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
   json_object_unique_member, parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable,
 }
+import extdeps.languages.json.emit { json_kv, json_object, json_string, json_bool, json_int, serialize_json }
 import gunbc.running_release_identity {
   running_release_revision_key,
   running_release_member_string,
@@ -64,6 +65,26 @@ data serve_liveness_path: NonEmptyStr = "/livez"
 // answered something wrong" are different facts with different remedies, and a reader that folded
 // them together would report a dead unit and a malformed launch argument as one state. It is the
 // only arm this module cannot produce from bytes, so it is supplied by the probe fold below.
+// ── THE PRODUCER, FOR THE DOOR WHERE A FOLD CAN RUN ─────────────────────────────────────────
+// The paragraph above deleted this module's first producer because no fold could run where the
+// SEED writes the document, so a `.dag` copy was a second producer with no consumer. The native
+// serve door (gunbc.native_serve, std.compiler_entry NativeServeDriver) is a place a fold CAN run
+// before the handler is entered -- the whole program is compiled -- so there the document is
+// produced here, from the member name gunbc.running_release_identity owns, and the main writes the
+// value it is handed. This is now the authority for the document; the seed's `format!` in
+// cli_run handle_serve is the remaining second copy, and gunbc.serve_liveness_seed_growth stays
+// standing for it until the seed seam is cut over. observe_serve_liveness reads this producer's
+// output in the native-serve instrument, so producer and reader are joined by execution.
+fn serve_liveness_document(revision: CommitSha, entry_function: String, bound_host: String, bound_port: Int) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "live", value: json_bool(b: true)),
+    json_kv(key: running_release_revision_key, value: json_string(s: revision as String)),
+    json_kv(key: "entry_function", value: json_string(s: entry_function)),
+    json_kv(key: "bound_host", value: json_string(s: bound_host)),
+    json_kv(key: "bound_port", value: json_int(n: bound_port)),
+  ]))
+}
+
 type ServeLivenessRead
   = ServeLivenessUnreachable { detail: NonEmptyStr }
   | ServeLivenessBodyUnparseable
