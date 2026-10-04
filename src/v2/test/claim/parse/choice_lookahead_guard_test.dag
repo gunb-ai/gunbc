@@ -62,21 +62,21 @@ fn clg_rows(guard: GrammarExpr) -> Int {
   )
 }
 
-test fn covering_two_token_guard_removes_the_row() -> Bool {
+test fn covering_two_token_guard_removes_the_row() -> Bool  {
   clg_rows(guard: clg_named()) == 0
 }
 
-test fn near_miss_two_token_guard_keeps_the_row() -> Bool {
+test fn near_miss_two_token_guard_keeps_the_row() -> Bool  {
   clg_rows(guard: clg_seq(left: clg_tok(c: ^clg_a), right: clg_tok(c: ^clg_b))) == 1
 }
 
-test fn unguarded_shared_two_token_prefix_keeps_the_row() -> Bool {
+test fn unguarded_shared_two_token_prefix_keeps_the_row() -> Bool  {
   grammar_choice_ambiguity_count(root: clg_root(choice: Choice { left: clg_named(), right: clg_positional() })) == 1
 }
 
 // A guard whose strings would cover but whose form is not plain proves nothing: `a? :` admits `a :`,
 // but an Optional is not a token-string set, so it subtracts nothing and the row stands.
-test fn non_plain_guard_keeps_the_row() -> Bool {
+test fn non_plain_guard_keeps_the_row() -> Bool  {
   clg_rows(guard: clg_seq(left: Optional { element: clg_tok(c: ^clg_a) }, right: clg_tok(c: ^clg_colon))) == 1
 }
 
@@ -97,11 +97,11 @@ fn clg_short_rows(guard: GrammarExpr) -> Int {
   )
 }
 
-test fn guard_covering_the_other_side_clears_a_short_guarded_side() -> Bool {
+test fn guard_covering_the_other_side_clears_a_short_guarded_side() -> Bool  {
   clg_short_rows(guard: clg_named()) == 0
 }
 
-test fn guard_covering_neither_side_keeps_the_short_row() -> Bool {
+test fn guard_covering_neither_side_keeps_the_short_row() -> Bool  {
   clg_short_rows(guard: clg_seq(left: clg_tok(c: ^clg_a), right: clg_tok(c: ^clg_x))) == 1
 }
 
@@ -122,11 +122,11 @@ fn clg_deep_rows(guard: GrammarExpr) -> Int {
   )
 }
 
-test fn three_token_guard_is_read_at_its_own_depth() -> Bool {
+test fn three_token_guard_is_read_at_its_own_depth() -> Bool  {
   clg_deep_rows(guard: clg_seq(left: clg_tok(c: ^clg_a), right: clg_seq(left: clg_tok(c: ^clg_b), right: clg_tok(c: ^clg_c)))) == 0
 }
 
-test fn three_token_near_miss_guard_keeps_the_row() -> Bool {
+test fn three_token_near_miss_guard_keeps_the_row() -> Bool  {
   clg_deep_rows(guard: clg_seq(left: clg_tok(c: ^clg_a), right: clg_seq(left: clg_tok(c: ^clg_b), right: clg_tok(c: ^clg_d)))) == 1
 }
 
@@ -145,11 +145,11 @@ fn clg_words_guarded(guard: GrammarExpr) -> Int {
   )
 }
 
-test fn excluded_words_guard_removes_both_word_rows() -> Bool {
+test fn excluded_words_guard_removes_both_word_rows() -> Bool  {
   clg_words_guarded(guard: Choice { left: clg_word(w: ^clg_none), right: clg_word(w: ^clg_opaque) }) == 0
 }
 
-test fn guard_missing_one_word_keeps_that_row() -> Bool {
+test fn guard_missing_one_word_keeps_that_row() -> Bool  {
   clg_words_guarded(guard: clg_word(w: ^clg_none)) == 1
 }
 
@@ -188,14 +188,14 @@ fn clg_parsed_has_let(text: String, file: Symbol) -> Optional<Bool> {
   }
 }
 
-test fn return_statement_takes_the_return_route() -> Bool {
+test fn return_statement_takes_the_return_route() -> Bool  {
   match clg_parsed_has_let(text: "module probe.clg_return\nfn f() -> Int { return 1 }\n", file: ^clg_return) {
     Present { value: has_let } => !has_let
     Absent => false
   }
 }
 
-test fn keyword_named_bare_assignment_takes_the_let_route() -> Bool {
+test fn keyword_named_bare_assignment_takes_the_let_route() -> Bool  {
   match clg_parsed_has_let(text: "module probe.clg_assign\nfn f() -> Int {\n  return = 1\n  1\n}\n", file: ^clg_assign) {
     Present { value: has_let } => has_let
     Absent => false

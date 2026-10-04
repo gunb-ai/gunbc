@@ -134,21 +134,21 @@ fn policy_pilot_resolve_rejects_with_reason(
   }
 }
 
-test fn namespace_only_policy_disambiguates_at_type_position_holds() -> Bool {
+test fn namespace_only_policy_disambiguates_at_type_position_holds() -> Bool  {
   policy_pilot_resolve_yes(
     policy: NamespaceOnlyY,
     position: qualified_name_snoc(qn: si_module_qn, segment: ^Classical)
   )
 }
 
-test fn import_scoped_policy_ambiguous_at_module_position_red_holds() -> Bool {
+test fn import_scoped_policy_ambiguous_at_module_position_red_holds() -> Bool  {
   !policy_pilot_resolve_yes(
     policy: ImportScoped,
     position: si_module_qn
   )
 }
 
-test fn namespace_only_policy_chain_shadow_ambiguous_refuses_holds() -> Bool {
+test fn namespace_only_policy_chain_shadow_ambiguous_refuses_holds() -> Bool  {
   policy_pilot_resolve_rejects_with_reason(
     policy: NamespaceOnlyY,
     position: si_shadow_nested_qn,
@@ -159,7 +159,7 @@ test fn namespace_only_policy_chain_shadow_ambiguous_refuses_holds() -> Bool {
   )
 }
 
-test fn namespace_only_policy_variant_alias_shadow_ambiguous_refuses_holds() -> Bool {
+test fn namespace_only_policy_variant_alias_shadow_ambiguous_refuses_holds() -> Bool  {
   policy_pilot_resolve_rejects_with_reason(
     policy: NamespaceOnlyY,
     position: qualified_name_snoc(qn: si_unique_module_qn, segment: ^Classical),

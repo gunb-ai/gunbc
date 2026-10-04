@@ -34,7 +34,7 @@ import gunbc.stage0_crate_partition_generated { generated_partition_crate_rows }
 // valid, so no amount of per-name checking can see it. A per-name predicate placed at this seam
 // would be cited as covering both and would be blind to the second.
 
-test fn a_name_carriable_to_an_identifier_is_admitted() -> Bool {
+test fn a_name_carriable_to_an_identifier_is_admitted() -> Bool  {
   match rust_crate_package_ident(package_name: "v1-stage0-std-core") {
     PackageIdentOk { ident: ident } => ident == "v1_stage0_std_core"
     PackageIdentRefused { cause: _ } => false
@@ -43,7 +43,7 @@ test fn a_name_carriable_to_an_identifier_is_admitted() -> Bool {
 
 // The positive control for the validity arm: without it, a refusal that fired on EVERY name would
 // satisfy the red below and establish nothing.
-test fn a_name_with_a_character_cargo_will_not_take_refuses() -> Bool {
+test fn a_name_with_a_character_cargo_will_not_take_refuses() -> Bool  {
   match rust_crate_package_ident(package_name: "v1.Stage0") {
     PackageIdentRefused { cause: cause } =>
       match cause {
@@ -58,7 +58,7 @@ test fn a_name_with_a_character_cargo_will_not_take_refuses() -> Bool {
 
 // THE COLLISION, which is the arm that matters and the one a per-name check cannot reach. Both
 // names below are individually valid; only the SET is wrong.
-test fn two_names_projecting_to_one_identifier_refuse_and_name_both() -> Bool {
+test fn two_names_projecting_to_one_identifier_refuse_and_name_both() -> Bool  {
   match rust_crate_package_idents(package_names: ["a-b", "a_b"]) {
     PackageIdentSetRefused { cause: cause } =>
       match cause {
@@ -74,7 +74,7 @@ test fn two_names_projecting_to_one_identifier_refuse_and_name_both() -> Bool {
 
 // THE CONTROL THAT KEEPS THE COLLISION CLAIM FROM PASSING FOR THE WRONG REASON: a set of distinct
 // names must be ADMITTED. A fold that refused every multi-name set would red nothing above.
-test fn distinct_names_are_admitted_as_a_set() -> Bool {
+test fn distinct_names_are_admitted_as_a_set() -> Bool  {
   match rust_crate_package_idents(package_names: ["v1-stage0-runtime", "v1-stage0-std-core"]) {
     PackageIdentSetOk { bindings: bindings } =>
       bound_ident_is(bindings: bindings, package_name: "v1-stage0-runtime", expected: "v1_stage0_runtime")
@@ -85,7 +85,7 @@ test fn distinct_names_are_admitted_as_a_set() -> Bool {
 
 // The refusal reaches a reader naming BOTH packages, not just the shared identifier. An operator
 // told only that "two packages collide" has to rediscover the pair the fold already knew.
-test fn the_collision_message_names_both_packages() -> Bool {
+test fn the_collision_message_names_both_packages() -> Bool  {
   match rust_crate_package_idents(package_names: ["a-b", "a_b"]) {
     PackageIdentSetRefused { cause: cause } => {
       let message = package_ident_refusal_message(cause: cause)
@@ -107,7 +107,7 @@ test fn the_collision_message_names_both_packages() -> Bool {
 // It also states the change's own strength honestly: this admission is LATENT on stage0 today,
 // because all six authored names are hyphen-only and cannot collide. A red here would mean the
 // authored names had changed under it.
-test fn the_live_stage0_package_names_are_admitted() -> Bool {
+test fn the_live_stage0_package_names_are_admitted() -> Bool  {
   match rust_crate_package_idents(
     package_names: generated_partition_crate_rows |> map(row => row.package_name)
   ) {
@@ -131,7 +131,7 @@ fn bound_ident_is(bindings: List<PackageIdentBinding>, package_name: String, exp
 
 // THE RENDERER'S REFUSAL, at its interface. A package outside the admitted set is Absent, never a
 // fresh projection of its name -- that re-projection is the second source review 70359 found.
-test fn a_package_outside_the_admitted_set_is_not_bound() -> Bool {
+test fn a_package_outside_the_admitted_set_is_not_bound() -> Bool  {
   match rust_crate_package_idents(package_names: ["v1-stage0-runtime"]) {
     PackageIdentSetRefused { cause: _ } => false
     PackageIdentSetOk { bindings: bindings } =>
@@ -145,28 +145,28 @@ test fn a_package_outside_the_admitted_set_is_not_bound() -> Bool {
 // NAMES THE CHARACTER CHECK ADMITS THAT ARE STILL NOT IDENTIFIERS (review 70422). Each is built
 // only of admitted characters, so each would pass a per-character check alone; the claim is that
 // the leading-position and reserved-word checks catch them, each under its own cause.
-test fn a_name_with_a_leading_digit_refuses() -> Bool {
+test fn a_name_with_a_leading_digit_refuses() -> Bool  {
   match rust_crate_package_ident(package_name: "1core") {
     PackageIdentRefused { cause: PackageIdentNotLeadable { package_name: _ } } => true
     _ => false
   }
 }
 
-test fn a_name_with_a_leading_hyphen_refuses() -> Bool {
+test fn a_name_with_a_leading_hyphen_refuses() -> Bool  {
   match rust_crate_package_ident(package_name: "-core") {
     PackageIdentRefused { cause: PackageIdentNotLeadable { package_name: _ } } => true
     _ => false
   }
 }
 
-test fn a_name_carrying_to_a_bare_underscore_refuses() -> Bool {
+test fn a_name_carrying_to_a_bare_underscore_refuses() -> Bool  {
   match rust_crate_package_ident(package_name: "_") {
     PackageIdentRefused { cause: PackageIdentReserved { package_name: _, ident: _ } } => true
     _ => false
   }
 }
 
-test fn a_name_carrying_to_a_rust_keyword_refuses() -> Bool {
+test fn a_name_carrying_to_a_rust_keyword_refuses() -> Bool  {
   match rust_crate_package_ident(package_name: "self") {
     PackageIdentRefused { cause: PackageIdentReserved { package_name: _, ident: _ } } => true
     _ => false
@@ -175,7 +175,7 @@ test fn a_name_carrying_to_a_rust_keyword_refuses() -> Bool {
 
 // The remaining second projection is a BOUND trigger on the exact declaration, so it fires when
 // that declaration retires and cannot be satisfied by anything else.
-test fn the_remaining_second_projection_is_a_bound_retirement_trigger() -> Bool {
+test fn the_remaining_second_projection_is_a_bound_retirement_trigger() -> Bool  {
   match emit_rust_second_ident_projection_dissolve_on {
     UnboundDissolution { description: _ } => false
     BoundDissolution { trigger: DeclarationRetires { ref: r } } =>

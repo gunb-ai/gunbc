@@ -54,7 +54,7 @@ fn decode_round_trips(scheme: UriScheme) -> Bool {
   }
 }
 
-test fn every_declared_uri_scheme_round_trips_through_the_bundle_node() -> Bool {
+test fn every_declared_uri_scheme_round_trips_through_the_bundle_node() -> Bool  {
   fold_list(
     xs: uri_scheme_inhabitants(),
     empty: true,
@@ -100,7 +100,7 @@ fn reasons_contain(reasons: List<Symbol>, wanted: Symbol) -> Bool {
   fold_list(xs: reasons, empty: false, cons: fn(acc, r) { acc || (r == wanted) })
 }
 
-test fn an_unnamed_scheme_discriminant_refuses_rather_than_defaulting() -> Bool {
+test fn an_unnamed_scheme_discriminant_refuses_rather_than_defaulting() -> Bool  {
   reasons_contain(
     reasons: decode_refusal_reasons(
       identity: symbol_intern_lexeme(lexeme: "NotADeclaredUriScheme")
@@ -112,7 +112,7 @@ test fn an_unnamed_scheme_discriminant_refuses_rather_than_defaulting() -> Bool 
 // THE POSITIVE CONTROL FOR THE ROW ABOVE, and it is not redundant with the round trip:
 // it uses the SAME hand-built node shape, so a refusal caused by that shape rather than by
 // the unknown discriminant reds here instead of passing unnoticed above.
-test fn the_same_hand_built_shape_accepts_a_declared_scheme() -> Bool {
+test fn the_same_hand_built_shape_accepts_a_declared_scheme() -> Bool  {
   match target_external_authority_from_node(
     node: bundle_node_with_scheme_identity(
       identity: target_uri_scheme_discriminant(scheme: Https)
@@ -126,7 +126,7 @@ test fn the_same_hand_built_shape_accepts_a_declared_scheme() -> Bool {
 
 // DISTINCT ARMS, DISTINCT ANSWERS. A decode that ignored the discriminant entirely and
 // returned the roster head would pass every row above except this one.
-test fn distinct_scheme_discriminants_decode_to_distinct_schemes() -> Bool {
+test fn distinct_scheme_discriminants_decode_to_distinct_schemes() -> Bool  {
   !(target_uri_scheme_discriminant(scheme: Http)
     == target_uri_scheme_discriminant(scheme: Https))
     && ((uri_scheme_wire(s: Http) as String) == "http://")

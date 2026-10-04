@@ -90,7 +90,7 @@ import v2.workflow.regen_convergence_transaction {
   DispositionNonTerminal
 }
 
-test fn affected_bound_refusal_cannot_widen_into_stage_planning() -> Bool {
+test fn affected_bound_refusal_cannot_widen_into_stage_planning() -> Bool  {
   match regen_admit_affected_bound(
     bound: AffectedCandidatePopulationRefused { reason: "edited module unlocatable" },
     changed: []
@@ -100,7 +100,7 @@ test fn affected_bound_refusal_cannot_widen_into_stage_planning() -> Bool {
   }
 }
 
-test fn stage_population_outside_the_affected_bound_refuses() -> Bool {
+test fn stage_population_outside_the_affected_bound_refuses() -> Bool  {
   let inside = fixture_surface(module: "compiler.inside", path: "inside.rs", role: GenerationInput, seed: SeedEmbedded)
   let outside = fixture_surface(module: "compiler.outside", path: "outside.rs", role: GenerationInput, seed: SeedEmbedded)
   match regen_admit_affected_bound(
@@ -114,7 +114,7 @@ test fn stage_population_outside_the_affected_bound_refuses() -> Bool {
   }
 }
 
-test fn whole_population_bound_admits_the_observed_stage_population() -> Bool {
+test fn whole_population_bound_admits_the_observed_stage_population() -> Bool  {
   let row = fixture_surface(module: "compiler.any", path: "any.rs", role: GenerationInput, seed: SeedEmbedded)
   match regen_admit_affected_bound(bound: CompleteCandidatePopulation, changed: [row]) {
     RegenAffectedBoundAdmitted => true
@@ -122,7 +122,7 @@ test fn whole_population_bound_admits_the_observed_stage_population() -> Bool {
   }
 }
 
-test fn repeated_seed_and_candidate_state_is_a_cycle_refusal() -> Bool {
+test fn repeated_seed_and_candidate_state_is_a_cycle_refusal() -> Bool  {
   match regen_admit_generation_progress(
     seen_state_keys: ["seed-a:tree-a"],
     seed_digest: "seed-a",
@@ -135,7 +135,7 @@ test fn repeated_seed_and_candidate_state_is_a_cycle_refusal() -> Bool {
   }
 }
 
-test fn finite_generation_bound_refuses_separately_from_a_cycle() -> Bool {
+test fn finite_generation_bound_refuses_separately_from_a_cycle() -> Bool  {
   match regen_admit_generation_progress(
     seen_state_keys: [],
     seed_digest: "seed-new",
@@ -148,7 +148,7 @@ test fn finite_generation_bound_refuses_separately_from_a_cycle() -> Bool {
   }
 }
 
-test fn single_pass_producer_plus_old_dependent_refuses_the_seed_build() -> Bool {
+test fn single_pass_producer_plus_old_dependent_refuses_the_seed_build() -> Bool  {
   let producer = fixture_surface(
     module: "compiler.transport",
     path: "compiler_transport.rs",
@@ -177,7 +177,7 @@ test fn single_pass_producer_plus_old_dependent_refuses_the_seed_build() -> Bool
 // mixed_seed_embedded_candidate_installs_both_mirrors_before_rebuild. This fixture
 // still covers Promote then Install when the first generation has no seed-embedded
 // subject sibling.
-test fn staged_producer_then_complete_subject_cut_reaches_zero_drift() -> Bool {
+test fn staged_producer_then_complete_subject_cut_reaches_zero_drift() -> Bool  {
   let producer = fixture_surface(
     module: "compiler.transport",
     path: "compiler_transport.rs",
@@ -219,7 +219,7 @@ fn second_identity() -> RegenSurfaceIdentity {
   RegenSurfaceIdentity { declaring_module: "std.dependent", projected_path: "std_dependent.rs" }
 }
 
-test fn stale_candidate_from_g0_cannot_install_after_g1() -> Bool {
+test fn stale_candidate_from_g0_cannot_install_after_g1() -> Bool  {
   match regen_admit_candidate_generation(observation: RegenCandidateGenerationObservation {
     planned_surfaces: [one_identity(), second_identity()],
     current_seed_digest: "g1",
@@ -234,7 +234,7 @@ test fn stale_candidate_from_g0_cannot_install_after_g1() -> Bool {
   }
 }
 
-test fn a_planned_surface_with_no_observed_effect_refuses_before_the_digest_check() -> Bool {
+test fn a_planned_surface_with_no_observed_effect_refuses_before_the_digest_check() -> Bool  {
   let admission = regen_admit_stage_execution(observation: RegenStageExecutionObservation {
     planned: [one_identity(), second_identity()],
     executed: [one_identity()],
@@ -251,7 +251,7 @@ test fn a_planned_surface_with_no_observed_effect_refuses_before_the_digest_chec
   }
 }
 
-test fn a_population_refusal_renders_both_populations_not_only_its_name() -> Bool {
+test fn a_population_refusal_renders_both_populations_not_only_its_name() -> Bool  {
   let admission = regen_admit_stage_execution(observation: RegenStageExecutionObservation {
     planned: [one_identity()],
     executed: [one_identity(), second_identity()],
@@ -263,7 +263,7 @@ test fn a_population_refusal_renders_both_populations_not_only_its_name() -> Boo
     == "planned=[std_subject.rs] executed=[std_subject.rs std_dependent.rs]"
 }
 
-test fn an_admitted_stage_renders_no_refusal_detail() -> Bool {
+test fn an_admitted_stage_renders_no_refusal_detail() -> Bool  {
   let admission = regen_admit_stage_execution(observation: RegenStageExecutionObservation {
     planned: [one_identity()],
     executed: [one_identity()],
@@ -274,7 +274,7 @@ test fn an_admitted_stage_renders_no_refusal_detail() -> Bool {
   regen_stage_execution_admission_detail(admission: admission) == ""
 }
 
-test fn an_observed_effect_outside_the_plan_refuses_in_the_other_direction() -> Bool {
+test fn an_observed_effect_outside_the_plan_refuses_in_the_other_direction() -> Bool  {
   match regen_admit_stage_execution(observation: RegenStageExecutionObservation {
     planned: [one_identity()],
     executed: [one_identity(), second_identity()],
@@ -288,7 +288,7 @@ test fn an_observed_effect_outside_the_plan_refuses_in_the_other_direction() -> 
   }
 }
 
-test fn tampered_candidate_digest_refuses_before_admission() -> Bool {
+test fn tampered_candidate_digest_refuses_before_admission() -> Bool  {
   match regen_admit_stage_execution(observation: RegenStageExecutionObservation {
     planned: [one_identity(), second_identity()],
     executed: [one_identity(), second_identity()],
@@ -304,7 +304,7 @@ test fn tampered_candidate_digest_refuses_before_admission() -> Bool {
   }
 }
 
-test fn stage_build_failure_is_a_typed_transaction_refusal() -> Bool {
+test fn stage_build_failure_is_a_typed_transaction_refusal() -> Bool  {
   match regen_admit_stage_execution(observation: RegenStageExecutionObservation {
     planned: [one_identity()],
     executed: [one_identity()],
@@ -317,7 +317,7 @@ test fn stage_build_failure_is_a_typed_transaction_refusal() -> Bool {
   }
 }
 
-test fn matching_stage_population_digest_generation_and_build_are_admitted() -> Bool {
+test fn matching_stage_population_digest_generation_and_build_are_admitted() -> Bool  {
   match regen_admit_stage_execution(observation: RegenStageExecutionObservation {
     planned: [one_identity()],
     executed: [one_identity()],
@@ -331,7 +331,7 @@ test fn matching_stage_population_digest_generation_and_build_are_admitted() -> 
 }
 
 
-test fn an_admitted_surface_in_neither_planned_nor_deferred_refuses_by_identity() -> Bool {
+test fn an_admitted_surface_in_neither_planned_nor_deferred_refuses_by_identity() -> Bool  {
   match regen_admit_install_boundary_population(observation: RegenInstallBoundaryObservation {
     admitted: [one_identity(), second_identity()],
     planned: [one_identity()],
@@ -351,7 +351,7 @@ test fn an_admitted_surface_in_neither_planned_nor_deferred_refuses_by_identity(
 // THE DIRECTION A COUNT CANNOT SEE. One admitted surface is missing from the partition and one
 // partition member was never admitted, so the two totals agree exactly. A cardinality check reports
 // this population as covered; the identity join names both residues instead.
-test fn equal_counts_with_different_identities_still_refuses_both_directions() -> Bool {
+test fn equal_counts_with_different_identities_still_refuses_both_directions() -> Bool  {
   match regen_admit_install_boundary_population(observation: RegenInstallBoundaryObservation {
     admitted: [one_identity()],
     planned: [second_identity()],
@@ -368,7 +368,7 @@ test fn equal_counts_with_different_identities_still_refuses_both_directions() -
   }
 }
 
-test fn one_surface_both_planned_and_deferred_refuses_where_a_union_would_absorb_it() -> Bool {
+test fn one_surface_both_planned_and_deferred_refuses_where_a_union_would_absorb_it() -> Bool  {
   match regen_admit_install_boundary_population(observation: RegenInstallBoundaryObservation {
     admitted: [one_identity()],
     planned: [one_identity()],
@@ -381,7 +381,7 @@ test fn one_surface_both_planned_and_deferred_refuses_where_a_union_would_absorb
   }
 }
 
-test fn a_partition_that_exactly_covers_the_admitted_population_is_admitted() -> Bool {
+test fn a_partition_that_exactly_covers_the_admitted_population_is_admitted() -> Bool  {
   match regen_admit_install_boundary_population(observation: RegenInstallBoundaryObservation {
     admitted: [one_identity(), second_identity()],
     planned: [one_identity()],
@@ -399,7 +399,7 @@ fn disposition_is_terminal(d: RegenSurfaceDisposition) -> Bool {
   }
 }
 
-test fn deferred_is_the_only_nonterminal_disposition() -> Bool {
+test fn deferred_is_the_only_nonterminal_disposition() -> Bool  {
   disposition_is_terminal(d: SurfaceApplied { installed_digest: "digest" })
     && disposition_is_terminal(d: SurfaceSuperseded { by_generation_id: "g2" })
     && disposition_is_terminal(d: SurfaceDispositionRefused { reason: "refused" })
@@ -409,7 +409,7 @@ test fn deferred_is_the_only_nonterminal_disposition() -> Bool {
 // A LINEAGE THAT NAMES EVERY ADMITTED SURFACE AND STILL ENDS IN A PROMISE. The population join is
 // satisfied in both directions here -- this is exactly the case a population equality alone reports
 // as complete, and it is why terminality is a separate conjunct rather than a property of the join.
-test fn a_lineage_terminating_in_deferred_is_unfinished_not_done() -> Bool {
+test fn a_lineage_terminating_in_deferred_is_unfinished_not_done() -> Bool  {
   let admission = regen_admit_transaction_lineage(
     initial_admitted: [one_identity(), second_identity()],
     lineage: [
@@ -426,7 +426,7 @@ test fn a_lineage_terminating_in_deferred_is_unfinished_not_done() -> Bool {
   }
 }
 
-test fn an_admitted_surface_absent_from_the_terminal_lineage_refuses() -> Bool {
+test fn an_admitted_surface_absent_from_the_terminal_lineage_refuses() -> Bool  {
   match regen_admit_transaction_lineage(
     initial_admitted: [one_identity(), second_identity()],
     lineage: [
@@ -440,7 +440,7 @@ test fn an_admitted_surface_absent_from_the_terminal_lineage_refuses() -> Bool {
   }
 }
 
-test fn a_lineage_row_that_was_never_admitted_refuses_in_the_other_direction() -> Bool {
+test fn a_lineage_row_that_was_never_admitted_refuses_in_the_other_direction() -> Bool  {
   match regen_admit_transaction_lineage(
     initial_admitted: [one_identity()],
     lineage: [
@@ -458,7 +458,7 @@ test fn a_lineage_row_that_was_never_admitted_refuses_in_the_other_direction() -
 // THE POSITIVE CONTROL, and it carries Superseded deliberately: a surface that stopped drifting
 // because a later generation replaced its candidate ENDS its lineage without ever being installed,
 // and scoring that as unfinished would refuse a correct transaction.
-test fn applied_and_superseded_together_close_the_lineage() -> Bool {
+test fn applied_and_superseded_together_close_the_lineage() -> Bool  {
   match regen_admit_transaction_lineage(
     initial_admitted: [one_identity(), second_identity()],
     lineage: [
@@ -532,7 +532,7 @@ fn fixture_plan(kind: RegenStageKind, rows: List<RegenChangedSurface>) -> RegenS
 // RED: a GenerationInput mirror that re-exports a symbol only a GenerationSubject
 // sibling introduces must not be installed alone. regen_plan_next_stage used to pick
 // PromoteGenerationInputs and defer the subject; cargo then failed E0432.
-test fn mixed_seed_embedded_candidate_installs_both_mirrors_before_rebuild() -> Bool {
+test fn mixed_seed_embedded_candidate_installs_both_mirrors_before_rebuild() -> Bool  {
   let producer = fixture_surface(
     module: "v1.compiler.emit_rust",
     path: "v1_compiler_emit_rust.rs",
@@ -587,7 +587,7 @@ test fn mixed_seed_embedded_candidate_installs_both_mirrors_before_rebuild() -> 
   }
 }
 
-test fn single_generation_input_still_promotes_alone() -> Bool {
+test fn single_generation_input_still_promotes_alone() -> Bool  {
   let producer = fixture_surface(
     module: "v1.compiler.emit_rust",
     path: "v1_compiler_emit_rust.rs",
@@ -615,7 +615,7 @@ test fn single_generation_input_still_promotes_alone() -> Bool {
   }
 }
 
-test fn seed_compatibility_cut_installs_generation_input_with_its_dependent_subject() -> Bool {
+test fn seed_compatibility_cut_installs_generation_input_with_its_dependent_subject() -> Bool  {
   let producer = fixture_surface(
     module: "v1.compiler.emit_rust",
     path: "v1_compiler_emit_rust.rs",
@@ -635,7 +635,7 @@ test fn seed_compatibility_cut_installs_generation_input_with_its_dependent_subj
   }
 }
 
-test fn seed_compatibility_cut_installs_all_changed_subjects_together() -> Bool {
+test fn seed_compatibility_cut_installs_all_changed_subjects_together() -> Bool  {
   let lower = fixture_surface(
     module: "std.lower",
     path: "std_lower.rs",
@@ -655,7 +655,7 @@ test fn seed_compatibility_cut_installs_all_changed_subjects_together() -> Bool 
   }
 }
 
-test fn unresolved_generation_role_refuses_before_a_stage_is_planned() -> Bool {
+test fn unresolved_generation_role_refuses_before_a_stage_is_planned() -> Bool  {
   let unknown = fixture_surface(
     module: "new.surface",
     path: "new_surface.rs",
@@ -670,7 +670,7 @@ test fn unresolved_generation_role_refuses_before_a_stage_is_planned() -> Bool {
   }
 }
 
-test fn non_seed_output_waits_for_publish_stage() -> Bool {
+test fn non_seed_output_waits_for_publish_stage() -> Bool  {
   let output = fixture_surface(
     module: "artifact.output",
     path: "artifact_output.rs",
@@ -692,7 +692,7 @@ test fn non_seed_output_waits_for_publish_stage() -> Bool {
   }
 }
 
-test fn one_stage_cannot_claim_two_dependency_closures() -> Bool {
+test fn one_stage_cannot_claim_two_dependency_closures() -> Bool  {
   let lower = fixture_surface_in_closure(
     module: "std.lower",
     path: "std_lower.rs",
@@ -719,7 +719,7 @@ test fn one_stage_cannot_claim_two_dependency_closures() -> Bool {
 
 // The explicit generation-role roster is the sole producer: every admitted fixture generation
 // input appears exactly once, while an ordinary subject is absent rather than silently promoted.
-test fn explicit_generation_role_roster_is_total_and_unique_for_generation_inputs() -> Bool {
+test fn explicit_generation_role_roster_is_total_and_unique_for_generation_inputs() -> Bool  {
   let roles = regen_generation_role_modules(modules: [
     "v1.compiler.emit_rust",
     "v1.compiler.required_regen_host",
@@ -733,7 +733,7 @@ test fn explicit_generation_role_roster_is_total_and_unique_for_generation_input
 // Aggregate generated surfaces have producer ownership even though they deliberately have no
 // same-named DAG module. The product and source projections must join through the bootstrap-edge
 // authority; a host-side basename fallback would make this discriminator observational.
-test fn compiler_tests_aggregate_has_one_declared_product_owner() -> Bool {
+test fn compiler_tests_aggregate_has_one_declared_product_owner() -> Bool  {
   count(regen_generated_product_owner_paths() |> filter(path => path == "compiler_tests.rs")) == 1
     && regen_generated_product_source_modules(product: "compiler_tests.rs")
       == ["v1.compiler.compiler_tests_rust"]
@@ -743,7 +743,7 @@ test fn compiler_tests_aggregate_has_one_declared_product_owner() -> Bool {
 // v1.compiler.emit_rust, not an ordinary same-named module projection. Ownership and generation
 // role are both declared here; adding a basename exception in the host would let either fact
 // drift independently.
-test fn gunbc_cli_dispatch_aggregate_has_one_declared_generation_subject_owner() -> Bool {
+test fn gunbc_cli_dispatch_aggregate_has_one_declared_generation_subject_owner() -> Bool  {
   count(regen_generated_product_owner_paths() |> filter(path => path == "gunbc_cli_dispatch_generated.rs")) == 1
     && regen_generated_product_source_modules(product: "gunbc_cli_dispatch_generated.rs")
       == ["v1.compiler.emit_rust"]
@@ -755,7 +755,7 @@ test fn gunbc_cli_dispatch_aggregate_has_one_declared_generation_subject_owner()
 
 // These stage assertions consume GenerationSubject and SeedEmbedded independently. Together
 // they reject both false aggregate roles: generation-input promotion and non-seed publication.
-test fn gunbc_cli_dispatch_generation_subject_obeys_all_three_stage_boundaries() -> Bool {
+test fn gunbc_cli_dispatch_generation_subject_obeys_all_three_stage_boundaries() -> Bool  {
   let carrier = fixture_surface(
     module: "v1.compiler.emit_rust",
     path: "gunbc_cli_dispatch_generated.rs",
@@ -787,7 +787,7 @@ test fn gunbc_cli_dispatch_generation_subject_obeys_all_three_stage_boundaries()
 
 // Seed-manifest absence is not itself an OutsideSeed fact. The generated-product authority
 // explicitly classifies publishable aggregates, while the seed crate root remains an input.
-test fn aggregate_product_roles_make_non_seed_publication_reachable() -> Bool {
+test fn aggregate_product_roles_make_non_seed_publication_reachable() -> Bool  {
   regen_generated_product_generation_role_labels(product: "compiler_tests.rs")
       == ["NonSeedGeneratedOutput"]
     && regen_generated_product_generation_role_labels(product: "emitted_population.rs")

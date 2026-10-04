@@ -19,14 +19,14 @@ import v2.std.text { String }
 // in direct_rust_door_group_algebra_test.dag at zero production cost; its single production walk
 // lives in long/direct_rust_door_production_group_test.dag.
 
-test fn witness_missing_rule_assessment_establishes_on_fixture() -> Bool {
+test fn witness_missing_rule_assessment_establishes_on_fixture() -> Bool  {
   match assess_missing_translation_rule_refuses() {
     DirectRustDoorEstablished => true
     _ => false
   }
 }
 
-test fn witness_accept_despite_gap_refusal_fires() -> Bool {
+test fn witness_accept_despite_gap_refusal_fires() -> Bool  {
   match refused(failure: MissingRuleAcceptedDespiteGap) {
     DirectRustDoorRefused { failure } => failure == MissingRuleAcceptedDespiteGap
     _ => false

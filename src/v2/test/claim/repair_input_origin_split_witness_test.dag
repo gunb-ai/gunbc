@@ -33,7 +33,7 @@ fn is_source(candidate: RepairInputOriginCandidate, want: String) -> Bool {
 
 // XL-0A RED 1: a target-only token is born in the rendered partition. A producer that unions
 // strings before tagging cannot establish the negative half (there is no source row for Vec).
-test fn realized_only_token_has_one_rendered_origin_and_no_source_origin() -> Bool {
+test fn realized_only_token_has_one_rendered_origin_and_no_source_origin() -> Bool  {
   let candidates = repair_input_origin_candidates(
     emitting_module: "fixture.consumer",
     unlisted_type_names: [],
@@ -50,7 +50,7 @@ test fn realized_only_token_has_one_rendered_origin_and_no_source_origin() -> Bo
 
 // XL-0A RED 2: emitted text is qualification evidence, never a seventh origin. With every ruled
 // producer channel empty, an emitted-text-only spelling has no constructor in this population.
-test fn emitted_text_only_token_is_not_an_origin() -> Bool {
+test fn emitted_text_only_token_is_not_an_origin() -> Bool  {
   repair_input_origin_candidates(
     emitting_module: "fixture.consumer",
     unlisted_type_names: [],
@@ -65,7 +65,7 @@ test fn emitted_text_only_token_is_not_an_origin() -> Bool {
 // The qualified route is an item-surface projection, not a dotted-spelling filter over every
 // origin. A value reference with the same spelling remains in the compatibility population but
 // cannot keep this route alive after the item-surface contribution is removed.
-test fn qualified_item_surface_route_is_origin_derived() -> Bool {
+test fn qualified_item_surface_route_is_origin_derived() -> Bool  {
   let both = repair_input_origin_candidates(
     emitting_module: "fixture.consumer",
     unlisted_type_names: [],
@@ -97,7 +97,7 @@ fn unique_compatibility_names(names: List<String>) -> List<String> {
 
 // Origin identity is conserved before the old boundary's spelling deduplication: the same text
 // from all five source origins and the rendered branch is six rows, then one compatibility name.
-test fn partition_conservation_keeps_six_origins_before_compatibility_dedup() -> Bool {
+test fn partition_conservation_keeps_six_origins_before_compatibility_dedup() -> Bool  {
   let candidates = repair_input_origin_candidates(
     emitting_module: "fixture.consumer",
     unlisted_type_names: ["Shared"],

@@ -66,14 +66,14 @@ fn ncl_accepted_is(o: Outcome<Node>, expected: Node) -> Bool {
   }
 }
 
-test fn named_child_lookup_decides_all_three_states_in_one_pass() -> Bool {
+test fn named_child_lookup_decides_all_three_states_in_one_pass() -> Bool  {
   ncl_found_is(lookup: named_child_lookup(root: ncl_conj(), name: ^ncl_unique), expected: ncl_atom(s: ^ncl_unique_target))
     && ncl_is_ambiguous(lookup: named_child_lookup(root: ncl_conj(), name: ^ncl_repeated))
     && ncl_is_missing(lookup: named_child_lookup(root: ncl_conj(), name: ^ncl_absent))
     && ncl_is_missing(lookup: named_child_lookup(root: ncl_atom(s: ^ncl_not_a_conj), name: ^ncl_unique))
 }
 
-test fn find_named_child_projects_the_lookup_with_its_refusal_reasons() -> Bool {
+test fn find_named_child_projects_the_lookup_with_its_refusal_reasons() -> Bool  {
   ncl_accepted_is(o: find_named_child(root: ncl_conj(), name: ^ncl_unique), expected: ncl_atom(s: ^ncl_unique_target))
     && ncl_rejected_with(o: find_named_child(root: ncl_conj(), name: ^ncl_repeated), reason: ^named_child_ambiguous)
     && ncl_rejected_with(o: find_named_child(root: ncl_conj(), name: ^ncl_absent), reason: ^named_child_missing)

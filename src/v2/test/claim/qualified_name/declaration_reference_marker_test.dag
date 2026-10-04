@@ -33,7 +33,7 @@ fn drm_path_reads_absent(n: Node) -> Bool {
 // a cons list of digit atoms under its magnitude field, and that node read as the path
 // integer_tag_digit_6.integer_tag_digit_0... Every node of the literal is asked, as a consumer
 // walking a resolved body asks it.
-test fn declaration_reference_integer_literal_reads_as_no_reference() -> Bool {
+test fn declaration_reference_integer_literal_reads_as_no_reference() -> Bool  {
   match dag_int_literal_node_from_lexeme(lexeme: "606060", occurrence_id: OccurrenceSynthetic) {
     Accepted { value: literal, diagnostics: _ } =>
       fold(node_subtree_nodes(root: literal), init: true, f: fn(acc, n) {
@@ -43,7 +43,7 @@ test fn declaration_reference_integer_literal_reads_as_no_reference() -> Bool {
   }
 }
 
-test fn declaration_reference_marked_reference_reads_its_exact_path() -> Bool {
+test fn declaration_reference_marked_reference_reads_its_exact_path() -> Bool  {
   let path = qualified_name_from_dotted_string(dotted: "v2.test.drm_provider.DrmDeclared")
   match declaration_reference_path_optional(
     node: declaration_reference_node(qn: path, occurrence_id: OccurrenceSynthetic)
@@ -55,7 +55,7 @@ test fn declaration_reference_marked_reference_reads_its_exact_path() -> Bool {
 
 // THE MUTATION: the same path with the marker dropped -- the bare spine the resolver used to mint --
 // is not a reference.
-test fn declaration_reference_unmarked_spine_reads_as_no_reference() -> Bool {
+test fn declaration_reference_unmarked_spine_reads_as_no_reference() -> Bool  {
   drm_path_reads_absent(
     n: qualified_name_spine_node(
       qn: qualified_name_from_dotted_string(dotted: "v2.test.drm_provider.DrmDeclared"),
@@ -66,7 +66,7 @@ test fn declaration_reference_unmarked_spine_reads_as_no_reference() -> Bool {
 
 // AN AUTHORED ONE-FIELD RECORD OVER A SPINE is not a reference either: its label is an identifier,
 // and the marker's lexeme is not one.
-test fn declaration_reference_identifier_labelled_wrapper_reads_as_no_reference() -> Bool {
+test fn declaration_reference_identifier_labelled_wrapper_reads_as_no_reference() -> Bool  {
   drm_path_reads_absent(
     n: Node {
       kind: TypeNode { connective: Conj },

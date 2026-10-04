@@ -181,22 +181,22 @@ fn tree_atom_and_label_absent(path: String, needle: Symbol) -> Bool {
 // regression controls. The frontier rows they instrumented in v2.lens.module_graph
 // (reference_derived_qualified_mention_frontier,
 // reference_derived_imported_bare_parameter_edge_frontier) are retired with them.
-test fn production_route_reference_only_plain_value_yields_edge_holds() -> Bool {
+test fn production_route_reference_only_plain_value_yields_edge_holds() -> Bool  {
   production_edge_count(path: consumer_reference_only_path, target: provider_module) > 0
 }
 
-test fn production_route_import_only_has_no_reference_edge_holds() -> Bool {
+test fn production_route_import_only_has_no_reference_edge_holds() -> Bool  {
   production_edge_count(path: consumer_import_only_path, target: provider_module) == 0
 }
 
-test fn production_route_both_plain_value_yields_edge_holds() -> Bool {
+test fn production_route_both_plain_value_yields_edge_holds() -> Bool  {
   production_edge_count(path: consumer_both_path, target: provider_module) > 0
 }
 
 // FLIPPED 2026-10-01 (DESIGN 4b(4)): a call argument's value lowers whole and its named label is
 // conserved on the application (body_lowering_fold body_lower_call_arg_edge), so the qualified
 // mention inside `sink(x: ...)` reaches the production route's edge. Permanent control.
-test fn production_route_call_argument_reference_yields_edge_holds() -> Bool {
+test fn production_route_call_argument_reference_yields_edge_holds() -> Bool  {
   production_edge_count(path: consumer_call_only_path, target: provider_module) > 0
 }
 
@@ -205,47 +205,47 @@ test fn production_route_call_argument_reference_yields_edge_holds() -> Bool {
 // (gunbc.recurring_failure_mode dotted_reference_truncated_at_v2_body_lowering). The site now
 // reaches as ONE spelling of the whole chain; the EDGE row beside it stays missing because
 // ProvidedMarker is a type declaration the graft never rehomes, so the site resolves to nothing.
-test fn production_route_type_position_qualified_site_is_present_holds() -> Bool {
+test fn production_route_type_position_qualified_site_is_present_holds() -> Bool  {
   site_spelling_count(path: consumer_type_only_path, needle: provided_marker_dotted) == 1
 }
 
-test fn production_route_type_position_qualified_edge_is_present_holds() -> Bool {
+test fn production_route_type_position_qualified_edge_is_present_holds() -> Bool  {
   production_edge_count(path: consumer_type_only_path, target: provider_module) > 0
 }
 
-test fn production_route_type_imported_bare_site_is_present_holds() -> Bool {
+test fn production_route_type_imported_bare_site_is_present_holds() -> Bool  {
   site_spelling_count(path: consumer_type_imported_path, needle: provided_marker_bare) > 0
 }
 
-test fn production_route_type_imported_site_yields_edge_holds() -> Bool {
+test fn production_route_type_imported_site_yields_edge_holds() -> Bool  {
   production_edge_count(path: consumer_type_imported_path, target: provider_module) > 0
 }
 
-test fn production_route_bare_local_type_position_site_is_present_holds() -> Bool {
+test fn production_route_bare_local_type_position_site_is_present_holds() -> Bool  {
   site_spelling_count(path: consumer_type_bare_local_path, needle: local_marker_bare) > 0
 }
 
-test fn production_route_bare_param_type_in_field_fixture_is_present_holds() -> Bool {
+test fn production_route_bare_param_type_in_field_fixture_is_present_holds() -> Bool  {
   site_spelling_count(path: consumer_field_bare_local_path, needle: local_param_marker_bare) > 0
 }
 
-test fn production_route_bare_field_type_site_is_present_holds() -> Bool {
+test fn production_route_bare_field_type_site_is_present_holds() -> Bool  {
   site_spelling_count(path: consumer_field_bare_local_path, needle: local_field_only_bare) > 0
 }
 
-test fn production_tree_field_fixture_param_type_atom_is_present_holds() -> Bool {
+test fn production_tree_field_fixture_param_type_atom_is_present_holds() -> Bool  {
   tree_atom_count(path: consumer_field_bare_local_path, needle: local_param_marker_sym) > 0
 }
 
-test fn production_tree_field_fixture_wrapper_name_survives_today_holds() -> Bool {
+test fn production_tree_field_fixture_wrapper_name_survives_today_holds() -> Bool  {
   !tree_atom_and_label_absent(path: consumer_field_bare_local_path, needle: local_wrapper_sym)
 }
 
-test fn production_tree_field_fixture_field_name_survives_today_holds() -> Bool {
+test fn production_tree_field_fixture_field_name_survives_today_holds() -> Bool  {
   !tree_atom_and_label_absent(path: consumer_field_bare_local_path, needle: local_wrapper_field_name_sym)
 }
 
-test fn production_tree_field_fixture_field_type_survives_today_holds() -> Bool {
+test fn production_tree_field_fixture_field_type_survives_today_holds() -> Bool  {
   !tree_atom_and_label_absent(path: consumer_field_bare_local_path, needle: local_field_only_sym)
 }
 
@@ -255,6 +255,6 @@ test fn production_tree_field_fixture_field_type_survives_today_holds() -> Bool 
 // call_expression_erased_at_v2_body_lowering, callee half). The callee now reaches the edge fold
 // as one mention of the provider module. The call-CONTENTS row above stays missing: the argument
 // half of that class is untouched.
-test fn production_route_callee_with_no_arguments_reaches_holds() -> Bool {
+test fn production_route_callee_with_no_arguments_reaches_holds() -> Bool  {
   production_edge_count(path: consumer_callee_only_path, target: provider_module) == 1
 }

@@ -166,7 +166,7 @@ fn whole_root_identities(tokens: TokenStream, holds: fn(SymbolIndex, Node) -> Bo
 
 // ROUTE PRECONDITION: the full fold really refuses this body, and for the cause the census arm exists
 // to avoid -- otherwise the census claims would pass over a body nothing refuses.
-test fn full_fold_refuses_the_provider_body_holds() -> Bool {
+test fn full_fold_refuses_the_provider_body_holds() -> Bool  {
   match full_of_stream(tokens: census_fn_only_refusing_stream()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
@@ -176,7 +176,7 @@ test fn full_fold_refuses_the_provider_body_holds() -> Bool {
 
 // Census admits the same source, and the fn's index entry is its signature with no body: which is
 // what keeps a non-member's body out of the Disj and alias scans and out of the stored entry.
-test fn census_admits_the_refusing_body_and_stores_no_body_holds() -> Bool {
+test fn census_admits_the_refusing_body_and_stores_no_body_holds() -> Bool  {
   match census_of_stream(tokens: census_fn_only_refusing_stream()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: provider, diagnostics: _ } =>
@@ -195,7 +195,7 @@ test fn census_admits_the_refusing_body_and_stores_no_body_holds() -> Bool {
 }
 
 // CONTROL 2: a module whose declarations failed to parse is never admitted at census grade.
-test fn census_refuses_a_module_that_did_not_parse_holds() -> Bool {
+test fn census_refuses_a_module_that_did_not_parse_holds() -> Bool  {
   match census_of(source: census_provider_unparseable) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
@@ -209,25 +209,25 @@ test fn census_refuses_a_module_that_did_not_parse_holds() -> Bool {
 // fn's path is asserted to exist and to carry no body. Putting a refusing body beside each record or
 // variant would only add parse cost to claims already at the new-witness eval-step budget (DESIGN
 // section 3).
-test fn census_record_references_answer_with_the_declaring_paths_holds() -> Bool {
+test fn census_record_references_answer_with_the_declaring_paths_holds() -> Bool  {
   census_identities(tokens: census_record_stream(), holds: fn(i, r) { record_identities_hold(index: i, provider_root: r) })
 }
 
-test fn whole_root_record_references_answer_with_the_same_paths_holds() -> Bool {
+test fn whole_root_record_references_answer_with_the_same_paths_holds() -> Bool  {
   whole_root_identities(tokens: census_record_stream(), holds: fn(i, r) { record_identities_hold(index: i, provider_root: r) })
 }
 
-test fn census_variant_references_answer_with_the_declaring_paths_holds() -> Bool {
+test fn census_variant_references_answer_with_the_declaring_paths_holds() -> Bool  {
   census_identities(tokens: census_variant_stream(), holds: fn(i, r) { variant_identities_hold(index: i, provider_root: r) })
 }
 
-test fn whole_root_variant_references_answer_with_the_same_paths_holds() -> Bool {
+test fn whole_root_variant_references_answer_with_the_same_paths_holds() -> Bool  {
   whole_root_identities(tokens: census_variant_stream(), holds: fn(i, r) { variant_identities_hold(index: i, provider_root: r) })
 }
 
 // The discriminating RED: with no census root in the index the same reference is unbound, so the
 // census answer is the census root's doing. Supplies an empty index -- no parse at all.
-test fn without_the_census_root_the_reference_is_unbound_RED() -> Bool {
+test fn without_the_census_root_the_reference_is_unbound_RED() -> Bool  {
   match resolve_reference_provenance(
     index: empty_symbol_index(),
     roster: Empty,
@@ -262,7 +262,7 @@ fn census_variant_stream() -> TokenStream {
   ])
 }
 
-test fn census_variant_stream_is_what_tokenize_produces_holds() -> Bool {
+test fn census_variant_stream_is_what_tokenize_produces_holds() -> Bool  {
   supplied_stream_matches_tokenize(text: census_variant, file: ^census_mode_probe, supplied: census_variant_stream())
 }
 
@@ -287,7 +287,7 @@ fn census_fn_only_refusing_stream() -> TokenStream {
   ])
 }
 
-test fn census_fn_only_refusing_stream_is_what_tokenize_produces_holds() -> Bool {
+test fn census_fn_only_refusing_stream_is_what_tokenize_produces_holds() -> Bool  {
   supplied_stream_matches_tokenize(text: census_fn_only_refusing, file: ^census_mode_probe, supplied: census_fn_only_refusing_stream())
 }
 
@@ -307,6 +307,6 @@ fn census_record_stream() -> TokenStream {
   ])
 }
 
-test fn census_record_stream_is_what_tokenize_produces_holds() -> Bool {
+test fn census_record_stream_is_what_tokenize_produces_holds() -> Bool  {
   supplied_stream_matches_tokenize(text: census_record, file: ^census_mode_probe, supplied: census_record_stream())
 }

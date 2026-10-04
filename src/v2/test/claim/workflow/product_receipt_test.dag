@@ -94,7 +94,7 @@ fn green_receipt() -> ProductReceipt {
   }
 }
 
-test fn product_receipt_green_on_seven_chained_completed_boundaries() -> Bool {
+test fn product_receipt_green_on_seven_chained_completed_boundaries() -> Bool  {
   product_receipt_green(receipt: green_receipt())
 }
 
@@ -126,7 +126,7 @@ fn independently_green_components_receipt() -> ProductReceipt {
   }
 }
 
-test fn every_boundary_completed_yet_receipt_refuses_when_identity_is_not_carried() -> Bool {
+test fn every_boundary_completed_yet_receipt_refuses_when_identity_is_not_carried() -> Bool  {
   let receipt = independently_green_components_receipt()
   product_receipt_covers_every_boundary_once(receipt: receipt)
     && product_receipt_every_boundary_completed(receipt: receipt)
@@ -159,7 +159,7 @@ fn refused_tail_receipt() -> ProductReceipt {
   }
 }
 
-test fn a_refused_boundary_refuses_the_receipt_even_with_an_intact_prefix() -> Bool {
+test fn a_refused_boundary_refuses_the_receipt_even_with_an_intact_prefix() -> Bool  {
   let receipt = refused_tail_receipt()
   product_receipt_covers_every_boundary_once(receipt: receipt)
     && !product_receipt_every_boundary_completed(receipt: receipt)
@@ -188,7 +188,7 @@ fn six_boundary_receipt() -> ProductReceipt {
   }
 }
 
-test fn a_receipt_missing_its_last_boundary_refuses_on_coverage() -> Bool {
+test fn a_receipt_missing_its_last_boundary_refuses_on_coverage() -> Bool  {
   let receipt = six_boundary_receipt()
   !product_receipt_covers_every_boundary_once(receipt: receipt)
     && product_receipt_every_boundary_completed(receipt: receipt)
@@ -199,7 +199,7 @@ test fn a_receipt_missing_its_last_boundary_refuses_on_coverage() -> Bool {
 // be distinguishable from both, because the remedies differ: a refusal is
 // analysed, an unexercised boundary is SCHEDULED. Five of seven were
 // unexercised when this lane opened.
-test fn an_unexercised_boundary_is_neither_completed_nor_green() -> Bool {
+test fn an_unexercised_boundary_is_neither_completed_nor_green() -> Bool  {
   let receipt = ProductReceipt {
     subject: fixture_subject,
     observations: [
@@ -221,7 +221,7 @@ test fn an_unexercised_boundary_is_neither_completed_nor_green() -> Bool {
 // measures a many-file candidate from a second producer over the same subject.
 // If carriage compared digests alone, a receipt could report a hand-off
 // between two producers' artifacts as intact.
-test fn identity_carriage_refuses_a_matching_digest_carried_at_a_different_shape() -> Bool {
+test fn identity_carriage_refuses_a_matching_digest_carried_at_a_different_shape() -> Bool  {
   let receipt = ProductReceipt {
     subject: fixture_subject,
     observations: [
@@ -254,7 +254,7 @@ test fn identity_carriage_refuses_a_matching_digest_carried_at_a_different_shape
 // into the bare total it exists to replace, while still looking partitioned.
 // The total is asserted alongside so a broken bump cannot green by losing
 // rows in the other direction.
-test fn repeated_reasons_collapse_into_one_row_and_the_total_is_preserved() -> Bool {
+test fn repeated_reasons_collapse_into_one_row_and_the_total_is_preserved() -> Bool  {
   let tally = diagnostic_tally_bump(
     tally: diagnostic_tally_bump(
       tally: diagnostic_tally_bump(tally: Empty, reason: "unsupported_mock_expression"),
@@ -306,7 +306,7 @@ fn boundary1_refusal_cause_text(o: ManifestFileObservation) -> String {
 
 // RED: a manifest that is LISTED and cannot be read is neither produced nor absent; it refuses
 // with its cause, and the consumed identity is unobservable -- never the producer's report.
-test fn an_unreadable_but_listed_manifest_is_unobservable_not_producer_reported() -> Bool {
+test fn an_unreadable_but_listed_manifest_is_unobservable_not_producer_reported() -> Bool  {
   let o = manifest_observation(
     listing_success: true,
     entries: "host_source_root_ingest_manifest.dag\n",
@@ -324,7 +324,7 @@ test fn an_unreadable_but_listed_manifest_is_unobservable_not_producer_reported(
 }
 
 // RED, second arm: a manifest directory that cannot be listed establishes nothing.
-test fn an_unlistable_manifest_directory_refuses_instead_of_reporting() -> Bool {
+test fn an_unlistable_manifest_directory_refuses_instead_of_reporting() -> Bool  {
   string_contains(
     s: boundary1_refusal_cause_text(o: manifest_observation(
       listing_success: false,
@@ -340,7 +340,7 @@ test fn an_unlistable_manifest_directory_refuses_instead_of_reporting() -> Bool 
 
 // RED, third arm: a successful read cannot rescue a listing that does not name the manifest --
 // the two observations describe different instants, and the disagreement refuses.
-test fn a_successful_read_does_not_rescue_an_unlisted_manifest() -> Bool {
+test fn a_successful_read_does_not_rescue_an_unlisted_manifest() -> Bool  {
   string_contains(
     s: boundary1_refusal_cause_text(o: manifest_observation(
       listing_success: true,
@@ -356,7 +356,7 @@ test fn a_successful_read_does_not_rescue_an_unlisted_manifest() -> Bool {
 
 // POSITIVE CONTROL, absence arm: the manifest the listing does not name is the only route to
 // ProducerReportedNoArtifact, which the established absence finally justifies.
-test fn an_absent_manifest_still_reports_the_producer_none() -> Bool {
+test fn an_absent_manifest_still_reports_the_producer_none() -> Bool  {
   let o = manifest_observation(
     listing_success: true,
     entries: "unrelated.txt\n",
@@ -376,7 +376,7 @@ test fn an_absent_manifest_still_reports_the_producer_none() -> Bool {
 }
 
 // POSITIVE CONTROL, observed arm: bytes in hand complete boundary 1 and carry a known identity.
-test fn an_observed_manifest_completes_boundary_1() -> Bool {
+test fn an_observed_manifest_completes_boundary_1() -> Bool  {
   match manifest_boundary1_standing(o: manifest_observation(
     listing_success: true,
     entries: "host_source_root_ingest_manifest.dag\n",

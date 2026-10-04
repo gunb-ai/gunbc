@@ -184,7 +184,7 @@ fn probe_owner_is_wet_lib_module(
   }
 }
 
-test fn w_every_declared_module_lands_in_exactly_one_arm() -> Bool {
+test fn w_every_declared_module_lands_in_exactly_one_arm() -> Bool  {
   let census = stage0_assembly_ownership_census(
     declared_modules: probe_declared,
     partition_rows: probe_partition_rows,
@@ -226,7 +226,7 @@ fn refusal_is_two_surfaces(cause: Stage0AssemblyOwnershipRefusalCause, module_ba
   }
 }
 
-test fn w_module_owned_by_partition_and_host_shell_refuses() -> Bool {
+test fn w_module_owned_by_partition_and_host_shell_refuses() -> Bool  {
   let refusals = probe_census_refusals(
     declared: ["probe_types"],
     partition_rows: probe_partition_rows,
@@ -252,7 +252,7 @@ fn refusal_is_no_surface(cause: Stage0AssemblyOwnershipRefusalCause, module_base
   }
 }
 
-test fn w_module_owned_by_no_surface_refuses() -> Bool {
+test fn w_module_owned_by_no_surface_refuses() -> Bool  {
   let refusals = probe_census_refusals(
     declared: ["probe_orphan"],
     partition_rows: probe_partition_rows,
@@ -300,7 +300,7 @@ data probe_duplicate_owner_rows: List<Stage0PartitionCrateRow> = [
   }
 ]
 
-test fn w_module_owned_by_two_partition_packages_refuses() -> Bool {
+test fn w_module_owned_by_two_partition_packages_refuses() -> Bool  {
   let refusals = probe_census_refusals(
     declared: ["probe_types"],
     partition_rows: probe_duplicate_owner_rows,
@@ -326,7 +326,7 @@ fn refusal_is_missing_retention_row(cause: Stage0AssemblyOwnershipRefusalCause, 
   }
 }
 
-test fn w_retained_module_without_a_retention_row_refuses() -> Bool {
+test fn w_retained_module_without_a_retention_row_refuses() -> Bool  {
   let refusals = probe_census_refusals(
     declared: ["probe_host"],
     partition_rows: probe_partition_rows,
@@ -342,7 +342,7 @@ test fn w_retained_module_without_a_retention_row_refuses() -> Bool {
 // THE HOST SHELL'S DECLARATION SURFACE IS THE SUBTRACTION, which is what the lib.rs cut renders.
 // A partition-owned module is absent from it and every other declared module survives, so a
 // module moving into a partition crate leaves the shell in the same edit.
-test fn w_host_shell_declares_exactly_what_the_partition_does_not_own() -> Bool {
+test fn w_host_shell_declares_exactly_what_the_partition_does_not_own() -> Bool  {
   let shell = stage0_host_shell_declared_modules(
     declared_modules: probe_declared,
     partition_rows: probe_partition_rows
@@ -359,7 +359,7 @@ test fn w_host_shell_declares_exactly_what_the_partition_does_not_own() -> Bool 
 // THE LIVE REGRESSION CONTROL. No module the partition owns is also a retained pub-mod basename
 // of the host shell. This is the corpus-side half of the duplicate-owner refusal above: the
 // fixture proves the detector fires, this proves the live rosters do not trip it.
-test fn w_live_partition_and_retained_surfaces_are_disjoint() -> Bool {
+test fn w_live_partition_and_retained_surfaces_are_disjoint() -> Bool  {
   let partitioned = stage0_live_partition_owned_module_basenames()
   let retained = stage0_live_retained_pub_mod_basenames()
   !any(xs: partitioned, predicate: fn(p) {
@@ -379,7 +379,7 @@ test fn w_live_partition_and_retained_surfaces_are_disjoint() -> Bool {
 // that answer to the committed generated surface, so a stale first-generation lib.rs that still
 // declares the moved module makes the witness RED rather than letting the model agree with itself
 // while Rust compiles the path through two separate crates.
-test fn w_compiler_tests_rust_moves_from_host_shell_to_one_partition_surface() -> Bool {
+test fn w_compiler_tests_rust_moves_from_host_shell_to_one_partition_surface() -> Bool  {
   let module_basename = "v1_compiler_compiler_tests_rust"
   let host_shell_lib = filesystem_read(path: "src/v1/stage0/src/lib.rs").content
   let census = stage0_live_assembly_ownership_census(
@@ -414,7 +414,7 @@ test fn w_compiler_tests_rust_moves_from_host_shell_to_one_partition_surface() -
 // compiler_tests_rust above, closed by the same repair. The census must resolve the emitted
 // mirror to its one partition owner, the shell subtraction must remove it, and the committed
 // host-shell lib.rs must not still declare it.
-test fn w_infer_resolve_moves_from_host_shell_to_one_partition_surface() -> Bool {
+test fn w_infer_resolve_moves_from_host_shell_to_one_partition_surface() -> Bool  {
   let module_basename = "v1_compiler_infer_resolve"
   let host_shell_lib = filesystem_read(path: "src/v1/stage0/src/lib.rs").content
   let census = stage0_live_assembly_ownership_census(
@@ -447,7 +447,7 @@ test fn w_infer_resolve_moves_from_host_shell_to_one_partition_surface() -> Bool
 // The host shell links the partition through one declared edge, and it is the top module-bearing
 // package rather than the emit shell. Asserted because the whole re-export chain -- and therefore
 // whether a `crate::` path in a module that stayed still resolves -- rests on that one name.
-test fn w_host_shell_links_the_top_module_bearing_package() -> Bool {
+test fn w_host_shell_links_the_top_module_bearing_package() -> Bool  {
   (length(xs: stage0_host_shell_partition_dependencies) == 1)
     && any(xs: stage0_host_shell_partition_dependencies, predicate: fn(p) { p == "v1-stage0-v1-infer" })
 }
@@ -458,7 +458,7 @@ test fn w_host_shell_links_the_top_module_bearing_package() -> Bool {
 // source, which is false of a file main_wet regenerates. Here the empty roster is passed, so a
 // classifier that reached for a retention row would fail this witness rather than be repaired by a
 // falsehood.
-test fn w_wet_generated_module_needs_no_retention_row() -> Bool {
+test fn w_wet_generated_module_needs_no_retention_row() -> Bool  {
   let census = stage0_assembly_ownership_census(
     declared_modules: ["probe_wet_plain", "probe_wet_spliced"],
     partition_rows: probe_partition_rows,
@@ -477,7 +477,7 @@ test fn w_wet_generated_module_needs_no_retention_row() -> Bool {
 // population empty must refuse ModuleOwnedByNoSurface. This is the discriminator against reading
 // "declared by lib.rs and owned by nothing else" as wet generation: under that reading this witness
 // would resolve an owner, and every future unowned module would acquire one by merely appearing.
-test fn w_a_module_absent_from_the_wet_population_still_refuses() -> Bool {
+test fn w_a_module_absent_from_the_wet_population_still_refuses() -> Bool  {
   let refusals = probe_census_refusals(
     declared: ["probe_wet_plain"],
     partition_rows: probe_partition_rows,
@@ -493,7 +493,7 @@ test fn w_a_module_absent_from_the_wet_population_still_refuses() -> Bool {
 // CONTROL: RETAINED AND WET-GENERATED IS A DOUBLE OWNER. A module both hand-retained and produced
 // by the actuator means one file has two sources of truth for its bytes, so the next regen silently
 // overwrites hand edits. It refuses rather than preferring either.
-test fn w_module_both_retained_and_wet_generated_refuses() -> Bool {
+test fn w_module_both_retained_and_wet_generated_refuses() -> Bool  {
   let refusals = probe_census_refusals(
     declared: ["probe_host"],
     partition_rows: probe_partition_rows,
@@ -508,7 +508,7 @@ test fn w_module_both_retained_and_wet_generated_refuses() -> Bool {
 
 // CONTROL: PARTITION-OWNED AND WET-GENERATED IS A DOUBLE OWNER. Same state on the other side: the
 // partition crate compiles the module and the actuator regenerates it into the host shell.
-test fn w_module_both_partitioned_and_wet_generated_refuses() -> Bool {
+test fn w_module_both_partitioned_and_wet_generated_refuses() -> Bool  {
   let refusals = probe_census_refusals(
     declared: ["probe_types"],
     partition_rows: probe_partition_rows,
@@ -525,7 +525,7 @@ test fn w_module_both_partitioned_and_wet_generated_refuses() -> Bool {
 // resolver counted surfaces instead of walking an ordered chain, and it is the pair that would have
 // been forgotten again: compile_stage0() emitting a mirror of a module main_wet also regenerates
 // means two producers write one file, and whichever runs last wins silently.
-test fn w_module_both_ordinary_emitted_and_wet_generated_refuses() -> Bool {
+test fn w_module_both_ordinary_emitted_and_wet_generated_refuses() -> Bool  {
   let refusals = probe_census_refusals(
     declared: ["probe_unpartitioned"],
     partition_rows: probe_partition_rows,
@@ -543,7 +543,7 @@ test fn w_module_both_ordinary_emitted_and_wet_generated_refuses() -> Bool {
 // is_retained was tested above is_emitted. No wet population is involved: this is the defect the
 // surface-cardinality rewrite fixed on its way past, and it stays enrolled as its own control so a
 // future return to precedence ordering reds here rather than in a wet-lane witness.
-test fn w_module_both_ordinary_emitted_and_retained_refuses() -> Bool {
+test fn w_module_both_ordinary_emitted_and_retained_refuses() -> Bool  {
   let refusals = probe_census_refusals(
     declared: ["probe_unpartitioned"],
     partition_rows: probe_partition_rows,
@@ -572,7 +572,7 @@ fn refusal_is_registered_twice(cause: Stage0AssemblyOwnershipRefusalCause, modul
 // the crate changes -- one declaration is rendered either way -- so every downstream projection is
 // happy and the duplicate survives until someone edits one copy. This is the cell that proves the
 // resolver counts rows rather than distinct answers.
-test fn w_wet_module_registered_twice_with_one_route_refuses() -> Bool {
+test fn w_wet_module_registered_twice_with_one_route_refuses() -> Bool  {
   let refusals = probe_census_refusals(
     declared: ["probe_wet_plain"],
     partition_rows: probe_partition_rows,
@@ -592,7 +592,7 @@ test fn w_wet_module_registered_twice_with_one_route_refuses() -> Bool {
 // whichever row came last -- so the crate's answer to "how is this module declared" depended on
 // authoring order in a list. A macro-spliced duplicate is invisible to rustc, so no compile error
 // stands behind this: the census is the only thing that can refuse it.
-test fn w_wet_module_registered_twice_with_conflicting_routes_refuses() -> Bool {
+test fn w_wet_module_registered_twice_with_conflicting_routes_refuses() -> Bool  {
   let refusals = probe_census_refusals(
     declared: ["probe_wet_plain"],
     partition_rows: probe_partition_rows,
@@ -648,7 +648,7 @@ fn probe_basename_occurrences(module_basename: String, xs: List<String>) -> Int 
 //
 // It is also the final consumer of stage0_lib_declared_module_basenames. Without it that
 // projection would be a definition-only statement about the crate, which is the inert-lens shape.
-test fn w_live_wet_registrations_own_their_declared_modules() -> Bool {
+test fn w_live_wet_registrations_own_their_declared_modules() -> Bool  {
   let rows = stage0_live_wet_lib_module_registrations()
   let declared = stage0_lib_declared_module_basenames()
   (length(xs: rows) > 0)
@@ -672,7 +672,7 @@ test fn w_live_wet_registrations_own_their_declared_modules() -> Bool {
 // pair here goes red, and every pair is live, so a lost one goes red. The count literal this replaced
 // was copied from the tree and broke when gunbc#12183 registered release_locus_seed_constants_generated.
 // The PathIncluded member is named apart because this population must exclude it.
-test fn w_live_wet_population_carries_both_declaration_routes() -> Bool {
+test fn w_live_wet_population_carries_both_declaration_routes() -> Bool  {
   let rows = stage0_live_wet_lib_module_registrations()
   let named = [
     WetActuatorGeneratedRegistration { basename: "v1_interpreter_dispatch_generated", declaration_route: MacroUsePubModSpliced },

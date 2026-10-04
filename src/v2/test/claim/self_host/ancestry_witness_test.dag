@@ -340,11 +340,11 @@ fn anc_refused_with(g: Optional<NativeGeneration>, cause: Symbol) -> Bool {
   }
 }
 
-test fn genesis_from_seed_is_admitted() -> Bool {
+test fn genesis_from_seed_is_admitted() -> Bool  {
   anc_admitted(g: anc_good_genesis())
 }
 
-test fn native_successor_is_admitted() -> Bool {
+test fn native_successor_is_admitted() -> Bool  {
   anc_admitted(g: anc_good_successor())
 }
 
@@ -362,7 +362,7 @@ fn anc_producer_is(g: Optional<NativeGeneration>, expected: EmitterProducer) -> 
 // THE PRODUCER PROJECTION REUSES THE EXISTING AUTHORITY and never mints a second one.
 // Genesis projects V1SeedEmitter; generation N + 1 projects V2EmitterNative(N) and is
 // neither of the other two producers.
-test fn producer_projection_is_seed_for_genesis_and_native_for_successor() -> Bool {
+test fn producer_projection_is_seed_for_genesis_and_native_for_successor() -> Bool  {
   anc_producer_is(g: anc_good_genesis(), expected: V1SeedEmitter)
     && anc_producer_is(
       g: anc_good_successor(),
@@ -380,7 +380,7 @@ test fn producer_projection_is_seed_for_genesis_and_native_for_successor() -> Bo
 // DISCRIMINATING RED 1 — the seed on the recurring path. The identical successor, moved onto
 // a closure that reaches v1.compiler.emit_rust, is refused BY NAME. This is the control the
 // C1 ruling is about: it goes red if any future edit lets the recurring step reach the seed.
-test fn successor_whose_closure_reaches_the_seed_is_refused() -> Bool {
+test fn successor_whose_closure_reaches_the_seed_is_refused() -> Bool  {
   anc_refused_with(
     g: anc_successor(
       generation: 1,
@@ -397,7 +397,7 @@ test fn successor_whose_closure_reaches_the_seed_is_refused() -> Bool {
 
 // DISCRIMINATING RED 2 — the interpreted emitter is not an ancestor either, and is refused
 // under its OWN cause rather than being smeared into "not native".
-test fn successor_whose_closure_reaches_the_interpreter_is_refused() -> Bool {
+test fn successor_whose_closure_reaches_the_interpreter_is_refused() -> Bool  {
   anc_refused_with(
     g: anc_successor(
       generation: 1,
@@ -416,7 +416,7 @@ test fn successor_whose_closure_reaches_the_interpreter_is_refused() -> Bool {
 // emitter at all, so it passes both emitter clauses; it is refused because interpreting the
 // program that produced the bytes is producing them, and C1 admits only the prior native
 // generation. Without this clause a successor could be produced by running the seed.
-test fn successor_whose_closure_reaches_the_seed_interpreter_is_refused() -> Bool {
+test fn successor_whose_closure_reaches_the_seed_interpreter_is_refused() -> Bool  {
   anc_refused_with(
     g: anc_successor(
       generation: 1,
@@ -437,7 +437,7 @@ test fn successor_whose_closure_reaches_the_seed_interpreter_is_refused() -> Boo
 // clause existed it minted an admitted native generation and the route-level
 // OldRouteAbsentByConstruction control would have greened on it. Absence of evidence read as
 // evidence of absence, which DESIGN section 5 forbids by name.
-test fn successor_whose_closure_names_nothing_is_refused() -> Bool {
+test fn successor_whose_closure_names_nothing_is_refused() -> Bool  {
   anc_refused_with(
     g: anc_successor(
       generation: 1,
@@ -457,7 +457,7 @@ test fn successor_whose_closure_names_nothing_is_refused() -> Bool {
 // it actually establishes: the SAME closure the interpreted route uses is admitted once the
 // executed bytes bind to the named ancestor. Calling this "the real native closure" — as an
 // earlier revision did — asserted exactly the thing closure membership cannot establish.
-test fn the_shared_route_closure_is_admitted_when_the_executed_bytes_bind() -> Bool {
+test fn the_shared_route_closure_is_admitted_when_the_executed_bytes_bind() -> Bool  {
   anc_admitted(g: anc_good_successor())
 }
 
@@ -468,7 +468,7 @@ test fn the_shared_route_closure_is_admitted_when_the_executed_bytes_bind() -> B
 // since it has no ancestor binary at all. Before producer-execution attribution existed this
 // minted an admitted native generation, because the closure names the same modules the native
 // compiler is compiled from and closure membership can only ever be a negative filter.
-test fn the_interpreted_production_route_is_refused_as_a_native_ancestor() -> Bool {
+test fn the_interpreted_production_route_is_refused_as_a_native_ancestor() -> Bool  {
   anc_refused_with(
     g: anc_successor_ran(
       generation: 1,
@@ -485,7 +485,7 @@ test fn the_interpreted_production_route_is_refused_as_a_native_ancestor() -> Bo
 }
 
 // DISCRIMINATING RED 3 — a green build is not a verified ancestor.
-test fn successor_without_a_read_back_is_refused() -> Bool {
+test fn successor_without_a_read_back_is_refused() -> Bool  {
   anc_refused_with(
     g: anc_successor(
       generation: 1,
@@ -503,7 +503,7 @@ test fn successor_without_a_read_back_is_refused() -> Bool {
 // DISCRIMINATING RED 4 — a read-back that reports SOME identity is not a read-back that
 // agrees. The binary reports the genesis digest while the bytes built were the other one;
 // divergence refuses separately from absence.
-test fn successor_whose_read_back_diverges_is_refused() -> Bool {
+test fn successor_whose_read_back_diverges_is_refused() -> Bool  {
   anc_refused_with(
     g: anc_successor(
       generation: 1,
@@ -520,7 +520,7 @@ test fn successor_whose_read_back_diverges_is_refused() -> Bool {
 
 // DISCRIMINATING RED 5 — the generation number must be the ancestry's own successor. A
 // generation claiming to follow parent 0 while numbering itself 7 is refused.
-test fn successor_numbering_must_be_parent_plus_one() -> Bool {
+test fn successor_numbering_must_be_parent_plus_one() -> Bool  {
   anc_refused_with(
     g: anc_successor(
       generation: 7,
@@ -541,7 +541,7 @@ test fn successor_numbering_must_be_parent_plus_one() -> Bool {
 // arithmetic (review 64112). Everything else about this fixture is admissible: the closure, the
 // build path, the read-back and the executed bytes all bind correctly, which is exactly why the
 // numbering had to be walled rather than left to the other clauses.
-test fn a_successor_naming_a_negative_parent_generation_is_refused() -> Bool {
+test fn a_successor_naming_a_negative_parent_generation_is_refused() -> Bool  {
   anc_refused_with(
     g: anc_successor(
       generation: 0,
@@ -559,7 +559,7 @@ test fn a_successor_naming_a_negative_parent_generation_is_refused() -> Bool {
 // DISCRIMINATING RED 6 — build path. Pinning is admissible for the one-time genesis and NOT
 // for a generation whose artifact will be acquired as an ancestor; unresolved is admissible
 // for neither. Stated as one conjunction so a dropped arm cannot pass unnoticed.
-test fn build_path_treatment_discriminates_genesis_from_recurrence() -> Bool {
+test fn build_path_treatment_discriminates_genesis_from_recurrence() -> Bool  {
   anc_refused_with(
     g: anc_successor(
       generation: 1,
@@ -598,7 +598,7 @@ test fn build_path_treatment_discriminates_genesis_from_recurrence() -> Bool {
 // DISCRIMINATING RED 7 — a genesis that did not run the seed is not a genesis. Without this
 // clause the GenesisFromSeed arm would admit any closure at all, making the constructor a
 // label rather than a claim about what produced the bytes.
-test fn genesis_whose_closure_omits_the_seed_is_refused() -> Bool {
+test fn genesis_whose_closure_omits_the_seed_is_refused() -> Bool  {
   anc_refused_with(
     g: anc_genesis(
       artifact_hex: anc_built_hex,
@@ -615,7 +615,7 @@ test fn genesis_whose_closure_omits_the_seed_is_refused() -> Bool {
 // "nothing was built" is not "what was built disagrees" — and the mint refuses them under
 // different causes, so each needs its own red. The fixture reaches ArtifactNotMaterialized the
 // only way production can: an artifact hex that the validating mint rejects.
-test fn read_back_reported_against_an_unbuilt_artifact_is_refused() -> Bool {
+test fn read_back_reported_against_an_unbuilt_artifact_is_refused() -> Bool  {
   anc_refused_with(
     g: anc_successor(
       generation: 1,
@@ -634,7 +634,7 @@ test fn read_back_reported_against_an_unbuilt_artifact_is_refused() -> Bool {
 // the migration step ONTO generation 0; a genesis carrying any other number is not a differently
 // numbered genesis, it is a claim that the seed produced something in the middle of a native
 // chain. Authorable, so owed a red (review 64053).
-test fn a_genesis_numbered_other_than_zero_is_refused() -> Bool {
+test fn a_genesis_numbered_other_than_zero_is_refused() -> Bool  {
   match anc_digest(hex: anc_seed_hex) {
     Absent => false
     Present { value: seed } =>
@@ -658,7 +658,7 @@ test fn a_genesis_numbered_other_than_zero_is_refused() -> Bool {
 // DISAGREES: "the ancestor was never built" and "the ancestor built different bytes" have
 // different remedies, and the join refuses them separately. The fixture reaches
 // ArtifactNotMaterialized the only way production can, through a hex the validating mint rejects.
-test fn joining_an_ancestor_that_was_never_built_is_refused_by_name() -> Bool {
+test fn joining_an_ancestor_that_was_never_built_is_refused_by_name() -> Bool  {
   anc_join_refused_with(
     successor: anc_good_successor(),
     ancestor: anc_genesis(
@@ -675,7 +675,7 @@ test fn joining_an_ancestor_that_was_never_built_is_refused_by_name() -> Bool {
 // genesis is admitted. Discriminating red: the SAME genesis, offered against a standing that
 // already carries one, is refused — so re-running the migration is not a no-op, it is an
 // error. Third clause: the recurring step is not admitted by the migration at all.
-test fn genesis_is_admitted_once_and_refused_thereafter() -> Bool {
+test fn genesis_is_admitted_once_and_refused_thereafter() -> Bool  {
   match anc_good_genesis() {
     Absent => false
     Present { value: g } =>
@@ -709,7 +709,7 @@ test fn genesis_is_admitted_once_and_refused_thereafter() -> Bool {
 // ACQUISITION REFUSES; IT DOES NOT WIDEN. An absent ancestor names the generation it wanted,
 // an ancestor of the wrong generation is unverified, and an ancestor that fails the mint is
 // unverified under the mint's OWN cause. No arm of this fold selects another producer.
-test fn missing_ancestor_refuses_naming_the_generation_expected() -> Bool {
+test fn missing_ancestor_refuses_naming_the_generation_expected() -> Bool  {
   match acquire_native_ancestor(
     expected_generation: 3,
     available: optional_absent()
@@ -720,7 +720,7 @@ test fn missing_ancestor_refuses_naming_the_generation_expected() -> Bool {
   }
 }
 
-test fn ancestor_of_the_wrong_generation_is_unverified() -> Bool {
+test fn ancestor_of_the_wrong_generation_is_unverified() -> Bool  {
   match acquire_native_ancestor(
     expected_generation: 3,
     available: anc_good_successor()
@@ -732,7 +732,7 @@ test fn ancestor_of_the_wrong_generation_is_unverified() -> Bool {
   }
 }
 
-test fn unverified_ancestor_carries_the_mints_own_cause() -> Bool {
+test fn unverified_ancestor_carries_the_mints_own_cause() -> Bool  {
   match acquire_native_ancestor(
     expected_generation: 1,
     available: anc_successor(
@@ -755,7 +755,7 @@ test fn unverified_ancestor_carries_the_mints_own_cause() -> Bool {
 // POSITIVE CONTROL for acquisition — an admissible ancestor of the expected generation is
 // acquired. Without it the three refusals above would be satisfied by a fold that refuses
 // unconditionally.
-test fn admissible_ancestor_of_the_expected_generation_is_acquired() -> Bool {
+test fn admissible_ancestor_of_the_expected_generation_is_acquired() -> Bool  {
   match acquire_native_ancestor(
     expected_generation: 1,
     available: anc_good_successor()
@@ -817,7 +817,7 @@ fn anc_join_refused_with(
 // declarative. The three reds are the three different things that can go wrong, each carrying
 // its own cause: the generation NUMBER still matches in the artifact-mismatch case, so that
 // clause is discriminating only because the join is on artifact identity.
-test fn successor_joins_its_ancestor_by_artifact_identity() -> Bool {
+test fn successor_joins_its_ancestor_by_artifact_identity() -> Bool  {
   anc_joined(successor: anc_good_successor(), ancestor: anc_good_genesis())
     && anc_join_refused_with(
       successor: anc_good_successor(),
@@ -833,7 +833,7 @@ test fn successor_joins_its_ancestor_by_artifact_identity() -> Bool {
 
 // A GENESIS SUCCEEDS NOTHING, and that is a category error rather than a failed join — the
 // caller's remedy differs, so the cause does.
-test fn a_genesis_offered_as_a_successor_is_refused_by_name() -> Bool {
+test fn a_genesis_offered_as_a_successor_is_refused_by_name() -> Bool  {
   anc_join_refused_with(
     successor: anc_good_genesis(),
     ancestor: anc_good_genesis(),
@@ -842,7 +842,7 @@ test fn a_genesis_offered_as_a_successor_is_refused_by_name() -> Bool {
 }
 
 // The generation numbers disagreeing is its own cause, distinct from the artifact disagreeing.
-test fn a_successor_naming_a_different_parent_generation_is_refused_by_name() -> Bool {
+test fn a_successor_naming_a_different_parent_generation_is_refused_by_name() -> Bool  {
   anc_join_refused_with(
     successor: anc_successor(
       generation: 4,
@@ -861,7 +861,7 @@ test fn a_successor_naming_a_different_parent_generation_is_refused_by_name() ->
 // A MOVED IDENTITY AXIS IS A DIFFERENT GENERATION. The ancestor compared against itself is
 // current; compared against an identity whose artifact axis moved, it is not — so a stale
 // ancestor cannot be silently reused.
-test fn ancestor_identity_moving_on_an_axis_is_no_longer_current() -> Bool {
+test fn ancestor_identity_moving_on_an_axis_is_no_longer_current() -> Bool  {
   match anc_good_genesis() {
     Absent => false
     Present { value: a } =>

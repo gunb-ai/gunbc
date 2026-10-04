@@ -47,18 +47,18 @@ fn annotation_texts(source: String) -> String {
 }
 
 // The control: no comment, so no join, and the extents were always right.
-test fn tokens_without_a_comment_start_at_their_offsets() -> Bool {
+test fn tokens_without_a_comment_start_at_their_offsets() -> Bool  {
   token_starts(source: "a\n\nb\n") == "|a@0|b@3"
 }
 
-test fn a_token_after_a_line_comment_starts_at_its_offset() -> Bool {
+test fn a_token_after_a_line_comment_starts_at_its_offset() -> Bool  {
   token_starts(source: "a\n// ab\nb\n") == "|a@0|b@8"
 }
 
-test fn a_token_after_a_bare_line_comment_starts_at_its_offset() -> Bool {
+test fn a_token_after_a_bare_line_comment_starts_at_its_offset() -> Bool  {
   token_starts(source: "a\n//\nb\n") == "|a@0|b@5"
 }
 
-test fn a_line_comment_captures_its_own_text_and_extent() -> Bool {
+test fn a_line_comment_captures_its_own_text_and_extent() -> Bool  {
   annotation_texts(source: "a\n// ab\nb\n") == "|// ab@2-7"
 }

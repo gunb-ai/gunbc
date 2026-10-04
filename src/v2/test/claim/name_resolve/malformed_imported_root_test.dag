@@ -83,7 +83,7 @@ fn admit_result_is_rejected(state: AdmissionState) -> Bool {
   }
 }
 
-test fn witness_malformed_root_is_rejected_holds() -> Bool {
+test fn witness_malformed_root_is_rejected_holds() -> Bool  {
   match roots_with_malformed_entry() {
     Rejected { diagnostics: _ } => false
     Accepted { value: roots, diagnostics: _ } =>

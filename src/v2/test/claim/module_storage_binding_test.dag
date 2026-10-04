@@ -67,7 +67,7 @@ data msb_produced_other_binding: ModuleStorageBinding = module_storage_produced_
 
 data msb_singleton_index: ModuleStorageIndex = Cons { head: msb_produced_binding, tail: Empty }
 
-test fn module_storage_duplicate_module_insert_refuses() -> Bool {
+test fn module_storage_duplicate_module_insert_refuses() -> Bool  {
   match module_storage_index_insert(
     index: msb_singleton_index,
     binding: msb_produced_duplicate_binding
@@ -77,7 +77,7 @@ test fn module_storage_duplicate_module_insert_refuses() -> Bool {
   }
 }
 
-test fn module_storage_distinct_module_insert_accepts() -> Bool {
+test fn module_storage_distinct_module_insert_accepts() -> Bool  {
   match module_storage_index_insert(
     index: msb_singleton_index,
     binding: msb_produced_other_binding
@@ -87,7 +87,7 @@ test fn module_storage_distinct_module_insert_accepts() -> Bool {
   }
 }
 
-test fn module_storage_produced_module_has_no_storage() -> Bool {
+test fn module_storage_produced_module_has_no_storage() -> Bool  {
   match module_storage_binding_file_path(binding: msb_produced_binding) {
     Present { value: _ } => false
     Absent =>
@@ -95,7 +95,7 @@ test fn module_storage_produced_module_has_no_storage() -> Bool {
   }
 }
 
-test fn module_storage_produced_module_answers_absent_for_path_lookup() -> Bool {
+test fn module_storage_produced_module_answers_absent_for_path_lookup() -> Bool  {
   match module_storage_module_for_path(
     index: msb_singleton_index,
     file_path: "src/v2/std/msb_fixture.dag"
@@ -125,14 +125,14 @@ data msb_parsed_binding: ModuleStorageBinding = module_storage_parsed_binding(
 
 data msb_parsed_index: ModuleStorageIndex = Cons { head: msb_parsed_binding, tail: Empty }
 
-test fn module_storage_parsed_module_has_storage() -> Bool {
+test fn module_storage_parsed_module_has_storage() -> Bool  {
   match module_storage_binding_file_path(binding: msb_parsed_binding) {
     Absent => false
     Present { value: p } => p == msb_parsed_path
   }
 }
 
-test fn module_storage_parsed_module_resolves_path_to_module() -> Bool {
+test fn module_storage_parsed_module_resolves_path_to_module() -> Bool  {
   match module_storage_module_for_path(index: msb_parsed_index, file_path: msb_parsed_path) {
     Absent => false
     Present { value: qn } =>
@@ -180,7 +180,7 @@ data msb_host_divergent_row: ModuleStorageBinding = module_storage_parsed_bindin
 
 data msb_host_divergent_index: ModuleStorageIndex = Cons { head: msb_host_divergent_row, tail: Empty }
 
-test fn module_storage_agreement_holds_when_host_matches_oracle() -> Bool {
+test fn module_storage_agreement_holds_when_host_matches_oracle() -> Bool  {
   match module_storage_host_agrees_with_oracle(
     oracle: msb_oracle_only_index,
     host: msb_parsed_index
@@ -191,7 +191,7 @@ test fn module_storage_agreement_holds_when_host_matches_oracle() -> Bool {
   }
 }
 
-test fn module_storage_agreement_reports_divergent_on_wrong_module() -> Bool {
+test fn module_storage_agreement_reports_divergent_on_wrong_module() -> Bool  {
   match module_storage_host_agrees_with_oracle(
     oracle: msb_oracle_only_index,
     host: msb_host_divergent_index
@@ -202,7 +202,7 @@ test fn module_storage_agreement_reports_divergent_on_wrong_module() -> Bool {
   }
 }
 
-test fn module_storage_agreement_reports_uncovered_on_missing_row() -> Bool {
+test fn module_storage_agreement_reports_uncovered_on_missing_row() -> Bool  {
   match module_storage_host_agrees_with_oracle(
     oracle: msb_oracle_only_index,
     host: Empty

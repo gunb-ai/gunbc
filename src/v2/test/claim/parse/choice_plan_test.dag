@@ -234,7 +234,7 @@ fn opt(element: GrammarExpr) -> GrammarExpr {
   Optional { element: element }
 }
 
-test fn prepared_choice_disjoint_first_agrees_with_ordered_oracle() -> Bool {
+test fn prepared_choice_disjoint_first_agrees_with_ordered_oracle() -> Bool  {
   let left = term(token_class: ^pcp_a)
   let right = term(token_class: ^pcp_b)
   let expr = Choice { left: left, right: right }
@@ -246,7 +246,7 @@ test fn prepared_choice_disjoint_first_agrees_with_ordered_oracle() -> Bool {
   }
 }
 
-test fn prepared_choice_discriminates_disjoint_first_tokens() -> Bool {
+test fn prepared_choice_discriminates_disjoint_first_tokens() -> Bool  {
   let expr = Choice { left: term(token_class: ^pcp_a), right: term(token_class: ^pcp_b) }
   let tokens_a = [pcp_token(token_class: ^pcp_a)]
   let tokens_b = [pcp_token(token_class: ^pcp_b)]
@@ -255,7 +255,7 @@ test fn prepared_choice_discriminates_disjoint_first_tokens() -> Bool {
 
 // Unanalyzed table (`parse_table_empty`): NT-headed Choice must not compile ChoiceByToken
 // from empty FIRST. Token `b` is only in the right production.
-test fn prepared_choice_nonterminal_alts_empty_table_agrees_with_ordered_oracle() -> Bool {
+test fn prepared_choice_nonterminal_alts_empty_table_agrees_with_ordered_oracle() -> Bool  {
   let left_nt = Nonterminal { production: ^pcp_left_nt }
   let right_nt = Nonterminal { production: ^pcp_right_nt }
   let expr = Choice { left: left_nt, right: right_nt }
@@ -312,7 +312,7 @@ test fn prepared_choice_nonterminal_alts_empty_table_agrees_with_ordered_oracle(
 
 // One nullable sibling: aa | b? on [a]. Ordered try-left-then-right tries aa, rejects, then b?
 // matches empty. The count>=2 heuristic used to drop b? from the `a` bucket and reject.
-test fn prepared_choice_one_nullable_alt_agrees_after_aa_rejects() -> Bool {
+test fn prepared_choice_one_nullable_alt_agrees_after_aa_rejects() -> Bool  {
   let aa = seq(left: term(token_class: ^pcp_a), right: term(token_class: ^pcp_a))
   let expr = Choice { left: aa, right: opt(element: term(token_class: ^pcp_b)) }
   let tokens_a = [pcp_token(token_class: ^pcp_a)]
@@ -325,7 +325,7 @@ test fn prepared_choice_one_nullable_alt_agrees_after_aa_rejects() -> Bool {
 }
 
 // Two nullable siblings never reach the prepared runtime: validate refuses both_nullable residue.
-test fn prepared_choice_two_nullable_alts_validate_refuses() -> Bool {
+test fn prepared_choice_two_nullable_alts_validate_refuses() -> Bool  {
   let aa = seq(left: term(token_class: ^pcp_a), right: term(token_class: ^pcp_a))
   let both_nullable = Choice {
     left: aa,
@@ -334,7 +334,7 @@ test fn prepared_choice_two_nullable_alts_validate_refuses() -> Bool {
   pcp_validate_rejects(expr: both_nullable)
 }
 
-test fn prepared_choice_shared_prefix_agrees_with_ordered_oracle() -> Bool {
+test fn prepared_choice_shared_prefix_agrees_with_ordered_oracle() -> Bool  {
   let aa = seq(left: term(token_class: ^pcp_a), right: term(token_class: ^pcp_a))
   let ab = seq(left: term(token_class: ^pcp_a), right: term(token_class: ^pcp_b))
   let shared_prefix = Choice { left: ab, right: aa }
@@ -346,7 +346,7 @@ test fn prepared_choice_shared_prefix_agrees_with_ordered_oracle() -> Bool {
   }
 }
 
-test fn compile_choice_alts_stamp_split_is_choice_token_prefix() -> Bool {
+test fn compile_choice_alts_stamp_split_is_choice_token_prefix() -> Bool  {
   let stamp_split_left = seq(left: term_stamp(token_class: ^pcp_a, stamp: StampClass), right: term(token_class: ^pcp_a))
   let stamp_split_right = seq(left: term_stamp(token_class: ^pcp_a, stamp: StampLexeme), right: term(token_class: ^pcp_b))
   let stamp_left_fold = prepare_grammar_expr(
@@ -377,7 +377,7 @@ test fn compile_choice_alts_stamp_split_is_choice_token_prefix() -> Bool {
   }
 }
 
-test fn prepared_choice_stamp_split_agrees_with_ordered_oracle() -> Bool {
+test fn prepared_choice_stamp_split_agrees_with_ordered_oracle() -> Bool  {
   let stamp_split_left = seq(left: term_stamp(token_class: ^pcp_a, stamp: StampClass), right: term(token_class: ^pcp_a))
   let stamp_split_right = seq(left: term_stamp(token_class: ^pcp_a, stamp: StampLexeme), right: term(token_class: ^pcp_b))
   let stamp_split = Choice { left: stamp_split_left, right: stamp_split_right }
@@ -454,22 +454,22 @@ fn pcp_word_pair() -> GrammarExpr {
   }
 }
 
-test fn literal_words_sharing_a_class_prefix_validate_without_overlap_residue() -> Bool {
+test fn literal_words_sharing_a_class_prefix_validate_without_overlap_residue() -> Bool  {
   pcp_validate_accepts_without_overlap_residue(expr: pcp_same_suffix_word_pair())
 }
 
-test fn the_same_pair_keyed_by_class_alone_leaves_overlap_residue() -> Bool {
+test fn the_same_pair_keyed_by_class_alone_leaves_overlap_residue() -> Bool  {
   pcp_validate_accepts_with_overlap_residue(expr: pcp_same_suffix_class_pair())
 }
 
-test fn the_class_bucket_of_a_word_pair_dispatches_on_the_word() -> Bool {
+test fn the_class_bucket_of_a_word_pair_dispatches_on_the_word() -> Bool  {
   match pcp_plan_on_token(plan: pcp_choice_plan(expr: pcp_word_pair()), token_class: ^pcp_word) {
     ChoiceByWord { on_word: _, on_other: _ } => true
     _ => false
   }
 }
 
-test fn the_second_word_parses_through_its_own_alternative() -> Bool {
+test fn the_second_word_parses_through_its_own_alternative() -> Bool  {
   let tokens = [pcp_word_token(word: "beta"), pcp_token(token_class: ^pcp_b)]
   let observed = pcp_observe(expr: pcp_word_pair(), tokens: tokens)
   let consumed_all = match observed {
@@ -484,14 +484,14 @@ test fn the_second_word_parses_through_its_own_alternative() -> Bool {
     )
 }
 
-test fn a_literal_terminal_rejects_a_different_word_of_its_class() -> Bool {
+test fn a_literal_terminal_rejects_a_different_word_of_its_class() -> Bool  {
   pcp_observe_root(root: pcp_root(), expr: lit(lexeme: ^alpha), tokens: [pcp_word_token(word: "gamma")]) == ObservedRejected
 }
 
 // MATCHING IS NOT STAMPING. A literal terminal captures exactly what a StampClass terminal of its
 // class captures on the same token -- the class identity -- and NOT what a StampLexeme terminal
 // captures (the token's own text as atom identity).
-test fn a_literal_terminal_publishes_the_class_identity_not_its_word() -> Bool {
+test fn a_literal_terminal_publishes_the_class_identity_not_its_word() -> Bool  {
   let tokens = [pcp_word_token(word: "alpha")]
   let literal = pcp_observe_root(root: pcp_root(), expr: lit(lexeme: ^alpha), tokens: tokens)
   let by_class = pcp_observe_root(root: pcp_root(), expr: term(token_class: ^pcp_word), tokens: tokens)

@@ -122,7 +122,7 @@ fn status_route(text: String) -> String {
 }
 
 // `5xx` reaches the class production, `404` the guarded code production, `nonzero` the name.
-test fn status_patterns_take_class_code_and_name_routes_holds() -> Bool {
+test fn status_patterns_take_class_code_and_name_routes_holds() -> Bool  {
   (status_route(text: "5xx") == "class")
     && (status_route(text: "404") == "code")
     && (status_route(text: "nonzero") == "name")
@@ -150,7 +150,7 @@ fn field_edge_reading(text: String) -> String {
 }
 
 // `v` is the pun (bare route, bound to `v` itself); `w: y` the suffixed route, bound to `y`.
-test fn field_patterns_take_pun_and_suffix_routes_holds() -> Bool {
+test fn field_patterns_take_pun_and_suffix_routes_holds() -> Bool  {
   (field_edge_reading(text: "v") == "bare:v->v") && (field_edge_reading(text: "w: y") == "suffixed:w->y")
 }
 
@@ -184,7 +184,7 @@ fn param_routes(text: String) -> String {
 }
 
 // `a: Int` takes the bare route: no tail, no default.
-test fn a_plain_typed_param_takes_the_bare_route_holds() -> Bool {
+test fn a_plain_typed_param_takes_the_bare_route_holds() -> Bool  {
   param_routes(text: "(a: Int)") == "a"
 }
 
@@ -210,7 +210,7 @@ fn requires_route(text: String) -> String {
 
 // `requires none` and `requires opaque` take their word arms; `requires Filesystem` takes the guarded
 // type list, and no word is read as a type.
-test fn op_requires_take_word_and_type_list_routes_holds() -> Bool {
+test fn op_requires_take_word_and_type_list_routes_holds() -> Bool  {
   (requires_route(text: "requires none") == "none")
     && (requires_route(text: "requires opaque") == "opaque")
     && (requires_route(text: "requires Filesystem") == "list")

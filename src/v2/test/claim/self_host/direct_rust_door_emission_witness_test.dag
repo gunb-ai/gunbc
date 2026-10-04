@@ -15,12 +15,12 @@ import v2.std.text { String }
 // src/v2/test/claim/long/direct_rust_door_production_group_test.dag, whose leaf semantics are
 // discriminated at sub-millisecond cost in direct_rust_door_group_algebra_test.dag.
 
-test fn witness_seed_closure_poison_refuses_v2_producer_reds() -> Bool {
+test fn witness_seed_closure_poison_refuses_v2_producer_reds() -> Bool  {
   mint_v2_interpreted_receipt_with_seed_closure_refuses(
     module_path: direct_rust_door_module_path
   )
 }
 
-test fn witness_v2_closure_excludes_seed_emit_rust_holds() -> Bool {
+test fn witness_v2_closure_excludes_seed_emit_rust_holds() -> Bool  {
   v2_interpreted_emitter_closure_seed_free_holds()
 }

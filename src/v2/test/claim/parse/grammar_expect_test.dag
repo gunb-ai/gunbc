@@ -125,7 +125,7 @@ fn ge_fatal_is(parsed: Outcome<ParseArtifact>, reason: ParseRefusalReason, start
 // tie at the furthest position. The refusal is located at the `a` they were to follow.
 data ge_tie_tokens: List<Token> = [ge_token(class: ^ge_tok_a, start: 0)]
 
-test fn expect_tie_first_ordered_alternative_wins_holds() -> Bool {
+test fn expect_tie_first_ordered_alternative_wins_holds() -> Bool  {
   let root = ge_root(
     item: Choice { left: ge_left_alt(reason: FnExpressionBodyMissingAfterEq), right: ge_right_alt(reason: DataValueMissingAfterEq) },
     a_expr: ge_terminal(class: ^ge_tok_a)
@@ -135,7 +135,7 @@ test fn expect_tie_first_ordered_alternative_wins_holds() -> Bool {
 
 // The discriminating half of the tie: the same two expectations with the alternatives swapped.
 // If the tie were broken by anything but ordered-choice position, one of these two would red.
-test fn expect_tie_swapped_alternatives_swap_the_label_holds() -> Bool {
+test fn expect_tie_swapped_alternatives_swap_the_label_holds() -> Bool  {
   let root = ge_root(
     item: Choice { left: ge_right_alt(reason: DataValueMissingAfterEq), right: ge_left_alt(reason: FnExpressionBodyMissingAfterEq) },
     a_expr: ge_terminal(class: ^ge_tok_a)
@@ -182,7 +182,7 @@ data ge_accept_tokens: List<Token> = [
   ge_token(class: ^ge_tok_a, start: 8)
 ]
 
-test fn expect_wrapping_every_row_changes_no_accepted_tree_holds() -> Bool {
+test fn expect_wrapping_every_row_changes_no_accepted_tree_holds() -> Bool  {
   let plain = ge_root(item: ge_plain_item(), a_expr: ge_terminal(class: ^ge_tok_a))
   let wrapped = GrammarRoot {
     start: ^ge_start,

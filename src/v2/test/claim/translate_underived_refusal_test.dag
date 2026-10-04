@@ -459,64 +459,64 @@ fn translate_derived_emit_byte_identical_to_before() -> Bool {
   }
 }
 
-test fn translate_refuses_underived_conj_holds() -> Bool {
+test fn translate_refuses_underived_conj_holds() -> Bool  {
   translate_refuses_underived_root(root: translate_underived_conj_node())
 }
 
-test fn translate_refuses_underived_disj_holds() -> Bool {
+test fn translate_refuses_underived_disj_holds() -> Bool  {
   translate_refuses_underived_root(root: translate_underived_disj_node())
 }
 
-test fn translate_refuses_underived_value_holds() -> Bool {
+test fn translate_refuses_underived_value_holds() -> Bool  {
   translate_refuses_underived_root(root: translate_underived_value_node())
 }
 
-test fn translate_refuses_underived_bodied_arrow_holds() -> Bool {
+test fn translate_refuses_underived_bodied_arrow_holds() -> Bool  {
   translate_refuses_underived_bodied_arrow()
 }
 
-test fn translate_refuses_underived_grammar_match_holds() -> Bool {
+test fn translate_refuses_underived_grammar_match_holds() -> Bool  {
   translate_refuses_underived_root_for_target(
     root: translate_underived_grammar_match_atom_node(),
     target: translate_underived_grammar_match_target
   )
 }
 
-test fn translate_refuses_mixed_derived_root_underived_child_holds() -> Bool {
+test fn translate_refuses_mixed_derived_root_underived_child_holds() -> Bool  {
   translate_refuses_mixed_derived_root_underived_child()
 }
 
-test fn translate_refuses_absent_parent_underived_child_holds() -> Bool {
+test fn translate_refuses_absent_parent_underived_child_holds() -> Bool  {
   translate_refuses_absent_parent_underived_child()
 }
 
-test fn translate_refuses_bodyless_emission_root_with_poison_child_holds() -> Bool {
+test fn translate_refuses_bodyless_emission_root_with_poison_child_holds() -> Bool  {
   translate_refuses_bodyless_emission_root_with_poison_child()
 }
 
-test fn translate_refuses_bodied_arrow_shortcut_underived_descendant_holds() -> Bool {
+test fn translate_refuses_bodied_arrow_shortcut_underived_descendant_holds() -> Bool  {
   translate_refuses_bodied_arrow_shortcut_underived_descendant()
 }
 
-test fn translate_refuses_projection_absent_fold_bodied_arrow_underived_descendant_holds() -> Bool {
+test fn translate_refuses_projection_absent_fold_bodied_arrow_underived_descendant_holds() -> Bool  {
   translate_refuses_projection_absent_fold_bodied_arrow_underived_descendant()
 }
 
 // The discriminator for the metadata arm: the Positional payload refuses and the contract payload is
 // accepted, on one Arrow and one facts map.
-test fn translate_gates_a_positional_payload_but_not_a_contract_payload_holds() -> Bool {
+test fn translate_gates_a_positional_payload_but_not_a_contract_payload_holds() -> Bool  {
   translate_refuses_bodied_arrow_shortcut_underived_descendant()
     && translate_accepts_bodied_arrow_contract_payload()
 }
 
-test fn translate_accepts_synthetic_empty_facts_tree_holds() -> Bool {
+test fn translate_accepts_synthetic_empty_facts_tree_holds() -> Bool  {
   translate_accepts_synthetic_empty_facts_tree()
 }
 
-test fn translate_accepts_derived_corpus_module_holds() -> Bool {
+test fn translate_accepts_derived_corpus_module_holds() -> Bool  {
   translate_accepts_derived_rust_add_tree()
 }
 
-test fn translate_derived_emit_byte_identical_to_before_holds() -> Bool {
+test fn translate_derived_emit_byte_identical_to_before_holds() -> Bool  {
   translate_derived_emit_byte_identical_to_before()
 }

@@ -149,7 +149,7 @@ fn wrap_decision_gate_is_inapplicable(
   }
 }
 
-test fn wrap_decision_diagnostics_return_is_rc() -> Bool {
+test fn wrap_decision_diagnostics_return_is_rc() -> Bool  {
   wrap_decision_gate_is_rc_reference(
     target: wrap_decision_fixture_gate_target(),
     source_carrier: target_carrier_diagnostics_node(),
@@ -157,7 +157,7 @@ test fn wrap_decision_diagnostics_return_is_rc() -> Bool {
   )
 }
 
-test fn wrap_decision_diagnostics_param_is_owned() -> Bool {
+test fn wrap_decision_diagnostics_param_is_owned() -> Bool  {
   wrap_decision_gate_is_by_value(
     target: wrap_decision_fixture_gate_target(),
     source_carrier: target_carrier_diagnostics_node(),
@@ -165,7 +165,7 @@ test fn wrap_decision_diagnostics_param_is_owned() -> Bool {
   )
 }
 
-test fn wrap_decision_probe_heap_param_miss_rejects() -> Bool {
+test fn wrap_decision_probe_heap_param_miss_rejects() -> Bool  {
   wrap_decision_gate_rejects(
     target: wrap_decision_fixture_gate_target(),
     source_carrier: target_carrier_probe_heap_node(),
@@ -173,7 +173,7 @@ test fn wrap_decision_probe_heap_param_miss_rejects() -> Bool {
   )
 }
 
-test fn wrap_decision_bundle_absent_inapplicable() -> Bool {
+test fn wrap_decision_bundle_absent_inapplicable() -> Bool  {
   wrap_decision_gate_is_inapplicable(
     target: wrap_decision_fixture_bundle_absent_target(),
     source_carrier: target_carrier_diagnostics_node(),
@@ -181,7 +181,7 @@ test fn wrap_decision_bundle_absent_inapplicable() -> Bool {
   )
 }
 
-test fn wrap_decision_bundle_partial_rejects() -> Bool {
+test fn wrap_decision_bundle_partial_rejects() -> Bool  {
   wrap_decision_gate_rejects(
     target: wrap_decision_fixture_partial_bundle_target(),
     source_carrier: target_carrier_diagnostics_node(),
@@ -189,7 +189,7 @@ test fn wrap_decision_bundle_partial_rejects() -> Bool {
   )
 }
 
-test fn wrap_decision_use_site_verdict_param_is_owned() -> Bool {
+test fn wrap_decision_use_site_verdict_param_is_owned() -> Bool  {
   wrap_decision_gate_is_by_value(
     target: wrap_decision_fixture_gate_target(),
     source_carrier: target_carrier_use_site_verdict_node(),
@@ -197,7 +197,7 @@ test fn wrap_decision_use_site_verdict_param_is_owned() -> Bool {
   )
 }
 
-test fn wrap_decision_use_site_verdict_return_is_owned() -> Bool {
+test fn wrap_decision_use_site_verdict_return_is_owned() -> Bool  {
   wrap_decision_gate_is_by_value(
     target: wrap_decision_fixture_gate_target(),
     source_carrier: target_carrier_use_site_verdict_node(),
@@ -205,7 +205,7 @@ test fn wrap_decision_use_site_verdict_return_is_owned() -> Bool {
   )
 }
 
-test fn wrap_decision_node_struct_field_is_box() -> Bool {
+test fn wrap_decision_node_struct_field_is_box() -> Bool  {
   wrap_decision_gate_is_box_reference(
     target: wrap_decision_fixture_gate_target(),
     source_carrier: target_carrier_node_node(),
@@ -290,7 +290,7 @@ fn wrap_decision_flow_is_inapplicable(
   }
 }
 
-test fn wrap_decision_flow_over_wrap_direction_refuses() -> Bool {
+test fn wrap_decision_flow_over_wrap_direction_refuses() -> Bool  {
   wrap_decision_flow_rejects(
     target: wrap_decision_fixture_gate_target(),
     source_carrier: target_carrier_diagnostics_node(),
@@ -299,7 +299,7 @@ test fn wrap_decision_flow_over_wrap_direction_refuses() -> Bool {
   )
 }
 
-test fn wrap_decision_flow_under_wrap_direction_refuses() -> Bool {
+test fn wrap_decision_flow_under_wrap_direction_refuses() -> Bool  {
   wrap_decision_flow_rejects(
     target: wrap_decision_fixture_gate_target(),
     source_carrier: target_carrier_diagnostics_node(),
@@ -308,7 +308,7 @@ test fn wrap_decision_flow_under_wrap_direction_refuses() -> Bool {
   )
 }
 
-test fn wrap_decision_flow_distinct_reference_layers_refuse() -> Bool {
+test fn wrap_decision_flow_distinct_reference_layers_refuse() -> Bool  {
   wrap_decision_flow_rejects(
     target: wrap_decision_fixture_gate_target(),
     source_carrier: target_carrier_node_node(),
@@ -317,7 +317,7 @@ test fn wrap_decision_flow_distinct_reference_layers_refuse() -> Bool {
   )
 }
 
-test fn wrap_decision_flow_missing_row_refuses() -> Bool {
+test fn wrap_decision_flow_missing_row_refuses() -> Bool  {
   wrap_decision_flow_rejects(
     target: wrap_decision_fixture_gate_target(),
     source_carrier: target_carrier_probe_heap_node(),
@@ -326,7 +326,7 @@ test fn wrap_decision_flow_missing_row_refuses() -> Bool {
   )
 }
 
-test fn wrap_decision_flow_agreeing_sites_accept() -> Bool {
+test fn wrap_decision_flow_agreeing_sites_accept() -> Bool  {
   wrap_decision_flow_is_by_value(
     target: wrap_decision_fixture_gate_target(),
     source_carrier: target_carrier_use_site_verdict_node(),
@@ -335,7 +335,7 @@ test fn wrap_decision_flow_agreeing_sites_accept() -> Bool {
   )
 }
 
-test fn wrap_decision_flow_bundle_absent_inapplicable() -> Bool {
+test fn wrap_decision_flow_bundle_absent_inapplicable() -> Bool  {
   wrap_decision_flow_is_inapplicable(
     target: wrap_decision_fixture_bundle_absent_target(),
     source_carrier: target_carrier_diagnostics_node(),
@@ -402,7 +402,7 @@ fn wrap_decision_composite_result_arg() -> Node {
   }
 }
 
-test fn wrap_decision_instantiation_arg_is_wrapped() -> Bool {
+test fn wrap_decision_instantiation_arg_is_wrapped() -> Bool  {
   match target_type_expr_emitted_wire_decode(
     node: wrap_decision_composite_result_arg(),
     projection: rust_type_expression_projection()

@@ -112,7 +112,7 @@ fn probe_resolved_export_identity(tree: Node, wanted: Symbol) -> Bool {
   }
 }
 
-test fn one_member_module_resolves_under_full_language_model() -> Bool {
+test fn one_member_module_resolves_under_full_language_model() -> Bool  {
   probe_with_export_roots(export_sym: ^dag_token_ident, f: fn(roots) {
     match probe_resolve(roots: roots) {
       Accepted { value: resolved, diagnostics: _ } =>
@@ -125,7 +125,7 @@ test fn one_member_module_resolves_under_full_language_model() -> Bool {
   })
 }
 
-test fn one_member_uncanonical_export_still_refuses() -> Bool {
+test fn one_member_uncanonical_export_still_refuses() -> Bool  {
   probe_with_export_roots(export_sym: ^probe_uncanonical_export, f: fn(roots) {
     match probe_resolve(roots: roots) {
       Accepted { value: _, diagnostics: _ } => false
@@ -134,7 +134,7 @@ test fn one_member_uncanonical_export_still_refuses() -> Bool {
   })
 }
 
-test fn one_member_missing_subject_still_refuses() -> Bool {
+test fn one_member_missing_subject_still_refuses() -> Bool  {
   probe_with_export_roots(export_sym: ^dag_token_ident, f: fn(roots) {
     match resolve_with_admission(
       lm: dag_language_model(),
@@ -152,7 +152,7 @@ test fn one_member_missing_subject_still_refuses() -> Bool {
   })
 }
 
-test fn empty_prelude_service_atom_still_refuses() -> Bool {
+test fn empty_prelude_service_atom_still_refuses() -> Bool  {
   probe_with_export_roots(export_sym: ^dag_token_ident, f: fn(roots) {
     match resolve_with_admission(
       lm: dag_language_model_surface_empty_prelude(),
@@ -168,7 +168,7 @@ test fn empty_prelude_service_atom_still_refuses() -> Bool {
   })
 }
 
-test fn language_model_carries_its_canonical_symbols() -> Bool {
+test fn language_model_carries_its_canonical_symbols() -> Bool  {
   let lm = dag_language_model()
   lm.canonical_symbols.member(^dag_token_ident)
     && !lm.canonical_symbols.member(^probe_uncanonical_export)
@@ -176,7 +176,7 @@ test fn language_model_carries_its_canonical_symbols() -> Bool {
 
 data probe_front_end_source: String = "module probe.one_member\n"
 
-test fn tokenize_parse_one_member_does_not_run_resolve() -> Bool {
+test fn tokenize_parse_one_member_does_not_run_resolve() -> Bool  {
   match tokenize(
     text: probe_front_end_source,
     file: ^probe_front_end_file,
@@ -191,7 +191,7 @@ test fn tokenize_parse_one_member_does_not_run_resolve() -> Bool {
   }
 }
 
-test fn dag_canonical_symbols_keep_prelude_and_reject_uncanonical() -> Bool {
+test fn dag_canonical_symbols_keep_prelude_and_reject_uncanonical() -> Bool  {
   dag_canonical_symbols().member(^dag_token_ident)
     && !dag_canonical_symbols().member(^probe_uncanonical_export)
 }
@@ -201,7 +201,7 @@ test fn dag_canonical_symbols_keep_prelude_and_reject_uncanonical() -> Bool {
 // body atom. When the canonical set carried every grammar-encoding atom, an unbound `node`
 // reference resolved, Accepted and silent, to that atom. It must refuse as unresolved, like any
 // other missing name. RED if grammar_carried_symbol_map is put back in dag_canonical_symbol_map.
-test fn one_member_grammar_terminal_spelling_refuses_unresolved() -> Bool {
+test fn one_member_grammar_terminal_spelling_refuses_unresolved() -> Bool  {
   probe_with_export_roots(export_sym: ^node, f: fn(roots) {
     match probe_resolve(roots: roots) {
       Accepted { value: _, diagnostics: _ } => false
@@ -212,7 +212,7 @@ test fn one_member_grammar_terminal_spelling_refuses_unresolved() -> Bool {
 
 // THE POSITIVE CONTROL: a keyword constant reaches a body as its lex token class (`true` as
 // dag_token_kw_true) and still resolves to the kernel atom.
-test fn one_member_keyword_constant_still_resolves() -> Bool {
+test fn one_member_keyword_constant_still_resolves() -> Bool  {
   probe_with_export_roots(export_sym: ^dag_token_kw_true, f: fn(roots) {
     match probe_resolve(roots: roots) {
       Accepted { value: resolved, diagnostics: _ } =>
@@ -222,7 +222,7 @@ test fn one_member_keyword_constant_still_resolves() -> Bool {
   })
 }
 
-test fn dag_canonical_symbols_hold_token_classes_not_grammar_terminals() -> Bool {
+test fn dag_canonical_symbols_hold_token_classes_not_grammar_terminals() -> Bool  {
   dag_canonical_symbols().member(^dag_token_kw_true)
     && !dag_canonical_symbols().member(^node)
     && !dag_canonical_symbols().member(^dag_production_expr)

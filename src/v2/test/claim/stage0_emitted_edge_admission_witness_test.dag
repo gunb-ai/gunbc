@@ -52,7 +52,7 @@ fn committed_tree_packages() -> Stage0EmittedTreePackages {
 
 // RED: a foundation crate re-exports nothing, so an edge out of the runtime into v1-infer names a
 // module its crate cannot see -- the E0432 a partition build would report, refused here by name.
-test fn an_edge_out_of_the_foundation_into_a_higher_crate_is_refused() -> Bool {
+test fn an_edge_out_of_the_foundation_into_a_higher_crate_is_refused() -> Bool  {
   match stage0_emitted_edge_admission(
     edges: [semantic_source_reference_edge(from: "v1_rt", to_module: "v1_compiler_infer")],
     host_shell_modules: [],
@@ -71,7 +71,7 @@ test fn an_edge_out_of_the_foundation_into_a_higher_crate_is_refused() -> Bool {
 
 // RED, the direction that actually bites: a partition crate naming a host-shell module. The shell
 // depends on the partition, never the reverse.
-test fn an_edge_from_a_partition_crate_into_the_host_shell_is_refused() -> Bool {
+test fn an_edge_from_a_partition_crate_into_the_host_shell_is_refused() -> Bool  {
   match stage0_emitted_edge_admission(
     edges: [semantic_source_reference_edge(from: "v1_compiler_infer", to_module: "cli_run")],
     host_shell_modules: ["cli_run"],
@@ -86,7 +86,7 @@ test fn an_edge_from_a_partition_crate_into_the_host_shell_is_refused() -> Bool 
 
 // CONTROL for both REDs: the same admission over edges down the layering admits. v1-infer reaches
 // std-core through its facade, and the shell reaches v1-infer through its one dependency.
-test fn edges_down_the_layering_are_admitted() -> Bool {
+test fn edges_down_the_layering_are_admitted() -> Bool  {
   match stage0_emitted_edge_admission(
     edges: [
       semantic_source_reference_edge(from: "v1_compiler_infer", to_module: "std_types"),
@@ -103,7 +103,7 @@ test fn edges_down_the_layering_are_admitted() -> Bool {
 
 // The emitter's own prelude rows, as the emitter produces them for a v1-infer module, admit: the
 // runtime edge reaches the foundation and the facade edge names the crate root.
-test fn the_emitter_prelude_rows_for_a_partition_module_are_admitted() -> Bool {
+test fn the_emitter_prelude_rows_for_a_partition_module_are_admitted() -> Bool  {
   match stage0_emitted_edge_admission(
     edges: rust_prelude_emitted_edges(module: "v1_compiler_infer"),
     host_shell_modules: [],
@@ -116,7 +116,7 @@ test fn the_emitter_prelude_rows_for_a_partition_module_are_admitted() -> Bool {
 
 // NOT COVERED is its own arm: a module in neither a partition row nor the shell roster has no
 // crate here, which is what emitting a closure other than the seed looks like. It never passes.
-test fn a_module_outside_the_seed_is_not_covered_rather_than_admitted() -> Bool {
+test fn a_module_outside_the_seed_is_not_covered_rather_than_admitted() -> Bool  {
   match stage0_emitted_edge_admission(
     edges: [semantic_source_reference_edge(from: "fixture_closure_module", to_module: "std_types")],
     host_shell_modules: ["cli_run"],
@@ -130,7 +130,7 @@ test fn a_module_outside_the_seed_is_not_covered_rather_than_admitted() -> Bool 
 }
 
 // The refusal the regen prints is located: it names both modules, both packages and the provenance.
-test fn the_refusal_names_modules_packages_and_provenance() -> Bool {
+test fn the_refusal_names_modules_packages_and_provenance() -> Bool  {
   match stage0_emitted_edge_admission_refusal(
     outcome: stage0_emitted_edge_admission(
       edges: [semantic_source_reference_edge(from: "v1_rt", to_module: "v1_compiler_infer")],
@@ -169,7 +169,7 @@ fn rows_with_a_module_added(rows: List<GeneratedPartitionCrateRow>, package_name
   )
 }
 
-test fn a_module_added_to_the_supplied_partition_is_admitted_where_the_predecessor_rows_do_not_cover_it() -> Bool {
+test fn a_module_added_to_the_supplied_partition_is_admitted_where_the_predecessor_rows_do_not_cover_it() -> Bool  {
   let edge = semantic_source_reference_edge(from: "v1_compiler_infer", to_module: "fixture_added_std_core_module")
   let added = rows_with_a_module_added(rows: generated_partition_crate_rows, package_name: "v1-stage0-std-core", module: "fixture_added_std_core_module")
   let admitted_against_the_change = match stage0_emitted_edge_admission(edges: [edge], host_shell_modules: [], packages: tree_packages(rows: added)) {
@@ -186,7 +186,7 @@ test fn a_module_added_to_the_supplied_partition_is_admitted_where_the_predecess
 // CONTROL: supplying the change's rows widens nothing. A module the change adds is still placed in its
 // own crate and layered like any other -- an edge out of the foundation into it is refused as a
 // crossing, and a module the change's rows do not list is still not covered.
-test fn the_supplied_partition_still_refuses_crossings_and_uncovered_modules() -> Bool {
+test fn the_supplied_partition_still_refuses_crossings_and_uncovered_modules() -> Bool  {
   let added = rows_with_a_module_added(rows: generated_partition_crate_rows, package_name: "v1-stage0-std-core", module: "fixture_added_std_core_module")
   let crossing_refused = match stage0_emitted_edge_admission(
     edges: [semantic_source_reference_edge(from: "v1_rt", to_module: "fixture_added_std_core_module")],
@@ -215,7 +215,7 @@ test fn the_supplied_partition_still_refuses_crossings_and_uncovered_modules() -
 // the committed rows stay as they are: the emit shell's direct dependencies and reach include it
 // against the supplied set and exclude it against the committed one -- so neither answer re-enters
 // the rows compiled into the asker.
-test fn the_emit_core_dependency_and_reach_follow_the_supplied_package_set() -> Bool {
+test fn the_emit_core_dependency_and_reach_follow_the_supplied_package_set() -> Bool  {
   let added_package = "v1-stage0-fixture-added"
   let supplied = tree_packages(rows: generated_partition_crate_rows |> concat([GeneratedPartitionCrateRow {
     package_name: added_package,

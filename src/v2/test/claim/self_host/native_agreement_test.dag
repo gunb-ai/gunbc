@@ -7,7 +7,7 @@ import v2.std.native_agreement {
   octet_display
 }
 
-test fn native_agreement_divergence_format_holds() -> Bool {
+test fn native_agreement_divergence_format_holds() -> Bool  {
   let d = NativeAgreementDivergence {
     member_id: "meet",
     interpreted_value: "1",
@@ -16,11 +16,11 @@ test fn native_agreement_divergence_format_holds() -> Bool {
   format_native_agreement_divergence(d: d) == "member=meet interpreted=1 native=0"
 }
 
-test fn native_agreement_failure_receipt_empty_when_clean_holds() -> Bool {
+test fn native_agreement_failure_receipt_empty_when_clean_holds() -> Bool  {
   native_agreement_failure_receipt(divergences: []) == ""
 }
 
-test fn native_agreement_failure_receipt_names_divergence_holds() -> Bool {
+test fn native_agreement_failure_receipt_names_divergence_holds() -> Bool  {
   let d = NativeAgreementDivergence {
     member_id: "join",
     interpreted_value: "1",
@@ -29,7 +29,7 @@ test fn native_agreement_failure_receipt_names_divergence_holds() -> Bool {
   native_agreement_failure_receipt(divergences: [d]) == "member=join interpreted=1 native=0"
 }
 
-test fn native_agreement_octet_display_names_raw_byte_holds() -> Bool {
+test fn native_agreement_octet_display_names_raw_byte_holds() -> Bool  {
   octet_display(octet: 2) == "2"
     && octet_display(octet: 42) == "42"
 }

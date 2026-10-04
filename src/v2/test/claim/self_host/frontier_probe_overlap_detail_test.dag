@@ -55,7 +55,7 @@ fn overlap_residue_stage_diagnostic(row: GrammarChoiceAmbiguityRow) -> ParseStag
   )
 }
 
-test fn overlap_evidence_binds_exact_row_not_global_roster() -> Bool {
+test fn overlap_evidence_binds_exact_row_not_global_roster() -> Bool  {
   let row = sample_overlap_row()
   let detail = frontier_probe_assemble_detail_from_parse_stage(
     d: NonEmptyParseStageDiagnostics {
@@ -98,7 +98,7 @@ fn residue_headed_stage_chain(row: GrammarChoiceAmbiguityRow, fatal: Symbol) -> 
 // THE PROGRAM'S RED CONTROL AT THE ASSEMBLE CAUSE. Two refusals share the overlap residue as their
 // head and differ in their fatal cause; the cause reader must report the two distinct fatals.
 // Reading the head (or masking on it) gave both the same residue-shaped answer.
-test fn a_shared_residue_head_yields_each_chains_own_fatal_cause_holds() -> Bool {
+test fn a_shared_residue_head_yields_each_chains_own_fatal_cause_holds() -> Bool  {
   let row = sample_overlap_row()
   let a = assemble_rejection_cause_from_parse_stage(d: residue_headed_stage_chain(row: row, fatal: ^normalize_rejected))
   let b = assemble_rejection_cause_from_parse_stage(d: residue_headed_stage_chain(row: row, fatal: ^body_lowering_reason_wrapper_retained_emitted))
@@ -115,7 +115,7 @@ test fn a_shared_residue_head_yields_each_chains_own_fatal_cause_holds() -> Bool
 
 // THE RENDERING KEEPS THE HEAD. The receipt's rejection_chain is the whole chain in order, so the
 // advisory head stays visible to an operator while the cause above is the fatal element.
-test fn a_residue_headed_receipt_chain_keeps_the_advisory_head_holds() -> Bool {
+test fn a_residue_headed_receipt_chain_keeps_the_advisory_head_holds() -> Bool  {
   let row = sample_overlap_row()
   let stage = residue_headed_stage_chain(row: row, fatal: ^normalize_rejected)
   let receipt = frontier_probe_receipt_from_assemble_rejection(
@@ -132,7 +132,7 @@ test fn a_residue_headed_receipt_chain_keeps_the_advisory_head_holds() -> Bool {
   }
 }
 
-test fn emit_stage_receipt_has_no_assemble_detail() -> Bool {
+test fn emit_stage_receipt_has_no_assemble_detail() -> Bool  {
   match frontier_probe_receipt_without_assemble_detail(
     module_path: "src/v2/compiler/example.dag",
     blocker: RealizationGap,
@@ -145,7 +145,7 @@ test fn emit_stage_receipt_has_no_assemble_detail() -> Bool {
   }
 }
 
-test fn assemble_receipt_carries_nonempty_rejection_chain() -> Bool {
+test fn assemble_receipt_carries_nonempty_rejection_chain() -> Bool  {
   let row = sample_overlap_row()
   let stage = NonEmptyParseStageDiagnostics {
     head: overlap_residue_stage_diagnostic(row: row),
@@ -170,7 +170,7 @@ test fn assemble_receipt_carries_nonempty_rejection_chain() -> Bool {
   }
 }
 
-test fn overlap_stage_attaches_evidence_when_diagnostics_stripped() -> Bool {
+test fn overlap_stage_attaches_evidence_when_diagnostics_stripped() -> Bool  {
   let row = sample_overlap_row()
   let stage = NonEmptyParseStageDiagnostics {
     head: overlap_residue_stage_diagnostic(row: row),
@@ -197,7 +197,7 @@ test fn overlap_stage_attaches_evidence_when_diagnostics_stripped() -> Bool {
   }
 }
 
-test fn masked_overlap_located_reason_unmasks_terminal_refusal() -> Bool {
+test fn masked_overlap_located_reason_unmasks_terminal_refusal() -> Bool  {
   let masked = NonEmptyDiagnostics {
     head: Diagnostic {
       reason: ^parse_grammar_choice_overlap_residue,
@@ -216,7 +216,7 @@ test fn masked_overlap_located_reason_unmasks_terminal_refusal() -> Bool {
   located == ^body_lowering_reason_wrapper_retained_emitted
 }
 
-test fn overlap_only_chain_keeps_overlap_located_reason() -> Bool {
+test fn overlap_only_chain_keeps_overlap_located_reason() -> Bool  {
   let overlap_only = NonEmptyDiagnostics {
     head: Diagnostic {
       reason: ^parse_grammar_choice_overlap_residue,
@@ -229,7 +229,7 @@ test fn overlap_only_chain_keeps_overlap_located_reason() -> Bool {
   located == ^parse_grammar_choice_overlap_residue
 }
 
-test fn masked_resolve_not_found_unmasks_located_reason() -> Bool {
+test fn masked_resolve_not_found_unmasks_located_reason() -> Bool  {
   let masked = NonEmptyDiagnostics {
     head: Diagnostic {
       reason: ^parse_grammar_choice_overlap_residue,

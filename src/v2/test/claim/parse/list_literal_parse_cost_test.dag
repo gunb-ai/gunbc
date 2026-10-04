@@ -108,7 +108,7 @@ fn lpc_parses(n: Int) -> Bool {
   }
 }
 
-test fn lpc_fidelity_small() -> Bool {
+test fn lpc_fidelity_small() -> Bool  {
   supplied_stream_matches_tokenize(
     text: lpc_text(n: 3),
     file: ^list_literal_parse_cost_probe,
@@ -116,6 +116,6 @@ test fn lpc_fidelity_small() -> Bool {
   )
 }
 
-test fn lpc_list_literal_parses_on_prepared_route() -> Bool {
+test fn lpc_list_literal_parses_on_prepared_route() -> Bool  {
   lpc_parses(n: 3)
 }

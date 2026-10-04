@@ -103,11 +103,11 @@ fn rdt_admitted(o: Optional<Outcome<InferredTree>>) -> Bool {
 // its value to exactly one arm: a `true` body admits, a `false` body refuses
 // refinement_predicate_violated at the site. The pair is the discriminator for "the value is read":
 // the two bodies must land on DIFFERENT arms.
-test fn rdt_a_holding_predicate_admits_holds() -> Bool {
+test fn rdt_a_holding_predicate_admits_holds() -> Bool  {
   rdt_admitted(o: rdt_discharged(body: rdt_true()))
 }
 
-test fn rdt_a_violated_predicate_refuses_at_the_site_holds() -> Bool {
+test fn rdt_a_violated_predicate_refuses_at_the_site_holds() -> Bool  {
   rdt_refused_at_site_with(o: rdt_discharged(body: rdt_false()), reason: ^refinement_predicate_violated)
 }
 
@@ -153,13 +153,13 @@ fn rdt_discharged_unevaluable(body: Node) -> Optional<Outcome<InferredTree>> {
   }
 }
 
-test fn rdt_an_unevaluable_application_refuses_undischargeable_whatever_its_body() -> Bool {
+test fn rdt_an_unevaluable_application_refuses_undischargeable_whatever_its_body() -> Bool  {
   rdt_refused_at_site_with(o: rdt_discharged_unevaluable(body: rdt_true()), reason: ^refinement_obligation_undischargeable)
     && rdt_refused_at_site_with(o: rdt_discharged_unevaluable(body: rdt_false()), reason: ^refinement_obligation_undischargeable)
 }
 
 // (2) ZERO OBLIGATIONS: the identity, and the cost path every module takes today.
-test fn rdt_zero_obligations_discharge_to_the_same_tree() -> Bool {
+test fn rdt_zero_obligations_discharge_to_the_same_tree() -> Bool  {
   match infer(tree: claim_resolved_tree_without_declarations(root: rdt_application(body: rdt_true()))) {
     Rejected { diagnostics: _ } => false
     Accepted { value: t, diagnostics: _ } =>

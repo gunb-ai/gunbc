@@ -121,21 +121,21 @@ fn cr_outcomes_agree(lhs: Outcome<QualifiedName>, rhs: Outcome<QualifiedName>) -
   }
 }
 
-test fn collapsed_reader_grafted_spine_agreement_holds() -> Bool {
+test fn collapsed_reader_grafted_spine_agreement_holds() -> Bool  {
   cr_outcomes_agree(
     lhs: qualified_name_from_module_node(root: cr_grafted_root),
     rhs: qualified_name_from_graft_spine(root: cr_grafted_root)
   )
 }
 
-test fn collapsed_reader_grafted_expected_qn_holds() -> Bool {
+test fn collapsed_reader_grafted_expected_qn_holds() -> Bool  {
   cr_qn_eq(
     out: qualified_name_from_module_node(root: cr_grafted_root),
     expected: cr_module_qn
   )
 }
 
-test fn collapsed_reader_pre_graft_header_agreement_holds() -> Bool {
+test fn collapsed_reader_pre_graft_header_agreement_holds() -> Bool  {
   cr_qn_eq(
     out: qualified_name_from_module_node(root: cr_pre_graft_root),
     expected: cr_module_qn
@@ -156,6 +156,6 @@ data claim_collapsed_reader_bare_conj_refused: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-test fn collapsed_reader_bare_conj_refused_holds() -> Bool {
+test fn collapsed_reader_bare_conj_refused_holds() -> Bool  {
   !cr_outcome_accepted_qn(out: qualified_name_from_module_node(root: cr_bare_conj_root))
 }

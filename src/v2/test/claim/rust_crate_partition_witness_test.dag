@@ -151,7 +151,7 @@ fn witness_refused_by_rust_rule(outcome: ResolvePartitionOutcome) -> String {
   }
 }
 
-test fn witness_r4_refuses_forced_scc_split_holds() -> Bool {
+test fn witness_r4_refuses_forced_scc_split_holds() -> Bool  {
   witness_refused_by_rust_rule(outcome: resolve_partition_outcome(
     parameter: witness_explicit(assignment: witness_forced_scc_split_assignment()),
     module_dag: witness_triangle_scc_dag()
@@ -182,14 +182,14 @@ fn witness_crossing_unit_assignment() -> Map<ModuleId, CompilationUnitId> {
     |> map_insert(witness_mod_r, witness_unit_q)
 }
 
-test fn witness_r4_refuses_unit_graph_cycle_holds() -> Bool {
+test fn witness_r4_refuses_unit_graph_cycle_holds() -> Bool  {
   witness_refused_by_rust_rule(outcome: resolve_partition_outcome(
     parameter: witness_explicit(assignment: witness_crossing_unit_assignment()),
     module_dag: witness_crossing_module_dag()
   )) == "unit-graph-cycle"
 }
 
-test fn explicit_assignment_leaving_a_module_unowned_refuses() -> Bool {
+test fn explicit_assignment_leaving_a_module_unowned_refuses() -> Bool  {
   witness_refused_by_rust_rule(outcome: resolve_partition_outcome(
     parameter: witness_explicit(assignment: empty_map()
       |> map_insert(witness_mod_p, witness_unit_p)
@@ -199,14 +199,14 @@ test fn explicit_assignment_leaving_a_module_unowned_refuses() -> Bool {
   )) == "omits-module"
 }
 
-test fn explicit_assignment_naming_a_module_outside_the_dag_refuses() -> Bool {
+test fn explicit_assignment_naming_a_module_outside_the_dag_refuses() -> Bool  {
   witness_refused_by_rust_rule(outcome: resolve_partition_outcome(
     parameter: witness_explicit(assignment: witness_forced_scc_split_assignment() |> map_insert(witness_mod_p, witness_unit_x)),
     module_dag: witness_triangle_scc_dag()
   )) == "outside-dag"
 }
 
-test fn policy_target_below_one_refuses() -> Bool {
+test fn policy_target_below_one_refuses() -> Bool  {
   witness_refused_by_rust_rule(outcome: resolve_partition_outcome(
     parameter: PolicyPartitionParam { policy: PartitionPolicy { target_crate_count: 0 } },
     module_dag: witness_crossing_module_dag()
@@ -255,7 +255,7 @@ fn witness_owner(assignment: Map<ModuleId, CompilationUnitId>, module_id: Module
 // resolver, gives every module an owner, keeps the cycle {b, c} in one unit, and puts the
 // dependency end of the chain in the first unit. Five modules over two units is a quota of three:
 // a, then {b, c}, fill the first unit; d and e open the second.
-test fn policy_partition_admits_a_balanced_acyclic_assignment() -> Bool {
+test fn policy_partition_admits_a_balanced_acyclic_assignment() -> Bool  {
   match resolve_partition_outcome(parameter: witness_policy_two(), module_dag: witness_chain_dag(edges: witness_chain_edges())) {
     ResolvePartitionOk { assignment: assignment, provenance: PolicyDerived { policy: policy } } =>
       (policy.decl_name as String) == "policy_partition_assignment"
@@ -274,7 +274,7 @@ test fn policy_partition_admits_a_balanced_acyclic_assignment() -> Bool {
 // it and every module shares e's owner -- where the unmutated positive control puts a and e in
 // different units. A resolver that ignored its edges would read the positive control's owners and
 // fail here.
-test fn a_mutated_import_edge_moves_the_policy_assignment() -> Bool {
+test fn a_mutated_import_edge_moves_the_policy_assignment() -> Bool  {
   let mutated = witness_chain_edges() |> list_push(ModuleDagEdge { from: witness_chain_a, to: witness_chain_e })
   match resolve_partition_outcome(parameter: witness_policy_two(), module_dag: witness_chain_dag(edges: mutated)) {
     ResolvePartitionOk { assignment: assignment, provenance: _ } =>
@@ -284,7 +284,7 @@ test fn a_mutated_import_edge_moves_the_policy_assignment() -> Bool {
   }
 }
 
-test fn witness_partition_perturbation_member_coverage_holds() -> Bool {
+test fn witness_partition_perturbation_member_coverage_holds() -> Bool  {
   let coverage_same = stage0_partition_member_coverage_consistent(
     left: stage0_single_crate_fold_outcome(),
     right: stage0_partition_receipt_outcome
@@ -295,22 +295,22 @@ test fn witness_partition_perturbation_member_coverage_holds() -> Bool {
   )
 }
 
-test fn witness_interim_physical_crate_count_holds() -> Bool {
+test fn witness_interim_physical_crate_count_holds() -> Bool  {
   stage0_physical_crate_count() == rust_crate_partition_declared_core_target
 }
 
-test fn witness_interim_module_bearing_unit_count_holds() -> Bool {
+test fn witness_interim_module_bearing_unit_count_holds() -> Bool  {
   stage0_module_bearing_unit_count() == rust_crate_partition_module_bearing_unit_target
 }
 
-test fn witness_interim_provenance_is_hand_explicit_holds() -> Bool {
+test fn witness_interim_provenance_is_hand_explicit_holds() -> Bool  {
   match stage0_partition_provenance() {
     HandExplicit => true
     PolicyDerived { policy: _ } => false
   }
 }
 
-test fn witness_provenance_distinct_from_policy_derived_holds() -> Bool {
+test fn witness_provenance_distinct_from_policy_derived_holds() -> Bool  {
   let explicit = partition_provenance_hand_explicit()
   let derived = partition_provenance_policy_derived(
     policy: DeclarationRef {
@@ -322,7 +322,7 @@ test fn witness_provenance_distinct_from_policy_derived_holds() -> Bool {
   !partition_provenance_eq(left: explicit, right: derived)
 }
 
-test fn witness_runtime_unit_members_holds() -> Bool {
+test fn witness_runtime_unit_members_holds() -> Bool  {
   match stage0_partition_receipt_outcome {
     Stage0PartitionReceiptOk { units: units } =>
       match partition_unit_by_id(units: units, unit_id: stage0_unit_runtime) {
@@ -356,7 +356,7 @@ test fn witness_runtime_unit_members_holds() -> Bool {
 // The sibling unit witnesses still carry count literals with the same defect. They are left
 // alone deliberately: this one is converted because this change broke it, and converting the
 // rest is a separate diff rather than a rider on an unbreak.
-test fn witness_v1_infer_unit_members_holds() -> Bool {
+test fn witness_v1_infer_unit_members_holds() -> Bool  {
   match stage0_partition_receipt_outcome {
     Stage0PartitionReceiptOk { units: units } =>
       match partition_unit_by_id(units: units, unit_id: stage0_unit_v1_infer) {
@@ -374,7 +374,7 @@ test fn witness_v1_infer_unit_members_holds() -> Bool {
   }
 }
 
-test fn witness_v1_artifact_unit_members_holds() -> Bool {
+test fn witness_v1_artifact_unit_members_holds() -> Bool  {
   match stage0_partition_receipt_outcome {
     Stage0PartitionReceiptOk { units: units } =>
       match partition_unit_by_id(units: units, unit_id: stage0_unit_v1_artifact) {
@@ -387,15 +387,15 @@ test fn witness_v1_artifact_unit_members_holds() -> Bool {
   }
 }
 
-test fn witness_partition_fold_unit_count_holds() -> Bool {
+test fn witness_partition_fold_unit_count_holds() -> Bool  {
   stage0_partition_fold_ok()
 }
 
-test fn witness_partition_r4_valid_on_interim_holds() -> Bool {
+test fn witness_partition_r4_valid_on_interim_holds() -> Bool  {
   stage0_partition_r4_valid()
 }
 
-test fn witness_resolve_partition_explicit_returns_assignment_holds() -> Bool {
+test fn witness_resolve_partition_explicit_returns_assignment_holds() -> Bool  {
   match stage0_resolve_partition_outcome {
     Stage0PartitionResolved { module_dag: _, assignment: resolved } => {
       let expected = stage0_interim_explicit_assignment()
@@ -405,12 +405,12 @@ test fn witness_resolve_partition_explicit_returns_assignment_holds() -> Bool {
   }
 }
 
-test fn witness_stage0_partition_row_lookups_resolved_holds() -> Bool {
+test fn witness_stage0_partition_row_lookups_resolved_holds() -> Bool  {
   stage0_partition_row_lookups_resolved()
 }
 
 
-test fn witness_stage0_module_dag_interface_grounding_debt_declared_holds() -> Bool {
+test fn witness_stage0_module_dag_interface_grounding_debt_declared_holds() -> Bool  {
   stage0_module_dag_interface_grounding_is_debt()
 }
 
@@ -436,7 +436,7 @@ test fn witness_stage0_module_dag_interface_grounding_debt_declared_holds() -> B
 // is what forces the removal edit and its typed disposition (DESIGN section 5). And
 // no_repaired_divergence_returned: something recorded as repaired came back -- the 4b(4) regression
 // control, which keeps the climb real rather than retiring with it.
-test fn stage0_reexport_derivation_disagreements_are_bounded_to_the_known_unit() -> Bool {
+test fn stage0_reexport_derivation_disagreements_are_bounded_to_the_known_unit() -> Bool  {
   match stage0_reexport_derivation_disagreements() {
     Stage0ReexportDisagreementsUnavailable { cause: _ } => false
     Stage0ReexportDisagreementsDerived { packages: packages } => {
@@ -481,7 +481,7 @@ fn probe_row(package: String, unit: String, reexports: List<String>) -> Stage0Pa
   }
 }
 
-test fn the_disagreement_detector_finds_a_planted_divergence() -> Bool {
+test fn the_disagreement_detector_finds_a_planted_divergence() -> Bool  {
   let edges = [probe_edge(from: "u-agree", to: "u-base")]
   let rows = [
     probe_row(package: "probe-base", unit: "u-base", reexports: []),
@@ -507,7 +507,7 @@ test fn the_disagreement_detector_finds_a_planted_divergence() -> Bool {
 // the planted-divergence guard above green, because that fixture pairs every edge destination with
 // a row and so never reaches the arm -- which is why this case needed its own claim rather than a
 // wider fixture.
-test fn a_dep_edge_to_a_unit_with_no_package_row_refuses() -> Bool {
+test fn a_dep_edge_to_a_unit_with_no_package_row_refuses() -> Bool  {
   let edges = [probe_edge(from: "u-foundation", to: "u-unrostered")]
   let rows = [probe_row(package: "probe-foundation", unit: "u-foundation", reexports: [])]
   match reexport_derivation_disagreements_over(edges: edges, rows: rows) {
@@ -521,7 +521,7 @@ test fn a_dep_edge_to_a_unit_with_no_package_row_refuses() -> Bool {
 // half is the capability, and not a carrier that merely sits near it. Repointing it back at
 // ModuleStorageIndex, or at any other declaration, reds this claim -- which is the whole point,
 // because nothing else in the corpus re-reads a dissolve target once it is written.
-test fn witness_interface_grounding_target_names_the_binding_supply_holds() -> Bool {
+test fn witness_interface_grounding_target_names_the_binding_supply_holds() -> Bool  {
   let target = stage0_module_interface_grounding_target()
   ((target.module_path as String) == "v2.compiler.source_authority")
     && ((target.decl_name as String) == "module_storage_bindings_for_source_roots")
@@ -535,7 +535,7 @@ test fn witness_interface_grounding_target_names_the_binding_supply_holds() -> B
 //
 // STATED AT ITS STRENGTH: this pins which declarations the trigger names. It does NOT evaluate
 // whether the supply is host-emitted or carries contents -- no program can yet, which is the debt.
-test fn witness_interface_grounding_trigger_states_both_capability_halves_holds() -> Bool {
+test fn witness_interface_grounding_trigger_states_both_capability_halves_holds() -> Bool  {
   match stage0_module_dag_interface_grounding() {
     Stage0ModuleDagInterfaceSourceGrounded => false
     Stage0ModuleDagInterfaceUngrounded { exports_map: exports_map, type_definitions_map: type_definitions_map } =>
@@ -559,7 +559,7 @@ fn interface_grounding_capability_is_the_declared_one(capability: InterfaceGroun
 // the runtime module gains exactly one edge to it -- the hand-listed runtime edges are gone from
 // the source list, so every one of these was derived. If the merge stopped reading the rows, or
 // the rows stopped naming the runtime module, the count moves and this reds.
-test fn witness_stage0_runtime_edges_are_derived_from_the_emitter_rows_holds() -> Bool {
+test fn witness_stage0_runtime_edges_are_derived_from_the_emitter_rows_holds() -> Bool  {
   let source_runtime_edges = stage0_source_module_dag.edges
     |> filter(edge => (edge.to as String) == rust_runtime_prelude_module)
     |> count
@@ -577,7 +577,7 @@ test fn witness_stage0_runtime_edges_are_derived_from_the_emitter_rows_holds() -
 // the provenance that produced it, not merged into a DAG whose R4 verdict would report an anonymous
 // cycle. v1_std_core imports std_algebra in the source edges, so an emitter-written
 // std_algebra -> v1_std_core path closes a cycle the source does not have.
-test fn witness_emitter_reverse_edge_is_refused_by_name_holds() -> Bool {
+test fn witness_emitter_reverse_edge_is_refused_by_name_holds() -> Bool  {
   let reverse = EmittedEdge {
     from: "std_algebra",
     to: EmittedModuleTarget { module: "v1_std_core" },
@@ -595,7 +595,7 @@ test fn witness_emitter_reverse_edge_is_refused_by_name_holds() -> Bool {
 
 // An emitted edge to a module the DAG does not declare is refused, never dropped: dropping it
 // answers for a smaller graph than the emitted code carries.
-test fn witness_emitted_edge_outside_dag_is_refused_holds() -> Bool {
+test fn witness_emitted_edge_outside_dag_is_refused_holds() -> Bool  {
   let stranger = EmittedEdge {
     from: "v1_std_core",
     to: EmittedModuleTarget { module: "not_a_stage0_module" },

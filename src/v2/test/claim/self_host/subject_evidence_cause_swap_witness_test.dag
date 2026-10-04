@@ -83,14 +83,14 @@ fn old_is_pass_fold(v: Verdict<String, String>) -> Bool {
   }
 }
 
-test fn cause_swap_old_fold_cannot_tell_divergence_from_build_failure() -> Bool {
+test fn cause_swap_old_fold_cannot_tell_divergence_from_build_failure() -> Bool  {
   old_is_pass_fold(v: divergence_verdict()) == old_is_pass_fold(v: build_failure_verdict())
     && old_is_pass_fold(v: divergence_verdict()) == old_is_pass_fold(v: run_failure_verdict())
 }
 
 // THE LOAD-BEARING ARM. Same false from the old fold on both causes; the new carrier separates
 // them. A comparison that RAN and disagreed produced a verdict; a build that failed produced none.
-test fn cause_swap_new_carrier_separates_divergence_from_build_failure() -> Bool {
+test fn cause_swap_new_carrier_separates_divergence_from_build_failure() -> Bool  {
   verdict_produced_a_comparison(v: divergence_verdict())
     && !verdict_produced_a_comparison(v: build_failure_verdict())
     && !verdict_produced_a_comparison(v: run_failure_verdict())
@@ -99,7 +99,7 @@ test fn cause_swap_new_carrier_separates_divergence_from_build_failure() -> Bool
 // A HOST FAILURE MUST NOT ESTABLISH DIVERGENCE — the arm that matters for every discriminating red
 // in the migrated family: those probes assert "the wrong fixture was refused", and a build failure
 // must never satisfy that claim.
-test fn cause_swap_build_failure_does_not_establish_divergence() -> Bool {
+test fn cause_swap_build_failure_does_not_establish_divergence() -> Bool  {
   verdict_establishes_divergence(v: divergence_verdict())
     && !verdict_establishes_divergence(v: build_failure_verdict())
     && !verdict_establishes_divergence(v: run_failure_verdict())
@@ -107,7 +107,7 @@ test fn cause_swap_build_failure_does_not_establish_divergence() -> Bool {
 
 // AND MUST NOT ESTABLISH EQUIVALENCE EITHER. Both claims are refused by a no-verdict standing,
 // which makes the standing a standing rather than a third truth value smuggled into a Bool.
-test fn cause_swap_build_failure_does_not_establish_equivalence() -> Bool {
+test fn cause_swap_build_failure_does_not_establish_equivalence() -> Bool  {
   verdict_establishes_equivalence(v: Pass)
     && !verdict_establishes_equivalence(v: build_failure_verdict())
     && !verdict_establishes_equivalence(v: divergence_verdict())
@@ -115,7 +115,7 @@ test fn cause_swap_build_failure_does_not_establish_equivalence() -> Bool {
 
 // THE TWO CLAIMS ARE NOT COMPLEMENTS, and this arm pins that they never become so. Under the old
 // fold `!is_pass` was a tempting spelling of "diverged"; every no-verdict cause satisfies it.
-test fn cause_swap_not_equivalent_is_not_the_same_as_divergent() -> Bool {
+test fn cause_swap_not_equivalent_is_not_the_same_as_divergent() -> Bool  {
   !verdict_establishes_equivalence(v: build_failure_verdict())
     && !verdict_establishes_divergence(v: build_failure_verdict())
 }

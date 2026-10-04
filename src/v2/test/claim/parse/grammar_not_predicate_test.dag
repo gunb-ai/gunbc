@@ -85,11 +85,11 @@ data np_stop_tokens: List<Token> = [
   np_token(class: ^np_tok_b, start: 6)
 ]
 
-test fn a_not_predicate_stops_a_repeat_before_the_next_head_holds() -> Bool {
+test fn a_not_predicate_stops_a_repeat_before_the_next_head_holds() -> Bool  {
   np_accepted(parsed: np_parse(root: np_stop_grammar(guard: true), tokens: np_stop_tokens))
 }
 
-test fn without_the_not_predicate_the_repeat_eats_the_next_head_holds() -> Bool {
+test fn without_the_not_predicate_the_repeat_eats_the_next_head_holds() -> Bool  {
   !np_accepted(parsed: np_parse(root: np_stop_grammar(guard: false), tokens: np_stop_tokens))
 }
 
@@ -99,7 +99,7 @@ fn np_guarded_single_root() -> GrammarRoot {
   np_root(start: Sequence { left: NotPredicate { element: np_terminal(class: ^np_tok_c) }, right: np_terminal(class: ^np_tok_a) })
 }
 
-test fn a_not_predicate_derives_no_tree_holds() -> Bool {
+test fn a_not_predicate_derives_no_tree_holds() -> Bool  {
   match np_parse(root: np_guarded_single_root(), tokens: np_single_tokens) {
     Rejected { diagnostics: _ } => false
     Accepted { value: guarded, diagnostics: _ } =>
@@ -119,7 +119,7 @@ test fn a_not_predicate_derives_no_tree_holds() -> Bool {
 // emitted against that same grammar: the walk passes each `(!(a b) a)` item through
 // v2.std.grammar grammar_emit_sequence's predicate rule and the predicate's own arm (no terminal), and
 // yields the four terminals the source had -- the predicate costs no token in either direction.
-test fn a_not_predicate_guarded_tree_emits_its_tokens_back_holds() -> Bool {
+test fn a_not_predicate_guarded_tree_emits_its_tokens_back_holds() -> Bool  {
   match np_parse(root: np_stop_grammar(guard: true), tokens: np_stop_tokens) {
     Rejected { diagnostics: _ } => false
     Accepted { value: parsed, diagnostics: _ } =>

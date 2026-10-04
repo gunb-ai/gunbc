@@ -75,22 +75,22 @@ data green_pure_duplication: List<Node> = [
   conj2(a: atom(id: ^x), b: atom(id: ^y))
 ]
 
-test fn gate_chain_is_simulated() -> Bool {
+test fn gate_chain_is_simulated() -> Bool  {
   chain_is_simulated(steps: red_gate_chain)
 }
-test fn positional_typecheck_is_simulated() -> Bool {
+test fn positional_typecheck_is_simulated() -> Bool  {
   chain_is_simulated(steps: red_positional_typecheck)
 }
-test fn divergent_operation_is_not_simulated() -> Bool {
+test fn divergent_operation_is_not_simulated() -> Bool  {
   !chain_is_simulated(steps: green_divergent_op)
 }
-test fn distinct_input_is_not_simulated() -> Bool {
+test fn distinct_input_is_not_simulated() -> Bool  {
   !chain_is_simulated(steps: green_distinct_input)
 }
-test fn too_short_chain_is_not_simulated() -> Bool {
+test fn too_short_chain_is_not_simulated() -> Bool  {
   !chain_is_simulated(steps: green_too_short)
 }
-test fn pure_duplication_is_not_simulated() -> Bool {
+test fn pure_duplication_is_not_simulated() -> Bool  {
   !chain_is_simulated(steps: green_pure_duplication)
 }
 
@@ -116,22 +116,22 @@ data expected_gate_fillings: List<List<Node>> = [
   [atom(id: ^gate_layer), atom(id: ^acc2)]
 ]
 
-test fn gate_template_is_the_minimal_form() -> Bool {
+test fn gate_template_is_the_minimal_form() -> Bool  {
   node_eq(a: anti_unify_chain(steps: red_gate_chain).template, b: expected_gate_template())
 }
-test fn gate_fillings_are_the_substitution_list() -> Bool {
+test fn gate_fillings_are_the_substitution_list() -> Bool  {
   per_element_eq(
     a: anti_unify_chain(steps: red_gate_chain).per_element,
     b: expected_gate_fillings
   )
 }
 
-test fn divergent_op_fillings_are_not_all_leaves() -> Bool {
+test fn divergent_op_fillings_are_not_all_leaves() -> Bool  {
   !fillings_all_leaves(per_element: anti_unify_chain(steps: green_divergent_op).per_element)
 }
-test fn divergent_op_template_still_has_a_hole() -> Bool {
+test fn divergent_op_template_still_has_a_hole() -> Bool  {
   template_has_hole(template: anti_unify_chain(steps: green_divergent_op).template)
 }
-test fn pure_duplication_template_has_no_hole() -> Bool {
+test fn pure_duplication_template_has_no_hole() -> Bool  {
   !template_has_hole(template: anti_unify_chain(steps: green_pure_duplication).template)
 }

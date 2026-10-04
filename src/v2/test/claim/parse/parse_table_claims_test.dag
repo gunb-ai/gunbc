@@ -14,7 +14,7 @@ data parse_table_two_tokens: List<Token> = Cons {
 
 data parse_table_empty_tokens: List<Token> = std.algebra.Empty
 
-test fn parse_table_token_position_indices_no_extra_append_holds() -> Bool {
+test fn parse_table_token_position_indices_no_extra_append_holds() -> Bool  {
   (length(xs: token_position_indices(tokens: parse_table_two_tokens)) == 3)
     && (length(xs: token_position_indices(tokens: parse_table_empty_tokens)) == 1)
     && ((length(xs: token_position_indices(tokens: parse_table_two_tokens)) == 4) == false)
@@ -24,7 +24,7 @@ fn nullable_set_singleton(name: Symbol) -> List<Symbol> {
   Cons { head: name, tail: std.algebra.Empty }
 }
 
-test fn parse_table_nullable_morphism_holds() -> Bool {
+test fn parse_table_nullable_morphism_holds() -> Bool  {
   let ns = nullable_set_singleton(name: ^parse_table_nullable_probe_nt)
   (expr_is_nullable_given_set(
     expr: Terminal { token_class: ^parse_table_nullable_tok, stamp: StampClass },
@@ -99,7 +99,7 @@ fn parse_table_projection_grammar() -> ParseGrammar {
   }
 }
 
-test fn parse_table_grammar_expr_projection_holds() -> Bool {
+test fn parse_table_grammar_expr_projection_holds() -> Bool  {
   (grammar_carries_symbol(grammar: parse_table_projection_grammar(), sym: ^pt_proj_tok_a) == true)
     && (grammar_carries_symbol(grammar: parse_table_projection_grammar(), sym: ^pt_proj_nt_b) == true)
     && (grammar_carries_symbol(grammar: parse_table_projection_grammar(), sym: ^pt_proj_tok_c) == true)
@@ -119,7 +119,7 @@ data parse_table_defined_root: GrammarRoot = GrammarRoot {
   sync_tokens: grammar_empty_sync_tokens()
 }
 
-test fn parse_table_left_corner_morphism_holds() -> Bool {
+test fn parse_table_left_corner_morphism_holds() -> Bool  {
   let ns = nullable_set_singleton(name: ^parse_table_nullable_probe_nt)
   (length(xs: expr_direct_left_corner_list(
     expr: Terminal { token_class: ^parse_table_nullable_tok, stamp: StampClass },
@@ -160,7 +160,7 @@ test fn parse_table_left_corner_morphism_holds() -> Bool {
     )) == 1)
 }
 
-test fn parse_table_undefined_nonterminal_morphism_holds() -> Bool {
+test fn parse_table_undefined_nonterminal_morphism_holds() -> Bool  {
   let root = parse_table_defined_root
   (expr_has_undefined_nonterminal(
     expr: Terminal { token_class: ^pt_undef_tok, stamp: StampClass },
@@ -201,7 +201,7 @@ test fn parse_table_undefined_nonterminal_morphism_holds() -> Bool {
     ) == true)
 }
 
-test fn parse_table_parse_expr_combinator_holds() -> Bool {
+test fn parse_table_parse_expr_combinator_holds() -> Bool  {
   let prov = parse_prov_initial()
   let table = parse_table_empty(materialization: Memoize)
   let root = GrammarRoot {

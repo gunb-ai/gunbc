@@ -25,7 +25,7 @@ fn empty_path() -> QnPath {
   Empty
 }
 
-test fn freemonoid_structural_eq_matches_qn_eq() -> Bool {
+test fn freemonoid_structural_eq_matches_qn_eq() -> Bool  {
   ab() == ab2()
     && !(ab() == ac())
     && !(ab() == a_only())

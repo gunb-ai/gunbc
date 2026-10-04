@@ -46,7 +46,7 @@ import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import v2.std.node { Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode, symbol_lexeme }
 import v2.std.resolution_policy { ImportScoped }
 
-test fn resolve_module_not_found_preserves_missing_module_identity() -> Bool {
+test fn resolve_module_not_found_preserves_missing_module_identity() -> Bool  {
   let missing = fc_qn(seg: ^fc_missing_seg)
   fc_with_roots(o: fc_single_found_root(), f: fn(roots) {
   match module_root_find(roots: roots, name: missing) {
@@ -180,7 +180,7 @@ fn fc_initial_admission_state() -> AdmissionState {
   AdmissionAccepted { bindings: empty_map(), origins: empty_map() }
 }
 
-test fn admit_import_missing_module_is_rejected() -> Bool {
+test fn admit_import_missing_module_is_rejected() -> Bool  {
   fc_with_roots(o: fc_single_found_root(), f: fn(roots) {
   match admit_import_entry(
     roots: roots,
@@ -196,7 +196,7 @@ test fn admit_import_missing_module_is_rejected() -> Bool {
   })
 }
 
-test fn resolve_duplicate_module_roots_is_rejected() -> Bool {
+test fn resolve_duplicate_module_roots_is_rejected() -> Bool  {
   fc_with_roots(o: fc_duplicate_roots(), f: fn(roots) {
   match resolve_with_admission(
     lm: dag_language_model_surface_empty_prelude(),
@@ -214,7 +214,7 @@ test fn resolve_duplicate_module_roots_is_rejected() -> Bool {
   })
 }
 
-test fn resolve_subject_name_not_in_roots_is_rejected() -> Bool {
+test fn resolve_subject_name_not_in_roots_is_rejected() -> Bool  {
   fc_with_roots(o: fc_single_found_root(), f: fn(roots) {
   match resolve_with_admission(
     lm: dag_language_model_surface_empty_prelude(),
@@ -232,7 +232,7 @@ test fn resolve_subject_name_not_in_roots_is_rejected() -> Bool {
   })
 }
 
-test fn validate_module_roots_threads_accepted_projection_diagnostics() -> Bool {
+test fn validate_module_roots_threads_accepted_projection_diagnostics() -> Bool  {
   fc_with_roots(o: fc_single_found_root(), f: fn(roots) {
   match validate_module_roots(roots: roots) {
     Accepted { value: _, diagnostics: d } =>
@@ -242,7 +242,7 @@ test fn validate_module_roots_threads_accepted_projection_diagnostics() -> Bool 
   })
 }
 
-test fn validate_module_roots_merges_pending_before_duplicate_reject() -> Bool {
+test fn validate_module_roots_merges_pending_before_duplicate_reject() -> Bool  {
   fc_with_roots(o: fc_duplicate_roots(), f: fn(roots) {
   match validate_module_roots(roots: roots) {
     Accepted { value: _, diagnostics: _ } => false
@@ -251,7 +251,7 @@ test fn validate_module_roots_merges_pending_before_duplicate_reject() -> Bool {
   })
 }
 
-test fn validate_module_roots_malformed_root_is_rejected() -> Bool {
+test fn validate_module_roots_malformed_root_is_rejected() -> Bool  {
   fc_with_roots(o: fc_malformed_subject_roots(), f: fn(roots) {
   match validate_module_roots(roots: roots) {
     Accepted { value: _, diagnostics: _ } => false
@@ -260,7 +260,7 @@ test fn validate_module_roots_malformed_root_is_rejected() -> Bool {
   })
 }
 
-test fn resolve_malformed_subject_root_is_rejected() -> Bool {
+test fn resolve_malformed_subject_root_is_rejected() -> Bool  {
   fc_with_roots(o: fc_malformed_subject_roots(), f: fn(roots) {
   match resolve_with_admission(
     lm: dag_language_model_surface_empty_prelude(),
@@ -315,7 +315,7 @@ fn fc_dual_import_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
   })
 }
 
-test fn resolve_dual_imports_do_not_collide_on_header_metadata() -> Bool {
+test fn resolve_dual_imports_do_not_collide_on_header_metadata() -> Bool  {
   fc_with_roots(o: fc_dual_import_roots(), f: fn(roots) {
   match resolve_with_admission_policy(
     lm: dag_language_model_surface_empty_prelude(),
@@ -342,7 +342,7 @@ test fn resolve_dual_imports_do_not_collide_on_header_metadata() -> Bool {
   })
 }
 
-test fn resolve_with_admission_threads_validate_diagnostics_on_accept() -> Bool {
+test fn resolve_with_admission_threads_validate_diagnostics_on_accept() -> Bool  {
   fc_with_roots(o: fc_dual_import_roots(), f: fn(roots) {
   match validate_module_roots(roots: roots) {
     Accepted { value: _, diagnostics: validate_diag } =>
@@ -406,13 +406,13 @@ fn fc_shared_validation_refusal_preserved(roots: FreeMonoid<NormalizedTree>) -> 
   }
 }
 
-test fn shared_context_duplicate_root_refusal_preserves_every_diagnostic_for_each_subject() -> Bool {
+test fn shared_context_duplicate_root_refusal_preserves_every_diagnostic_for_each_subject() -> Bool  {
   fc_with_roots(o: fc_duplicate_roots(), f: fn(roots) {
     fc_shared_validation_refusal_preserved(roots: roots)
   })
 }
 
-test fn shared_context_malformed_root_refusal_preserves_every_diagnostic_for_each_subject() -> Bool {
+test fn shared_context_malformed_root_refusal_preserves_every_diagnostic_for_each_subject() -> Bool  {
   fc_with_roots(o: fc_malformed_subject_roots(), f: fn(roots) {
     fc_shared_validation_refusal_preserved(roots: roots)
   })
@@ -442,7 +442,7 @@ fn fc_shared_subject_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
   })
 }
 
-test fn shared_context_resolves_two_subjects_and_preserves_missing_subject_location() -> Bool {
+test fn shared_context_resolves_two_subjects_and_preserves_missing_subject_location() -> Bool  {
   fc_with_roots(o: fc_shared_subject_roots(), f: fn(roots) {
     let context = resolution_context(
       lm: dag_language_model_surface_empty_prelude(),
@@ -519,7 +519,7 @@ fn fc_namespaces_built(context: Outcome<ResolutionContext>) -> Int {
 // the second demand for a is served the stored value. RED if a demand for a module already in the
 // provider builds again (three), which is the rebuild this provider exists to remove; and the served
 // resolution is the same tree the first one produced.
-test fn namespace_provider_builds_each_module_at_most_once_per_context() -> Bool {
+test fn namespace_provider_builds_each_module_at_most_once_per_context() -> Bool  {
   fc_with_roots(o: fc_shared_subject_roots(), f: fn(roots) {
     let first = resolve_in_context(context: fc_provider_context(roots: roots), admission: fc_provider_admission(seg: ^fc_subject_a_seg))
     let again = resolve_in_context(context: first.context, admission: fc_provider_admission(seg: ^fc_subject_a_seg))
@@ -541,7 +541,7 @@ test fn namespace_provider_builds_each_module_at_most_once_per_context() -> Bool
 // A DEMAND UNDER A DIFFERENT ADMISSION REFUSES, located at the subject, and neither serves nor
 // overwrites the stored namespace: the same subject asked with no imports after being produced with
 // one import is a different input, so the provider's key would be incomplete if it answered.
-test fn namespace_provider_refuses_a_demand_whose_admission_differs() -> Bool {
+test fn namespace_provider_refuses_a_demand_whose_admission_differs() -> Bool  {
   fc_with_roots(o: fc_shared_subject_roots(), f: fn(roots) {
     let first = resolve_in_context(context: fc_provider_context(roots: roots), admission: fc_provider_admission(seg: ^fc_subject_a_seg))
     let conflicting = resolve_in_context(
@@ -558,7 +558,7 @@ test fn namespace_provider_refuses_a_demand_whose_admission_differs() -> Bool {
 
 // A MODULE OUTSIDE THE INGEST REFUSES AT THE PROVIDER, and the refusal is stored like any other
 // production: a second demand is served it without a second build.
-test fn namespace_provider_refuses_a_module_outside_the_ingest_once() -> Bool {
+test fn namespace_provider_refuses_a_module_outside_the_ingest_once() -> Bool  {
   fc_with_roots(o: fc_shared_subject_roots(), f: fn(roots) {
     let missing = Admission { subject: ResolutionSubject { name: fc_qn(seg: ^fc_missing_seg) }, imports: Empty }
     let first = resolve_in_context(context: fc_provider_context(roots: roots), admission: missing)
@@ -573,7 +573,7 @@ test fn namespace_provider_refuses_a_module_outside_the_ingest_once() -> Bool {
 
 // The validated index must return the same normalized tree and missing-name diagnostics
 // as the general scan. Duplicate populations remain refused before that index exists.
-test fn validated_subject_index_matches_general_lookup() -> Bool {
+test fn validated_subject_index_matches_general_lookup() -> Bool  {
   fc_with_roots(o: fc_shared_subject_roots(), f: fn(roots) {
     match validate_module_roots(roots: roots) {
       Rejected { diagnostics: _ } => false
@@ -604,7 +604,7 @@ test fn validated_subject_index_matches_general_lookup() -> Bool {
 
 // Duplicate roots refuse before a validated index can be consumed; the general
 // unvalidated lookup retains its ambiguity refusal for the same requested name.
-test fn keyed_validation_preserves_general_ambiguity_diagnostic() -> Bool {
+test fn keyed_validation_preserves_general_ambiguity_diagnostic() -> Bool  {
   fc_with_roots(o: fc_duplicate_roots(), f: fn(roots) {
     match module_root_find(roots: roots, name: fc_qn(seg: ^fc_dup_seg)) {
       Accepted { value: _, diagnostics: _ } => false
@@ -631,7 +631,7 @@ fn fc_validation_order_roots(malformed_first: Bool, unequal: Bool) -> Outcome<Fr
 
 // The trailing malformed root must never replace the first duplicate refusal, even
 // when both duplicates contain exactly the same tree.
-test fn keyed_validation_equal_duplicate_precedes_malformed() -> Bool {
+test fn keyed_validation_equal_duplicate_precedes_malformed() -> Bool  {
   fc_with_roots(o: fc_validation_order_roots(malformed_first: false, unequal: false), f: fn(roots) {
     match validate_module_roots(roots: roots) {
       Accepted { value: _, diagnostics: _ } => false
@@ -640,7 +640,7 @@ test fn keyed_validation_equal_duplicate_precedes_malformed() -> Bool {
   })
 }
 
-test fn keyed_validation_unequal_duplicate_precedes_malformed() -> Bool {
+test fn keyed_validation_unequal_duplicate_precedes_malformed() -> Bool  {
   fc_with_roots(o: fc_validation_order_roots(malformed_first: false, unequal: true), f: fn(roots) {
     match validate_module_roots(roots: roots) {
       Accepted { value: _, diagnostics: _ } => false
@@ -649,7 +649,7 @@ test fn keyed_validation_unequal_duplicate_precedes_malformed() -> Bool {
   })
 }
 
-test fn keyed_validation_malformed_precedes_duplicate() -> Bool {
+test fn keyed_validation_malformed_precedes_duplicate() -> Bool  {
   fc_with_roots(o: fc_validation_order_roots(malformed_first: true, unequal: false), f: fn(roots) {
     match validate_module_roots(roots: roots) {
       Accepted { value: _, diagnostics: _ } => false

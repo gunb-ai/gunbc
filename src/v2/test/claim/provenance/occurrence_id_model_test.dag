@@ -43,7 +43,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn occurrence_id_allocator_mints_sequential_distinct_ids() -> Bool {
+test fn occurrence_id_allocator_mints_sequential_distinct_ids() -> Bool  {
   let alloc0 = occurrence_id_allocator_initial()
   let r0 = alloc_occurrence_id(alloc: alloc0)
   let r1 = alloc_occurrence_id(alloc: r0.alloc)
@@ -53,7 +53,7 @@ test fn occurrence_id_allocator_mints_sequential_distinct_ids() -> Bool {
     && !occurrence_id_eq(left: r0.id, right: r2.id)
 }
 
-test fn span_index_from_source_round_trip_holds() -> Bool {
+test fn span_index_from_source_round_trip_holds() -> Bool  {
   let alloc0 = occurrence_id_allocator_initial()
   let minted = alloc_occurrence_id(alloc: alloc0)
   let id = minted.id
@@ -106,7 +106,7 @@ fn span_index_merge_lookup_from_source_holds(index: SpanIndex, id: OccurrenceId)
   }
 }
 
-test fn span_index_merge_disjoint_entries_holds() -> Bool {
+test fn span_index_merge_disjoint_entries_holds() -> Bool  {
   let alloc0 = occurrence_id_allocator_initial()
   let r0 = alloc_occurrence_id(alloc: alloc0)
   let r1 = alloc_occurrence_id(alloc: r0.alloc)
@@ -133,7 +133,7 @@ test fn span_index_merge_disjoint_entries_holds() -> Bool {
     && span_index_merge_lookup_from_source_holds(index: merged, id: r1.id)
 }
 
-test fn span_index_resolve_derived_chain_holds() -> Bool {
+test fn span_index_resolve_derived_chain_holds() -> Bool  {
   let alloc0 = occurrence_id_allocator_initial()
   let r0 = alloc_occurrence_id(alloc: alloc0)
   let r1 = alloc_occurrence_id(alloc: r0.alloc)
@@ -162,7 +162,7 @@ test fn span_index_resolve_derived_chain_holds() -> Bool {
   }
 }
 
-test fn occurrence_id_root_mint_excluded_from_structural_equality() -> Bool {
+test fn occurrence_id_root_mint_excluded_from_structural_equality() -> Bool  {
   let alloc0 = occurrence_id_allocator_initial()
   let m0 = alloc_occurrence_id(alloc: alloc0)
   let m1 = alloc_occurrence_id(alloc: m0.alloc)
@@ -185,7 +185,7 @@ test fn occurrence_id_root_mint_excluded_from_structural_equality() -> Bool {
     && exact_structural_equality_zip_fold(source_facts: left, candidate: right)
 }
 
-test fn occurrence_id_nested_mint_excluded_from_structural_equality() -> Bool {
+test fn occurrence_id_nested_mint_excluded_from_structural_equality() -> Bool  {
   let alloc0 = occurrence_id_allocator_initial()
   let m0 = alloc_occurrence_id(alloc: alloc0)
   let m1 = alloc_occurrence_id(alloc: m0.alloc)

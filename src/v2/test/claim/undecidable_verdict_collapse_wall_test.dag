@@ -137,7 +137,7 @@ fn gate_accepts(o: Outcome<Witness<Node>>) -> Bool {
 
 // ---- RED: the collapse must be refused, in both spellings ----
 
-test fn gate_red_bare_variant_collapses_to_literal() -> Bool {
+test fn gate_red_bare_variant_collapses_to_literal() -> Bool  {
   match undecidable_verdict_collapse_compile_gate(
     node: match_with(first: decidable_arm(), second: collapsing_arm_bare())
   ) {
@@ -147,7 +147,7 @@ test fn gate_red_bare_variant_collapses_to_literal() -> Bool {
   }
 }
 
-test fn gate_red_payload_variant_collapses_to_literal() -> Bool {
+test fn gate_red_payload_variant_collapses_to_literal() -> Bool  {
   match undecidable_verdict_collapse_compile_gate(
     node: match_with(first: decidable_arm(), second: collapsing_arm_with_payload())
   ) {
@@ -159,7 +159,7 @@ test fn gate_red_payload_variant_collapses_to_literal() -> Bool {
 
 // ---- GREEN: the repaired shape, and the boundary control ----
 
-test fn gate_green_routing_arm_admits() -> Bool {
+test fn gate_green_routing_arm_admits() -> Bool  {
   gate_accepts(
     o: undecidable_verdict_collapse_compile_gate(
       node: match_with(first: decidable_arm(), second: routing_arm())
@@ -170,7 +170,7 @@ test fn gate_green_routing_arm_admits() -> Bool {
 // BOUNDARY CONTROL. Without this, a wall that refused EVERY match arm would pass both REDs above
 // and still be wrong. This pins that the refusal discriminates on the rostered variant rather than
 // on the presence of a literal body.
-test fn gate_green_unrostered_variant_may_decide() -> Bool {
+test fn gate_green_unrostered_variant_may_decide() -> Bool  {
   gate_accepts(
     o: undecidable_verdict_collapse_compile_gate(
       node: match_with(first: decidable_arm(), second: decidable_arm())
@@ -180,7 +180,7 @@ test fn gate_green_unrostered_variant_may_decide() -> Bool {
 
 // COUNT CONTROL. Two collapsing arms in one tree must produce two findings, not one: a walk that
 // stopped at the first would under-report a corpus and read as clean.
-test fn findings_count_one_per_collapsing_arm() -> Bool {
+test fn findings_count_one_per_collapsing_arm() -> Bool  {
   length(
     xs: undecidable_verdict_collapse_findings(
       root: match_with(first: collapsing_arm_bare(), second: collapsing_arm_with_payload())
@@ -188,7 +188,7 @@ test fn findings_count_one_per_collapsing_arm() -> Bool {
   ) == 2
 }
 
-test fn findings_empty_on_clean_tree() -> Bool {
+test fn findings_empty_on_clean_tree() -> Bool  {
   match undecidable_verdict_collapse_findings(
     root: match_with(first: decidable_arm(), second: routing_arm())
   ) {
@@ -212,27 +212,27 @@ fn module_admits(dotted: String) -> Bool {
 }
 
 // The declaring authority decides these verdicts; it must be exempt.
-test fn module_scope_authority_is_exempt() -> Bool {
+test fn module_scope_authority_is_exempt() -> Bool  {
   module_admits(dotted: "v2.std.runtime")
 }
 
 // A claim fixture builds the escape hatch to TEST the wall; it must be exempt, or the RED arm
 // becomes unauthorable and the wall a decoration.
-test fn module_scope_claim_fixtures_are_exempt() -> Bool {
+test fn module_scope_claim_fixtures_are_exempt() -> Bool  {
   module_admits(dotted: "test.claim.some_wall_fixture")
     && module_admits(dotted: "v2.test.claim.some_wall_fixture")
 }
 
 // THE DISCRIMINATING CONTROL. An ordinary test module outside the claim namespace is NOT a fixture
 // namespace and must be walled. This is the arm review 57883 found open.
-test fn module_scope_ordinary_test_module_is_walled() -> Bool {
+test fn module_scope_ordinary_test_module_is_walled() -> Bool  {
   !module_admits(dotted: "v2.test.runtimes.effect_io_handler_claims")
     && !module_admits(dotted: "v2.test.lens_common.infer_fixture")
 }
 
 // Production is walled, and an unattributed tree (no module node) is walled -- the context every
 // planted fixture above runs in.
-test fn module_scope_production_and_unattributed_are_walled() -> Bool {
+test fn module_scope_production_and_unattributed_are_walled() -> Bool  {
   !module_admits(dotted: "v2.program")
     && !module_allows_verdict_collapse(qn: Absent)
 }

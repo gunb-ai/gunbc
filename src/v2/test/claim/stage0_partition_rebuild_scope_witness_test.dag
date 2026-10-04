@@ -88,7 +88,7 @@ fn witness_has(items: List<String>, item: String) -> Bool {
 
 // CONTROL 1 -- leaf-partition edit: the owner, its real downstream closure, and the executable
 // relink; two named unrelated packages stay uncompiled.
-test fn witness_leaf_edit_compiles_owner_and_downstream_holds() -> Bool {
+test fn witness_leaf_edit_compiles_owner_and_downstream_holds() -> Bool  {
   match witness_decide(changed: ["std_effects.rs"]) {
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: o, package_closure: c, executable_assembly: assembly } =>
       (count(o) == 1)
@@ -108,7 +108,7 @@ test fn witness_leaf_edit_compiles_owner_and_downstream_holds() -> Bool {
   }
 }
 
-test fn witness_leaf_edit_excludes_unrelated_packages_holds() -> Bool {
+test fn witness_leaf_edit_excludes_unrelated_packages_holds() -> Bool  {
   let closure = witness_closure_of(changed: ["std_effects.rs"])
   let excluded = rebuild_scope_excluded_packages(closure: closure, rows: generated_partition_crate_rows)
   (count(closure) > 0)
@@ -120,7 +120,7 @@ test fn witness_leaf_edit_excludes_unrelated_packages_holds() -> Bool {
 
 // CONTROL 2 -- foundation edit: the derived closure is wider than the owner, so the selector is
 // not hardcoded to one package.
-test fn witness_foundation_edit_widens_to_derived_closure_holds() -> Bool {
+test fn witness_foundation_edit_widens_to_derived_closure_holds() -> Bool  {
   let closure = witness_closure_of(changed: ["v1_rt.rs"])
   let excluded = rebuild_scope_excluded_packages(closure: closure, rows: generated_partition_crate_rows)
   (count(closure) > 1)
@@ -132,12 +132,12 @@ test fn witness_foundation_edit_widens_to_derived_closure_holds() -> Bool {
 
 // The two arms of control 2 are only meaningful against each other: the leaf closure must be a
 // strict subset of the foundation one, or "wider" is a word about nothing.
-test fn witness_leaf_closure_is_narrower_than_foundation_holds() -> Bool {
+test fn witness_leaf_closure_is_narrower_than_foundation_holds() -> Bool  {
   count(witness_closure_of(changed: ["std_effects.rs"])) < count(witness_closure_of(changed: ["v1_rt.rs"]))
 }
 
 // CONTROL 3 -- whole-build inputs, one arm per positively modeled class.
-test fn witness_partition_generation_edit_requires_whole_rebuild_holds() -> Bool {
+test fn witness_partition_generation_edit_requires_whole_rebuild_holds() -> Bool  {
   match witness_decide(changed: ["gunbc_stage0_crate_partition_generated.rs"]) {
     WholeCompilerRebuildRequired { cause: PartitionGenerationAuthorityChanged { mirrors: ms } } => count(ms) == 1
     WholeCompilerRebuildRequired { cause: SharedCompilerBuildInputChanged { mirrors: _ } } => false
@@ -147,7 +147,7 @@ test fn witness_partition_generation_edit_requires_whole_rebuild_holds() -> Bool
   }
 }
 
-test fn witness_shared_build_input_edit_requires_whole_rebuild_holds() -> Bool {
+test fn witness_shared_build_input_edit_requires_whole_rebuild_holds() -> Bool  {
   match witness_decide(changed: ["v1_compiler_workspace_members.rs"]) {
     WholeCompilerRebuildRequired { cause: SharedCompilerBuildInputChanged { mirrors: ms } } => count(ms) == 1
     WholeCompilerRebuildRequired { cause: PartitionGenerationAuthorityChanged { mirrors: _ } } => false
@@ -161,7 +161,7 @@ test fn witness_shared_build_input_edit_requires_whole_rebuild_holds() -> Bool {
 // real host module must still refuse when neither ownership input contains it.
 // The live shell declaration is supplied separately by the installer; absence from
 // the hand-authored partition roster alone is not evidence that a module is unowned.
-test fn witness_unowned_mirror_refuses_holds() -> Bool {
+test fn witness_unowned_mirror_refuses_holds() -> Bool  {
   match witness_decide(changed: ["cli_run.rs"]) {
     RebuildScopeRefused { cause: MirrorHasNoOwningPackage { mirror: m } } => m == "cli_run.rs"
     RebuildScopeRefused { cause: MirrorHasMultipleOwningPackages { mirror: _, packages: _ } } => false
@@ -181,7 +181,7 @@ test fn witness_unowned_mirror_refuses_holds() -> Bool {
 // into any derived scope would not establish that the mirror landed in the dependency layer its
 // imports require. Controls 4 and 5 above/below keep the zero-owner and two-owner opposites
 // authorable after the live row is repaired.
-test fn witness_compiler_tests_rust_rebuild_owner_is_v1_infer_holds() -> Bool {
+test fn witness_compiler_tests_rust_rebuild_owner_is_v1_infer_holds() -> Bool  {
   match stage0_partition_rebuild_decision_today(
     host_shell_modules: [],
     changed_mirrors: ["v1_compiler_compiler_tests_rust.rs"],
@@ -204,7 +204,7 @@ test fn witness_compiler_tests_rust_rebuild_owner_is_v1_infer_holds() -> Bool {
 // partition is its one physical owner. Keep the package identity in the assertion, as above:
 // merely changing the refusal into any derived scope would not establish that the mirror landed
 // in the dependency layer its imports require.
-test fn witness_infer_resolve_rebuild_owner_is_v1_infer_holds() -> Bool {
+test fn witness_infer_resolve_rebuild_owner_is_v1_infer_holds() -> Bool  {
   match stage0_partition_rebuild_decision_today(
     host_shell_modules: [],
     changed_mirrors: ["v1_compiler_infer_resolve.rs"],
@@ -245,7 +245,7 @@ fn witness_duplicate_owner_rows() -> List<GeneratedPartitionCrateRow> {
   ]
 }
 
-test fn witness_duplicate_owner_refuses_holds() -> Bool {
+test fn witness_duplicate_owner_refuses_holds() -> Bool  {
   match stage0_partition_rebuild_decision(
     host_shell_modules: [],
     changed_mirrors: ["witness_dup_module.rs"],
@@ -268,7 +268,7 @@ test fn witness_duplicate_owner_refuses_holds() -> Bool {
 
 // An unreadable changed path refuses, and refuses as ITS OWN cause: "the selection could not
 // answer" and "the whole compiler must rebuild" are different states.
-test fn witness_unlocatable_changed_path_refuses_holds() -> Bool {
+test fn witness_unlocatable_changed_path_refuses_holds() -> Bool  {
   match stage0_partition_rebuild_decision(
     host_shell_modules: [],
     changed_mirrors: [],
@@ -293,7 +293,7 @@ test fn witness_unlocatable_changed_path_refuses_holds() -> Bool {
 // coverage check with an empty closure and reported ExecutableAssemblyNotCovered -- a true
 // sentence about a question nobody asked, and a false one about the tree. Measured, not
 // predicted: a real round on this branch printed exactly that line before the arm existed.
-test fn witness_empty_changed_set_is_nothing_to_rebuild_holds() -> Bool {
+test fn witness_empty_changed_set_is_nothing_to_rebuild_holds() -> Bool  {
   match stage0_partition_rebuild_decision(
     host_shell_modules: [],
     changed_mirrors: [],
@@ -315,7 +315,7 @@ test fn witness_empty_changed_set_is_nothing_to_rebuild_holds() -> Bool {
 
 // An executable package the changed bytes do not reach cannot be relinked into a next pass that
 // carries them, so it refuses rather than linking a stale binary.
-test fn witness_unreached_executable_package_refuses_holds() -> Bool {
+test fn witness_unreached_executable_package_refuses_holds() -> Bool  {
   match stage0_partition_rebuild_decision(
     host_shell_modules: [],
     changed_mirrors: ["std_effects.rs"],
@@ -344,7 +344,7 @@ test fn witness_unreached_executable_package_refuses_holds() -> Bool {
 // editing them would have been the tell that the assembly was never the fact under test. The
 // executable package is asserted by name because the whole claim is that THIS binary is the next
 // pass; the host holds cargo to the same identity.
-test fn witness_today_derives_scope_with_assembled_executable_holds() -> Bool {
+test fn witness_today_derives_scope_with_assembled_executable_holds() -> Bool  {
   match stage0_partition_rebuild_decision_today(host_shell_modules: [], changed_mirrors: ["std_effects.rs"], unlocatable: []) {
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: o, package_closure: c, executable_assembly: assembly } =>
       witness_has(items: o, item: "v1-stage0-std-surface")
@@ -361,7 +361,7 @@ test fn witness_today_derives_scope_with_assembled_executable_holds() -> Bool {
   }
 }
 
-test fn witness_today_scope_is_actuatable_holds() -> Bool {
+test fn witness_today_scope_is_actuatable_holds() -> Bool  {
   stage0_partition_rebuild_is_actuatable(
     decision: stage0_partition_rebuild_decision_today(host_shell_modules: [], changed_mirrors: ["std_effects.rs"], unlocatable: [])
   )
@@ -370,7 +370,7 @@ test fn witness_today_scope_is_actuatable_holds() -> Bool {
 // THE NEGATIVE CONTROL FOR ACTUATABILITY, which the live arm can no longer supply now that it is
 // true. An unavailable assembly handed to the same predicate must still answer false, or the
 // predicate has become a constant and the refusing path is untested rather than unreached.
-test fn witness_unavailable_assembly_scope_is_not_actuatable_holds() -> Bool {
+test fn witness_unavailable_assembly_scope_is_not_actuatable_holds() -> Bool  {
   !stage0_partition_rebuild_is_actuatable(
     decision: stage0_partition_rebuild_decision(
       host_shell_modules: [],
@@ -387,11 +387,11 @@ test fn witness_unavailable_assembly_scope_is_not_actuatable_holds() -> Bool {
 
 // The positive control for actuatability: without it, the predicate above could be a constant
 // false and nothing would notice.
-test fn witness_assembled_executable_scope_is_actuatable_holds() -> Bool {
+test fn witness_assembled_executable_scope_is_actuatable_holds() -> Bool  {
   stage0_partition_rebuild_is_actuatable(decision: witness_decide(changed: ["std_effects.rs"]))
 }
 
-test fn witness_next_pass_executable_assembly_is_assembled_holds() -> Bool {
+test fn witness_next_pass_executable_assembly_is_assembled_holds() -> Bool  {
   match stage0_next_pass_executable_assembly() {
     PartitionAssembledExecutable { package_name: p, bin_name: b } =>
       (p == "v1-compiler") && (b == "claim_executor")
@@ -412,7 +412,7 @@ test fn witness_next_pass_executable_assembly_is_assembled_holds() -> Bool {
 // generation-2 drift was compiler_tests.rs alone (the PointwisePower inhabitant-row removal
 // rewrote the derived coercion assertions) refused its stage-2 rebuild MirrorHasNoOwningPackage
 // before this arm existed.
-test fn witness_release_excluded_mirror_scope_is_empty_holds() -> Bool {
+test fn witness_release_excluded_mirror_scope_is_empty_holds() -> Bool  {
   match stage0_partition_rebuild_decision_today(host_shell_modules: [], changed_mirrors: ["compiler_tests.rs"], unlocatable: []) {
     ReleaseScopeEmpty { changed_mirrors: ms } => (count(ms) == 1) && witness_has(items: ms, item: "compiler_tests.rs")
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
@@ -424,7 +424,7 @@ test fn witness_release_excluded_mirror_scope_is_empty_holds() -> Bool {
 // The actuation shape of the empty scope: actuatable (the verification build still runs), no
 // package may compile, and EVERY package is excluded -- so one compiled crate is a located
 // refusal, not an unnoticed widening.
-test fn witness_release_excluded_scope_actuation_shape_holds() -> Bool {
+test fn witness_release_excluded_scope_actuation_shape_holds() -> Bool  {
   let decision = stage0_partition_rebuild_decision_today(host_shell_modules: [], changed_mirrors: ["compiler_tests.rs"], unlocatable: [])
   stage0_partition_rebuild_is_actuatable(decision: decision)
     && (count(stage0_partition_rebuild_packages_today(host_shell_modules: [], changed_mirrors: ["compiler_tests.rs"], unlocatable: [])) == 0)
@@ -433,7 +433,7 @@ test fn witness_release_excluded_scope_actuation_shape_holds() -> Bool {
 
 // A mixed change set scopes on its release-visible members alone: the excluded mirror rides the
 // install without adding a package and without refusing.
-test fn witness_mixed_change_set_scopes_on_release_visible_mirrors_holds() -> Bool {
+test fn witness_mixed_change_set_scopes_on_release_visible_mirrors_holds() -> Bool  {
   match stage0_partition_rebuild_decision_today(host_shell_modules: [], changed_mirrors: ["compiler_tests.rs", "std_effects.rs"], unlocatable: []) {
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: o, package_closure: c, executable_assembly: _ } =>
       (count(o) == 1)
@@ -450,7 +450,7 @@ test fn witness_mixed_change_set_scopes_on_release_visible_mirrors_holds() -> Bo
 // verification-build answer rather than refuse it. Both arms are asserted: the excluded-only
 // set answers true, and a release-visible change answers false -- a constant-true projection
 // would silently discharge the host's empty-closure guard for every decision.
-test fn witness_release_scope_empty_query_answers_both_arms_hold() -> Bool {
+test fn witness_release_scope_empty_query_answers_both_arms_hold() -> Bool  {
   stage0_partition_rebuild_release_scope_empty_today(host_shell_modules: [], changed_mirrors: ["compiler_tests.rs"], unlocatable: [])
     && !stage0_partition_rebuild_release_scope_empty_today(host_shell_modules: [], changed_mirrors: ["std_effects.rs"], unlocatable: [])
 }
@@ -461,7 +461,7 @@ test fn witness_release_scope_empty_query_answers_both_arms_hold() -> Bool {
 // RED is control 4: an unowned mirror NOT named on the roster still refuses
 // MirrorHasNoOwningPackage. Measured need: on main d45ab4edd9d every regen round refused
 // MirrorHasNoOwningPackage mirror=emitted_population.rs after #12111 added a mirror.
-test fn witness_crate_less_manifest_scope_is_empty_holds() -> Bool {
+test fn witness_crate_less_manifest_scope_is_empty_holds() -> Bool  {
   match stage0_partition_rebuild_decision_today(host_shell_modules: [], changed_mirrors: ["emitted_population.rs"], unlocatable: []) {
     ReleaseScopeEmpty { changed_mirrors: ms } => (count(ms) == 1) && witness_has(items: ms, item: "emitted_population.rs")
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
@@ -470,7 +470,7 @@ test fn witness_crate_less_manifest_scope_is_empty_holds() -> Bool {
   }
 }
 
-test fn witness_crate_less_manifest_rides_a_compiled_change_holds() -> Bool {
+test fn witness_crate_less_manifest_rides_a_compiled_change_holds() -> Bool  {
   match stage0_partition_rebuild_decision_today(host_shell_modules: [], changed_mirrors: ["emitted_population.rs", "std_effects.rs"], unlocatable: []) {
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: o, package_closure: _, executable_assembly: _ } =>
       (count(o) == 1) && witness_has(items: o, item: "v1-stage0-std-surface")
@@ -482,7 +482,7 @@ test fn witness_crate_less_manifest_rides_a_compiled_change_holds() -> Bool {
 
 // The same derived assembly arm owns compile and any other emitted shell module.
 // The controlled fixture includes an unrelated name to discriminate a file exception.
-test fn witness_host_shell_mirrors_rebuild_only_the_shell_holds() -> Bool {
+test fn witness_host_shell_mirrors_rebuild_only_the_shell_holds() -> Bool  {
   ["v1_compiler_compile", "fixture_shell_module"] |> all(module =>
     stage0_partition_rebuild_decision_line(decision: stage0_partition_rebuild_decision_today(
       changed_mirrors: [concat(module, ".rs")],
@@ -497,7 +497,7 @@ test fn witness_host_shell_mirrors_rebuild_only_the_shell_holds() -> Bool {
 
 // Remove only the subject's ownership row, retaining its peer. The old refusal is
 // correct and remains located; admitting every unpartitioned file would fail here.
-test fn witness_removed_shell_owner_refuses_with_named_cause_holds() -> Bool {
+test fn witness_removed_shell_owner_refuses_with_named_cause_holds() -> Bool  {
   let shell = ["v1_compiler_compile", "fixture_shell_module"]
   ["v1_compiler_compile", "fixture_shell_module"] |> all(module =>
     stage0_partition_rebuild_decision_line(decision: stage0_partition_rebuild_decision_today(
@@ -508,7 +508,7 @@ test fn witness_removed_shell_owner_refuses_with_named_cause_holds() -> Bool {
   )
 }
 
-test fn witness_shell_partition_duplicate_owner_refuses_holds() -> Bool {
+test fn witness_shell_partition_duplicate_owner_refuses_holds() -> Bool  {
   stage0_partition_rebuild_decision_line(decision: stage0_partition_rebuild_decision_today(
     changed_mirrors: ["v1_rt.rs"],
     unlocatable: [],

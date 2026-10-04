@@ -19,7 +19,7 @@ import v2.compiler.namespace_graft {
 // roots). Graft output must contain zero such edges — complement-based body collection dissolves
 // only the two header arms; every other edge kind rides the graft by default.
 
-test fn namespace_graft_metadata_predicate_matches_header_edges_only_holds() -> Bool {
+test fn namespace_graft_metadata_predicate_matches_header_edges_only_holds() -> Bool  {
   dag_surface_module_header_metadata_edge(e: zm_surface_edge(edge: ^dag_surface_module_header))
     && dag_surface_module_header_metadata_edge(e: zm_surface_edge(edge: ^dag_surface_module_header_qualified_name))
     && !dag_surface_module_header_metadata_edge(e: zm_authored_edge(name: ^grammar_production_identity_node_projection))
@@ -27,7 +27,7 @@ test fn namespace_graft_metadata_predicate_matches_header_edges_only_holds() -> 
     && !dag_surface_module_header_metadata_edge(e: zm_authored_edge(name: ^dag_surface_top_level_item))
 }
 
-test fn namespace_graft_disposition_rehomes_provenance_only_holds() -> Bool {
+test fn namespace_graft_disposition_rehomes_provenance_only_holds() -> Bool  {
   match namespace_graft_module_root_edge_disposition(e: zm_surface_edge(edge: ^dag_surface_module_header)) {
     ModuleRootEdgeDissolve =>
       match namespace_graft_module_root_edge_disposition(e: zm_authored_edge(name: ^grammar_production_identity_node_projection)) {
@@ -42,7 +42,7 @@ test fn namespace_graft_disposition_rehomes_provenance_only_holds() -> Bool {
   }
 }
 
-test fn namespace_graft_metadata_helper_aliases_predicate_holds() -> Bool {
+test fn namespace_graft_metadata_helper_aliases_predicate_holds() -> Bool  {
   namespace_graft_is_metadata_edge(e: zm_surface_edge(edge: ^dag_surface_module_header))
     && !namespace_graft_is_metadata_edge(e: zm_authored_edge(name: ^grammar_production_identity_node_projection))
     && dag_surface_module_header_metadata_edge(e: zm_surface_edge(edge: ^dag_surface_module_header_qualified_name))
@@ -64,7 +64,7 @@ fn zm_authored_edge(name: Symbol) -> Edge {
 // CONTROL (EdgeLabel coproduct, gunbc#12473): an AUTHORED name spelled exactly like each header
 // production is not header metadata. Before the coproduct this was one Symbol space and answered
 // true, so a parameter named `dag_surface_module_header` read as the module header.
-test fn an_authored_name_spelled_like_the_header_is_not_metadata_holds() -> Bool {
+test fn an_authored_name_spelled_like_the_header_is_not_metadata_holds() -> Bool  {
   !dag_surface_module_header_metadata_edge(e: zm_authored_edge(name: ^dag_surface_module_header))
     && !dag_surface_module_header_metadata_edge(e: zm_authored_edge(name: ^dag_surface_module_header_qualified_name))
     && !namespace_graft_is_metadata_edge(e: zm_authored_edge(name: ^dag_surface_module_header))

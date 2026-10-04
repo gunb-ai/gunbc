@@ -12,22 +12,22 @@ import v2.test.claim.body_lowering.wave1_gate1_d_table_fixture_helpers {
 // without census ingest. Census-ingest + behavioral RED controls live in long/ and
 // execution/*_eval_by_execution_test.dag.
 
-test fn wave1_gate1_d_table_fixture_add_witness_holds() -> Bool {
+test fn wave1_gate1_d_table_fixture_add_witness_holds() -> Bool  {
   wave1_gate1_d_add_holds()
 }
 
-test fn wave1_gate1_d_table_fixture_pick_witness_holds() -> Bool {
+test fn wave1_gate1_d_table_fixture_pick_witness_holds() -> Bool  {
   wave1_gate1_d_pick_holds()
 }
 
-test fn wave1_gate1_d_table_fixture_loop_witness_holds() -> Bool {
+test fn wave1_gate1_d_table_fixture_loop_witness_holds() -> Bool  {
   wave1_gate1_d_loop_holds()
 }
 
-test fn wave1_gate1_d_table_fixture_bind_witness_holds() -> Bool {
+test fn wave1_gate1_d_table_fixture_bind_witness_holds() -> Bool  {
   wave1_gate1_d_bind_holds()
 }
 
-test fn wave1_gate1_d_table_fixture_match_witness_holds() -> Bool {
+test fn wave1_gate1_d_table_fixture_match_witness_holds() -> Bool  {
   wave1_gate1_d_match_holds()
 }

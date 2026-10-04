@@ -74,6 +74,6 @@ fn witness_semantic_mismatch_discriminates_from_host_failures() -> Bool {
     }
 }
 
-test fn verdict_failure_kind_witnesses() -> Bool {
+test fn verdict_failure_kind_witnesses() -> Bool  {
   witness_semantic_mismatch_discriminates_from_host_failures()
 }

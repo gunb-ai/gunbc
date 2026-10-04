@@ -101,7 +101,7 @@ fn roster_pub_mod_violations(
       ))
 }
 
-test fn w_live_partition_roster_declares_no_undeclared_module() -> Bool {
+test fn w_live_partition_roster_declares_no_undeclared_module() -> Bool  {
   roster_pub_mod_violations(
     rows: generated_partition_crate_rows,
     filenames: generated_stage0_filenames,
@@ -127,7 +127,7 @@ fn violating_fixture_row() -> GeneratedPartitionCrateRow {
   }
 }
 
-test fn w_fixture_roster_naming_an_undeclared_module_is_refused() -> Bool {
+test fn w_fixture_roster_naming_an_undeclared_module_is_refused() -> Bool  {
   let violations = roster_pub_mod_violations(
     rows: [violating_fixture_row()],
     filenames: ["std_types.rs", "std_lens_verdict.rs"],
@@ -150,7 +150,7 @@ fn clean_fixture_row() -> GeneratedPartitionCrateRow {
   }
 }
 
-test fn w_fixture_roster_of_emitted_modules_is_admitted() -> Bool {
+test fn w_fixture_roster_of_emitted_modules_is_admitted() -> Bool  {
   roster_pub_mod_violations(
     rows: [clean_fixture_row()],
     filenames: generated_stage0_filenames,

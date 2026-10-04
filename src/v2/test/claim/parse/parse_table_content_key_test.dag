@@ -37,31 +37,31 @@ fn key_p0_a() -> ParsePositionKey { ParsePositionKey { position: 0, production: 
 fn key_p1_a() -> ParsePositionKey { ParsePositionKey { position: 1, production: ^ctk_prod_a } }
 fn key_p0_b() -> ParsePositionKey { ParsePositionKey { position: 0, production: ^ctk_prod_b } }
 
-test fn witness_subject_deterministic() -> Bool {
+test fn witness_subject_deterministic() -> Bool  {
   let a = parse_table_subject(table: table_g1_t1(), key: key_p0_a())
   let b = parse_table_subject(table: mk_table(grammar: grammar_one(), tokens: tokens_one()), key: key_p0_a())
   a == b
 }
 
-test fn witness_subject_position_sensitive() -> Bool {
+test fn witness_subject_position_sensitive() -> Bool  {
   let a = parse_table_subject(table: table_g1_t1(), key: key_p0_a())
   let b = parse_table_subject(table: table_g1_t1(), key: key_p1_a())
   a != b
 }
 
-test fn witness_subject_production_sensitive() -> Bool {
+test fn witness_subject_production_sensitive() -> Bool  {
   let a = parse_table_subject(table: table_g1_t1(), key: key_p0_a())
   let b = parse_table_subject(table: table_g1_t1(), key: key_p0_b())
   a != b
 }
 
-test fn witness_subject_grammar_scope_sensitive() -> Bool {
+test fn witness_subject_grammar_scope_sensitive() -> Bool  {
   let a = parse_table_subject(table: table_g1_t1(), key: key_p0_a())
   let b = parse_table_subject(table: table_g2_t1(), key: key_p0_a())
   a != b
 }
 
-test fn witness_subject_token_stream_scope_sensitive() -> Bool {
+test fn witness_subject_token_stream_scope_sensitive() -> Bool  {
   let a = parse_table_subject(table: table_g1_t1(), key: key_p0_a())
   let b = parse_table_subject(table: table_g1_t2(), key: key_p0_a())
   a != b
@@ -77,7 +77,7 @@ fn subject_at(position: Int) -> Hash {
   parse_table_subject(table: table_g1_t1(), key: key_at(position: position))
 }
 
-test fn witness_subject_positions_255_256_257_pairwise_distinct() -> Bool {
+test fn witness_subject_positions_255_256_257_pairwise_distinct() -> Bool  {
   (subject_at(position: 255) != subject_at(position: 256))
     && (subject_at(position: 256) != subject_at(position: 257))
     && (subject_at(position: 255) != subject_at(position: 257))
@@ -91,17 +91,17 @@ fn stream_digest_one(tok: Token) -> Hash {
   parse_token_stream_digest(all_tokens: Cons { head: tok, tail: std.algebra.Empty })
 }
 
-test fn witness_stream_digest_offsets_past_one_limb_distinct() -> Bool {
+test fn witness_stream_digest_offsets_past_one_limb_distinct() -> Bool  {
   stream_digest_one(tok: ctk_token(lexeme: "a", start: 300, end: 301))
     != stream_digest_one(tok: ctk_token(lexeme: "a", start: 301, end: 302))
 }
 
-test fn witness_stream_digest_lexemes_past_latin1_distinct() -> Bool {
+test fn witness_stream_digest_lexemes_past_latin1_distinct() -> Bool  {
   stream_digest_one(tok: ctk_token(lexeme: "λ", start: 0, end: 2))
     != stream_digest_one(tok: ctk_token(lexeme: "μ", start: 0, end: 2))
 }
 
-test fn witness_stream_digest_deterministic() -> Bool {
+test fn witness_stream_digest_deterministic() -> Bool  {
   stream_digest_one(tok: ctk_token(lexeme: "λ", start: 300, end: 302))
     == stream_digest_one(tok: ctk_token(lexeme: "λ", start: 300, end: 302))
 }

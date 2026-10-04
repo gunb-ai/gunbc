@@ -17,7 +17,7 @@ import v2.std.collection { empty_map }
 import v2.std.diagnostic { Accepted }
 import v2.std.node { Conj, Node, TypeNode }
 
-test fn wrap_decision_gate_smoke_bundle_absent_inapplicable() -> Bool {
+test fn wrap_decision_gate_smoke_bundle_absent_inapplicable() -> Bool  {
   let target = TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: Node {

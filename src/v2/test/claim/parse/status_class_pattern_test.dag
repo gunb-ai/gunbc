@@ -84,7 +84,7 @@ fn refusal_start(parsed: Outcome<Node>) -> Int {
   }
 }
 
-test fn a_malformed_status_class_refuses_at_its_suffix_holds() -> Bool {
+test fn a_malformed_status_class_refuses_at_its_suffix_holds() -> Bool  {
   let text = status_source(pattern: "5yy")
   let at = token_start(text: text, lexeme: "yy")
   at > 0 && refusal_start(parsed: status_parse(text: text)) == at

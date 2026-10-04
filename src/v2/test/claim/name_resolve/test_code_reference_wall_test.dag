@@ -295,7 +295,7 @@ fn inhabitance_normalized() -> Outcome<NormalizedTree> {
   }
 }
 
-test fn supplied_root_is_what_normalize_emits_holds() -> Bool {
+test fn supplied_root_is_what_normalize_emits_holds() -> Bool  {
   match inhabitance_normalized() {
     Rejected { diagnostics: _ } => false
     Accepted { value: emitted, diagnostics: _ } =>
@@ -306,7 +306,7 @@ test fn supplied_root_is_what_normalize_emits_holds() -> Bool {
   }
 }
 
-test fn supplied_channel_is_what_normalize_emits_holds() -> Bool {
+test fn supplied_channel_is_what_normalize_emits_holds() -> Bool  {
   match inhabitance_normalized() {
     Rejected { diagnostics: _ } => false
     Accepted { value: emitted, diagnostics: _ } =>
@@ -316,7 +316,7 @@ test fn supplied_channel_is_what_normalize_emits_holds() -> Bool {
 }
 
 // RED: a test fn calling another test fn in its own module -- the case the ruling names explicitly.
-test fn test_fn_calling_a_test_fn_is_refused_holds() -> Bool {
+test fn test_fn_calling_a_test_fn_is_refused_holds() -> Bool  {
   wall_resolve_alone(
     subject_segment: ^same,
     subject: wall_tree(
@@ -330,7 +330,7 @@ test fn test_fn_calling_a_test_fn_is_refused_holds() -> Bool {
 }
 
 // RED: serving code calling a test fn in its own module.
-test fn serving_fn_calling_a_test_fn_is_refused_holds() -> Bool {
+test fn serving_fn_calling_a_test_fn_is_refused_holds() -> Bool  {
   wall_resolve_alone(
     subject_segment: ^same,
     subject: wall_tree(
@@ -344,7 +344,7 @@ test fn serving_fn_calling_a_test_fn_is_refused_holds() -> Bool {
 }
 
 // RED: serving code calling a test fn another module declares.
-test fn serving_code_calling_another_modules_test_fn_is_refused_holds() -> Bool {
+test fn serving_code_calling_another_modules_test_fn_is_refused_holds() -> Bool  {
   wall_resolve(
     subject_segment: ^serving,
     subject: serving_module_with_body(body: wall_atom(identity: ^peer_leaf)),
@@ -353,7 +353,7 @@ test fn serving_code_calling_another_modules_test_fn_is_refused_holds() -> Bool 
 }
 
 // CONTROL: the intended shape, a test fn calling an ordinary fn, resolves.
-test fn test_fn_calling_an_ordinary_fn_resolves_holds() -> Bool {
+test fn test_fn_calling_an_ordinary_fn_resolves_holds() -> Bool  {
   wall_resolve_alone(
     subject_segment: ^same,
     subject: wall_tree(
@@ -367,7 +367,7 @@ test fn test_fn_calling_an_ordinary_fn_resolves_holds() -> Bool {
 }
 
 // CONTROL: a parameter that shares a test fn's name binds to the parameter, not to the test fn.
-test fn a_local_binder_shadowing_a_test_fn_resolves_holds() -> Bool {
+test fn a_local_binder_shadowing_a_test_fn_resolves_holds() -> Bool  {
   wall_resolve_alone(
     subject_segment: ^same,
     subject: wall_tree(
@@ -382,7 +382,7 @@ test fn a_local_binder_shadowing_a_test_fn_resolves_holds() -> Bool {
 
 // CONTROL, ITEM SCOPE: an unmarked declaration of a module that declares tests is ordinary code, and
 // serving code may reference it.
-test fn an_ordinary_declaration_of_a_test_module_resolves_holds() -> Bool {
+test fn an_ordinary_declaration_of_a_test_module_resolves_holds() -> Bool  {
   wall_resolve(
     subject_segment: ^serving,
     subject: serving_module_with_body(body: wall_atom(identity: ^shared_fixture)),
@@ -400,7 +400,7 @@ fn wall_qualified(segments: List<Symbol>) -> Node {
 // bare name. The node is SUPPLIED here because this claim's subject is the door, not the lowering
 // that produces the path -- and since gunbc#11683 that lowering is real, so the shape is joined to
 // its producer by `inhabitance_module`'s `qualified_user` member rather than standing alone.
-test fn a_qualified_path_to_a_test_fn_is_refused_holds() -> Bool {
+test fn a_qualified_path_to_a_test_fn_is_refused_holds() -> Bool  {
   wall_resolve(
     subject_segment: ^serving,
     subject: serving_module_with_body(body: wall_qualified(segments: [^wall, ^peer, ^peer_leaf])),
@@ -411,7 +411,7 @@ test fn a_qualified_path_to_a_test_fn_is_refused_holds() -> Bool {
 // CONTROL, PRECEDENCE: a module's own declaration beats a same-named declaration elsewhere. The
 // subject declares an ordinary `peer_leaf`; the peer's `peer_leaf` is a test fn. The subject's
 // reference binds to its own, so it resolves.
-test fn a_modules_own_declaration_beats_a_same_named_test_fn_holds() -> Bool {
+test fn a_modules_own_declaration_beats_a_same_named_test_fn_holds() -> Bool  {
   wall_resolve(
     subject_segment: ^serving,
     subject: wall_tree(
@@ -461,7 +461,7 @@ fn wall_resolve_importing_peer(subject_segment: Symbol, subject: Outcome<Normali
 
 // RED, THE IMPORT DOOR: a test fn reached through an admitted import is refused. Its origin comes from
 // the admission's imported_origins, not the subject's own declarations.
-test fn an_imported_test_fn_is_refused_holds() -> Bool {
+test fn an_imported_test_fn_is_refused_holds() -> Bool  {
   wall_resolve_importing_peer(
     subject_segment: ^serving,
     subject: serving_module_with_body(body: wall_atom(identity: ^peer_leaf)),
@@ -490,7 +490,7 @@ test fn an_imported_test_fn_is_refused_holds() -> Bool {
 // RED: a subject that declares `peer_leaf` AND imports a peer exporting `peer_leaf` is refused at
 // ADMISSION as an ambiguous export -- the direction where the local declaration is ordinary and the
 // peer's is a test fn.
-test fn a_local_declaration_shadowing_an_imported_test_fn_is_refused_at_admission_holds() -> Bool {
+test fn a_local_declaration_shadowing_an_imported_test_fn_is_refused_at_admission_holds() -> Bool  {
   wall_resolve_importing_peer(
     subject_segment: ^serving,
     subject: wall_tree(
@@ -507,7 +507,7 @@ test fn a_local_declaration_shadowing_an_imported_test_fn_is_refused_at_admissio
 // RED, THE OTHER DIRECTION, and the one the review called silent: the subject's own declaration is
 // TEST-MARKED and the peer's is ordinary. Admission refuses this too, so no reference to test code is
 // accepted without a diagnostic -- the arm DESIGN section 5 forbids is closed upstream of the wall.
-test fn a_local_test_fn_shadowing_an_imported_ordinary_declaration_is_refused_at_admission_holds() -> Bool {
+test fn a_local_test_fn_shadowing_an_imported_ordinary_declaration_is_refused_at_admission_holds() -> Bool  {
   wall_resolve_importing_peer(
     subject_segment: ^serving,
     subject: wall_tree(
@@ -524,7 +524,7 @@ test fn a_local_test_fn_shadowing_an_imported_ordinary_declaration_is_refused_at
 // CONTROL for the two above: the refusal is caused by the SHADOW and not by the shape of these
 // fixtures. The same subject and the same import, with a locally declared name the peer does not
 // export, resolves. Without this row the two reds could both be passing on a malformed module.
-test fn a_local_declaration_the_peer_does_not_export_resolves_holds() -> Bool {
+test fn a_local_declaration_the_peer_does_not_export_resolves_holds() -> Bool  {
   wall_resolve_importing_peer(
     subject_segment: ^serving,
     subject: wall_tree(
@@ -539,7 +539,7 @@ test fn a_local_declaration_the_peer_does_not_export_resolves_holds() -> Bool {
 }
 
 // CONTROL for the import door: the same import, referencing the peer's ordinary declaration, resolves.
-test fn an_imported_ordinary_declaration_resolves_holds() -> Bool {
+test fn an_imported_ordinary_declaration_resolves_holds() -> Bool  {
   wall_resolve_importing_peer(
     subject_segment: ^serving,
     subject: serving_module_with_body(body: wall_atom(identity: ^shared_fixture)),

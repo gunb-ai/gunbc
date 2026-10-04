@@ -14,7 +14,7 @@ data ptfes_one: List<Token> = Cons {
   tail: std.algebra.Empty
 }
 
-test fn parse_token_first_agrees_with_list_at_optional_on_empty_holds() -> Bool {
+test fn parse_token_first_agrees_with_list_at_optional_on_empty_holds() -> Bool  {
   match parse_token_first(tokens: ptfes_empty) {
     Absent =>
       match list_at_optional(xs: ptfes_empty, index: 0) {
@@ -25,7 +25,7 @@ test fn parse_token_first_agrees_with_list_at_optional_on_empty_holds() -> Bool 
   }
 }
 
-test fn parse_token_first_agrees_with_list_at_optional_on_present_holds() -> Bool {
+test fn parse_token_first_agrees_with_list_at_optional_on_present_holds() -> Bool  {
   match parse_token_first(tokens: ptfes_one) {
     Present { value: v } =>
       match list_at_optional(xs: ptfes_one, index: 0) {

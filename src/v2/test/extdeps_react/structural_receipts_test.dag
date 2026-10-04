@@ -156,7 +156,7 @@ fn react_probe_react_element_fragment_with_typed_children() -> ReactElement {
   }
 }
 
-test fn extdeps_react_use_memo_use_callback_dependencies_are_required_lists_holds() -> Bool {
+test fn extdeps_react_use_memo_use_callback_dependencies_are_required_lists_holds() -> Bool  {
   let expected = Cons { head: react_probe_cross_decl_ref, tail: Empty }
   match react_probe_hook_use_memo() {
     UseMemo { factory_ref: _, dependencies: memo_deps } =>
@@ -169,7 +169,7 @@ test fn extdeps_react_use_memo_use_callback_dependencies_are_required_lists_hold
   }
 }
 
-test fn extdeps_react_effect_hooks_require_setup_ref_holds() -> Bool {
+test fn extdeps_react_effect_hooks_require_setup_ref_holds() -> Bool  {
   match react_probe_hook_use_effect() {
     UseEffect { setup_ref: effect_setup, dependencies: _, cleanup: _ } =>
       match react_probe_hook_use_layout_effect() {
@@ -198,7 +198,7 @@ fn extdeps_react_host_element_key_ref_coproduct_holds(key: ReactOptKey, ref: Rea
   }
 }
 
-test fn extdeps_react_host_element_declares_key_and_ref_holds() -> Bool {
+test fn extdeps_react_host_element_declares_key_and_ref_holds() -> Bool  {
   match react_probe_host_element() {
     ReactHostElement { tag_ref: tr, key: k, ref: r, props: _, children: _ } =>
       tr == react_probe_cross_decl_ref
@@ -206,7 +206,7 @@ test fn extdeps_react_host_element_declares_key_and_ref_holds() -> Bool {
   }
 }
 
-test fn extdeps_react_composite_element_declares_key_and_ref_holds() -> Bool {
+test fn extdeps_react_composite_element_declares_key_and_ref_holds() -> Bool  {
   match react_probe_composite_element() {
     ReactCompositeElement { component_ref: cr, key: k, ref: r, props: _, children: _ } =>
       cr == react_probe_cross_decl_ref
@@ -214,7 +214,7 @@ test fn extdeps_react_composite_element_declares_key_and_ref_holds() -> Bool {
   }
 }
 
-test fn extdeps_react_fragment_arm_declares_key_holds() -> Bool {
+test fn extdeps_react_fragment_arm_declares_key_holds() -> Bool  {
   match react_probe_react_element_fragment() {
     Fragment { key: k, children: _ } =>
       match k {
@@ -226,7 +226,7 @@ test fn extdeps_react_fragment_arm_declares_key_holds() -> Bool {
   }
 }
 
-test fn extdeps_react_element_children_are_list_create_element_child_holds() -> Bool {
+test fn extdeps_react_element_children_are_list_create_element_child_holds() -> Bool  {
   match react_probe_host_element_with_typed_children() {
     ReactHostElement { tag_ref: _, key: _, ref: _, props: _, children: host_children } =>
       match react_probe_composite_element_with_typed_children() {
@@ -245,7 +245,7 @@ test fn extdeps_react_element_children_are_list_create_element_child_holds() -> 
   }
 }
 
-test fn extdeps_react_create_element_child_element_arm_wraps_react_element_holds() -> Bool {
+test fn extdeps_react_create_element_child_element_arm_wraps_react_element_holds() -> Bool  {
   match react_probe_create_element_child_element() {
     Element { element: el } =>
       match el {
