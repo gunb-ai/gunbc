@@ -35,3 +35,10 @@ fn uname_program() -> ProgramIdentity = uncataloged_program(invocation: "uname")
 fn uname_release_command() -> ArgvCommand {
   argv_command(program: uname_program(), arguments: ["-r"])
 }
+
+// `-m` PRINTS THE MACHINE HARDWARE NAME (POSIX uname, OPTIONS -m). On Linux it is the kernel's
+// utsname machine field, `aarch64` on an arm64 kernel, so a readback of it says which instruction
+// set the running kernel executes rather than which one an image was built for.
+fn uname_machine_command() -> ArgvCommand {
+  argv_command(program: uname_program(), arguments: ["-m"])
+}

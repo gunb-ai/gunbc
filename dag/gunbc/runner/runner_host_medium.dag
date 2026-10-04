@@ -1,0 +1,344 @@
+module gunbc.runner.runner_host_medium
+
+import std.types { Int, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.algebra { trim }
+import std.measure { Kibibyte, HardwareThreadCount, hardware_thread_count }
+import std.checked_arithmetic { checked_int_to_nat }
+import v2.std.optional { Present }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.exec.command { shell_command_render }
+import extdeps.tools.uname { uname_machine_command }
+import extdeps.linux.proc_meminfo { MeminfoRead, MeminfoParsed, MeminfoFieldAbsent, parse_proc_meminfo }
+import extdeps.github.actions_runner {
+  ActionsRunnerBinaryArtifact, ActionsRunnerRelease, ActionsRunnerSlotPrivilegedCommands,
+  actions_runner_binary_artifact_for_arch, actions_runner_slot_extract_script,
+  actions_runner_base_dir, actions_runner_listener_relative_path,
+}
+import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
+import extdeps.provisioning.ubuntu_seeded_install_media {
+  NoCloudSeedFile,
+  UbuntuSeededInstallMediaBuildInput,
+  ubuntu_seeded_install_media_grub_kernel_cmdline,
+  ubuntu_seeded_install_media_image_name,
+}
+import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallLiveCommands }
+import gunbc.os_install_emit { autoinstall_live_commands_user_data, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
+import gunbc.seeded_install_media_policy { seeded_install_media_pinned_dates, seeded_install_media_builder_revision }
+import gunbc.boot_medium { BootMedium, BootMediumRunnerHostUp, bmc_boot_image_export }
+import gunbc.managed_host_boot { AdmittedBootSubject, boot_subject_machine }
+import gunbc.machine_intake_host_capture_envelope {
+  HostCaptureStage, HostCaptureRunIdentity, BoundHostCaptureEnvelope,
+  HostCaptureBound, HostCaptureOpen, HostCaptureNotBegun, HostCaptureUnbound,
+  HostCaptureSectionReading, SectionAbsent, SectionPending, SectionComplete, SectionMalformed,
+  host_capture_program, host_capture_bind, host_capture_section_reading,
+}
+import gunbc.runner.runner_host_unit_slot { host_unit_slot_runner_release }
+
+// THE RUNNER MEDIUM: A DISKLESS LIVE HOST THAT CAN TAKE A HOST-UNIT SLOT.
+//
+// The same seeded live-server derivation the census image uses
+// (extdeps.provisioning.ubuntu_seeded_install_media UbuntuSeededInstallMediaBuildInput), with a
+// different program in the seed: instead of a census that powers off, a readiness program that
+// installs the actions runner the host-unit slot runs (gunbc.runner.runner_host_unit_slot
+// host_unit_slot_runner_release, arm64) and prints one host-capture envelope saying the host is up.
+// The program RETURNS rather than halting, so subiquity falls through to its interactive sections
+// and waits there: nothing on this medium writes a disk, and the host stays up in RAM for the slot.
+//
+// THE RUNNER TARBALL IS FETCHED AND DIGEST-VERIFIED AT BOOT, NOT CARRIED IN THE SEED. Diverges from
+// "nothing is fetched at runtime" (the census image), with this reason: a NoCloudSeedFile is text
+// (extdeps.provisioning.ubuntu_seeded_install_media NoCloudSeedFile.content is a NonEmptyStr) and the
+// builder has no binary payload input, so the tarball cannot ride in the seed without growing the
+// builder. What the medium carries is the artifact's IDENTITY -- release and published arch, whose
+// cited sha256 the install verifies (extdeps.github.actions_runner actions_runner_slot_extract_script,
+// sha256sum -c) -- so a wrong or tampered tarball refuses the runner-install section, and the
+// terminal refuses with it. Trigger to carry the bytes instead: a binary seed payload input on the
+// seeded-media builder.
+//
+// THE HOST PARAMETERS ARE THE CALLER'S. Which machine name the envelope carries (it must equal the
+// boot subject's machine, gunbc.managed_host_boot boot_subject_machine) and which serial console the
+// kernel and program write to are facts about the host, so this module takes them as a value and
+// names no host.
+type RunnerHostMediumHost {
+  machine: NonEmptyStr
+  console_device: NonEmptyStr
+  console_kernel_arg: NonEmptyStr
+}
+
+data runner_host_medium_nocloud_dir: NonEmptyStr = "gunbc-runner"
+data runner_host_medium_program_file: NonEmptyStr = "runner-host-up.sh"
+data runner_host_medium_volume_id: NonEmptyStr = "GUNBC_RUNNER_HOST_2404_3"
+data runner_host_medium_image_stem: NonEmptyStr = "gunbc-runner-host-ubuntu-24.04.3-arm64"
+
+// THE PROGRAM RETURNS: the halt slot of host_capture_program is the one line whose effect is on the
+// machine, and a runner host must stay up.
+data runner_host_medium_halt_command: NonEmptyStr = "true"
+
+// THE LIVE ENVIRONMENT RUNS AS ROOT, so the extract's privileged verbs are spelled bare here, where
+// the principal is known; the extdeps shape takes them as parameters for exactly this reason.
+fn runner_host_medium_privileged() -> ActionsRunnerSlotPrivilegedCommands {
+  ActionsRunnerSlotPrivilegedCommands {
+    remove_command: concat("rm -rf '", actions_runner_base_dir, "'"),
+    install_command: concat("install -d '", actions_runner_base_dir, "'"),
+  }
+}
+
+fn runner_host_listener_path() -> String {
+  concat(actions_runner_base_dir, actions_runner_listener_relative_path)
+}
+
+// THE SECTION NAMES ARE READ BACK BY NAME, so the program's roster and the predicate's reads are one
+// set of rows.
+data runner_host_section_boot_media: NonEmptyStr = "boot-media"
+data runner_host_section_runner_install: NonEmptyStr = "runner-install"
+data runner_host_section_runner_listener: NonEmptyStr = "runner-listener"
+data runner_host_section_systemd: NonEmptyStr = "systemd-manager"
+data runner_host_section_meminfo: NonEmptyStr = "meminfo"
+data runner_host_section_nproc: NonEmptyStr = "nproc"
+data runner_host_section_machine: NonEmptyStr = "uname-machine"
+
+data runner_host_up_section_names: List<NonEmptyStr> = [
+  runner_host_section_boot_media,
+  runner_host_section_runner_install,
+  runner_host_section_runner_listener,
+  runner_host_section_systemd,
+  runner_host_section_meminfo,
+  runner_host_section_nproc,
+  runner_host_section_machine,
+]
+
+// THE ROSTER. The slot unit is a transient systemd unit started per attempt
+// (gunbc.runner.runner_host_unit_slot HostUnitSlot.argv, systemd-run), so no slot unit exists at
+// boot; what boot can establish about a slot is that systemd is the running manager systemd-run
+// talks to (/run/systemd/system, sd_booted(3)) and that the listener the slot's argv names is
+// installed and executable. The slot unit's own activity is the launch leg's readback.
+fn runner_host_up_stages(artifact: ActionsRunnerBinaryArtifact) -> List<HostCaptureStage> {
+  [
+    HostCaptureStage { name: runner_host_section_boot_media, command: concat("test -e /dev/disk/by-label/", runner_host_medium_volume_id as String) as NonEmptyStr },
+    HostCaptureStage { name: runner_host_section_runner_install, command: actions_runner_slot_extract_script(artifact: artifact, slot_dir: actions_runner_base_dir as NonEmptyStr, privileged: runner_host_medium_privileged()) as NonEmptyStr },
+    HostCaptureStage { name: runner_host_section_runner_listener, command: concat("test -x ", runner_host_listener_path()) as NonEmptyStr },
+    HostCaptureStage { name: runner_host_section_systemd, command: "test -d /run/systemd/system" },
+    HostCaptureStage { name: runner_host_section_meminfo, command: "cat /proc/meminfo" },
+    HostCaptureStage { name: runner_host_section_nproc, command: "nproc" },
+    HostCaptureStage { name: runner_host_section_machine, command: shell_command_render(command: uname_machine_command()) as NonEmptyStr },
+  ]
+}
+
+fn runner_host_medium_program_on_medium() -> NonEmptyStr {
+  concat("/cdrom/", runner_host_medium_nocloud_dir as String, "/", runner_host_medium_program_file as String) as NonEmptyStr
+}
+
+data runner_host_medium_live_commands: UbuntuAutoinstallLiveCommands = UbuntuAutoinstallLiveCommands {
+  autoinstall_version: 1,
+  early_commands: [concat("sh ", runner_host_medium_program_on_medium() as String) as NonEmptyStr],
+}
+
+// THE DERIVATION REFUSES RATHER THAN DEFAULTS: no published arm64 runner tarball for the release, or
+// a user-data document the renderer will not write, leaves no image.
+type RunnerHostMediumImage
+  = RunnerHostMediumImageDerived { input: UbuntuSeededInstallMediaBuildInput, runner: ActionsRunnerBinaryArtifact }
+  | RunnerHostMediumRunnerUnpublished { binary_release: ActionsRunnerRelease }
+  | RunnerHostMediumUserDataRefused { reason: String }
+
+fn runner_host_medium_image(host: RunnerHostMediumHost) -> RunnerHostMediumImage {
+  match actions_runner_binary_artifact_for_arch(binary_release: host_unit_slot_runner_release, arch: Aarch64) {
+    Absent => RunnerHostMediumRunnerUnpublished { binary_release: host_unit_slot_runner_release }
+    Present { value: artifact } =>
+      match autoinstall_live_commands_user_data(payload: runner_host_medium_live_commands) {
+        AutoinstallUserDataRefused { reason: r } => RunnerHostMediumUserDataRefused { reason: r }
+        AutoinstallUserDataRendered { content: body } =>
+          RunnerHostMediumImageDerived {
+            runner: artifact,
+            input: UbuntuSeededInstallMediaBuildInput {
+              stock_artifact: noble_numbat_2404_3_live_server_arm64,
+              nocloud_dir_on_iso: runner_host_medium_nocloud_dir,
+              user_data_body: body as NonEmptyStr,
+              seed_files: [
+                NoCloudSeedFile {
+                  name: runner_host_medium_program_file,
+                  content: host_capture_program(
+                    machine: host.machine,
+                    console_device: host.console_device,
+                    stages: runner_host_up_stages(artifact: artifact),
+                    halt_command: runner_host_medium_halt_command,
+                  ),
+                },
+              ],
+              grub_kernel_cmdline: concat(
+                ubuntu_seeded_install_media_grub_kernel_cmdline(nocloud_dir: runner_host_medium_nocloud_dir) as String,
+                " ",
+                host.console_kernel_arg as String,
+              ) as NonEmptyStr,
+              volume_id: runner_host_medium_volume_id,
+              pinned_dates: seeded_install_media_pinned_dates,
+              image_stem: runner_host_medium_image_stem,
+              builder_revision: seeded_install_media_builder_revision,
+            },
+          }
+      }
+  }
+}
+
+// THE MEDIUM AUTHORS ONE FACT, THE MEASURED OUTPUT DIGEST of the built image -- its content digest,
+// which the export's readback must equal (gunbc.boot_medium boot_medium_readback). Name and terminal
+// derive from rows above, so a runner medium naming another artifact has no spelling. No data row
+// applies this yet: no build of the runner image has run, and authoring a digest no build produced
+// would fabricate it. The row lands with the publish receipt.
+fn runner_host_boot_medium(output_digest: NonEmptyStr) -> BootMedium {
+  BootMedium {
+    image_name: ubuntu_seeded_install_media_image_name(image_stem: runner_host_medium_image_stem, output_digest: output_digest),
+    digest: output_digest,
+    export: bmc_boot_image_export,
+    terminal: BootMediumRunnerHostUp { label: runner_host_medium_volume_id },
+  }
+}
+
+// ── THE ACCEPTANCE PREDICATE ─────────────────────────────────────────────────────────────────
+
+// WHAT "RUNNER HOST UP" IS, READ BACK: the route's GuestIdleMeminfoAndNproc instrument
+// (gunbc.runner_throughput_qualification_route) at idle, before any job, plus the runner installed.
+type RunnerHostUp {
+  run: HostCaptureRunIdentity
+  mem_total: Kibibyte
+  mem_available: Kibibyte
+  threads: HardwareThreadCount
+}
+
+type RunnerHostUpRefusal
+  = RunnerHostCaptureUnbound { reason: String }
+  | RunnerHostSectionAbsent { name: NonEmptyStr }
+  | RunnerHostSectionMalformed { name: NonEmptyStr, reason: String }
+  | RunnerHostSectionFailed { name: NonEmptyStr, exit_code: String }
+  | RunnerHostMeminfoFieldAbsent { field: NonEmptyStr }
+  | RunnerHostNprocUnreadable { observed: String }
+  | RunnerHostMachineNotAarch64 { observed: String }
+
+type RunnerHostUpReadback
+  = RunnerHostUpPending { reason: String }
+  | RunnerHostUpRefused { refusals: List<RunnerHostUpRefusal> }
+  | RunnerHostUpObserved { up: RunnerHostUp }
+
+fn runner_host_up_refusal_text(refusal: RunnerHostUpRefusal) -> String {
+  match refusal {
+    RunnerHostCaptureUnbound { reason: r } => concat("capture does not bind: ", r)
+    RunnerHostSectionAbsent { name: n } => concat("closed envelope carries no ", n as String, " section")
+    RunnerHostSectionMalformed { name: _, reason: r } => r
+    RunnerHostSectionFailed { name: n, exit_code: c } => concat(n as String, " exited ", c)
+    RunnerHostMeminfoFieldAbsent { field: f } => concat("meminfo carries no ", f as String)
+    RunnerHostNprocUnreadable { observed: o } => concat("nproc printed ", o, ", not a positive count")
+    RunnerHostMachineNotAarch64 { observed: o } => concat("uname -m printed ", o, ", the runner image is arm64")
+  }
+}
+
+fn runner_host_last_line(out: List<String>) -> String {
+  trim(s: fold(out, init: "", f: (acc, l) => if trim(s: l) == "" { acc } else { l }))
+}
+
+// ONE SECTION, READ ON A CLOSED ENVELOPE: absent, unterminated or failed refuses; held yields its
+// output. Acceptance is only ever over a closed envelope (the END marker is the program's own
+// statement that it wrote everything), so an unterminated section here is the program's defect.
+type RunnerHostSectionRead
+  = RunnerHostSectionHeld { output: List<String> }
+  | RunnerHostSectionRefused { refusal: RunnerHostUpRefusal }
+
+fn runner_host_section_read(envelope: BoundHostCaptureEnvelope, name: NonEmptyStr) -> RunnerHostSectionRead {
+  match host_capture_section_reading(envelope: envelope, name: name as String) {
+    SectionAbsent => RunnerHostSectionRefused { refusal: RunnerHostSectionAbsent { name: name } }
+    SectionPending { output: _ } => RunnerHostSectionRefused { refusal: RunnerHostSectionMalformed { name: name, reason: concat(name as String, " section never printed its EXIT line inside a closed envelope") } }
+    SectionMalformed { reason: r } => RunnerHostSectionRefused { refusal: RunnerHostSectionMalformed { name: name, reason: r } }
+    SectionComplete { exit_code: c, output: out } =>
+      if c == "0" { RunnerHostSectionHeld { output: out } } else { RunnerHostSectionRefused { refusal: RunnerHostSectionFailed { name: name, exit_code: c } } }
+  }
+}
+
+fn runner_host_section_refusal(read: RunnerHostSectionRead) -> List<RunnerHostUpRefusal> {
+  match read {
+    RunnerHostSectionHeld { output: _ } => []
+    RunnerHostSectionRefused { refusal: r } => [r]
+  }
+}
+
+fn runner_host_section_output(read: RunnerHostSectionRead) -> List<String> {
+  match read {
+    RunnerHostSectionHeld { output: out } => out
+    RunnerHostSectionRefused { refusal: _ } => []
+  }
+}
+
+// EVERY REFUSAL IS NAMED, NOT THE FIRST: a host whose runner install failed AND whose nproc is short
+// reports both, so one boot answers both questions.
+fn runner_host_up_over_closed(envelope: BoundHostCaptureEnvelope) -> RunnerHostUpReadback {
+  let gates = flat_map(
+    [runner_host_section_boot_media, runner_host_section_runner_install, runner_host_section_runner_listener, runner_host_section_systemd],
+    n => runner_host_section_refusal(read: runner_host_section_read(envelope: envelope, name: n)),
+  )
+  let mem_read = runner_host_section_read(envelope: envelope, name: runner_host_section_meminfo)
+  let nproc_read = runner_host_section_read(envelope: envelope, name: runner_host_section_nproc)
+  let machine_read = runner_host_section_read(envelope: envelope, name: runner_host_section_machine)
+  let meminfo = parse_proc_meminfo(text: join(runner_host_section_output(read: mem_read), "\n"))
+  let nproc_text = runner_host_last_line(out: runner_host_section_output(read: nproc_read))
+  let nproc = match parse_int(s: nproc_text) {
+    Absent => none
+    Present { value: n } => if n > 0 { checked_int_to_nat(n: n) } else { none }
+  }
+  let machine = runner_host_last_line(out: runner_host_section_output(read: machine_read))
+  let mem_refusals = match mem_read {
+    RunnerHostSectionRefused { refusal: r } => [r]
+    RunnerHostSectionHeld { output: _ } =>
+      match meminfo {
+        MeminfoFieldAbsent { field: f } => [RunnerHostMeminfoFieldAbsent { field: f }]
+        MeminfoParsed { meminfo: _ } => []
+      }
+  }
+  let nproc_refusals = match nproc_read {
+    RunnerHostSectionRefused { refusal: r } => [r]
+    RunnerHostSectionHeld { output: _ } =>
+      match nproc {
+        Absent => [RunnerHostNprocUnreadable { observed: nproc_text }]
+        Present { value: _ } => []
+      }
+  }
+  let machine_refusals = match machine_read {
+    RunnerHostSectionRefused { refusal: r } => [r]
+    RunnerHostSectionHeld { output: _ } =>
+      if machine == "aarch64" { [] } else { [RunnerHostMachineNotAarch64 { observed: machine }] }
+  }
+  let refusals = append(append(append(gates, items: mem_refusals), items: nproc_refusals), items: machine_refusals)
+  match meminfo {
+    MeminfoParsed { meminfo: m } =>
+      match nproc {
+        Present { value: n } =>
+          if count(refusals) == 0 {
+            RunnerHostUpObserved { up: RunnerHostUp { run: envelope.run, mem_total: m.mem_total, mem_available: m.mem_available, threads: hardware_thread_count(count: n) } }
+          } else {
+            RunnerHostUpRefused { refusals: refusals }
+          }
+        Absent => RunnerHostUpRefused { refusals: refusals }
+      }
+    MeminfoFieldAbsent { field: _ } => RunnerHostUpRefused { refusals: refusals }
+  }
+}
+
+// AN OPEN ENVELOPE NEVER ACCEPTS, AND REFUSES EARLY ONLY ON A COMPLETE SECTION THAT FAILED: a runner
+// install whose sha256sum -c refused is a complete fact about that run before END is printed.
+fn runner_host_up_over_open(envelope: BoundHostCaptureEnvelope) -> RunnerHostUpReadback {
+  let failed = flat_map(runner_host_up_section_names, n => match host_capture_section_reading(envelope: envelope, name: n as String) {
+    SectionComplete { exit_code: c, output: _ } => if c == "0" { [] } else { [RunnerHostSectionFailed { name: n, exit_code: c }] }
+    SectionMalformed { reason: r } => [RunnerHostSectionMalformed { name: n, reason: r }]
+    SectionAbsent => []
+    SectionPending { output: _ } => []
+  })
+  if count(failed) == 0 { RunnerHostUpPending { reason: "envelope open; no complete section refuses" } } else { RunnerHostUpRefused { refusals: failed } }
+}
+
+// THE PREDICATE THE BOOT RUN'S TERMINAL WATCH DELEGATES TO for a BootMediumRunnerHostUp medium. The
+// capture binds to the subject's machine and run (one envelope, never a search over the stream), and
+// the label is the medium's own, read back as the boot-media section.
+fn runner_host_up_readback(capture: String, subject: AdmittedBootSubject) -> RunnerHostUpReadback {
+  match host_capture_bind(capture: capture, machine: boot_subject_machine(subject: subject)) {
+    HostCaptureNotBegun => RunnerHostUpPending { reason: "no begin marker for this machine yet" }
+    HostCaptureUnbound { reason: r } => RunnerHostUpRefused { refusals: [RunnerHostCaptureUnbound { reason: r }] }
+    HostCaptureOpen { envelope: e } => runner_host_up_over_open(envelope: e)
+    HostCaptureBound { envelope: e } => runner_host_up_over_closed(envelope: e)
+  }
+}

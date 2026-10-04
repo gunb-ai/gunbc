@@ -64,7 +64,7 @@ import std.temporal_effect {
   held_lease_observed_verdict,
 }
 import std.upsert_decision { Converged, Absent, Drifted, Inaccessible }
-import gunbc.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, stock_installer_boot_medium }
+import gunbc.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, BootMediumRunnerHostUp, stock_installer_boot_medium }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, aarch64_uefi_once_boot_selection }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_boot_medium }
 import gunbc.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
@@ -607,6 +607,7 @@ test fn the_census_medium_passes_the_gate_and_binds_the_verdict_to_its_label() -
       match medium.terminal {
         BootMediumNoTerminal { reason: _ } => false
         BootMediumVolumeLabel { label: label } => (label as String) == "GUNBC_MTC1_CENSUS_2404_3"
+        BootMediumRunnerHostUp { label: _ } => false
       }
   }
 }

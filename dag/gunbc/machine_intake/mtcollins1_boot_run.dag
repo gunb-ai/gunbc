@@ -20,7 +20,8 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import gunbc.machine_intake_mtcollins1_census_medium_readback {
   mtcollins1_census_medium_readback, mtcollins1_census_readback_refusal_before_filing, mtcollins1_census_readback_refusal_before_attach,
 }
-import gunbc.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel }
+import gunbc.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, BootMediumRunnerHostUp }
+import gunbc.runner.runner_host_medium { RunnerHostUpRefusal, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved, runner_host_up_readback, runner_host_up_refusal_text }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_boot_medium }
 import gunbc.managed_host_boot {
   AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused,
@@ -807,6 +808,7 @@ fn mtcollins1_boot_medium_refusal(medium: BootMedium) -> String? {
     BootMediumNoTerminal { reason: r } =>
       Present { value: concat("mtcollins1 boot: the boot medium ", medium.image_name as String, " prints no terminal (", r as String, "), so no census terminal can be observed; switch mtcollins1_boot_medium to the published census image (census stage 0D) -- controller untouched") }
     BootMediumVolumeLabel { label: _ } => none
+    BootMediumRunnerHostUp { label: _ } => none
   }
 }
 
@@ -827,6 +829,7 @@ fn mtcollins1_boot_medium_refusal(medium: BootMedium) -> String? {
 type MtCollins1BootTerminalCause
   = TerminalMediumPrintsNoTerminal { image: NonEmptyStr, reason: NonEmptyStr }
   | TerminalCaptureUnbound { reason: String }
+  | TerminalRunnerHostNotUp { refusals: List<RunnerHostUpRefusal> }
   | TerminalSectionAbsent { name: String }
   | TerminalSectionUnterminated { name: String }
   | TerminalSectionUnobservedAtRefusal { name: String }
@@ -1243,6 +1246,11 @@ fn mtcollins1_boot_terminal_verdict(capture: String, subject: AdmittedBootSubjec
         HostCaptureOpen { envelope: envelope } => terminal_over_open(envelope: envelope, topology: topology, label: label)
         HostCaptureBound { envelope: envelope } => terminal_over_closed(envelope: envelope, topology: topology, label: label)
       }
+    BootMediumRunnerHostUp { label: _ } => match runner_host_up_readback(capture: capture, subject: subject) {
+      RunnerHostUpPending { reason: r } => TerminalPending { reason: r }
+      RunnerHostUpRefused { refusals: rs } => TerminalRefused { causes: [TerminalRunnerHostNotUp { refusals: rs }] }
+      RunnerHostUpObserved { up: up } => TerminalAccepted { run: up.run, threads: up.threads }
+    }
   }
 }
 
@@ -1251,6 +1259,7 @@ fn mtcollins1_boot_terminal_cause_text(cause: MtCollins1BootTerminalCause) -> St
     TerminalMediumPrintsNoTerminal { image: i, reason: r } =>
       concat("the admitted medium ", i as String, " prints no terminal: ", r as String)
     TerminalCaptureUnbound { reason: r } => concat("capture does not bind: ", r)
+    TerminalRunnerHostNotUp { refusals: rs } => concat("runner host not up: ", join(map(rs, x => runner_host_up_refusal_text(refusal: x)), "; "))
     TerminalSectionAbsent { name: n } => concat("closed envelope carries no ", n, " section")
     TerminalSectionUnterminated { name: n } => concat("closed envelope's ", n, " section never printed its EXIT line")
     TerminalSectionUnobservedAtRefusal { name: n } => concat(n, " not yet observed when the open envelope refused; unqualified")

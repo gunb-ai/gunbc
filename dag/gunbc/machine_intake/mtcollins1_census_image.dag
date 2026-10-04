@@ -16,7 +16,7 @@ import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallLiveCommands }
 import gunbc.os_install_emit { autoinstall_live_commands_user_data, AutoinstallUserData, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
 import gunbc.seeded_install_media_policy { seeded_install_media_pinned_dates, seeded_install_media_builder_revision }
 import v2.std.optional { Present }
-import gunbc.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, bmc_boot_image_export, stock_installer_boot_medium }
+import gunbc.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, BootMediumRunnerHostUp, bmc_boot_image_export, stock_installer_boot_medium }
 import gunbc.machine_intake_boot_image_fetch { boot_image_published_path }
 import gunbc.machine_intake_host_capture_envelope {
   HostCaptureStage,
@@ -244,6 +244,7 @@ fn mtcollins1_census_medium_digest(medium: BootMedium) -> NonEmptyStr? {
   let labelled = match medium.terminal {
     BootMediumVolumeLabel { label: l } => (l as String) == (mtcollins1_census_volume_id as String)
     BootMediumNoTerminal { reason: _ } => false
+    BootMediumRunnerHostUp { label: _ } => false
   }
   if labelled && (medium.image_name as String) == (census.image_name as String) && (medium.export.dir as String) == (census.export.dir as String) {
     Present { value: medium.digest }

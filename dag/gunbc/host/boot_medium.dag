@@ -33,9 +33,15 @@ data bmc_boot_image_export: BootImageExport = BootImageExport {
 // the census volume and nothing else does, and the stock installer prints no terminal at all, so a
 // boot of it can be refused before any controller write. A new medium adds its arm here with the
 // acceptance predicate its terminal is read by; the boot subject does not change.
+//
+// RunnerHostUp is the runner medium's terminal: the medium's volume label (so the capture binds to
+// the medium that was attached) and a host whose runner is installed and whose idle memory, thread
+// count and machine architecture were read before any job. Its predicate is runner-owned
+// (gunbc.runner.runner_host_medium runner_host_up_readback), not a property of a boot run.
 type BootMediumTerminal
   = BootMediumNoTerminal { reason: NonEmptyStr }
   | BootMediumVolumeLabel { label: NonEmptyStr }
+  | BootMediumRunnerHostUp { label: NonEmptyStr }
 
 // THE MEDIUM IS BOOT POLICY, NOT A HOST FACT: which artifact a boot attaches, named by its content
 // digest, where it is exported, and what terminal it is accepted by. The published file is the

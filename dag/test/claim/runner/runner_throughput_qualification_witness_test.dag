@@ -747,20 +747,20 @@ test fn the_route_classifies_every_mutation_at_its_grain() -> Bool {
     ))
 }
 
-// THE ROUTE IS NOT EXECUTABLE TODAY, AND THE CLAIM SAYS SO: the boot and dispatch legs are still
-// declared frontiers. This flips to the regression control that the bindings stay when they land.
+// THE ROUTE IS NOT EXECUTABLE TODAY, AND THE CLAIM SAYS SO: no effectful leg is wired yet and the dispatch leg is still a
+// declared frontier. This flips to the regression control that the bindings stay when they land.
 test fn the_route_is_not_executable_while_any_effectful_leg_is_unbound() -> Bool {
   !route_is_executable(route: route()) && !leg_is_wired(leg: qualification_run_producer_frontier)
 }
 
-// THE IMAGE LEG HAS AN IMPLEMENTED AUTHORITY AND IS NOT WIRED; THE BOOT LEG HAS NO AUTHORITY. The
-// claim tells the two apart: wiring the image leg before a production caller builds the runner
-// image, pointing it at another declaration, or binding the boot leg to the census-only boot run,
-// turns this red.
-test fn the_image_leg_is_implemented_not_wired_and_the_boot_leg_awaits_a_runner_medium() -> Bool {
-  leg_names(leg: mtcollins1_route_legs.image, module_path: "extdeps.provisioning.ubuntu_seeded_install_media", decl_name: "UbuntuSeededInstallMediaBuildInput")
+// THE IMAGE AND BOOT LEGS HAVE IMPLEMENTED RUNNER-OWNED AUTHORITIES AND ARE NOT WIRED. Wiring either
+// before a production caller boots the runner image, or pointing either at another declaration
+// (the census-only boot run among them), turns this red.
+test fn the_image_and_boot_legs_are_implemented_by_the_runner_medium_and_not_wired() -> Bool {
+  leg_names(leg: mtcollins1_route_legs.image, module_path: "gunbc.runner.runner_host_medium", decl_name: "runner_host_medium_image")
     && !leg_is_wired(leg: mtcollins1_route_legs.image)
-    && match mtcollins1_route_legs.boot { LegAwaitingAuthority { lands_with: _, sufficient_for: _ } => true _ => false }
+    && leg_names(leg: mtcollins1_route_legs.boot, module_path: "gunbc.runner.runner_host_medium", decl_name: "runner_host_up_readback")
+    && !leg_is_wired(leg: mtcollins1_route_legs.boot)
 }
 
 // REGISTRATION AND DEREGISTRATION HAVE IMPLEMENTED AUTHORITIES AND ARE NOT WIRED -- by declaration
