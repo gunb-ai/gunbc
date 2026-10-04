@@ -96,6 +96,7 @@ type SystemdUnitProperty
   | PrivateTmpProperty
   | ReadWritePathsProperty
   | RemainAfterExitProperty
+  | JobProperty
 
 // THE WIRE SPELLING AS A SEALED WORD, SO THE CLOSED TYPE SURVIVES ALL THE WAY TO THE ARGV.
 //
@@ -171,6 +172,7 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     PrivateTmpProperty => "PrivateTmp" as NonEmptyStr
     ReadWritePathsProperty => "ReadWritePaths" as NonEmptyStr
     RemainAfterExitProperty => "RemainAfterExit" as NonEmptyStr
+    JobProperty => "Job" as NonEmptyStr
   }
 }
 
