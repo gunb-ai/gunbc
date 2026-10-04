@@ -1,7 +1,8 @@
 module gunbc.fleet_converge_workflow
 
 import extdeps.github.expressions { Expression, ContextAccess, Github, StringLiteral, Equals, LogicalOr, LogicalAnd, interpolate }
-
+import gunbc.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEnvironment, FabricAllocationStoreOnly, WorkspaceSlotCommissioningOnly, LiveDeploy }
+import gunbc.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
 
 import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
 
@@ -130,12 +131,14 @@ import gunbc.auth.ci_app_key_rotation {
   app_key_verify_receipt_path,
 }
 import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_artifact_glob, mtcollins1_boot_step_timeout_minutes }
+import gunbc.host_boot_attempt_admission { boot_attempt_receipt_env_name, boot_attempt_nonce_env_name }
 import gunbc.runner_group_restriction_ensure_run { microvm_runner_group_ensure_artifact_glob, microvm_runner_group_step_timeout_minutes }
 import gunbc.ci_spec {
   site_pxe_edge_converge_receipt_path,
   gunbc_ci_fleet_converge_plan_invoke,
   gunbc_ci_fleet_converge_launch_environment_plan_invoke,
   gunbc_ci_fleet_converge_allocation_store_plan_invoke,
+  gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke,
   gunbc_ci_fleet_converge_apply_invoke,
   gunbc_ci_org_actions_inspect_invoke,
   gunbc_ci_app_control_plane_inspect_invoke,
@@ -154,6 +157,8 @@ import gunbc.ci_spec {
   gunbc_ci_r2_bucket_ensure_invoke,
   gunbc_ci_r2_bucket_admin_mint_invoke,
   gunbc_ci_r2_object_write_mint_invoke,
+  gunbc_ci_r2_workspace_object_read_mint_invoke,
+  gunbc_ci_r2_workspace_object_write_mint_invoke,
   gunbc_ci_approval_keyring_converge_invoke,
   gunbc_ci_approval_device_enrolment_code_issue_invoke,
   gunbc_ci_mtcollins1_boot_invoke,
@@ -230,8 +235,8 @@ import gunbc.host_reset_return {
 import gunbc.host_reset_subject_roster { reset_observer_peer_roster, reset_subject_roster }
 import gunbc.host_reset_return { ResetObserverPairing }
 import gunbc.live_deploy.apply_receipt { rlm_plan_run_id_env_name, rlm_apply_run_id_env_name, rlm_plan_artifact_hash_env_name }
-import gunbc.roadmap_launch_deployment_cli { rlm_dashboard_run_id_env_name }
-import gunbc.fleet_converge_plan { fleet_converge_plan_artifact_dir, FleetConvergeScope, FullHost, LaunchEnvironment, FabricAllocationStoreOnly, LiveDeploy }
+import gunbc.live_deploy.apply_receipt { rlm_dashboard_run_id_env_name }
+
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.json.emit { json_kv, json_object, json_string, serialize_json }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
@@ -277,6 +282,7 @@ type FleetConvergeWorkflowMode
   = FullHostPlan
   | LaunchEnvironmentPlan
   | AllocationStorePlan
+  | WorkspaceCommissioningPlan
   | FleetApply
   | OrgActionsObserve
   | AppControlPlaneObserve
@@ -319,6 +325,8 @@ type FleetConvergeWorkflowMode
   | R2BucketEnsure
   | R2BucketAdminMint
   | R2ObjectWriteMint
+  | R2WorkspaceObjectReadMint
+  | R2WorkspaceObjectWriteMint
   | ApprovalKeyringConverge
   | ApprovalDeviceEnrolmentCodeIssue
   | MtCollins1Boot
@@ -341,6 +349,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     FullHostPlan => "plan"
     LaunchEnvironmentPlan => "launch_environment_plan"
     AllocationStorePlan => "allocation_store_plan"
+    WorkspaceCommissioningPlan => "workspace_commissioning_plan"
     FleetApply => "apply"
     OrgActionsObserve => "org_actions_observe"
     AppControlPlaneObserve => "app_control_plane_observe"
@@ -383,6 +392,8 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     R2BucketEnsure => "r2_bucket_ensure"
     R2BucketAdminMint => "r2_bucket_admin_mint"
     R2ObjectWriteMint => "r2_object_write_mint"
+    R2WorkspaceObjectReadMint => "r2_workspace_object_read_mint"
+    R2WorkspaceObjectWriteMint => "r2_workspace_object_write_mint"
     ApprovalKeyringConverge => "approval_keyring_converge"
     ApprovalDeviceEnrolmentCodeIssue => "approval_device_enrolment_code_issue"
     MtCollins1Boot => "mtcollins1_boot"
@@ -423,7 +434,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkV41CheckpointMaterialize, SparkV41RowStoreEncode, SparkV41RowStoreReadback, SparkV41EngramDifferential, SparkV41RuntimeImageBuild, SparkV41RuntimeImageDistribute, SparkV41GroupALaunch, SparkV41ServingLoad, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, ApprovalDeviceEnrolmentCodeIssue, MtCollins1Boot, MtCollins1FanObserve, MtCollins1UiBundleObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, FabricWriterIdentityObserve, PairServingD0, MicrovmRunnerGroupEnsure, GcpIamConverge, NamecheapObserve]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkV41CheckpointMaterialize, SparkV41RowStoreEncode, SparkV41RowStoreReadback, SparkV41EngramDifferential, SparkV41RuntimeImageBuild, SparkV41RuntimeImageDistribute, SparkV41GroupALaunch, SparkV41ServingLoad, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, ApprovalDeviceEnrolmentCodeIssue, MtCollins1Boot, MtCollins1FanObserve, MtCollins1UiBundleObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, FabricWriterIdentityObserve, PairServingD0, MicrovmRunnerGroupEnsure, GcpIamConverge, NamecheapObserve]
 // WHICH RELEASE PRODUCT A MODE'S JOB RUNS, NAMED PER MODE WITH NO WILDCARD (as the scope and fleet-key
 // matches above name theirs). A mode whose steps run only gunbc and claim_executor declares the
 // compiler pair (gunbc.fleet_release_bins_key compiler_pair_release_product): its build job then
@@ -437,6 +448,7 @@ fn fleet_converge_mode_release_product(mode: FleetConvergeWorkflowMode) -> Fleet
     FullHostPlan => SixteenBinaryPack
     LaunchEnvironmentPlan => SixteenBinaryPack
     AllocationStorePlan => SixteenBinaryPack
+    WorkspaceCommissioningPlan => SixteenBinaryPack
     FleetApply => SixteenBinaryPack
     OrgActionsObserve => SixteenBinaryPack
     AppControlPlaneObserve => SixteenBinaryPack
@@ -475,6 +487,8 @@ fn fleet_converge_mode_release_product(mode: FleetConvergeWorkflowMode) -> Fleet
     RunnerBrowserToolchainConverge => SixteenBinaryPack
     R2MintPreflight => SixteenBinaryPack
     R2ObjectWriteMint => SixteenBinaryPack
+    R2WorkspaceObjectReadMint => SixteenBinaryPack
+    R2WorkspaceObjectWriteMint => SixteenBinaryPack
     OrgRunnerRosterObserve => SixteenBinaryPack
     ApprovalKeyringConverge => SixteenBinaryPack
     ApprovalDeviceEnrolmentCodeIssue => CompilerPairOnly
@@ -533,6 +547,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     FullHostPlan => Present { value: FullHost }
     LaunchEnvironmentPlan => Present { value: LaunchEnvironment }
     AllocationStorePlan => Present { value: FabricAllocationStoreOnly }
+    WorkspaceCommissioningPlan => Present { value: WorkspaceSlotCommissioningOnly }
     FleetApply => none
     OrgActionsObserve => none
     AppControlPlaneObserve => none
@@ -575,6 +590,8 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     R2BucketEnsure => none
     R2BucketAdminMint => none
     R2ObjectWriteMint => none
+    R2WorkspaceObjectReadMint => none
+    R2WorkspaceObjectWriteMint => none
     ApprovalKeyringConverge => none
     ApprovalDeviceEnrolmentCodeIssue => none
     MtCollins1Boot => none
@@ -670,9 +687,12 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     AppKeyVersionVerify => FleetSshKeyNotConsumed
     R2BucketEnsure => FleetSshKeyNotConsumed
     R2BucketAdminMint => FleetSshKeyNotConsumed
+    R2WorkspaceObjectReadMint => FleetSshKeyNotConsumed
+    R2WorkspaceObjectWriteMint => FleetSshKeyNotConsumed
     FullHostPlan => FleetSshKeyConsumed
     LaunchEnvironmentPlan => FleetSshKeyConsumed
     AllocationStorePlan => FleetSshKeyConsumed
+    WorkspaceCommissioningPlan => FleetSshKeyConsumed
     FleetApply => FleetSshKeyConsumed
     AppControlPlaneObserve => FleetSshKeyConsumed
     MicrovmHostConverge => FleetSshKeyConsumed
@@ -1124,7 +1144,9 @@ fn fleet_converge_host_pinned_runner_spec() -> RunnerSpec {
 data fleet_converge_plan_step_if: String = fleet_converge_mode_step_if(mode: FullHostPlan)
 data fleet_converge_launch_environment_plan_step_if: String = fleet_converge_mode_step_if(mode: LaunchEnvironmentPlan)
 data fleet_converge_allocation_store_plan_step_if: String = fleet_converge_mode_step_if(mode: AllocationStorePlan)
-data fleet_converge_any_plan_step_if: String = fleet_converge_any_mode_step_if(modes: [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan])
+data fleet_converge_workspace_commissioning_plan_step_if: String = fleet_converge_mode_step_if(mode: WorkspaceCommissioningPlan)
+
+data fleet_converge_any_plan_step_if: String = fleet_converge_any_mode_step_if(modes: [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan])
 data fleet_converge_apply_step_if: String = fleet_converge_mode_step_if(mode: FleetApply)
 data fleet_converge_org_actions_step_if: String = fleet_converge_mode_step_if(mode: OrgActionsObserve)
 data fleet_converge_org_runner_roster_step_if: String = fleet_converge_mode_step_if(mode: OrgRunnerRosterObserve)
@@ -1310,6 +1332,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     FullHostPlan => ExecutorDomain
     LaunchEnvironmentPlan => ExecutorDomain
     AllocationStorePlan => ExecutorDomain
+    WorkspaceCommissioningPlan => ExecutorDomain
     FleetApply => ExecutorDomain
     OrgActionsObserve => ExecutorDomain
     AppControlPlaneObserve => ExecutorDomain
@@ -1352,6 +1375,8 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     R2BucketEnsure => ExecutorDomain
     R2BucketAdminMint => ExecutorDomain
     R2ObjectWriteMint => ExecutorDomain
+    R2WorkspaceObjectReadMint => ExecutorDomain
+    R2WorkspaceObjectWriteMint => ExecutorDomain
     ApprovalKeyringConverge => ExecutorDomain
     ApprovalDeviceEnrolmentCodeIssue => SubjectDomain { group: fleet_subject_mutation_group_approval_device_store }
     MtCollins1Boot => ExecutorDomain
@@ -1489,6 +1514,26 @@ fn fleet_converge_launch_environment_plan_step() -> Step {
     if_condition: Present { value: fleet_converge_launch_environment_plan_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+// Commissioning retains the ordinary reviewed plan, host/revision binding, and artifact upload.
+fn fleet_converge_workspace_commissioning_plan_step() -> Step {
+  RunStep {
+    name: Present { value: "Fleet workspace slot commissioning plan" },
+    id: Present { value: "workspace_commissioning_plan" },
+    run: gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+        kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_workspace_commissioning_plan_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_fleet_converge_plan_step_timeout_minutes }
   }
 }
 
@@ -2138,6 +2183,8 @@ data fleet_converge_r2_mint_preflight_step_if: String = fleet_converge_mode_step
 data fleet_converge_r2_bucket_ensure_step_if: String = fleet_converge_mode_step_if(mode: R2BucketEnsure)
 data fleet_converge_r2_bucket_admin_mint_step_if: String = fleet_converge_mode_step_if(mode: R2BucketAdminMint)
 data fleet_converge_r2_object_write_mint_step_if: String = fleet_converge_mode_step_if(mode: R2ObjectWriteMint)
+data fleet_converge_r2_workspace_object_read_mint_step_if: String = fleet_converge_mode_step_if(mode: R2WorkspaceObjectReadMint)
+data fleet_converge_r2_workspace_object_write_mint_step_if: String = fleet_converge_mode_step_if(mode: R2WorkspaceObjectWriteMint)
 
 // ── THE APP-KEY VERSION VERIFIER ─────────────────────────────────────────────────────────────
 // A MODE AND NOT A JOB, for the reason the R2 mint gives above: this job is already dispatch-only,
@@ -2807,6 +2854,8 @@ fn fleet_converge_mtcollins1_boot_step() -> Step {
     env: Present { value: [
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
       kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+      kv(key: boot_attempt_receipt_env_name as String, value: yaml_string(s: "${{ github.event.inputs.attempt_receipt }}")),
+      kv(key: boot_attempt_nonce_env_name as String, value: yaml_string(s: "${{ github.event.inputs.transaction_nonce }}")),
     ] },
     working_directory: none,
     if_condition: Present { value: fleet_converge_mtcollins1_boot_step_if },
@@ -2928,6 +2977,84 @@ fn fleet_converge_r2_object_write_mint_receipt_upload_step() -> Step {
     ] },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_r2_object_write_mint_step_if], "") },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+// THE WORKSPACE PLACEMENT'S TWO MINTS ARE THE OBJECT-WRITE MINT'S STEP AT ANOTHER PURPOSE: same
+// fold (gunbc.cloudflare.r2_token_mint_run mint_origin_token_and_store), same custody bracket, same
+// attempt-scoped orphan receipt, the containers gunbc.cloudflare.r2_origin fabric_workspace_standing
+// names. Like the bucket-admin mint they touch no host, so neither consumes the fleet SSH key.
+fn fleet_converge_r2_workspace_object_read_mint_step() -> Step {
+  RunStep {
+    name: Present { value: "R2 workspace object-read token mint (AccountTokens.Create + Secret Manager custody)" },
+    id: Present { value: "r2_workspace_object_read_mint" },
+    run: gunbc_ci_r2_workspace_object_read_mint_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_r2_workspace_object_read_mint_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_r2_workspace_object_read_mint_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload R2 workspace object-read mint receipt (token id + custody version resource; no secret)" },
+    id: Present { value: "r2_workspace_object_read_mint_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "r2-workspace-object-read-mint-receipt")),
+      kv(key: "path", value: yaml_string(s: r2_mint_receipt_glob_in(
+        scope: fleet_converge_r2_mint_receipt_scope(),
+        profile: R2OriginObjectRead,
+      ))),
+      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: join(["always() && ", fleet_converge_r2_workspace_object_read_mint_step_if], "") },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_r2_workspace_object_write_mint_step() -> Step {
+  RunStep {
+    name: Present { value: "R2 workspace object-write token mint (AccountTokens.Create + Secret Manager custody)" },
+    id: Present { value: "r2_workspace_object_write_mint" },
+    run: gunbc_ci_r2_workspace_object_write_mint_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_r2_workspace_object_write_mint_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_r2_workspace_object_write_mint_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload R2 workspace object-write mint receipt (token id + custody version resource; no secret)" },
+    id: Present { value: "r2_workspace_object_write_mint_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "r2-workspace-object-write-mint-receipt")),
+      kv(key: "path", value: yaml_string(s: r2_mint_receipt_glob_in(
+        scope: fleet_converge_r2_mint_receipt_scope(),
+        profile: R2OriginObjectWrite,
+      ))),
+      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: join(["always() && ", fleet_converge_r2_workspace_object_write_mint_step_if], "") },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
@@ -3902,6 +4029,7 @@ fn fleet_converge_job() -> Job {
         fleet_converge_plan_step(),
         fleet_converge_launch_environment_plan_step(),
         fleet_converge_allocation_store_plan_step(),
+        fleet_converge_workspace_commissioning_plan_step(),
         fleet_converge_plan_upload_step(),
         fleet_converge_plan_download_step(),
         fleet_converge_apply_step(),
@@ -3941,6 +4069,10 @@ fn fleet_converge_job() -> Job {
         fleet_converge_r2_bucket_ensure_receipt_upload_step(),
         fleet_converge_r2_object_write_mint_step(),
         fleet_converge_r2_object_write_mint_receipt_upload_step(),
+        fleet_converge_r2_workspace_object_read_mint_step(),
+        fleet_converge_r2_workspace_object_read_mint_receipt_upload_step(),
+        fleet_converge_r2_workspace_object_write_mint_step(),
+        fleet_converge_r2_workspace_object_write_mint_receipt_upload_step(),
         fleet_converge_approval_keyring_converge_step(),
         fleet_converge_approval_device_enrolment_code_issue_step(),
         fleet_converge_microvm_runner_group_ensure_step(),
@@ -4131,6 +4263,7 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     FullHostPlan => fleet_converge_shared_job_id
     LaunchEnvironmentPlan => fleet_converge_shared_job_id
     AllocationStorePlan => fleet_converge_shared_job_id
+    WorkspaceCommissioningPlan => fleet_converge_shared_job_id
     FleetApply => fleet_converge_shared_job_id
     OrgActionsObserve => fleet_converge_shared_job_id
     AppControlPlaneObserve => fleet_converge_shared_job_id
@@ -4184,6 +4317,8 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     AppKeyVersionVerify => fleet_converge_shared_job_id
     R2BucketEnsure => fleet_converge_shared_job_id
     R2BucketAdminMint => fleet_converge_shared_job_id
+    R2WorkspaceObjectReadMint => fleet_converge_shared_job_id
+    R2WorkspaceObjectWriteMint => fleet_converge_shared_job_id
     FabricWriterIdentityObserve => fleet_converge_shared_job_id
     PairServingD0 => fleet_converge_shared_job_id
     MicrovmRunnerGroupEnsure => fleet_converge_shared_job_id
@@ -4493,7 +4628,14 @@ data fleet_converge_dispatch_inputs: List<DispatchInput> = [
   },
   DispatchInput {
     name: "transaction_nonce",
-    description: Present { value: "Operator-minted unique nonce for one RLM transaction; echoed into run-name so each dispatched run is API-selectable by its displayTitle, closing the run-id correlation gap (review 5062738052 B4). Not consumed by any step" },
+    description: Present { value: "Operator-minted unique nonce for one RLM transaction; echoed into run-name so each dispatched run is API-selectable by its displayTitle, closing the run-id correlation gap (review 5062738052 B4). mtcollins1_boot only, when attempt_receipt is named: it is the boot attempt's identity, joined to the receipt's attempt and consumed once (gunbc.host_boot_attempt_admission), so a nonce admits one boot; [A-Za-z0-9_-] only" },
+    required: false,
+    default: none,
+    type: InputString,
+  },
+  DispatchInput {
+    name: "attempt_receipt",
+    description: Present { value: "mtcollins1_boot only: a committed artifacts/receipts/*.json naming this attempt's plan and the operator's inspection (gunbc.host_boot_attempt_admission). Empty records the configuration as not recorded; a named receipt that fails any check refuses the boot before power-on. Requires transaction_nonce" },
     required: false,
     default: none,
     type: InputString,

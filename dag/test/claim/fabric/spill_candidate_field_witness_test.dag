@@ -60,7 +60,7 @@ import product.fabric.capacity_admission {
   CapacityNotFungibleForWork, CapacityUseRefused, CapacityPermitNamesAnotherOffer,
   CapacityPermitNamesAnotherRoute, CapacityPermitNamesAnotherWork, CapacityPermitNamesAnotherDemand,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import product.fabric.node_qualification {
   OfferDoesNotClaimNodeDelivery, OfferDeliveryClaim, OfferClaimsNodeDelivery,
   GroupQualified, CollectiveGroupReceipt, CollectiveGroupAdvertised,

@@ -1,7 +1,7 @@
 module gunbc.host_resource
 
 import std.types { String, Int, Bool }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import std.minted_identity { MintedId, MintedIdAllocation, MintedIdAllocator, mint_id, minted_id_eq }
 
 // WHY THIS IS A DISTINCT CARRIER AND NOT std.occurrence_identity (DESIGN §3, decided by reading

@@ -1,5 +1,6 @@
 module v2.compiler.reference_conservation_admission
 
+import v2.compiler.tokenize { prepare_lex_rules }
 import v2.compiler.normalize { import_binding_capture }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { ParseArtifact }
@@ -134,7 +135,7 @@ fn conservation_subject_of_text(path: String, text: String) -> ReferenceConserva
     Accepted { value: prepared, diagnostics: _ } =>
       reference_conservation_subject_of_read(
         read: conservation_read_of(path: path, text: text),
-        lm: dag_language_model(),
+        lex: prepare_lex_rules(rules: dag_language_model().lex),
         prepared: prepared
       )
     Rejected { diagnostics: d } =>
@@ -287,9 +288,9 @@ fn conservation_refusals(report: ReferenceConservationReport, explained: FreeMon
 fn conserved_normalize(subject: ReferenceConservationSubject, explained: FreeMonoid<ExplainedDrop>) -> Outcome<NormalizedTree> {
   match subject.normalized {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: tree, diagnostics: residue } =>
+    Accepted { value: tree, diagnostics: _ } =>
       match conservation_refusals(report: reference_conservation_of_subject(subject: subject, token_classes: dag_declared_token_classes()), explained: explained) {
-        Empty => Accepted { value: tree, diagnostics: residue }
+        Empty => Accepted { value: tree, diagnostics: _ }
         Cons { head: first, tail: rest } => Rejected { diagnostics: NonEmptyDiagnostics { head: first, tail: rest } }
       }
   }

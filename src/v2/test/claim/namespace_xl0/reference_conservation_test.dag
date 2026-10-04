@@ -1,5 +1,6 @@
 module v2.test.claim.namespace_xl0.reference_conservation
 
+import v2.compiler.tokenize { prepare_lex_rules }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.reference_conservation {
   ReferenceConservationReport,
@@ -65,7 +66,7 @@ fn conservation_subject(id_tail: String, source: String) -> ReferenceConservatio
     Accepted { value: prepared, diagnostics: _ } =>
       reference_conservation_subject_of_read(
         read: conservation_fixture_read(id_tail: id_tail, source: source),
-        lm: dag_language_model(),
+        lex: prepare_lex_rules(rules: dag_language_model().lex),
         prepared: prepared
       )
     Rejected { diagnostics: d } =>
@@ -134,7 +135,7 @@ test fn the_clean_control_routes_imports_to_the_import_channel_holds() -> Bool {
 // The `test` marker is the grammar's exact word (v2.extdeps.languages.dag dag_grammar_test_fn_decl_expr),
 // class-stamped like `service`, so it is not an authored atom and this population has no channel to
 // count it in; the clean control above, which carries a `test fn`, is admitted with it. The marker's
-// own capture and refusal are held by test.claim.parse_test_marker_channel.
+// own capture and refusal are held by v2.test.claim.parse.test_marker_channel.
 
 // ---- former drop 1: the second statement of a block (now a located refusal, gunbc#12221) -------
 

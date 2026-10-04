@@ -756,6 +756,11 @@ data gunbc_ci_fleet_converge_allocation_store_plan_target: GunbcRunStepTarget = 
   function: "fleet_converge_allocation_store_plan_wet",
 }
 
+data gunbc_ci_fleet_converge_workspace_commissioning_plan_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
+  function: "fleet_converge_workspace_commissioning_plan_wet",
+}
+
 data gunbc_ci_fleet_converge_apply_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
   function: "fleet_converge_apply_wet",
@@ -804,6 +809,16 @@ data gunbc_ci_r2_bucket_admin_mint_target: GunbcRunStepTarget = GunbcRunStepTarg
 data gunbc_ci_r2_object_write_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/cloudflare/r2_token_mint_run.dag",
   function: "run_object_write",
+}
+
+data gunbc_ci_r2_workspace_object_read_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/cloudflare/r2_token_mint_run.dag",
+  function: "run_workspace_object_read",
+}
+
+data gunbc_ci_r2_workspace_object_write_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/cloudflare/r2_token_mint_run.dag",
+  function: "run_workspace_object_write",
 }
 
 // THE MICRO-VM GUEST IMAGE HAS TWO TARGETS BECAUSE OBSERVE AND CONVERGE ARE TWO OPERATIONS, and
@@ -1299,12 +1314,15 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_fleet_converge_plan_target,
     gunbc_ci_fleet_converge_launch_environment_plan_target,
     gunbc_ci_fleet_converge_allocation_store_plan_target,
+    gunbc_ci_fleet_converge_workspace_commissioning_plan_target,
     gunbc_ci_fleet_converge_apply_target,
     gunbc_ci_org_actions_inspect_target,
     gunbc_ci_r2_mint_preflight_target,
     gunbc_ci_r2_bucket_ensure_target,
     gunbc_ci_r2_bucket_admin_mint_target,
     gunbc_ci_r2_object_write_mint_target,
+    gunbc_ci_r2_workspace_object_read_mint_target,
+    gunbc_ci_r2_workspace_object_write_mint_target,
     gunbc_ci_runner_guest_image_observe_target,
     gunbc_ci_runner_guest_image_converge_target,
     gunbc_ci_runner_microvm_host_converge_target,
@@ -1993,6 +2011,16 @@ fn gunbc_ci_fleet_converge_allocation_store_plan_invoke() -> String {
   )
 }
 
+fn gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_fleet_converge_workspace_commissioning_plan_target.entry,
+    function: gunbc_ci_fleet_converge_workspace_commissioning_plan_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
 data gunbc_ci_fleet_converge_plan_artifact_hash_env_name: String = "EXPECTED_HASH"
 
 // THE PLAN-HASH GUARD IS NOT TYPED, AND THIS ROW SAYS WHY so the Do lines do not read as an
@@ -2574,6 +2602,26 @@ fn gunbc_ci_r2_object_write_mint_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_r2_object_write_mint_target.entry,
     function: gunbc_ci_r2_object_write_mint_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_r2_workspace_object_read_mint_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_r2_workspace_object_read_mint_target.entry,
+    function: gunbc_ci_r2_workspace_object_read_mint_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_r2_workspace_object_write_mint_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_r2_workspace_object_write_mint_target.entry,
+    function: gunbc_ci_r2_workspace_object_write_mint_target.function,
     claim_run: false,
     receipt_rel: none
   )

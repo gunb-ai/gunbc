@@ -6,7 +6,7 @@ import std.algebra { trim }
 import std.measure { token_count, microsecond_count }
 import v2.std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { argv_words }
 import extdeps.vllm.bench_serve { VllmBenchServeRequest, SendAllImmediately, RandomDatasetSpec, OpenaiChat, vllm_bench_serve_request }
@@ -219,7 +219,7 @@ type V41RemoteText
 
 fn v41_remote_text(ctx: SparkMaterializeContext, what: String, argv: List<String>) -> V41RemoteText {
   match spark_remote_run(ctx: ctx, argv: argv) {
-    RemoteUnreachable { cause: c } => V41RemoteTextRefused { cause: join([what, " unreachable: ", c], "") }
+    RemoteUnreachable { cause: c, reach: _ } => V41RemoteTextRefused { cause: join([what, " unreachable: ", c], "") }
     RemoteRan { exit_code: code, stdout: out, stderr: err } =>
       if code != 0 {
         V41RemoteTextRefused { cause: join([what, " exited ", to_string(code), ": ", err], "") }
