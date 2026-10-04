@@ -3078,6 +3078,20 @@ fn deploy_apply_receipt_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   [deploy_raw(command: deploy_receipt_command(host: spec.target.host.identity, fold: "apply"))]
 }
 
+// THE APPLY FRAME: what the program carries before the sudoers preamble. A named producer so a
+// claim about what follows the frame derives the offset from this list rather than counting it.
+fn deploy_apply_frame_steps(spec: DeploymentSpec) -> List<PipelineStep> {
+  [
+    deploy_raw(command: deploy_shell_strict_options_command),
+    Comment { text: concat("GENERATED APPLY by dag/gunbc/live_deploy/emit.dag host=", spec.target.host.identity as String) },
+    Comment { text: "Principal: job_user=ghrunner (DeployRunnerPrincipal.job_user). unit_user=root is NOT the deploy principal." },
+    Comment { text: "Mutation rides six sudo -n grants (roster incl. visudo); tree sync AS service user via gunbc-tree-sync.service." },
+    Comment { text: "Wave C envelope: typed deploy-access gate runs before this HostReconciler artifact; roster sudoers install precedes mutation." },
+    deploy_stage_directory_let_step(),
+    deploy_raw(command: "trap 'rm -rf \"$_gunbc_stage\"' EXIT"),
+  ]
+}
+
 fn apply_intent_from_effects(
   spec: DeploymentSpec,
   effects: List<MemberEffect<DeploymentStep>>,
@@ -3087,15 +3101,7 @@ fn apply_intent_from_effects(
 ) -> Pipeline {
   Pipeline {
     steps: concat(
-      [
-        deploy_raw(command: deploy_shell_strict_options_command),
-        Comment { text: concat("GENERATED APPLY by dag/gunbc/live_deploy/emit.dag host=", spec.target.host.identity as String) },
-        Comment { text: "Principal: job_user=ghrunner (DeployRunnerPrincipal.job_user). unit_user=root is NOT the deploy principal." },
-        Comment { text: "Mutation rides six sudo -n grants (roster incl. visudo); tree sync AS service user via gunbc-tree-sync.service." },
-        Comment { text: "Wave C envelope: typed deploy-access gate runs before this HostReconciler artifact; roster sudoers install precedes mutation." },
-        deploy_stage_directory_let_step(),
-        deploy_raw(command: "trap 'rm -rf \"$_gunbc_stage\"' EXIT"),
-      ],
+      deploy_apply_frame_steps(spec: spec),
       concat(
         deploy_apply_preamble_steps(access: access, spec: spec),
         concat(

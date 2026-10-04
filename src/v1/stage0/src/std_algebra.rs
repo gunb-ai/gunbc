@@ -285,15 +285,15 @@ impl<T: Clone + PartialEq> PartialEq for FreeSemigroup<T> {
 
 #[derive(Clone)]
 pub struct PartialFunction<K, V> {
-    pub lookup: Rc<dyn Fn(K) -> V>,
+    pub lookup: Rc<dyn Fn(K) -> Option<V>>,
     pub _phantom: std::marker::PhantomData<(K, V)>,
 }
 
 #[derive(Clone)]
 pub struct FinitelySupportedFunction<K, V> {
-    pub lookup: Rc<dyn Fn(K) -> V>,
+    pub lookup: Rc<dyn Fn(K) -> Option<V>>,
     pub empty: Rc<FinitelySupportedFunction<K, V>>,
-    pub get: Rc<dyn Fn(K) -> V>,
+    pub get: Rc<dyn Fn(K) -> Option<V>>,
     pub insert: Rc<dyn Fn(K, V) -> Rc<FinitelySupportedFunction<K, V>>>,
     pub merge:
         Rc<dyn Fn(Rc<FinitelySupportedFunction<K, V>>) -> Rc<FinitelySupportedFunction<K, V>>>,
