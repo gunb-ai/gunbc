@@ -800,7 +800,6 @@ pub mod module_path_index;
 pub mod process_group;
 pub mod recorded_fixture;
 pub mod release_locus_seed_constants_generated;
-pub mod shared_typecheck_store;
 pub mod std_logic;
 pub mod v1_interpreter;
 
