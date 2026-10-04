@@ -2,14 +2,13 @@ module test.claim.self_host_program_partition_behavioral_witness
 
 import tools.self_host_module_behavioral_transport_roster { compiler_module_behavioral_receipt_for }
 
-// Wet self-host behavioral receipt (program_partition): the driver (the roster's driver_rel) checks
-// the .dag contract on the EMITTED module with no seed oracle -- emitted
-// partition_user_semantic_types_from_root collects named type declarations and skips value
-// declarations and positional edges; --inject-fault feeds the refused input where the accepted one
-// is expected, so the fault run is red only if the emitted module really refuses it. It used to
-// compare a prose module constant against a hand copy in v1_compiler, which established nothing
-// about behavior (gunbc.recurring_failure_mode hand_shim_shadows_an_emitted_module).
-
+// Wet self-host behavioral receipt (program_partition): the row's contract is the .dag function
+// v2.test.claim.self_host_contract.program_partition_emitted_contract program_partition_emitted_contract_holds, emitted
+// into the same crate as its subject and called by a driver the harness renders from the roster
+// row; the receipt also runs that contract interpreted, and holds only when both realizations do.
+// The fault run passes inject_fault: true, which a correct module does not hold. It replaced a
+// hand-written Rust driver that no per-change path compiled (gunbc.recurring_failure_mode
+// hand_shim_shadows_an_emitted_module).
 test fn self_host_program_partition_behavioral_receipt_holds() -> Bool {
   compiler_module_behavioral_receipt_for(module_path: "src/v2/compiler/program_partition.dag")
 }

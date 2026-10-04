@@ -2625,6 +2625,62 @@ pub fn run_v2_native_census(source_roots: &[String]) -> Result<NativeCensusRun, 
     })
 }
 
+/// One `census-infer` run of the emitted compiler: its stdout and its exit status (`None` for a
+/// signal). The host decides nothing about either; the reader
+/// (`gunbc.instruments.type_declaration_use_census_reading`) does.
+pub struct CensusInferRun {
+    pub stdout: String,
+    pub status: Option<i32>,
+}
+
+/// The three runs `gunbc test //gunbc/instruments:type-declaration-use-census` reads, over ONE
+/// prepared binary: the fixture root, the unindexed root, and the whole tree. The two control
+/// roots are written by the caller from the reader's own fixture rows, so their contents have one
+/// authority.
+pub struct TypeDeclarationUseRuns {
+    pub fixture: CensusInferRun,
+    pub unindexed: CensusInferRun,
+    pub tree: CensusInferRun,
+}
+
+fn run_census_infer_with(
+    binary: &std::path::Path,
+    roots: &[String],
+) -> Result<CensusInferRun, String> {
+    let mut args = vec!["census-infer".to_string()];
+    args.extend(roots.iter().cloned());
+    let output = Command::new(binary).args(&args).output().map_err(|e| {
+        format!(
+            "TYPE-DECLARATION-USE-CENSUS REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
+            binary.display()
+        )
+    })?;
+    let stdout = String::from_utf8(output.stdout).map_err(|cause| {
+        format!("TYPE-DECLARATION-USE-CENSUS REFUSAL cause=NativeRunStdoutNotUtf8 — {cause}")
+    })?;
+    eprint!("{}", String::from_utf8_lossy(&output.stderr));
+    Ok(CensusInferRun {
+        stdout,
+        status: output.status.code(),
+    })
+}
+
+pub fn run_type_declaration_use_census_runs(
+    source_roots: &[String],
+    fixture_root: &str,
+    unindexed_root: &str,
+) -> Result<TypeDeclarationUseRuns, String> {
+    let preparation = prepare_emitted_compiler(source_roots)?;
+    let fixture = run_census_infer_with(&preparation.binary_path, &[fixture_root.to_string()])?;
+    let unindexed = run_census_infer_with(&preparation.binary_path, &[unindexed_root.to_string()])?;
+    let tree = run_census_infer_with(&preparation.binary_path, source_roots)?;
+    Ok(TypeDeclarationUseRuns {
+        fixture,
+        unindexed,
+        tree,
+    })
+}
+
 /// What the adjudicating run decided, carried out of the body as a value.
 struct NativeRunAdmission {
     admitted: bool,
