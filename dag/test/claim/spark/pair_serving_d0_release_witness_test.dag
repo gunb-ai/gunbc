@@ -12,7 +12,7 @@ import extdeps.systemd { Active }
 import extdeps.nvidia.system_management_interface { UsedMemoryReported }
 import extdeps.linux.proc_net_tcp { TcpSocketRow }
 import gunbc.compute.host_occupancy { HostOccupancyRead, HostOccupancyUnread, ServingUnitActive, GpuComputeProcess }
-import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
+import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_hosts }
 import gunbc.rung_drop { Standing, Retired }
 import gunbc.spark.pair_serving_realization { spark_pair_head_unit_name, spark_pair_worker_unit_name }
@@ -23,7 +23,7 @@ import gunbc.spark.pair_serving_authority {
 }
 import std.scoped_authorization { OperatorGrant, AttemptIdentity, ClaimedBy, authorization_scope_eq, parse_intent_scopes, AuthorizationRequest, authorize, AuthorizationPermitted, AuthorizationRefused }
 import gunbc.spark.pair_serving_d0 { d0_standing_grant_for, d0_binding_text, d0_binding_text_with, D0AuthorizationBasis, D0BasisBroker, D0BasisStandingGrant }
-import gunbc.spark.pair_serving_d0_door { standing_grant_row_judged, d0_honored_standing_grant, StandingGrantRowOnMain, StandingGrantRowNotOnMain, ExecutedGrantRowRead, ExecutedGrantRowUnread }
+import gunbc.spark.pair_serving_d0_door { standing_grant_row_judged, d0_honored_standing_grant, StandingGrantRowOnMain, StandingGrantRowNotOnMain, ExecutedGrantRowRead, ExecutedGrantRowUnread, grant_row_standing_over, grant_row_proof_over, GrantRowBlobRead, GrantRowBlobUnread }
 import gunbc.spark.pair_serving_d0 { D0GrantRowApproved, D0GrantRowUnproven, d0_frozen_filing_text_with, parse_d0_frozen_filing }
 import gunbc.auth.standing_operator_grant { group_a_dev_standing_grant, standing_grant_covers, standing_grant_authorization, StandingArmLaunch }
 import gunbc.spark.pair_serving_d0 {
@@ -400,6 +400,24 @@ test fn rw_the_grant_row_is_honored_only_when_byte_identical_to_main() -> Bool {
     && (match standing_grant_row_judged(executed: "row", executed_read: true, on_main: "", main_read: false, main_stderr: "fatal: path does not exist in origin/main") { StandingGrantRowOnMain => false  StandingGrantRowNotOnMain { cause: c } => string_contains(s: c, pattern: "has not merged") })
     && (match standing_grant_row_judged(executed: "row edited", executed_read: true, on_main: "row", main_read: true, main_stderr: "") { StandingGrantRowOnMain => false  StandingGrantRowNotOnMain { cause: c } => string_contains(s: c, pattern: "differs") })
     && (match standing_grant_row_judged(executed: "", executed_read: false, on_main: "row", main_read: true, main_stderr: "") { StandingGrantRowOnMain => false  StandingGrantRowNotOnMain { cause: _ } => true })
+}
+
+// ONE AUTHORIZATION FACT, ONE READ. The standing is judged over the CAPTURED row: the supplied blob
+// producer sees only the captured content, so a working path that changed after capture -- here back to
+// main's bytes -- cannot rescue a captured row that differs from main, and the proof's digest is always
+// the captured row's. RED: a judgment that hashed the path again would admit the changed row.
+test fn rw_admission_follows_the_captured_row_not_the_path() -> Bool {
+  let blob_of = fn(c) { GrantRowBlobRead { blob: join(["blob(", c, ")"], "") } }
+  let main = GrantRowBlobRead { blob: "blob(main row)" }
+  let captured_changed = ExecutedGrantRowRead { content: "branch-edited row", digest: "sha256:edited" as NonEmptyStr }
+  let captured_main = ExecutedGrantRowRead { content: "main row", digest: "sha256:main" as NonEmptyStr }
+  let changed_standing = grant_row_standing_over(executed: captured_changed, blob_of: blob_of, on_main: main)
+  let main_standing = grant_row_standing_over(executed: captured_main, blob_of: blob_of, on_main: main)
+  (match changed_standing { StandingGrantRowOnMain => false  StandingGrantRowNotOnMain { cause: c } => string_contains(s: c, pattern: "differs") })
+    && (match grant_row_proof_over(executed: captured_changed, standing: changed_standing) { D0GrantRowUnproven => true  D0GrantRowApproved { row_digest: _ } => false })
+    && (match main_standing { StandingGrantRowOnMain => true  StandingGrantRowNotOnMain { cause: _ } => false })
+    && (match grant_row_proof_over(executed: captured_main, standing: main_standing) { D0GrantRowUnproven => false  D0GrantRowApproved { row_digest: d } => d as String == "sha256:main" })
+    && (match grant_row_standing_over(executed: captured_main, blob_of: fn(c) { GrantRowBlobUnread { cause: "witness" } }, on_main: main) { StandingGrantRowOnMain => false  StandingGrantRowNotOnMain { cause: _ } => true })
 }
 
 test fn rw_a_covered_release_is_honored_only_under_a_matching_frozen_proof() -> Bool {
