@@ -103,15 +103,33 @@ test fn a_memory_demand_above_the_target_budget_does_not_fit_holds() -> Bool {
 // THE RUN-TIME WALL PRECEDES THE PRELUDE AND IS BOUND TO ITS LABEL: the generated text carries a guard
 // per declared row, gated on that label's input, refusing with exit 1 below the declared byte count,
 // and the guard runs before the checkout so an under-provisioned runner spends nothing.
+fn step_if(step: Step) -> String {
+  match step {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
+      match c {
+        Present { value: v } => v
+        Absent => ""
+      }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
+      match c {
+        Present { value: v } => v
+        Absent => ""
+      }
+  }
+}
+
 test fn the_memory_guard_is_label_bound_and_precedes_the_prelude_holds() -> Bool {
   let t = generated_text()
-  let names = map(instrument_dispatch_steps(seed: "", guard: "", script: ""), s => step_name(step: s))
+  let steps = instrument_dispatch_steps(seed: "", guard: "", script: "")
+  let names = map(steps, s => step_name(step: s))
   let guard = concat("Require the declared memory for ", render_label(l: v2_native_census_label()))
+  let bound = concat(concat("inputs.label == '", render_label(l: v2_native_census_label())), "'")
   let before_checkout = fold(names, init: "searching", f: fn(acc, n) {
     if acc != "searching" { acc } else { if n == guard { "guard-first" } else { if n == "Checkout" { "checkout-first" } else { acc } } }
   })
-  contains(t, concat(concat("inputs.label == '", render_label(l: v2_native_census_label())), "'"))
-    && contains(t, concat("REQUIRED_MEMORY_BYTES: ", to_string(byte_size_count(b: instrument_dispatch_whole_tree_memory_demand))))
+  any(steps, s => (step_name(step: s) == guard) && (step_if(step: s) == bound))
+    && contains(t, "REQUIRED_MEMORY_BYTES")
+    && contains(t, to_string(byte_size_count(b: instrument_dispatch_whole_tree_memory_demand)))
     && contains(t, "InstrumentMemoryBudgetUnmet")
     && (before_checkout == "guard-first")
 }
