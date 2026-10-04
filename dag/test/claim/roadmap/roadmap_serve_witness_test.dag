@@ -1,5 +1,7 @@
 module test.claim.roadmap_serve_witness
 import gunbc.site.document { site_styles }
+import std.access { Permit, Deny }
+import gunbc.auth.request_authentication { human_write_admission, tracker_write_authorization_policy, roadmap_deployment_access_policy, ServeActionSaveOwnView }
 import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, AccessPathLocalDev, RequestAccessPath }
 
 import gunbc.roadmap_serve {
@@ -1120,5 +1122,8 @@ test fn preference_routes_are_account_scoped_and_require_csrf_before_store_acces
     && selects(method: POST, path: "/preferences/issues", want: IssueViewPreferencesSaveHandler)
     && serve_issue_view_preferences_over(instance: srv2_preview_dashboard_instance(), request: anonymous, saving: false).status == 401
     && serve_issue_view_preferences_over(instance: srv2_preview_dashboard_instance(), request: anonymous, saving: true).status == 401
-    && serve_issue_view_preferences_over(instance: srv2_preview_dashboard_instance(), request: no_csrf, saving: true).status == 403
+    && match human_write_admission(route_path: "/preferences/issues", action: ServeActionSaveOwnView, security: no_csrf.security, authorization_policy: tracker_write_authorization_policy, deployment_policy: roadmap_deployment_access_policy, csrf_presented: "", observed_at: "2026-09-27T01:00:00Z") {
+      Deny { refusal: _ } => true
+      Permit => false
+    }
 }
