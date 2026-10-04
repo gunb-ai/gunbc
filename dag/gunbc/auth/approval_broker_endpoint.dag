@@ -7,8 +7,10 @@ import extdeps.tailscale.serve {
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
 import gunbc.fleet_tailnet { fleet_tailnet_domain, tailnet_base_url_from, tailnet_host_from }
 import gunbc.serve_liveness { serve_liveness_path }
-import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
-import gunbc.host_effect { LocalShell }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized, filesystem_exact_read }
+import extdeps.linux.procfs { procfs_path_literal, ProcSysKernelHostname }
+import std.algebra { trim }
+import v2.std.collection { Present, Absent }
 import gunbc.auth.approval_device_wire { approval_device_request_path_prefix, approval_device_enrollment_path_prefix }
 
 // ── WHERE THE APPROVAL BROKER ANSWERS ────────────────────────────────────────────────────────
@@ -248,15 +250,30 @@ fn approval_broker_public_host_on(host: NonEmptyStr, domain: NonEmptyStr?) -> No
   tailnet_host_from(host: host, domain: domain)
 }
 
-// THE SERVING BROKER'S OWN ADDRESS, received at serve time: the short hostname of the machine the
-// process runs on, which is the host its unit was installed on. An unreadable hostname refuses; it
-// is never replaced by a spelled host.
-fn approval_broker_serving_base_url() -> ApprovalBrokerAddress {
-  match hostname_short_read(transport: LocalShell) {
-    HostnameShortCaptured { value: v } =>
-      if v == "" { ApprovalBrokerAddressRefused { detail: "approval broker address unresolved: the serving host's short hostname read back empty" } }
-      else { ApprovalBrokerAddressResolved { value: approval_broker_base_url_on(host: v as NonEmptyStr, domain: fleet_tailnet_domain) } }
-    HostnameShortCaptureRefused { reason } =>
-      ApprovalBrokerAddressRefused { detail: join(["approval broker address unresolved: the serving host's hostname could not be read: ", reason], "") as NonEmptyStr }
+// THE SERVING BROKER'S OWN ADDRESS, received at serve time: the kernel hostname of the machine the
+// process runs on (extdeps.linux.procfs ProcSysKernelHostname, its first label), which is the host
+// its unit was installed on. A leaf filesystem read rather than gunbc.hostname_read, whose host-effect
+// closure reaches gunbc.live_deploy.spec and would make the broker import its own placement. An
+// unreadable or empty hostname refuses; it is never replaced by a spelled host.
+fn serving_host_of(read: FilesystemExactRead) -> ApprovalBrokerAddress {
+  match read {
+    FilesystemExactPathRead { path: _, content } => {
+      let first = split(s: trim(s: content), delimiter: ".") |> first
+      match first {
+        Present { value: label } =>
+          if label == "" { ApprovalBrokerAddressRefused { detail: "approval broker address unresolved: the serving host's kernel hostname is empty" } }
+          else { ApprovalBrokerAddressResolved { value: approval_broker_base_url_on(host: label as NonEmptyStr, domain: fleet_tailnet_domain) } }
+        Absent => ApprovalBrokerAddressRefused { detail: "approval broker address unresolved: the serving host's kernel hostname is empty" }
+      }
+    }
+    FilesystemExactPathAbsent { path } => ApprovalBrokerAddressRefused { detail: join(["approval broker address unresolved: ", path, " is absent"], "") as NonEmptyStr }
+    FilesystemExactPathUnreadable { path, kind: _, error } => ApprovalBrokerAddressRefused { detail: join(["approval broker address unresolved: ", path, " is unreadable: ", error], "") as NonEmptyStr }
+    FilesystemExactPathKindUnrecognized { path, observed: _, error } => ApprovalBrokerAddressRefused { detail: join(["approval broker address unresolved: ", path, ": ", error], "") as NonEmptyStr }
   }
+}
+
+fn approval_broker_serving_base_url() -> ApprovalBrokerAddress {
+  let path = procfs_path_literal(p: ProcSysKernelHostname) as String
+  let read = Filesystem.Read(path: path)
+  serving_host_of(read: filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind))
 }
