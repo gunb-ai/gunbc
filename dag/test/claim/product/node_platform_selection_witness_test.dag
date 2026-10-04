@@ -25,7 +25,7 @@ import product.node_platform_selection {
   node_power_ceiling_axis,
   assembly_disposition,
 }
-import product.superchip_assembly_qualification { SuperchipAssembly, first_assembly, second_assembly }
+import product.superchip_assembly_qualification { SuperchipAssembly, first_assembly }
 import test.claim.product.superchip_assembly_qualification_witness { fully_read_bench, booted_and_measured }
 
 // THE REAL PATH, executed: the live selection over the cited catalog rows and the operator's
@@ -59,11 +59,11 @@ test fn one_qualified_assembly_satisfies_the_sale_constraint() -> Bool {
     row: first_assembly.row,
     bench: fully_read_bench,
   }
-  let satisfied = match assembly_disposition(assemblies: [second_assembly, qualified]) {
+  let satisfied = match assembly_disposition(assemblies: [first_assembly, qualified]) {
     ConstraintSatisfied { constraint: _, evidence: _ } => true
     _ => false
   }
-  let live_open = match assembly_disposition(assemblies: [first_assembly, second_assembly]) {
+  let live_open = match assembly_disposition(assemblies: [first_assembly]) {
     ConstraintUnestablished { constraint: _, obligation: o } => contains(o as String, "699-2G530-0215-DV5")
     _ => false
   }
@@ -132,7 +132,7 @@ test fn a_gh200_better_on_every_axis_dominates() -> Bool {
       sm_cache_citations: nvidia_gh200_480gb_catalog.gpu.sm_cache_citations,
     },
     cpu_memory: nvidia_gh200_480gb_catalog.cpu_memory,
-    chip_to_chip_bandwidth: nvidia_gh200_480gb_catalog.chip_to_chip_bandwidth,
+    chip_to_chip_bandwidth_per_direction: nvidia_gh200_480gb_catalog.chip_to_chip_bandwidth_per_direction,
     module_power_floor: nvidia_gh200_480gb_catalog.module_power_floor,
     module_power_ceiling: nvidia_gh200_480gb_catalog.module_power_ceiling,
     figure_standing: nvidia_gh200_480gb_catalog.figure_standing,
@@ -163,7 +163,7 @@ test fn an_uncited_gh200_row_cannot_rank() -> Bool {
     cpu_core_clusters: nvidia_gh200_480gb_catalog.cpu_core_clusters,
     gpu: nvidia_gh200_480gb_catalog.gpu,
     cpu_memory: nvidia_gh200_480gb_catalog.cpu_memory,
-    chip_to_chip_bandwidth: nvidia_gh200_480gb_catalog.chip_to_chip_bandwidth,
+    chip_to_chip_bandwidth_per_direction: nvidia_gh200_480gb_catalog.chip_to_chip_bandwidth_per_direction,
     module_power_floor: nvidia_gh200_480gb_catalog.module_power_floor,
     module_power_ceiling: nvidia_gh200_480gb_catalog.module_power_ceiling,
     figure_standing: TranscribedUncited { read_obligation: "datasheet unread" as NonEmptyStr },

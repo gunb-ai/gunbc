@@ -65,7 +65,8 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // '480GB' with '120GB, 240GB' beneath it; memory bandwidth 'Up to 384GB/s' with 'Up to 512GB/s'
 // beneath it; HBM size '96GB HBM3 | 144GB HBM3e'; memory bandwidth 'Up to 4TB/s | Up to 4.9TB/s';
 // 'NVIDIA NVLink-C2C CPU-to-GPU bandwidth 900GB/s'; power 'Configurable 450 to 1000W (Memory + CPU +
-// GPU)'; thermal solution 'Air-cooled or liquid-cooled'.
+// GPU)'; thermal solution 'Air-cooled or liquid-cooled'. Whitepaper Table 1: 'NVLink-C2C bandwidth
+// (GB/s) 900GB/s total, 450GB/s per direction' -- the row carries the per-direction figure.
 //
 // THE LPDDR5X BANDWIDTH IS A ROW-ALIGNMENT READING, stated as one. The datasheet prints two sizes and
 // two bandwidths in one cell each; 384GB/s is carried for the 480GB tier because it is the line beside
@@ -125,7 +126,7 @@ data nvidia_gh200_480gb_catalog: CoherentSuperchipCatalogRow = CoherentSuperchip
     },
     bandwidth: bandwidth(count: 384000000000),
   },
-  chip_to_chip_bandwidth: bandwidth(count: 900000000000),
+  chip_to_chip_bandwidth_per_direction: bandwidth(count: 450000000000),
   module_power_floor: watt(count: 450),
   module_power_ceiling: watt(count: 1000),
   figure_standing: gh200_datasheet_figures_standing,

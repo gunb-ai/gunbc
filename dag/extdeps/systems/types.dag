@@ -76,6 +76,9 @@ fn integrated_compute_system_cpu_core_count(row: IntegratedComputeSystemCatalogR
 // report the small fast tier as the whole pool or the whole pool as fast; both are wrong answers to
 // "will this model's weights decode at HBM speed".
 //
+// The chip-to-chip link is carried PER DIRECTION, because the vendor headline is the bidirectional
+// aggregate and a reader comparing it to a one-way memory bandwidth would double it.
+//
 // The GPU tier is the nested GpuModelCatalogRow (memory + memory_bandwidth), so it is not restated.
 // figure_standing is ON the row rather than beside it so no consumer can read a figure without also
 // reading whether it was cited -- the extdeps.external_authority CitedFigureStanding coproduct.
@@ -92,7 +95,7 @@ type CoherentSuperchipCatalogRow {
   cpu_core_clusters: List<CpuCoreCluster>
   gpu: GpuModelCatalogRow
   cpu_memory: CoherentMemoryTier
-  chip_to_chip_bandwidth: Bandwidth
+  chip_to_chip_bandwidth_per_direction: Bandwidth
   module_power_floor: Watt
   module_power_ceiling: Watt
   figure_standing: CitedFigureStanding

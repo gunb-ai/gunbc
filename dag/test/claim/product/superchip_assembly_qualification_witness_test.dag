@@ -26,9 +26,10 @@ import product.superchip_assembly_qualification {
   UnitGpuTierConsistentWithRow,
   UnitClaimOutsideCatalog,
   first_assembly,
-  second_assembly,
   gh200_dv5_unit,
-  gh200_dv2_80gb_listing,
+  gh200_dv5_second_unit,
+  unpaired_modules,
+  GpuMemoryClaimed,
   p4261_k1_carrier,
 }
 
@@ -46,9 +47,9 @@ test fn the_first_assembly_stands_at_mating_with_the_bench_plan_after_it() -> Bo
       qualification_stage_label(stage: s) == qualification_stage_label(stage: MechanicallyMated)
         && mentions(lines: here, fragment: "consistent at photo grain")
         && mentions(lines: later, fragment: "rev K1")
-        && mentions(lines: later, fragment: "1000 W ceiling")
+        && mentions(lines: later, fragment: "450-1000 W configurable range")
         && mentions(lines: later, fragment: "boot storage")
-        && mentions(lines: later, fragment: "site AC supply")
+        && mentions(lines: later, fragment: "expected 120 V")
     _ => false
   }
 }
@@ -68,21 +69,34 @@ test fn a_gpu_tier_claim_says_nothing_about_lpddr5x() -> Bool {
   consistent && says_so
 }
 
-test fn the_80gb_listing_is_outside_the_catalog() -> Bool {
-  match unit_catalog_match(unit: gh200_dv2_80gb_listing, row: nvidia_gh200_480gb_catalog) {
+test fn a_claim_outside_every_configuration_is_named() -> Bool {
+  let eighty = SuperchipUnitObservation {
+    board_designation: gh200_dv5_unit.board_designation,
+    board_part_number: "699-2G530-0204-DV2",
+    die_marking: gh200_dv5_unit.die_marking,
+    listed_gpu_memory: GpuMemoryClaimed {
+      capacity: gibibyte_to_byte_size(g: gibibyte(count: 80)),
+      memory_kind: nvidia_gh200_480gb_catalog.gpu.memory.memory_kind,
+      as_listed: "80GB HBM2",
+    },
+    mezzanine_face: gh200_dv5_unit.mezzanine_face,
+    measured_inventory: gh200_dv5_unit.measured_inventory,
+    source: "supplied",
+  }
+  match unit_catalog_match(unit: eighty, row: nvidia_gh200_480gb_catalog) {
     UnitClaimOutsideCatalog { as_listed: l } => l == "80GB HBM2"
     _ => false
   }
 }
 
-// The second assembly has neither face photographed, so mating is open on both counts.
-test fn the_second_assembly_owes_both_photographs() -> Bool {
-  match assembly_qualification(a: second_assembly) {
-    AssemblyBlockedAt { stage: _, open_here: here, open_later: _ } =>
-      mentions(lines: here, fragment: "photograph the underside of the 699-2G530-0204-DV2 unit")
-        && mentions(lines: here, fragment: "photograph the module-side face of the P4261 rev H1 carrier")
-    _ => false
-  }
+// As bought: one assembly, and the second DV5 held unpaired rather than invented into an assembly
+// with a carrier that was never bought.
+test fn the_purchase_is_one_assembly_and_one_held_module() -> Bool {
+  count(unpaired_modules) == 1
+    && match unpaired_modules.first() {
+      Present { value: u } => u.board_part_number == gh200_dv5_second_unit.board_part_number
+      Absent => false
+    }
 }
 
 // ── SUPPLIED BENCH VALUES ─────────────────────────────────────────────────────────────────────

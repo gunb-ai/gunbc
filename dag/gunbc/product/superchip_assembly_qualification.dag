@@ -114,28 +114,23 @@ data gh200_dv5_unit: SuperchipUnitObservation = SuperchipUnitObservation {
   source: "eBay item 298619132349, transcribed by the operator 2026-10-03",
 }
 
-// A second listing the operator asked about: "Nvidia GH100 PG530 80GB HBM2 Graphics Accelerator Qual
-// Sample GH100-888K-A1 699-2G530-0204-DV2 B". extdeps.memory.types carries one Hbm kind and does not
-// split HBM generations, so "HBM2" lands as Hbm and the claim is decided by its capacity alone: 80GB is
-// neither of the datasheet's PG530 configurations. as_listed keeps the generation the seller wrote.
-data gh200_dv2_80gb_listing: SuperchipUnitObservation = SuperchipUnitObservation {
-  board_designation: "PG530",
-  board_part_number: "699-2G530-0204-DV2",
-  die_marking: "GH100-888K-A1 QUAL SAMPLE",
-  listed_gpu_memory: GpuMemoryClaimed {
-    capacity: gibibyte_to_byte_size(g: gibibyte(count: 80)),
-    memory_kind: Hbm,
-    as_listed: "80GB HBM2",
-  },
-  mezzanine_face: MezzanineFaceUnobserved {
-    obligation: "photograph the underside of the 699-2G530-0204-DV2 unit" as NonEmptyStr,
-  },
+
+// The operator bought TWO units of this listing (2026-10-04). The second carries the same listing facts
+// and no serial of its own yet, and it has no carrier: it is not an assembly until one is bought, so it
+// is recorded as held rather than paired with anything.
+data gh200_dv5_second_unit: SuperchipUnitObservation = SuperchipUnitObservation {
+  board_designation: gh200_dv5_unit.board_designation,
+  board_part_number: gh200_dv5_unit.board_part_number,
+  die_marking: gh200_dv5_unit.die_marking,
+  listed_gpu_memory: gh200_dv5_unit.listed_gpu_memory,
+  mezzanine_face: gh200_dv5_unit.mezzanine_face,
   measured_inventory: InventoryUnmeasured,
-  source: "eBay listing title transcribed by the operator 2026-10-03; item number not supplied",
+  source: "second unit bought from eBay item 298619132349; its own serial and photographs not yet recorded",
 }
 
 // Read off the seller's photographs: the sticker says "S/N 1582023110038 Model: P4261
-// 694-24261-0000-100 K1 Made In USA" beside a "Rework 180-14261-DAAF-A01" silkscreen. The sticker's
+// 694-24261-0000-100 K1 Made In USA" beside a "Rework 180-14261-DAAF-A01" silkscreen -- a printed
+// marking; whether any rework was performed, and what, is unknown. The sticker's
 // "0000-100" and the listing title's "000-100" differ by a digit; the sticker is what was read, and no
 // consumer keys on the carrier part number. The module face is the two connectors silkscreened J3 and
 // J4, one toward each short edge, each flanked by mounting holes.
@@ -154,20 +149,6 @@ data p4261_k1_carrier: CarrierUnitObservation = CarrierUnitObservation {
   source: "eBay listing 'Nvidia GH200 P4261 694-24261-000-100 K1 Grace Hopper Superchip Dev BaseBoard' (item 157373033242) and its photographs; no NVIDIA document names P4261",
 }
 
-// The second offer: same designation and part number, revision H1. No photographs were supplied, so
-// its face is unobserved rather than assumed equal to K1's -- a revision letter is exactly where a
-// connector or pinout change would hide.
-data p4261_h1_carrier: CarrierUnitObservation = CarrierUnitObservation {
-  carrier_designation: "P4261",
-  carrier_part_number: "694-24261-000-100",
-  revision: "H1",
-  module_face: MezzanineFaceUnobserved {
-    obligation: "photograph the module-side face of the P4261 rev H1 carrier" as NonEmptyStr,
-  },
-  provenance: "listing title only",
-  boot: CarrierBootUnobserved,
-  source: "eBay listing title 'Nvidia GH200 P4261 694-24261-000-100 H1 Grace Hopper Superchip Dev BaseBoard' (item 146879310053)",
-}
 
 
 // ── WHAT A LISTING CLAIM IS CONSISTENT WITH ──────────────────────────────────────────────────
@@ -387,18 +368,18 @@ fn mating_requirement(a: SuperchipAssembly) -> QualificationRequirement {
 fn power_path_obligation(a: SuperchipAssembly) -> String {
   join([
     "the complete power path for carrier ", carrier_label(c: a.carrier),
-    ": rail voltages, connector pinout and orientation, standby rail, enable and power-good signals and sequencing, then AC supply, PSU, any distribution or conversion board and the exact harness, delivering the module's ",
-    to_string(watt_count(w: a.row.module_power_ceiling)), " W ceiling (configurable from ", to_string(watt_count(w: a.row.module_power_floor)),
-    " W) plus carrier, fan and storage load at startup. No authoritative P4261 power-input pinout has been found: obtain the original system's PSU, distribution board and harness part numbers with connection photographs, and connect nothing because its housing fits",
+    ": rail voltages, connector pinout and orientation, standby rail, enable and power-good signals and sequencing, then AC supply, PSU, any distribution or conversion board and the exact harness, sized for this module's startup and default power behavior (not documented for this qualification sample) and the intended operating point within the cited ",
+    to_string(watt_count(w: a.row.module_power_floor)), "-", to_string(watt_count(w: a.row.module_power_ceiling)),
+    " W configurable range plus carrier, fan and storage load. No P4261 power-input pinout or power-on sequence has been established: obtain the original system's PSU, distribution board and harness part numbers with connection photographs, connect nothing because its housing fits, and transfer no controller, pin function, signal level or timing from another NVIDIA platform",
   ], "")
 }
 
 fn thermal_obligation(a: SuperchipAssembly) -> String {
   join([
-    "a thermal assembly with an identified cooling path for every heat region of ", a.unit.board_part_number as String,
-    " -- the lidless Hopper/HBM package, the Grace package and the module power stages -- rated for the ",
-    to_string(watt_count(w: a.row.module_power_ceiling)),
-    " W module ceiling, with its mounting stack, contact heights and interface materials; the datasheet admits air or liquid cooling. Sourcing lead, fit unverified: CoolIT CP-NV-GH200-SUPERCHIP cold-plate series",
+    "a GH200-specific thermal assembly with an identified cooling path for every heat region of ", a.unit.board_part_number as String,
+    " -- the lidless Hopper/HBM package, the Grace package and the module power stages -- sized for the documented startup behavior and the intended operating envelope within the cited ",
+    to_string(watt_count(w: a.row.module_power_floor)), "-", to_string(watt_count(w: a.row.module_power_ceiling)),
+    " W range. Three interfaces to establish: mechanical and thermal (supported module revisions, contact heights, mounting stack, interface materials, preload, any supplementary airflow); liquid connections if liquid-cooled (fitting or quick-disconnect standard, coolant, pressure, flow at the intended inlet temperature, a pump sized against the measured loop resistance); and power and fault control for pumps and fans. The datasheet admits air or liquid cooling. Lead, fit unverified: CoolIT CP-NV-GH200-SUPERCHIP series",
   ], "")
 }
 
@@ -431,14 +412,22 @@ fn inventory_requirement(a: SuperchipAssembly) -> QualificationRequirement {
   }
 }
 
-// THE CONTROLLER CARD LEAD (operator-supplied photographs, 2026-10-04): a separately sold NVIDIA board
-// listed as "GH200控制器" (GH200 controller) -- PCIe x16 edge, a single RJ45, a stacked RJ45 with two
-// USB 3 ports, VGA, an M.2 slot and micro-USB. The P4261 photographs show no network, USB, video or
-// console connector of its own, which makes this card the likely carrier of exactly what the
-// management requirement asks about. That is an inference from what each board lacks and carries, kept
-// as a lead inside the obligation: neither board has been seen connected to the other, and P4261 shows
-// no x16 slot, so the attachment route is part of what is owed.
-data controller_card_lead: String = "Candidate: the separately sold NVIDIA 'GH200 controller' card (PCIe x16 edge, RJ45, RJ45 + 2x USB 3, VGA, M.2, micro-USB), which carries the management, video and console I/O the P4261 photographs lack; owed: which board it mates with, through what cable or riser, and whether the original system used it"
+// THE SITE (operator, 2026-10-04): New York City, expected 120 V. NVIDIA's own MGX GH200 node lists
+// "2x IEC C13 to NMEA 5-15P Power Cables (Standard 15A rated)" as required (GH200 SuperChip MGX System
+// Quick Start Guide, DU-11592-001_04, Table 2), so 120 V operation is NVIDIA-supported for that
+// system -- across TWO supplies on two cords. That is a different carrier and supply than this one, so
+// it frames the question rather than answering it.
+data site_ac_obligation: String = "confirm the outlet voltage and circuit rating at the operator's NYC site (expected 120 V; a 15 A circuit carries 1440 W continuous under the NEC 80% rule) and read the chosen PSU's output rating at 120 V, where server supplies commonly derate; this module's startup and default draw is not documented, so the circuit plan cannot rest on a limit applied by the OS after boot; NVIDIA's MGX GH200 node draws from two NEMA 5-15 cords"
+
+// THE MANAGEMENT LEAD (operator-supplied photographs and a review, 2026-10-04): a separately sold
+// "GH200控制器" (GH200 controller) I/O board, and a listing selling it together with a plug-in module
+// labeled HMC. The P4261 has no network, USB, video or console connector. NVIDIA's MGX GH200 quick
+// start describes a BMC with KVM and Serial-over-LAN and names no HMC, so which part of this pair is
+// the management controller is open. Modular management is a recognized architecture (OCP DC-SCM; a
+// Supermicro GH200 board lists DC-SCM support), which makes the lead plausible without showing that
+// P4261 implements it. Kept as a lead inside the obligation: no part of the pair has been seen
+// connected to a P4261.
+data controller_card_lead: String = "Management dependency unresolved; boot not demonstrated -- the absence of a BMC on the carrier would not establish that the assembly cannot boot, and its presence elsewhere is not yet shown. Candidate: the 'GH200 controller' I/O board (RJ45, RJ45 + 2x USB 3, VGA, M.2, micro-USB) sold together with a separate heatsinked plug-in module labeled HMC (eBay item 398282181791, 'NVIDIA GH200 Controller & HMC Baseboard', no part number, no technical support); the management function may live on the plug-in module with the I/O board as its carrier. Owed: whether the set includes the HMC module and its firmware, which RJ45 serves which function, its power, and the cable and connector family (MCIO or SlimSAS) joining it to the slotless P4261. Do not buy the bare I/O board on the assumption that its RJ45 ports are a complete BMC"
 
 fn assembly_gates(a: SuperchipAssembly) -> List<StageGate> {
   [
@@ -448,7 +437,7 @@ fn assembly_gates(a: SuperchipAssembly) -> List<StageGate> {
     ] },
     StageGate { stage: SafeToEnergize, requirements: [
       bench_requirement(requirement: "power path", reading: a.bench.power_path, obligation: power_path_obligation(a: a)),
-      bench_requirement(requirement: "site AC supply", reading: a.bench.site_ac_supply, obligation: "the AC voltage available where the assembly runs (120, 208 or 240 V) and a circuit rated for its wall draw, with the PSU's output rating read at that input voltage"),
+      bench_requirement(requirement: "site AC supply", reading: a.bench.site_ac_supply, obligation: site_ac_obligation),
       bench_requirement(requirement: "thermal path for every heat region", reading: a.bench.thermal_path, obligation: thermal_obligation(a: a)),
       bench_requirement(requirement: "protective shutdown", reading: a.bench.protective_shutdown, obligation: "over-temperature shutdown, and loss-of-flow shutdown if liquid-cooled, verified before first power-on; default thermal trip settings retained; pumps and fans fed from a verified supply rather than an unidentified carrier header"),
     ] },
@@ -460,7 +449,7 @@ fn assembly_gates(a: SuperchipAssembly) -> List<StageGate> {
     ] },
     StageGate { stage: WorkloadQualified, requirements: [
       bench_requirement(requirement: "module-scope power limit", reading: a.bench.module_power_limit, obligation: "nvidia-smi -q -d POWER reports module-scope readings and a module limit (-sc 1) is accepted and holds under load on this qualification-sample module"),
-      bench_requirement(requirement: "served workload", reading: a.bench.served_workload, obligation: "the target model served at acceptable throughput, with its weight and KV placement across HBM and LPDDR5X observed rather than assumed"),
+      bench_requirement(requirement: "served workload", reading: a.bench.served_workload, obligation: "the target model served at acceptable throughput, with its weight and KV placement across HBM and LPDDR5X observed rather than assumed; a second assembly reached over the network is a separate memory domain, not NVLink peer memory, and two-node behavior is its own demonstration"),
     ] },
   ]
 }
@@ -530,10 +519,10 @@ fn stage_after(a: QualificationStage, b: QualificationStage) -> Bool {
 
 // ── THE PURCHASE ─────────────────────────────────────────────────────────────────────────────
 //
-// Two modules and two carriers, paired for qualification. DV5 on K1 goes first: it is the only pair
-// with BOTH mating faces photographed, and the DV5 listing is the one consistent with the published GPU
-// tier. DV2 on H1 is the second assembly and carries every open question the first one does, plus its
-// own unphotographed faces and an outside-catalog memory claim.
+// As bought (operator, 2026-10-04): two DV5 96GB modules and one P4261 rev K1 carrier. One assembly
+// exists, and it is the one the bench qualifies; the second module waits for a second carrier, which is
+// not bought until this assembly has shown the carrier works. (The 80GB DV2 listing and the H1 carrier
+// were considered and not bought, so they are not modeled.)
 data first_assembly: SuperchipAssembly = SuperchipAssembly {
   unit: gh200_dv5_unit,
   carrier: p4261_k1_carrier,
@@ -541,14 +530,10 @@ data first_assembly: SuperchipAssembly = SuperchipAssembly {
   bench: bench_unread,
 }
 
-data second_assembly: SuperchipAssembly = SuperchipAssembly {
-  unit: gh200_dv2_80gb_listing,
-  carrier: p4261_h1_carrier,
-  row: nvidia_gh200_480gb_catalog,
-  bench: bench_unread,
-}
+data planned_assemblies: List<SuperchipAssembly> = [first_assembly]
 
-data planned_assemblies: List<SuperchipAssembly> = [first_assembly, second_assembly]
+// Modules held with no carrier. A second assembly is planned from these once a carrier is bought.
+data unpaired_modules: List<SuperchipUnitObservation> = [gh200_dv5_second_unit]
 
 fn assembly_report_lines(a: SuperchipAssembly) -> List<String> {
   let head = join([a.unit.board_part_number as String, " on ", carrier_label(c: a.carrier)], "")
@@ -568,6 +553,10 @@ fn assembly_report_lines(a: SuperchipAssembly) -> List<String> {
 //   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/product/superchip_assembly_qualification.dag --function assembly_qualification_report
 // Exit 0 only when some planned assembly is workload-qualified; otherwise exit 1 with every assembly's
 // open requirements, stage by stage.
+fn unpaired_line(u: SuperchipUnitObservation) -> String {
+  join([u.board_part_number as String, ": held, no carrier yet (", u.source as String, ")"], "")
+}
+
 fn assembly_qualification_report() -> ProcessExit {
   let qualified = filter(planned_assemblies, a => match assembly_qualification(a: a) {
     AssemblyWorkloadQualified { evidence: _ } => true
@@ -576,6 +565,6 @@ fn assembly_qualification_report() -> ProcessExit {
   if count(qualified) > 0 {
     ExitSuccess
   } else {
-    exit_failure(reason: join(flat_map(planned_assemblies, a => assembly_report_lines(a: a)), "\n"))
+    exit_failure(reason: join(concat(flat_map(planned_assemblies, a => assembly_report_lines(a: a)), map(unpaired_modules, u => unpaired_line(u: u))), "\n"))
   }
 }
