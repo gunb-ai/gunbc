@@ -1346,20 +1346,30 @@ fn constructor_reference_admission_early_refusal(
 // keeps its ordinary TypeMismatch.
 fn text_crossing_or_type_mismatch_error(expected: Node, got: Node, env: TypeEnv, span: SourceSpan, module_name: String) -> ErrorNode {
   let si = env.source_indices
+  let plain = type_mismatch_error(expected: node_type_shape(n: expected, source_indices: si), got: node_type_shape(n: got, source_indices: si), span: span, module_name: module_name)
   if text_crossing_by_identity(left: expected, right: got, env: env) {
-    let route = match text_representation_by_identity(n: got, env: env) {
-      HostText => "unicode_scalar_unfold"
-      _ => "unicode_scalar_fold"
+    // ONE ARM PER TextRepresentation, NO WILDCARD (zero-ambiguity ruling, via sharp-raven-357 on
+    // #13151): a variant added later must fail this match at compile time rather than be silently
+    // advised to call the fold. A crossing is only reported between two text readings, so the NotText
+    // and Unidentified arms name no route and keep the plain mismatch instead of guessing one.
+    match text_representation_by_identity(n: got, env: env) {
+      HostText => text_crossing_route_error(expected: expected, got: got, route: "unicode_scalar_unfold", si: si, span: span, module_name: module_name)
+      CodePointSequence => text_crossing_route_error(expected: expected, got: got, route: "unicode_scalar_fold", si: si, span: span, module_name: module_name)
+      NotText => plain
+      TextRepresentationUnidentified => plain
     }
-    make_error_node(diagnostic: TextCrossingHasNoImplicitRoute {
-      expected: node_type_shape(n: expected, source_indices: si),
-      got: node_type_shape(n: got, source_indices: si),
-      route: route,
-      span: span
-    }, module_name: module_name)
   } else {
-    type_mismatch_error(expected: node_type_shape(n: expected, source_indices: si), got: node_type_shape(n: got, source_indices: si), span: span, module_name: module_name)
+    plain
   }
+}
+
+fn text_crossing_route_error(expected: Node, got: Node, route: String, si: Map<String, NewlineIndex>, span: SourceSpan, module_name: String) -> ErrorNode {
+  make_error_node(diagnostic: TextCrossingHasNoImplicitRoute {
+    expected: node_type_shape(n: expected, source_indices: si),
+    got: node_type_shape(n: got, source_indices: si),
+    route: route,
+    span: span
+  }, module_name: module_name)
 }
 
 fn type_mismatch_error(expected: String, got: String, span: SourceSpan, module_name: String) -> ErrorNode {
