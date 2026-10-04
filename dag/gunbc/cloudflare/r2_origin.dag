@@ -9,6 +9,7 @@ import extdeps.vendor.cloudflare { cloudflare }
 import extdeps.cloudflare.r2 { R2Jurisdiction, R2JurisdictionDefault }
 import extdeps.cloudflare.r2_lifecycle { R2LifecycleRule }
 import std.measure { second_count }
+import extdeps.object_storage { ObjectPutPrecondition, PutIfAbsent, PutUnconditional }
 import gunbc.fabric.fabric_blob_placement { fabric_cache_blob_prefix, fabric_cache_release }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
@@ -190,6 +191,13 @@ fn bucket_purpose_admission(purpose: BucketPurpose) -> OriginAdmission {
     FabricBootOrigin {} => DigestKeyedBootArtifacts {}
     FabricCacheBlobs {} => KeyAddressedCacheBlobs {}
   }
+}
+
+// THE ADMISSION AS THE PUT'S PRECONDITION (extdeps.object_storage ObjectPutPrecondition): create-only
+// is If-None-Match: *. A compare-and-set population would derive PutIfMatch from the tag it last read,
+// not from its admission, so it does not route through here.
+fn origin_admission_put_precondition(admission: OriginAdmission) -> ObjectPutPrecondition {
+  if origin_admission_is_create_only(admission: admission) { PutIfAbsent } else { PutUnconditional }
 }
 
 // EVERY ADMITTED POPULATION IS WRITE-ONCE, so the PUT is create-only for each: a content-addressed

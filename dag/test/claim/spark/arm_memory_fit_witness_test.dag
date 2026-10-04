@@ -101,7 +101,7 @@ import gunbc.spark.arm_memory_experiment_observed {
   glm_checkpoint_index_mtp_layer_indices, glm_checkpoint_index_routed_experts_per_layer,
   glm_checkpoint_index_census_holds, glm_checkpoint_projection_pending_obligation,
   glm_checkpoint_projection_census_holds, glm_checkpoint_projection_per_rank_bytes,
-  glm_checkpoint_projection_visual_bytes, glm_checkpoint_config_architectures,
+  glm_checkpoint_projection_visual_bytes,
   arm_experiment_kvplan_v2_2026_09_26_loader_transient_plan,
   arm_experiment_kvplan_v2_2026_09_26_fragmentation_churn_plan,
   arm_experiment_kvplan_v2_2026_09_26_loader_runbook,
@@ -118,7 +118,7 @@ import gunbc.spark.arm_memory_experiment_observed {
   ArmPlacementExpertSplit, ArmPlacementReplicated,
   arm_checkpoint_classify, arm_checkpoint_placement_rank_figures, arm_checkpoint_placement_conserved,
 }
-import extdeps.zhipu.glm_5_3_flash { Glm53FlashHybridShape, glm_5_3_flash_hybrid_shape, glm_5_3_flash_native_manifest }
+import extdeps.zhipu.glm_5_3_flash { Glm53FlashHybridShape, glm_5_3_flash_hybrid_shape, glm_5_3_flash_native_manifest, glm_5_3_flash_architecture_class }
 import extdeps.vllm.kv_layout { MambaState, KPoolIndex }
 import extdeps.vllm.sparse_prefill_transient {
   sparse_indexer_prefill_logits_cap_bytes, flashinfer_sparse_workspace_bytes,
@@ -2822,7 +2822,7 @@ test fn w_the_projection_places_evenly_and_the_residue_pins_the_composite_spread
 }
 
 test fn w_the_vision_tower_loads_cited_from_the_config() -> Bool {
-  glm_checkpoint_config_architectures == "Glm5NextForConditionalGeneration"
+  glm_5_3_flash_architecture_class == "Glm5NextForConditionalGeneration"
     && byte_size_count(b: glm_checkpoint_projection_visual_bytes()) < byte_size_count(b: glm_checkpoint_projection_replicated_bytes())
     && string_contains(s: glm_checkpoint_projection_pending_obligation() as String, pattern: "shard headers")
 }

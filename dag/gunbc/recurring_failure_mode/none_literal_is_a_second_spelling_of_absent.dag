@@ -1,0 +1,27 @@
+module gunbc.recurring_failure_mode.none_literal_is_a_second_spelling_of_absent
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data none_literal_is_a_second_spelling_of_absent: RecurringFailureMode = RecurringFailureMode {
+  identity: "none_literal_is_a_second_spelling_of_absent" as NonEmptyStr,
+
+  receipts: [
+    "**the `none` literal is a second spelling of Absent** (INVALID STATE: a `.dag` expression writes `none` where a `T?` value is expected -- `fn nat_ceil_div(..) -> Nat? { if b == 0 { none } .. }`, `Absent => none`, a record field `cost_shape: none` beside `cost_shape: Present { value: .. }`. The seed's dag grammar lists `none` as a reserved literal keyword lowering to the untyped host null (extdeps.languages.dag.syntax `dag_keyword_literals` maps \"none\" to `LitNull`), and v1.compiler.infer `equality_operand_is_presence_literal` reads it as a presence literal equal to Absent. So one concept, v2.std.optional `Absent`, carries two names: a §3 nickname.",
+
+    "HARM: v2 has no Null carrier, and its grammar does not lex `none` as a literal, so every site is an unbound name. In the N7 closure (the import closure of v2.test.claim.parse.expression_bodied_fn_decl_parse_test) 23 modules refused their own native resolve on it, census root R3 (gunbc#13167). A refusing module drops out of the closure index, so every consumer downstream also stops.",
+
+    "THE REWRITE IS NOT YET SOUND (gunbc#13170, first CI run at 58406b4adf): rewriting each N7-closure `none` to `Absent` imported from v2.std.optional broke the seed at 25 if-joins in 13 modules (std.content_hash, std.induction, std.termination, std.keyed_row, extdeps.numeric.base16, extdeps.uri, ...). The `T?` sugar is the seed's KERNEL optional: there `Present { value: x }` is typed as `x` itself, and the untyped `LitNull` joins with any type. v2.std.optional's `Absent` is a DIFFERENT carrier, the coproduct `Optional`, so v1.compiler.infer's ExprIf join refuses it (`if branches resolve to incompatible types: Product(Sha256Digest) vs Coproduct(Optional)`, std.content_hash `sha256_hex_digest`). So `none` names the same CONCEPT as v2.std.optional `Absent`, but in the seed it is the kernel `T?`'s absent value. That is a THIRD carrier of the concept, not a spelling of the second, and the lane withdrew the rewrite.",
+
+    "DISTINGUISHING FACTS: the seed accepts a `T?` function whose one branch is `none` and whose other branch is a bare `T` or `Present { value: .. }`. The same function with `none` rewritten to an imported v2.std.optional `Absent` refuses at the if-join. v2 native resolve refuses the original at the identifier `none` (resolve_reason_unbound_symbol; census root R3, 23 modules of the N7 closure, gunbc#13167).",
+
+    "RUNG FOUND AT: mitigatable -- a located refusal, on the v2 route only, and the seed keeps admitting new `none` sites. CEILING: 4. Once the absent value of `T?` has one carrier and one spelling, the nickname has no constructor.",
+
+    "NEXT-RUNG TRIGGER, as the capability: the `T?` sugar's constructors bind to ONE Optional authority on both routes (the open question of `gunbc.recurring_failure_mode.bare_name_resolved_only_by_the_flat_namespace`), and then the grammar drops the `none` literal (its rows in extdeps.languages.dag.syntax: the literal map, the reserved words, the non-name keywords). SUFFICIENT THAT every corpus `none` can be rewritten to that authority's `Absent` with the seed still accepting it, and that no accepted program on either route can spell the absent value as `none`. The binding decision is the Optional de-fork, routed to the v2 Foundation de-fork program (neat-boar-16) by calm-boar-904 on 2026-10-03. The grammar edit is its consequence.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.std.optional", decl_name: "Optional", field: WholeDeclaration },
+  ],
+}

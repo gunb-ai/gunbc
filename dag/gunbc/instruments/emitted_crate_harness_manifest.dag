@@ -1,7 +1,8 @@
 module tools.emitted_crate_harness_manifest
 
 import std.logic { Bool }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemEstablishedAbsence, FilesystemFileObservation }
+import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import v2.std.text { String }
 
 // A HARNESS MANIFEST IS THE EMITTED MANIFEST PLUS WHAT THE HARNESS ITSELF ADDS, AND NOTHING ELSE.
@@ -27,9 +28,35 @@ type HarnessSeedLinkage
   = SeedLinked { root: String }
   | SeedAbsent
 
+// THREE WORLDS, THREE ARMS. What the emitter wrote into crate_dir is OBSERVED, never guessed from a
+// failed look: the bytes when the file was read, an absence ESTABLISHED by a listing that succeeded
+// and did not name the file, or a typed refusal carrying why the observation could not be made. An
+// unreadable-but-present path is the third world, not an absence claim about the candidate.
+type HarnessEmittedManifestObservation
+  = HarnessEmittedManifestRead { content: String }
+  | HarnessEmittedManifestAbsent(FilesystemEstablishedAbsence)
+  | HarnessEmittedManifestUnobservable { cause: String }
+
+fn harness_emitted_manifest_observation_of(o: FilesystemFileObservation) -> HarnessEmittedManifestObservation {
+  match o {
+    FilesystemFileRead { path: _, content: content } =>
+      HarnessEmittedManifestRead { content: content }
+    FilesystemFileAbsent(e) =>
+      HarnessEmittedManifestAbsent(e)
+    FilesystemFileIndeterminate { cause: c } =>
+      HarnessEmittedManifestUnobservable { cause: c }
+    FilesystemFileObservationsDisagree { path: _, cause: c } =>
+      HarnessEmittedManifestUnobservable { cause: c }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: c } =>
+      HarnessEmittedManifestUnobservable { cause: c }
+  }
+}
+
 type HarnessManifestDerivation
   = HarnessManifestDerived { content: String }
-  | EmittedManifestUnreadable { path: String }
+  | EmittedManifestNotUsable { path: String }
+  | EmittedManifestAbsent { path: String, established: FilesystemEstablishedAbsence }
+  | EmittedManifestUnobservable { path: String, cause: String }
   | HarnessManifestWriteFailed { path: String }
 
 // The emitted package is named by the emission (v1_compiled, or v1_compiler for a pipeline entry);
@@ -67,30 +94,42 @@ fn harness_manifest_over_emitted(emitted: String, target: HarnessCrateTarget, li
   )
 }
 
-// THE DECISION, SEPARATE FROM THE READ THAT FEEDS IT. Whether a harness manifest exists is decided
-// from what the read returned, so a claim can supply that reading instead of performing it. An
-// unread or empty emitted manifest REFUSES: there is no fallback roster to write in its place, so
-// a crate the emitter did not describe is not built under a description the harness made up.
+// THE DECISION, SEPARATE FROM THE OBSERVATION THAT FEEDS IT. Whether a harness manifest is planned
+// is decided from what was observed, so a claim can supply that observation instead of performing
+// it. A read that returned empty bytes is a genuine not-usable fact; an absence established by a
+// succeeded listing is its own world; an observation that could not be made REFUSES with its cause
+// and is never folded into either -- there is no fallback roster to write in their place, so a
+// crate the emitter did not describe is not built under a description the harness made up. The
+// plan's variants are named Plan* because a variant name cannot live in two coproducts: the
+// derivation below carries the same worlds at its own grain, with the path attached.
 type HarnessManifestPlan
   = HarnessManifestPlanned { content: String }
-  | EmittedManifestNotUsable
+  | PlanEmittedNotUsable
+  | PlanEmittedAbsentConfirmed(FilesystemEstablishedAbsence)
+  | PlanEmittedUnobservable { cause: String }
 
 fn plan_harness_manifest(
-  read_succeeded: Bool,
-  emitted: String,
+  emitted: HarnessEmittedManifestObservation,
   target: HarnessCrateTarget,
   linkage: HarnessSeedLinkage
 ) -> HarnessManifestPlan {
-  if !read_succeeded || emitted == "" {
-    EmittedManifestNotUsable
-  } else {
-    HarnessManifestPlanned {
-      content: harness_manifest_over_emitted(emitted: emitted, target: target, linkage: linkage)
-    }
+  match emitted {
+    HarnessEmittedManifestRead { content: content } =>
+      if content == "" {
+        PlanEmittedNotUsable
+      } else {
+        HarnessManifestPlanned {
+          content: harness_manifest_over_emitted(emitted: content, target: target, linkage: linkage)
+        }
+      }
+    HarnessEmittedManifestAbsent(e) =>
+      PlanEmittedAbsentConfirmed(e)
+    HarnessEmittedManifestUnobservable { cause: c } =>
+      PlanEmittedUnobservable { cause: c }
   }
 }
 
-// Reads the manifest the emission wrote into crate_dir and replaces it with the planned one. The
+// Observes the manifest the emission wrote into crate_dir and replaces it with the planned one. The
 // write exists only on the planned arm, so a refusal leaves the directory as the emission left it.
 fn derive_harness_manifest_in_place(
   crate_dir: String,
@@ -98,9 +137,11 @@ fn derive_harness_manifest_in_place(
   linkage: HarnessSeedLinkage
 ) -> HarnessManifestDerivation {
   let path = concat(crate_dir, "/Cargo.toml")
-  let emitted = Filesystem.Read(path: path)
-  match plan_harness_manifest(read_succeeded: emitted.success, emitted: emitted.content, target: target, linkage: linkage) {
-    EmittedManifestNotUsable => EmittedManifestUnreadable { path: path }
+  let observed = harness_emitted_manifest_observation_of(o: filesystem_file_observation_of_path(path: path))
+  match plan_harness_manifest(emitted: observed, target: target, linkage: linkage) {
+    PlanEmittedNotUsable => EmittedManifestNotUsable { path: path }
+    PlanEmittedAbsentConfirmed(e) => EmittedManifestAbsent { path: path, established: e }
+    PlanEmittedUnobservable { cause: c } => EmittedManifestUnobservable { path: path, cause: c }
     HarnessManifestPlanned { content: content } => {
       let written = Filesystem.Write(path: path, content: content)
       if written.success {
@@ -115,7 +156,9 @@ fn derive_harness_manifest_in_place(
 fn harness_manifest_derived(derivation: HarnessManifestDerivation) -> Bool {
   match derivation {
     HarnessManifestDerived { content: _ } => true
-    EmittedManifestUnreadable { path: _ } => false
+    EmittedManifestNotUsable { path: _ } => false
+    EmittedManifestAbsent { path: _, established: _ } => false
+    EmittedManifestUnobservable { path: _, cause: _ } => false
     HarnessManifestWriteFailed { path: _ } => false
   }
 }

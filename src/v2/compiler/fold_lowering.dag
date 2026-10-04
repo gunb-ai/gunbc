@@ -65,7 +65,11 @@ import v2.std.node {
   core_edge_label,
   Found,
   Instantiation,
-  arrow_body_target_lookup
+  arrow_body_target_lookup,
+  Ambiguous,
+  Arrow,
+  Cardinality,
+  Disj
 }
 import v2.std.anonymous_binder { fresh_fold_carrier }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -426,6 +430,7 @@ type FunctionValueBinder {
 type FunctionLiteralBody
   = FunctionLiteralExprBody { expr: Node }
   | FunctionLiteralBlockBody { fn_body: Node }
+  | FunctionLiteralStatementBody { body: Node }
 
 type FunctionValueParts {
   binders: List<FunctionValueBinder>
@@ -533,6 +538,22 @@ fn fv_block_body_optional(expr: Node) -> Optional<Node> {
   }
 }
 
+// AN ARROW LAMBDA'S BODY IS ONE OF THREE KINDS, decided here once from the production it parsed as
+// (v2.extdeps.languages.dag dag_grammar_arrow_lambda_body_expr): an unbraced statement sequence that
+// begins with a let is its own production, lambda_stmt_body, whose captured child is the statement
+// spine every statement sequence lowers through; a braced block is fn_body (fv_block_body_optional);
+// anything else is an expression.
+fn fv_arrow_body(body: Node) -> FunctionLiteralBody {
+  if fv_production_is(node: body, emitted: ^dag_surface_lambda_stmt_body) {
+    FunctionLiteralStatementBody { body: fv_unwrap(node: body) }
+  } else {
+    match fv_block_body_optional(expr: body) {
+      Present { value: fn_body } => FunctionLiteralBlockBody { fn_body: fn_body }
+      Absent => FunctionLiteralExprBody { expr: body }
+    }
+  }
+}
+
 fn fv_production_is(node: Node, emitted: Symbol) -> Bool {
   match parse_production_emitted_identity_optional(node: fv_unwrap(node: node)) {
     Present { value: id } => id == emitted
@@ -556,10 +577,7 @@ fn fv_expr_parts(binders: List<FunctionValueBinder>, after_binders: Node) -> Opt
         value: FunctionValueParts {
           binders: binders,
           return_clause: fv_empty_return_clause(),
-          body: match fv_block_body_optional(expr: expr) {
-            Present { value: fn_body } => FunctionLiteralBlockBody { fn_body: fn_body }
-            Absent => FunctionLiteralExprBody { expr: expr }
-          }
+          body: fv_arrow_body(body: expr)
         }
       }
   }
@@ -793,6 +811,7 @@ fn fold_step_body(parts: FunctionValueParts) -> Optional<Node> {
   match parts.body {
     FunctionLiteralExprBody { expr: e } => optional_present(value: e)
     FunctionLiteralBlockBody { fn_body: b } => parse_production_captured_child_optional(node: fv_unwrap(node: b))
+    FunctionLiteralStatementBody { body: b } => optional_present(value: b)
   }
 }
 

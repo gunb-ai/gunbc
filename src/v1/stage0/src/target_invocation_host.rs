@@ -381,6 +381,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("native-materialization-store-closure"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/native_materialization_store_closure.dag",
+            },
+        ),
+        (
             instrument_label("native-emission-controls"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/native_emission_controls.dag",
@@ -1188,9 +1194,13 @@ fn run_v2_native_census(source_roots: &[String]) -> InvocationOutcome {
         Ok(run) => InvocationOutcome {
             termination: Termination::ObservationHeld,
             message: format!(
-                "v2-native-census: modules={} file_refusals={} residual_rows={} cause_groups={}; \
-                 the rows grouped by fatal reason are the cause_group lines above",
-                run.modules, run.file_refusals, run.residual_rows, run.cause_groups
+                "v2-native-census: modules={} file_refusals={} advised_files={} residual_rows={} \
+                 cause_groups={}; the rows grouped by fatal reason are the cause_group lines above",
+                run.modules,
+                run.file_refusals,
+                run.advised_files,
+                run.residual_rows,
+                run.cause_groups
             ),
         },
         Err(cause) => InvocationOutcome {

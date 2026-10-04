@@ -42,9 +42,9 @@ test fn realization_cause_is_each_chains_fatal_under_a_shared_residue_head_holds
     && (first_located_cause(ds: residue_headed_chain(fatal: ^resolve_reason_unbound_symbol)) == ^resolve_reason_unbound_symbol)
 }
 
-// THE DOOR HISTOGRAM IS ATTRIBUTED AT FATAL GRAIN. A refused row whose cause is owned only at
-// FatalGrain (body_lowering_reason_call_argument_unread has no HeadGrain row) is attributed; the
-// head-grain lookup refused it. An unowned cause still is not.
+// THE DOOR HISTOGRAM IS ATTRIBUTED BY ITS FATAL CAUSE. A refused row whose cause the ownership table
+// carries (body_lowering_reason_call_argument_unread) is attributed; the head-grain lookup step 2
+// replaced refused it. An unowned cause still is not.
 test fn door_ledger_attributes_a_fatal_grain_only_cause_holds() -> Bool {
   all_refused_causes_attributed(rows: [
     DoorLedgerRow { module_path: "a.dag", outcome: DoorRefused { reason: ^body_lowering_reason_call_argument_unread } }
