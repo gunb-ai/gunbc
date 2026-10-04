@@ -13,7 +13,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// Reading: POSIX XCU chapter 2 section 2.8 owns the exit-status rules; exit_code_command_not_found (127) and its siblings (0, 1, 126) are the standard's own table, so the datum is the surface this citation owns.
+// Reading: POSIX XCU chapter 2 section 2.8 owns the command-not-found exit rule; data exit_code_command_not_found (127) transcribes exactly that named rule, so the datum is the surface this citation owns. (Sibling constants 0, 1 and 126 are not all named rules of the cited section and stay unclaimed by this reading.)
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef { declaration: DeclarationRef {
     module_path: "extdeps.process.posix_exit", decl_name: "exit_code_command_not_found", field: WholeDeclaration

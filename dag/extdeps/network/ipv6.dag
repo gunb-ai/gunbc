@@ -16,7 +16,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// Reading: RFC 4291 section 2.5.2 owns the loopback address; ipv6_is_loopback is that rule (::1) as code, so the function is the surface this citation owns.
+// Reading: RFC 4291 section 2.5.3 owns the loopback address; ipv6_is_loopback is that rule (::1) as code, so the function is the surface this citation owns.
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef { declaration: DeclarationRef {
     module_path: "extdeps.network.ipv6", decl_name: "ipv6_is_loopback", field: WholeDeclaration

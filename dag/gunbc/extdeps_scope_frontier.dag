@@ -598,9 +598,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/languages/json/emit.dag",
   "dag/extdeps/process/posix_exit.dag",
   "dag/extdeps/network/ipv6.dag",
-  "dag/extdeps/github/errors.dag",
   "dag/extdeps/github/gists.dag",
-  "dag/extdeps/accessibility/wcag_contrast.dag",
   "dag/extdeps/filesystem/posix.dag",
 ]
 

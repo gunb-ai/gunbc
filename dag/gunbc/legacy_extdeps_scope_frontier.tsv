@@ -1,4 +1,5 @@
 dag/extdeps/access/aws_iam.dag
+dag/extdeps/accessibility/wcag_contrast.dag
 dag/extdeps/access/posix.dag
 dag/extdeps/access/posix_effective_principal.dag
 dag/extdeps/access/posix_effective_principal_read_op.dag
@@ -126,6 +127,7 @@ dag/extdeps/github/checks_contracts.dag
 dag/extdeps/github/checks.dag
 dag/extdeps/github/ci.dag
 dag/extdeps/github/ci_runner.dag
+dag/extdeps/github/errors.dag
 dag/extdeps/github/expressions.dag
 dag/extdeps/github/github_contracts.dag
 dag/extdeps/github/github.dag
