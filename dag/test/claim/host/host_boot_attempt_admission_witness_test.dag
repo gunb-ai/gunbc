@@ -1,6 +1,7 @@
 module test.claim.host_boot_attempt_admission_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.algebra { any }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import v2.std.optional { Present, Absent }
 import extdeps.crypto.hash { sha256_digest }
@@ -9,11 +10,15 @@ import extdeps.ampere.mt_collins_getting_started_guide.dimm_layout { dimm_figure
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_mtcollins1 }
 import gunbc.machine_intake_mtcollins1_power_on_account {
+  AttemptConfigurationReceipt, FirmwareReadBeforeActuation, FirmwareReadbacksNotRecorded,
   ExpectedSockets, ExpectedTopologyNotRecorded, StimulusRequested, NoStimulusRequested, StimulusRequestNotRecorded,
   StimulusAppliedByReceipt, StimulusApplicationNotRecorded, PopulationOperatorAttested, PopulationNotRecorded,
   PopulationLiveObserved, PopulationConflicted,
 }
+import extdeps.bmc.ipmitool_observed_output { ipmitool_hpm_check_bmc0_32 }
+import extdeps.bmc.ipmitool_hpm_check { hpm_check_table_of }
 import gunbc.host_boot_attempt_admission {
+  PrePowerFirmwareUnread, pre_power_firmware_of_hpm_check, attempt_configuration_with_pre_power,
   AttemptReceiptRefusal, ReceiptValidation, ReceiptValidated, ReceiptRefused,
   ReceiptHostHasNoRoute, ReceiptExecutorForAnotherHost, ReceiptExecutorNotOnStoreHost, ReceiptHostUnbound, ReceiptNonceMissing, ReceiptNonceNotSlotSafe, ReceiptHostNotSlotSafe,
   ReceiptPathOutsideReceipts, ReceiptFileUnreadable, ReceiptNotJson, ReceiptSchemaMismatch,
@@ -335,3 +340,24 @@ test fn w_the_mt_collins_roster_is_the_guides_32_connectors_by_socket() -> Bool 
     && any(roster, r => (r.label as String) == "J16" && r.socket == 0)
     && !any(roster, r => (r.label as String) == "25")
 }
+
+// ── THE PRE-POWER FIRMWARE READ, bound to the attempt admission admitted ─────────────────────────
+fn admitted_configuration() -> AttemptConfigurationReceipt {
+  match validate(text: valid_text(), nonce: "n42") {
+    ReceiptValidated { receipt: r } => attempt_configuration_receipt_of(host: operator_host_mtcollins1, source: ConfigurationReceiptAdmitted { receipt: r, slot: "attempt-10-mtcollins1-n42" }, attempt: "run-1")
+    ReceiptRefused { cause: _ } => attempt_configuration_receipt_of(host: operator_host_mtcollins1, source: ConfigurationReceiptNotNamed, attempt: "run-1")
+  }
+}
+
+test fn the_hpm_check_table_is_bound_to_the_admitted_attempt_and_an_unread_one_stays_not_recorded() -> Bool {
+  let read = attempt_configuration_with_pre_power(c: admitted_configuration(), firmware: pre_power_firmware_of_hpm_check(table: hpm_check_table_of(stdout: ipmitool_hpm_check_bmc0_32), source: "ipmitool hpm check"))
+  let read_ok = match read.firmware {
+    FirmwareReadBeforeActuation { attempt: a, source: _, rows: rs } => (a as String) == "n42" && count(rs) == 5 && any(rs, r => (r.component as String) == "APP" && (r.version as String) == "0.32 01112100")
+    FirmwareReadbacksNotRecorded { reason: _ } => false
+  }
+  let unread = attempt_configuration_with_pre_power(c: admitted_configuration(), firmware: PrePowerFirmwareUnread { reason: "hpm check was not read: timeout" })
+  let unread_ok = match unread.firmware {
+    FirmwareReadbacksNotRecorded { reason: r } => string_contains(s: r as String, pattern: "timeout")
+    FirmwareReadBeforeActuation { attempt: _, source: _, rows: _ } => false
+  }
+  read_ok && unread_ok}

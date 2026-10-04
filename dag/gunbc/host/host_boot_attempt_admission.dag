@@ -40,8 +40,9 @@ import gunbc.machine_intake_mtcollins1_power_on_account {
   StimulusRequest, StimulusRequested, NoStimulusRequested, StimulusRequestNotRecorded,
   StimulusApplication, StimulusAppliedByReceipt, StimulusApplicationNotRecorded,
   SocketCpuRow, SlotRow, PopulationReading, PopulationOperatorAttested, PopulationNotRecorded,
-  FirmwareReadbacksNotRecorded,
+  FirmwareReadbacks, FirmwareReadBeforeActuation, FirmwareReadbacksNotRecorded, FirmwareReadbackRow,
 }
+import extdeps.bmc.ipmitool_hpm_check { HpmCheckTable, HpmCheckRead, HpmCheckUpgradeVariant, HpmCheckUnreadable, hpm_version_cell_text }
 
 // THE ADMISSION OF ONE BOOT ATTEMPT'S CONFIGURATION RECEIPT, host-generic over a gunbc.managed_host
 // ManagedHostBinding (docs/plans/power-on-sequence-model.md section 12; Q5 decided by eager-gull-22
@@ -802,7 +803,8 @@ fn boot_attempt_receipt_not_named_reason() -> NonEmptyStr {
   ], "") as NonEmptyStr
 }
 
-data boot_attempt_firmware_frontier: NonEmptyStr = "the pre-power-on firmware readback is slice B2 of docs/plans/power-on-sequence-model.md section 12 and is not read yet"
+// BEFORE THE PRE-POWER READS ARE JOINED (attempt_configuration_with_pre_power), firmware is not recorded.
+data boot_attempt_firmware_frontier: NonEmptyStr = "the pre-power-on firmware readback is joined after admission and was not taken for this attempt"
 
 fn receipt_label(e: ReceiptEvidence) -> NonEmptyStr {
   join([e.path as String, "@", e.commit as String, " (", digest_label(d: e.digest) as String, ")"], "") as NonEmptyStr
@@ -897,5 +899,36 @@ fn cas_store_failure_text(cause: CasStoreFailure) -> String {
     CasSlotObservationRefused { cause: u } => cas_unreadable_slot_detail(cause: u)
     CasGenerationPublicationRefused { detail: d } => d as String
     CasGenerationSpaceExhausted { head: h } => join(["the slot's generation space is exhausted at ", to_string(cas_generation_count(g: h))], "")
+  }
+}
+
+// ── THE PRE-POWER READ, joined to the frozen configuration ──────────────────────────────────────
+// Taken after admission and before actuation, so it belongs to the attempt admission bound.
+type PrePowerFirmware
+  = PrePowerFirmwareRead { source: NonEmptyStr, rows: List<FirmwareReadbackRow> }
+  | PrePowerFirmwareUnread { reason: NonEmptyStr }
+
+// THE ACTIVE CELL OF EVERY COMPONENT, AS RENDERED: the auxiliary bytes have no public decode here.
+fn pre_power_firmware_of_hpm_check(table: HpmCheckTable, source: NonEmptyStr) -> PrePowerFirmware {
+  match table {
+    HpmCheckRead { rows: rs } => PrePowerFirmwareRead { source: source, rows: map(rs, r => FirmwareReadbackRow { component: r.name, version: hpm_version_cell_text(c: r.active) as NonEmptyStr }) }
+    HpmCheckUpgradeVariant { header: h } => PrePowerFirmwareUnread { reason: concat("hpm check printed the upgrade-progress table, not the component properties: ", h as String) as NonEmptyStr }
+    HpmCheckUnreadable { detail: d } => PrePowerFirmwareUnread { reason: concat("hpm check output is unreadable: ", d as String) as NonEmptyStr }
+  }
+}
+
+fn attempt_configuration_with_pre_power(c: AttemptConfigurationReceipt, firmware: PrePowerFirmware) -> AttemptConfigurationReceipt {
+  AttemptConfigurationReceipt {
+    subject: c.subject,
+    attempt: c.attempt,
+    expected: c.expected,
+    requested: c.requested,
+    applied: c.applied,
+    cpus: c.cpus,
+    dimms: c.dimms,
+    firmware: match firmware {
+      PrePowerFirmwareRead { source: src, rows: rs } => FirmwareReadBeforeActuation { attempt: c.attempt, source: src, rows: rs }
+      PrePowerFirmwareUnread { reason: r } => FirmwareReadbacksNotRecorded { reason: r }
+    },
   }
 }
