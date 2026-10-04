@@ -24,7 +24,8 @@ import gunbc.machine_intake_bmc_secure {
   BmcSecureStanding, ManagedCredentialReference, CredentialAccepted, CredentialRejected, CredentialProbeOutcome, RotationApplied,
   PublishedCredentialRetired, observed_bmc_credential_rotation, derive_bmc_secure,
 }
-import gunbc.machine_intake_phase { DevelopmentAndTest, intake_qualification_policy }
+import gunbc.deployment_risk { TestRisk }
+import gunbc.machine_intake_phase { machine_qualification_policy }
 import gunbc.machine_intake_mtcollins1_power_on_account {
   PowerOnAccount, PowerOnEvidence, AttemptConfigurationReceipt, ConsoleRead, HandoffPoweredOn, SelEventsRead, WatchdogUnobserved,
   ExpectedSockets, StimulusRequestNotRecorded, StimulusApplicationNotRecorded, PopulationNotRecorded, FirmwareReadbacksNotRecorded,
@@ -281,7 +282,7 @@ fn reestablished(epoch: Int, previous: Int, managed_accepted: Bool) -> BmcSecure
           published_user: mtcollins1_published_user,
           published_account: PublishedCredentialRetired { evidence: mtcollins1_user2_retire_evidence, observed_at: mtcollins1_user2_retire_at },
         ),
-        policy: intake_qualification_policy(environment: DevelopmentAndTest),
+        policy: machine_qualification_policy(admits: TestRisk),
       ) }
   }
 }
