@@ -1,5 +1,6 @@
 module v2.workflow.floor_cost_debt_admission
 
+import v2.std.algebra { list_reverse }
 import std.types { NonEmptyStr, List }
 
 // TYPED ROSTER ADMISSION FOR THE ENROLMENT MARGIN: AN IDENTITY AND A REASON, NEVER A READING.
@@ -168,7 +169,7 @@ fn floor_cost_debt_typed_admissions() -> List<FloorCostDebtTypedAdmission> {
 }
 
 fn floor_cost_debt_typed_admitted_identities() -> List<String> {
-  reverse(fold(
+  list_reverse(xs: fold(
     floor_cost_debt_typed_admissions(),
     init: [],
     f: fn(acc, row) { concat([row.identity], acc) },
