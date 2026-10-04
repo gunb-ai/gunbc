@@ -1,6 +1,6 @@
 module v2.workflow.floor_pure_producer_share
 
-import std.types { List }
+import std.types { List, Map }
 import std.computation_identity { ComputationIdentity, identity_permits_share }
 import std.cache_interface {
   ByteCapacity, CapacityBounded, ExactLimit, ProviderRetention, ReleasedAtProviderScopeExit,
@@ -17,6 +17,9 @@ import std.materialization_ladder {
 import std.measure { Millisecond, Nanosecond, byte_size, millisecond_count, nanosecond, nanosecond_count }
 import v2.workflow.required_floor { required_floor_new_witness_envelope_ms }
 import v2.std.algebra { any, list_flat_map, list_map }
+import v2.std.collection { empty_map, map_get, map_insert }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.optional { Absent, Present }
 
 // THE CROSS-CLAIM PURE-PRODUCER SHARE -- which pure computations the required floor may fill
 // once and serve to every planned claim that demands them.
@@ -317,12 +320,11 @@ fn closed_demand_decline(
   debt: List<SingleClaimFillDebtModule>,
   reads: List<ClaimConsumerRead>
 ) -> List<ShareDerivationDecline> {
+  let bundle = bundle_decline(claims: claims, reads: reads)
   if identity_permits_share(ci: identity) == false {
     [IdentityGradeNotShareable]
-  } else if length(xs: claims) > 1 && length(xs: unobserved_read_causes(reads: reads)) > 0 {
-    list_map(xs: unobserved_read_causes(reads: reads), f: fn(k) { ConsumerReadUnknown { cause: k } })
-  } else if length(xs: claims) > 1 && length(xs: sole_projections(claims: claims, reads: reads)) > 0 {
-    [BundleOfDisjointProjections { sole_projections: sole_projections(claims: claims, reads: reads) }]
+  } else if length(xs: bundle) > 0 {
+    bundle
   } else if planned_claims == 0 {
     [ReachedByNoPlannedClaim]
   } else if any(xs: refused_names, predicate: fn(r) { r == producer }) {
@@ -369,34 +371,88 @@ fn unobserved_read_causes(reads: List<ClaimConsumerRead>) -> List<ConsumerReadCa
   list_flat_map(xs: reads, f: fn(r) { read_unobserved_cause(read: r.read) })
 }
 
-fn read_demands_field(read: ConsumerRead, field: String) -> Bool {
-  match read {
-    WholeValue => true
-    ProjectedField { field: f } => f == field
-    ConsumerReadUnobserved { cause: _ } => false
-  }
-}
-
-fn claim_demands_field(claim: String, field: String, reads: List<ClaimConsumerRead>) -> Bool {
-  any(xs: reads, predicate: fn(r) { r.claim == claim && read_demands_field(read: r.read, field: field) })
-}
-
-fn projected_field_of(read: ConsumerRead) -> List<String> {
-  match read {
-    WholeValue => []
-    ProjectedField { field: f } => [f]
-    ConsumerReadUnobserved { cause: _ } => []
-  }
-}
-
-// The projected fields exactly one declared claim demands: each is a bundle slice.
-fn sole_projections(claims: List<String>, reads: List<ClaimConsumerRead>) -> List<String> {
-  filter(
-    xs: list_flat_map(xs: reads, f: fn(r) { projected_field_of(read: r.read) }),
-    predicate: fn(field) {
-      length(xs: filter(xs: claims, predicate: fn(c) { claim_demands_field(claim: c, field: field, reads: reads) })) == 1
+// LINEAR IN THE READS (review 75571: DESIGN section 6, a quadratic fold is always fixed). Three
+// passes: the whole-value readers as a set, then per field the projecting claims that are NOT
+// whole-value readers, then each projected field whose demand -- whole readers plus those
+// projecting claims -- is exactly one. The seed emits each (claim, read) once, so a field's
+// projecting rows are distinct claims and a sole field appears once. A refused map lookup always
+// resolves TOWARD DECLINE: an unanswered membership counts the claim as a whole reader (lowering
+// every field's projection count), an unanswered count reads zero -- never toward admission.
+fn whole_value_readers(reads: List<ClaimConsumerRead>) -> Map<String, Bool> {
+  reads |> fold(init: empty_map(), f: fn(acc, r) {
+    match r.read {
+      WholeValue => map_insert(acc, r.claim, true)
+      ProjectedField { field: _ } => acc
+      ConsumerReadUnobserved { cause: _ } => acc
     }
-  )
+  })
+}
+
+fn reads_whole_value(wholes: Map<String, Bool>, claim: String) -> Bool {
+  match map_get(wholes, claim) {
+    Accepted { value: Present { value: _ }, diagnostics: _ } => true
+    Accepted { value: Absent, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn projection_count(counts: Map<String, Int>, field: String) -> Int {
+  match map_get(counts, field) {
+    Accepted { value: Present { value: n }, diagnostics: _ } => n
+    Accepted { value: Absent, diagnostics: _ } => 0
+    Rejected { diagnostics: _ } => 0
+  }
+}
+
+fn sole_projections(reads: List<ClaimConsumerRead>) -> List<String> {
+  let wholes = whole_value_readers(reads: reads)
+  let whole_count = length(xs: filter(xs: reads, predicate: fn(r) {
+    match r.read {
+      WholeValue => true
+      ProjectedField { field: _ } => false
+      ConsumerReadUnobserved { cause: _ } => false
+    }
+  }))
+  let counts = reads |> fold(init: empty_map(), f: fn(acc, r) {
+    match r.read {
+      ProjectedField { field: f } =>
+        if reads_whole_value(wholes: wholes, claim: r.claim) {
+          acc
+        } else {
+          map_insert(acc, f, projection_count(counts: acc, field: f) + 1)
+        }
+      WholeValue => acc
+      ConsumerReadUnobserved { cause: _ } => acc
+    }
+  })
+  list_flat_map(xs: reads, f: fn(r) {
+    match r.read {
+      ProjectedField { field: f } =>
+        if whole_count + projection_count(counts: counts, field: f) == 1 { [f] } else { [] }
+      WholeValue => []
+      ConsumerReadUnobserved { cause: _ } => []
+    }
+  })
+}
+
+// The bundle verdict for one identity, computed ONCE and read by both the guard and the decline
+// row. Empty unless two or more declared claims demand the identity.
+fn bundle_decline(claims: List<String>, reads: List<ClaimConsumerRead>) -> List<ShareDerivationDecline> {
+  if length(xs: claims) < 2 {
+    []
+  } else {
+    let unobserved = unobserved_read_causes(reads: reads)
+    if length(xs: unobserved) > 0 {
+      list_map(xs: unobserved, f: fn(k) { ConsumerReadUnknown { cause: k } })
+    } else {
+      let sole = sole_projections(reads: reads)
+      if length(xs: sole) > 0 {
+        [BundleOfDisjointProjections { sole_projections: sole }]
+      } else {
+        []
+      }
+    }
+  }
 }
 
 // The identity's sole demanding claim, when there is exactly one and it is an ACTIVE debt member;
