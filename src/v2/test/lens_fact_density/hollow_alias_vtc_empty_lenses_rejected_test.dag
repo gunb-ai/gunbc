@@ -21,7 +21,7 @@ data hollow_alias_el_root: Node = Node {
 
 data hollow_alias_el_authority: Node = claim_atom_node(s: ^hollow_alias_el_symbol)
 
-test fn hollow_alias_vtc_empty_lenses_rejected_holds() -> Bool {
+test fn hollow_alias_vtc_empty_lenses_rejected_holds() -> Bool  {
   match validate_then_compile(
     source: claim_resolved_tree_without_declarations(root: hollow_alias_el_root),
     lenses: [],

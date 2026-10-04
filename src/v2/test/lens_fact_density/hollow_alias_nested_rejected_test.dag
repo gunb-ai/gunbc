@@ -32,7 +32,7 @@ data hollow_alias_nested_root: Node = Node {
 
 data hollow_alias_nested_authority: Node = claim_atom_node(s: ^hollow_alias_nested_el_symbol)
 
-test fn hollow_alias_nested_rejected_holds() -> Bool {
+test fn hollow_alias_nested_rejected_holds() -> Bool  {
   match validate_then_compile(
     source: claim_resolved_tree_without_declarations(root: hollow_alias_nested_root),
     lenses: [],

@@ -9,7 +9,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn lens_testgen_shadow_ci_run_receipt_holds() -> Bool {
+test fn lens_testgen_shadow_ci_run_receipt_holds() -> Bool  {
   match testgen_run_receipt_outcome(profile_ref: ^testgen_default_profile_ref) {
     Accepted { value: receipt, diagnostics: _ } =>
       testgen_run_receipt_carries_profile_roster(receipt: receipt)

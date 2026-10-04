@@ -98,7 +98,7 @@ fn orch_retry_probe_facts(key: Node) -> Optional<InferredFacts> {
   optional_absent()
 }
 
-test fn orch_retry_row_direct_emit_accepted_holds() -> Bool {
+test fn orch_retry_row_direct_emit_accepted_holds() -> Bool  {
   match emit(
     tree: InferredTree {
       root: orch_retry_emitted_command,
@@ -160,7 +160,7 @@ fn orch_retry_perturbed_intent() -> PipelineStep {
   }
 }
 
-test fn orch_retry_byte_identical_to_hand_authored_holds() -> Bool {
+test fn orch_retry_byte_identical_to_hand_authored_holds() -> Bool  {
   match orch_emit_step(s: retry_eagain_intent(), medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: dg } =>
       (source.carried == ci_cargo_eagain_retry_core_golden(command: retry_eagain_example_command))
@@ -169,12 +169,12 @@ test fn orch_retry_byte_identical_to_hand_authored_holds() -> Bool {
   }
 }
 
-test fn orch_retry_production_seam_matches_golden_holds() -> Bool {
+test fn orch_retry_production_seam_matches_golden_holds() -> Bool  {
   let produced = ci_cargo_eagain_retry_core(command: retry_eagain_example_command)
   produced == ci_cargo_eagain_retry_core_golden(command: retry_eagain_example_command)
 }
 
-test fn orch_retry_env_value_has_teeth_holds() -> Bool {
+test fn orch_retry_env_value_has_teeth_holds() -> Bool  {
   match orch_emit_step(s: orch_retry_perturbed_intent(), medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: _ } =>
       source.carried != ci_cargo_eagain_retry_core_golden(command: retry_eagain_example_command)
@@ -204,7 +204,7 @@ fn orch_retry_perturbed_exhausted_intent() -> PipelineStep {
   }
 }
 
-test fn orch_retry_exhausted_has_teeth_holds() -> Bool {
+test fn orch_retry_exhausted_has_teeth_holds() -> Bool  {
   match orch_emit_step(s: orch_retry_perturbed_exhausted_intent(), medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: _ } =>
       source.carried != ci_cargo_eagain_retry_core_golden(command: retry_eagain_example_command)
@@ -306,7 +306,7 @@ fn orch_retry_1level_perturbed_intent() -> PipelineStep {
   }
 }
 
-test fn orch_retry_1level_emit_matches_golden_holds() -> Bool {
+test fn orch_retry_1level_emit_matches_golden_holds() -> Bool  {
   match orch_emit_step(s: orch_retry_1level_intent(), medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: dg } =>
       (source.carried == orch_retry_1level_golden()) && (dg == None)
@@ -314,7 +314,7 @@ test fn orch_retry_1level_emit_matches_golden_holds() -> Bool {
   }
 }
 
-test fn orch_retry_1level_emit_has_teeth_holds() -> Bool {
+test fn orch_retry_1level_emit_has_teeth_holds() -> Bool  {
   match orch_emit_step(s: orch_retry_1level_perturbed_intent(), medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: _ } =>
       source.carried != orch_retry_1level_golden()
@@ -322,7 +322,7 @@ test fn orch_retry_1level_emit_has_teeth_holds() -> Bool {
   }
 }
 
-test fn orch_retry_escalation_final_row_emit_holds() -> Bool {
+test fn orch_retry_escalation_final_row_emit_holds() -> Bool  {
   match emit(
     tree: InferredTree {
       root: orch_retry_escalation_final_emitted_command,
@@ -338,7 +338,7 @@ test fn orch_retry_escalation_final_row_emit_holds() -> Bool {
   }
 }
 
-test fn orch_retry_escalation_step_row_emit_holds() -> Bool {
+test fn orch_retry_escalation_step_row_emit_holds() -> Bool  {
   match emit(
     tree: InferredTree {
       root: orch_retry_escalation_step_emitted_command,
@@ -357,7 +357,7 @@ test fn orch_retry_escalation_step_row_emit_holds() -> Bool {
   }
 }
 
-test fn orch_retry_1level_row_direct_emit_accepted_holds() -> Bool {
+test fn orch_retry_1level_row_direct_emit_accepted_holds() -> Bool  {
   match emit(
     tree: InferredTree {
       root: orch_retry_1level_emitted_command,
@@ -438,7 +438,7 @@ fn orch_retry_3level_intent() -> PipelineStep {
 // level1.env (E1) and the final level's LogMatches.pattern. review 43629 — refuse
 // (^orch_emit_retry_multilevel_unsupported) until a faithful N-level template lands.
 
-test fn orch_retry_3level_refused_holds() -> Bool {
+test fn orch_retry_3level_refused_holds() -> Bool  {
   match orch_emit_step(s: orch_retry_3level_intent(), medium: bash_orchestration_emit_medium()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
@@ -491,7 +491,7 @@ fn orch_retry_probe_single_do(r: Run, source: String) -> PipelineStep {
   )
 }
 
-test fn orch_retry_body_multi_step_refused_holds() -> Bool {
+test fn orch_retry_body_multi_step_refused_holds() -> Bool  {
   match orch_emit_step(
     s: orch_retry_probe_with_body(
       steps: [
@@ -522,7 +522,7 @@ test fn orch_retry_body_multi_step_refused_holds() -> Bool {
   }
 }
 
-test fn orch_retry_body_redirect_present_refused_holds() -> Bool {
+test fn orch_retry_body_redirect_present_refused_holds() -> Bool  {
   match orch_emit_step(
     s: orch_retry_probe_single_do(
       r: Run {
@@ -541,7 +541,7 @@ test fn orch_retry_body_redirect_present_refused_holds() -> Bool {
   }
 }
 
-test fn orch_retry_body_capture_present_refused_holds() -> Bool {
+test fn orch_retry_body_capture_present_refused_holds() -> Bool  {
   match orch_emit_step(
     s: orch_retry_probe_single_do(
       r: Run {
@@ -560,7 +560,7 @@ test fn orch_retry_body_capture_present_refused_holds() -> Bool {
   }
 }
 
-test fn orch_retry_changed_log_source_refused_holds() -> Bool {
+test fn orch_retry_changed_log_source_refused_holds() -> Bool  {
   match orch_emit_step(
     s: orch_retry_probe_single_do(
       r: Run {
@@ -579,7 +579,7 @@ test fn orch_retry_changed_log_source_refused_holds() -> Bool {
   }
 }
 
-test fn orch_retry_body_env_present_refused_holds() -> Bool {
+test fn orch_retry_body_env_present_refused_holds() -> Bool  {
   match orch_emit_step(
     s: orch_retry_probe_single_do(
       r: Run {
@@ -598,7 +598,7 @@ test fn orch_retry_body_env_present_refused_holds() -> Bool {
   }
 }
 
-test fn orch_retry_body_env_empty_accepted_holds() -> Bool {
+test fn orch_retry_body_env_empty_accepted_holds() -> Bool  {
   match orch_emit_step(
     s: orch_retry_probe_single_do(
       r: Run {

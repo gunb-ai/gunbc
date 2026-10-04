@@ -11,7 +11,7 @@ data loop_unknown_input: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
-test fn loop_unknown_claim_holds() -> Bool {
+test fn loop_unknown_claim_holds() -> Bool  {
   match cost_lens(n: loop_unknown_input) {
     Violates { diagnostic: _ } => true
     _ => false

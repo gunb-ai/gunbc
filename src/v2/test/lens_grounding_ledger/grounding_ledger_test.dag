@@ -59,25 +59,25 @@ fn decided_by_is_structural(d: DecidedBy) -> Bool {
   }
 }
 
-test fn decode_optional_forces_stay_string() -> Bool {
+test fn decode_optional_forces_stay_string() -> Bool  {
   verdict_is_stay_string_decode_none(
     v: residue_forced_verdict(sibling_decode_optional: true, has_unrecognized_sibling: false)
   )
 }
 
-test fn unrecognized_sibling_forces_stay_string() -> Bool {
+test fn unrecognized_sibling_forces_stay_string() -> Bool  {
   verdict_is_stay_string_unrecognized(
     v: residue_forced_verdict(sibling_decode_optional: false, has_unrecognized_sibling: true)
   )
 }
 
-test fn clean_candidate_routes_to_pending_judge() -> Bool {
+test fn clean_candidate_routes_to_pending_judge() -> Bool  {
   verdict_is_pending_judge(
     v: residue_forced_verdict(sibling_decode_optional: false, has_unrecognized_sibling: false)
   )
 }
 
-test fn residue_is_never_a_reference_verdict() -> Bool {
+test fn residue_is_never_a_reference_verdict() -> Bool  {
   !verdict_is_any_reference(
     v: residue_forced_verdict(sibling_decode_optional: true, has_unrecognized_sibling: false)
   )
@@ -86,7 +86,7 @@ test fn residue_is_never_a_reference_verdict() -> Bool {
     )
 }
 
-test fn structural_entry_residue_verdict_is_stay_string() -> Bool {
+test fn structural_entry_residue_verdict_is_stay_string() -> Bool  {
   verdict_is_stay_string_decode_none(
     v: structural_ledger_entry(
       site_qn: "v2.model.Widget",
@@ -98,7 +98,7 @@ test fn structural_entry_residue_verdict_is_stay_string() -> Bool {
   )
 }
 
-test fn structural_entry_is_decided_by_structural_rule() -> Bool {
+test fn structural_entry_is_decided_by_structural_rule() -> Bool  {
   decided_by_is_structural(
     d: structural_ledger_entry(
       site_qn: "v2.model.Link",

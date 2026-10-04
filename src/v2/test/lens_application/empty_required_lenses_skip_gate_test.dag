@@ -48,7 +48,7 @@ fn non_empty_diagnostics_contain_reason(d: NonEmptyDiagnostics, reason: Symbol) 
   }
 }
 
-test fn empty_required_lenses_skip_gate_claim_holds() -> Bool {
+test fn empty_required_lenses_skip_gate_claim_holds() -> Bool  {
   match validate_then_compile(
     source: fixture_add_resolved_tree(),
     lenses: [],

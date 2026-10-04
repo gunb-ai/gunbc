@@ -86,23 +86,23 @@ fn ci_floor_peak_pre_reset_perturbed_if() -> PipelineStep {
   }
 }
 
-test fn ci_floor_peak_locate_emit_matches_golden_holds() -> Bool {
+test fn ci_floor_peak_locate_emit_matches_golden_holds() -> Bool  {
   ci_cgroup_peak_locate_shell() == ci_floor_peak_locate_golden
 }
 
-test fn ci_floor_peak_pre_emit_matches_golden_holds() -> Bool {
+test fn ci_floor_peak_pre_emit_matches_golden_holds() -> Bool  {
   ci_floor_peak_pre_script() == ci_floor_peak_pre_golden
 }
 
-test fn ci_floor_peak_post_emit_matches_golden_holds() -> Bool {
+test fn ci_floor_peak_post_emit_matches_golden_holds() -> Bool  {
   ci_floor_peak_post_script() == ci_floor_peak_post_golden
 }
 
-test fn ci_floor_component_receipts_emit_matches_golden_holds() -> Bool {
+test fn ci_floor_component_receipts_emit_matches_golden_holds() -> Bool  {
   ci_floor_component_receipts_script() == ci_floor_component_receipts_golden
 }
 
-test fn ci_floor_peak_pre_emit_has_teeth_holds() -> Bool {
+test fn ci_floor_peak_pre_emit_has_teeth_holds() -> Bool  {
   match orch_emit_pipeline(p: ci_floor_peak_pre_perturbed_pipeline(), medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: _ } =>
       source.carried != ci_floor_peak_pre_golden
@@ -110,7 +110,7 @@ test fn ci_floor_peak_pre_emit_has_teeth_holds() -> Bool {
   }
 }
 
-test fn ci_floor_peak_pre_reset_if_has_teeth_holds() -> Bool {
+test fn ci_floor_peak_pre_reset_if_has_teeth_holds() -> Bool  {
   match orch_emit_pipeline(
     p: Pipeline {
       steps: [ci_floor_peak_pre_reset_perturbed_if()],

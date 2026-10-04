@@ -1,6 +1,6 @@
 module v2.test.language_model.rust_r1
 
-test fn rust_r1_fixture_pair_wired() -> Bool {
+test fn rust_r1_fixture_pair_wired() -> Bool  {
   rust_r1_fixture().claim_id == leaf_model_claim_rust_r1_i32_surface_spelling
     && rust_r1_fixture().surface_spelling_fact == ^rust_surface_spelling_i32
     && rust_r1_fixture().coercion_spelling_fact == ^rust_coercion_field_i32_spelling
@@ -25,11 +25,11 @@ data rust_r1_verification_run_receipt_default: LeafModelVerificationRunReceipt =
   )
 }
 
-test fn rust_r1_verification_receipt_claim_id_wired() -> Bool {
+test fn rust_r1_verification_receipt_claim_id_wired() -> Bool  {
   rust_r1_verification_run_receipt_default.claim_id == leaf_model_claim_rust_r1_i32_surface_spelling
 }
 
-test fn rust_r1_fixture_pair_carries_rust_dag_fact_anchors() -> Bool {
+test fn rust_r1_fixture_pair_carries_rust_dag_fact_anchors() -> Bool  {
   rust_r1_fixture().surface_spelling_fact == ^rust_surface_spelling_i32
     && rust_r1_fixture().coercion_spelling_fact == ^rust_coercion_field_i32_spelling
 }

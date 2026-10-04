@@ -64,7 +64,7 @@ fn red_claim() -> TestClaim {
   }
 }
 
-test fn adequate_when_every_mutation_has_a_discriminating_witness() -> Bool {
+test fn adequate_when_every_mutation_has_a_discriminating_witness() -> Bool  {
   let coverage = [
     MutationCoverage {
       mutation: StructureMutation { mutated: ^drop_input_edge },
@@ -74,7 +74,7 @@ test fn adequate_when_every_mutation_has_a_discriminating_witness() -> Bool {
   return is_adequate(coverage: coverage)
 }
 
-test fn surviving_mutation_is_inadequate() -> Bool {
+test fn surviving_mutation_is_inadequate() -> Bool  {
   let coverage = [
     MutationCoverage {
       mutation: StructureMutation { mutated: ^drop_input_edge },

@@ -19,7 +19,7 @@ data synthesis_exp_x: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
-test fn exponential_dominates_polynomial_claim_holds() -> Bool {
+test fn exponential_dominates_polynomial_claim_holds() -> Bool  {
   symbolic_cost_dominates(
     a: ExponentialCost {
       variable: SizeVariable { source: synthesis_exp_x },

@@ -28,18 +28,18 @@ data private_importer_facts: List<ModuleVisibilityFact> = [
   ModuleVisibilityFact { module: mod_private_impl, public: false, imports: [mod_unknown_dep] }
 ]
 
-test fn leak_caught_public_imports_private() -> Bool {
+test fn leak_caught_public_imports_private() -> Bool  {
   visibility_leak_count(facts: red_facts) == 1
 }
 
-test fn clean_public_imports_public() -> Bool {
+test fn clean_public_imports_public() -> Bool  {
   visibility_clean(facts: green_facts)
 }
 
-test fn failclosed_unknown_import_is_leak() -> Bool {
+test fn failclosed_unknown_import_is_leak() -> Bool  {
   visibility_leak_count(facts: failclosed_facts) == 1
 }
 
-test fn private_importer_may_depend_on_anything() -> Bool {
+test fn private_importer_may_depend_on_anything() -> Bool  {
   visibility_clean(facts: private_importer_facts)
 }

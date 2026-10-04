@@ -79,7 +79,7 @@ data depth_three_expected_root: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
-test fn substitute_at_depth_three_claim_holds() -> Bool {
+test fn substitute_at_depth_three_claim_holds() -> Bool  {
   match substitute_at(
     root: depth_three_root,
     path: Path {

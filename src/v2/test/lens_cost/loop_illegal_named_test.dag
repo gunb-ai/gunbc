@@ -44,7 +44,7 @@ data loop_illegal_named_input: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
-test fn loop_illegal_named_claim_holds() -> Bool {
+test fn loop_illegal_named_claim_holds() -> Bool  {
   match cost_lens(n: loop_illegal_named_input) {
     Violates { diagnostic: d } => d.reason == ^cardinality_loop_bound_malformed
     _ => false

@@ -66,11 +66,11 @@ fn bounded_summation_expr_authority() -> Bool {
   bounded_summation_is_representable() && bounded_summation_projects_to_linear()
 }
 
-test fn bounded_summation_expr_authority_holds() -> Bool {
+test fn bounded_summation_expr_authority_holds() -> Bool  {
   bounded_summation_expr_authority()
 }
 
-test fn zero_body_loop_projects_to_zero_red_control() -> Bool {
+test fn zero_body_loop_projects_to_zero_red_control() -> Bool  {
   match normalize_cost_expr_to_symbolic(
     expr: cost_loop_expr(
       binder: bounded_summation_binder,
@@ -84,7 +84,7 @@ test fn zero_body_loop_projects_to_zero_red_control() -> Bool {
   }
 }
 
-test fn existing_cost_lens_kernel_unchanged() -> Bool {
+test fn existing_cost_lens_kernel_unchanged() -> Bool  {
   match cost_lens(n: bounded_summation_bound_leaf) {
     Holds { value: actual } => actual == zero_cost()
     _ => false

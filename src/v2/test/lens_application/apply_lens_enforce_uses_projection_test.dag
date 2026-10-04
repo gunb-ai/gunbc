@@ -104,7 +104,7 @@ data projection_test_declaration: DeclarationId = DeclarationId {
   path: Path { steps: [Authored { name: ^projection_section_step }] }
 }
 
-test fn apply_lens_enforce_projection_claim_holds() -> Bool {
+test fn apply_lens_enforce_projection_claim_holds() -> Bool  {
   match apply_lens_enforce(
     enforceable: projection_test_enforceable,
     section: DeclarationScope { declaration: projection_test_declaration },

@@ -13,6 +13,6 @@ data kernel_ambient_bool_input: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
-test fn kernel_ambient_bool_claim_holds() -> Bool {
+test fn kernel_ambient_bool_claim_holds() -> Bool  {
   carrier_spec_fact(carrier: kernel_ambient_bool_input) == KernelAmbientAtom
 }

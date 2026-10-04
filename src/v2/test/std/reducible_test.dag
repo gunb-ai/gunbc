@@ -15,14 +15,14 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn classify_leaf_empty_is_unknown() -> Bool {
+test fn classify_leaf_empty_is_unknown() -> Bool  {
   verdict_eq(
     a: classify_leaf(witness: ""),
     b: Unknown { missing: "witness" }
   )
 }
 
-test fn classify_leaf_named_is_irreducible() -> Bool {
+test fn classify_leaf_named_is_irreducible() -> Bool  {
   verdict_eq(
     a: classify_leaf(witness: "grounded-atom"),
     b: Irreducible { witness: "grounded-atom" }
@@ -72,14 +72,14 @@ data witness_reduce_verdicts_located_RED: Bool = verdict_eq(
   b: Reduced { last_parts: 9 }
 )
 
-test fn reducible_verdict_eq_holds() -> Bool {
+test fn reducible_verdict_eq_holds() -> Bool  {
   verdict_eq_discriminates_variants()
 }
 
-test fn reducible_reduce_verdicts_located_holds() -> Bool {
+test fn reducible_reduce_verdicts_located_holds() -> Bool  {
   reduce_verdicts_located_unknown_latch_holds()
 }
 
-test fn reducible_reduce_verdicts_located_RED() -> Bool {
+test fn reducible_reduce_verdicts_located_RED() -> Bool  {
   witness_reduce_verdicts_located_RED == false
 }

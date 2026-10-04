@@ -146,21 +146,21 @@ data receipts_narrow: List<EnrollmentDiscoveryReceipt> = [synthetic_receipt_narr
 data receipts_redfail: List<EnrollmentDiscoveryReceipt> = [synthetic_receipt_redfail]
 data receipts_witness_only: List<EnrollmentDiscoveryReceipt> = [synthetic_receipt_witness_only]
 
-test fn subjects_leg_discriminates() -> Bool {
+test fn subjects_leg_discriminates() -> Bool  {
   return leg_holds(l: intent_family_verdict(intent: synthetic_intent_with_subject, contracts: synthetic_contracts, receipts: receipts_good).subjects_covered)
     && leg_fails(l: intent_family_verdict(intent: synthetic_intent_missing_subject, contracts: synthetic_contracts, receipts: receipts_good).subjects_covered)
 }
 
-test fn permuted_segment_subject_does_not_cover() -> Bool {
+test fn permuted_segment_subject_does_not_cover() -> Bool  {
   return leg_fails(l: intent_family_verdict(intent: synthetic_intent_permuted_subject, contracts: synthetic_contracts, receipts: receipts_good).subjects_covered)
     && leg_holds(l: intent_family_verdict(intent: synthetic_intent_with_subject, contracts: synthetic_contracts, receipts: receipts_good).subjects_covered)
 }
 
-test fn gate_passes_a_fully_consistent_intent() -> Bool {
+test fn gate_passes_a_fully_consistent_intent() -> Bool  {
   return intent_family_holds(intent: synthetic_intent, contracts: synthetic_contracts, receipts: receipts_good)
 }
 
-test fn audit_only_contract_reds_claimed_leg_but_keeps_per_leg_diagnostics() -> Bool {
+test fn audit_only_contract_reds_claimed_leg_but_keeps_per_leg_diagnostics() -> Bool  {
   let v = intent_family_verdict(intent: synthetic_intent, contracts: synthetic_contracts_audit_only, receipts: receipts_good)
   return leg_fails(l: v.claimed)
     && leg_holds(l: v.scope_covered)
@@ -170,33 +170,33 @@ test fn audit_only_contract_reds_claimed_leg_but_keeps_per_leg_diagnostics() -> 
     && leg_holds(l: v.self_application)
 }
 
-test fn narrowed_scope_reds_scope_leg_only() -> Bool {
+test fn narrowed_scope_reds_scope_leg_only() -> Bool  {
   return leg_holds(l: intent_family_verdict(intent: synthetic_intent, contracts: synthetic_contracts, receipts: receipts_narrow).claimed)
     && leg_fails(l: intent_family_verdict(intent: synthetic_intent, contracts: synthetic_contracts, receipts: receipts_narrow).scope_covered)
     && leg_holds(l: intent_family_verdict(intent: synthetic_intent, contracts: synthetic_contracts, receipts: receipts_narrow).live_consumer)
 }
 
-test fn receipt_red_fail_overrides_the_claim() -> Bool {
+test fn receipt_red_fail_overrides_the_claim() -> Bool  {
   return leg_fails(l: intent_family_verdict(intent: synthetic_intent, contracts: synthetic_contracts, receipts: receipts_redfail).red_control)
     && !intent_family_holds(intent: synthetic_intent, contracts: synthetic_contracts, receipts: receipts_redfail)
 }
 
-test fn blocking_contract_without_live_consumer_is_inconsistent() -> Bool {
+test fn blocking_contract_without_live_consumer_is_inconsistent() -> Bool  {
   return !contract_internally_consistent(c: synthetic_contract, receipts: receipts_witness_only)
     && contract_internally_consistent(c: synthetic_contract, receipts: receipts_good)
     && contract_internally_consistent(c: synthetic_contract_audit_only, receipts: receipts_witness_only)
 }
 
-test fn blocking_registry_with_witness_only_receipt_fails_consistency() -> Bool {
+test fn blocking_registry_with_witness_only_receipt_fails_consistency() -> Bool  {
   return !blocking_consumers_enrolled(contracts: synthetic_contracts, receipts: receipts_witness_only)
     && blocking_consumers_enrolled(contracts: synthetic_contracts_audit_only, receipts: receipts_witness_only)
 }
 
-test fn all_standing_intents_are_admissible() -> Bool {
+test fn all_standing_intents_are_admissible() -> Bool  {
   return all_intents_admissible(intents: standing_intent_registry)
 }
 
-test fn consumer_requirement_discriminates() -> Bool {
+test fn consumer_requirement_discriminates() -> Bool  {
   return !consumer_satisfies(actual: WitnessOnly, required: v2.lens.enforcement.vocab.Exact { kind: EnrolledInFloorRoster })
     && consumer_satisfies(actual: EnrolledInFloorRoster, required: v2.lens.enforcement.vocab.Exact { kind: EnrolledInFloorRoster })
     && consumer_satisfies(actual: MergeAdmission, required: AnyLiveConsumer)
@@ -204,7 +204,7 @@ test fn consumer_requirement_discriminates() -> Bool {
     && consumer_satisfies(actual: MergeAdmission, required: OneOf { acceptable: [EnrolledInFloorRoster, MergeAdmission] })
 }
 
-test fn enforcement_mode_order_discriminates() -> Bool {
+test fn enforcement_mode_order_discriminates() -> Bool  {
   return !enforcement_mode_satisfies(actual: AuditOnly, required: v2.lens.enforcement.vocab.Blocking)
     && enforcement_mode_satisfies(actual: v2.lens.enforcement.vocab.Blocking, required: AuditOnly)
 }

@@ -82,6 +82,6 @@ fn apply_lens_mode_gate_is_advisory_in_introspect() -> Bool {
   }
 }
 
-test fn apply_lens_introspect_rejection_is_advisory_claim_holds() -> Bool {
+test fn apply_lens_introspect_rejection_is_advisory_claim_holds() -> Bool  {
   apply_lens_mode_gate_rejects_enforce() && apply_lens_mode_gate_is_advisory_in_introspect()
 }

@@ -17,6 +17,6 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 // that stops reaching verdicts reddens here first.
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn native_route_positive_population_smoke() -> Bool {
+test fn native_route_positive_population_smoke() -> Bool  {
   true
 }

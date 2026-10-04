@@ -32,7 +32,7 @@ data ambiguous_duplicate_name_root: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
-test fn subterm_at_ambiguous_duplicate_name_claim_holds() -> Bool {
+test fn subterm_at_ambiguous_duplicate_name_claim_holds() -> Bool  {
   match subterm_at(
     root: ambiguous_duplicate_name_root,
     path: Path { steps: [Authored { name: ^ambiguous_dup_step }] }

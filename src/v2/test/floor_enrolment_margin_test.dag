@@ -135,7 +135,7 @@ fn standing_kind(s: EnrolmentMarginStanding) -> String {
 // ceiling it was built to sit inside -- permanently green by construction against the population it
 // exists for, which DESIGN section 4b calls worse than absent because it would still be cited as
 // coverage. This witness is the guard: the budget must be STRICTLY BELOW the ceiling.
-test fn the_enrolment_budget_is_strictly_below_the_ceiling() -> Bool {
+test fn the_enrolment_budget_is_strictly_below_the_ceiling() -> Bool  {
   millisecond_count(m: floor_enrolment_margin_budget_ms())
     < millisecond_count(m: required_floor_per_subject_cpu_line_ms())
 }
@@ -145,7 +145,7 @@ test fn the_enrolment_budget_is_strictly_below_the_ceiling() -> Bool {
 // `tools.floor_cost_distribution_instrument` `floor_cost_envelope_report` over TWELVE green main
 // runs across THREE hosts on 398 identities at identical eval_steps. The sample size is stated
 // here as it is at every other site that names the percentile.
-test fn the_enrolment_budget_is_the_derived_p90_clean_run_figure() -> Bool {
+test fn the_enrolment_budget_is_the_derived_p90_clean_run_figure() -> Bool  {
   millisecond_count(m: floor_enrolment_margin_budget_ms()) == 302
     && millisecond_count(
          m: implied_clean_run_budget(
@@ -163,7 +163,7 @@ test fn the_enrolment_budget_is_the_derived_p90_clean_run_figure() -> Bool {
 // one of the fifteen interrupts sitting between 501ms and 521ms against that 500ms line. This
 // witness goes RED if the gate is deleted, if its budget is widened back to the ceiling, or if the
 // comparison is written the wrong way round. No other witness in this module discriminates that.
-test fn a_row_under_the_ceiling_but_over_the_margin_is_refused_at_enrolment() -> Bool {
+test fn a_row_under_the_ceiling_but_over_the_margin_is_refused_at_enrolment() -> Bool  {
   let reading = observed(cpu_ms: 450)
   millisecond_count(m: millisecond(count: 450)) < millisecond_count(m: required_floor_per_subject_cpu_line_ms())
     && standing_kind(s: standing_of(reading: reading)) == "over-margin"
@@ -173,7 +173,7 @@ test fn a_row_under_the_ceiling_but_over_the_margin_is_refused_at_enrolment() ->
 // THE POSITIVE CONTROL. An ordinary witness -- the measured per-identity median is ~1ms -- is
 // admitted, and the gate reports it as measured and inside the margin rather than merely not
 // blocking. Without this arm the module could pass by refusing everything.
-test fn an_ordinary_row_well_under_the_margin_is_admitted() -> Bool {
+test fn an_ordinary_row_well_under_the_margin_is_admitted() -> Bool  {
   let s = standing_of(reading: observed(cpu_ms: 1))
   standing_kind(s: s) == "within-margin"
     && !enrolment_margin_standing_blocks(standing: s)
@@ -182,7 +182,7 @@ test fn an_ordinary_row_well_under_the_margin_is_admitted() -> Bool {
 
 // THE BOUNDARY IS AT THE BUDGET AND IS INCLUSIVE, stated by execution rather than left to a reader
 // of the comparison operator. A row exactly AT 302ms is admitted; one millisecond above it is not.
-test fn the_margin_boundary_admits_the_budget_and_refuses_one_above_it() -> Bool {
+test fn the_margin_boundary_admits_the_budget_and_refuses_one_above_it() -> Bool  {
   standing_kind(s: standing_of(reading: observed(cpu_ms: 302))) == "within-margin"
     && standing_kind(s: standing_of(reading: observed(cpu_ms: 303))) == "over-margin"
 }
@@ -191,7 +191,7 @@ test fn the_margin_boundary_admits_the_budget_and_refuses_one_above_it() -> Bool
 // witness nobody timed and a witness timed at 840ms are different states with different remedies.
 // gunbc#10946 is the live specimen -- its v2-native job was cancelled, so its identities carried no
 // measurement at all.
-test fn an_unmeasured_identity_is_refused_and_not_confused_with_a_slow_one() -> Bool {
+test fn an_unmeasured_identity_is_refused_and_not_confused_with_a_slow_one() -> Bool  {
   let absent = standing_of(
     reading: EnrolmentCostAbsent {
       witness_identity: "v2.test.parse.where_refinement_clause_parse.where_refinement_clause_parses_and_is_carried_holds",
@@ -208,7 +208,7 @@ test fn an_unmeasured_identity_is_refused_and_not_confused_with_a_slow_one() -> 
 // ABSENCE IS NOT A ZERO, WHICH IS THE ARM THAT WOULD MAKE THE GATE FAIL OPEN. A zero-cost default
 // for an unmeasured identity would classify it "within-margin" and admit it silently -- the
 // absorbing fallback in its most ordinary costume. The two must not agree.
-test fn an_unmeasured_identity_does_not_classify_as_a_zero_cost_one() -> Bool {
+test fn an_unmeasured_identity_does_not_classify_as_a_zero_cost_one() -> Bool  {
   standing_kind(
     s: standing_of(
          reading: EnrolmentCostAbsent { witness_identity: "fixture.unmeasured", cause: "no_claim_cost_row" }
@@ -219,7 +219,7 @@ test fn an_unmeasured_identity_does_not_classify_as_a_zero_cost_one() -> Bool {
 // A CENSORED ROW BLOCKS ON ITS OWN ARM, AND ITS BOUND IS NEVER REPORTED AS A COST. Its cause is
 // distinct from the measured-over cause because the remedies differ: an exact 450ms row is told to
 // reduce its cost, while a censored row has no upper bound at all and may be arbitrarily worse.
-test fn a_censored_row_blocks_under_its_own_cause() -> Bool {
+test fn a_censored_row_blocks_under_its_own_cause() -> Bool  {
   let s = standing_of(reading: censored(lower_bound_ms: 514, ceiling_ms: 500))
   standing_kind(s: s) == "ceiling-censored"
     && enrolment_margin_standing_blocks(standing: s)
@@ -234,7 +234,7 @@ test fn a_censored_row_blocks_under_its_own_cause() -> Bool {
 // come out refusing, with a cause distinct from BOTH `enrolment_not_measured` (there IS a
 // reading, so "produce a measurement" is the wrong remedy) and `enrolment_censored_at_ceiling`
 // (no CPU ceiling is armed, so there is nothing to report beside the bound).
-test fn a_bound_with_no_ceiling_blocks_under_a_cause_distinct_from_both_neighbours() -> Bool {
+test fn a_bound_with_no_ceiling_blocks_under_a_cause_distinct_from_both_neighbours() -> Bool  {
   let s = standing_of(reading: bound_without_ceiling(lower_bound_ms: 514))
   let cens = enrolment_margin_blocking_cause(standing: standing_of(reading: censored(lower_bound_ms: 514, ceiling_ms: 500)))
   let miss = enrolment_margin_blocking_cause(
@@ -250,7 +250,7 @@ test fn a_bound_with_no_ceiling_blocks_under_a_cause_distinct_from_both_neighbou
 // THE THREE BLOCKING CAUSES ARE THREE DISTINCT STRINGS. A shared cause would offer the rerun that
 // discharges none of them, which is the defect `v2.workflow.floor_changed_witness` records for its
 // own blocker shape.
-test fn the_blocking_causes_are_pairwise_distinct() -> Bool {
+test fn the_blocking_causes_are_pairwise_distinct() -> Bool  {
   let over = enrolment_margin_blocking_cause(standing: standing_of(reading: observed(cpu_ms: 450)))
   let cens = enrolment_margin_blocking_cause(standing: standing_of(reading: censored(lower_bound_ms: 514, ceiling_ms: 500)))
   let miss = enrolment_margin_blocking_cause(
@@ -262,7 +262,7 @@ test fn the_blocking_causes_are_pairwise_distinct() -> Bool {
 // THE FOLD'S POSITIVE CONTROL: no newly enrolled identities is the ordinary case for the
 // overwhelming majority of changes, and it must leave the required context green with no
 // projection lines at all.
-test fn a_change_that_enrols_nothing_blocks_nothing() -> Bool {
+test fn a_change_that_enrols_nothing_blocks_nothing() -> Bool  {
   count(enrolment_margin_blockers(rows: [])) == 0
 }
 
@@ -273,7 +273,7 @@ test fn a_change_that_enrols_nothing_blocks_nothing() -> Bool {
 // fold returns empty, which is a failure on the WRONG AXIS: it reports a type error where the
 // claim is about which rows survive. Folding to a string reds as a plain inequality for every
 // wrong population -- empty, longer, reordered, or right-length-wrong-cause.
-test fn the_fold_reports_only_blocking_rows_with_their_causes() -> Bool {
+test fn the_fold_reports_only_blocking_rows_with_their_causes() -> Bool  {
   let blockers = enrolment_margin_blockers(rows: [
     EnrolmentMarginRow { identity: "fixture.cheap", standing: standing_of(reading: observed(cpu_ms: 1)) },
     EnrolmentMarginRow { identity: "fixture.over", standing: standing_of(reading: observed(cpu_ms: 450)) },
@@ -289,7 +289,7 @@ test fn the_fold_reports_only_blocking_rows_with_their_causes() -> Bool {
 // ranges over the discovery roots, so a wholly-added test file outside those roots is selectable
 // and undeclarable. Refusing it here would demand a measurement that no edit to the witness could
 // ever produce.
-test fn an_identity_the_runner_withheld_is_not_refused_by_this_gate() -> Bool {
+test fn an_identity_the_runner_withheld_is_not_refused_by_this_gate() -> Bool  {
   let s = standing_of(
     reading: EnrolmentNotPlanned {
       witness_identity: "outside.roots.some_witness_holds",
@@ -304,7 +304,7 @@ test fn an_identity_the_runner_withheld_is_not_refused_by_this_gate() -> Bool {
 // THE TWO ABSENCES STAY DISTINCT, which is the whole content of the repair. A planned identity
 // that produced no measurement still blocks; a withheld identity does not, because the two have
 // different remedies and only one of them is reachable by editing the witness.
-test fn a_withheld_identity_and_an_unmeasured_planned_one_are_different_standings() -> Bool {
+test fn a_withheld_identity_and_an_unmeasured_planned_one_are_different_standings() -> Bool  {
   let withheld = standing_of(
     reading: EnrolmentNotPlanned {
       witness_identity: "outside.roots.some_witness_holds",
@@ -324,7 +324,7 @@ test fn a_withheld_identity_and_an_unmeasured_planned_one_are_different_standing
 
 // THE FOLD DOES NOT CARRY A WITHHELD ROW INTO THE BLOCKING POPULATION. Stated over the fold and
 // not only over the predicate, because the fold is what the merge gate actually reads.
-test fn the_fold_omits_withheld_rows_and_keeps_over_margin_ones() -> Bool {
+test fn the_fold_omits_withheld_rows_and_keeps_over_margin_ones() -> Bool  {
   let blockers = enrolment_margin_blockers(rows: [
     EnrolmentMarginRow {
       identity: "outside.roots.withheld",
@@ -345,7 +345,7 @@ test fn the_fold_omits_withheld_rows_and_keeps_over_margin_ones() -> Bool {
 // HALF ONE: DECLARED EXPENSIVENESS IS CONSUMED FROM
 // `enrolment_expensiveness_declaration`, NOT FROM THE STRING ROSTER. Long home at 325ms
 // does not block here. IT IS NOT AN EXEMPTION.
-test fn a_declared_identity_measured_over_the_margin_does_not_block_here() -> Bool {
+test fn a_declared_identity_measured_over_the_margin_does_not_block_here() -> Bool  {
   let s = standing_declared(
     reading: observed(cpu_ms: 325),
     identity: "fixture.declared_over_margin",
@@ -359,7 +359,7 @@ test fn a_declared_identity_measured_over_the_margin_does_not_block_here() -> Bo
 // POSITIVE CONTROL: the same 325ms reading with NO declaration still refuses over the margin.
 // This is what keeps the arm from being an exemption wearing a typed name: undeclared new
 // witnesses at the specimen cost remain refused.
-test fn an_undeclared_identity_at_325ms_still_refuses_over_the_margin() -> Bool {
+test fn an_undeclared_identity_at_325ms_still_refuses_over_the_margin() -> Bool  {
   let s = standing_of(reading: observed(cpu_ms: 325))
   standing_kind(s: s) == "over-margin"
     && enrolment_margin_standing_blocks(standing: s)
@@ -368,7 +368,7 @@ test fn an_undeclared_identity_at_325ms_still_refuses_over_the_margin() -> Bool 
 // EXECUTION JOIN STILL COMES FIRST. A withheld identity with a declaration is still this
 // gate's deferral, never a declared-expensiveness standing — consulting the declaration
 // before the join would rebuild review 64022 one gate over.
-test fn a_declared_identity_the_runner_withheld_stays_outside_this_runs_execution() -> Bool {
+test fn a_declared_identity_the_runner_withheld_stays_outside_this_runs_execution() -> Bool  {
   let s = standing_declared(
     reading: EnrolmentNotPlanned {
       witness_identity: "outside.roots.declared_holds",
@@ -384,7 +384,7 @@ test fn a_declared_identity_the_runner_withheld_stays_outside_this_runs_executio
 // A DECLARED ROW THAT REACHES NO VERDICT IS NON-BLOCKING HERE AND STILL COUNTED ELSEWHERE.
 // This gate mirrors ChangedCostDebtVerdictOnly: the CPU figure is reported and decides
 // nothing. Wall deadline and semantic red are unaffected because they are not this match.
-test fn a_declared_identity_with_no_measurement_does_not_block_at_enrolment() -> Bool {
+test fn a_declared_identity_with_no_measurement_does_not_block_at_enrolment() -> Bool  {
   let s = standing_declared(
     reading: EnrolmentCostAbsent {
       witness_identity: "fixture.declared_unmeasured",
@@ -399,7 +399,7 @@ test fn a_declared_identity_with_no_measurement_does_not_block_at_enrolment() ->
 
 // THE CENSORED READING UNDER A DECLARATION, SAME POLARITY. Composition with changed-witness
 // is the host control `a_declared_identity_censored_at_the_cpu_ceiling_still_stops_the_run`.
-test fn a_declared_identity_censored_at_the_ceiling_does_not_block_at_enrolment() -> Bool {
+test fn a_declared_identity_censored_at_the_ceiling_does_not_block_at_enrolment() -> Bool  {
   let s = standing_declared(
     reading: censored(lower_bound_ms: 500, ceiling_ms: 500),
     identity: "fixture.declared_cpu_censored",
@@ -411,7 +411,7 @@ test fn a_declared_identity_censored_at_the_ceiling_does_not_block_at_enrolment(
 
 // STRING-ROSTER MEMBERSHIP DOES NOT DECLARE AT ENROLMENT. The ungated identity-string
 // chunks cannot mint EnrolmentExpensivenessIsDeclared (review 65637 / review 65665).
-test fn a_string_roster_hold_does_not_declare_at_enrolment() -> Bool {
+test fn a_string_roster_hold_does_not_declare_at_enrolment() -> Bool  {
   match enrolment_expensiveness_declaration(
     witness_identity: "fixture.tripwire_325",
     typed_admission_holds: false,
@@ -423,7 +423,7 @@ test fn a_string_roster_hold_does_not_declare_at_enrolment() -> Bool {
   }
 }
 
-test fn a_long_home_declares_at_enrolment_even_when_a_string_roster_line_exists() -> Bool {
+test fn a_long_home_declares_at_enrolment_even_when_a_string_roster_line_exists() -> Bool  {
   match enrolment_expensiveness_declaration(
     witness_identity: "fixture.long_home_and_string",
     typed_admission_holds: false,
@@ -440,7 +440,7 @@ test fn a_long_home_declares_at_enrolment_even_when_a_string_roster_line_exists(
   }
 }
 
-test fn typed_admission_is_the_only_roster_ground_at_enrolment() -> Bool {
+test fn typed_admission_is_the_only_roster_ground_at_enrolment() -> Bool  {
   match enrolment_expensiveness_declaration(
     witness_identity: "fixture.typed_501",
     typed_admission_holds: true,
@@ -457,7 +457,7 @@ test fn typed_admission_is_the_only_roster_ground_at_enrolment() -> Bool {
   }
 }
 
-test fn the_pairing_hole_is_exhaustive_over_standing() -> Bool {
+test fn the_pairing_hole_is_exhaustive_over_standing() -> Bool  {
   match enrolment_unpaired_pairing_hole(
     standing: standing_of(reading: observed(cpu_ms: 1))
   ) {
@@ -505,7 +505,7 @@ fn roster_standing(reading: EnrolmentCostReading) -> EnrolmentMarginStanding {
 
 // Re-homed from the constructor's "above the ceiling is admitted": a live reading strictly over
 // the line keeps the admission.
-test fn a_roster_admission_over_the_line_stays_declared() -> Bool {
+test fn a_roster_admission_over_the_line_stays_declared() -> Bool  {
   let s = roster_standing(reading: observed(cpu_ms: 501))
   standing_kind(s: s) == "expensiveness-declared"
     && !enrolment_margin_standing_blocks(standing: s)
@@ -514,7 +514,7 @@ test fn a_roster_admission_over_the_line_stays_declared() -> Bool {
 // Re-homed from the gunbc#10994 tripwire, at the boundary the line straddle moved it to: a reading
 // at or under the line applied once more to the runner envelope cannot hold a Roster admission even
 // on a p90-slow runner. It is stale, blocks, and says the row must delete.
-test fn a_roster_admission_at_the_envelope_floor_is_stale_and_blocks() -> Bool {
+test fn a_roster_admission_at_the_envelope_floor_is_stale_and_blocks() -> Bool  {
   let s = roster_standing(reading: observed(cpu_ms: floor_enrolment_roster_envelope_floor_ms_count()))
   standing_kind(s: s) == "roster-ground-stale"
     && enrolment_margin_standing_blocks(standing: s)
@@ -524,7 +524,7 @@ test fn a_roster_admission_at_the_envelope_floor_is_stale_and_blocks() -> Bool {
 // THE LINE STRADDLE (gunbc#12800): the line itself is not over the line, so it is a fast runner's
 // reading of a member a p90-slow runner reads over it -- typed, named, not blocking -- and one past
 // the line is declared.
-test fn a_roster_admission_exactly_at_the_line_is_within_the_runner_envelope() -> Bool {
+test fn a_roster_admission_exactly_at_the_line_is_within_the_runner_envelope() -> Bool  {
   let at = roster_standing(reading: observed(cpu_ms: line_count()))
   standing_kind(s: at) == "roster-ground-within-runner-envelope"
     && !enrolment_margin_standing_blocks(standing: at)
@@ -536,14 +536,14 @@ test fn a_roster_admission_exactly_at_the_line_is_within_the_runner_envelope() -
 
 // The specimen: an_interrupted_attempts_dead_hold_is_recovered_by_the_next_one read 466 ms on srv4 in
 // merge-group run 36793281217 and 523-582 ms on srv1/srv3; 466 holds its row, one past the floor holds.
-test fn a_roster_admission_just_over_the_envelope_floor_is_within_the_runner_envelope() -> Bool {
+test fn a_roster_admission_just_over_the_envelope_floor_is_within_the_runner_envelope() -> Bool  {
   standing_kind(s: roster_standing(reading: observed(cpu_ms: 466))) == "roster-ground-within-runner-envelope"
     && standing_kind(s: roster_standing(reading: observed(cpu_ms: floor_enrolment_roster_envelope_floor_ms_count() + 1))) == "roster-ground-within-runner-envelope"
 }
 
 // THE ROSTER FLOOR IS DERIVED, STRICTLY BETWEEN ZERO AND THE LINE: the line applied once more to the
 // same measured envelope, through the same implied_clean_run_budget the margin uses.
-test fn the_roster_envelope_floor_is_derived_from_the_line_and_the_envelope() -> Bool {
+test fn the_roster_envelope_floor_is_derived_from_the_line_and_the_envelope() -> Bool  {
   floor_enrolment_roster_envelope_floor_ms_count() > 0
     && floor_enrolment_roster_envelope_floor_ms_count() < line_count()
     && floor_enrolment_roster_envelope_floor_ms_count() == millisecond_count(m: implied_clean_run_budget(ceiling_ms: required_floor_per_subject_cpu_line_ms(), inflation_permille: floor_enrolment_margin_envelope_permille()))
@@ -551,7 +551,7 @@ test fn the_roster_envelope_floor_is_derived_from_the_line_and_the_envelope() ->
 
 // ONLY A DECLARED COST-DEBT ROW REACHES IT: the same 466 undeclared is decided by the margin and
 // refuses, and a dead-band row reading over the line is still the wrong ground.
-test fn the_line_envelope_is_reachable_only_through_a_typed_cost_debt_row() -> Bool {
+test fn the_line_envelope_is_reachable_only_through_a_typed_cost_debt_row() -> Bool  {
   let undeclared = enrolment_margin_standing(
     reading: observed(cpu_ms: 466),
     budget_ms: floor_enrolment_margin_budget_ms(),
@@ -568,7 +568,7 @@ test fn the_line_envelope_is_reachable_only_through_a_typed_cost_debt_row() -> B
 // the control: the same absent reading is still only reported there (the declared drop
 // `long_home_enrolment_margin_observed_only`), so this row is the Roster arm and not a global
 // change.
-test fn a_roster_admission_with_no_reading_is_not_measured() -> Bool {
+test fn a_roster_admission_with_no_reading_is_not_measured() -> Bool  {
   let absent = EnrolmentCostAbsent {
     witness_identity: "fixture.roster",
     cause: "no_claim_cost_row_for_a_planned_identity",
@@ -584,14 +584,14 @@ test fn a_roster_admission_with_no_reading_is_not_measured() -> Bool {
 
 // Re-homed from "a bound with no ceiling mints nothing" and "a censored row at the ceiling is
 // admitted": a lower bound establishes expensiveness only if the bound itself clears the line.
-test fn a_roster_admission_with_a_bound_over_the_line_stays_declared() -> Bool {
+test fn a_roster_admission_with_a_bound_over_the_line_stays_declared() -> Bool  {
   standing_kind(s: roster_standing(reading: bound_without_ceiling(lower_bound_ms: 514))) == "expensiveness-declared"
     && standing_kind(s: roster_standing(reading: censored(lower_bound_ms: 514, ceiling_ms: 500))) == "expensiveness-declared"
 }
 
 // Re-homed from "a 1ms censored reading against the 500ms ceiling is refused": a bound at or under
 // the line proves nothing, so it blocks under the same arm an undeclared identity would get.
-test fn a_roster_admission_with_a_bound_under_the_line_blocks_on_its_own_arm() -> Bool {
+test fn a_roster_admission_with_a_bound_under_the_line_blocks_on_its_own_arm() -> Bool  {
   let b = roster_standing(reading: bound_without_ceiling(lower_bound_ms: 1))
   let c = roster_standing(reading: censored(lower_bound_ms: 1, ceiling_ms: 1))
   standing_kind(s: b) == "bound-without-ceiling"
@@ -612,12 +612,12 @@ fn line_count() -> Int {
   millisecond_count(m: required_floor_per_subject_cpu_line_ms())
 }
 
-test fn a_dead_band_reading_just_over_the_margin_is_observed_not_blocking() -> Bool {
+test fn a_dead_band_reading_just_over_the_margin_is_observed_not_blocking() -> Bool  {
   let s = dead_band(reading: observed(cpu_ms: floor_enrolment_margin_budget_ms_count() + 1))
   standing_kind(s: s) == "expensiveness-declared" && !enrolment_margin_standing_blocks(standing: s)
 }
 
-test fn a_dead_band_reading_at_the_line_is_observed_not_blocking() -> Bool {
+test fn a_dead_band_reading_at_the_line_is_observed_not_blocking() -> Bool  {
   let s = dead_band(reading: observed(cpu_ms: line_count()))
   standing_kind(s: s) == "expensiveness-declared" && !enrolment_margin_standing_blocks(standing: s)
 }
@@ -625,21 +625,21 @@ test fn a_dead_band_reading_at_the_line_is_observed_not_blocking() -> Bool {
 // A FAST RUNNER'S READING OF A BAND MEMBER: at or under the margin but above the envelope floor the
 // row holds with a typed standing that names both bounds and does not block -- the specimen is two
 // matrix cases read at 332/339 ms on one CI run and 294/294 ms on the next (gunbc#12533).
-test fn a_dead_band_reading_at_the_margin_is_within_the_runner_envelope() -> Bool {
+test fn a_dead_band_reading_at_the_margin_is_within_the_runner_envelope() -> Bool  {
   let s = dead_band(reading: observed(cpu_ms: floor_enrolment_margin_budget_ms_count()))
   standing_kind(s: s) == "dead-band-within-runner-envelope"
     && !enrolment_margin_standing_blocks(standing: s)
     && enrolment_margin_standing_name(standing: s) == "dead_band_within_runner_envelope"
 }
 
-test fn a_dead_band_reading_just_over_the_envelope_floor_is_within_the_runner_envelope() -> Bool {
+test fn a_dead_band_reading_just_over_the_envelope_floor_is_within_the_runner_envelope() -> Bool  {
   let s = dead_band(reading: observed(cpu_ms: floor_enrolment_dead_band_envelope_floor_ms_count() + 1))
   standing_kind(s: s) == "dead-band-within-runner-envelope" && !enrolment_margin_standing_blocks(standing: s)
 }
 
 // SELF-STALING, LOW SIDE: at or under the envelope floor -- under the margin even on a p90-slow
 // runner -- the row is stale and blocks, naming its deletion.
-test fn a_dead_band_reading_at_the_envelope_floor_is_stale_and_blocks() -> Bool {
+test fn a_dead_band_reading_at_the_envelope_floor_is_stale_and_blocks() -> Bool  {
   let s = dead_band(reading: observed(cpu_ms: floor_enrolment_dead_band_envelope_floor_ms_count()))
   standing_kind(s: s) == "dead-band-stale"
     && enrolment_margin_standing_blocks(standing: s)
@@ -648,7 +648,7 @@ test fn a_dead_band_reading_at_the_envelope_floor_is_stale_and_blocks() -> Bool 
 
 // THE FLOOR IS DERIVED, AND IT SITS STRICTLY BETWEEN ZERO AND THE MARGIN: it is the margin applied
 // once more to the same measured envelope, so it cannot be a decoration at either end.
-test fn the_envelope_floor_is_strictly_inside_the_margin() -> Bool {
+test fn the_envelope_floor_is_strictly_inside_the_margin() -> Bool  {
   floor_enrolment_dead_band_envelope_floor_ms_count() > 0
     && floor_enrolment_dead_band_envelope_floor_ms_count() < floor_enrolment_margin_budget_ms_count()
 }
@@ -656,7 +656,7 @@ test fn the_envelope_floor_is_strictly_inside_the_margin() -> Bool {
 // THE DISCRIMINATING RED: the envelope standing is reachable ONLY through a dead-band row. The same
 // under-margin-but-over-floor reading is an ordinary admission undeclared, and an undeclared reading
 // over the margin still refuses -- the new standing admits no genuinely over-margin claim.
-test fn an_undeclared_reading_over_the_margin_still_refuses() -> Bool {
+test fn an_undeclared_reading_over_the_margin_still_refuses() -> Bool  {
   let s = enrolment_margin_standing(
     reading: observed(cpu_ms: floor_enrolment_margin_budget_ms_count() + 1),
     budget_ms: floor_enrolment_margin_budget_ms(),
@@ -669,7 +669,7 @@ test fn an_undeclared_reading_over_the_margin_still_refuses() -> Bool {
 }
 
 // SELF-STALING, HIGH SIDE: above the line the ground is wrong and it blocks.
-test fn a_dead_band_reading_over_the_line_is_the_wrong_ground_and_blocks() -> Bool {
+test fn a_dead_band_reading_over_the_line_is_the_wrong_ground_and_blocks() -> Bool  {
   let s = dead_band(reading: observed(cpu_ms: line_count() + 1))
   standing_kind(s: s) == "dead-band-wrong-ground"
     && enrolment_margin_standing_blocks(standing: s)
@@ -678,7 +678,7 @@ test fn a_dead_band_reading_over_the_line_is_the_wrong_ground_and_blocks() -> Bo
 
 // Only an EXACT reading can hold the band: a lower bound or a censored reading, and an absent one,
 // keep the blocking result an undeclared identity with the same reading gets.
-test fn a_dead_band_lower_bound_or_absence_still_blocks() -> Bool {
+test fn a_dead_band_lower_bound_or_absence_still_blocks() -> Bool  {
   let bound = dead_band(reading: bound_without_ceiling(lower_bound_ms: floor_enrolment_margin_budget_ms_count() + 1))
   let censor = dead_band(reading: censored(lower_bound_ms: floor_enrolment_margin_budget_ms_count() + 1, ceiling_ms: line_count()))
   let absent = dead_band(reading: EnrolmentCostAbsent { witness_identity: "fixture.dead_band", cause: "no_row" })
@@ -687,7 +687,7 @@ test fn a_dead_band_lower_bound_or_absence_still_blocks() -> Bool {
     && standing_kind(s: absent) == "not-measured" && enrolment_margin_standing_blocks(standing: absent)
 }
 
-test fn the_dead_band_ground_is_selected_only_by_its_own_authority() -> Bool {
+test fn the_dead_band_ground_is_selected_only_by_its_own_authority() -> Bool  {
   let dead = enrolment_expensiveness_declaration(witness_identity: "fixture.dead_band", typed_admission_holds: false, long_home_holds: false, dead_band_holds: true)
   let typed_first = enrolment_expensiveness_declaration(witness_identity: "fixture.both", typed_admission_holds: true, long_home_holds: false, dead_band_holds: true)
   (match dead {
@@ -704,7 +704,7 @@ test fn the_dead_band_ground_is_selected_only_by_its_own_authority() -> Bool {
 // app_attest_verifier_enrolment_dead_band_observed_only, then the mtcollins1 boot matrix's list,
 // whose own drop (gunbc.rung_drop mtcollins1_boot_matrix_enrolment_dead_band_observed_only) derives
 // its population from it. A third list, or an identity reaching the gate from anywhere else, is red.
-test fn the_dead_band_authority_names_exactly_the_two_app_attest_claims() -> Bool {
+test fn the_dead_band_authority_names_exactly_the_two_app_attest_claims() -> Bool  {
   map(app_attest_verifier_enrolment_dead_band_observed_only(), o => o.identity) == [
     "test.claim.app_attest_verifier_witness_test.the_key_id_step_admits_the_real_key_and_reds_on_another_key_id",
     "test.claim.app_attest_verifier_witness_test.the_sample_assertion_passes_rp_id_and_refuses_on_absent_extensions",

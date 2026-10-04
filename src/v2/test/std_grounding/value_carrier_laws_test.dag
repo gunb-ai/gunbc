@@ -21,47 +21,47 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn sharing_unobservable_list_holds() -> Bool {
+test fn sharing_unobservable_list_holds() -> Bool  {
   let shared = [1, 2, 3]
   let aliased = concat(shared, shared)
   let fresh = [1, 2, 3, 1, 2, 3]
   aliased == fresh
 }
 
-test fn sharing_unobservable_map_holds() -> Bool {
+test fn sharing_unobservable_map_holds() -> Bool  {
   let base = empty_map() |> map_insert("k", 1)
   let alias = base
   alias == (empty_map() |> map_insert("k", 1))
 }
 
-test fn map_equality_insert_order_independent_holds() -> Bool {
+test fn map_equality_insert_order_independent_holds() -> Bool  {
   let abc = empty_map() |> map_insert("a", 1) |> map_insert("b", 2) |> map_insert("c", 3)
   let cba = empty_map() |> map_insert("c", 3) |> map_insert("b", 2) |> map_insert("a", 1)
   let bca = empty_map() |> map_insert("b", 2) |> map_insert("c", 3) |> map_insert("a", 1)
   (abc == cba) && (abc == bca)
 }
 
-test fn map_equality_overwrite_path_independent_holds() -> Bool {
+test fn map_equality_overwrite_path_independent_holds() -> Bool  {
   let direct = empty_map() |> map_insert("a", 2)
   let overwritten = empty_map() |> map_insert("a", 1) |> map_insert("a", 2)
   direct == overwritten
 }
 
-test fn freemonoid_association_unobservable_holds() -> Bool {
+test fn freemonoid_association_unobservable_holds() -> Bool  {
   let left_assoc = concat(concat([1], [2]), [3])
   let right_assoc = concat([1], concat([2], [3]))
   let flat = [1, 2, 3]
   (left_assoc == flat) && (right_assoc == flat)
 }
 
-test fn identity_law1_projection_holds() -> Bool {
+test fn identity_law1_projection_holds() -> Bool  {
   let ref_identical = identity_evidence_equal(evidence: ReferenceIdentical)
   let compared_equal = identity_evidence_equal(evidence: StructurallyCompared { equal: true })
   let compared_distinct = identity_evidence_equal(evidence: StructurallyCompared { equal: false })
   ref_identical && compared_equal && !compared_distinct
 }
 
-test fn declared_carriers_preserve_prior_versions_holds() -> Bool {
+test fn declared_carriers_preserve_prior_versions_holds() -> Bool  {
   let map_preserves = match map_carrier.update_persistence {
     PersistentUpdate => true
     EphemeralUpdate => false
@@ -73,13 +73,13 @@ test fn declared_carriers_preserve_prior_versions_holds() -> Bool {
   map_preserves && list_preserves
 }
 
-test fn storage_and_update_persistence_axes_coexist_holds() -> Bool {
+test fn storage_and_update_persistence_axes_coexist_holds() -> Bool  {
   let storage: PersistenceKind = Ephemeral
   let update: UpdateVersionPersistence = PersistentUpdate
   (storage == Ephemeral) && (update == PersistentUpdate)
 }
 
-test fn name_interning_covers_all_domains_holds() -> Bool {
+test fn name_interning_covers_all_domains_holds() -> Bool  {
   let t = match type_name_interning.domain {
     TypeNames => true
     VariantNames => false
@@ -98,13 +98,13 @@ test fn name_interning_covers_all_domains_holds() -> Bool {
   t && v && f
 }
 
-test fn list_prior_version_survives_concat_holds() -> Bool {
+test fn list_prior_version_survives_concat_holds() -> Bool  {
   let base = [1, 2, 3]
   let extended = concat(base, [4])
   (base == [1, 2, 3]) && (extended == [1, 2, 3, 4])
 }
 
-test fn map_prior_version_survives_insert_holds() -> Bool {
+test fn map_prior_version_survives_insert_holds() -> Bool  {
   let base = empty_map() |> map_insert("k", 1)
   let updated = base |> map_insert("k", 2)
   let base_intact = base == (empty_map() |> map_insert("k", 1))

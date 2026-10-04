@@ -35,7 +35,7 @@ data nested_product_input: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
-test fn nested_product_claim_holds() -> Bool {
+test fn nested_product_claim_holds() -> Bool  {
   match cost_lens(n: nested_product_input) {
     Holds { value: actual } =>
       actual == ProductCost {

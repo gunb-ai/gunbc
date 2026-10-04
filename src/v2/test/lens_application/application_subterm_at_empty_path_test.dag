@@ -11,7 +11,7 @@ data application_subterm_root: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
-test fn application_subterm_at_empty_path_claim_holds() -> Bool {
+test fn application_subterm_at_empty_path_claim_holds() -> Bool  {
   match subterm_at(root: application_subterm_root, path: Path { steps: [] }) {
     Accepted { value: n, diagnostics: _ } => n == application_subterm_root
     Rejected { diagnostics: _ } => false

@@ -18,7 +18,7 @@ data synthesis_fact_x: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
-test fn factorial_dominates_exponential_claim_holds() -> Bool {
+test fn factorial_dominates_exponential_claim_holds() -> Bool  {
   symbolic_cost_dominates(
     a: FactorialCost { variable: SizeVariable { source: synthesis_fact_x } },
     b: ExponentialCost {

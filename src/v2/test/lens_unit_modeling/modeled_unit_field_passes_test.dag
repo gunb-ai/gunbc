@@ -34,7 +34,7 @@ data modeled_unit_field_input: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
-test fn modeled_unit_field_passes_holds() -> Bool {
+test fn modeled_unit_field_passes_holds() -> Bool  {
   match unit_modeling_gate(node: modeled_unit_field_input) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false

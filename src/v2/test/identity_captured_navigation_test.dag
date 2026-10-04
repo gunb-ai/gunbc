@@ -99,7 +99,7 @@ fn any_suspect(fs: List<v2.lens.identity_captured_navigation.Finding>) -> Bool {
   fold(fs, init: false, f: fn(acc, f) { acc || v2.lens.identity_captured_navigation.analyze.finding_is_suspect(f: f) })
 }
 
-test fn red_control_bare_identity_mention_is_flagged_suspect() -> Bool {
+test fn red_control_bare_identity_mention_is_flagged_suspect() -> Bool  {
   let fs = findings_for(
     scrutinee_name_sym: ^grammar_production_identity_node_projection,
     mentions: [^probe_leaked_identity_mention]
@@ -107,7 +107,7 @@ test fn red_control_bare_identity_mention_is_flagged_suspect() -> Bool {
   finding_list_length(fs: fs) == 1 && any_suspect(fs: fs)
 }
 
-test fn green_control_sanctioned_single_reduction_not_flagged() -> Bool {
+test fn green_control_sanctioned_single_reduction_not_flagged() -> Bool  {
   let fs = findings_for(
     scrutinee_name_sym: ^grammar_production_identity_node_projection,
     mentions: [^node_atom_identity_optional, ^probe_present_binder_mention]
@@ -115,7 +115,7 @@ test fn green_control_sanctioned_single_reduction_not_flagged() -> Bool {
   finding_list_length(fs: fs) == 0
 }
 
-test fn unrelated_scrutinee_name_not_flagged() -> Bool {
+test fn unrelated_scrutinee_name_not_flagged() -> Bool  {
   let fs = findings_for(
     scrutinee_name_sym: ^grammar_production_captured_node_projection,
     mentions: [^probe_leaked_identity_mention]
@@ -140,7 +140,7 @@ fn first_discrepancy_is_under_claimed_edge(xs: List<FidelityDiscrepancy>) -> Boo
   }
 }
 
-test fn suspect_finding_projects_to_exactly_one_under_claimed_edge() -> Bool {
+test fn suspect_finding_projects_to_exactly_one_under_claimed_edge() -> Bool  {
   let findings = findings_for(
     scrutinee_name_sym: ^grammar_production_identity_node_projection,
     mentions: [^probe_leaked_identity_mention]

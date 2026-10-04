@@ -72,13 +72,13 @@ fn map_id_actual_complexity() -> ComplexityAssessment {
   complexity_lens(n: map_id_input)
 }
 
-test fn map_id_cost_projection_holds() -> Bool {
+test fn map_id_cost_projection_holds() -> Bool  {
   match map_id_actual_cost() {
     Holds { value: actual } => actual == map_id_claim.expected_cost
     Violates { diagnostic: _ } => false
   }
 }
 
-test fn map_id_complexity_projection_holds() -> Bool {
+test fn map_id_complexity_projection_holds() -> Bool  {
   map_id_actual_complexity() == established_complexity(bound: map_id_claim.expected_complexity)
 }

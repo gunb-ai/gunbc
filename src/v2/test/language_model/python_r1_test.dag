@@ -1,6 +1,6 @@
 module v2.test.language_model.python_r1
 
-test fn python_r1_fixture_pair_wired() -> Bool {
+test fn python_r1_fixture_pair_wired() -> Bool  {
   python_r1_fixture().claim_id == leaf_model_claim_python_r1_int_surface_spelling
     && python_r1_fixture().surface_spelling_fact == ^python_surface_spelling_int
     && python_r1_fixture().encoding_spelling_fact == ^python_facts_field_encoding
@@ -25,11 +25,11 @@ data python_r1_verification_run_receipt_default: LeafModelVerificationRunReceipt
   )
 }
 
-test fn python_r1_verification_receipt_claim_id_wired() -> Bool {
+test fn python_r1_verification_receipt_claim_id_wired() -> Bool  {
   python_r1_verification_run_receipt_default.claim_id == leaf_model_claim_python_r1_int_surface_spelling
 }
 
-test fn python_r1_fixture_pair_carries_python_dag_fact_anchors() -> Bool {
+test fn python_r1_fixture_pair_carries_python_dag_fact_anchors() -> Bool  {
   python_r1_fixture().surface_spelling_fact == ^python_surface_spelling_int
     && python_r1_fixture().encoding_spelling_fact == ^python_facts_field_encoding
 }

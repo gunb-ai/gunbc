@@ -175,7 +175,7 @@ fn unregistered_placeholder_lens() -> CompileLens {
 
 // POSITIVE CONTROL: the real roster with a complete observation set closes, carries the roster
 // digest, and reports exactly one row per registration.
-test fn required_lens_coverage_closes_on_complete_observations_holds() -> Bool {
+test fn required_lens_coverage_closes_on_complete_observations_holds() -> Bool  {
   match join_required_lens_coverage(
     lenses: required_compile_lens_roster(),
     witnesses: complete_observations()
@@ -190,7 +190,7 @@ test fn required_lens_coverage_closes_on_complete_observations_holds() -> Bool {
 
 // RED: a registration whose gate stopped executing is exactly the silent hole the join exists to
 // catch, and it must refuse by the name of the lens that went dark.
-test fn required_lens_coverage_refuses_unobserved_registration_holds() -> Bool {
+test fn required_lens_coverage_refuses_unobserved_registration_holds() -> Bool  {
   match join_required_lens_coverage(
     lenses: required_compile_lens_roster(),
     witnesses: observations_dropping_first()
@@ -213,7 +213,7 @@ test fn required_lens_coverage_refuses_unobserved_registration_holds() -> Bool {
 }
 
 // RED: an observation naming no registration in the roster it is asked about.
-test fn required_lens_coverage_refuses_unregistered_observation_holds() -> Bool {
+test fn required_lens_coverage_refuses_unregistered_observation_holds() -> Bool  {
   match join_required_lens_coverage(
     lenses: required_compile_lens_roster(),
     witnesses: list_append(
@@ -236,7 +236,7 @@ test fn required_lens_coverage_refuses_unregistered_observation_holds() -> Bool 
 }
 
 // RED: a root-grain gate observed twice means the root roster ran more than once over one tree.
-test fn required_lens_coverage_refuses_root_lens_observed_twice_holds() -> Bool {
+test fn required_lens_coverage_refuses_root_lens_observed_twice_holds() -> Bool  {
   match join_required_lens_coverage(
     lenses: required_compile_lens_roster(),
     witnesses: list_append(
@@ -261,7 +261,7 @@ test fn required_lens_coverage_refuses_root_lens_observed_twice_holds() -> Bool 
 // RED: a gate run at a grain it is not registered at - the cost argument recorded in
 // required_lens_grain_note is a fact about WHERE each gate runs, so a grain disagreement is a
 // refusal and not a relabelling.
-test fn required_lens_coverage_refuses_wrong_grain_observation_holds() -> Bool {
+test fn required_lens_coverage_refuses_wrong_grain_observation_holds() -> Bool  {
   match join_required_lens_coverage(
     lenses: required_compile_lens_roster(),
     witnesses: list_reverse(xs: fold_list(
@@ -296,7 +296,7 @@ test fn required_lens_coverage_refuses_wrong_grain_observation_holds() -> Bool {
 }
 
 // RED: an empty roster is ignorance, not coverage - a join over nothing must never read as closed.
-test fn required_lens_coverage_refuses_empty_roster_holds() -> Bool {
+test fn required_lens_coverage_refuses_empty_roster_holds() -> Bool  {
   match join_required_lens_coverage(lenses: [], witnesses: []) {
     RequiredLensCoverageRefused { cause: cause } =>
       match cause {
@@ -347,7 +347,7 @@ fn coverage_join_tree() -> InferredTree {
 // runner the door uses - and joins what they actually stamped. It is the closest executing control
 // to the door short of an Accepted compile, and it is what makes "the roster executed" a measured
 // claim rather than a registration that exists.
-test fn required_lens_coverage_closes_over_executed_gates_holds() -> Bool {
+test fn required_lens_coverage_closes_over_executed_gates_holds() -> Bool  {
   match run_required_lens_gates_on_subtree(
     inferred: coverage_join_tree(),
     lenses: required_lenses_at_grain(grain: CompileLensSubtree)
@@ -382,7 +382,7 @@ test fn required_lens_coverage_closes_over_executed_gates_holds() -> Bool {
 // corpus may still be perfectly representable as source handed to the join by a fixture, and where
 // the refusal is authorable there, declining it is specification without execution. It is one
 // call: hand the join a roster with a repeated row.
-test fn required_lens_coverage_refuses_duplicate_registration_holds() -> Bool {
+test fn required_lens_coverage_refuses_duplicate_registration_holds() -> Bool  {
   match join_required_lens_coverage(
     lenses: list_append(
       left: required_compile_lens_roster(),

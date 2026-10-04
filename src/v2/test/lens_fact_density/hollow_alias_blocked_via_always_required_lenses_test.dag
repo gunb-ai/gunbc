@@ -35,7 +35,7 @@ fn hollow_alias_ar_tree() -> InferredTree {
   )
 }
 
-test fn hollow_alias_blocked_via_always_required_lenses_holds() -> Bool {
+test fn hollow_alias_blocked_via_always_required_lenses_holds() -> Bool  {
   match run_required_lens_gates(
     inferred: hollow_alias_ar_tree(),
     lenses: required_lenses_at_grain(grain: CompileLensSubtree)

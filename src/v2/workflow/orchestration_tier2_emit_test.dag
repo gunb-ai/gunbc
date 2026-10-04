@@ -42,7 +42,7 @@ fn fresh_standup_cmdsubst_assign_golden() -> String {
   "dag_pin=\"$(converge_read_gunbc_host_pin \"$checkout\")\""
 }
 
-test fn orch_tier2_fresh_standup_cmdsubst_assign_holds() -> Bool {
+test fn orch_tier2_fresh_standup_cmdsubst_assign_holds() -> Bool  {
   match orch_emit_step(
     s: fresh_standup_cmdsubst_assign_intent(),
     medium: bash_orchestration_emit_medium()
@@ -64,7 +64,7 @@ fn fresh_standup_decide_verdict_call_golden() -> String {
   "decide_verdict \"$dag_pin\" \"$desired_pin\""
 }
 
-test fn orch_tier2_fresh_standup_procedure_call_holds() -> Bool {
+test fn orch_tier2_fresh_standup_procedure_call_holds() -> Bool  {
   match orch_emit_step(
     s: fresh_standup_decide_verdict_call_intent(),
     medium: bash_orchestration_emit_medium()
@@ -86,7 +86,7 @@ fn fresh_standup_read_pin_call_golden() -> String {
   "converge_read_gunbc_host_pin \"$checkout\""
 }
 
-test fn orch_tier2_fresh_standup_read_pin_call_holds() -> Bool {
+test fn orch_tier2_fresh_standup_read_pin_call_holds() -> Bool  {
   match orch_emit_step(
     s: fresh_standup_read_pin_call_intent(),
     medium: bash_orchestration_emit_medium()
@@ -105,7 +105,7 @@ fn fresh_standup_verdict_absent_let_golden() -> String {
   "verdict=absent"
 }
 
-test fn orch_tier2_fresh_standup_verdict_absent_let_holds() -> Bool {
+test fn orch_tier2_fresh_standup_verdict_absent_let_holds() -> Bool  {
   match orch_emit_step(
     s: fresh_standup_verdict_absent_let_intent(),
     medium: bash_orchestration_emit_medium()
@@ -124,7 +124,7 @@ fn fresh_standup_effective_var_let_golden() -> String {
   "effective=\"$dag_pin\""
 }
 
-test fn orch_tier2_fresh_standup_effective_var_let_holds() -> Bool {
+test fn orch_tier2_fresh_standup_effective_var_let_holds() -> Bool  {
   match orch_emit_step(
     s: fresh_standup_effective_var_let_intent(),
     medium: bash_orchestration_emit_medium()
@@ -143,7 +143,7 @@ fn fresh_standup_dag_pin_empty_let_golden() -> String {
   "dag_pin=\"\""
 }
 
-test fn orch_tier2_fresh_standup_dag_pin_empty_let_holds() -> Bool {
+test fn orch_tier2_fresh_standup_dag_pin_empty_let_holds() -> Bool  {
   match orch_emit_step(
     s: fresh_standup_dag_pin_empty_let_intent(),
     medium: bash_orchestration_emit_medium()
@@ -178,7 +178,7 @@ fn decide_verdict_procedure_partial_golden() -> String {
   "decide_verdict() {\n  if [ -z \"$1\" ]; then verdict=absent; fi\n}"
 }
 
-test fn orch_tier2_procedure_definition_band_holds() -> Bool {
+test fn orch_tier2_procedure_definition_band_holds() -> Bool  {
   match orch_emit_procedure(
     proc: decide_verdict_procedure_intent(),
     medium: bash_orchestration_emit_medium()
@@ -189,7 +189,7 @@ test fn orch_tier2_procedure_definition_band_holds() -> Bool {
   }
 }
 
-test fn orch_tier2_cmdsubst_assign_has_teeth_holds() -> Bool {
+test fn orch_tier2_cmdsubst_assign_has_teeth_holds() -> Bool  {
   match orch_emit_step(
     s: fresh_standup_cmdsubst_assign_intent(),
     medium: bash_orchestration_emit_medium()

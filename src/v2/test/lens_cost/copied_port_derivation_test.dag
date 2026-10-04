@@ -23,7 +23,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // yields Absent; multi-linear ambiguous body yields Absent (no tiebreak); citation-retained
 // frontier count is 3.
 
-test fn derived_list_append_copied_port_index_is_one() -> Bool {
+test fn derived_list_append_copied_port_index_is_one() -> Bool  {
   match derive_copied_port_index_from_arrow(
     arrow: copied_port_citation_list_append.arrow
   ) {
@@ -32,7 +32,7 @@ test fn derived_list_append_copied_port_index_is_one() -> Bool {
   }
 }
 
-test fn derived_list_snoc_copied_port_index_is_zero() -> Bool {
+test fn derived_list_snoc_copied_port_index_is_zero() -> Bool  {
   match derive_copied_port_index_from_arrow(
     arrow: copied_port_citation_list_snoc_item.arrow
   ) {
@@ -41,7 +41,7 @@ test fn derived_list_snoc_copied_port_index_is_zero() -> Bool {
   }
 }
 
-test fn derived_map_merge_copied_port_index_is_one() -> Bool {
+test fn derived_map_merge_copied_port_index_is_one() -> Bool  {
   match derive_copied_port_index_from_arrow(
     arrow: copied_port_citation_map_merge.arrow
   ) {
@@ -50,7 +50,7 @@ test fn derived_map_merge_copied_port_index_is_one() -> Bool {
   }
 }
 
-test fn derived_registry_lookup_matches_hand_retired_indices() -> Bool {
+test fn derived_registry_lookup_matches_hand_retired_indices() -> Bool  {
   match copied_port_index_of(combiner: ^list_append) {
     Present { value: a } =>
       match copied_port_index_of(combiner: ^list_snoc_item) {
@@ -65,11 +65,11 @@ test fn derived_registry_lookup_matches_hand_retired_indices() -> Bool {
   }
 }
 
-test fn unpriceable_combiner_lookup_refuses_red_control() -> Bool {
+test fn unpriceable_combiner_lookup_refuses_red_control() -> Bool  {
   wave1_gate1_c1_unregistered_combiner_lookup_refuses_holds()
 }
 
-test fn multi_linear_ambiguous_derivation_refuses_red_control() -> Bool {
+test fn multi_linear_ambiguous_derivation_refuses_red_control() -> Bool  {
   match derive_copied_port_index_from_arrow(
     arrow: citation_arrow_multi_linear_ambiguous(
       left_sym: ^copied_port_derivation_test_multi_linear_left,
@@ -81,6 +81,6 @@ test fn multi_linear_ambiguous_derivation_refuses_red_control() -> Bool {
   }
 }
 
-test fn citation_retained_frontier_count_is_three() -> Bool {
+test fn citation_retained_frontier_count_is_three() -> Bool  {
   copied_port_citation_retained_count() == 3
 }

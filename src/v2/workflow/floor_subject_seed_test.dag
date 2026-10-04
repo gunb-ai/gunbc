@@ -79,7 +79,7 @@ import v2.workflow.floor_subject_seed {
 // and_strict_preparation_refuses_it`) and the #11751 fixtures beside it (`a_product_field_retype_
 // plans_the_untouched_constructor_and_without_it_the_floor_is_green`, `a_rebranded_alias_plans_the_
 // consumer_of_the_product_that_carries_it`). These rows hold the RULE still while the host realizes it.
-test fn a_read_whose_candidates_name_the_declarer_is_planned_as_resolved() -> Bool {
+test fn a_read_whose_candidates_name_the_declarer_is_planned_as_resolved() -> Bool  {
   read_is_bound_to_declarer(
     read: interface_read_disposition(
       declaring_candidates: ["armset.x"],
@@ -89,7 +89,7 @@ test fn a_read_whose_candidates_name_the_declarer_is_planned_as_resolved() -> Bo
   )
 }
 
-test fn a_read_with_no_candidate_is_planned_through_the_flat_channel_and_counted_apart() -> Bool {
+test fn a_read_with_no_candidate_is_planned_through_the_flat_channel_and_counted_apart() -> Bool  {
   let read = interface_read_disposition(
     declaring_candidates: [],
     changed_module_path: "armset.x",
@@ -100,7 +100,7 @@ test fn a_read_with_no_candidate_is_planned_through_the_flat_channel_and_counted
 
 // THE ARM THAT STOPS THE SELECTOR FROM WIDENING: a same-spelled arm of ANOTHER coproduct is
 // not this coproduct's consumer. Same spelling, different declarer, not planned.
-test fn a_read_bound_to_another_declarer_is_not_planned() -> Bool {
+test fn a_read_bound_to_another_declarer_is_not_planned() -> Bool  {
   !read_is_planned(
     read: interface_read_disposition(
       declaring_candidates: ["armset.z"],
@@ -112,7 +112,7 @@ test fn a_read_bound_to_another_declarer_is_not_planned() -> Bool {
 
 // ONE RESOLVED READ MAKES THE MODULE A RESOLVED CONSUMER, whatever the other reads did; a
 // module whose only reads are flat is counted flat; a module with no planned read is not planned.
-test fn a_module_binding_is_the_strongest_of_its_reads() -> Bool {
+test fn a_module_binding_is_the_strongest_of_its_reads() -> Bool  {
   let flat = ReadPlanned { binding: BoundThroughFlatBareChannel }
   let resolved = ReadPlanned { binding: BoundToDeclaringModule }
   let other = ReadBoundToAnotherDeclarer
@@ -124,7 +124,7 @@ test fn a_module_binding_is_the_strongest_of_its_reads() -> Bool {
 
 // THE TWO MATCHING RULES ARE A FACT OF THE GROUND, not of the list the host happened to put a
 // seed in: only the gate prefix is textual.
-test fn only_the_gate_prefix_ground_is_matched_textually() -> Bool {
+test fn only_the_gate_prefix_ground_is_matched_textually() -> Bool  {
   seed_ground_is_textual_prefix(ground: SeedRequiredGatePrefix { prefix: "v2.test." })
     && !seed_ground_is_textual_prefix(
       ground: SeedRequiredGateAuthoredModule { module_path: "test.claim.runner_capacity_plan_witness" }
@@ -142,7 +142,7 @@ test fn only_the_gate_prefix_ground_is_matched_textually() -> Bool {
     )
 }
 
-test fn the_consumer_ground_prints_under_its_own_name() -> Bool {
+test fn the_consumer_ground_prints_under_its_own_name() -> Bool  {
   seed_ground_wire_name(
     ground: SeedDeclarationInterfaceChangedConsumer {
       changed_module_path: "armset.x",
@@ -156,7 +156,7 @@ test fn the_consumer_ground_prints_under_its_own_name() -> Bool {
 // AN UNRESOLVED NAME OCCURRENCE IS NOT A READ: the tree walk collects binders and labels, so a
 // local spelled like a changed function would otherwise plan its module. The same empty
 // candidate set from the parser's own type occurrence IS a read, planned through the flat channel.
-test fn an_unresolved_name_occurrence_plans_nothing_where_a_type_occurrence_does() -> Bool {
+test fn an_unresolved_name_occurrence_plans_nothing_where_a_type_occurrence_does() -> Bool  {
   !read_is_planned(
     read: interface_read_disposition(
       declaring_candidates: [],
@@ -176,7 +176,7 @@ test fn an_unresolved_name_occurrence_plans_nothing_where_a_type_occurrence_does
 // ONLY AN INTERFACE READ PROPAGATES (#11751's `ConvergeGeneration` under `HelperStanding`),
 // through either binding (a flat interface read left unpropagated plans B and strands C); a body read plans its own module and stops there -- the control that a
 // body-only dependency does not seed every reverse importer.
-test fn only_an_interface_read_propagates_a_change() -> Bool {
+test fn only_an_interface_read_propagates_a_change() -> Bool  {
   interface_change_propagates(site: ReadInInterface, binding: BoundToDeclaringModule)
     && interface_change_propagates(site: ReadInInterface, binding: BoundThroughFlatBareChannel)
     && !interface_change_propagates(site: ReadInBody, binding: BoundToDeclaringModule)
@@ -186,7 +186,7 @@ test fn only_an_interface_read_propagates_a_change() -> Bool {
 // cell is the body read: the same read stops the compile walk and continues the execution walk,
 // and an interface read continues both, so the execution walk is a superset keyed on its consumer
 // rather than a second relation.
-test fn a_body_read_propagates_for_claim_execution_and_not_for_strict_preparation() -> Bool {
+test fn a_body_read_propagates_for_claim_execution_and_not_for_strict_preparation() -> Bool  {
   reach_propagates(consumer: ClaimExecution, site: ReadInBody, binding: BoundToDeclaringModule)
     && reach_propagates(consumer: ClaimExecution, site: ReadInBody, binding: BoundThroughFlatBareChannel)
     && !reach_propagates(consumer: StrictPreparation, site: ReadInBody, binding: BoundToDeclaringModule)
@@ -199,7 +199,7 @@ test fn a_body_read_propagates_for_claim_execution_and_not_for_strict_preparatio
 // treating a grown admission roster as an interface change planned every caller of
 // `extdeps.exec.command` `argv_command`. A removal or a changed payload beside the growth reaches
 // every reader.
-test fn only_growth_and_a_narrowed_roster_plan_less_than_every_reader() -> Bool {
+test fn only_growth_and_a_narrowed_roster_plan_less_than_every_reader() -> Bool  {
   let grown = match interface_reader_population(ground: ArmSetGrown { arms_added: ["Amber"] }) {
     MatchReadersOnly => true
     EveryReader => false
@@ -234,7 +234,7 @@ test fn only_growth_and_a_narrowed_roster_plan_less_than_every_reader() -> Bool 
 }
 
 // A BARE CALL OR A BARE VALUE READ WITH NO IMPORT IS A READ; A NAME OCCURRENCE (binders, labels) IS NOT.
-test fn an_unresolved_call_plans_its_module_where_an_unresolved_name_does_not() -> Bool {
+test fn an_unresolved_call_plans_its_module_where_an_unresolved_name_does_not() -> Bool  {
   let call = interface_read_disposition(declaring_candidates: [], changed_module_path: "flatfn.a", channel: CallOccurrence)
   let data = interface_read_disposition(declaring_candidates: [], changed_module_path: "flatfn.a", channel: ValueOccurrence)
   let name = interface_read_disposition(declaring_candidates: [], changed_module_path: "flatfn.a", channel: NameOccurrence)
@@ -278,7 +278,7 @@ fn rule_is_refused(rule: CheckerSubjectRule) -> Bool {
 // THE gunbc#12441 SHAPE: a diff that touches the checker and no .dag file. The .dag frontier is
 // empty, and the rule still widens preparation to every admitted module, naming only the checker
 // path among the changed ones.
-test fn a_checker_edit_seeds_every_admitted_module() -> Bool {
+test fn a_checker_edit_seeds_every_admitted_module() -> Bool  {
   rule_selects_every_admitted_module(
     rule: checker_subject_rule(
       observation: checker_record(),
@@ -290,7 +290,7 @@ test fn a_checker_edit_seeds_every_admitted_module() -> Bool {
 
 // POSITIVE CONTROL: a .dag edit and a doc edit touch no checker input, so the subject stays
 // narrow.
-test fn a_change_outside_the_checker_keeps_the_narrow_subject() -> Bool {
+test fn a_change_outside_the_checker_keeps_the_narrow_subject() -> Bool  {
   rule_is_unchanged(
     rule: checker_subject_rule(
       observation: checker_record(),
@@ -301,7 +301,7 @@ test fn a_change_outside_the_checker_keeps_the_narrow_subject() -> Bool {
 
 // THE REFUSAL ARM: an unreadable record, and a record that lists nothing, refuse. They neither
 // narrow nor widen.
-test fn an_unobservable_checker_refuses_rather_than_narrowing_or_widening() -> Bool {
+test fn an_unobservable_checker_refuses_rather_than_narrowing_or_widening() -> Bool  {
   rule_is_refused(
     rule: checker_subject_rule(
       observation: CheckerDependenciesUnavailable { reason: "dep-info unreadable" },
@@ -318,7 +318,7 @@ test fn an_unobservable_checker_refuses_rather_than_narrowing_or_widening() -> B
 
 // THE HOST CALL carries the same three answers, and an unobserved record refuses even when its
 // reason is empty.
-test fn the_host_call_returns_the_rule_itself() -> Bool {
+test fn the_host_call_returns_the_rule_itself() -> Bool  {
   rule_selects_every_admitted_module(
     rule: checker_subject_rule_from_host(
       observed: true,
@@ -346,7 +346,7 @@ test fn the_host_call_returns_the_rule_itself() -> Bool {
     )
 }
 
-test fn the_checker_ground_prints_under_its_own_name() -> Bool {
+test fn the_checker_ground_prints_under_its_own_name() -> Bool  {
   seed_ground_wire_name(
     ground: SeedCheckerSourceChanged {
       changed_checker_path: "src/v1/stage0/src/v1_compiler_infer.rs",
@@ -364,7 +364,7 @@ test fn the_checker_ground_prints_under_its_own_name() -> Bool {
 // THE STANDING DECIDES APPLICATION AND NOTHING ELSE: the same widening rule is applied when the
 // standing says applied, and withheld, naming its drop, when it says withheld. The narrow and
 // refused rules are unchanged by the standing.
-test fn the_widening_is_withheld_only_by_a_standing_that_names_its_drop() -> Bool {
+test fn the_widening_is_withheld_only_by_a_standing_that_names_its_drop() -> Bool  {
   let widened = EveryAdmittedModule { changed_checker_paths: ["src/v1/stage0/src/v1_compiler_infer.rs"] }
   let withheld = WideningWithheldUnderDrop { drop_identity: "compiler_change_refusals_land_outside_every_compiled_closure" }
   let applied_arm = match checker_subject_application(rule: widened, standing: WideningApplied) {
@@ -397,7 +397,7 @@ test fn the_widening_is_withheld_only_by_a_standing_that_names_its_drop() -> Boo
 
 // THE DECLARED STANDING NAMES A DROP THE ROSTER CARRIES AND THAT STILL STANDS, so withholding can
 // cite neither nothing nor a retired drop. Red if the drop is renamed, removed or retired.
-test fn the_declared_standing_cites_a_standing_drop() -> Bool {
+test fn the_declared_standing_cites_a_standing_drop() -> Bool  {
   match checker_widening_standing {
     WideningApplied => true
     WideningWithheldUnderDrop { drop_identity: d } =>

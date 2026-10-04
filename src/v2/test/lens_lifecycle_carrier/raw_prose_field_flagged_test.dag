@@ -85,28 +85,28 @@ data ordinary_string_field_input: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
-test fn raw_dissolve_on_string_field_is_rejected() -> Bool {
+test fn raw_dissolve_on_string_field_is_rejected() -> Bool  {
   match lifecycle_carrier_gate(node: raw_dissolve_on_field_input) {
     Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-test fn raw_dissolution_trigger_nonempty_str_field_is_rejected() -> Bool {
+test fn raw_dissolution_trigger_nonempty_str_field_is_rejected() -> Bool  {
   match lifecycle_carrier_gate(node: raw_dissolution_trigger_nonempty_input) {
     Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-test fn typed_dissolution_condition_field_is_accepted() -> Bool {
+test fn typed_dissolution_condition_field_is_accepted() -> Bool  {
   match lifecycle_carrier_gate(node: typed_dissolution_field_input) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn ordinary_string_field_is_accepted() -> Bool {
+test fn ordinary_string_field_is_accepted() -> Bool  {
   match lifecycle_carrier_gate(node: ordinary_string_field_input) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false

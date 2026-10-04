@@ -81,7 +81,7 @@ fn effect_io_roundtrip_decided(w: Witness<Bool>) -> Bool {
   }
 }
 
-test fn effect_io_pure_file_roundtrip_holds() -> Bool {
+test fn effect_io_pure_file_roundtrip_holds() -> Bool  {
   effect_io_roundtrip_decided(
     w: effect_io_pure_read_write_roundtrip(
       backend: FileResourceBackend,
@@ -91,7 +91,7 @@ test fn effect_io_pure_file_roundtrip_holds() -> Bool {
   )
 }
 
-test fn effect_io_pure_http_roundtrip_holds() -> Bool {
+test fn effect_io_pure_http_roundtrip_holds() -> Bool  {
   effect_io_roundtrip_decided(
     w: effect_io_pure_read_write_roundtrip(
       backend: HttpResourceBackend,
@@ -101,7 +101,7 @@ test fn effect_io_pure_http_roundtrip_holds() -> Bool {
   )
 }
 
-test fn effect_io_pure_storage_roundtrip_holds() -> Bool {
+test fn effect_io_pure_storage_roundtrip_holds() -> Bool  {
   effect_io_roundtrip_decided(
     w: effect_io_pure_read_write_roundtrip(
       backend: StorageResourceBackend,
@@ -111,7 +111,7 @@ test fn effect_io_pure_storage_roundtrip_holds() -> Bool {
   )
 }
 
-test fn effect_io_pure_value_derived_key_discriminates_holds() -> Bool {
+test fn effect_io_pure_value_derived_key_discriminates_holds() -> Bool  {
   match effect_io_pure_locator_identity(value: effect_io_claim_resource_a()) {
     Holds { value: key_a } =>
       match effect_io_pure_locator_identity(value: effect_io_claim_resource_b()) {
@@ -127,14 +127,14 @@ test fn effect_io_pure_value_derived_key_discriminates_holds() -> Bool {
   }
 }
 
-test fn effect_io_pure_unrepresentable_locator_fails_closed_holds() -> Bool {
+test fn effect_io_pure_unrepresentable_locator_fails_closed_holds() -> Bool  {
   match effect_io_pure_locator_identity(value: effect_io_claim_unrepresentable_arg()) {
     Violates { diagnostic: _ } => true
     Holds { value: _ } => false
   }
 }
 
-test fn effect_io_pure_absent_lookup_is_fail_closed_holds() -> Bool {
+test fn effect_io_pure_absent_lookup_is_fail_closed_holds() -> Bool  {
   let store = effect_io_pure_empty_fixture_store(backend: FileResourceBackend)
   let bundle = effect_io_pure_handler_binding(store: store)
   let read_handler = effect_handler_for_kind(binding: bundle.handlers, kind: ReadResource)
@@ -148,7 +148,7 @@ test fn effect_io_pure_absent_lookup_is_fail_closed_holds() -> Bool {
   }
 }
 
-test fn effect_io_host_read_fail_closed_holds() -> Bool {
+test fn effect_io_host_read_fail_closed_holds() -> Bool  {
   let runtime = effect_io_host_runtime_hermetic(backend: FileResourceBackend)
   let read_args = Cons {
     head: effect_io_claim_resource_a(),
@@ -164,7 +164,7 @@ test fn effect_io_host_read_fail_closed_holds() -> Bool {
   }
 }
 
-test fn effect_io_host_http_backend_routes_http_holds() -> Bool {
+test fn effect_io_host_http_backend_routes_http_holds() -> Bool  {
   let runtime = effect_io_host_runtime_hermetic(backend: HttpResourceBackend)
   match runtime.declared_backend {
     HttpResourceBackend =>

@@ -44,6 +44,6 @@ data synthesis_no_tech_input: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
-test fn synthesis_no_tech_diagnostics_non_empty() -> Bool {
+test fn synthesis_no_tech_diagnostics_non_empty() -> Bool  {
   non_empty(synthesis_lens_diagnostics(n: synthesis_no_tech_input, declared_technique: AlgebraicRank))
 }

@@ -38,7 +38,7 @@ data substitute_ambiguous_duplicate_name_root: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
-test fn substitute_at_ambiguous_duplicate_name_claim_holds() -> Bool {
+test fn substitute_at_ambiguous_duplicate_name_claim_holds() -> Bool  {
   match substitute_at(
     root: substitute_ambiguous_duplicate_name_root,
     path: Path { steps: [Authored { name: ^substitute_ambiguous_dup_step }] },

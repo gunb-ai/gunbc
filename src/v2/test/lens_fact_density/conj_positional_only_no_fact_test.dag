@@ -25,6 +25,6 @@ data conj_positional_only_input: Node = Node {
   occurrence_id: OccurrenceSynthetic
 }
 
-test fn conj_positional_only_no_fact_claim_holds() -> Bool {
+test fn conj_positional_only_no_fact_claim_holds() -> Bool  {
   carrier_spec_fact(carrier: conj_positional_only_input) == NoFact
 }

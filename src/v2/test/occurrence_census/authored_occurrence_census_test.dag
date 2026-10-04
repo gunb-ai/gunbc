@@ -35,7 +35,7 @@ fn aoc_root(children: List<Node>) -> Node {
 
 // ONE REAL COLLISION: two different nodes, one minted occurrence, one of them nested a level down
 // so the walk must descend to find it. Exactly one collision, carrying that occurrence.
-test fn aoc_two_different_nodes_under_one_minted_occurrence_is_one_collision() -> Bool {
+test fn aoc_two_different_nodes_under_one_minted_occurrence_is_one_collision() -> Bool  {
   let cs = authored_occurrence_collisions(root: aoc_root(children: [
     aoc_atom(name: ^a, occ: aoc_minted(n: 7)),
     aoc_root(children: [aoc_atom(name: ^b, occ: aoc_minted(n: 7))])
@@ -47,7 +47,7 @@ test fn aoc_two_different_nodes_under_one_minted_occurrence_is_one_collision() -
 }
 
 // The projected arm is an authored occurrence too.
-test fn aoc_projected_occurrence_collides_with_minted_of_the_same_id() -> Bool {
+test fn aoc_projected_occurrence_collides_with_minted_of_the_same_id() -> Bool  {
   let projected = OccurrenceProjected {
     id: OccurrenceId { value: 9 },
     caused_by: ScopedOccurrenceRef { scope: content_hash_atom(value: "aoc-projection-cause-scope"), occurrence: OccurrenceId { value: 1 } }
@@ -59,7 +59,7 @@ test fn aoc_projected_occurrence_collides_with_minted_of_the_same_id() -> Bool {
 }
 
 // CONTROL: two different SYNTHETIC nodes have no authored occurrence and are not a collision.
-test fn aoc_synthetic_duplicates_are_not_collisions() -> Bool {
+test fn aoc_synthetic_duplicates_are_not_collisions() -> Bool  {
   length(xs: authored_occurrence_collisions(root: aoc_root(children: [
     aoc_atom(name: ^a, occ: OccurrenceSynthetic),
     aoc_atom(name: ^b, occ: OccurrenceSynthetic)
@@ -67,13 +67,13 @@ test fn aoc_synthetic_duplicates_are_not_collisions() -> Bool {
 }
 
 // CONTROL: the SAME node reached twice (a shared subtree) is one node, not a collision.
-test fn aoc_same_node_reached_twice_is_not_a_collision() -> Bool {
+test fn aoc_same_node_reached_twice_is_not_a_collision() -> Bool  {
   let shared = aoc_atom(name: ^a, occ: aoc_minted(n: 7))
   length(xs: authored_occurrence_collisions(root: aoc_root(children: [shared, shared]))) == 0
 }
 
 // CONTROL: distinct occurrences on distinct nodes report nothing.
-test fn aoc_distinct_occurrences_report_nothing() -> Bool {
+test fn aoc_distinct_occurrences_report_nothing() -> Bool  {
   length(xs: authored_occurrence_collisions(root: aoc_root(children: [
     aoc_atom(name: ^a, occ: aoc_minted(n: 7)),
     aoc_atom(name: ^b, occ: aoc_minted(n: 8))
@@ -91,7 +91,7 @@ fn aoc_collision() -> NativeLaneOccurrenceCollision {
 // THE READER'S ACCOUNTING. Five modules in the universe, two resolved rows (one colliding, one clean):
 // observed is the row count, the clean row is not reported as colliding, and the three modules with no
 // row are reported UNOBSERVED -- never folded into the clean count.
-test fn aoc_census_counts_unresolved_modules_as_unobserved() -> Bool {
+test fn aoc_census_counts_unresolved_modules_as_unobserved() -> Bool  {
   let c = native_lane_occurrence_census(universe: 5, rows: [
     NativeLaneOccurrenceCensusRow { module: "m.colliding", collisions: [aoc_collision()] },
     NativeLaneOccurrenceCensusRow { module: "m.clean", collisions: [] }
@@ -108,7 +108,7 @@ test fn aoc_census_counts_unresolved_modules_as_unobserved() -> Bool {
 }
 
 // No rows at all is all-unobserved, not all-clean.
-test fn aoc_census_with_no_rows_is_all_unobserved() -> Bool {
+test fn aoc_census_with_no_rows_is_all_unobserved() -> Bool  {
   match native_lane_occurrence_census_lines(c: native_lane_occurrence_census(universe: 4, rows: [])) {
     Cons { head: h, tail: Empty } => h == "[native-occurrence-census] universe=4 observed=0 unobserved=4 colliding_modules=0"
     _ => false

@@ -140,91 +140,91 @@ fn decide(base: String, head: String, function: String) -> CostDebtWitnessEdit {
 
 // ---- CONTROLS: a pure test-fn removal keeps the grandfathered budget ----
 
-test fn cost_debt_edit_trailing_conjunct_removal_keeps_the_grandfathered_budget() -> Bool {
+test fn cost_debt_edit_trailing_conjunct_removal_keeps_the_grandfathered_budget() -> Bool  {
   let edit = decide(base: src_two_conjuncts(), head: src_one_conjunct(), function: "w")
   edit_is_pure_removal_of(edit: edit, expected: 1) && kept_and_admitted(edit: edit)
 }
 
-test fn cost_debt_edit_leading_conjunct_removal_keeps_the_grandfathered_budget() -> Bool {
+test fn cost_debt_edit_leading_conjunct_removal_keeps_the_grandfathered_budget() -> Bool  {
   let edit = decide(base: src_leading_base(), head: src_one_conjunct(), function: "w")
   edit_is_pure_removal_of(edit: edit, expected: 1) && kept_and_admitted(edit: edit)
 }
 
-test fn cost_debt_edit_imported_test_fn_removal_keeps_the_grandfathered_budget() -> Bool {
+test fn cost_debt_edit_imported_test_fn_removal_keeps_the_grandfathered_budget() -> Bool  {
   let edit = decide(base: src_imported_test_fn_base(), head: src_one_conjunct(), function: "w")
   edit_is_pure_removal_of(edit: edit, expected: 1) && kept_and_admitted(edit: edit)
 }
 
-test fn cost_debt_edit_the_11593_chain_status_removal_keeps_the_grandfathered_budget() -> Bool {
+test fn cost_debt_edit_the_11593_chain_status_removal_keeps_the_grandfathered_budget() -> Bool  {
   let edit = decide(base: src_chain_status_base(), head: src_chain_status_head(), function: "h")
   edit_is_pure_removal_of(edit: edit, expected: 1) && kept_and_admitted(edit: edit)
 }
 
 // ---- DISCRIMINATING REDS: any other edit is judged at the new-witness budget ----
 
-test fn cost_debt_edit_removed_conjunct_plus_added_call_is_rejudged_at_the_new_witness_budget() -> Bool {
+test fn cost_debt_edit_removed_conjunct_plus_added_call_is_rejudged_at_the_new_witness_budget() -> Bool  {
   let edit = decide(base: src_two_conjuncts(), head: src_swapped_call(), function: "w")
   edit_rejudged_for(edit: edit, cause: EditIsNotAConjunctRemoval {}) && rejudged_and_refused(edit: edit)
 }
 
-test fn cost_debt_edit_changed_literal_is_rejudged_at_the_new_witness_budget() -> Bool {
+test fn cost_debt_edit_changed_literal_is_rejudged_at_the_new_witness_budget() -> Bool  {
   let edit = decide(base: src_literal_base(), head: src_literal_head(), function: "w")
   edit_rejudged_for(edit: edit, cause: EditIsNotAConjunctRemoval {}) && rejudged_and_refused(edit: edit)
 }
 
-test fn cost_debt_edit_removal_that_rebinds_precedence_is_rejudged() -> Bool {
+test fn cost_debt_edit_removal_that_rebinds_precedence_is_rejudged() -> Bool  {
   let edit = decide(base: src_precedence_base(), head: src_precedence_head(), function: "w")
   edit_rejudged_for(edit: edit, cause: EditIsNotAConjunctRemoval {}) && rejudged_and_refused(edit: edit)
 }
 
-test fn cost_debt_edit_removal_under_a_negation_is_rejudged() -> Bool {
+test fn cost_debt_edit_removal_under_a_negation_is_rejudged() -> Bool  {
   let edit = decide(base: src_negated_base(), head: src_negated_head(), function: "w")
   edit_rejudged_for(edit: edit, cause: EditIsNotAConjunctRemoval {}) && rejudged_and_refused(edit: edit)
 }
 
-test fn cost_debt_edit_signature_change_with_a_removal_is_rejudged() -> Bool {
+test fn cost_debt_edit_signature_change_with_a_removal_is_rejudged() -> Bool  {
   let edit = decide(base: src_two_conjuncts(), head: src_signature_head(), function: "w")
   edit_rejudged_for(edit: edit, cause: EditIsNotAConjunctRemoval {}) && rejudged_and_refused(edit: edit)
 }
 
-test fn cost_debt_edit_with_no_token_change_is_not_a_removal() -> Bool {
+test fn cost_debt_edit_with_no_token_change_is_not_a_removal() -> Bool  {
   let edit = decide(base: src_two_conjuncts(), head: src_two_conjuncts(), function: "w")
   edit_rejudged_for(edit: edit, cause: WitnessTokensUnchanged {}) && rejudged_and_refused(edit: edit)
 }
 
-test fn cost_debt_edit_renamed_witness_is_rejudged() -> Bool {
+test fn cost_debt_edit_renamed_witness_is_rejudged() -> Bool  {
   let edit = decide(base: src_two_conjuncts(), head: src_renamed_head(), function: "w")
   edit_rejudged_for(edit: edit, cause: WitnessNotDeclaredAtHead {}) && rejudged_and_refused(edit: edit)
 }
 
 // The ruling is NARROW: removing a call that is not a test fn -- here an imported helper -- must not
 // keep the tier, even though it is otherwise a clean conjunct deletion.
-test fn cost_debt_edit_removing_a_non_test_fn_call_is_rejudged() -> Bool {
+test fn cost_debt_edit_removing_a_non_test_fn_call_is_rejudged() -> Bool  {
   let edit = decide(base: src_helper_base(), head: src_one_conjunct(), function: "w")
   edit_rejudged_for(edit: edit, cause: RemovedCallIsNotATestFn {}) && rejudged_and_refused(edit: edit)
 }
 
 // An aliased import is not followed, so a call through the alias cannot be shown to be a test fn --
 // even though `t2` IS one -- and the edit re-judges rather than keeping the tier on a guess.
-test fn cost_debt_edit_removing_a_call_through_an_alias_is_rejudged() -> Bool {
+test fn cost_debt_edit_removing_a_call_through_an_alias_is_rejudged() -> Bool  {
   let edit = decide(base: src_aliased_base(), head: src_one_conjunct(), function: "w")
   edit_rejudged_for(edit: edit, cause: RemovedCallIsNotATestFn {}) && rejudged_and_refused(edit: edit)
 }
 
 // UNCLASSIFIABLE BODIES TAKE THE STRICTER TIER. A base the lexer refuses, and a witness the base does
 // not declare, are not pure removals.
-test fn cost_debt_edit_untokenizable_base_is_rejudged() -> Bool {
+test fn cost_debt_edit_untokenizable_base_is_rejudged() -> Bool  {
   let edit = decide(base: src_untokenizable_base(), head: src_one_conjunct(), function: "w")
   edit_rejudged_for(edit: edit, cause: WitnessSourceDidNotTokenize {}) && rejudged_and_refused(edit: edit)
 }
 
-test fn cost_debt_edit_witness_absent_at_base_is_rejudged() -> Bool {
+test fn cost_debt_edit_witness_absent_at_base_is_rejudged() -> Bool  {
   let edit = decide(base: src_other_witness_only(), head: src_one_conjunct(), function: "w")
   edit_rejudged_for(edit: edit, cause: WitnessNotDeclaredAtBase {}) && rejudged_and_refused(edit: edit)
 }
 
 // A batch must retain identity-specific tiers, including a missing declaration.
-test fn a_file_batch_keeps_each_declarations_own_ceiling() -> Bool {
+test fn a_file_batch_keeps_each_declarations_own_ceiling() -> Bool  {
   let base = "module specimen\ntest fn a() -> Bool { true && b() }\ntest fn b() -> Bool { true }\n"
   let head = "module specimen\ntest fn a() -> Bool { true }\ntest fn b() -> Bool { false }\n"
   let rows = cost_debt_changed_witness_ceilings_from_sources(
@@ -241,7 +241,7 @@ test fn a_file_batch_keeps_each_declarations_own_ceiling() -> Bool {
     })
 }
 
-test fn a_file_batch_preserves_untokenizable_and_missing_head_refusals() -> Bool {
+test fn a_file_batch_preserves_untokenizable_and_missing_head_refusals() -> Bool  {
   let base = "module specimen\ntest fn a() -> Bool { true }\n"
   let rows = cost_debt_changed_witness_ceilings_from_sources(
     base_source: base, head_source: "module specimen\n", functions: ["a"], test_fn_identities: ["specimen.a"])
