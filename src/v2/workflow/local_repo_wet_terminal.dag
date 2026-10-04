@@ -2098,6 +2098,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.materialization_store_local_wet_witness", function: "a_hold_leaked_out_of_its_bracket_is_refused_as_stale_by_real_execution" },
+      entry: "dag/test/claim/materialization_store_local_wet_witness_test.dag",
+      function: "a_hold_leaked_out_of_its_bracket_is_refused_as_stale_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.pre_os_capture_replay_witness", function: "w_early_exit_refuses_absence_on_real_bytes" },
       entry: "dag/test/claim/machine_intake/pre_os_capture_replay_witness_test.dag",
       function: "w_early_exit_refuses_absence_on_real_bytes",

@@ -12,7 +12,7 @@ import std.allocation_roster {
 import std.disposition { Disposition, Terminal }
 import product.placement_supply { HostIdentity }
 import extdeps.dns.domain_name { DnsLabel }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_mtcollins1 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_mtcollins1 }
 
 type HostnameAllocation {
   fleet_slot: HostIdentity

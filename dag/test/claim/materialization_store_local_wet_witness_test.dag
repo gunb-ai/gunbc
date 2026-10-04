@@ -38,7 +38,8 @@ import extdeps.realization.materialization_store_local {
   local_store_record_recency, local_store_is_object_name, local_store_is_store_file_name, local_store_object_bytes, local_store_family_budget,
   LocalStoreFamilyBudget, local_store_budget_sum,
   LocalStoreRecencyHoldRefused, LocalStoreRecencyReceipt,
-  local_store_acquire_family_hold, local_store_release_family_hold, local_store_hold_key, local_store_hold_owner_prefix,
+  local_store_with_family, LocalStoreBracket, LocalStoreBracketRan, LocalStoreBracketRefused, local_store_commit_under, LocalStoreHoldStale, LocalStoreHoldWrongFamily,
+  local_store_hold_key, local_store_hold_owner_prefix,
   LocalStoreHoldAcquisition, LocalStoreHoldAcquired, LocalStoreHoldRefused, LocalStoreHoldRefusal, LocalStoreFamilyBusy,
   LocalStoreHolderUnobservable, LocalStoreHoldRecoveryRefused, LocalStoreHoldContended, LocalStoreHoldStoreUnavailable,
   LocalStoreHoldSlotUndecodable, LocalStoreHoldKeyNotAddressable, LocalStoreHoldSelfUnidentified, LocalStoreHoldWindowTooNarrow, LocalStoreHoldUnsettled,
@@ -626,6 +627,8 @@ fn hold_refusal_is_busy(r: LocalStoreHoldRefusal?) -> Bool {
       LocalStoreHoldSelfUnidentified { cause: _ } => false
       LocalStoreHoldWindowTooNarrow { k: _ } => false
       LocalStoreHoldUnsettled { settlement: _ } => false
+      LocalStoreHoldStale { observed: _ } => false
+      LocalStoreHoldWrongFamily { held: _, requested: _ } => false
     }
     Absent => false
   }
@@ -642,12 +645,10 @@ test fn a_commit_while_the_family_is_held_refuses_and_writes_nothing_by_real_exe
     Absent => false
     Present { value: store } => {
       let ry = bundle_req(module: "y")
-      match local_store_acquire_family_hold(root_path: root_path, family: native_module_verdict_bundle_artifact_kind, recovered: false) {
-        LocalStoreHoldRefused { refusal: _ } => false
-        LocalStoreHoldAcquired { held: h } => {
-          let blocked = local_store_commit(root: root, budgets: witness_family_budgets, store: store, req: ry, payloads: half_budget_verdicts(module: "y"), parts: [])
+      match local_store_with_family(root: root, family: native_module_verdict_bundle_artifact_kind, run: h => local_store_commit(root: root, budgets: witness_family_budgets, store: store, req: ry, payloads: half_budget_verdicts(module: "y"), parts: [])) {
+        LocalStoreBracketRefused { refusal: _ } => false
+        LocalStoreBracketRan { value: blocked, hold_release: _ } => {
           let y_absent = !Filesystem.Read(path: object_path(root_path: root_path, req: ry)).success
-          let released = local_store_release_family_hold(held: h)
           let landed = local_store_commit(root: root, budgets: witness_family_budgets, store: store, req: ry, payloads: half_budget_verdicts(module: "y"), parts: [])
           commit_tag(c: blocked.commit) == "occupancy_unavailable" && hold_refusal_is_busy(r: blocked.hold_refusal)
             && count(blocked.evicted) == 0 && y_absent
@@ -656,6 +657,50 @@ test fn a_commit_while_the_family_is_held_refuses_and_writes_nothing_by_real_exe
         }
       }
     }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}
+
+fn hold_refusal_is_stale(r: LocalStoreHoldRefusal?) -> Bool {
+  match r {
+    Present { value: x } => match x {
+      LocalStoreHoldStale { observed: _ } => true
+      LocalStoreFamilyBusy { holder: _, evidence: _ } => false
+      LocalStoreHolderUnobservable { holder: _, cause: _ } => false
+      LocalStoreHoldRecoveryRefused { refusal: _ } => false
+      LocalStoreHoldContended => false
+      LocalStoreHoldStoreUnavailable { cause: _ } => false
+      LocalStoreHoldSlotUndecodable { detail: _ } => false
+      LocalStoreHoldKeyNotAddressable => false
+      LocalStoreHoldSelfUnidentified { cause: _ } => false
+      LocalStoreHoldWindowTooNarrow { k: _ } => false
+      LocalStoreHoldUnsettled { settlement: _ } => false
+      LocalStoreHoldWrongFamily { held: _, requested: _ } => false
+    }
+    Absent => false
+  }
+}
+
+// RELEASE-THEN-MUTATE REFUSES. A bracket body returns the held value it was given, so it outlives its
+// release. Committing under that leaked value re-observes the family's hold slot, finds it no longer
+// held at that generation by that owner, and refuses as a stale hold; nothing is written.
+test fn a_hold_leaked_out_of_its_bracket_is_refused_as_stale_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let verdict = match opened(root: root) {
+    Absent => false
+    Present { value: store } =>
+      match local_store_with_family(root: root, family: native_module_verdict_bundle_artifact_kind, run: h => h) {
+        LocalStoreBracketRefused { refusal: _ } => false
+        LocalStoreBracketRan { value: leaked, hold_release: _ } => {
+          let rs = bundle_req(module: "s")
+          let c = local_store_commit_under(held: leaked, budgets: witness_family_budgets, store: store, req: rs, payloads: verdicts(text: "s pass"), parts: [])
+          commit_tag(c: c.commit) == "occupancy_unavailable" && hold_refusal_is_stale(r: c.hold_refusal)
+            && !Filesystem.Read(path: object_path(root_path: root_path, req: rs)).success
+            && store_lookup_is_miss(l: local_store_lookup(root: root, store: store, req: rs))
+        }
+      }
   }
   let removed = shell.Remove.RecursiveForce(path: root_path)
   verdict && removed.success
