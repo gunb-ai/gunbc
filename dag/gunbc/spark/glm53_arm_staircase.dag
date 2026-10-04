@@ -13,7 +13,7 @@ import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.fabric_serving_assignment { FabricServingAssignment, fabric_serving_assignment_for_launch }
 import gunbc.spark.serving_arm { ArmIntent, ArmBoundedExperiment, ServingLaunchProfile, ModelLaunchPolicy, ServingCheckpoint, Glm53NativeFp8, Glm53FlashNvidiaNvfp4, GunbcGlm53KvplanV2GroupAProduced, FourSparkTp4, glm53_native_launch_policy, glm53_flash_nvidia_nvfp4_launch_policy }
 import gunbc.spark.serving_capacity_intent { ServingCapacityIntent, ServingCapacityIntentAdmitted, ServingCapacityIntentRefused, uniform_cold_seats, SchedulerEnvelope, SchedulerEnvelopeAdmitted, SchedulerEnvelopeRefused, scheduler_envelope, profile_for_envelope }
-import gunbc.spark.serving_arm_launch { ArmContainerIdentity, glm_native_shm_size }
+import gunbc.spark.serving_arm_launch { ArmContainerIdentity, glm_native_shm_size, glm53_staircase_container_name }
 import gunbc.spark.native_serving_realization { ArmUnitIdentity }
 import gunbc.spark.pair_serving_realization { spark_pair_serve_port }
 import gunbc.spark.glm_group_b_launch { glm_group_b_deployment_env }
@@ -189,7 +189,7 @@ data glm53_staircase_units: ArmUnitIdentity = ArmUnitIdentity {
 }
 
 data glm53_staircase_container: ArmContainerIdentity = ArmContainerIdentity {
-  container_name: "gunbc-glm53-stair-tp4" as NonEmptyStr,
+  container_name: glm53_staircase_container_name,
   master_port: 29502,
   shm_size: glm_native_shm_size,
   extra_mounts: [],

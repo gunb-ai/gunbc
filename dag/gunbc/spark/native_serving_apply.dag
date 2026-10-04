@@ -30,14 +30,12 @@ import gunbc.fleet_ssh_credential_verify {
   fleet_ssh_credential_verification_refusal_reason,
 }
 import gunbc.fleet_multi_principal_probe { probe_agent_credential_verification }
-import gunbc.spark.managed_access_bootstrap { SparkManagedGrant, spark_managed_grant_sudoers_command }
+import gunbc.spark.managed_access_bootstrap { SparkManagedGrant, InspectServingContainer, spark_managed_grant_sudoers_command }
 import gunbc.spark.managed_grant_reconcile {
   SparkManagedGrantStanding, GrantHeld, GrantNotHeld, GrantStandingUnobserved,
   spark_managed_grant_standing_from_outcome,
 }
 import gunbc.spark.managed_grant_install { spark_grant_probe_outcome }
-import gunbc.spark.fabric_switch_observed { FabricGroupB }
-import gunbc.spark.serving_offer { spark_serving_offer_required_grants }
 import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
 import gunbc.spark.grant_privileged_operation { read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized }
 import gunbc.spark.pair_serving_apply {
@@ -181,10 +179,12 @@ fn spark_native_host_apply_script(unit_name: NonEmptyStr, log_path: NonEmptyStr,
 // the live container through a grant that was modeled and operator-admitted but installed on none
 // of the four hosts, and the failure surfaced only in the harness probe afterward. The lanes stay
 // separate -- sudoers is a different privilege domain with its own operator basis -- so the
-// consolidation is ORDERING, not merging: before any host is touched, probe the grants the OFFER
-// declares it needs (gunbc.spark.serving_offer spark_serving_offer_required_grants -- the edge's
-// single authority, so a new requirement there reaches this preflight without an edit here) on
-// every host of the arm, and refuse with the remedy named if any is not held.
+// consolidation is ORDERING, not merging: before any host is touched, probe the inspect grant for
+// the container THIS STEP'S launch creates (SparkNativeHostStep launch.container.name) on every host
+// of the arm, and refuse with the remedy named if any is not held. It was keyed to Group B's offer
+// (gunbc.spark.serving_offer spark_serving_offer_required_grants over FabricGroupB), so every other
+// arm's apply demanded glm-native-tp4's grant and refused (Group A fp8-8, run 37163579116); the
+// launch is the authority for which container the incarnation observe will inspect.
 type SparkNativeGrantPreflight
   = SparkNativeGrantHeld { host: HostIdentity }
   | SparkNativeGrantPreflightRefused { host: HostIdentity, detail: String }
@@ -203,11 +203,12 @@ fn spark_native_grant_standing_detail(standing: SparkManagedGrantStanding) -> St
   }
 }
 
-fn spark_native_grant_preflight_host(context: FleetSshExecutionContext, host: HostIdentity) -> SparkNativeGrantPreflight
+fn spark_native_grant_preflight_host(context: FleetSshExecutionContext, step: SparkNativeHostStep) -> SparkNativeGrantPreflight
 {
+  let host = step.host
   let outcome = spark_grant_probe_outcome(context: context, host: host)
   let details = flat_map(
-    spark_serving_offer_required_grants(group: FabricGroupB),
+    [InspectServingContainer { container: step.launch.container.name }],
     g => match spark_native_grant_standing_detail(standing: spark_managed_grant_standing_from_outcome(grant: g, outcome: outcome)) {
       Absent => [] as List<String>
       Present { value: d } => [d]
@@ -1811,7 +1812,7 @@ fn spark_native_apply_transaction(
   steps: List<SparkNativeHostStep>, at_word: String,
 ) -> SparkNativeApplyRun
 {
-  let grants = map(map(steps, st => st.host), h => spark_native_grant_preflight_host(context: context, host: h))
+  let grants = map(steps, st => spark_native_grant_preflight_host(context: context, step: st))
   let grant_lines = join(map(grants, p => spark_native_grant_preflight_wire(p: p)), "")
   if spark_native_grant_preflight_refusals(ps: grants).length() > 0 {
     SparkNativeApplyRun {
