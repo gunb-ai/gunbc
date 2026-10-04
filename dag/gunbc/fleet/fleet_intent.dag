@@ -30,7 +30,7 @@ import extdeps.gpu.types { GpuFacts, AcceleratorFacts, GpuRuntime }
 import extdeps.toolchain.types { ToolchainCapability }
 import extdeps.cache.sccache { sccache_toolchain_capability }
 import product.network_topology { NetworkLocality, NetworkInterface, NetworkAddressability }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.boards.types { ServerBaseboard }

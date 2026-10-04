@@ -2,7 +2,7 @@ module product.fan_tach_health
 
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.measure { RevolutionsPerMinute }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_fan_tach_expectation {
   ChassisBayHeader,
   FanHeaderExpectationRow,
