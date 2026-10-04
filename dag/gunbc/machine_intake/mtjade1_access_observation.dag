@@ -115,7 +115,7 @@ fn field_unread(field: NonEmptyStr, cause: String) -> RecordedManagerDecode {
   RecordedManagerRefused { gap: CaptureFieldUnread { field: field, cause: cause } }
 }
 
-fn read_cause(r: JsonFieldRead<T>) -> String {
+fn read_cause<T>(r: JsonFieldRead<T>) -> String {
   match r {
     FieldAbsent => "absent"
     FieldMalformed { cause: c } => c

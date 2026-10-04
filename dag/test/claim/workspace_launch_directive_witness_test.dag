@@ -1,0 +1,187 @@
+module gunbc.test.claim.workspace_launch_directive_witness_test
+
+import std.types { Bool, NonEmptyStr, Int, String }
+import std.measure { money_amount_micro }
+import std.durable_compare_and_set { ExpectSlotGeneration }
+import extdeps.currency.currency { Usd }
+import extdeps.accounting.encumbrance { EncumbranceLedger }
+import extdeps.accounting.budget { Appropriation }
+import extdeps.languages.json.emit { json_object, json_kv, json_string, json_int, serialize_json }
+import product.fabric.budget { MoneyAccount }
+import product.fabric.identity { FabricIdentity, ExecutionAttemptKey, DemandKey, OfferKey }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import product.host_identity { HostIdentity }
+import gunbc.workspace_allocation { WorkspaceReservation, workspace_work, workspace_memory_grant, workspace_reservation_json }
+import gunbc.fabric_memory_grant_policy { MemoryGrantIssued }
+import gunbc.workspace_reservation_record { workspace_reservation_plan_from_json, workspace_reservation_plan_json }
+import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceWanted, WorkspaceRecorded, WorkspaceOwnerSnapshot, workspace_allocation_json, workspace_owner_key }
+import gunbc.workspace_allocation_launch_directive { WorkspaceLaunchDirectiveRead, WorkspaceLaunchDirectiveReady, WorkspaceLaunchDirectiveRefused, workspace_launch_directive_from_text, workspace_launch_directive_matches }
+import gunbc.test.claim.workspace_allocation_lifecycle_witness_test { allocation_test_request, allocation_test_owner }
+import product.fabric.budget { reserve_money, MoneyReservationRequest, AccountAdvanced }
+import gunbc.fabric_control_plane { fabric_money_reservation_ref }
+import gunbc.workspace_allocation_release { workspace_release_derive, workspace_release_wire, workspace_release_decode, WorkspaceReleasePrepared, WorkspaceReleaseRefused }
+import gunbc.workspace_money_codec { workspace_money_json }
+
+fn launch_fixture_allocation() -> WorkspaceAllocation? {
+  let request = allocation_test_request(key: "launch-fixture" as NonEmptyStr)
+  let work = workspace_work(request: request).id
+  match workspace_memory_grant(request: request, work: work, attempt: FabricIdentity { principal: work.principal, key: "fixture-attempt" as ExecutionAttemptKey }) {
+    MemoryGrantIssued { grant: committed } => {
+      let reserved = WorkspaceReservation {
+        request: request, slot: RunnerSlotIdentity { host: "srv1" as HostIdentity, slot_index: 7 }, generation: 1,
+        grant: committed, work: work,
+        demand: FabricIdentity { principal: work.principal, key: "fixture-demand" as DemandKey },
+        offer: FabricIdentity { principal: "fixture-provider", key: "fixture-offer" as OfferKey },
+        money_generation: 0, money_account: MoneyAccount {
+          account: "fixture-account", currency: Usd,
+          ledger: EncumbranceLedger { appropriation: Appropriation { ceiling: money_amount_micro(count: 100) }, entries: [] }, leases: [],
+        },
+      }
+      match workspace_reservation_plan_from_json(value: json_object(members: [
+        json_kv(key: "root", value: json_string(s: "/fixture/holds")),
+        json_kv(key: "reservation", value: workspace_reservation_json(reservation: reserved)),
+      ])) {
+        Absent => none
+        Present { value: selected } => Present { value: WorkspaceAllocation { retired_at: "", recorded_at: "",
+          desired: WorkspaceWanted, request: request, plan: Present { value: selected }, reservation: none,
+          phase: WorkspaceRecorded, connection: "", observed_at: "", reason: "Request recorded",
+        } }
+      }
+    }
+    other => none
+  }
+}
+
+fn launch_fixture_directive(allocation: WorkspaceAllocation) -> WorkspaceLaunchDirectiveRead {
+  workspace_launch_directive_from_text(text: serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "workspace-launch/1")),
+    json_kv(key: "owner_generation", value: json_int(n: 4)),
+    json_kv(key: "owner_head", value: json_string(s: workspace_owner_key(owner: allocation.request.owner) as String)),
+    json_kv(key: "allocation", value: workspace_allocation_json(allocation: allocation)),
+    json_kv(key: "installed_release", value: json_string(s: "/opt/gunbc/controller/fixture-revision")),
+  ])))
+}
+
+fn launch_fixture_matches(revision: Int, host: NonEmptyStr, instance: NonEmptyStr, release_dir: NonEmptyStr, root: NonEmptyStr, foreign_owner: Bool) -> Bool {
+  match launch_fixture_allocation() {
+    Absent => false
+    Present { value: allocation } => match launch_fixture_directive(allocation: allocation) {
+      WorkspaceLaunchDirectiveRefused { reason: _ } => false
+      WorkspaceLaunchDirectiveReady { directive: admitted } => workspace_launch_directive_matches(
+        directive: admitted,
+        observed: WorkspaceOwnerSnapshot { owner: allocation.request.owner, expected: ExpectSlotGeneration { generation: revision }, allocations: [allocation] },
+        authorized_owner: if foreign_owner { allocation_test_owner(subject: "other-owner" as NonEmptyStr) } else { allocation.request.owner },
+        host: host, slot_instance: instance, release_dir: release_dir, fabric_root: root,
+      )
+    }
+  }
+}
+
+test fn workspace_launch_directive_binds_the_exact_head_host_slot_and_installed_artifact() -> Bool {
+  launch_fixture_matches(revision: 4, host: "srv1", instance: "srv1-07", release_dir: "/opt/gunbc/controller/fixture-revision", root: "/fixture/holds", foreign_owner: false)
+}
+
+test fn workspace_launch_directive_refuses_stale_head_and_foreign_owner() -> Bool {
+  !launch_fixture_matches(revision: 5, host: "srv1", instance: "srv1-07", release_dir: "/opt/gunbc/controller/fixture-revision", root: "/fixture/holds", foreign_owner: false)
+    && !launch_fixture_matches(revision: 4, host: "srv1", instance: "srv1-07", release_dir: "/opt/gunbc/controller/fixture-revision", root: "/fixture/holds", foreign_owner: true)
+}
+
+test fn workspace_launch_directive_refuses_foreign_host_slot_root_or_artifact() -> Bool {
+  !launch_fixture_matches(revision: 4, host: "srv2", instance: "srv1-07", release_dir: "/opt/gunbc/controller/fixture-revision", root: "/fixture/holds", foreign_owner: false)
+    && !launch_fixture_matches(revision: 4, host: "srv1", instance: "srv1-08", release_dir: "/opt/gunbc/controller/fixture-revision", root: "/fixture/holds", foreign_owner: false)
+    && !launch_fixture_matches(revision: 4, host: "srv1", instance: "srv1-07", release_dir: "/opt/gunbc/controller/other-revision", root: "/fixture/holds", foreign_owner: false)
+    && !launch_fixture_matches(revision: 4, host: "srv1", instance: "srv1-07", release_dir: "/opt/gunbc/controller/fixture-revision", root: "/foreign/holds", foreign_owner: false)
+}
+
+
+// The retained account has a real encumbrance; a missing or reset account would not pass this.
+test fn workspace_release_intent_preserves_money_and_refuses_a_changed_settlement_time() -> Bool {
+  match launch_fixture_allocation() {
+    Absent => false
+    Present { value: allocation } => match allocation.plan {
+      Absent => false
+      Present { value: prepared } => {
+        let original = prepared.reservation
+        match reserve_money(a: original.money_account, request: MoneyReservationRequest {
+          reference: fabric_money_reservation_ref(demand: original.demand, offer: original.offer),
+          generation: original.money_generation, maximum_liability: money_amount_micro(count: 40), currency: Usd,
+        }) {
+          AccountAdvanced { account: committed } => {
+            let held = WorkspaceReservation {
+              request: original.request, slot: original.slot, generation: original.generation, grant: original.grant,
+              work: original.work, demand: original.demand, offer: original.offer, money_account: committed, money_generation: original.money_generation,
+            }
+            match workspace_release_derive(reservation: held, released_at: "2026-09-27T12:30:00Z") {
+              WorkspaceReleaseRefused { reason: _ } => false
+              WorkspaceReleasePrepared { plan: released } => {
+                let valid = match workspace_release_decode(reservation: held, wire: workspace_release_wire(plan: released)) {
+                  WorkspaceReleasePrepared { plan: replayed } => replayed.released_at == "2026-09-27T12:30:00Z"
+                  WorkspaceReleaseRefused { reason: _ } => false
+                }
+                let changed = serialize_json(v: json_object(members: [
+                  json_kv(key: "reservation", value: workspace_reservation_json(reservation: held)),
+                  json_kv(key: "released_at", value: json_string(s: "2026-09-27T12:31:00Z")),
+                  json_kv(key: "released_account", value: workspace_money_json(account: released.released_account)),
+                ])) as NonEmptyStr
+                valid && (match workspace_release_decode(reservation: held, wire: changed) {
+                  WorkspaceReleaseRefused { reason: _ } => true
+                  WorkspaceReleasePrepared { plan: _ } => false
+                })
+              }
+            }
+          }
+          other => false
+        }
+      }
+    }
+  }
+}
+
+test fn reservation_selection_policy_survives_durable_roundtrip() -> Bool {
+  match launch_fixture_allocation() {
+    Present { value: allocation } => match allocation.plan {
+      Present { value: old_plan } => match workspace_reservation_plan_from_json(value: json_object(members: [
+        json_kv(key: "root", value: json_string(s: old_plan.root as String)),
+        json_kv(key: "reservation", value: workspace_reservation_json(reservation: old_plan.reservation)),
+        json_kv(key: "selection_policy", value: json_string(s: "resource-budget-v1:fixture-policy")),
+      ])) {
+        Present { value: updated } => old_plan.selection_policy == "legacy-price-ranked"
+          && updated.selection_policy == "resource-budget-v1:fixture-policy"
+          && (match workspace_reservation_plan_from_json(value: workspace_reservation_plan_json(plan: updated)) {
+            Present { value: reread } => reread == updated
+            _ => false
+          })
+        _ => false
+      }
+      _ => false
+    }
+    _ => false
+  }
+}
+test fn malformed_selection_policy_cannot_become_legacy_admission() -> Bool {
+  match launch_fixture_allocation() {
+    Present { value: allocation } => match allocation.plan {
+      Present { value: old_plan } => match workspace_reservation_plan_from_json(value: json_object(members: [
+        json_kv(key: "root", value: json_string(s: old_plan.root as String)),
+        json_kv(key: "reservation", value: workspace_reservation_json(reservation: old_plan.reservation)),
+        json_kv(key: "selection_policy", value: json_int(n: 0)),
+      ])) { Absent => true _ => false }
+      _ => false
+    }
+    _ => false
+  }
+}
+
+test fn legacy_plan_serialization_preserves_acquisition_identity() -> Bool {
+  match launch_fixture_allocation() {
+    Present { value: allocation } => match allocation.plan {
+      Present { value: plan } => serialize_json(v: workspace_reservation_plan_json(plan: plan))
+        == serialize_json(v: json_object(members: [
+          json_kv(key: "root", value: json_string(s: plan.root as String)),
+          json_kv(key: "reservation", value: workspace_reservation_json(reservation: plan.reservation)),
+        ]))
+      _ => false
+    }
+    _ => false
+  }
+}

@@ -1,0 +1,79 @@
+module test.claim.workspace_actor_takeover_witness_test
+
+import std.types { Bool, NonEmptyStr }
+import std.durable_compare_and_set { cas_generation_first }
+import std.durable_exclusive_hold { DurableHoldOwnerRef, DurableHoldObservation, HoldSlotAbsent, HoldSlotHeld, HoldObservationUnavailable }
+import std.durable_compare_and_set { CasUnreadableReadRefused }
+import gunbc.fabric_control_plane { fabric_hold_owner, fabric_money_reservation_ref }
+import gunbc.workspace_reservation_record { WorkspaceReservationPlan }
+import gunbc.workspace_allocation_plan {
+  workspace_actor_takeover_decision, WorkspaceActorTakeoverDecision,
+  TakeoverRecoverHeld, TakeoverRearmActor, TakeoverCancelActor, TakeoverRetain,
+  ActorIntentAcquire, ActorIntentRetire,
+}
+import gunbc.workspace_acquisition_invocation {
+  workspace_prior_actor_standing, SlotInvocationObserved, SlotInvocationUnreadable,
+  WorkspacePriorActorStanding, PriorActorRunning, PriorActorTerminal, PriorActorUnobservable,
+}
+import gunbc.test.claim.workspace_launch_directive_witness_test { launch_fixture_allocation }
+
+fn takeover_plan() -> WorkspaceReservationPlan? {
+  match launch_fixture_allocation() {
+    Absent => none
+    Present { value: fixture } => fixture.plan
+  }
+}
+
+fn decided(hold: DurableHoldObservation, prior: WorkspacePriorActorStanding, retire: Bool) -> WorkspaceActorTakeoverDecision? {
+  match takeover_plan() {
+    Absent => none
+    Present { value: plan } => Present { value: workspace_actor_takeover_decision(plan: plan, hold: hold, prior: prior,
+      intent: if retire { ActorIntentRetire } else { ActorIntentAcquire }) }
+  }
+}
+
+fn is_rearm(d: WorkspaceActorTakeoverDecision?) -> Bool { match d { Present { value: TakeoverRearmActor } => true _ => false } }
+fn is_cancel(d: WorkspaceActorTakeoverDecision?) -> Bool { match d { Present { value: TakeoverCancelActor } => true _ => false } }
+fn is_retain(d: WorkspaceActorTakeoverDecision?) -> Bool { match d { Present { value: TakeoverRetain { reason: _ } } => true _ => false } }
+fn is_recover(d: WorkspaceActorTakeoverDecision?) -> Bool { match d { Present { value: TakeoverRecoverHeld { reservation: _ } } => true _ => false } }
+
+// A dead actor with no hold: a wanted request re-arms acquisition, a retired one cancels it.
+test fn terminal_actor_without_hold_rearms_wanted_and_cancels_retired() -> Bool {
+  is_rearm(d: decided(hold: HoldSlotAbsent, prior: PriorActorTerminal, retire: false))
+  && is_cancel(d: decided(hold: HoldSlotAbsent, prior: PriorActorTerminal, retire: true))
+}
+
+// Discriminating red for the wedge's opposite failure: an actor that may still be running, or
+// whose standing cannot be read, is never replaced from an absent-hold observation alone.
+test fn live_or_unobservable_actor_is_never_replaced() -> Bool {
+  is_retain(d: decided(hold: HoldSlotAbsent, prior: PriorActorRunning, retire: false))
+  && is_retain(d: decided(hold: HoldSlotAbsent, prior: PriorActorRunning, retire: true))
+  && is_retain(d: decided(hold: HoldSlotAbsent, prior: PriorActorUnobservable { reason: "fixture" }, retire: true))
+}
+
+// An unreadable hold retains the obligation even when the actor is known dead.
+test fn unreadable_hold_retains_the_obligation() -> Bool {
+  is_retain(d: decided(hold: HoldObservationUnavailable { cause: CasUnreadableReadRefused { detail: "fixture" } }, prior: PriorActorTerminal, retire: false))
+}
+
+// The exact hold the plan names is recovered rather than re-acquired; a foreign holder is retained.
+test fn matching_hold_recovers_and_foreign_hold_retains() -> Bool {
+  match takeover_plan() {
+    Absent => false
+    Present { value: plan } => {
+      let owner = fabric_hold_owner(reservation: fabric_money_reservation_ref(demand: plan.reservation.demand, offer: plan.reservation.offer))
+      is_recover(d: Present { value: workspace_actor_takeover_decision(plan: plan,
+        hold: HoldSlotHeld { generation: cas_generation_first(), owner: owner }, prior: PriorActorTerminal, intent: ActorIntentAcquire) })
+      && is_retain(d: Present { value: workspace_actor_takeover_decision(plan: plan,
+        hold: HoldSlotHeld { generation: cas_generation_first(), owner: "foreign-holder" as DurableHoldOwnerRef }, prior: PriorActorTerminal, intent: ActorIntentAcquire) })
+    }
+  }
+}
+
+// The slot unit's InvocationID decides the prior actor's standing.
+test fn prior_actor_standing_follows_the_slot_invocation() -> Bool {
+  (match workspace_prior_actor_standing(recorded: "old-invocation", slot: SlotInvocationObserved { current: "new-invocation" }) { PriorActorTerminal => true _ => false })
+  && (match workspace_prior_actor_standing(recorded: "old-invocation", slot: SlotInvocationObserved { current: "" }) { PriorActorTerminal => true _ => false })
+  && (match workspace_prior_actor_standing(recorded: "old-invocation", slot: SlotInvocationObserved { current: "old-invocation" }) { PriorActorRunning => true _ => false })
+  && (match workspace_prior_actor_standing(recorded: "old-invocation", slot: SlotInvocationUnreadable) { PriorActorUnobservable { reason: _ } => true _ => false })
+}

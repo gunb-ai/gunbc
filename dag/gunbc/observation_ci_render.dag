@@ -471,7 +471,11 @@ fn ci_hold_cause_text(hold: SchedulerHold) -> String {
       concat("blocked on memory reclaim (pressure ", concat(ci_human_percent(bp: bp), ")"))
     CurrentHighWater { current: c, high_water: hw } =>
       concat("blocked on the memory high-water line (", concat(ci_human_bytes(b: c), concat(" of ", concat(ci_human_bytes(b: hw), ")"))))
-    _ => "blocked on scheduler admission"
+    WindowFull { active: _, target: _ } => "blocked on scheduler admission"
+    SwapGrowth { delta: _ } => "blocked on scheduler admission"
+    AwaitFirstCost { undigested: _ } => "blocked on scheduler admission"
+    InsufficientHeadroom { current: _, share: _, high_water: _ } => "blocked on scheduler admission"
+    AdmissionCeiling { current: _, ceiling: _ } => "blocked on scheduler admission"
   }
 }
 

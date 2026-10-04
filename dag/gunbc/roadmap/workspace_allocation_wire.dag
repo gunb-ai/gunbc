@@ -1,0 +1,75 @@
+module gunbc.workspace_allocation_wire
+
+import std.types { String, NonEmptyStr, Int }
+import gunbc.workspace_allocation { WorkspaceAllocationId, workspace_allocation_id_of }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string, json_field_value }
+
+// One JSON contract for allocation creation and incarnation-bound release. Authority-bearing
+// owner, image, access and expiry fields are supplied by verified session and server policy.
+type WorkspaceCreateSubmission { csrf_token: String, idempotency_key: WorkspaceAllocationId, profile: String }
+
+// A submission is an object with exactly the members its contract names; any other JSON value
+// carries no member count and is refused with the object that has the wrong number of members.
+fn workspace_submission_member_count(document: JsonValue) -> Int? {
+  match document {
+    JsonObject { members: object_members } => Present { value: count(object_members) }
+    JsonNull => none
+    JsonBool { value: _ } => none
+    JsonNumber { lexeme: _ } => none
+    JsonString { value: _ } => none
+    JsonArray { elements: _ } => none
+  }
+}
+
+fn workspace_submission_string(document: JsonValue, key: String) -> String? {
+  json_field_value(r: json_field_string(obj: document, key: key))
+}
+
+fn workspace_create_submission(body: String) -> WorkspaceCreateSubmission? {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: _ } => none
+    JsonDocumentParsed { value: document } => if workspace_submission_member_count(document: document) != Present { value: 3 } { none } else {
+      match workspace_submission_string(document: document, key: "csrf_token") {
+        Absent => none
+        Present { value: csrf } => match workspace_submission_string(document: document, key: "idempotency_key") {
+          Absent => none
+          Present { value: key } => match workspace_allocation_id_of(raw: key) {
+            Absent => none
+            Present { value: allocation_id } => match workspace_submission_string(document: document, key: "profile") {
+              Absent => none
+              Present { value: selected } => Present { value: WorkspaceCreateSubmission { csrf_token: csrf, idempotency_key: allocation_id, profile: selected } }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+
+type WorkspaceReleaseSubmission { csrf_token: String, generation: Int }
+
+fn workspace_release_submission(body: String) -> WorkspaceReleaseSubmission? {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: _ } => none
+    JsonDocumentParsed { value: document } => if workspace_submission_member_count(document: document) != Present { value: 2 } { none } else {
+      match workspace_submission_string(document: document, key: "csrf_token") {
+        Absent => none
+        Present { value: csrf } => match workspace_submission_string(document: document, key: "generation") {
+          Absent => none
+          Present { value: generation_wire } => match parse_int(s: generation_wire) {
+            Absent => none
+            Present { value: parsed_generation } => if parsed_generation >= 0 { Present { value: WorkspaceReleaseSubmission { csrf_token: csrf, generation: parsed_generation } } } else { none }
+          }
+        }
+      }
+    }
+  }
+}
+
+// The availability word a write answers when the server cannot vouch for the tailnet path
+// (gunbc.workspace_allocation_routes workspace_write_unavailable_response, 503 {availability,
+// reason, cause}); the browser client (gunbc.roadmap_allocation_client) compares against it and
+// stops offering the write.
+data workspace_write_unavailable_wire: String = "unavailable"

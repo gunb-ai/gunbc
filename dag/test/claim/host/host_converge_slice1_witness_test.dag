@@ -5,7 +5,7 @@ import gunbc.host_effect { LocalShell }
 import gunbc.runner_host_deploy { runner_index_seq }
 import extdeps.systemd { systemd_memory_max_property, MemoryMax, systemd_tasks_max_property, parse_systemd_task_limit_show }
 import gunbc.host_converge { ConvergeVerdict, Drifted, PerSlotMemoryCap, VerdictAbsent, VerdictConverged }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.runner_unit_live_read {
   gunbc_srv1_runner_unit_live_read_fixture,
   runner_unit_live_read_typed,
@@ -47,7 +47,7 @@ import gunbc.host_converge_slice1 {
   HostConvergeSlice1UnitTasksConverged,
   HostConvergeSlice1TasksConverged,
 }
-import gunbc.fleet_intent_network { operator_host_srv2, operator_host_srv3 }
+import gunbc.fleet_host_identity { operator_host_srv2, operator_host_srv3 }
 import gunbc.runner_slot_allocation {
   gunbc_runner_committed_width,
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,

@@ -1,0 +1,69 @@
+module gunbc.test.claim.workspace_allocation_storage_wet_witness_test
+
+import std.types { Bool, NonEmptyStr, String }
+import extdeps.shell
+import gunbc.fabric_storage_client { FabricStorageLocalFiles, FabricStorageBinding }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.workspace_allocation_store {
+  workspace_record_request, workspace_read_owner, workspace_request_release, workspace_settle_unplanned_retirement,
+  WorkspaceStoreWritten, WorkspaceStoreWriteRefused, WorkspaceStoreReadOk, WorkspaceReleased,
+}
+import gunbc.test.claim.workspace_allocation_lifecycle_witness_test { allocation_test_request, allocation_test_owner }
+
+// A real temporary fabric DB, through independently constructed bindings. No host or VM effects.
+test fn workspace_runtime_intent_replays_releases_and_reuses_one_fabric_head() -> Bool {
+  let directory = shell.Mktemp.Dir()
+  let path = join([directory.path as String, "/fabric"], "") as NonEmptyStr
+  let root = fabric_storage_file_root(root: path)
+  let observed = if !directory.success { false } else { match fabric_storage_file_root_ensure(root: root) {
+    FabricStorageRootReady => workspace_storage_admission_cycle(
+      first: FabricStorageLocalFiles { root: root },
+      second: FabricStorageLocalFiles { root: fabric_storage_file_root(root: path) },
+    )
+    other => false
+  } }
+  let cleaned = shell.Remove.RecursiveForce(path: directory.path)
+  observed && cleaned.success
+}
+
+fn workspace_storage_admission_cycle(first: FabricStorageBinding, second: FabricStorageBinding) -> Bool {
+  let request = allocation_test_request(key: "durable-first" as NonEmptyStr)
+  match workspace_record_request(store: first, request: request) {
+    WorkspaceStoreWritten { allocation: _ } => match workspace_record_request(store: second, request: request) {
+      WorkspaceStoreWritten { allocation: replayed } => if replayed.request.idempotency_key != request.idempotency_key { false } else {
+        match workspace_record_request(store: second, request: allocation_test_request(key: "blocked-second" as NonEmptyStr)) {
+          WorkspaceStoreWriteRefused { reason: _ } => match workspace_read_owner(store: second, owner: allocation_test_owner(subject: "another-owner" as NonEmptyStr)) {
+            WorkspaceStoreReadOk { snapshot: foreign } => if count(foreign.allocations) != 0 { false } else {
+              workspace_storage_release_cycle(first: first, second: second)
+            }
+            other => false
+          }
+          other => false
+        }
+      }
+      other => false
+    }
+    other => false
+  }
+}
+
+fn workspace_storage_release_cycle(first: FabricStorageBinding, second: FabricStorageBinding) -> Bool {
+  let request = allocation_test_request(key: "durable-first" as NonEmptyStr)
+  match workspace_request_release(store: second, owner: request.owner, idempotency_key: request.idempotency_key, expected_generation: 0) {
+    WorkspaceStoreWritten { allocation: retired } => if retired.connection != "" { false } else {
+      match workspace_settle_unplanned_retirement(store: first, owner: request.owner, idempotency_key: request.idempotency_key, observed_at: "2026-09-27T12:30:00Z") {
+        WorkspaceStoreWritten { allocation: released } => if released.phase != WorkspaceReleased { false } else {
+          match workspace_record_request(store: second, request: allocation_test_request(key: "new-second" as NonEmptyStr)) {
+            WorkspaceStoreWritten { allocation: _ } => match workspace_record_request(store: first, request: request) {
+              WorkspaceStoreWritten { allocation: historical } => historical.phase == WorkspaceReleased
+              other => false
+            }
+            other => false
+          }
+        }
+        other => false
+      }
+    }
+    other => false
+  }
+}

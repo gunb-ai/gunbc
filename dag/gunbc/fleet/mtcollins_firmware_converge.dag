@@ -2,6 +2,8 @@ module gunbc.fleet.mtcollins_firmware_converge
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import std.realization_reconcile { Applied, classify_reconciled, EffectConverged, EffectNotConverged }
 import std.decision { SelectionReceipt }
@@ -24,7 +26,10 @@ import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.types { RedfishAccountRole }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited }
-import extdeps.standards.picmg_hpm1 { extdeps_external_authority_anchor }
+import extdeps.bmc.ipmitool_hpm_check {
+  HpmCheckTable, HpmCheckRead, HpmCheckUpgradeVariant, HpmCheckUnreadable, HpmVersionHeld, HpmVersionAbsent,
+  HpmComponentSelected, HpmComponentNotListed, HpmComponentListedTwice, hpm_component_named,
+}
 import gunbc.machine_intake_subject { MachineIntakeSubject }
 import gunbc.machine_intake_receipt { same_intake_subject }
 import gunbc.machine_intake_mtcollins1_boot_milestone { mtcollins1_socket_count }
@@ -56,7 +61,7 @@ import gunbc.machine_intake_mtcollins1_socket1_investigation_observation {
 }
 import std.nat { Nat }
 import std.measure { Second, second_count, byte_size_count }
-import gunbc.machine_intake_mtcollins1_smpro_observation { SmproProbeOutcome, smpro_outcome_word, smpro_outcome_text }
+import gunbc.machine_intake_ampere_smpro_observation { SmproProbeOutcome, smpro_outcome_word, smpro_outcome_text }
 import gunbc.fleet.mtcollins_firmware_baseline {
   FirmwareBaseline, BaselineAdmissionRefusal, baseline_release_for, baseline_admission_refusal,
 }
@@ -254,9 +259,13 @@ fn sel_effect_of(t: FirmwareTarget) -> SelEffect {
 }
 
 // WHERE EACH TARGET'S VERSION IS READ (mtcollins1, 2026-10-02/03). hpm check reports BMC, BIOS (0ACOD014
-// as 0.14) and the MB CPLD (4.00 -> 6.00, the new image only after the AC cycle), but its SCP row
+// as 0.14) and the mainboard CPLD (4.00 -> 6.00, the new image only after the AC cycle), but its SCP row
 // (BOOTFW) read 0.00 before and after, so the SCP is read from SMpro register 0x01 instead. A readback
 // taken from the route that cannot see the target would be a reading of nothing.
+//
+// THE COMPONENT NAME IS THE ONE THE CONTROLLER PRINTS, NOT THE VENDOR'S PROSE. The mainboard CPLD is the
+// row `CPLD`, id 5, on BMC 0.32 (extdeps.bmc.ipmitool_observed_output ipmitool_hpm_check_bmc0_32) and on
+// 0.45.3 (ipmitool_hpm_upgrade_cpld_row_bmc0_45_3); this route named it `MB CPLD`, which no table lists.
 type VersionReadbackRoute
   = HpmCheckComponent { component: NonEmptyStr }
   | SmproVersionRegister { offset: Int }
@@ -266,7 +275,7 @@ fn readback_route_of(t: FirmwareTarget) -> VersionReadbackRoute {
     BmcController => HpmCheckComponent { component: "APP" }
     HostBios => HpmCheckComponent { component: "BIOS" }
     ScpFirmware => SmproVersionRegister { offset: 1 }
-    MainboardCpld => HpmCheckComponent { component: "MB CPLD" }
+    MainboardCpld => HpmCheckComponent { component: "CPLD" }
   }
 }
 
@@ -284,7 +293,8 @@ fn scp_version_of_smpro_word(word: Int) -> FirmwareSemanticVersion {
 }
 
 // A readback and the standing of the decode that produced it. hpm check is a component-properties read
-// under PICMG HPM.1, so its decode is cited to that standard.
+// under PICMG HPM.1, but the standard fixes only major.minor; every full version below is a
+// self-observed projection (hpm_component_projection) and carries that standing.
 // observed_at is when the route was read: it closes the step (step_closed_at) and orders the readback
 // after the AC cycle it must follow.
 type VersionReadback {
@@ -293,8 +303,124 @@ type VersionReadback {
   observed_at: EpochMs
 }
 
-fn hpm_check_readback(reading: EnsureObservation<FirmwareSemanticVersion>, observed_at: EpochMs) -> VersionReadback {
-  VersionReadback { reading: reading, decode: CitedToAuthority { authority: extdeps_external_authority_anchor }, observed_at: observed_at }
+fn hpm_check_readback(reading: EnsureObservation<FirmwareSemanticVersion>, decode: CitedFigureStanding, observed_at: EpochMs) -> VersionReadback {
+  VersionReadback { reading: reading, decode: decode, observed_at: observed_at }
+}
+
+// A TARGET'S VERSION FROM ONE hpm check TABLE, through its route's component name. A name the table
+// does not list, or lists twice, is inaccessible with the selection's own text, never an absence: the
+// route, not the target, is what is wrong then.
+//
+// THE CELL IS DECODED PER COMPONENT, AND THE DECODE IS SELF-OBSERVED, NOT HPM.1's. HPM.1 fixes the
+// major.minor revision and leaves the four auxiliary bytes to the vendor, so nothing here cites the
+// standard for a full version. Each projection below names the observation it rests on and carries
+// TranscribedUncited with what would ground it; a component with no projection is undecodable, and
+// no projection invents a patch level.
+type HpmVersionProjection
+  = HpmVersionProjected { version: FirmwareSemanticVersion, standing: CitedFigureStanding }
+  | HpmVersionUndecodable { reason: NonEmptyStr }
+
+// APP (the BMC firmware): the patch rides in auxiliary byte 0. The BMC 0.45.3 image read
+// `0.45 03000000` (artifacts/bmc/mtcollins1-bmc-hpm-upgrade-2026-10-02.log line 28, File column).
+data hpm_app_patch_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "an AMI or Ampere statement that hpm check's APP auxiliary byte 0 is the BMC firmware patch level (self-observed once: the 0.45.3 image read 0.45 03000000)",
+}
+
+// BIOS and the mainboard CPLD: their releases carry no patch level -- 0ACOD014 reads 0.14, CPLD V06
+// reads 6.00 -- so major.minor is the whole version and the patch is the release's own zero.
+data hpm_major_minor_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "an AMI or Ampere statement that hpm check's BIOS and CPLD revisions are the whole release version (self-observed: BIOS 0ACOD014 as 0.14, CPLD V06 as 6.00)",
+}
+
+data hpm_undecoded_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "a component-specific decode of this hpm check cell",
+}
+
+fn hpm_hex_value(c: String) -> Int? {
+  if c >= "0" && c <= "9" { parse_int(s: c) }
+  else if c == "a" || c == "A" { Present { value: 10 } }
+  else if c == "b" || c == "B" { Present { value: 11 } }
+  else if c == "c" || c == "C" { Present { value: 12 } }
+  else if c == "d" || c == "D" { Present { value: 13 } }
+  else if c == "e" || c == "E" { Present { value: 14 } }
+  else if c == "f" || c == "F" { Present { value: 15 } }
+  else { none }
+}
+
+fn hpm_component_projection(name: NonEmptyStr, rendering: NonEmptyStr) -> HpmVersionProjection {
+  let words: List<String> = split(s: rendering as String, delimiter: " ")
+  let revision: List<String> = split(s: text_of(xs: words, i: 0), delimiter: ".")
+  let aux = text_of(xs: words, i: 1)
+  match parse_int(s: text_of(xs: revision, i: 0)) {
+    Absent => HpmVersionUndecodable { reason: concat("the revision is not major.minor: ", rendering as String) as NonEmptyStr }
+    Present { value: major } =>
+      match parse_int(s: text_of(xs: revision, i: 1)) {
+        Absent => HpmVersionUndecodable { reason: concat("the revision is not major.minor: ", rendering as String) as NonEmptyStr }
+        Present { value: minor } =>
+          if (name as String) == "APP" {
+            match hpm_hex_value(c: char_at(s: aux, pos: 0)) {
+              Absent => HpmVersionUndecodable { reason: concat("APP's auxiliary byte 0 is not hex: ", rendering as String) as NonEmptyStr }
+              Present { value: hi } =>
+                match hpm_hex_value(c: char_at(s: aux, pos: 1)) {
+                  Absent => HpmVersionUndecodable { reason: concat("APP's auxiliary byte 0 is not hex: ", rendering as String) as NonEmptyStr }
+                  Present { value: lo } => HpmVersionProjected { version: FirmwareSemanticVersion { major: major, minor: minor, patch: hi * 16 + lo }, standing: hpm_app_patch_standing }
+                }
+            }
+          } else if (name as String) == "BIOS" || (name as String) == "CPLD" {
+            HpmVersionProjected { version: FirmwareSemanticVersion { major: major, minor: minor, patch: 0 }, standing: hpm_major_minor_standing }
+          } else {
+            HpmVersionUndecodable { reason: concat(concat("no version decode is modeled for component '", name as String), "'") as NonEmptyStr }
+          }
+      }
+  }
+}
+
+// THE PRODUCTION hpm check READ FOR CONVERGENCE IS NOT BUILT: the converge renders hpm check as a dry
+// argv, and nothing executes it and hands the table to this readback. The consumer is declared here.
+data hpm_check_converge_reader_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_converge", decl_name: "hpm_check_version_readback"),
+    reason: "hpm_check_version_readback reads a target's version from a parsed hpm check table through readback_route_of and hpm_component_named, and is executed only by test.claim.mtcollins_firmware_readback_route_witness over retained captures. No production effect runs `ipmitool hpm check` after a flash step and passes its table here: the converge's hpm check is a rendered dry argv (dry_step_commands), and its readbacks are supplied.",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: the wet realization of gunbc.fleet.mtcollins_firmware_converge's post-step readback. TRIGGER, every part required: (a) an extdeps.bmc.ipmi HpmCheck execution bound to the managed host's admitted controller endpoint and account, authenticated, and bounded by a deadline; (b) a process standing that admits the read only on a successful exit; (c) the exact raw stdout retained as evidence with a SHA-256 identity; (d) ordered after the step it verifies -- after the flash for steps that need no AC cycle, after the AC cycle for those that do; (e) hpm_check_table_of applied to exactly those retained bytes; and (f) hpm_check_version_readback for the step's selected target producing the step's VersionReadback. A nonzero exit, a timeout, unreadable output, or a read whose controller or target does not match the step must yield an inaccessible or refused readback, never a version. SUFFICIENT FOR deleting this row. NOT satisfied by a fixture or retained capture, by a supplied table or supplied readback, by a witness, or by the power-on account's pre-power hpm check read (slice B2, a different consumer of the same table)"),
+  ),
+]
+
+fn hpm_check_version_readback(table: HpmCheckTable, component: NonEmptyStr, observed_at: EpochMs) -> VersionReadback {
+  match hpm_check_version_projection(table: table, component: component) {
+    HpmVersionProjected { version: v, standing: st } => VersionReadback { reading: EnsureObserved { evidence: v }, decode: st, observed_at: observed_at }
+    HpmVersionUndecodable { reason: r } => VersionReadback { reading: EnsureInaccessible { reason: r as String }, decode: hpm_undecoded_standing, observed_at: observed_at }
+  }
+}
+
+fn hpm_check_version_reading(table: HpmCheckTable, component: NonEmptyStr) -> EnsureObservation<FirmwareSemanticVersion> {
+  match hpm_check_version_projection(table: table, component: component) {
+    HpmVersionProjected { version: v, standing: _ } => EnsureObserved { evidence: v }
+    HpmVersionUndecodable { reason: r } => EnsureInaccessible { reason: r as String }
+  }
+}
+
+fn hpm_check_version_projection(table: HpmCheckTable, component: NonEmptyStr) -> HpmVersionProjection {
+  match table {
+    HpmCheckUpgradeVariant { header: h } => HpmVersionUndecodable { reason: concat("hpm check printed the upgrade-progress table: ", h as String) as NonEmptyStr }
+    HpmCheckUnreadable { detail: d } => HpmVersionUndecodable { reason: concat("hpm check output is unreadable: ", d as String) as NonEmptyStr }
+    HpmCheckRead { rows: rs } =>
+      match hpm_component_named(rows: rs, name: component) {
+        HpmComponentNotListed { name: n, listed: ls } => HpmVersionUndecodable { reason: join(["hpm check lists no component named '", n as String, "'; it lists ", join(map(ls, x => x as String), ", ")], "") as NonEmptyStr }
+        HpmComponentListedTwice { name: n, ids: ids } => HpmVersionUndecodable { reason: join(["hpm check lists '", n as String, "' under ", to_string(count(ids)), " ids"], "") as NonEmptyStr }
+        HpmComponentSelected { row: r } =>
+          match r.active {
+            HpmVersionAbsent => HpmVersionUndecodable { reason: join(["hpm check lists '", r.name as String, "' with no active version"], "") as NonEmptyStr }
+            HpmVersionHeld { rendering: v } => hpm_component_projection(name: r.name, rendering: v)
+          }
+      }
+  }
+}
+
+fn text_of(xs: List<String>, i: Int) -> String {
+  match xs.skip(n: i).first() {
+    Present { value: v } => v
+    Absent => ""
+  }
 }
 
 // The SCP readback, from the SMpro probe the boot diagnostics already realize: a word read is a version
