@@ -3696,7 +3696,7 @@ fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffe
 // bytes cross the transport as stdin to dd, never as script text and never as an argv element, so a
 // unit body carrying quotes, spaces or metacharacters cannot change the command's meaning whatever
 // it contains. Same arms, same refusal posture, same exit-status derivation.
-fn run_argv_stdin_over_host_effect_transport(command: ArgvCommand, stdin_payload: String, transport: HostEffectTransport) -> ShellExecObserved {
+fn run_argv_stdin_over_host_effect_transport(command: ArgvCommand, stdin_payload: String, transport: HostEffectTransport) -> RunArgvTransportOutcome {
   match transport {
     LocalShell => {
       let params = run_argv_parameters_of(command: command)
