@@ -138,13 +138,7 @@ fn dispatch_jit_mint(
   decl_ref(module_path: "gunbc.runner_microvm_slot_controller", decl_name: "attempt_dispatch"),
   decl_ref(module_path: "test.claim.github_app_registry", decl_name: "dispatched"),
   decl_ref(module_path: "test.claim.github_app_registry", decl_name: "witness_jit_dispatch_refuses_when_the_attempt_binding_is_deferred"),
-  decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_subject_binds_the_minted_runner_and_the_attempt_input"),
-  decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "slot_refuses"),
-  decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "no_other_workflow_or_label_can_be_dispatched_through_the_ruling"),
-  decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_dispatch_has_three_standings_and_an_interlock"),
-  decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_collection_joins_the_floor_job_to_the_minted_runner"),
-  decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_rerun_or_another_run_cannot_be_collected_as_the_dispatch"),
-  decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "an_unfinished_unpinned_or_unreadable_run_refuses"),
+  decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_real_mint_admits_the_attempt_and_refuses_todays_workflow"),
 ] {
   match plan_jit_mint(
     binding: binding,
