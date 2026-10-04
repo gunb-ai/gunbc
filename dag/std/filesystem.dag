@@ -27,7 +27,7 @@ type PartitionResult {
 fn is_text_readable(entry: FileEntry) -> Bool {
   match entry.kind {
     RegularFile => is_text_encoding_optional(e: entry.encoding)
-    Symlink     => entry.symlink_target == TargetFile && is_text_encoding_optional(e: entry.encoding)
+    Symlink     => entry.symlink_target == Present { value: TargetFile } && is_text_encoding_optional(e: entry.encoding)
     Directory   => false
     Missing     => false
     Other       => false
