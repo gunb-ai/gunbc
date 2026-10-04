@@ -183,6 +183,41 @@ fn job_display_name(job: Job) -> NonEmptyStr {
   }
 }
 
+// THE SCOPE CHECKS ARE PURE, SO A CLAIM SUPPLIES THEIR INPUTS AS VALUES (DESIGN section 3: a witness
+// discriminates at one interface). The subject mint below composes them and is their only
+// production consumer; the witness exercises each one directly, and keeps ONE claim that runs the
+// real mint end to end.
+
+// The slot must be registered for the qualification workflow at this branch.
+fn qualification_slot_refusal(slot_workflow: NonEmptyStr, branch: NonEmptyStr) -> QualificationSubjectRefusal? {
+  if (slot_workflow as String) == (qualification_selected_workflow(branch: branch) as String) {
+    none
+  } else {
+    Present { value: SubjectSlotForAnotherWorkflow { slot_workflow: slot_workflow, qualification_workflow: qualification_selected_workflow(branch: branch) } }
+  }
+}
+
+type QualificationFloorAdmission
+  = QualificationFloorAdmitted { floor_job_name: NonEmptyStr }
+  | QualificationFloorRefused { refusal: QualificationSubjectRefusal }
+
+// The workflow must declare the attempt input, and its floor job's runs-on must be exactly it.
+fn qualification_floor_admission(workflow: Workflow, floor_job_id: NonEmptyStr) -> QualificationFloorAdmission {
+  if !workflow_declares_dispatch_input(workflow: workflow, input: qualification_attempt_dispatch_input) {
+    QualificationFloorRefused { refusal: SubjectAttemptInputUndeclared { input: qualification_attempt_dispatch_input.name } }
+  } else {
+    match first(filter(workflow.jobs, j => j.id == (floor_job_id as String))) {
+      Absent => QualificationFloorRefused { refusal: SubjectFloorJobAbsent { job_id: floor_job_id } }
+      Present { value: job } =>
+        if runs_on_is_exactly_the_input(runner: job.runner, input: qualification_attempt_dispatch_input) {
+          QualificationFloorAdmitted { floor_job_name: job_display_name(job: job) }
+        } else {
+          QualificationFloorRefused { refusal: SubjectFloorRunsOnNotTheAttemptInput { job_id: floor_job_id, runs_on: runner_spec_text(runner: job.runner) } }
+        }
+    }
+  }
+}
+
 // THE PURE JOIN, OVER A SUPPLIED WORKFLOW MODEL. Production reaches it only through
 // qualification_dispatch_subject, which supplies fleet_converge_workflow; the witness claims supply a
 // model carrying the floor job the boot leg's mode will add. An admit list constrains the call edge,
@@ -197,18 +232,7 @@ fn qualification_dispatch_subject_over(
 ) -> QualificationSubjectStanding
   admit_callers: [
     decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "qualification_dispatch_subject"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_subject_binds_the_minted_runner_and_the_attempt_input"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_slot_for_another_workflow_file_cannot_become_a_subject"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_slot_for_the_qualification_path_on_another_branch_cannot_become_a_subject"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_floor_runs_on_other_than_exactly_the_attempt_input_refuses"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_production_mint_refuses_until_the_qualification_mode_lands"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_collection_joins_the_floor_job_to_the_minted_runner"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_rerun_or_another_run_cannot_be_collected_as_the_dispatch"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "an_unfinished_unpinned_or_unreadable_run_refuses"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_dispatch_has_three_standings_and_an_interlock"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "slot_refuses"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "runs_on_refuses"),
-    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "undeclared_input_refuses"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_real_mint_admits_the_attempt_and_refuses_todays_workflow"),
   ]
 {
   match jit_registration_of(dispatch: JitMintDispatchAuthorized { dispatch: dispatch }) {
@@ -222,19 +246,12 @@ fn qualification_dispatch_subject_over(
         match registration.slot {
           MicroVmJitSlot { attempt: _ } => QualificationSubjectRefused { refusal: SubjectSlotNotHostUnit }
           HostUnitJitSlot { slot: h } =>
-            if (h.workflow as String) != (qualification_selected_workflow(branch: branch) as String) {
-              QualificationSubjectRefused {
-                refusal: SubjectSlotForAnotherWorkflow { slot_workflow: h.workflow, qualification_workflow: qualification_selected_workflow(branch: branch) },
-              }
-            } else if !workflow_declares_dispatch_input(workflow: workflow, input: qualification_attempt_dispatch_input) {
-              QualificationSubjectRefused { refusal: SubjectAttemptInputUndeclared { input: qualification_attempt_dispatch_input.name } }
-            } else {
-              match first(filter(workflow.jobs, j => j.id == (floor_job_id as String))) {
-                Absent => QualificationSubjectRefused { refusal: SubjectFloorJobAbsent { job_id: floor_job_id } }
-                Present { value: job } =>
-                  if !runs_on_is_exactly_the_input(runner: job.runner, input: qualification_attempt_dispatch_input) {
-                    QualificationSubjectRefused { refusal: SubjectFloorRunsOnNotTheAttemptInput { job_id: floor_job_id, runs_on: runner_spec_text(runner: job.runner) } }
-                  } else {
+            match qualification_slot_refusal(slot_workflow: h.workflow, branch: branch) {
+              Present { value: r } => QualificationSubjectRefused { refusal: r }
+              Absent =>
+                match qualification_floor_admission(workflow: workflow, floor_job_id: floor_job_id) {
+                  QualificationFloorRefused { refusal: r } => QualificationSubjectRefused { refusal: r }
+                  QualificationFloorAdmitted { floor_job_name: n } =>
                     QualificationSubjectAdmitted {
                       subject: QualificationDispatchSubject {
                         registration: registration,
@@ -242,11 +259,10 @@ fn qualification_dispatch_subject_over(
                         attempt: h.attempt,
                         branch: branch,
                         revision: revision,
-                        floor_job_name: job_display_name(job: job),
+                        floor_job_name: n,
                       },
                     }
-                  }
-              }
+                }
             }
         }
       }
@@ -329,8 +345,8 @@ fn qualification_dispatch_standing(performance: RestExchangePerformance) -> Qual
 }
 
 // THE INTERLOCK, as a pure comparison: the proof's admitted host against the slot's host.
-fn hold_covers_subject(held: HostIdentity, subject: QualificationDispatchSubject) -> Bool {
-  (held as String) == (subject.host as String)
+fn hold_covers_slot_host(held: HostIdentity, slot_host: HostIdentity) -> Bool {
+  (held as String) == (slot_host as String)
 }
 
 fn dispatch_qualification_floor(
@@ -341,7 +357,7 @@ fn dispatch_qualification_floor(
   control_plane: GitHubAppControlPlaneState,
 ) -> QualificationDispatch uses net: Network {
   let effect = qualification_dispatch_effect(subject: subject)
-  if !hold_covers_subject(held: hold.subject.host.host, subject: subject) {
+  if !hold_covers_slot_host(held: hold.subject.host.host, slot_host: subject.host) {
     QualificationDispatchRefused { subject: subject, refusal: DispatchHoldForAnotherHost { held: hold.subject.host.host, slot: subject.host } }
   } else if token.app != subject.registration.app || token.installation != subject.registration.installation {
     QualificationDispatchRefused { subject: subject, refusal: DispatchTokenForAnotherInstallation }
@@ -450,8 +466,25 @@ type QualificationRunVerdict
   = RunVerdictCollected { run: WorkflowRun, floor_job: WorkflowJobRun, conclusion: WorkflowRunConclusion }
   | RunVerdictRefused { refusal: QualificationRunRefusal }
 
-fn decide_floor_job(subject: QualificationDispatchSubject, run: WorkflowRun, conclusion: WorkflowRunConclusion, jobs: List<WorkflowJobRun>) -> QualificationRunVerdict {
-  let registered = subject.registration.name.value
+// WHAT THE READBACK IS JUDGED AGAINST, as a plain value: the runner name the registration minted,
+// the floor job the subject fixed, and the pinned revision. collect_qualification_run derives it from
+// the sealed subject (qualification_run_expectation); a claim supplies it directly.
+type QualificationRunExpectation {
+  registered_runner: NonEmptyStr
+  floor_job_name: NonEmptyStr
+  revision: CommitSha
+}
+
+fn qualification_run_expectation(subject: QualificationDispatchSubject) -> QualificationRunExpectation {
+  QualificationRunExpectation {
+    registered_runner: subject.registration.name.value,
+    floor_job_name: subject.floor_job_name,
+    revision: subject.revision,
+  }
+}
+
+fn decide_floor_job(subject: QualificationRunExpectation, run: WorkflowRun, conclusion: WorkflowRunConclusion, jobs: List<WorkflowJobRun>) -> QualificationRunVerdict {
+  let registered = subject.registered_runner
   let on_runner = jobs |> filter(j => job_ran_on(job: j, runner_name: registered))
   match first(on_runner) {
     Absent => RunVerdictRefused { refusal: RunNeverReachedAttemptRunner { registered_runner: registered, runner_names_seen: jobs |> map(j => job_runner_name_seen(job: j)) } }
@@ -469,7 +502,7 @@ fn decide_floor_job(subject: QualificationDispatchSubject, run: WorkflowRun, con
 }
 
 fn decide_qualification_run(
-  subject: QualificationDispatchSubject,
+  subject: QualificationRunExpectation,
   run_id: Int,
   run_performance: RestExchangePerformance,
   run: WorkflowRun,
@@ -519,7 +552,7 @@ fn collect_qualification_run(dispatched: DispatchedQualificationRun, token: Cont
   let read = read_run_with(token: token, owner: owner, repo: repo, run_id: run_id)
   let jobs = read_attempt_jobs_with(token: token, owner: owner, repo: repo, run_id: run_id, attempt: dispatched_run_attempt)
   match decide_qualification_run(
-    subject: dispatched.subject,
+    subject: qualification_run_expectation(subject: dispatched.subject),
     run_id: run_id,
     run_performance: read.performance,
     run: read.run,
