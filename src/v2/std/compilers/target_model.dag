@@ -13902,7 +13902,7 @@ fn type_expr_projection_child_slot_discipline_atom(connective: Connective) -> No
     LoopBoundEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
     PositionalPrefixThenLabeledEdges =>
       target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional_prefix_then_labeled)
-    PositionalPlusOneNamedEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
+    PositionalPlusNamedMarkerEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_positional)
   }
 }
 
