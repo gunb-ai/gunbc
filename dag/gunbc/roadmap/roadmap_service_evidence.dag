@@ -603,8 +603,10 @@ type ServiceEvidenceSnapshotDecode
   = SnapshotDecoded { snapshot: ServiceEvidenceSnapshot }
   | SnapshotInvalid { reason: String }
 
+data service_evidence_canonical_fields: List<String> = map(service_evidence_entries(r: service_evidence_readings(r: service_evidence_closing_probe())), x => x.field)
+
 fn service_evidence_canonical_field_names() -> List<String> {
-  map(service_evidence_entries(r: service_evidence_readings(r: service_evidence_closing_probe())), x => x.field)
+  service_evidence_canonical_fields
 }
 
 fn snapshot_string(v: JsonValue, key: String) -> String {
@@ -646,7 +648,7 @@ fn snapshot_fields_of(v: JsonValue) -> List<ServiceEvidenceSnapshotField>? {
 
 // Exactly the canonical names, once each and in canonical order: pairwise equal over equal lengths.
 fn snapshot_names_are_canonical(names: List<String>) -> Bool {
-  let canonical = service_evidence_canonical_field_names()
+  let canonical = service_evidence_canonical_fields
   length(names) == length(canonical)
     && fold(names, init: SnapshotNameWalk { rest: canonical, ok: true }, f: (w, n) => match first(w.rest) {
       Absent => SnapshotNameWalk { rest: [], ok: false }
