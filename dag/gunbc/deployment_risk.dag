@@ -29,10 +29,11 @@ import gunbc.auth.github_apps { DeclaredGitHubApp, gunbai_bot_declared }
 // MachineOperatingEnvironment lands in its own one-motion migration on top of this module.
 
 // ── The subject ─────────────────────────────────────────────────────────────────────────────────
-// ONE CONVERGENCE SUBJECT whose desired state, mutable state and external attachments move
-// together. Not a host, a machine, a process, a release stage, or a dashboard instance_id: an
-// instance (gunbc.roadmap_dashboard_instance HostDashboardInstance) is a realization of a
-// deployment and carries this id, it does not stand for it. A record rather than a branded string
+// THE STABLE IDENTITY OF ONE Deployment -- the convergence subject whose desired state, mutable
+// state and external attachments move together. The id identifies the Deployment; it is not the
+// Deployment. Not a host, a machine, a process, a release stage, or a dashboard instance_id: an
+// instance (gunbc.roadmap_dashboard_instance HostDashboardInstance) realizes that Deployment and
+// carries this identity, it does not stand for it. A record rather than a branded string
 // so equality is structural and cannot be satisfied by an unrelated string of the same spelling.
 type DeploymentId {
   name: NonEmptyStr
