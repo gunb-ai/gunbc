@@ -55,5 +55,5 @@ test fn printer_identity_reads_only_the_two_printer_secrets() -> Bool {
 
 // The merge combines independent dispatch additions; neither side may erase the other.
 test fn printer_and_main_workspace_modes_remain_dispatchable() -> Bool {
- all(["printer","workspace_commissioning_plan","r2_workspace_object_read_mint","r2_workspace_object_write_mint"],mode=>count(filter(fleet_converge_mode_options,m=>m==mode))==1)
+ all(["printer","workspace_commissioning_plan","r2_workspace_object_read_mint","r2_workspace_object_write_mint","spark_runtime_image_produce","spark_runtime_image_distribute","spark_arm_checkpoint_materialize","spark_arm_group_observe","spark_arm_group_launch_plan","spark_arm_group_launch","spark_arm_group_load"],mode=>count(filter(fleet_converge_mode_options,m=>m==mode))==1)
 }
