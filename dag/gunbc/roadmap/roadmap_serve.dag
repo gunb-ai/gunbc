@@ -2060,11 +2060,12 @@ fn allocation_page_response_over(request: ServeHttpRequest<RequestAccessPath, Re
 // to its own request -- a page, a redirect, a refusal it can act on -- and the path of a scratch
 // worktree on the host is neither the client's to act on nor the client's to see; the serve process
 // writes no operator log of its own. So in the three functions below the snapshot's standing is
-// matched by name and the carrier's result passes through unchanged. THE REPORTER OF A LEAK
-// HERE IS THE SNAPSHOT CENSUS (gunbc.roadmap.roadmap_event_snapshot_census
-// roadmap_snapshot_census_for_instance), which the belt tick takes from the repository's own
-// worktree registry: a snapshot a served request left registered is counted there and, once it has
-// outlived a tick, named as a leak.
+// matched by name and the carrier's result passes through unchanged. THIS FAILURE ITSELF IS
+// RECORDED NOWHERE. What exists is the instance's snapshot census
+// (gunbc.roadmap.roadmap_event_snapshot_census roadmap_snapshot_census_for_instance), taken by the
+// belt tick from the repository's worktree registry: a snapshot a served request left registered is
+// listed there for as long as it stays registered. The census does not know a removal failed, and
+// one whose worktree is gone before the next census appears nowhere.
 fn serve_history_after_snapshot_close(read: CarrierClosed<RoadmapEventsRead>) -> RoadmapEventsRead {
   match read.close {
     SnapshotNotOpened => read.result

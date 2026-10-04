@@ -53,8 +53,8 @@ fn roadmap_event_record_unordered_refusal(why: String) -> String {
 // exit IS the append's result, ExitSuccess carries no text, and a nonzero exit would tell a caller
 // the event was not recorded when it was -- a retry would then append a second event. So on success
 // this entry has no surface for a leaked snapshot, each standing is matched by name to say so, and
-// the reporter of a leak on a successful record is the snapshot census
-// (gunbc.roadmap.roadmap_event_snapshot_census roadmap_snapshot_census_for_instance).
+// that failure itself is recorded nowhere; a snapshot left registered is listed by the instance's
+// snapshot census (gunbc.roadmap.roadmap_event_snapshot_census roadmap_snapshot_census_for_instance).
 fn roadmap_event_record_exit(exit: ProcessExit, closes: List<CarrierSnapshotClose>) -> ProcessExit {
   match exit {
     ExitFailure { code, reason } => ExitFailure { code: code, reason: join(concat([reason], carrier_snapshot_close_failures(closes: closes)), "; ") }

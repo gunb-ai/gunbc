@@ -179,13 +179,21 @@ fn roadmap_event_carrier_sync(layout: RoadmapEventCarrierLayout) -> CarrierEnsur
 // Every operation owns its worktree. A concurrent read cannot reset a writer's index or FETCH_HEAD.
 // The remote publication is conditional on the EXACT fetched commit, not merely fast-forward.
 // The issue-parent decision and operation receipt are made inside that same immutable snapshot.
-// A SNAPSHOT'S PATH SAYS IT IS ONE. Every private snapshot is created under this prefix, so the
-// repository's own worktree registry can be read for the snapshots any process left registered
-// (gunbc.roadmap.roadmap_event_snapshot_census). The mktemp template is the prefix and nothing else.
-data roadmap_event_snapshot_path_prefix: String = "/tmp/gunbc-roadmap-event-snapshot."
+// A SNAPSHOT'S PATH SAYS WHOSE IT IS. Every private snapshot of one carrier layout is created under
+// that layout's own namespace: a fixed stem, then the layout's long-lived worktree path with its
+// separators folded (an underscore is doubled first, so two different worktree paths never fold to
+// one token), then a dot. The worktree path is per instance, so the namespace is per instance, and
+// the census of one instance (gunbc.roadmap.roadmap_event_snapshot_census) selects exactly the
+// snapshots that instance's operations created -- not those of another instance sharing the
+// repository. The mktemp template is the namespace and mktemp's placeholder, nothing else.
+data roadmap_event_snapshot_stem: String = "/tmp/gunbc-roadmap-event-snapshot."
 
-fn roadmap_event_snapshot_template() -> FilePath {
-  concat(roadmap_event_snapshot_path_prefix, "XXXXXXXXXX") as FilePath
+fn roadmap_event_snapshot_namespace(layout: RoadmapEventCarrierLayout) -> String {
+  join([roadmap_event_snapshot_stem, replace(replace(layout.worktree as String, "_", "__"), "/", "_"), "."], "")
+}
+
+fn roadmap_event_snapshot_template(layout: RoadmapEventCarrierLayout) -> FilePath {
+  concat(roadmap_event_snapshot_namespace(layout: layout), "XXXXXXXXXX") as FilePath
 }
 
 type CarrierSnapshot = CarrierSnapshotReady { layout: RoadmapEventCarrierLayout } | CarrierSnapshotRefused { reason: String }
@@ -194,7 +202,7 @@ fn roadmap_event_private_snapshot(layout: RoadmapEventCarrierLayout) -> CarrierS
   match roadmap_event_carrier_ensure(layout: layout) {
     CarrierEnsureRefused { step, reason } => CarrierSnapshotRefused { reason: concat(step, concat(": ", reason)) }
     CarrierReady => {
-      let temporary = shell.Mktemp.DirWithTemplate(template: roadmap_event_snapshot_template())
+      let temporary = shell.Mktemp.DirWithTemplate(template: roadmap_event_snapshot_template(layout: layout))
       if !temporary.success { CarrierSnapshotRefused { reason: "cannot create private event snapshot" } }
       else { match carrier_exec(layout: layout, workdir: layout.repo_root as String,
         args: ["worktree", "add", "--detach", "--no-checkout", temporary.path, "HEAD"]) {

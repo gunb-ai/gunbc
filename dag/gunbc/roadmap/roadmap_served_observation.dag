@@ -259,10 +259,10 @@ fn served_observation_daily_surface_over(instance: HostDashboardInstance, plan: 
 // THE DAILY PAGE HAS NO SURFACE FOR A LEAKED STANDINGS SNAPSHOT. The page renders standings or the
 // reason they are unobserved; a worktree the read could not remove is neither, and writing it into
 // StandingsUnobserved would replace standings that WERE read with a refusal. So the standing of the
-// snapshot is matched here by name and the standings pass through unchanged. THE REPORTER OF A
-// LEAK HERE IS THE SNAPSHOT CENSUS (gunbc.roadmap.roadmap_event_snapshot_census
-// roadmap_snapshot_census_for_instance), taken by the belt tick from the repository's worktree
-// registry and written as a receipt. The page does not render that receipt.
+// snapshot is matched here by name and the standings pass through unchanged. THIS FAILURE ITSELF
+// IS RECORDED NOWHERE. A snapshot left registered is listed by the instance's snapshot census
+// (gunbc.roadmap.roadmap_event_snapshot_census roadmap_snapshot_census_for_instance) for as long as
+// it stays registered; the census does not know a removal failed, and the page does not render it.
 fn served_standings_after_snapshot_close(read: CarrierClosed<RoadmapStandings>) -> RoadmapStandings {
   match read.close {
     SnapshotNotOpened => read.result
