@@ -8,7 +8,6 @@ import v2.std.dependency {
   DependencyView,
   classify_dependency_kind
 }
-import v2.std.logic { Bool }
 import v2.std.node { Node, content_hash }
 import std.measure { ByteSize }
 import std.content_hash { ContentHash, Fnv1a64 }

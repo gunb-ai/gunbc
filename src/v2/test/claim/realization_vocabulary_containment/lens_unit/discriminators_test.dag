@@ -13,7 +13,6 @@ import v2.lens.realization_vocabulary_containment {
   RealizationVocabImportEdge
 }
 import v2.std.layer { LayerPrefixStd, LayerPrefixExtdeps, LayerPrefixWorkflow }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

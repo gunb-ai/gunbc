@@ -25,7 +25,6 @@ import v2.lens.cost.expr {
 }
 import v2.std.algebra { fold_list, non_empty_append, non_empty_singleton }
 import v2.std.diagnostic { Locus, textual_whole_file_locus }
-import v2.std.logic { Bool }
 import std.nat { Nat, Succ, Zero, nat_add, nat_cata, nat_mul, nat_max }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 

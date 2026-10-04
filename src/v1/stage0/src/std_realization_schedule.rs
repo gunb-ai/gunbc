@@ -43,7 +43,6 @@ use crate::std_process_termination::ProcessTermination::{
     ProcessExited, ProcessSignaled, ProcessTerminationUnobserved,
 };
 pub use crate::std_types::brand;
-use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, CommitSha, List, NonEmptyStr};
 pub use crate::std_witness_admission::WitnessConsumerCadence;
 use crate::std_witness_admission::WitnessConsumerCadence::*;
