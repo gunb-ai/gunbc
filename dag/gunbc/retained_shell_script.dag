@@ -65,21 +65,12 @@ fn retained_srvn(body: String, reason: NonEmptyStr) -> RetainedShellScript {
   }
 }
 
-data retained_foreign_emit_ref: DeclarationRef = DeclarationRef {
-  module_path: "v2.workflow.bash_emit",
-  decl_name: "bash_emit_program",
-  field: WholeDeclaration,
-}
-
-// Default dissolve-on for foreign-executor / bootstrap shell.Exec.Run sites (GHA run:, cron, git
-// hooks, CI gates, pre-runtime bootstrap): the v2 bash emit backend (emit(intent, Bash) via
-// v2.workflow.bash_emit), a bounded roster not a growth surface (shell->dag census section 5.C).
-// retained_foreign is the 2-arg counted bridge for that shared dissolve target; it returns
-// TransportScript for direct shell.Exec.Run positions.
-
-fn retained_foreign(body: String, reason: NonEmptyStr) -> TransportScript {
-  retained_transport(body: body, reason: reason, dissolves_to: retained_foreign_emit_ref)
-}
+// retained_foreign and its emit ref are GONE: their one caller (the node-http serve smoke in
+// tools.emit_host_transport) routes through typed process-lifecycle ops
+// (extdeps.posix.process StartDetached/Reap, http.Client.Probe, posix.Signal.TerminateProcess)
+// as of the process-lifecycle dissolution, so the foreign-executor bridge had zero callers left.
+// The v2 bash emit backend (v2.workflow.bash_emit bash_emit_program) remains the dissolve target
+// recorded on the remaining bridges' roster prose and on any future foreign-executor row.
 
 // Counted bridge for runtime-present direct shell.Exec.Run sites (host converge, host identity,
 // srv3 install/diagnostic) whose dissolve-on is the same srvN-takeover typed effects as the

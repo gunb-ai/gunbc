@@ -25,7 +25,7 @@ import gunbc.fleet_host_assembly {
   assembly_covers_component_roster,
   assembly_containments_join,
 }
-import gunbc.fleet_intent_network { operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet_host_identity { operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

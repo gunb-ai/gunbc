@@ -18,7 +18,6 @@ pub const SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES: &[&str] = &[
     "phase_profile.rs",
     "pre_push.rs",
     "census_exclude_derive.rs",
-    "derived_realization_schedule.rs",
     "memory_governor.rs",
     "cssl_seed_linked_closure_assembly.rs",
     "required_regen_host.rs",

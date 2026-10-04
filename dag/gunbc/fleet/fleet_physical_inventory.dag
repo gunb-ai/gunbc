@@ -4,7 +4,6 @@ import std.types { NonEmptyStr, String, List, Int }
 import std.measure { RackUnit, rack_unit, measure_add }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply {
-  HostIdentity,
   PhysicalAssetIdentity,
   SiteIdentity,
   RackIdentity,
@@ -22,6 +21,7 @@ import product.placement_supply {
   BootstrapNeeded,
   BootstrapNotNeeded,
 }
+import product.host_identity { HostIdentity }
 import extdeps.chassis.rosewill { rosewill_rsv_r4000u_catalog, rosewill_rsv_z2600u_catalog }
 import extdeps.network.tp_link { tp_link_tl_sg1024s_catalog }
 import extdeps.rack.navepoint { navepoint_18u_open_frame_catalog }
@@ -29,14 +29,7 @@ import extdeps.power.eaton_tripp_lite { eaton_tripp_lite_rs_1215_family_catalog 
 import extdeps.cooling.dynatron { dynatron_w1_catalog }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import gunbc.fleet_asset_identity { dgx_spark_01, dgx_spark_02, dgx_spark_03, dgx_spark_04, dgx_spark_05, dgx_spark_06, dgx_spark_07, dgx_spark_08, chassis_srv1, chassis_srv2, chassis_srv3, chassis_srv4, chassis_srv5_placeholder, chassis_srv6_placeholder, switch_01, printer_01, printer_02, ams_01, pdu_01, pi_controller, cooler_srv3, cooler_srv4 }
-import gunbc.fleet_intent_network {
-  operator_host_srv1,
-  operator_host_srv2,
-  operator_host_srv3,
-  operator_host_srv4,
-  operator_host_srv5,
-  operator_host_srv6,
-}
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv5, operator_host_srv6 }
 import gunbc.fleet_intent { srv3_baseboard, srv4_baseboard, srv4_memory_population }
 import product.cooling_qualification { InstalledCoolingRealization }
 import std.nat { Nat }
@@ -99,7 +92,7 @@ data operator_switch_shelf_units: RackUnit = rack_unit(1)
 
 // THE SIX host_srv ROWS THAT STOOD HERE WERE A SECOND AUTHORING OF AN IDENTITY THAT ALREADY HAD ONE.
 // They declared "srv1" through "srv6" as HostIdentity, byte-for-byte the values
-// gunbc.fleet_intent_network already declares as operator_host_srv1 through operator_host_srv6.
+// gunbc.fleet_host_identity already declares as operator_host_srv1 through operator_host_srv6.
 // Two names, one concept, one set of values -- the section 3 nicknaming violation, and the reason
 // nothing ever caught it is that the two agreed EXACTLY. Any check anyone thought to write would
 // have compared them and passed. A fork of VALUES rather than of behaviour is invisible to

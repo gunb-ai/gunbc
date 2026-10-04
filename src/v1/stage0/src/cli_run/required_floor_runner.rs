@@ -284,14 +284,6 @@ pub fn floor_walk_attempt_id_from_env() -> String {
         .unwrap_or_else(|_| "local".to_string())
 }
 
-pub(crate) fn floor_drain_retention_detail_enabled() -> bool {
-    std::env::var("GUNBC_FLOOR_DRAIN_RETENTION")
-        .ok()
-        .as_deref()
-        .map(|v| matches!(v, "1" | "true" | "TRUE"))
-        .unwrap_or(false)
-}
-
 pub fn make_eval_context(
     graph: &v1_compiler_compile::ResolvedGraph,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -2294,12 +2286,12 @@ fn unimported_bare_provider_authority(rel: &str) -> String {
 }
 
 /// One roster row as the host reads it -- only the fields it needs to gather FACTS (which file a
-/// row names, and whether it is an ImportsFixed retirement whose file must be re-derived). Every
+/// row names, and whether it is a retirement whose file must be re-derived). Every
 /// decision about the rows is the `.dag`'s; the host passes the rows back to it as values.
 struct RosterRow {
     file: String,
-    /// A retirement the host re-derives on every run to hold it true: `ImportsFixed` or
-    /// `NotAReference`, read from the row view's own fields.
+    /// A retirement the host re-derives on every run to hold it true, read from the row view's
+    /// `rechecked` field, which the `.dag` derives from the row's standing.
     rechecked: bool,
 }
 
@@ -2319,7 +2311,7 @@ impl UnimportedBareProviderRosterReading {
     /// Only the HEAD's rows are decoded by the host: the standing judgment reads them to choose
     /// which files to re-derive. A BASE roster is read for its `.dag` value alone, which the edit
     /// judgment compares in `.dag`, so the host never spells a base row's fields -- a base written
-    /// before a view field existed (`not_a_reference`, gunbc#12609) is still a readable base.
+    /// before a view field existed (`rechecked`, gunbc#13116) is still a readable base.
     fn read(
         index: &MultiEntryIndex,
         entry: &str,
@@ -2354,28 +2346,16 @@ impl UnimportedBareProviderRosterReading {
                     ))
                 }
             };
-            let imports_fixed = match ctx.field(fields, "imports_fixed") {
+            let rechecked = match ctx.field(fields, "rechecked") {
                 Some(v1_interpreter::Value::Bool(b)) => *b,
                 other => {
                     return Err(format!(
-                        "{function}: row `imports_fixed` is not a Bool ({})",
+                        "{function}: row `rechecked` is not a Bool ({})",
                         floor_value_shape(other)
                     ))
                 }
             };
-            let not_a_reference = match ctx.field(fields, "not_a_reference") {
-                Some(v1_interpreter::Value::Bool(b)) => *b,
-                other => {
-                    return Err(format!(
-                        "{function}: row `not_a_reference` is not a Bool ({})",
-                        floor_value_shape(other)
-                    ))
-                }
-            };
-            rows.push(RosterRow {
-                file,
-                rechecked: imports_fixed || not_a_reference,
-            });
+            rows.push(RosterRow { file, rechecked });
         }
         Ok(Self {
             ctx,
@@ -2489,9 +2469,13 @@ fn unimported_bare_provider_standing_refusals(
     let mut carried: Vec<String> = Vec::new();
     let mut route_carried: Vec<String> = Vec::new();
     let mut hints: HashMap<String, String> = HashMap::new();
+    let (mut suppressed_builtin, mut suppressed_kernel_method_only) = (0usize, 0usize);
     for path in &checked {
         let sf = &lookup[path.as_str()];
-        for v in unimported_bare_providers(sf, index)? {
+        let judgment = unimported_bare_provider_judgment(sf, index)?;
+        suppressed_builtin += judgment.suppressed_builtin;
+        suppressed_kernel_method_only += judgment.suppressed_kernel_method_only;
+        for v in judgment.rows {
             let id = head.identity(&v.file, &v.name)?;
             hints.insert(
                 id.clone(),
@@ -2507,6 +2491,15 @@ fn unimported_bare_provider_standing_refusals(
             carried.push(id);
         }
     }
+    // THE DECLARED COVERAGE FRONTIER (`gunbc.rung_drop`
+    // `unimported_bare_provider_gate_admits_kernel_method_names_untyped`): counted on every run over
+    // the files this run judged, so growth in the kernel-method-only population is visible.
+    eprintln!(
+        "[floor-phase] phase=unimported-bare-provider-frontier judged_files={} \
+         suppressed_builtin={suppressed_builtin} \
+         suppressed_kernel_method_only={suppressed_kernel_method_only}",
+        checked.len()
+    );
     let strings = |xs: Vec<String>| list_value_from_vec(xs.iter().map(str_value).collect());
     let verdict = head.refusals(
         "unimported_bare_provider_roster_standing",
@@ -4404,611 +4397,6 @@ pub(crate) fn emit_changed_witness_projection(
     Ok(())
 }
 
-pub fn run_discovery_corpus_with_options(
-    source_roots: &[String],
-    scan_dirs: &[String],
-    explicit_entries: &[(String, String)],
-    execution_mode: v1_interpreter::ExecutionMode,
-    width_policy: DiscoveryWidthPolicy,
-    options: DiscoveryCorpusOptions,
-) -> Result<DiscoverySummary, String> {
-    let pump_started = std::time::Instant::now();
-    let out = run_discovery_corpus_with_options_inner(
-        source_roots,
-        scan_dirs,
-        explicit_entries,
-        execution_mode,
-        width_policy,
-        options,
-    );
-    discovery_phase_totals::add(
-        &discovery_phase_totals::PUMP_WALL_MS,
-        pump_started.elapsed(),
-    );
-    out
-}
-
-pub(crate) fn run_discovery_corpus_with_options_inner(
-    source_roots: &[String],
-    scan_dirs: &[String],
-    explicit_entries: &[(String, String)],
-    execution_mode: v1_interpreter::ExecutionMode,
-    width_policy: DiscoveryWidthPolicy,
-    options: DiscoveryCorpusOptions,
-) -> Result<DiscoverySummary, String> {
-    let mut rows =
-        if options.explicit_roster_only || (scan_dirs.is_empty() && !explicit_entries.is_empty()) {
-            Vec::new()
-        } else {
-            let t = std::time::Instant::now();
-            let walked = discover_floor_witness_roster(
-                source_roots,
-                scan_dirs,
-                &options.exclude_substrings,
-                &options.discovery_scope_dirs,
-            );
-            discovery_phase_totals::add(&discovery_phase_totals::ROSTER_WALK_MS, t.elapsed());
-            walked?
-        };
-    let mut seen: std::collections::BTreeSet<(String, String)> = rows
-        .iter()
-        .map(|r| (r.entry.clone(), r.function.clone()))
-        .collect();
-    // U3 — empty function = file-grain: enumerate via the same test-decl scan discovery uses.
-    let expanded_explicit = test_module_hygiene_bridge::expand_explicit_entries(explicit_entries)?;
-    for (entry, function) in &expanded_explicit {
-        if seen.insert((entry.clone(), function.clone())) {
-            rows.push(DiscoveryRow {
-                label: function.clone(),
-                entry: entry.clone(),
-                function: function.clone(),
-                reads_live_tree: read_entry_live_tree_disposition(entry)?,
-            });
-        }
-    }
-    rows.sort_by(|a, b| {
-        a.entry
-            .cmp(&b.entry)
-            .then_with(|| a.function.cmp(&b.function))
-    });
-    if rows.is_empty() {
-        return Err("discovery roster produced no rows (empty corpus → fail closed)".to_string());
-    }
-    let width_policy = match width_policy {
-        DiscoveryWidthPolicy::DerivedSchedule => {
-            let pairs: Vec<(String, String)> = rows
-                .iter()
-                .map(|r| (r.entry.clone(), r.function.clone()))
-                .collect();
-            let derived = crate::derived_realization_schedule::derive_discovery_schedule_width(
-                source_roots,
-                &pairs,
-            )?;
-            if let Some(msg) = derived.refuse_if_budget_unreadable() {
-                return Err(msg);
-            }
-            eprintln!(
-                "run_discovery_corpus: derived schedule width={} verdict={} max_derived_bound={}",
-                derived.width,
-                derived.verdict,
-                derived
-                    .max_derived_bound_bytes
-                    .map(|b| b.to_string())
-                    .unwrap_or_else(|| "unknown".into()),
-            );
-            DiscoveryWidthPolicy::FixedWidth(derived.width.max(1))
-        }
-        other => other,
-    };
-    let deferred_rows = if options.explicit_roster_only || scan_dirs.is_empty() {
-        Vec::new()
-    } else {
-        collect_deferred_discovery_rows(source_roots, &options.exclude_substrings)?
-    };
-    let admission_orphans = collect_unexecuted_deferred_witnesses(&deferred_rows);
-    refuse_unexecuted_deferred_witnesses(&admission_orphans)?;
-    if !deferred_rows.is_empty() {
-        refuse_stale_frozen_path_deferrals(&collect_stale_frozen_path_deferrals())?;
-        refuse_frozen_path_deferral_additions(&collect_frozen_path_deferral_additions()?)?;
-    }
-    eprintln_deferred_discovery_rows(&deferred_rows);
-    set_phase(FloorPhase::Discovery, "discovery-roster");
-    if options.execution_authority_source_roots.is_empty() {
-        return Err(
-            "discovery execution requires an explicit executor-authority source-root universe"
-                .to_string(),
-        );
-    }
-    let execution_authority_is_subject = options.execution_authority_source_roots == source_roots;
-    // Union-resolve S1 (resolver-graph-major-design (deleted) §7): ONE index for the whole
-    // process step on the pump thread — prelude-warmed parse/typed caches instead of a
-    // private cold build per consumer. S2a increment C (cross-worker-typecheck-share-
-    // design.md §4): adaptive worker shards arm ONE process-scoped typed_module_cache
-    // (serde byte transport). The pump thread keeps `process_shared_index` (private per-
-    // index `Rc`) so prelude work does not duplicate into the shared store; workers alone
-    // read/write the shared store as the typed-cache authority (no local Rc duplicate).
-    // Store creation lives in the Adaptive match arm below — unrepresentable on Serial.
-    let index = if p1_cohort_experiment_active()
-        && matches!(width_policy, DiscoveryWidthPolicy::Serial)
-        && p1_experimental_arm_shared_typed_store(1)
-    {
-        let store = new_shared_typecheck_caches();
-        Rc::new(build_multi_entry_index_with_shared_caches(
-            source_roots,
-            store,
-        ))
-    } else {
-        process_shared_index(source_roots)
-    };
-    // Calibration receipt, emitted BEFORE the heavy resolve so it survives a host-level
-    // OOM kill (censored lower-bound pairs for the space-lens memory predictor — design
-    // in flight on PR #6442; consumer binds to roster_import_closure_nodes_pre_resolve):
-    // the transitive import-CLOSURE size — never the roster/entry count (pairing an
-    // entry count against a whole-closure peak inflates bytes-per-node by the fan-in
-    // factor). Skip-before-resolve (run_discovery_rows) elides cold resolve for
-    // import-closure-unaffected entries while folding their module-graph closure into
-    // the post-resolve union so this pre-resolve count stays paired with calibration.
-    let preresolve_calibration_started = std::time::Instant::now();
-    let pre_resolve_closure_nodes = {
-        let n = roster_import_closure_nodes_pre_resolve(&rows, &[], &index)?;
-        eprintln!(
-            "[calibration] roster_import_closure_nodes={} rows={} (loader both-closure union, pre-resolve, no resolve/typecheck; pairs with the floor cgroup memory.peak steps — on a killed run this line plus the last [gantt] rss_mib sample are the lower-bound receipt)",
-            n,
-            rows.len()
-        );
-        n
-    };
-    discovery_phase_totals::add(
-        &discovery_phase_totals::PRERESOLVE_CALIBRATION_MS,
-        preresolve_calibration_started.elapsed(),
-    );
-    let whole_tree_published_keys = match precompute_whole_tree_published_mock_keys(source_roots) {
-        Ok(keys) if keys.is_empty() => None,
-        Ok(keys) => Some(keys),
-        Err(e) => {
-            return Err(format!(
-                "whole-tree published mock corpus precompute failed: {e}"
-            ));
-        }
-    };
-    // Derive every leg for the WHOLE roster here, above the width dispatch, while this
-    // thread's shared index is warm. At width > 1 the pool hands each worker its own chunk
-    // of rows, so priming inside `run_discovery_rows` would build one interpreter context
-    // per worker — and width is adaptive, so "n is small here" is not a fact that stays
-    // true (§6). One build covers the run; workers only read the process-wide memo.
-    prime_witness_execution_legs_from_authority(
-        &index,
-        (!execution_authority_is_subject)
-            .then_some(options.execution_authority_source_roots.as_slice()),
-        rows.iter().map(|row| row.entry.as_str()),
-    );
-
-    let floor_color = floor_color_enabled();
-    let floor_stream = floor_stream_enabled();
-    return match width_policy {
-        DiscoveryWidthPolicy::DerivedSchedule => {
-            unreachable!("DerivedSchedule is lowered to FixedWidth before the pool match")
-        }
-        DiscoveryWidthPolicy::Serial => {
-            // Arm retention over the WHOLE serial schedule (all rows) before the single drain
-            // call — a shared module stays resident until its last scheduled entry consumes it.
-            index_arm_schedule_retention(&index, &rows);
-            let summary = run_discovery_rows(
-                &rows,
-                &index,
-                execution_mode,
-                whole_tree_published_keys.clone(),
-                options.witness_budget_policy(),
-                ShardStyle {
-                    shard_id: 0,
-                    shard_count: 1,
-                    color: floor_color,
-                    stream: floor_stream,
-                },
-            )?;
-            // Definition-drift oracle (single-authority reconciliation, executable): on a
-            // COMPLETED serial run the pre-resolve import walk and the post-resolve
-            // resolved-graph union must agree — resolve resolves exactly the transitive
-            // imports. Serial only: the merged multi-worker field is max-over-workers, not
-            // the process union, so the comparison is ill-posed there. A mismatch means one
-            // closure definition is wrong (an implicit prelude module the walk missed, or a
-            // resolve seeding change) and the space-lens calibration pair would silently
-            // skew — refuse rather than emit a lying receipt.
-            if summary.roster_closure_nodes != pre_resolve_closure_nodes {
-                return Err(format!(
-                    "[calibration] closure-definition drift: pre-resolve loader-closure union = {} nodes, \
-                     post-resolve resolved union = {} — the two closure definitions diverged \
-                     (loader fork or seeding change: resolve loaded a module set the loader \
-                     both-closure fixpoint did not produce, or vice versa); reconcile the \
-                     definitions before trusting bytes-per-node calibration \
-                     (roster_import_closure_nodes_pre_resolve is the shared authority)",
-                    pre_resolve_closure_nodes, summary.roster_closure_nodes
-                ));
-            }
-            eprintln!(
-                "[calibration] closure consistency: pre-resolve loader-closure union == post-resolve union == {} node(s)",
-                pre_resolve_closure_nodes
-            );
-            Ok(finalize_discovery_summary(summary, &rows, deferred_rows))
-        }
-        DiscoveryWidthPolicy::ControlledWidthTwo => {
-            const CONTROLLED_WIDTH: usize = 2;
-            let arm_shared_store = if p1_cohort_experiment_active() {
-                p1_experimental_arm_shared_typed_store(CONTROLLED_WIDTH)
-            } else {
-                true
-            };
-            let groups = entry_row_groups(&rows);
-            eprintln!(
-                "run_discovery_corpus: controlled width-2 pool over {} entry-group(s), {} row(s), shared_typed_store={}",
-                groups.len(),
-                rows.len(),
-                arm_shared_store,
-            );
-            let cross_worker_store = arm_shared_store.then(new_shared_typecheck_caches);
-            if floor_stream {
-                eprintln!(
-                    "{} [affected-set] controlled width-2 pool (fixed {} workers; shared typed-module store={})",
-                    floor_ts(),
-                    CONTROLLED_WIDTH,
-                    arm_shared_store,
-                );
-            }
-            let queue: std::sync::Arc<Mutex<VecDeque<Vec<DiscoveryRow>>>> =
-                std::sync::Arc::new(Mutex::new(
-                    groups
-                        .into_iter()
-                        .map(|g| g.iter().map(|&i| rows[i].clone()).collect())
-                        .collect(),
-                ));
-            let abort = std::sync::Arc::new(AtomicBool::new(false));
-            let source_roots_owned = source_roots.to_vec();
-            let budget_policy_for_workers = options.witness_budget_policy();
-            let mut handles = Vec::with_capacity(CONTROLLED_WIDTH);
-            for worker_ordinal in 0..CONTROLLED_WIDTH {
-                let queue_for_worker = queue.clone();
-                let abort_for_worker = abort.clone();
-                let roots = source_roots_owned.clone();
-                let keys = whole_tree_published_keys.clone();
-                let store = cross_worker_store.clone();
-                let arm_shared_for_worker = arm_shared_store;
-                let style = ShardStyle {
-                    shard_id: worker_ordinal,
-                    shard_count: CONTROLLED_WIDTH,
-                    color: floor_color,
-                    stream: floor_stream,
-                };
-                handles.push(std::thread::spawn(
-                    move || -> Result<Vec<DiscoverySummary>, String> {
-                        let index = if arm_shared_for_worker {
-                            let store = store
-                                .expect("shared typed store armed but cross_worker_store missing");
-                            build_multi_entry_index_with_shared_caches(&roots, store)
-                        } else {
-                            build_multi_entry_index(&roots)
-                        };
-                        let mut worker_summaries = Vec::new();
-                        loop {
-                            if abort_for_worker.load(Ordering::SeqCst) {
-                                break;
-                            }
-                            let Some(group_rows) = queue_for_worker.lock().unwrap().pop_front()
-                            else {
-                                break;
-                            };
-                            match run_discovery_rows(
-                                &group_rows,
-                                &index,
-                                execution_mode,
-                                keys.clone(),
-                                budget_policy_for_workers,
-                                style,
-                            ) {
-                                Ok(summary) => worker_summaries.push(summary),
-                                Err(e) => {
-                                    abort_for_worker.store(true, Ordering::SeqCst);
-                                    return Err(e);
-                                }
-                            }
-                        }
-                        Ok(worker_summaries)
-                    },
-                ));
-            }
-            let mut summaries = Vec::new();
-            let mut first_err: Option<String> = None;
-            for handle in handles {
-                match handle
-                    .join()
-                    .map_err(|_| "controlled-width discovery worker panicked".to_string())
-                {
-                    Ok(Ok(worker_summaries)) => summaries.extend(worker_summaries),
-                    Ok(Err(e)) | Err(e) => first_err = first_err.or(Some(e)),
-                }
-            }
-            if let Some(e) = first_err {
-                return Err(e);
-            }
-            let leftover = queue.lock().unwrap().len();
-            if leftover > 0 {
-                return Err(format!(
-                    "controlled width-2 pool exited with {leftover} undrained entry-group(s)"
-                ));
-            }
-            Ok(finalize_discovery_summary(
-                merge_discovery_summaries(summaries),
-                &rows,
-                deferred_rows,
-            ))
-        }
-        DiscoveryWidthPolicy::FixedWidth(pool_width) => {
-            // Derived schedule pool: entry-groups drain through a fixed worker count chosen
-            // up front by std.realize_pack over the roster's derived space bounds.
-            let groups = entry_row_groups(&rows);
-            let spawn_target_width = pool_width;
-            eprintln!(
-                "run_discovery_corpus: derived schedule pool over {} entry-group(s), {} row(s) (scheduled width={})",
-                groups.len(),
-                rows.len(),
-                spawn_target_width,
-            );
-            // Width=1: drain inline on the pump thread reusing `process_shared_index` (already
-            // warmed for calibration + floor runner). Spawning a worker thread duplicates the
-            // whole-tree index on a second thread-local cache — ~2× retention that OOM'd CI
-            // batch-2 discovery (runs 29372308568 / 29373433928). Cross-worker store arms only
-            // when plural workers run (below).
-            //
-            // This width read is deliberately SAMPLED ONCE, and at width 1 that makes the
-            // window an absorbing state for this pool: the only path that grows it (a slot
-            // completion) lives past the branch below, so the governor's AIMD controller is
-            // not reachable from the corpus. That is a real defect in the controller — and
-            // un-latching it is nonetheless a MEASURED LOSS, so the latch stays until the
-            // cost it hides is gone. Same branch, same 621 entry-groups, same .rs-forced
-            // whole-tree path: serial 11.75min GREEN (CI 29707161743 — max_width_reached=1,
-            // admissions=1, peak 6.97 GB) vs un-latched 47min+ without finishing (CI
-            // 29714863168), vs un-latched with per-unit window growth OOM-killed at
-            // 101.6 GB in 11min (CI 29710324768).
-            //
-            // The reason is Amdahl, not a bug: a worker's front cost is its own whole-tree
-            // index build (~10.7 GB, minutes) and the entire corpus is ~12 minutes of work,
-            // so every added worker costs more setup than the parallelism it buys. Width is
-            // not worth reaching for while the index is per-worker; the governor's job here
-            // is to be correct when it IS reachable — see `CompletionKind` in
-            // `memory_governor`, where the window tracks landed worker cost and never the
-            // unit-completion rate.
-            // 🟡 dissolve-on: Rc→Arc retires the width gate — sharing the index removes the
-            // per-worker front cost, which is the thing that makes width unprofitable. Priced
-            // FIRST by the share spike (cross-worker-typecheck-share-design (plan doc deleted 2026-08-28) §9
-            // open decision 2), because that design's §7 warns a shared store also INCREASES
-            // co-resident retention: the win is a crossover in width, not a given.
-            if spawn_target_width <= 1 {
-                eprintln!(
-                    "run_discovery_corpus: width=1 inline drain — reusing process_shared_index (no worker duplicate index)"
-                );
-                eprintln!(
-                    "run_discovery_corpus: cross_worker_store withheld (scheduled width={spawn_target_width}) — per-index typed cache until width > 1"
-                );
-                let style = ShardStyle {
-                    shard_id: 0,
-                    shard_count: 1,
-                    color: floor_color,
-                    stream: floor_stream,
-                };
-                let mut summaries = Vec::new();
-                let drain_detail = floor_drain_retention_detail_enabled();
-                let total_groups = groups.len();
-                let mut drain_prev = index_retention_snapshot(&index);
-                let mut drain_peaks = drain_prev;
-                // Arm retention over the WHOLE batch schedule (every group's rows) ONCE, before
-                // the inline drain — NOT per group. The drain reuses the one process-shared index
-                // across all entry-groups, so a shared compiler-core module reached by many
-                // entries keeps a refcount > 1 and stays resident until its LAST consumer's entry
-                // completes; only an entry's genuinely-unique tail evicts when that entry finishes.
-                // Per-group arming instead gave each entry a one-entry schedule (refcount 1 on the
-                // whole closure), evicting and cold-recomputing the shared core once per entry.
-                index_arm_schedule_retention(&index, &rows);
-                let p1_cohort_detail = p1_cohort_receipt_enabled();
-                let mut p1_cohort_seen_subjects: std::collections::HashSet<String> =
-                    std::collections::HashSet::new();
-                for (group_idx, group_indices) in groups.into_iter().enumerate() {
-                    let group_rows: Vec<DiscoveryRow> =
-                        group_indices.iter().map(|&i| rows[i].clone()).collect();
-                    let group_entry_label = group_rows
-                        .first()
-                        .map(|r| r.entry.clone())
-                        .unwrap_or_default();
-                    let group_wall_start = p1_cohort_detail.then(std::time::Instant::now);
-                    let typecheck_misses_before = p1_cohort_detail.then(typecheck_compute_count);
-                    let summary = run_discovery_rows(
-                        &group_rows,
-                        &index,
-                        execution_mode,
-                        whole_tree_published_keys.clone(),
-                        options.witness_budget_policy(),
-                        style,
-                    )?;
-                    // The rest of this block is P1 scaffold bookkeeping (per-group wall
-                    // timing, typecheck-memo before/after, and the resolved-graph-hit
-                    // subject-set scan) — computed only under the same opt-in gate as
-                    // its emission (review 47844), not on the default production path.
-                    let (group_wall_ms, typecheck_misses_after, resolved_graph_hit) =
-                        if p1_cohort_detail {
-                            let group_wall_ms = group_wall_start
-                                .expect("set above under the same p1_cohort_detail gate")
-                                .elapsed()
-                                .as_millis();
-                            let typecheck_misses_after = typecheck_compute_count();
-                            // Cohort-scoped "have we already resolved a closure sharing this
-                            // subject earlier in THIS run" fact — a resolved-graph-memo hit
-                            // proxy at the granularity the P1 receipt needs (whether entry N
-                            // is reusing prior entries' module universe), not a raw
-                            // `resolved_graph_memo` cache-slot read (that memo is entry-scoped
-                            // and evicted on completion by design, so a raw post-hoc read
-                            // cannot distinguish "reused" from "inserted then evicted").
-                            let resolved_graph_hit =
-                                summary.entry_resolve_receipts.iter().any(|r| {
-                                    !p1_cohort_seen_subjects.insert(r.closure_subject.clone())
-                                });
-                            for r in &summary.entry_resolve_receipts {
-                                p1_cohort_seen_subjects.insert(r.closure_subject.clone());
-                            }
-                            (group_wall_ms, typecheck_misses_after, resolved_graph_hit)
-                        } else {
-                            (0, 0, false)
-                        };
-                    let resolve_ms = summary.total_resolve_nanos / 1_000_000;
-                    let eval_ms = summary.total_measured_nanos / 1_000_000;
-                    summaries.push(summary);
-                    let snap = index_retention_snapshot(&index);
-                    if drain_detail {
-                        emit_floor_drain_group_line(
-                            group_idx + 1,
-                            total_groups,
-                            &drain_prev,
-                            &snap,
-                        );
-                    }
-                    if p1_cohort_detail {
-                        let modules_evicted = snap
-                            .schedule_evictions
-                            .saturating_sub(drain_prev.schedule_evictions);
-                        let graphs_evicted = snap
-                            .resolved_graph_evictions
-                            .saturating_sub(drain_prev.resolved_graph_evictions);
-                        let (cgroup_current, cgroup_peak) = p1_cohort_cgroup_memory();
-                        emit_p1_cohort_entry_line(
-                            group_idx + 1,
-                            total_groups,
-                            &group_entry_label,
-                            group_wall_ms,
-                            resolve_ms,
-                            eval_ms,
-                            Some(typecheck_misses_after) == typecheck_misses_before,
-                            resolved_graph_hit,
-                            modules_evicted,
-                            graphs_evicted,
-                            snap.peak_rss_bytes,
-                            cgroup_current,
-                            cgroup_peak,
-                        );
-                    }
-                    drain_peaks = retention_snapshot_peak(&drain_peaks, &snap);
-                    drain_prev = snap;
-                }
-                emit_floor_drain_receipt(&index, total_groups, &drain_peaks);
-                return Ok(finalize_discovery_summary(
-                    merge_discovery_summaries(summaries),
-                    &rows,
-                    deferred_rows,
-                ));
-            }
-            let arm_shared_store = if p1_cohort_experiment_active() {
-                p1_experimental_arm_shared_typed_store(spawn_target_width)
-            } else {
-                true
-            };
-            let cross_worker_store = arm_shared_store.then(new_shared_typecheck_caches);
-            if floor_stream {
-                eprintln!(
-                    "{} [affected-set] streaming run-witnesses live across the derived schedule pool (width {}; ▎shard N, one color each)",
-                    floor_ts(),
-                    spawn_target_width,
-                );
-            }
-            let queue: std::sync::Arc<Mutex<VecDeque<Vec<DiscoveryRow>>>> =
-                std::sync::Arc::new(Mutex::new(
-                    groups
-                        .into_iter()
-                        .map(|g| g.iter().map(|&i| rows[i].clone()).collect())
-                        .collect(),
-                ));
-            let abort = std::sync::Arc::new(AtomicBool::new(false));
-            let source_roots_owned = source_roots.to_vec();
-            let budget_policy_for_workers = options.witness_budget_policy();
-            let mut handles = Vec::with_capacity(spawn_target_width);
-            for worker_ordinal in 0..spawn_target_width {
-                let queue_for_worker = queue.clone();
-                let abort_for_worker = abort.clone();
-                let roots = source_roots_owned.clone();
-                let keys = whole_tree_published_keys.clone();
-                let store = cross_worker_store.clone();
-                let arm_shared_for_worker = arm_shared_store;
-                let style = ShardStyle {
-                    shard_id: worker_ordinal,
-                    shard_count: spawn_target_width,
-                    color: floor_color,
-                    stream: floor_stream,
-                };
-                handles.push(std::thread::spawn(
-                    move || -> Result<Vec<DiscoverySummary>, String> {
-                        let index = if arm_shared_for_worker {
-                            let store = store
-                                .expect("shared typed store armed but cross_worker_store missing");
-                            build_multi_entry_index_with_shared_caches(&roots, store)
-                        } else {
-                            build_multi_entry_index(&roots)
-                        };
-                        let mut worker_summaries = Vec::new();
-                        loop {
-                            if abort_for_worker.load(Ordering::SeqCst) {
-                                break;
-                            }
-                            let Some(group_rows) = queue_for_worker.lock().unwrap().pop_front()
-                            else {
-                                break;
-                            };
-                            match run_discovery_rows(
-                                &group_rows,
-                                &index,
-                                execution_mode,
-                                keys.clone(),
-                                budget_policy_for_workers,
-                                style,
-                            ) {
-                                Ok(summary) => worker_summaries.push(summary),
-                                Err(e) => {
-                                    abort_for_worker.store(true, Ordering::SeqCst);
-                                    return Err(e);
-                                }
-                            }
-                        }
-                        Ok(worker_summaries)
-                    },
-                ));
-            }
-            let mut summaries = Vec::new();
-            let mut first_err: Option<String> = None;
-            for handle in handles {
-                match handle
-                    .join()
-                    .map_err(|_| "discovery corpus worker thread panicked".to_string())
-                {
-                    Ok(Ok(worker_summaries)) => summaries.extend(worker_summaries),
-                    Ok(Err(e)) | Err(e) => first_err = first_err.or(Some(e)),
-                }
-            }
-            if let Some(e) = first_err {
-                return Err(e);
-            }
-            // The pump exits when the queue is empty OR on abort; with no error the queue must be
-            // fully drained (workers only exit early on retire/abort, and the pump re-admits while
-            // items remain), so an undrained queue here is a scheduler bug — refuse, never under-run.
-            let leftover = queue.lock().unwrap().len();
-            if leftover > 0 {
-                return Err(format!(
-            "derived-schedule discovery pool exited with {leftover} undrained entry-group(s) and no \
-             worker error — scheduler invariant violated; refusing a partial corpus"
-        ));
-            }
-            Ok(finalize_discovery_summary(
-                merge_discovery_summaries(summaries),
-                &rows,
-                deferred_rows,
-            ))
-        }
-    };
-}
-
 /// Per-witness selection detail (the `SKIP`/`SKIP-RESOLVE`/`PREDICT` lines and the
 /// per-resolve `[binding-fork-ledger]` census) is opt-in. The default floor output is the
 /// upfront `[affected-set]` categorization plus the final `[measurement]` tally — a wide
@@ -5036,17 +4424,6 @@ pub(crate) fn floor_ts() -> String {
     format!("{h:02}:{m:02}:{s:02}.{millis:03}")
 }
 
-/// Live realization view: stream affected witnesses to stderr as they finish, one colored
-/// line per shard, so a run reads as "the affected set unrolling in real time" rather than a
-/// silent wait then a summary. On by default (opt out with `GUNBC_FLOOR_QUIET=1`); color
-/// auto-detected (a terminal or GitHub Actions), `NO_COLOR` honored, `GUNBC_FLOOR_COLOR=1`
-/// forces it on. Only RUN witnesses reach the stream — skips are counted, not narrated.
-pub(crate) fn floor_stream_enabled() -> bool {
-    !std::env::var("GUNBC_FLOOR_QUIET")
-        .map(|v| v == "1" || v == "true")
-        .unwrap_or(false)
-}
-
 pub(crate) fn floor_color_enabled() -> bool {
     if std::env::var("NO_COLOR").is_ok() {
         return false;
@@ -5064,262 +4441,15 @@ pub(crate) fn floor_color_enabled() -> bool {
             .unwrap_or(false)
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn run_discovery_rows(
-    rows: &[DiscoveryRow],
-    index: &MultiEntryIndex,
-    execution_mode: v1_interpreter::ExecutionMode,
-    whole_tree_published_keys: Option<std::collections::HashSet<String>>,
-    budgets: WitnessBudgetPolicy,
-    style: ShardStyle,
-) -> Result<DiscoverySummary, String> {
-    let mut summary = DiscoverySummary {
-        total: rows.len(),
-        passed: 0,
-        skipped: 0,
-        deferred_rows: Vec::new(),
-        divergences: Vec::new(),
-        failures: Vec::new(),
-        witness_outcomes: Vec::with_capacity(rows.len()),
-        entry_resolve_receipts: Vec::new(),
-        total_resolve_nanos: 0,
-        total_stage_nanos: ResolveStageNanos::default(),
-        performance_receipts: Vec::new(),
-        total_measured_nanos: 0,
-        roster_closure_nodes: 0,
-        total_entry_groups: 0,
-        selected_entry_groups: 0,
-    };
-    // This shard's SUBJECT union closure, accumulated from the graphs it resolves as each
-    // entry is loaded. It once also folded in a floor-runner prefix context, resolved before the
-    // roster so the affected-set machinery was available to every row; that prefix is gone with
-    // selection, so the closure is exactly the rows' own graphs.
-    let mut closure_modules: HashSet<String> = HashSet::new();
-    // Schedule-derived retention is armed by the CALLER over the WHOLE batch schedule
-    // (Serial: the single call; Adaptive width=1: once before the entry-group loop), so a
-    // shared module's refcount spans every entry that reaches it and it stays resident until
-    // its genuinely-last consumer. Arming here (per `run_discovery_rows` call) would hand the
-    // Adaptive inline drain a ONE-ENTRY schedule per group — refcount 1 on every module,
-    // evicted the instant its entry finished — collapsing "keep shared state until last use"
-    // into "cold-recompute the shared closure once per entry" (the entries=1 churn that held
-    // batch-3 wall over budget while RSS was already bounded). Rows are sorted by entry, so an
-    // entry's rows are contiguous and, once passed, the entry can never be read again; the
-    // per-entry completion below decrements against the caller-armed refcount (a no-op when
-    // unarmed — the plural/shared-store worker path).
-    // The entry whose per-module state becomes unreachable once `row.entry` moves on.
-    let mut schedule_prev_entry: Option<String> = None;
-    let mut current_entry: Option<String> = None;
-    let mut current_closure_subject: Option<String> = None;
-    let mut ctx: Option<v1_interpreter::InterpContext> = None;
-    let pool_roots = witness_layer_roots();
-    let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
-    for row in rows {
-        // Schedule-derived eviction: when the entry advances, the previous entry's
-        // rows are all behind us (rows are sorted by entry), so its per-module state
-        // can never be read again — drop everything no remaining entry's closure
-        // reaches. A schedule underflow refuses here (typed, located).
-        if schedule_prev_entry.as_deref() != Some(row.entry.as_str()) {
-            if let Some(prev) = schedule_prev_entry.take() {
-                // `current_closure_subject` still holds the PREVIOUS entry's subject here
-                // (it is reassigned only in the resolve block below), so it keys the
-                // previous entry's ResolvedGraph for eviction; None when that entry was
-                // skip-before-resolved (no graph to drop).
-                index_schedule_entry_completed(index, &prev, current_closure_subject.as_deref())?;
-            }
-            schedule_prev_entry = Some(row.entry.clone());
-        }
-        if current_entry.as_deref() != Some(row.entry.as_str()) {
-            {
-                let resolved = resolve_discovery_entry_for_corpus_row(
-                    index,
-                    &row.entry,
-                    execution_mode,
-                    whole_tree_published_keys.clone(),
-                    &mut closure_modules,
-                )?;
-                summary.total_resolve_nanos += resolved.resolve_nanos;
-                summary.total_stage_nanos.accumulate(&resolved.stage_nanos);
-                summary.entry_resolve_receipts.push(EntryResolveReceipt {
-                    entry: row.entry.clone(),
-                    closure_subject: resolved.closure_subject.clone(),
-                    resolve_nanos: resolved.resolve_nanos,
-                    stage_nanos: resolved.stage_nanos,
-                });
-                current_closure_subject = Some(resolved.closure_subject);
-                ctx = Some(resolved.ctx);
-                if let Some(c) = ctx.as_ref() {
-                    c.set_witness_eval_budget(budgets.cpu_eval_budget_ms);
-                    c.set_witness_wall_budget(budgets.wet_receipt_wall_budget_ms);
-                }
-                current_entry = Some(row.entry.clone());
-            }
-        }
-        if ctx.is_none() {
-            let resolved = resolve_discovery_entry_for_corpus_row(
-                index,
-                &row.entry,
-                execution_mode,
-                whole_tree_published_keys.clone(),
-                &mut closure_modules,
-            )?;
-            summary.total_resolve_nanos += resolved.resolve_nanos;
-            summary.total_stage_nanos.accumulate(&resolved.stage_nanos);
-            summary.entry_resolve_receipts.push(EntryResolveReceipt {
-                entry: row.entry.clone(),
-                closure_subject: resolved.closure_subject.clone(),
-                resolve_nanos: resolved.resolve_nanos,
-                stage_nanos: resolved.stage_nanos,
-            });
-            current_closure_subject = Some(resolved.closure_subject);
-            ctx = Some(resolved.ctx);
-            if let Some(c) = ctx.as_ref() {
-                c.set_witness_eval_budget(budgets.cpu_eval_budget_ms);
-                c.set_witness_wall_budget(budgets.wet_receipt_wall_budget_ms);
-            }
-        }
-        let ctx_ref = ctx.as_ref().expect("ctx set above");
-        let closure_subject = current_closure_subject
-            .as_deref()
-            .expect("closure subject set above");
-        set_phase(
-            FloorPhase::Eval,
-            &format!("{}::{}", row.entry, row.function),
-        );
-        active_workset_admit(&row.entry, &row.function);
-        let (outcome, receipt) = run_claim_measured(ctx_ref, closure_subject, &row.function);
-        active_workset_complete(&row.entry, &row.function);
-        let wall_nanos = receipt.wall_nanos;
-        summary.total_measured_nanos += wall_nanos;
-        summary.performance_receipts.push(receipt);
-        let execution_leg = witness_execution_leg_label(&row.entry);
-        let entry_repo_path = workspace_relative_repo_path(&row.entry);
-        let module_path = index
-            .module_graph_facts
-            .path_to_module
-            .get(&entry_repo_path)
-            .cloned()
-            .ok_or_else(|| {
-                format!(
-                    "{}: discovery witness entry has no module identity in the live module graph (refuse; DeclarationRef cannot be fabricated)",
-                    row.entry
-                )
-            })?;
-        summary.witness_outcomes.push(DiscoveryWitnessOutcome {
-            entry: row.entry.clone(),
-            module_path: module_path.clone(),
-            function: row.function.clone(),
-            outcome: outcome.clone(),
-            execution_leg: execution_leg.clone(),
-        });
-        // enrolled=false is a STATEMENT, not a default: this is the discovery/claim_batch path
-        // and `floor_expected_red` is a required-floor roster that is not in scope here, so no
-        // row on this path can be KNOWN-RED. The typed outcome still survives to the console,
-        // which is the part that was being lost on both paths.
-        style.stream_witness(
-            &row.function,
-            &module_path,
-            &execution_leg,
-            wall_nanos,
-            CiWitnessVerdict::from_outcome(&outcome, false),
-        );
-        match outcome {
-            ClaimOutcome::Pass => summary.passed += 1,
-            ClaimOutcome::Fail => {
-                let mut failure = format!("{} ({}) returned Bool(false)", row.function, row.entry);
-                append_failure_receipt_companion_loudness(&mut failure, ctx_ref, &row.function);
-                append_witness_verdict_diagnostic_loudness(&mut failure, ctx_ref, &row.function);
-                summary.failures.push(failure);
-            }
-            // A GATE-CLASS ROW'S REASON IS ITS OWN RECEIPT. The companion-loudness appends the
-            // `Fail` arm makes are for Bool witnesses whose verdict carries nothing; a typed
-            // `ExitFailure` refusal already carries the `.dag`-authored reason, so appending a
-            // second, derived receipt beside it would be two authorities over one fact.
-            ClaimOutcome::ExitFailure { code, reason } => summary.failures.push(format!(
-                "{} ({}) returned ProcessExit::ExitFailure (code {}): {}",
-                row.function,
-                row.entry,
-                code,
-                reason.unwrap_or_else(|| "(no reason)".to_string())
-            )),
-            ClaimOutcome::NotBool { got } => summary.failures.push(format!(
-                "{} ({}) returned `{}`, not Bool",
-                row.function, row.entry, got
-            )),
-            ClaimOutcome::RuntimeError { message, .. } => summary.failures.push(format!(
-                "{} ({}) runtime error: {}",
-                row.function, row.entry, message
-            )),
-            ClaimOutcome::HostToolUnresolved { name, probed } => summary.failures.push(format!(
-                "{} ({}) host tool unresolved: {:?} (probed: {})",
-                row.function,
-                row.entry,
-                name,
-                probed.join(", ")
-            )),
-            ClaimOutcome::HostEffectRefused { operation, ground } => {
-                summary.failures.push(format!(
-                    "{} ({}) hermetic route has no arm for {}: {}",
-                    row.function,
-                    row.entry,
-                    operation,
-                    hermetic_effect_ground_label(&ground)
-                ))
-            }
-            // BOTH BUDGET ARMS RENDER THROUGH `budget_figure_phrase` AND NEITHER SPELLS ITS
-            // OWN SENTENCE. This site used to hand-write `cost is at least {n}ms against a
-            // {budget}ms budget`, which is the bound-in-the-cost-field defect that renderer
-            // exists to remove; keeping a local format string here would let this transport
-            // disagree with the floor's about one outcome, which has happened before.
-            ClaimOutcome::BudgetInterrupted { .. } | ClaimOutcome::CompletedOverBudget { .. } => {
-                summary.failures.push(format!(
-                    "{} ({}) {}",
-                    row.function,
-                    row.entry,
-                    // SAFE BY CONSTRUCTION: the two arms matched here are exactly the two the
-                    // renderer answers `Some` for. The fallback text is unreachable and says so
-                    // rather than fabricating a figure.
-                    outcome
-                        .budget_figure_phrase()
-                        .unwrap_or_else(|| "budget outcome carried no figure".to_string())
-                ))
-            }
-            // THIS PATH DOES NOT STOP THE LINE ON AN UNWIND THE WAY THE REQUIRED FLOOR DOES, and
-            // the difference is deliberate rather than an oversight: discovery runs rows across
-            // worker threads with no single ordered fold to halt, and a `NotAttempted` population
-            // here would have no ledger to be published into. What it does have is the same
-            // obligation not to render an unwind as a witness answering false, so it goes to
-            // `failures` naming what happened. The floor's stronger treatment is the floor's.
-            ClaimOutcome::Panicked { payload } => summary.failures.push(format!(
-                "{} ({}) PANICKED during evaluation: {}. The host unwound, so this is not a \
-                 verdict and not a runtime error the evaluator raised.",
-                row.function, row.entry, payload
-            )),
-            // Never produced on this path — nothing here mints not-attempted rows — and named
-            // rather than wildcarded so a future producer cannot arrive silently.
-            ClaimOutcome::NotAttempted { halted_by } => summary.failures.push(format!(
-                "{} ({}) was published as not-attempted behind {}, which this path never mints",
-                row.function, row.entry, halted_by
-            )),
-        }
-    }
-    // Per-shard input-size receipt: distinct modules in THIS shard's union closure, counted from the
-    // graphs resolved above rather than from the thread's typecheck-miss counter (see the field doc
-    // on `DiscoverySummary::roster_closure_nodes` for why the counter is not bounded to this window).
-    // The final entry's rows are done — its state is now unreachable too.
-    if let Some(prev) = schedule_prev_entry.take() {
-        index_schedule_entry_completed(index, &prev, current_closure_subject.as_deref())?;
-    }
-    if let Some(ctx) = ctx.as_ref() {
-        let stats = ctx.interner_stats_snapshot();
-        eprintln!(
-            "[floor-symbol-retention] canonical_entries={} retained_spelling_bytes={} spelling_cap_bytes={}",
-            stats.canonical_entries,
-            stats.canonical_retained_spelling_bytes,
-            stats.canonical_spelling_cap_bytes,
-        );
-    }
-    summary.roster_closure_nodes = closure_modules.len();
-    Ok(summary)
+/// Live realization view: stream affected witnesses to stderr as they finish, one colored
+/// line per shard, so a run reads as "the affected set unrolling in real time" rather than a
+/// silent wait then a summary. On by default (opt out with `GUNBC_FLOOR_QUIET=1`); color
+/// auto-detected (a terminal or GitHub Actions), `NO_COLOR` honored, `GUNBC_FLOOR_COLOR=1`
+/// forces it on. Only RUN witnesses reach the stream — skips are counted, not narrated.
+pub(crate) fn floor_stream_enabled() -> bool {
+    !std::env::var("GUNBC_FLOOR_QUIET")
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false)
 }
 
 /// THE SEEDS OF THE REQUIRED FLOOR'S NOMINAL PREPARED SUBJECT -- what the floor prepares when a
@@ -12765,7 +11895,8 @@ mod pure_producer_share_tests {
     /// The base-comparison half of the unimported-bare-provider gate, executed through the path the
     /// floor takes: each roster is evaluated ALONE from its source, its rows cross into the real
     /// verdict frame as values, and the `.dag` edit judgment decides. An unchanged roster admits;
-    /// a gained row refuses by name; a rewritten retirement cause refuses. Two reads at distinct
+    /// a gained row refuses by name; a rewritten retirement cause refuses, except a retirement
+    /// moving to FileDeleted. Two reads at distinct
     /// scratch paths also pin the memoization defect this path once had.
     #[test]
     fn unimported_bare_provider_roster_edit_is_judged_across_frames() {
@@ -12828,12 +11959,21 @@ mod pure_producer_share_tests {
                     .expect("verdict"),
                 vec!["RosterRemovedIdentity dag/b.dag#g (was ActiveDebt)".to_string()]
             );
+            // A retirement whose file was later deleted may become FileDeleted (gunbc#12787, the
+            // one admitted transition in `unimported_bare_provider_roster_edit`); any other
+            // rewritten cause, including the reverse, refuses.
             assert_eq!(
                 judge
                     .judge_edit(&read(roster(&a_fixed)), &read(roster(&a_deleted)))
                     .expect("verdict"),
+                Vec::<String>::new()
+            );
+            assert_eq!(
+                judge
+                    .judge_edit(&read(roster(&a_deleted)), &read(roster(&a_fixed)))
+                    .expect("verdict"),
                 vec![
-                "RosterRetirementChanged dag/a.dag#f (Retired ImportsFixed -> Retired FileDeleted)"
+                "RosterRetirementChanged dag/a.dag#f (Retired FileDeleted -> Retired ImportsFixed)"
                     .to_string()
             ]
             );

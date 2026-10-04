@@ -29,6 +29,7 @@ import gunbc.census_memo_seed_growth { census_memo_seed_growth_justification }
 import gunbc.fixture_render_selection_seed_growth { fixture_render_selection_seed_growth_justification }
 import gunbc.fabric_door_socket_seed_growth { fabric_door_socket_seed_growth_justification }
 import gunbc.serve_cookie_header_seed_growth { serve_cookie_header_seed_growth_justification }
+import gunbc.serve_declared_binding_seed_growth { serve_declared_binding_seed_growth_justification }
 import gunbc.claim_unwind_seed_growth { claim_unwind_seed_growth_justification }
 import gunbc.claim_batch_function_preflight_seed_growth { claim_batch_function_preflight_seed_growth_justification }
 import gunbc.claim_batch_entry_closure_preflight_seed_growth { claim_batch_entry_closure_preflight_seed_growth_justification }
@@ -60,6 +61,7 @@ import gunbc.source_root_eval_driver_seed_growth { source_root_eval_driver_seed_
 import gunbc.gen_one_executable_keep_seed_growth { gen_one_executable_keep_seed_growth_justification }
 import gunbc.emitted_build_failure_retention_seed_growth { emitted_build_failure_retention_seed_growth_justification }
 import gunbc.native_claim_program_seed_growth { native_claim_program_seed_growth_justification }
+import gunbc.native_serve_program_seed_growth { native_serve_program_seed_growth_justification }
 import gunbc.dependency_demand_census_seed_growth { dependency_demand_census_seed_growth_justification }
 import gunbc.native_route_refusal_summary_seed_growth { native_route_refusal_summary_seed_growth_justification }
 import gunbc.native_route_advisory_summary_seed_growth { native_route_advisory_summary_seed_growth_justification }
@@ -84,6 +86,7 @@ import gunbc.required_lane_judgment_seed_growth { required_lane_judgment_seed_gr
 import gunbc.floor_checker_input_seed_growth { floor_checker_input_seed_growth_justification }
 import gunbc.data_eval_counters_seed_growth { data_eval_counters_seed_growth_justification }
 import gunbc.param_binder_seed_growth { param_binder_seed_growth_justification }
+import gunbc.process_lifecycle_seed_growth { process_lifecycle_seed_growth_justification }
 import gunbc.rust_item_host_observation {
   ItemDeclarationRefProjection,
   LiveHandRustObservation,
@@ -296,6 +299,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     gen_one_executable_keep_seed_growth_justification,
     emitted_build_failure_retention_seed_growth_justification,
     native_claim_program_seed_growth_justification,
+    native_serve_program_seed_growth_justification,
     dependency_demand_census_seed_growth_justification,
     native_route_refusal_summary_seed_growth_justification,
     native_route_advisory_summary_seed_growth_justification,
@@ -303,6 +307,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     fixture_render_selection_seed_growth_justification,
     fabric_door_socket_seed_growth_justification,
     serve_cookie_header_seed_growth_justification,
+    serve_declared_binding_seed_growth_justification,
     data_eval_counters_seed_growth_justification,
     declaration_index_seed_growth_justification,
     declaration_lookup_index_seed_growth_justification,
@@ -355,7 +360,8 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     floor_checker_input_seed_growth_justification,
     match_arm_guard_seed_growth_justification,
     value_depth_seed_growth_justification,
-    value_drop_binding_adaptation_seed_growth_justification
+    value_drop_binding_adaptation_seed_growth_justification,
+    process_lifecycle_seed_growth_justification
   ]
 }
 
