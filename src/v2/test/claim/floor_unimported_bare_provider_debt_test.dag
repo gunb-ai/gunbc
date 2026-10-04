@@ -16,6 +16,8 @@ import v2.workflow.floor_unimported_bare_provider_debt_roster {
   FileDeleted,
   RelocatedOutOfSourceRoots,
   NotAReference,
+  BindsWithoutDeclaration,
+  ResolvesInClosure,
   unimported_bare_provider_identity,
   unimported_bare_provider_row_view,
 }
@@ -36,6 +38,12 @@ data a_relocated: UnimportedBareProviderRowView = unimported_bare_provider_row_v
 )
 data a_not_a_reference: UnimportedBareProviderRowView = unimported_bare_provider_row_view(
   row: UnimportedBareProviderDisposition { file: "dag/a.dag", name: "f", standing: Retired { cause: NotAReference } },
+)
+data a_binds_without_declaration: UnimportedBareProviderRowView = unimported_bare_provider_row_view(
+  row: UnimportedBareProviderDisposition { file: "dag/a.dag", name: "f", standing: Retired { cause: BindsWithoutDeclaration } },
+)
+data a_resolves_in_closure: UnimportedBareProviderRowView = unimported_bare_provider_row_view(
+  row: UnimportedBareProviderDisposition { file: "dag/a.dag", name: "f", standing: Retired { cause: ResolvesInClosure } },
 )
 data b_active: UnimportedBareProviderRowView = unimported_bare_provider_row_view(
   row: UnimportedBareProviderDisposition { file: "dag/b.dag", name: "g", standing: ActiveDebt },
@@ -273,5 +281,81 @@ test fn not_a_reference_retires_active_debt_and_is_held_to_its_claim() -> Bool {
     && refuses_exactly(
       refusals: unimported_bare_provider_roster_edit(base: [a_not_a_reference], head: [a_imports_fixed]),
       expected: "RosterRetirementChanged dag/a.dag#f (Retired NotAReference -> Retired ImportsFixed)",
+    )
+}
+
+// BindsWithoutDeclaration is a retirement like NotAReference: the reader changed, not the file, so
+// active debt may move to it and it is held to its claim on every run. Control, then the reds, then
+// an existing retirement may not be relabelled to it.
+test fn binds_without_declaration_retires_active_debt_and_is_held_to_its_claim() -> Bool {
+  length(unimported_bare_provider_roster_edit(base: [a_active], head: [a_binds_without_declaration])) == 0
+    && length(unimported_bare_provider_roster_standing(
+      head: [a_binds_without_declaration],
+      present_files: ["dag/a.dag"],
+      checked_files: ["dag/a.dag"],
+      carried: [],
+      route_carried: [],
+    )) == 0
+    && refuses_exactly(
+      refusals: unimported_bare_provider_roster_standing(
+        head: [a_binds_without_declaration],
+        present_files: ["dag/a.dag"],
+        checked_files: ["dag/a.dag"],
+        carried: ["dag/a.dag#f"],
+        route_carried: [],
+      ),
+      expected: "RetiredBindsWithoutDeclarationButCarried dag/a.dag#f",
+    )
+    && refuses_exactly(
+      refusals: unimported_bare_provider_roster_standing(
+        head: [a_binds_without_declaration],
+        present_files: [],
+        checked_files: [],
+        carried: [],
+        route_carried: [],
+      ),
+      expected: "RetiredBindsWithoutDeclarationButFileAbsent dag/a.dag#f -- the cause is FileDeleted",
+    )
+    && refuses_exactly(
+      refusals: unimported_bare_provider_roster_edit(base: [a_not_a_reference], head: [a_binds_without_declaration]),
+      expected: "RosterRetirementChanged dag/a.dag#f (Retired NotAReference -> Retired BindsWithoutDeclaration)",
+    )
+}
+
+// ResolvesInClosure removes a row that was never debt by a typed disposition, so the roster stays
+// monotone: active debt may move to it, and it is held to its claim on every run. Control, then the
+// reds, then an existing retirement may not be relabelled to it.
+test fn resolves_in_closure_retires_active_debt_and_is_held_to_its_claim() -> Bool {
+  length(unimported_bare_provider_roster_edit(base: [a_active], head: [a_resolves_in_closure])) == 0
+    && length(unimported_bare_provider_roster_standing(
+      head: [a_resolves_in_closure],
+      present_files: ["dag/a.dag"],
+      checked_files: ["dag/a.dag"],
+      carried: [],
+      route_carried: [],
+    )) == 0
+    && refuses_exactly(
+      refusals: unimported_bare_provider_roster_standing(
+        head: [a_resolves_in_closure],
+        present_files: ["dag/a.dag"],
+        checked_files: ["dag/a.dag"],
+        carried: ["dag/a.dag#f"],
+        route_carried: [],
+      ),
+      expected: "RetiredResolvesInClosureButCarried dag/a.dag#f",
+    )
+    && refuses_exactly(
+      refusals: unimported_bare_provider_roster_standing(
+        head: [a_resolves_in_closure],
+        present_files: [],
+        checked_files: [],
+        carried: [],
+        route_carried: [],
+      ),
+      expected: "RetiredResolvesInClosureButFileAbsent dag/a.dag#f -- the cause is FileDeleted",
+    )
+    && refuses_exactly(
+      refusals: unimported_bare_provider_roster_edit(base: [a_binds_without_declaration], head: [a_resolves_in_closure]),
+      expected: "RosterRetirementChanged dag/a.dag#f (Retired BindsWithoutDeclaration -> Retired ResolvesInClosure)",
     )
 }

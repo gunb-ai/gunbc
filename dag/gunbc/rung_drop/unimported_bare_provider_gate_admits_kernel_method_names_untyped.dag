@@ -1,0 +1,41 @@
+module gunbc.rung_drop.unimported_bare_provider_gate_admits_kernel_method_names_untyped
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// THE DECLARED COVERAGE FRONTIER of the unimported-bare-provider gate's non-declaration classification
+// (gunbc#12951, calm-boar-904 ruling 2026-10-03). The gate now admits a bare call name that
+// `v1.compiler.infer_method` `bare_call_non_declaration_binding` says the compiler can bind
+// without a declaration. For a builtin or empty-collection constructor that is exact: the compiler
+// binds those by name. For a name admitted ONLY by the kernel-method roster it is an over-admission
+// before typecheck, because the compiler binds the method only when the first argument's inferred
+// type carries that kernel profile. A call on another receiver is a genuine unresolved call. In a
+// TYPED file typecheck still refuses it at the method-existence wall; in a file the run judges but
+// does not type, this gate was the only check and no longer reports it.
+//
+// COUNTED, NOT ASSERTED: every gate run prints
+// `[floor-phase] phase=unimported-bare-provider-frontier judged_files=N suppressed_builtin=B
+// suppressed_kernel_method_only=K` (`v1_compiler.cli_run` `unimported_bare_provider_judgment`), so
+// growth in K is visible per run. Measured over the whole pool at the change (6,821 judged files),
+// K was 205 across five names; the producer is the ignored census test on the probe branch
+// `calm-pike-525/bare-call-predicate-census`, `suppressed_rows_over_the_real_pool`.
+data unimported_bare_provider_gate_admits_kernel_method_names_untyped: RungDrop = RungDrop {
+  identity: "unimported_bare_provider_gate_admits_kernel_method_names_untyped" as NonEmptyStr,
+
+  subject: "bare calls to a kernel-method name (filter, any, contains, skip, is_empty, ...) on a receiver without that kernel profile, in a file that declares imports and that the run judges but does not typecheck: the unimported-bare-provider gate admits the name by the kernel-method roster and no longer reports an out-of-closure declarer",
+
+  declared: "2026-10-03",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged { replacement: "receiver-typed judgment of kernel-method calls: either the gate judges post-typecheck call semantics for typed files, or method resolution is receiver-typed before typecheck" },
+    population: [
+      "every (file, name) pair the gate suppresses as kernel-method-only, counted per run as suppressed_kernel_method_only on the unimported-bare-provider-frontier phase line",
+    ],
+    restoration_trigger: "the unimported-bare-provider gate decides a kernel-method name by the RECEIVER's type and not by spelling, for every file it judges: either it judges post-typecheck call semantics for typed files and the untyped judged population is empty, or method resolution is receiver-typed before typecheck. Observed at retirement: the frontier phase line reports suppressed_kernel_method_only=0 on a required run while a fixture calling filter on a non-profiled receiver outside its closure is reported, and this row retires in the same change."
+  }
+}
