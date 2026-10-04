@@ -1539,11 +1539,33 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Gap, value: scale_var(t: space_4)),
       decl(prop: FontSize, value: scale_var(t: text_13)),
     ] },
-    StaticRule { selector: RawSelector { text: ".header-account-session[hidden]" }, decls: [
+    StaticRule { selector: RawSelector { text: ".header-account-session[hidden], .header-account-signin[hidden]" }, decls: [
       decl(prop: Display, value: "none"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "header-account-signin" }, decls: [
+      decl(prop: Color, value: "var(--issue-action)"),
+      decl(prop: TextDecoration, value: "none"),
+      decl(prop: FontWeight, value: "500"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".header-account-signin:hover" }, decls: [
+      decl(prop: TextDecoration, value: "underline"),
     ] },
     StaticRule { selector: ClassSelector { name: "header-account-name" }, decls: [
       decl(prop: FontWeight, value: "500"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "header-account-signout" }, decls: [
+      decl(prop: Display, value: "inline"),
+      decl(prop: Margin, value: scale_var(t: space_0)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "header-account-signout-btn" }, decls: [
+      decl(prop: FontFamily, value: "var(--issue-font)"),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+      decl(prop: Background, value: "transparent"),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
+      decl(prop: Cursor, value: "pointer"),
     ] },
     StaticRule { selector: ClassSelector { name: "header-account-session" }, decls: [
       decl(prop: Position, value: "relative"),
@@ -1562,6 +1584,39 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Cursor, value: "pointer"),
     ] },
     StaticRule { selector: RawSelector { text: ".header-account-trigger:hover" }, decls: [
+      decl(prop: Background, value: "var(--issue-bg-subtle)"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "header-account-menu" }, decls: [
+      decl(prop: Position, value: "absolute"),
+      decl(prop: Inset, value: "100% 0 auto auto"),
+      decl(prop: MarginTop, value: scale_var(t: space_2)),
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: MinWidth, value: "11rem"),
+      decl(prop: Background, value: "var(--issue-bg-subtle)"),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: BoxShadow, value: "0 4px 16px rgba(0, 0, 0, 0.18)"),
+      decl(prop: Padding, value: scale_var(t: space_2)),
+    ] },
+    StaticRule { selector: RawSelector { text: ".header-account-menu[hidden]" }, decls: [
+      decl(prop: Display, value: "none"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "header-account-menu-item" }, decls: [
+      decl(prop: Display, value: "block"),
+      decl(prop: Width, value: "100%"),
+      decl(prop: FontFamily, value: "var(--issue-font)"),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: Color, value: "var(--issue-text)"),
+      decl(prop: Background, value: "transparent"),
+      decl(prop: Border, value: "none"),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: Padding, value: scale_pair(a: space_4, b: space_8)),
+      decl(prop: TextAlign, value: "left"),
+      decl(prop: TextDecoration, value: "none"),
+      decl(prop: Cursor, value: "pointer"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".header-account-menu-item:hover" }, decls: [
       decl(prop: Background, value: "var(--issue-bg-subtle)"),
     ] },
     StaticRule { selector: ClassSelector { name: "issue-publication" }, decls: [

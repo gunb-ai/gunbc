@@ -1735,3 +1735,18 @@ fn host_github_slot_count(host: HostIdentity) -> RunnerWidthResolution {
       RunnerWidthDerived { slots: count_github_members(identities: m) }
   }
 }
+
+// Operator-authorized desired transfer of one existing budgeted cell to workspace use.
+// This withdraws new CI work through the shared purpose sanction; it is not a commissioning
+// receipt. Current history, sanitation, host budget, image and access must still be observed
+// before workspace_offer_from_observations can offer the cell. Requests remain host-agnostic.
+data workspace_dedicated_slot_designations: List<RunnerSlotIdentity> = [srv1_microvm_shakedown_slot()]
+
+fn identity_is_workspace_execution_member(identity: RunnerSlotIdentity) -> Bool {
+  identity_is_fabric_execution_member(identity: identity)
+    && identity_in_list(identity: identity, members: workspace_dedicated_slot_designations)
+}
+
+fn workspace_execution_slot_identities() -> List<RunnerSlotIdentity> {
+  filter(fabric_execution_slot_identities(), slot => identity_is_workspace_execution_member(identity: slot))
+}

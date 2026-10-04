@@ -7,6 +7,9 @@ module gunbc.runner_host_grants
 // cycle -- and acyclicity is the one structural law the import graph has (DESIGN §3). Operations
 // know nothing about hosts; this module joins the two.
 
+import gunbc.fleet_converge_state_path { fleet_converge_state_root }
+import gunbc.workspace_allocation_operations { workspace_launch_operations }
+import gunbc.runner_slot_allocation { workspace_execution_slot_identities }
 import gunbc.fleet_bootstrap_principal { ExecutorBootstrapPrincipal, executor_bootstrap_principal }
 import std.types { String, NonEmptyStr, List, list_length }
 import extdeps.virtualization.firecracker { kvm_device_group }
@@ -52,7 +55,7 @@ import gunbc.runner_slot_provision { desired_runner_slot_members, runner_slot_in
 import gunbc.runner_host_deploy { runner_index_seq }
 import gunbc.runner_microvm_network_converge { microvm_network_granted_operations }
 import gunbc.runner_unit { runner_unit_name_of_registration }
-import gunbc.machine_intake_mtcollins1_maintenance_hold { unit_hold_store_root, mtcollins1_unit_hold_store_host }
+import gunbc.managed_host_unit_hold { unit_hold_store_root, unit_hold_store_hosts }
 
 // THE MANAGED STATE DIRECTORY, DECLARED ONCE. It is currently spelled THREE times in
 // gunbc.fleet_converge_plan and named nowhere: once as a bare literal in the lease guard's argv, and
@@ -63,7 +66,7 @@ import gunbc.machine_intake_mtcollins1_maintenance_hold { unit_hold_store_root, 
 // re-typing the path. Until then the drift is real -- moving the state directory today requires
 // finding three unrelated string sites, and missing one produces a lease that guards a directory
 // nothing else uses.
-data gunbc_fleet_converge_state_dir: NonEmptyStr = "/var/lib/gunbc/fleet-converge" as NonEmptyStr
+data gunbc_fleet_converge_state_dir: NonEmptyStr = fleet_converge_state_root
 
 // THE TWO SERVICE TRANSITIONS ARE GRANTED PER UNIT AND SEPARATELY, one enable line and one start
 // line for every desired slot. That is what makes gunbc.runner_service_activation's separation
@@ -318,16 +321,16 @@ fn runner_host_wide_refused_operations(spec: RunnerHostSpec) -> List<ExecutorPri
   ] + unit_hold_store_operations(spec: spec)
 }
 
-// THE UNIT HOLD STORE LIVES ON EXACTLY ONE HOST. gunbc.machine_intake_mtcollins1_maintenance_hold
-// places the Mt. Collins interlock's file-backed store on mtcollins1_unit_hold_store_host, where the
-// boot job is pinned and the operator takes maintenance holds; the boot refuses when the store root
+// THE UNIT HOLD STORE LIVES ONLY WHERE A MANAGED HOST'S HOLD NAMES IT. gunbc.managed_host_unit_hold
+// unit_hold_store_hosts derives the store hosts from the managed rows' own hold decisions -- the host
+// a unit's boot job is pinned to and where the operator takes its maintenance holds; the boot refuses when the store root
 // is unreadable, so the root must exist before the first acquire and nothing else creates it. It is
 // the job user's (the boot and the operator's session both write slots as that account); the store
 // publishes DefaultAccessCreateOnly (gunbc.durable_exclusive_hold_file_store), so the directory
 // carries no confidentiality requirement beyond the executor's managed mode. Every other host
 // contributes nothing: a store root on a host no hold-owner runs on would be an unused authority.
 fn unit_hold_store_operations(spec: RunnerHostSpec) -> List<ExecutorPrivilegedOperation> {
-  if (spec.host_label as String) == (mtcollins1_unit_hold_store_host as String) {
+  if any(unit_hold_store_hosts(), h => (h as String) == (spec.host_label as String)) {
     [
       EnsureOwnedDirectory {
         path: unit_hold_store_root,
@@ -339,6 +342,11 @@ fn unit_hold_store_operations(spec: RunnerHostSpec) -> List<ExecutorPrivilegedOp
   } else {
     []
   }
+}
+
+// No designated workspace slot means no workspace launch or credential publication grant.
+fn workspace_host_launch_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  flat_map(filter(workspace_execution_slot_identities(), slot => (slot.host as String) == (deploy.host_label as String)), slot => workspace_launch_operations(slot: slot))
 }
 
 // THE SHAKEDOWN BROKER'S ONE GRANT: START ITS FIXED UNIT, ON THE HOST THAT CARRIES THE SHAKEDOWN SLOT
@@ -362,6 +370,7 @@ fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorP
     + runner_slot_activation_operations(deploy: deploy)
     + fabric_cell_privileged_operations(deploy: deploy)
     + fabric_allocation_store_privileged_operations(deploy: deploy)
+    + workspace_host_launch_operations(deploy: deploy)
     + microvm_slot_reserve_start_operations(deploy: deploy)
     + runner_host_wide_privileged_operations(deploy: deploy)
     + microvm_network_granted_operations()

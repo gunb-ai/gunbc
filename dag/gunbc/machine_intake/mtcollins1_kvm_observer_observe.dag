@@ -14,10 +14,11 @@ import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint 
 import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_secured_account }
 import gunbc.machine_intake_mtcollins1_fan_observe { FanCredentialPathReady, FanCredentialPathUnset, FanCredentialPathEmpty, mtcollins1_fan_credential_path, mtcollins1_fan_credential_path_env }
 import gunbc.machine_intake_mtcollins1_boot_admission { mtcollins1_boot_host_admission }
-import gunbc.machine_intake_mtcollins1_maintenance_hold {
-  UnitHeld, UnitHoldRefused, mtcollins1_kvm_observer_acquire_unit_hold, unit_hold_release,
+import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.managed_host_unit_hold {
+  UnitHeld, UnitHoldRefused, kvm_observer_acquire_unit_hold, unit_hold_release,
   ProbeHoldReleased, ProbeHoldAlreadyFree, ProbeHoldNotOurs, ProbeHoldStale, ProbeHoldUnreleased,
-  mtcollins1_kvm_observer_release_unit_hold, probe_hold_release_outcome_text,
+  kvm_observer_release_unit_hold, probe_hold_release_outcome_text,
 }
 import gunbc.machine_intake_mtcollins1_kvm_still {
   KvmObserverRecord, KvmObserverStart, KvmObserverStarted, KvmObserverNotStarted,
@@ -41,8 +42,8 @@ import gunbc.machine_intake_mtcollins1_kvm_still {
 //
 // NOTHING IS WRITTEN TO THE CONTROLLER'S MEDIA, POWER, BOOT DEVICE OR SEL. The web session it opens is
 // its own and is DELETEd on every reachable exit; the only other effect is the KVM viewer seat, which
-// is why the run holds the unit (gunbc.machine_intake_mtcollins1_maintenance_hold
-// mtcollins1_kvm_observer_acquire_unit_hold): the boot takes that seat under the same hold and refuses
+// is why the run holds the unit (gunbc.managed_host_unit_hold
+// kvm_observer_acquire_unit_hold): the boot takes that seat under the same hold and refuses
 // its handoff when the seat is busy, so an unheld probe could make a concurrent boot refuse.
 //
 // THE ARTIFACTS are the observer's own directory -- journal, journal.pre-teardown, observer.log and
@@ -179,7 +180,7 @@ fn mtcollins1_kvm_observer_observe_wet() -> ProcessExit
         FanCredentialPathUnset => exit_failure(reason: join(["mtcollins1 kvm observer: no ", mtcollins1_fan_credential_path_env as String, " in the environment; contacting NO host"], ""))
         FanCredentialPathEmpty => exit_failure(reason: join(["mtcollins1 kvm observer: ", mtcollins1_fan_credential_path_env as String, " is set but empty; contacting NO host"], ""))
         FanCredentialPathReady { path: p } =>
-          match mtcollins1_kvm_observer_acquire_unit_hold(run_id: run_id as NonEmptyStr) {
+          match kvm_observer_acquire_unit_hold(host: operator_host_mtcollins1, run_id: run_id as NonEmptyStr) {
             UnitHoldRefused { reason: r } => exit_failure(reason: concat("mtcollins1 kvm observer: ", r as String))
             UnitHeld { proof: proof } => {
               let run = mtcollins1_kvm_observer_observe_held(username: username, password_file: p, run_id: run_id as NonEmptyStr)
@@ -205,13 +206,14 @@ fn mtcollins1_kvm_observer_observe_wet() -> ProcessExit
 // timeout frees the seat, and the hold is then cleared by the operator or, once it lands, by
 // observed-dead recovery. Absent is "let go"; Present names the first part not observed ended.
 fn kvm_probe_seat_parts_gap(session: KvmSessionRelease, browser: KvmBrowserClose, process: OwnedRelease, launched: Bool) -> NonEmptyStr? {
-  let session_ended = match session { KvmSessionReleased => true  KvmSessionNoSession => true  _ => false }
-  let browser_ended = match browser { KvmBrowserClosed => true  KvmBrowserNotLaunched => true  _ => false }
+  let session_ended = match session { KvmSessionReleased => true  KvmSessionNoSession => true  KvmSessionReleaseHttp { status: _ } => false  KvmSessionReleaseFailed { detail: _ } => false  KvmSessionLoginUnobserved => false  KvmSessionReleaseUnrecognized { raw: _ } => false }
+  let browser_ended = match browser { KvmBrowserClosed => true  KvmBrowserNotLaunched => true  KvmBrowserCloseFailed { detail: _ } => false  KvmBrowserCloseUnrecognized { raw: _ } => false }
   let process_ended = match process {
     OwnedReleased { pid: _ } => true
     OwnedAlreadyGone { pid: _ } => true
-    OwnedReleaseNotOwned { standing: s } => match s { OwnedForeign { pid: _, observed_start: _ } => true  OwnedNotRecorded { detail: _ } => !launched  _ => false }
-    _ => false
+    OwnedReleaseFailed { pid: _, detail: _ } => false
+    OwnedReleaseUnresolved { pid: _, standing: _ } => false
+    OwnedReleaseNotOwned { standing: s } => match s { OwnedForeign { pid: _, observed_start: _ } => true  OwnedNotRecorded { detail: _ } => !launched  OwnedRunning { pid: _, start_time: _ } => false  OwnedGone { pid: _ } => false  OwnedUnreadable { pid: _, detail: _ } => false  OwnedUnparseable { pid: _, detail: _ } => false }
   }
   if !session_ended { Present { value: "the web session was not observed released" as NonEmptyStr } }
   else if !browser_ended { Present { value: "the browser was not observed closed" as NonEmptyStr } }
@@ -248,8 +250,8 @@ fn kvm_probe_seat_gap_from_journal(journal: KvmJournalRead, process: OwnedReleas
 // THE always() RELEASE (a separate step after the probe's, run whatever the probe step did: success,
 // failure, cancel or its own timeout). First the observer process this run started, by its recorded
 // (pid, start time) -- so the viewer seat and the web session it holds are let go -- then the unit hold,
-// only if THIS run holds it (gunbc.machine_intake_mtcollins1_maintenance_hold
-// mtcollins1_kvm_observer_release_unit_hold). A probe that finished cleanly left nothing, and both
+// only if THIS run holds it (gunbc.managed_host_unit_hold
+// kvm_observer_release_unit_hold). A probe that finished cleanly left nothing, and both
 // halves report that as a no-op. It fails loudly only when something this run owns stays held.
 fn mtcollins1_kvm_observer_release_wet() -> ProcessExit
 {
@@ -266,7 +268,7 @@ fn mtcollins1_kvm_observer_release_wet() -> ProcessExit
     Present { value: gap } => return exit_failure(reason: join(["mtcollins1 kvm observer release: process ", owned_release_text(r: process), "; unit hold KEPT, because ", gap as String], ""))
     Absent => {}
   }
-  let hold = mtcollins1_kvm_observer_release_unit_hold(run_id: run_id as NonEmptyStr)
+  let hold = kvm_observer_release_unit_hold(host: operator_host_mtcollins1, run_id: run_id as NonEmptyStr)
   let line = join(["mtcollins1 kvm observer release: process ", owned_release_text(r: process), "; unit hold ", probe_hold_release_outcome_text(o: hold)], "")
   match hold {
     ProbeHoldUnreleased { cause: _ } => exit_failure(reason: line)

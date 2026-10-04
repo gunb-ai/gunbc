@@ -100,28 +100,56 @@ type DemandState<V>
 fn demand_state_is_available<V>(s: DemandState<V>) -> Bool {
   match s {
     DemandAvailable { value: _ } => true
-    _ => false
+    DemandWaiting => false
+    DemandReady => false
+    DemandLeasePending => false
+    DemandRunning => false
+    DemandSuspended => false
+    DemandCommitPending => false
+    DemandRefused => false
+    DemandBlocked { cause: _ } => false
   }
 }
 
 fn demand_state_is_refused<V>(s: DemandState<V>) -> Bool {
   match s {
     DemandRefused => true
-    _ => false
+    DemandWaiting => false
+    DemandReady => false
+    DemandLeasePending => false
+    DemandRunning => false
+    DemandSuspended => false
+    DemandCommitPending => false
+    DemandAvailable { value: _ } => false
+    DemandBlocked { cause: _ } => false
   }
 }
 
 fn demand_state_is_ready<V>(s: DemandState<V>) -> Bool {
   match s {
     DemandReady => true
-    _ => false
+    DemandWaiting => false
+    DemandLeasePending => false
+    DemandRunning => false
+    DemandSuspended => false
+    DemandCommitPending => false
+    DemandAvailable { value: _ } => false
+    DemandRefused => false
+    DemandBlocked { cause: _ } => false
   }
 }
 
 fn demand_state_is_running<V>(s: DemandState<V>) -> Bool {
   match s {
     DemandRunning => true
-    _ => false
+    DemandWaiting => false
+    DemandReady => false
+    DemandLeasePending => false
+    DemandSuspended => false
+    DemandCommitPending => false
+    DemandAvailable { value: _ } => false
+    DemandRefused => false
+    DemandBlocked { cause: _ } => false
   }
 }
 
@@ -137,9 +165,21 @@ fn demand_state_is_cycle_blocked<V>(s: DemandState<V>) -> Bool {
     DemandBlocked { cause: c } =>
       match c {
         BlockedByCycle { members: _ } => true
-        _ => false
+        BlockedByMissingEdge { prerequisite: _ } => false
+        BlockedByRefusedPrerequisite { prerequisite: _ } => false
+        BlockedWaitingForCapacity => false
+        BlockedLookupPending => false
+        BlockedNoDemand => false
+        BlockedKeyConflict => false
       }
-    _ => false
+    DemandWaiting => false
+    DemandReady => false
+    DemandLeasePending => false
+    DemandRunning => false
+    DemandSuspended => false
+    DemandCommitPending => false
+    DemandAvailable { value: _ } => false
+    DemandRefused => false
   }
 }
 
