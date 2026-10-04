@@ -1809,6 +1809,34 @@ fn record_lit_expanded_from_expected(type_name: String?, expected: Node?, scope:
   }
 }
 
+// A VARIANT LITERAL OF A GENERIC OWNER IS AN APPLICATION OF THAT OWNER WHEN ITS CONTEXT SAYS WHICH.
+// The arm above widens a variant literal to its owner DECLARATION: the expansion that still carries
+// the declaration's formals as params (`Result<ok, err>`). The expected type -- a declared return, a
+// typed let, a fold init whose fold sits in result position -- is the authored APPLICATION of the
+// same declaration (`Result<List<DnsLabel>, DomainNameParseError>`), and every reader before this
+// one dropped its arguments by resolving it back to the declaration (record_lit_expected_coproduct).
+// So the literal typed as an uninstantiated declaration, and each consumer downstream compensated
+// or failed: fold_accumulator_is_unapplied_generic re-derives an accumulator from the step's
+// return, which is itself such a literal, and extdeps.dns.domain_name parse_dns_label_list's
+// `labels |> list_push(label)` reached the emitter with `labels` typed by the formal `ok`
+// (gunbc native broker, E0599). The application is admitted only when the expected's head resolves
+// to the SAME binding as the owner (rc identity, never a spelling comparison) and the owner is
+// generic; anything else answers none and the literal keeps the declaration exactly as before.
+fn variant_literal_expected_application(owner: Node, expected: Node?, scope: InferScope) -> Node? {
+  if (owner.params |> count) == 0 { return none }
+  match expected {
+    Present { value: exp } =>
+      if exp.connective != NoConnective || (exp.children |> count) == 0 { none }
+      else {
+        match lookup_type_for(env: scope.type_env, node: exp) {
+          Present { value: head } => if rc_ptr_eq(head, owner) { Present { value: with_required_cardinality(n: exp) } } else { none }
+          Absent => none
+        }
+      }
+    Absent => none
+  }
+}
+
 fn record_lit_expected_coproduct(expected: Node?, scope: InferScope) -> Node? {
   match expected {
     Present { value: exp } =>
@@ -10930,7 +10958,12 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     }
     let expected_optional_parent = Present { value: "Optional" }
     let is_present_ctor = type_name.value == "Present" && local_variant_parent == expected_optional_parent
-    let resolved_node = if is_present_ctor {
+    let applied_expected_owner = if is_present_ctor { none } else {
+      variant_literal_expected_application(owner: raw_resolved, expected: expected, scope: scope)
+    }
+    let resolved_node = if applied_expected_owner != none {
+      applied_expected_owner.value
+    } else if is_present_ctor {
       let val_field = fi_infer_results |> filter(fir => field_init_node_name_at(n: fir.typed_field, source_indices: scope.type_env.source_indices) == "value") |> first
       match val_field {
         Present { value: val_fir } => with_optional_cardinality(n: resolved_type(n: val_fir.infer_result.typed))

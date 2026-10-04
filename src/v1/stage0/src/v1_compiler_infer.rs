@@ -2593,6 +2593,42 @@ pub fn record_lit_expanded_from_expected(
     }
 }
 
+pub fn variant_literal_expected_application(
+    owner: Rc<Node>,
+    expected: Option<Rc<Node>>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<Node>> {
+    {
+        if ((owner.params.clone().len() as i64) == 0) {
+            return std::option::Option::None;
+        }
+        match expected.clone() {
+            Some(exp) => {
+                if ((exp.connective.clone() != Connective::NoConnective)
+                    || ((exp.children.clone().len() as i64) == 0))
+                {
+                    std::option::Option::None
+                } else {
+                    match crate::v1_compiler_infer_env::lookup_type_for(
+                        scope.type_env.clone(),
+                        exp.clone(),
+                    ) {
+                        Some(head) => {
+                            if v1_rt::rc_ptr_eq(head.clone(), owner.clone()) {
+                                Some(crate::v1_std_core::with_required_cardinality(exp.clone()))
+                            } else {
+                                std::option::Option::None
+                            }
+                        }
+                        std::option::Option::None => std::option::Option::None,
+                    }
+                }
+            }
+            std::option::Option::None => std::option::Option::None,
+        }
+    }
+}
+
 pub fn record_lit_expected_coproduct(
     expected: Option<Rc<Node>>,
     scope: Rc<InferScope>,
@@ -17654,34 +17690,48 @@ Rc::new(FieldInferResult {
                 let is_present_ctor = ((type_name.clone().unwrap() == "Present".to_string())
                     && (local_variant_parent.clone().as_deref()
                         == expected_optional_parent.clone().as_deref()));
-                let resolved_node = if is_present_ctor.clone() {
-                    {
-                        let val_field = Rc::new({
-                            let mut __result = Vec::new();
-                            for fir in fi_infer_results.iter().cloned() {
-                                if (crate::v1_std_core::field_init_node_name_at(
-                                    fir.typed_field.clone(),
-                                    scope.type_env.clone().source_indices.clone(),
-                                ) == "value".to_string())
-                                {
-                                    __result.push(fir);
-                                }
-                            }
-                            __result
-                        })
-                        .first()
-                        .cloned();
-                        match val_field.clone() {
-                            Some(val_fir) => crate::v1_std_core::with_optional_cardinality(
-                                crate::v1_compiler_infer_types::resolved_type(
-                                    val_fir.infer_result.clone().typed.clone(),
-                                ),
-                            ),
-                            std::option::Option::None => raw_resolved.clone(),
-                        }
-                    }
+                let applied_expected_owner = if is_present_ctor.clone() {
+                    std::option::Option::None
                 } else {
-                    raw_resolved.clone()
+                    variant_literal_expected_application(
+                        raw_resolved.clone(),
+                        expected.clone(),
+                        scope.clone(),
+                    )
+                };
+                let resolved_node = if (applied_expected_owner.clone() != std::option::Option::None)
+                {
+                    applied_expected_owner.clone().unwrap()
+                } else {
+                    if is_present_ctor.clone() {
+                        {
+                            let val_field = Rc::new({
+                                let mut __result = Vec::new();
+                                for fir in fi_infer_results.iter().cloned() {
+                                    if (crate::v1_std_core::field_init_node_name_at(
+                                        fir.typed_field.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                    ) == "value".to_string())
+                                    {
+                                        __result.push(fir);
+                                    }
+                                }
+                                __result
+                            })
+                            .first()
+                            .cloned();
+                            match val_field.clone() {
+                                Some(val_fir) => crate::v1_std_core::with_optional_cardinality(
+                                    crate::v1_compiler_infer_types::resolved_type(
+                                        val_fir.infer_result.clone().typed.clone(),
+                                    ),
+                                ),
+                                std::option::Option::None => raw_resolved.clone(),
+                            }
+                        }
+                    } else {
+                        raw_resolved.clone()
+                    }
                 };
                 let type_diags = match effective_lookup.clone() {
                     Some(_) => Rc::new(vec![]),
