@@ -46,13 +46,13 @@ test fn seam_admitted_create_and_release_land_in_the_store() -> Bool {
             principal_ref_eq(a: a.request.owner, b: session.principal)
               && (a.request.idempotency_key as String) == "seam-request-1"
               && (a.request.image as String) == (workspace_demo_image_identity() as String)
-              && (a.request.public_key_ref as String) == "seam-witness-key"
+              && (a.request.public_key_ref as String) == "witness-key"
               && a.request.expires_at == "2026-09-25T01:00:00Z"
               && a.desired == WorkspaceWanted)
         }
         let released = workspace_route_release_over(
           request: ServeHttpRequest { method: POST, path: "/allocations/seam-request-1/release", body: "\{\"csrf_token\":\"csrf-1\",\"generation\":\"0\"\}", security: good_path },
-          store: store, policy: WorkspaceAuthorizationPolicy { enrollments: [WorkspaceOwnerEnrollment { principal: session.principal, public_key_ref: "seam-witness-key" }] },
+          store: store, policy: WorkspaceAuthorizationPolicy { enrollments: [WorkspaceOwnerEnrollment { principal: session.principal, public_key_ref: "witness-key" }] },
           observed_at: seam_decided_at, allocation_id: "seam-request-1")
         let retired = match workspace_read_owner(store: store, owner: session.principal) {
           WorkspaceStoreUnreadable { reason: _ } => false
