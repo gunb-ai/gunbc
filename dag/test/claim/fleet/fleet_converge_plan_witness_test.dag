@@ -120,7 +120,7 @@ import gunbc.fleet_converge_plan {
   FullHost,
   LaunchEnvironment,
   FabricExecutionCellsOnly,
-  FabricAllocationStoreOnly,
+  FabricAllocationStoreOnly, WorkspaceAllocationOnly,
   LiveDeploy,
   FullHostConverge,
   FabricExecutionCellsConverge,
@@ -2089,6 +2089,7 @@ fn scope_is_full_host(s: FleetConvergeScope) -> Bool {
     LaunchEnvironment => false
     FabricExecutionCellsOnly => false
     FabricAllocationStoreOnly => false
+    WorkspaceAllocationOnly => false
     LiveDeploy => false
   }
 }
@@ -2099,6 +2100,7 @@ fn scope_is_fabric_only(s: FleetConvergeScope) -> Bool {
     FullHost => false
     LaunchEnvironment => false
     FabricAllocationStoreOnly => false
+    WorkspaceAllocationOnly => false
     LiveDeploy => false
   }
 }
