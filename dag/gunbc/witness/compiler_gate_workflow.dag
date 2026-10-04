@@ -118,6 +118,7 @@ import gunbc.witness_floor_workflow {
   required_floor_claim_cost_path,
   required_floor_cross_claim_demand_path,
   required_ci_measurement_bound_steps,
+  required_floor_claim_cost_upload_bound_step,
   required_ci_measurement_scripts_are_renderable,
   WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused
 }
@@ -839,9 +840,14 @@ fn compiler_gate_generated_bound_steps() -> List<CompilerGateBoundStep> {
 // re-declaring them, so this lane and the floor workflow cannot carry two refusal mechanisms for
 // one receipt (DESIGN section 3). The rows already bind their env to steps.build_witness_fold,
 // which is the id witness_floor_build_step gives this job's build step too.
+//
+// THE PER-CLAIM COST RECEIPT IS UPLOADED AFTER THEM, re-bound the same way
+// (gunbc.witness_floor_workflow required_floor_claim_cost_upload_bound_step). Its condition is the
+// floor's precondition, which holds through a red adjudication, so a refused floor still publishes
+// the cost of what it executed.
 fn compiler_gate_floor_measurement_bound_steps() -> List<CompilerGateBoundStep> {
   list_map(
-    xs: required_ci_measurement_bound_steps(),
+    xs: concat(required_ci_measurement_bound_steps(), [required_floor_claim_cost_upload_bound_step()]),
     f: fn(b) { CompilerGateBoundStep { step: b.step, role: b.role, step_name: b.step_name } },
   )
 }

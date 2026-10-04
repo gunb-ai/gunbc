@@ -183,31 +183,19 @@ fn observe_firmware_file_standing_wet(root: String, file: AavmfFirmwareFile) -> 
 }
 
 fn qemu_standing_ready(s: QemuBinaryStanding) -> Bool {
-  match s {
-    QemuAbsent { binary: _ } => false
-    QemuPinnedBuild { banner: _ } => true
-    QemuOtherBuild { binary: _ } => false
-  }
+  match s { QemuPinnedBuild { banner: _ } => true  QemuAbsent { binary: _, detail: _ } => false  QemuOtherBuild { binary: _, observed_sha256: _, banner: _, banner_is_pinned: _ } => false }
 }
 
 fn firmware_standing_ready(s: FirmwareFileStanding) -> Bool {
-  match s {
-    FirmwareFileMatches { path: _ } => true
-    FirmwareFileDiffers { path: _ } => false
-    FirmwareFileUnreadable { path: _ } => false
-  }
+  match s { FirmwareFileMatches { path: _ } => true  FirmwareFileDiffers { path: _, observed: _, expected: _ } => false  FirmwareFileUnreadable { path: _, reason: _ } => false }
 }
 
 fn kvm_standing_ready(k: KvmDeviceStanding) -> Bool {
-  match k {
-    KvmDeviceWritable => true
-    KvmDevicePresentNotWritable => false
-    KvmDeviceAbsent => false
-  }
+  match k { KvmDeviceWritable => true  KvmDevicePresentNotWritable => false  KvmDeviceAbsent => false }
 }
 
 fn library_standing_ready(l: QemuLibraryStanding) -> Bool {
-  match l { QemuLibrariesRead { reading: LddAllResolved } => true  _ => false }
+  match l { QemuLibrariesRead { reading: LddAllResolved } => true  QemuLibrariesRead { reading: LddUnresolved } => false  QemuLibrariesRead { reading: LddUnreadable } => false  QemuLibrariesNotRead { reason: _ } => false }
 }
 
 fn census_qemu_host_ready(s: CensusQemuHostStanding) -> Bool {

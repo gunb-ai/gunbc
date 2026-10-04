@@ -28,6 +28,7 @@ import v2.compiler.fold_lowering {
   FunctionValueKind,
   function_value_kind_of,
   FunctionLiteralBlockBody,
+  FunctionLiteralStatementBody,
   FunctionLiteralBody,
   FunctionLiteralExprBody,
   function_value_parts_optional,
@@ -138,6 +139,7 @@ import v2.std.symbol_index {
 import v2.std.node {
   node_subtree_nodes,
   ArrowEffectClaimsEdge,
+  BinderTypeEdge,
   ArrowExecutionModeClaimEdge,
   ArrowResourceRequirementsEdge,
   MapLiteralEntryEdge,
@@ -188,7 +190,7 @@ import v2.std.node {
   core_edge_label,
   edge_is_core,
 }
-import v2.std.type_binder { cast_target_edge, type_alias_wrapper, type_decl_wrapper, type_opaque_wrapper, type_param_names, type_params_edge }
+import v2.std.type_binder { type_binder_set_children, cast_target_edge, type_alias_wrapper, type_decl_wrapper, type_opaque_wrapper, type_param_names, type_params_edge }
 import v2.std.arrow_contract { effect_claim_label, hermetic_claim_label }
 import std.effects { EffectClaim, ReadonlyClaim, IdempotentClaim }
 import v2.std.node_query {
@@ -759,6 +761,7 @@ fn body_lower_is_pass_through_emitted(emitted: Symbol) -> Bool {
     || (emitted == ^dag_surface_postfix_expr)
     || (emitted == ^dag_surface_block_expr)
     || (emitted == ^dag_surface_stmt)
+    || (emitted == ^dag_surface_lambda_let_stmt)
     || (emitted == ^dag_surface_stmt_seq)
     || (emitted == ^dag_surface_arg)
 }
@@ -3075,25 +3078,61 @@ fn body_lower_decl_generic_params_slot_optional(captured: Node) -> Optional<Node
 // so it keeps its minted occurrence) and the name. The type-parameter Edge is its projection
 // (body_lower_generic_param_edge_of), and so is the binder list v2.compiler.occurrence_role reads
 // (body_lower_generic_params_binder_atoms).
+//
+// `kind` is the lowered kind of a kinded parameter (`bits: WidthResolution`, v2.extdeps.languages.dag
+// dag_grammar_generic_param_expr), Absent for a bare one. A kind that is written and does not lower
+// makes the whole binder unreadable, so the list refuses (TypeParamsUnreadable) rather than dropping it.
 type BodyLowerGenericBinder {
   item: Node,
   binder: Node,
   name: Symbol,
+  kind: Optional<Node>,
 }
 
+// generic_param is seq(name, optional(seq(`:`, kind))); an absent kind captures as the empty Conj.
 fn body_lower_generic_param_binder_optional(item: Node) -> Optional<BodyLowerGenericBinder> {
-  match body_lower_param_binding_atom_optional(node: body_lower_deep_unwrap_optional(node: item)) {
+  match sugar_sequence_pair_optional(node: body_lower_deep_unwrap_optional(node: item)) {
     Absent => optional_absent()
-    Present { value: binder } =>
-      match node_atom_identity_optional(node: binder) {
-        Absent => optional_absent()
-        Present { value: name } => optional_present(value: BodyLowerGenericBinder { item: item, binder: binder, name: name })
+    Present { value: name_then_kind } =>
+      let suffix = body_lower_deep_unwrap_optional(node: name_then_kind.right)
+      if is_empty_conj_root(n: suffix) {
+        body_lower_generic_param_named_optional(item: item, name_node: name_then_kind.left, kind: optional_absent())
+      } else {
+        match sugar_sequence_pair_optional(node: suffix) {
+          Absent => optional_absent()
+          Present { value: colon_then_kind } =>
+            match body_lower_type_expr_lowered_optional(node: colon_then_kind.right) {
+              Absent => optional_absent()
+              Present { value: kind } => body_lower_generic_param_named_optional(item: item, name_node: name_then_kind.left, kind: optional_present(value: kind))
+            }
+        }
       }
   }
 }
 
+fn body_lower_generic_param_named_optional(item: Node, name_node: Node, kind: Optional<Node>) -> Optional<BodyLowerGenericBinder> {
+  match body_lower_param_binding_atom_optional(node: body_lower_deep_unwrap_optional(node: name_node)) {
+    Absent => optional_absent()
+    Present { value: binder } =>
+      match node_atom_identity_optional(node: binder) {
+        Absent => optional_absent()
+        Present { value: name } => optional_present(value: BodyLowerGenericBinder { item: item, binder: binder, name: name, kind: kind })
+      }
+  }
+}
+
+// The binder Atom, carrying the kind as its one BinderTypeEdge when the parameter declares one
+// (v2.std.node type_binder_conforms).
 fn body_lower_generic_param_edge_of(b: BodyLowerGenericBinder) -> Edge {
-  Edge { label: Authored { name: b.name }, target: body_lower_param_ref_atom(source: b.item, identity: b.name) }
+  let atom = body_lower_param_ref_atom(source: b.item, identity: b.name)
+  match b.kind {
+    Absent => Edge { label: Authored { name: b.name }, target: atom }
+    Present { value: k } =>
+      Edge {
+        label: Authored { name: b.name },
+        target: node_with_occurrence_id(kind: atom.kind, children: [core_edge(marker: BinderTypeEdge, target: k)], occurrence_id: atom.occurrence_id)
+      }
+  }
 }
 
 // The repeat tail of comma_list(item): each element is seq(opt(comma), item).
@@ -3205,11 +3244,11 @@ fn body_lower_decl_type_params(captured: Node) -> DeclTypeParams {
                 Absent => TypeParamsUnreadable
                 Present { value: edges } =>
                   TypeParams {
-                    conj: node_lowered_from(
+                    conj: close_lowered_image(root: node_lowered_from(
                       kind: TypeNode { connective: Conj },
-                      children: edges,
+                      children: type_binder_set_children(binders: edges, source: generic_params),
                       source: generic_params
-                    )
+                    ))
                   }
               }
           }
@@ -5063,6 +5102,11 @@ fn body_lower_function_value_body(body: FunctionLiteralBody) -> Outcome<Optional
             Present { value: stmt_seq } => body_lower_function_value_lowered_whole(o: body_lower_stmt_seq(shell: stmt_seq))
           }
       }
+    FunctionLiteralStatementBody { body: b } =>
+      match body_lower_exit_outside_tail_optional(node: b, tail: true) {
+        Present { value: refused } => body_lower_function_value_lowered_whole(o: refused)
+        Absent => body_lower_function_value_lowered_whole(o: body_lower_stmt_seq(shell: b))
+      }
   }
 }
 
@@ -5095,6 +5139,7 @@ fn body_lower_function_value_body_node(body: FunctionLiteralBody) -> Node {
   match body {
     FunctionLiteralExprBody { expr: e } => e
     FunctionLiteralBlockBody { fn_body: b } => b
+    FunctionLiteralStatementBody { body: b } => b
   }
 }
 
@@ -5362,7 +5407,7 @@ fn body_lower_function_value_arrow(
       let type_param_edges: List<Edge> = match type_params {
         Empty => no_edges
         Cons { head: _, tail: _ } =>
-          [type_params_edge(conj: node_lowered_from(kind: TypeNode { connective: Conj }, children: type_params, source: shell))]
+          [type_params_edge(conj: close_lowered_image(root: node_lowered_from(kind: TypeNode { connective: Conj }, children: type_binder_set_children(binders: type_params, source: shell), source: shell)))]
       }
       outcome_with_diagnostics(
         value: body_lower_callable_arrow(
@@ -11854,7 +11899,7 @@ fn body_lower_exit_walk(node: Node, tail: Bool, arm_tail: Bool) -> Optional<Outc
           Present { value: spine } => body_lower_exit_walk_spine(spine: spine, tail: tail)
           Absent => optional_absent()
         }
-      } else if id == ^dag_surface_match_arm_stmt_body {
+      } else if id == ^dag_surface_match_arm_stmt_body || id == ^dag_surface_lambda_stmt_body {
         match body_lower_unwrap_captured(shell: node) {
           Present { value: spine } => body_lower_exit_walk_spine(spine: spine, tail: tail)
           Absent => optional_absent()

@@ -24,14 +24,9 @@ import gunbc.live_deploy.spec {
   DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot,
   deployment_provider_state_path,
 }
-import gunbc.live_deploy.candidate { CandidateRelease }
-import gunbc.live_deploy.emit {
-  live_deploy_systemd_unit_for,
-}
-import gunbc.live_deploy.release_locus {
-  ReleaseRevisionBinding,
-  RevisionBoundAtEmission,
-}
+import gunbc.live_deploy.candidate_identity { CandidateRelease }
+import gunbc.live_deploy.emit { live_deploy_systemd_unit_for }
+import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
 import gunbc.live_deploy.readiness { live_deploy_healthz_get_for_port, healthz_release_identity_refusal, healthz_refusal_reason }
 import gunbc.roadmap_site_surface_types { HealthzEffectiveRead, HealthzBodyRead, HealthzProbeRefused }
 import gunbc.running_release_identity { observe_running_release_identity, RunningReleaseIdentified, RunningReleaseUnidentified }

@@ -15,7 +15,8 @@ import v2.std.diagnostic {
   Rejected,
   bind_outcome,
   diagnostics_singleton,
-  outcome_accepted
+  outcome_accepted,
+  Unavailable
 }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.node_query { find_named_child, variant_declaration_edge_optional }

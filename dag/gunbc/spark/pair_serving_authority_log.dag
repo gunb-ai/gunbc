@@ -27,7 +27,7 @@ import gunbc.fabric_event_log_host { HostStoreResolved, HostStoreRefused, event_
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire, parse_fabric_group, fabric_group_of_host }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.spark.released_baseline { ReleasedBaselineSpec, released_baseline_wire, parse_released_baseline }
 import gunbc.spark.pair_serving_authority {
   PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, FencedRefusal, ReleasedToFleet,

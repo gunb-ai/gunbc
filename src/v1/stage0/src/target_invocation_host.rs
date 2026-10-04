@@ -283,6 +283,10 @@ pub enum TargetProducer {
     NativeClaimProgram {
         entry: &'static str,
     },
+    /// `NativeServeProgramProducer { entry }`: generic over its entry on the same rule.
+    NativeServeProgram {
+        entry: &'static str,
+    },
 }
 
 /// `gunbc.instrument_targets` `instrument_targets` / `instrument_bindings`, as the pairs the
@@ -390,6 +394,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             instrument_label("native-emission-controls"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/native_emission_controls.dag",
+            },
+        ),
+        (
+            instrument_label("native-serve"),
+            TargetProducer::NativeServeProgram {
+                entry: "dag/gunbc/instruments/native_serve_fixture.dag",
             },
         ),
         (
@@ -826,6 +836,7 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
             reading: V2NativeCensusReading::TypeDeclarationUse,
         } => run_type_declaration_use_census(&self_host_source_roots()),
         TargetProducer::NativeClaimProgram { entry } => run_native_claim_program(entry),
+        TargetProducer::NativeServeProgram { entry } => run_native_serve_program(entry),
         TargetProducer::EmittedCrateWorkspace => {
             run_emitted_crate_workspace(&emitted_crate_workspace_source_roots())
         }
@@ -1194,9 +1205,13 @@ fn run_v2_native_census(source_roots: &[String]) -> InvocationOutcome {
         Ok(run) => InvocationOutcome {
             termination: Termination::ObservationHeld,
             message: format!(
-                "v2-native-census: modules={} file_refusals={} residual_rows={} cause_groups={}; \
-                 the rows grouped by fatal reason are the cause_group lines above",
-                run.modules, run.file_refusals, run.residual_rows, run.cause_groups
+                "v2-native-census: modules={} file_refusals={} advised_files={} residual_rows={} \
+                 cause_groups={}; the rows grouped by fatal reason are the cause_group lines above",
+                run.modules,
+                run.file_refusals,
+                run.advised_files,
+                run.residual_rows,
+                run.cause_groups
             ),
         },
         Err(cause) => InvocationOutcome {
@@ -1563,6 +1578,152 @@ fn run_native_claim_program(entry: &'static str) -> InvocationOutcome {
             run.binary_identity,
             run.seed_identity,
             run.warning_count,
+            run.stderr.trim_end(),
+        ),
+    }
+}
+
+/// THE NATIVE SERVE PROGRAM PRODUCER: emit, build and start a `NativeServeDriver` entry, exchange
+/// the requests `gunbc.native_serve_probe` names over real TCP, then let that module decide what the
+/// run established. The host decides nothing about a case: the requests and both launch revisions
+/// are read from the reader module, the bytes go back to `native_serve_probe_standing` unjudged, and
+/// its `ProcessExit` maps through the one classifier exactly as the claim producer's does.
+fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
+    let label_name = "native-serve";
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
+        };
+    }
+    const READER: &str = "dag/gunbc/native_serve_probe.dag";
+    let roots = cli_run::default_source_roots();
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, READER) {
+        Ok(resolved) => resolved,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label_name}: resolve failed for {READER}: {cause}"),
+            };
+        }
+    };
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    let read = |function: &str| -> Result<crate::v1_interpreter::Value, String> {
+        crate::v1_interpreter::run_in_context_with_args(&ctx, function, &[], true)
+            .map_err(|cause| format!("{label_name}: {READER} {function} failed: {cause}"))
+    };
+    let text = |value: &crate::v1_interpreter::Value| -> Option<String> {
+        match value {
+            crate::v1_interpreter::Value::Str(s) => Some(s.to_string()),
+            _ => None,
+        }
+    };
+    let plan = (|| -> Result<(Vec<String>, String, String), String> {
+        let requests = match &read("native_serve_probe_requests")? {
+            crate::v1_interpreter::Value::List(items) => items
+                .iter()
+                .map(|item| text(item).ok_or("a request is not a String".to_string()))
+                .collect::<Result<Vec<String>, String>>()?,
+            _ => return Err("native_serve_probe_requests is not a List".to_string()),
+        };
+        let release = text(&read("native_serve_probe_release_revision")?)
+            .ok_or("the release revision is not a String")?;
+        let refused = text(&read("native_serve_probe_refused_revision")?)
+            .ok_or("the refused revision is not a String")?;
+        Ok((requests, release, refused))
+    })();
+    let (requests, release, refused) = match plan {
+        Ok(plan) => plan,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label_name}: the probe plan is unreadable: {cause}"),
+            }
+        }
+    };
+    let run = match cli_run::run_native_serve_program(
+        &v2_native_cli_source_roots(),
+        entry,
+        &release,
+        &refused,
+        &requests,
+    ) {
+        Ok(run) => run,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: cause,
+            }
+        }
+    };
+    let refused_status = i64::from(run.refused_status.unwrap_or(-1));
+    let args = [
+        (
+            Some("announcement".to_string()),
+            crate::v1_interpreter::Value::Str(run.announcement.clone().into()),
+        ),
+        (
+            Some("responses".to_string()),
+            crate::v1_interpreter::Value::List(std::rc::Rc::new(
+                run.responses
+                    .iter()
+                    .map(|r| crate::v1_interpreter::Value::Str(r.clone().into()))
+                    .collect::<Vec<_>>()
+                    .into(),
+            )),
+        ),
+        (
+            Some("refused_status".to_string()),
+            crate::v1_interpreter::Value::Int(refused_status),
+        ),
+        (
+            Some("refused_stderr".to_string()),
+            crate::v1_interpreter::Value::Str(run.refused_stderr.clone().into()),
+        ),
+    ];
+    let standing = match crate::v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "native_serve_probe_standing",
+        &args,
+        true,
+    ) {
+        Ok(value) => cli_run::classify_exit(&value, &ctx),
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label_name}: the probe reader failed: {cause}"),
+            }
+        }
+    };
+    let (termination, verdict) = match standing {
+        cli_run::ExitClass::Success => (Termination::ObservationHeld, "held".to_string()),
+        cli_run::ExitClass::Failure { code: 1, reason } => (
+            Termination::ObservationDidNotHold,
+            reason.unwrap_or_else(|| "not held".to_string()),
+        ),
+        cli_run::ExitClass::Failure { reason, .. } => (
+            Termination::SubjectUnreached,
+            reason.unwrap_or_else(|| "no observation".to_string()),
+        ),
+        cli_run::ExitClass::NotProcessExit { type_name } => (
+            Termination::Refused,
+            format!("the probe reader returned `{type_name}`, not a ProcessExit"),
+        ),
+    };
+    InvocationOutcome {
+        termination,
+        message: format!(
+            "{label_name}: entry={entry} closure={} binary={} seed={} warning_count={} requests={} refused_status={refused_status} -- {verdict}\n{}\n{}",
+            run.closure_identity,
+            run.binary_identity,
+            run.seed_identity,
+            run.warning_count,
+            run.responses.len(),
+            run.announcement,
             run.stderr.trim_end(),
         ),
     }

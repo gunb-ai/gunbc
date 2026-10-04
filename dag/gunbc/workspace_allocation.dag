@@ -1,0 +1,279 @@
+module gunbc.workspace_allocation
+
+import std.types { NonEmptyStr, String, Int, Bool, Timestamp }
+import std.nat { Nat }
+import std.nat { Nat }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.measure { ByteSize, byte_size, finite_byte_size, positive_measure_count, hardware_thread_count, Minute, minute, minutes_per_hour, minute_to_second, second_count }
+import gunbc.principal_projection { PrincipalRef, principal_ref_label, principal_ref_parse_label }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import product.host_identity { HostIdentity }
+import product.fabric.identity { FabricIdentity, WorkKey, ExecutionAttemptKey, DemandKey, OfferKey, fabric_identity_eq }
+import product.fabric.budget { MoneyAccount }
+import gunbc.workspace_money_codec { workspace_money_json, workspace_money_from_json }
+import product.fabric.memory_grant { MemoryGrant }
+import gunbc.fabric_memory_grant_policy { MicroVmMemoryGrantAuthority, MicroVmMemoryGrantPolicy, MicroVmMemoryGrantIssue, MemoryGrantIssued, GrantRefusedUnrepresentable, GrantRefusedUnstatedAxisWithoutPermit, GrantRefusedByLaw, microvm_memory_grant }
+import product.fabric.work { ExecutionRequirements, Shape, HardRequirements, CustomerExecutableCapacity, Work, WorkContract, MaterializedProgram, SourceManifestRef, ArtifactManifestRef, declared_terminal_obligations, work_for }
+import product.fabric.envelope { ResourceEnvelope, CpuRequirement, MemoryRequirement }
+import product.fabric.isolation { tenant_workload_isolation_requirement }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, serialize_json }
+import extdeps.languages.json.parse { json_field, json_field_string, json_field_int, json_field_value }
+
+// THE PUBLIC ALLOCATION ID IS ONE PATH SEGMENT. The idempotency key a request is created under is
+// the id GET /allocations/{allocation_id} and its release route bind, and the route matcher takes
+// one raw segment without percent-decoding. So the only admitted shape is the unpadded base64url
+// alphabet [A-Za-z0-9_-] (RFC 4648 section 5), 1 to 128 characters -- the same rule
+// gunbc.auth.auth_store_key admits for file-naming identifiers. A key with "/", "?", a space or a
+// non-ASCII scalar has no WorkspaceAllocationId, so it can never be recorded unaddressable. Both the
+// HTTP submission and the durable-record decoder construct through workspace_allocation_id_of.
+type WorkspaceAllocationId sole_constructor {
+  value: NonEmptyStr
+}
+
+data workspace_allocation_id_max_length: Int = 128
+
+fn workspace_allocation_id_code_point_admitted(cp: Int) -> Bool {
+  (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122) || (cp >= 48 && cp <= 57) || cp == 45 || cp == 95
+}
+
+fn workspace_allocation_id_of(raw: String) -> WorkspaceAllocationId? {
+  if raw == "" || string_length(s: raw) > workspace_allocation_id_max_length || !all(raw |> chars, cp => workspace_allocation_id_code_point_admitted(cp: cp)) {
+    none
+  } else {
+    Present { value: WorkspaceAllocationId { value: raw as NonEmptyStr } }
+  }
+}
+
+// Fixed demo policy: disposable disk, one hour lease, exact guest grants.
+type WorkspaceProfile = SmallWorkspace | LargeWorkspace
+
+type WorkspaceRequest {
+  owner: PrincipalRef
+  idempotency_key: NonEmptyStr
+  profile: WorkspaceProfile
+  image: NonEmptyStr
+  public_key_ref: NonEmptyStr
+  expires_at: Timestamp
+  policy: DeclarationRef
+}
+
+type WorkspaceReservation {
+  request: WorkspaceRequest
+  slot: RunnerSlotIdentity
+  generation: Int
+  grant: MemoryGrant<NonEmptyStr, MicroVmMemoryGrantAuthority>
+  work: FabricIdentity<NonEmptyStr, WorkKey>
+  demand: FabricIdentity<NonEmptyStr, DemandKey>
+  offer: FabricIdentity<NonEmptyStr, OfferKey>
+  money_account: MoneyAccount
+  money_generation: Int
+}
+
+fn workspace_policy_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.workspace_allocation", decl_name: "workspace_memory_policy")
+}
+
+fn workspace_profile_vcpus(profile: WorkspaceProfile) -> Nat {
+  match profile { SmallWorkspace => 2 LargeWorkspace => 4 }
+}
+
+fn workspace_profile_memory(profile: WorkspaceProfile) -> ByteSize {
+  match profile { SmallWorkspace => byte_size(count: 4294967296) LargeWorkspace => byte_size(count: 8589934592) }
+}
+
+fn workspace_disk_bytes() -> ByteSize { byte_size(count: 8589934592) }
+// The longest lease a workspace request may name: one hour, as a time measure. Callers that
+// compare it against unix-second arithmetic convert through workspace_lease_bound_seconds.
+fn workspace_lease_bound() -> Minute { minute(count: minutes_per_hour()) }
+fn workspace_lease_bound_seconds() -> Nat { second_count(s: minute_to_second(m: workspace_lease_bound())) }
+fn workspace_profile_wire(profile: WorkspaceProfile) -> NonEmptyStr {
+  match profile { SmallWorkspace => "2cpu-4gib" LargeWorkspace => "4cpu-8gib" }
+}
+fn workspace_profile_parse(value: String) -> WorkspaceProfile? {
+  if value == "2cpu-4gib" { Present { value: SmallWorkspace } }
+  else if value == "4cpu-8gib" { Present { value: LargeWorkspace } } else { none }
+}
+
+fn workspace_memory_policy() -> MicroVmMemoryGrantPolicy {
+  MicroVmMemoryGrantPolicy {
+    reference: workspace_policy_ref(), allowance: byte_size(count: 0),
+    grain: finite_byte_size(count: positive_measure_count(predecessor: 1048575)), ceiling: finite_byte_size(count: positive_measure_count(predecessor: 30064771071)),
+    compatibility_permit: none,
+  }
+}
+
+fn workspace_execution_requirements(profile: WorkspaceProfile) -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: CustomerExecutableCapacity,
+    shape: Shape {
+      hard: HardRequirements { threads: hardware_thread_count(count: workspace_profile_vcpus(profile: profile)) },
+      envelope: ResourceEnvelope {
+        cpu: none, gpu: none, memory: Present { value: MemoryRequirement { min_bytes: workspace_profile_memory(profile: profile) } },
+        storage: none, network: none,
+      },
+    },
+    capabilities: "gunbc.capabilities.workspace-ssh",
+    trust_domain: "gunbc.trust.authorized-workspace",
+    isolation: tenant_workload_isolation_requirement(),
+  }
+}
+
+fn workspace_memory_grant(request: WorkspaceRequest, work: FabricIdentity<NonEmptyStr, WorkKey>, attempt: FabricIdentity<NonEmptyStr, ExecutionAttemptKey>) -> MicroVmMemoryGrantIssue<NonEmptyStr> {
+  let requirements = workspace_execution_requirements(profile: request.profile)
+  let memory_requirement = requirements.shape.envelope.memory
+  microvm_memory_grant(policy: workspace_memory_policy(), work: work, attempt: attempt,
+    requirement: memory_requirement)
+}
+
+fn workspace_json_string(value: JsonValue, key: String) -> String? {
+  json_field_value(r: json_field_string(obj: value, key: key))
+}
+fn workspace_json_int(value: JsonValue, key: String) -> Int? {
+  json_field_value(r: json_field_int(obj: value, key: key))
+}
+fn workspace_json_member(value: JsonValue, key: String) -> JsonValue? {
+  json_field_value(r: json_field(obj: value, key: key))
+}
+fn workspace_request_json(request: WorkspaceRequest) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "owner", value: json_string(s: principal_ref_label(p: request.owner))),
+    json_kv(key: "key", value: json_string(s: request.idempotency_key as String)),
+    json_kv(key: "profile", value: json_string(s: workspace_profile_wire(profile: request.profile) as String)),
+    json_kv(key: "image", value: json_string(s: request.image as String)),
+    json_kv(key: "public_key_ref", value: json_string(s: request.public_key_ref as String)),
+    json_kv(key: "expires_at", value: json_string(s: request.expires_at)),
+    json_kv(key: "policy_module", value: json_string(s: request.policy.module_path as String)),
+    json_kv(key: "policy_name", value: json_string(s: request.policy.decl_name as String)),
+  ])
+}
+
+fn workspace_request_from_json(value: JsonValue) -> WorkspaceRequest? {
+  match workspace_json_string(value: value, key: "owner") { Absent => none Present { value: wire_owner } => {
+  match workspace_json_string(value: value, key: "key") { Absent => none Present { value: raw_key } => {
+  match workspace_allocation_id_of(raw: raw_key) { Absent => none Present { value: allocation_id } => {
+  let wire_key = allocation_id.value as String
+  match workspace_json_string(value: value, key: "profile") { Absent => none Present { value: raw_profile } => {
+  match workspace_json_string(value: value, key: "image") { Absent => none Present { value: wire_image } => {
+  match workspace_json_string(value: value, key: "public_key_ref") { Absent => none Present { value: wire_public_key_ref } => {
+  match workspace_json_string(value: value, key: "expires_at") { Absent => none Present { value: wire_expires_at } => {
+  match workspace_json_string(value: value, key: "policy_module") { Absent => none Present { value: wire_policy_module } => {
+  match workspace_json_string(value: value, key: "policy_name") { Absent => none Present { value: wire_policy_name } => {
+  if wire_key == "" || wire_image == "" || wire_public_key_ref == "" || wire_expires_at == "" || wire_policy_module != "gunbc.workspace_allocation" || wire_policy_name != "workspace_memory_policy" { none } else {
+    match principal_ref_parse_label(s: wire_owner) {
+      Absent => none
+      Present { value: principal } => match workspace_profile_parse(value: raw_profile) {
+        Absent => none
+        Present { value: selected } => Present { value: WorkspaceRequest {
+          owner: principal, idempotency_key: wire_key as NonEmptyStr, profile: selected,
+          image: wire_image as NonEmptyStr, public_key_ref: wire_public_key_ref as NonEmptyStr,
+          expires_at: wire_expires_at, policy: workspace_policy_ref(),
+        } }
+      }
+    }
+  }
+  } }
+  } }
+  } }
+  } }
+  } }
+  } }
+  } }
+  } }
+  } }
+}
+
+fn workspace_reservation_json(reservation: WorkspaceReservation) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "money_account", value: workspace_money_json(account: reservation.money_account)),
+    json_kv(key: "money_generation", value: json_int(n: reservation.money_generation)),
+    json_kv(key: "demand_principal", value: json_string(s: reservation.demand.principal as String)),
+    json_kv(key: "demand_key", value: json_string(s: reservation.demand.key as String)),
+    json_kv(key: "offer_principal", value: json_string(s: reservation.offer.principal as String)),
+    json_kv(key: "offer_key", value: json_string(s: reservation.offer.key as String)),
+    json_kv(key: "request", value: workspace_request_json(request: reservation.request)),
+    json_kv(key: "host", value: json_string(s: reservation.slot.host as String)),
+    json_kv(key: "slot", value: json_int(n: reservation.slot.slot_index)),
+    json_kv(key: "generation", value: json_int(n: reservation.generation)),
+    json_kv(key: "work_principal", value: json_string(s: reservation.work.principal as String)),
+    json_kv(key: "work_key", value: json_string(s: reservation.work.key as String)),
+    json_kv(key: "attempt_principal", value: json_string(s: reservation.grant.attempt.principal as String)),
+    json_kv(key: "attempt_key", value: json_string(s: reservation.grant.attempt.key as String)),
+  ])
+}
+
+// Decode through the same fixed grant policy; never cast a serialized number into authority.
+fn workspace_reservation_from_json(value: JsonValue) -> WorkspaceReservation? {
+  match workspace_json_member(value: value, key: "request") {
+    Absent => none
+    Present { value: request_json } => match workspace_request_from_json(value: request_json) {
+      Absent => none
+      Present { value: decoded_request } => {
+ match workspace_json_string(value: value, key: "host") { Absent => none Present { value: wire_host } => {
+ match workspace_json_int(value: value, key: "slot") { Absent => none Present { value: wire_slot } => {
+ match workspace_json_int(value: value, key: "generation") { Absent => none Present { value: wire_generation } => {
+ match workspace_json_string(value: value, key: "work_principal") { Absent => none Present { value: wp } => {
+ match workspace_json_string(value: value, key: "work_key") { Absent => none Present { value: wk } => {
+ match workspace_json_string(value: value, key: "attempt_principal") { Absent => none Present { value: ap } => {
+ match workspace_json_string(value: value, key: "attempt_key") { Absent => none Present { value: ak } => {
+ match workspace_json_member(value: value, key: "money_account") { Absent => none Present { value: account_json } => match workspace_money_from_json(value: account_json) { Absent => none Present { value: decoded_money_account } => {
+ match workspace_json_int(value: value, key: "money_generation") { Absent => none Present { value: mg } => {
+ match workspace_json_string(value: value, key: "demand_principal") { Absent => none Present { value: dp } => {
+ match workspace_json_string(value: value, key: "demand_key") { Absent => none Present { value: dk } => {
+ match workspace_json_string(value: value, key: "offer_principal") { Absent => none Present { value: op } => {
+ match workspace_json_string(value: value, key: "offer_key") { Absent => none Present { value: ok } => {
+ if dp == "" || dk == "" || op == "" || ok == "" || mg < 0 || wire_host == "" || wire_slot < 0 || wire_generation < 1 || wp == "" || wk == "" || ap == "" || ak == "" { none } else {
+  let work = FabricIdentity { principal: wp as NonEmptyStr, key: wk as WorkKey }
+  if !fabric_identity_eq(left: work, right: workspace_work(request: decoded_request).id) { none } else {
+  match checked_int_to_nat(n: wire_slot) { Absent => none Present { value: checked_slot_index } => {
+  match workspace_memory_grant(request: decoded_request, work: work, attempt: FabricIdentity { principal: ap as NonEmptyStr, key: ak as ExecutionAttemptKey }) {
+    MemoryGrantIssued { grant } => Present { value: WorkspaceReservation {
+      request: decoded_request, slot: RunnerSlotIdentity { host: wire_host as HostIdentity, slot_index: checked_slot_index },
+      generation: wire_generation, grant: grant, work: work,
+      demand: FabricIdentity { principal: dp as NonEmptyStr, key: dk as DemandKey }, offer: FabricIdentity { principal: op as NonEmptyStr, key: ok as OfferKey }, money_account: decoded_money_account, money_generation: mg,
+    } }
+    GrantRefusedUnrepresentable { sizing: _ } => none
+    GrantRefusedUnstatedAxisWithoutPermit => none
+    GrantRefusedByLaw { refusal: _ } => none
+  }
+ } }
+ }
+ }
+ } }
+ } }
+ } }
+ } }
+ } }
+ } } }
+ } }
+ } }
+ } }
+ } }
+ } }
+ } }
+ } }
+      }
+    }
+  }
+}
+
+// Interactive work includes the admitted bootstrap and lifetime in its semantic input identity.
+fn workspace_work(request: WorkspaceRequest) -> Work<NonEmptyStr> {
+  let manifest = serialize_content_hash(hash: content_hash_of_value(value: serialize_json(v: workspace_request_json(request: request))))
+  work_for(
+    principal: principal_ref_label(p: request.owner) as NonEmptyStr,
+    contract: WorkContract {
+      execution: MaterializedProgram {
+        program: "gunbc.workspace.ssh-session",
+        source: manifest as SourceManifestRef,
+        runtime_closure: request.image as ArtifactManifestRef,
+      },
+      steps: [], inputs: manifest as ArtifactManifestRef,
+      effect_contract: "gunbc.workspace.disposable-ssh-until-lease",
+      output_contract: "gunbc.workspace.sanitized-release",
+      output_obligations: declared_terminal_obligations(ids: ["workspace-cleaned"]),
+    },
+    requirements: workspace_execution_requirements(profile: request.profile),
+  )
+}

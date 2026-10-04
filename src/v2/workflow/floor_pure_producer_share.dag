@@ -843,6 +843,9 @@ import v2.std.algebra { any }
 // tpb_assemble and inspected one Bool. The rows now read three nullary producers, one per program -- the
 // call-projection program's producer serving two rows -- whose values are a record of two Bools and two
 // Bools. WARM: one assembly is more than one claim's budget.
+// THE algebra_operator_derivation PROGRAMS ARE ASSEMBLED AND INFERRED ONCE EACH: six one-function sources,
+// each a whole tpb_assemble + infer, each claim reading one Symbol (the fatal reason, or ^accepted). WARM: one
+// assembly is more than one claim's budget.
 // THE collection_callback_realization PROGRAMS ARE ASSEMBLED ONCE EACH. Each claim assembled a one-module
 // source through fmi_assemble (and, for two, infer) and inspected one Bool or Symbol, well over the new-witness
 // eval-step cap. The rows now read five nullary producers, one per program -- the map-over-records program's
@@ -1096,6 +1099,15 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.where_predicate_binding.wpb_resolved_undeclared",
   "v2.test.claim.where_predicate_binding.wpb_resolved_labelled_then_undeclared",
   "v2.test.claim.where_predicate_binding.wpb_resolved_labelled_and_marker",
+  "v2.test.claim.type_application_kind.tak_kind_conforms",
+  "v2.test.claim.type_application_kind.tak_kind_literal",
+  "v2.test.claim.type_application_kind.tak_kind_foreign_variant",
+  "v2.test.claim.type_application_kind.tak_kind_kernel_type",
+  "v2.test.claim.type_application_kind.tak_unkinded",
+  "v2.test.claim.type_application_kind.tak_arity_over",
+  "v2.test.claim.type_application_kind.tak_arity_nongeneric",
+  "v2.test.claim.type_application_kind.tak_order_authored",
+  "v2.test.claim.type_application_kind.tak_order_swapped",
   "v2.test.claim.type_param_binder_frame.tpb_identity",
   "v2.test.claim.type_param_binder_frame.tpb_colliding",
   "v2.test.claim.type_param_binder_frame.tpb_used_outside",
@@ -1499,6 +1511,12 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.value_base_projection.vbp_call_projection_reading",
   "v2.test.claim.value_base_projection.vbp_field_spelled_like_a_param_keeps_field",
   "v2.test.claim.value_base_projection.vbp_undeclared_field_is_carried",
+  "v2.test.claim.algebra_operator_derivation.aod_bool_join_declared_int_reason",
+  "v2.test.claim.algebra_operator_derivation.aod_int_add_declared_bool_reason",
+  "v2.test.claim.algebra_operator_derivation.aod_bool_add_reason",
+  "v2.test.claim.algebra_operator_derivation.aod_int_join_reason",
+  "v2.test.claim.algebra_operator_derivation.aod_bool_join_ok_reason",
+  "v2.test.claim.algebra_operator_derivation.aod_int_add_ok_reason",
   "v2.test.claim.compiler.collection_callback_realization.ccr_map_records_reading",
   "v2.test.claim.compiler.collection_callback_realization.ccr_map_undeclared_field_reason",
   "v2.test.claim.compiler.collection_callback_realization.ccr_piped_map_binds_its_row",

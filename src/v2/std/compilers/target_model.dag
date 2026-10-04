@@ -64,7 +64,9 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected,
   invariant_port_locus,
-  rejected_with_pending
+  rejected_with_pending,
+  None,
+  outcome_with_diagnostics
 }
 import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
 import v2.std.compilers.lexing {
@@ -83,6 +85,15 @@ import v2.std.compilers.lexing {
   lex_rule_token_class_optional,
   TriviaRule,
   VoidLexRules,
+  CharClassPattern,
+  CharPattern,
+  ChoicePattern,
+  DelimitedPattern,
+  EmptyPattern,
+  OneOrMorePattern,
+  OptionalPattern,
+  RepeatPattern,
+  SequencePattern
 }
 import v2.std.find_witness {
   CandidateSet,
@@ -155,6 +166,10 @@ import v2.std.node {
   core_occurrences,
   edge_is_core,
   production_edge_label,
+  Bind,
+  Loop,
+  PositionalPlusNamedMarkerEdges,
+  PositionalPrefixThenLabeledEdges
 }
 import v2.std.witness {
   StructuralPropertyWitness
@@ -4977,28 +4992,36 @@ fn source_atom_value_for_realization_row(
 fn source_atom_value_as_symbol(value: SourceAtomValue) -> Optional<Symbol> {
   match value {
     SourceAtomSymbol { identity: id } => optional_present(id)
-    _ => optional_absent()
+    SourceAtomBool { value: _ } => optional_absent()
+    SourceAtomChar { codepoint: _ } => optional_absent()
+    SourceAtomString { value: _ } => optional_absent()
   }
 }
 
 fn source_atom_value_as_bool(value: SourceAtomValue) -> Optional<Bool> {
   match value {
     SourceAtomBool { value: b } => optional_present(b)
-    _ => optional_absent()
+    SourceAtomSymbol { identity: _ } => optional_absent()
+    SourceAtomChar { codepoint: _ } => optional_absent()
+    SourceAtomString { value: _ } => optional_absent()
   }
 }
 
 fn source_atom_value_as_char(value: SourceAtomValue) -> Optional<Char> {
   match value {
     SourceAtomChar { codepoint: c } => optional_present(c)
-    _ => optional_absent()
+    SourceAtomSymbol { identity: _ } => optional_absent()
+    SourceAtomBool { value: _ } => optional_absent()
+    SourceAtomString { value: _ } => optional_absent()
   }
 }
 
 fn source_atom_value_as_string(value: SourceAtomValue) -> Optional<Node> {
   match value {
     SourceAtomString { value: s } => optional_present(s)
-    _ => optional_absent()
+    SourceAtomSymbol { identity: _ } => optional_absent()
+    SourceAtomBool { value: _ } => optional_absent()
+    SourceAtomChar { codepoint: _ } => optional_absent()
   }
 }
 
@@ -11462,7 +11485,19 @@ fn target_type_expr_emitted_validate_wire_shape(
           }
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
-    _ =>
+    TargetTypeExprAtom =>
+      target_type_expr_emitted_validate_positional_wire(
+        node: node,
+        kind: kind,
+        projection: projection
+      )
+    TargetTypeExprInstantiation =>
+      target_type_expr_emitted_validate_positional_wire(
+        node: node,
+        kind: kind,
+        projection: projection
+      )
+    TargetTypeExprCardinality =>
       target_type_expr_emitted_validate_positional_wire(
         node: node,
         kind: kind,
@@ -13498,7 +13533,47 @@ fn target_use_site_ownership_catalog_lookup_step(
 ) -> TargetUseSiteOwnershipCatalogLookup {
   match acc {
     TargetUseSiteOwnershipCatalogInvalid => TargetUseSiteOwnershipCatalogInvalid
-    _ =>
+    TargetUseSiteOwnershipCatalogMissing =>
+      match edge.label {
+    Authored { name: display_name } =>
+      target_use_site_ownership_catalog_lookup_step_for_row(
+        acc: acc,
+        row_node: edge.target,
+        display_name: display_name,
+        source_carrier: source_carrier,
+        use_site: use_site
+      )
+    StructuralLabel { label: _ } => TargetUseSiteOwnershipCatalogInvalid
+    Positional =>
+      target_use_site_ownership_catalog_lookup_step_for_row(
+        acc: acc,
+        row_node: edge.target,
+        display_name: ^target_use_site_ownership_derived_row,
+        source_carrier: source_carrier,
+        use_site: use_site
+      )
+      }
+    TargetUseSiteOwnershipCatalogUnique { row: _ } =>
+      match edge.label {
+    Authored { name: display_name } =>
+      target_use_site_ownership_catalog_lookup_step_for_row(
+        acc: acc,
+        row_node: edge.target,
+        display_name: display_name,
+        source_carrier: source_carrier,
+        use_site: use_site
+      )
+    StructuralLabel { label: _ } => TargetUseSiteOwnershipCatalogInvalid
+    Positional =>
+      target_use_site_ownership_catalog_lookup_step_for_row(
+        acc: acc,
+        row_node: edge.target,
+        display_name: ^target_use_site_ownership_derived_row,
+        source_carrier: source_carrier,
+        use_site: use_site
+      )
+      }
+    TargetUseSiteOwnershipCatalogAmbiguous =>
       match edge.label {
     Authored { name: display_name } =>
       target_use_site_ownership_catalog_lookup_step_for_row(

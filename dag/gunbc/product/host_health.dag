@@ -2,7 +2,7 @@ module product.host_health
 
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.measure { Celsius, celsius, celsius_count }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import product.fan_tach { FanTachWindow }
 import product.fan_tach_health {
   FanTachDeviation,

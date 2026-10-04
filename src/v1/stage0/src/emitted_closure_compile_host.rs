@@ -172,6 +172,12 @@ pub enum CargoVerdict {
         /// can be NAMED where it refuses. A bare count was all the self-host and v2-native-cli
         /// instruments had, and a count that made the step exit 1 printed no cause (DESIGN §5).
         warning_headers: Vec<String>,
+        /// Cargo's own `spurious network error` retry warnings during the dependency fetch,
+        /// counted HERE and excluded from `warning_count`/`warning_headers`: they are not
+        /// diagnostics of the crate being built, and counting them refused a clean build on a
+        /// flaky download (calm-pike-525 on #13116: 40 retries, exit 0, refused as warnings).
+        /// Carried, not dropped, so a receipt still says the fetch was flaky.
+        cargo_network_retries: usize,
         /// The FIRST `error` diagnostic on the whole stderr and the ` --> file:line:col` locus
         /// under it, independent of any attribution symbol. `probe_line` answers "did the fault
         /// I planted refuse"; this answers "what refused at all", which is the question a
@@ -316,6 +322,7 @@ pub fn cargo_verdict_summary(verdict: &CargoVerdict) -> String {
             probe_diagnostic,
             warning_count: _,
             warning_headers: _,
+            cargo_network_retries: _,
             first_error,
         } => format!(
             "Completed status={status} first_error={} diagnostic={} line={} stderr_tail={stderr_tail}",
@@ -1033,6 +1040,38 @@ fn read_cargo_json(stdout: &str, stderr: &str, crate_dir: &Path) -> CargoJsonRea
     }
 }
 
+/// The text cargo prints when it RETRIES a failed fetch: `warning: spurious network error (N tries
+/// remaining): <error>`, reported through cargo's shell warn channel (cargo
+/// src/cargo/util/network/retry.rs, `Retry::r#try`). A cargo status message on stderr, not a rustc
+/// diagnostic, so it says nothing about whether the compiled crate is warning-clean.
+///
+/// THIS CONST IS THE ONE DECLARED SEED FACT, not a mirror of a `.dag` row: a row with no consumer
+/// beside a hand-copied literal was two authorities that could drift (review 75283), so the row was
+/// deleted and the fact lives here, rostered in `gunbc.emitted_closure_compile_seed_growth`.
+///
+/// ONLY this header is excluded from the warning count, so any other warning, including a cargo
+/// warning this does not recognise, still counts and still refuses: the exclusion narrows by one
+/// recognised upstream fact and never widens by default.
+const CARGO_SPURIOUS_NETWORK_ERROR_FRAGMENT: &str = "spurious network error";
+
+fn is_cargo_network_retry(header: &str) -> bool {
+    header
+        .strip_prefix("warning:")
+        .map(|rest| {
+            rest.trim_start()
+                .starts_with(CARGO_SPURIOUS_NETWORK_ERROR_FRAGMENT)
+        })
+        .unwrap_or(false)
+}
+
+fn cargo_network_retry_count(stderr: &str) -> usize {
+    stderr
+        .lines()
+        .map(str::trim)
+        .filter(|line| is_cargo_network_retry(line))
+        .count()
+}
+
 /// The exact cargo invocation `run_cargo` spawns for a probe crate, as receipt content: the
 /// argv (program first), the RUSTFLAGS value the spawn SETS, the one compiler executable cargo
 /// is bound to, and that executable's self-reported identity. Built by the one function that
@@ -1310,6 +1349,9 @@ pub(crate) fn run_cargo(
                     probe_diagnostic,
                     warning_count: reading.emitted_warning_headers.len(),
                     warning_headers: reading.emitted_warning_headers,
+                    cargo_network_retries: cargo_network_retry_count(&String::from_utf8_lossy(
+                        &output.stderr,
+                    )),
                     first_error: first_rustc_error(text).map(Box::new),
                 }
             }
@@ -2631,6 +2673,7 @@ mod tests {
             probe_diagnostic: None,
             warning_count: 0,
             warning_headers: Vec::new(),
+            cargo_network_retries: 0,
             first_error: None,
         };
         match unattributed_fault_refusal(&red) {
@@ -2940,6 +2983,7 @@ mod tests {
             probe_diagnostic: None,
             warning_count: 1,
             warning_headers: Vec::new(),
+            cargo_network_retries: 0,
             first_error: Some(Box::new(first)),
         };
         assert!(cargo_verdict_summary(&verdict).contains(
@@ -2951,6 +2995,38 @@ mod tests {
         assert_eq!(first_rustc_error("warning: x\n --> src/a.rs:1:1\n"), None);
     }
 
+    /// A FLAKY FETCH IS NOT A COMPILER WARNING. calm-pike-525's specimen on #13116: 40 cargo
+    /// `spurious network error` retries, exit 0, refused as EmittedBuildWarnings. Retries alone
+    /// count zero warnings (and are carried as retries); a real rustc warning still counts; both
+    /// together count only the real one. An unrecognised cargo warning still counts, because the
+    /// exclusion is one recognised fact, not a default.
+    #[test]
+    fn cargo_network_retries_are_not_counted_as_warnings() {
+        let crate_dir = Path::new("/run/probe/crate");
+        let retries = "warning: spurious network error (3 tries remaining): [35] SSL connect error (OpenSSL SSL_read: unexpected eof while reading)\n\
+                       warning: spurious network error (2 tries remaining): [35] SSL connect error\n";
+        let real = r#"{"reason":"compiler-message","manifest_path":"/run/probe/crate/Cargo.toml","message":{"level":"warning","rendered":"warning: unused variable: `x`\n --> src/a.rs:1:5\n"}}"#;
+        assert_eq!(
+            read_cargo_json("", retries, crate_dir)
+                .emitted_warning_headers
+                .len(),
+            0
+        );
+        assert_eq!(cargo_network_retry_count(retries), 2);
+        let both = read_cargo_json(&format!("{real}\n"), retries, crate_dir);
+        assert_eq!(
+            both.emitted_warning_headers,
+            vec!["warning: unused variable: `x`".to_string()]
+        );
+        assert_eq!(cargo_network_retry_count(retries), 2);
+        assert_eq!(cargo_network_retry_count(real), 0);
+        // A warning that merely MENTIONS the phrase later is not a cargo retry header.
+        assert_eq!(
+            cargo_network_retry_count("warning: unused import: `spurious network error`\n"),
+            0
+        );
+    }
+
     #[test]
     fn cargo_verdict_summary_renders_the_diagnostic_a_non_zero_run_already_holds() {
         let attributed = CargoVerdict::Completed {
@@ -2960,6 +3036,7 @@ mod tests {
             probe_diagnostic: Some("error[E0308]: mismatched types".to_string()),
             warning_count: 0,
             warning_headers: Vec::new(),
+            cargo_network_retries: 0,
             first_error: None,
         };
         let summary = cargo_verdict_summary(&attributed);
@@ -2978,6 +3055,7 @@ mod tests {
             probe_diagnostic: None,
             warning_count: 0,
             warning_headers: Vec::new(),
+            cargo_network_retries: 0,
             first_error: None,
         };
         let summary = cargo_verdict_summary(&unattributed);
@@ -2993,6 +3071,7 @@ mod tests {
             probe_diagnostic: None,
             warning_count: 0,
             warning_headers: Vec::new(),
+            cargo_network_retries: 0,
             first_error: None,
         };
         assert_eq!(cargo_verdict_summary(&green), "Completed status=0");
@@ -3447,6 +3526,7 @@ error: could not compile `probe` (lib) due to 1 previous error
                 probe_diagnostic: diagnostic.map(|value| value.to_string()),
                 warning_count: 0,
                 warning_headers: Vec::new(),
+                cargo_network_retries: 0,
                 first_error: None,
             },
         };
@@ -3480,6 +3560,7 @@ error: could not compile `probe` (lib) due to 1 previous error
             probe_diagnostic: None,
             warning_count: 0,
             warning_headers: Vec::new(),
+            cargo_network_retries: 0,
             first_error: None,
         };
         for mutation in [

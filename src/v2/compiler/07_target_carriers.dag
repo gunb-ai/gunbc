@@ -19,7 +19,8 @@ import v2.std.diagnostic {
   bind_outcome,
   node_locus,
   outcome_accepted,
-  outcome_rejected
+  outcome_rejected,
+  None
 }
 import v2.std.node { Atom, Conj, Node, Symbol, TypeNode }
 import v2.std.node_query {

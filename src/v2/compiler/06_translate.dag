@@ -1055,7 +1055,14 @@ fn translate_algebra_finalize(
         Atom { identity: _ } =>
           match acc {
             TypeExprTranslateDone { node: n } => outcome_accepted(n)
-            _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateSlots { slots: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateVariants { variants: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslatePositional { items: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateBinder { type_expr: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
           }
         Conj =>
           match acc {
@@ -1073,7 +1080,10 @@ fn translate_algebra_finalize(
                   target_type_expr_record_emitted(form: projection.conj_form, fields: fields)
                 )
               }
-            _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateVariants { variants: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslatePositional { items: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
           }
         Disj =>
           match acc {
@@ -1082,7 +1092,12 @@ fn translate_algebra_finalize(
               outcome_accepted(
                 target_type_expr_sum_emitted(form: projection.disj_form, variants: variants)
               )
-            _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateSlots { slots: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslatePositional { items: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateBinder { type_expr: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
           }
         Instantiation =>
           match acc {
@@ -1100,7 +1115,12 @@ fn translate_algebra_finalize(
                   )
                 }
               )
-            _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateSlots { slots: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateVariants { variants: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateBinder { type_expr: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
           }
         Cardinality =>
           match acc {
@@ -1118,12 +1138,24 @@ fn translate_algebra_finalize(
                   )
                 }
               )
-            _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateSlots { slots: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateVariants { variants: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateBinder { type_expr: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
           }
         Arrow =>
           match acc {
             TypeExprTranslateDone { node: n } => outcome_accepted(n)
-            _ => outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateSlots { slots: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateVariants { variants: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslatePositional { items: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
+            TypeExprTranslateBinder { type_expr: _ } =>
+              outcome_rejected(translate_type_expression_shape_missing_diagnostic(node: anchor))
           }
       }
     ComputationNode { behavior: _ } =>

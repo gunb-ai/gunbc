@@ -5,7 +5,8 @@ import gunbc.auth.standing_operator_grant { standing_grant_authorization, Standi
 import extdeps.git
 import gunbc.output_policy { ExpectSuccess }
 
-import std.types { String, Bool, Int, NonEmptyStr, List, Timestamp, EpochSecs, GitRef }
+import std.types { String, Bool, Int, NonEmptyStr, List, Timestamp, EpochSecs, GitRef, FilePath }
+import std.algebra { trim }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.measure { Second, second, second_count, Minute, minute }
 import v2.std.optional { Present, Absent }
@@ -19,9 +20,10 @@ import gunbc.auth.approval_gate {
 import gunbc.auth.approval_request_client { PollStillPending, PollNotFiled, stored_request_from_authorization }
 import gunbc.fabric_storage_client { FabricStorageBinding }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed, fleet_converge_expected_host_env_name, read_expected_revision, ExpectedRevisionPresent, ExpectedRevisionAbsent }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 import extdeps.git
 import extdeps.git.inspect
+import extdeps.git.plumbing
 import gunbc.output_policy { ExpectSuccess }
 import gunbc.fabric_event_log_host { HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds }
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
@@ -248,30 +250,65 @@ fn executed_grant_row() -> ExecutedGrantRow {
   }
 }
 
-// THE ROW'S STANDING NOW, for an effect with no frozen lifecycle to resume (a launch, a recovery): the
-// executed row against origin/main, read fresh at that effect's admission.
-fn fresh_grant_row_standing() -> StandingGrantRowStanding {
-  match executed_grant_row() {
+// THE ROW'S STANDING, judged over the ROW THIS RUN CAPTURED (ExecutedGrantRow), never a second read of
+// the path. The comparison is of git blob ids (fp8-8 launch run 37161565980: comparing captured `git show`
+// text normalized the trailing newline and refused an identical row): the id of the CAPTURED bytes, hashed
+// from the caller-held value with git.Plumbing HashObjectStdinNoWrite, against `git rev-parse
+// origin/main:<path>`. One authorization fact, one read: the digest the proof freezes and the blob
+// admitted against main describe the same bytes, whatever happens to the working file afterwards
+// (side-chat rejection of #13176 at c58fce17: the earlier shape hashed the working file again).
+fn grant_row_blob(target: String) -> GrantRowBlob {
+  let r = git.Core.RevParseInRepo(repo: "." as FilePath, target: join([target, ":", standing_grant_row_path], "") as GitRef)
+  if r.exit_code != 0 { GrantRowBlobUnread { cause: join(["git rev-parse ", target, ":", standing_grant_row_path, " exited ", to_string(r.exit_code), ": ", trim(s: r.stderr)], "") } }
+  else { GrantRowBlobRead { blob: trim(s: r.revision) } }
+}
+
+type GrantRowBlob
+  = GrantRowBlobRead { blob: String }
+  | GrantRowBlobUnread { cause: String }
+
+fn captured_grant_row_blob(content: String) -> GrantRowBlob {
+  let r = git.Plumbing.HashObjectStdinNoWrite(content: content)
+  if r.exit_code != 0 { GrantRowBlobUnread { cause: join(["git hash-object --stdin over the captured row exited ", to_string(r.exit_code), ": ", trim(s: r.stderr)], "") } }
+  else { GrantRowBlobRead { blob: trim(s: r.oid) } }
+}
+
+// THE JUDGMENT, with the two blob producers supplied: production passes captured_grant_row_blob and
+// grant_row_blob(origin/main); a witness supplies both and drives the captured-row route directly.
+fn grant_row_standing_over(executed: ExecutedGrantRow, blob_of: fn(String) -> GrantRowBlob, on_main: GrantRowBlob) -> StandingGrantRowStanding {
+  match executed {
     ExecutedGrantRowUnread { cause: c } => StandingGrantRowNotOnMain { cause: c }
-    ExecutedGrantRowRead { content: mine, digest: _ } => {
-      let main = git.Core.Show(ref: standing_grant_main_ref as GitRef, path: standing_grant_row_path, expect: ExpectSuccess)
-      standing_grant_row_judged(executed: mine, executed_read: true, on_main: main.content, main_read: main.success, main_stderr: main.stderr)
-    }
+    ExecutedGrantRowRead { content: content, digest: _ } =>
+      match blob_of(content) {
+        GrantRowBlobUnread { cause: c } => StandingGrantRowNotOnMain { cause: join(["the grant row this run executes could not be identified: ", c], "") }
+        GrantRowBlobRead { blob: mine } =>
+          match on_main {
+            GrantRowBlobUnread { cause: c } => standing_grant_row_judged(executed: mine, executed_read: true, on_main: "", main_read: false, main_stderr: c)
+            GrantRowBlobRead { blob: theirs } => standing_grant_row_judged(executed: mine, executed_read: true, on_main: theirs, main_read: true, main_stderr: "")
+          }
+      }
   }
 }
 
-// THE FRESH-START PROOF: the executed row against origin/main, read now.
-fn fresh_grant_row_proof(executed: ExecutedGrantRow) -> D0GrantRowProof {
+fn fresh_grant_row_standing(executed: ExecutedGrantRow) -> StandingGrantRowStanding {
+  grant_row_standing_over(executed: executed, blob_of: fn(c) { captured_grant_row_blob(content: c) }, on_main: grant_row_blob(target: standing_grant_main_ref))
+}
+
+// THE FRESH-START PROOF over a supplied judgment of the SAME captured row: the frozen digest is that
+// row's digest, admitted only when that row's blob is main's.
+fn grant_row_proof_over(executed: ExecutedGrantRow, standing: StandingGrantRowStanding) -> D0GrantRowProof {
   match executed {
     ExecutedGrantRowUnread { cause: _ } => D0GrantRowUnproven
-    ExecutedGrantRowRead { content: c, digest: d } => {
-      let main = git.Core.Show(ref: standing_grant_main_ref as GitRef, path: standing_grant_row_path, expect: ExpectSuccess)
-      match standing_grant_row_judged(executed: c, executed_read: true, on_main: main.content, main_read: main.success, main_stderr: main.stderr) {
+    ExecutedGrantRowRead { content: _, digest: d } =>
+      match standing {
         StandingGrantRowNotOnMain { cause: _ } => D0GrantRowUnproven
         StandingGrantRowOnMain => D0GrantRowApproved { row_digest: d }
       }
-    }
   }
+}
+
+fn fresh_grant_row_proof(executed: ExecutedGrantRow) -> D0GrantRowProof {
+  grant_row_proof_over(executed: executed, standing: fresh_grant_row_standing(executed: executed))
 }
 
 // THE PROOF THE LIFECYCLE WAS FROZEN WITH, read back from its filing.
