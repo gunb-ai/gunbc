@@ -1,0 +1,637 @@
+module gunbc.machine_intake_ampere_smpro_observation
+
+import v2.std.algebra { filter, any }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { trim }
+import std.measure { Second }
+import v2.std.optional { Present }
+import extdeps.bmc.ipmi
+import extdeps.tools.gnu_coreutils { coreutils_duration_operand, coreutils_timeout_expired_exit_code }
+import extdeps.bmc.ipmi_master_write_read {
+  MasterWriteReadBus, PrivateBus, PublicBus, MasterWriteReadCompletion,
+  master_write_read_bus_byte, master_write_read_slave_byte, hex_byte_text,
+  master_write_read_completion_of, master_write_read_completion_text, master_write_read_bytes_of, master_write_read_stderr_completion,
+}
+import extdeps.ampere.smpro_register {
+  SmproRegister, SmproBootStage, SmproStageReading,
+  smpro_manufacturer_id_reg, smpro_cur_bootstage_reg, smpro_bootstage_lo_reg, smpro_bootstage_hi_reg, smpro_bootstage_reg,
+  smpro_value_size_bytes, smpro_manufacturer_id_expected, smpro_word, smpro_bootstage_of, smpro_cur_bootstage_of,
+  smpro_stage_text, smpro_status_text,
+  smpro_gpi_ras_err_reg, smpro_err_smpro_type_reg, smpro_err_smpro_info_lo_reg, smpro_err_smpro_info_hi_reg,
+  smpro_err_smpro_data_lo_reg, smpro_err_smpro_data_hi_reg, smpro_warn_smpro_info_lo_reg, smpro_warn_smpro_info_hi_reg,
+  smpro_err_pmpro_type_reg, smpro_err_pmpro_info_lo_reg, smpro_err_pmpro_info_hi_reg, smpro_err_pmpro_data_lo_reg,
+  smpro_err_pmpro_data_hi_reg, smpro_warn_pmpro_info_lo_reg, smpro_warn_pmpro_info_hi_reg, smpro_vrd_warn_fault_event_data_reg,
+  smpro_vrd_hot_event_data_reg, smpro_dimm_hot_event_data_reg, smpro_dimm_2x_refresh_event_data_reg,
+}
+import extdeps.ampere.smpro_internal_error {
+  SmproInternalRecord, smpro_internal_error_of, smpro_internal_warning_of, smpro_internal_record_text,
+  SmproProcessor, SmproProcessorSmpro, SmproProcessorPmpro, SmproRecordGate, smpro_record_gate, smpro_record_gate_lines,
+}
+import gunbc.clock_read { clock_now_probed_at_or_unknown }
+import std.decl_ref { decl_ref }
+import product.placement_supply { HostIdentity }
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+
+// THE READ-ONLY SMpro PASS OVER AN AMPERE ALTRA BOARD: which boot stage each socket's SMpro reports,
+// and which internal error, warning and event records it holds, read over IPMI Master Write-Read
+// (extdeps.bmc.ipmi MasterWriteReadAuthenticated). Nothing here is true of one unit: register
+// meaning, stage vocabulary and the record decoder are extdeps.ampere's; this module is our own
+// observation model of reading them. Every board fact (the BMC the SMpros sit behind, the bus, each
+// socket's address, which socket is the control, and the evidence for all of it) is one admitted
+// SmproSite authored by that unit's module (gunbc.machine_intake_mtcollins1_smpro_observation).
+//
+// THE PASS HAS A SUBJECT. A site is only evidence about the BMC it names, so the read is not handed
+// an endpoint and a site independently: it takes one SmproPassSubject, minted only where a managed
+// host's bound controller is joined to its site (gunbc.managed_host managed_host_smpro_subject), and
+// that mint refuses a site naming another controller before any read is possible. The outcomes come
+// back inside a SmproPassObservation that keeps the subject, so every fold below renders outcomes
+// against the site they were read from and no other.
+//
+// THE ORDER IS CONSERVATIVE (eager-owl-205, msg_8a25c38e): per socket, MANUFACTURER_ID first, then
+// CUR_BOOTSTAGE, BOOTSTAGE_LO and BOOTSTAGE_HI, then the smpro-errmon internal error, warning and
+// event registers, then BOOTSTAGE last; the site's control socket before the rest. The
+// manufacturer ID is a known-answer read (extdeps.ampere.smpro_register
+// smpro_manufacturer_id_expected), so a socket whose ID read did not return it has no established
+// transport, and every read after it is NOT SENT with that as its typed reason: the control socket's
+// known-answer read gates everything, each socket's gates its own. NOTHING IS EVER WRITTEN to a register; the
+// only I2C write is the [register, size] pair the SMpro's read protocol requires. That matters most
+// for the error registers: the driver clears them only by WRITING (extdeps.ampere.smpro_register,
+// smpro_errmon_read_safety_confirmation), so this pass reads each record without consuming it.
+//
+// EVERY PROBE IS KEPT AS ITS RAW OBSERVATION -- request bytes, exit code, stdout and stderr as the
+// transport returned them -- beside the typed outcome read from it, so the dossier can be re-read by
+// someone who disagrees with the decode.
+
+type SmproTarget {
+  socket: Int
+  seven_bit_address: Int
+}
+
+// HOW A SITE'S LOCATION IS KNOWN. The one arm inhabited today is an operator's relayed brief; a
+// board document would be its own arm with its citation, added with the first site that has one.
+type SmproSiteEvidence = SiteFromOperatorBrief { relay: NonEmptyStr, private_bus_is_a_bet: Bool }
+
+// WHERE ONE BOARD'S SMpros SIT, as one carrier: the controller they sit behind, the bus, the control
+// socket (whose known-answer read gates every other read) and the rest, and the evidence for all of
+// it. sole_constructor: smpro_site_admit is its only mint, so the population is nonempty, the control
+// is named rather than positional, and sockets and addresses are unique, by construction.
+type SmproSite sole_constructor {
+  endpoint: BmcControllerEndpoint
+  bus: MasterWriteReadBus
+  control: SmproTarget
+  further_targets: List<SmproTarget>
+  evidence: SmproSiteEvidence
+}
+
+type SmproSiteRefusal
+  = SiteHasNoTargets
+  | SiteControlNotATarget { socket: Int }
+  | SiteControlAmbiguous { socket: Int, matches: Int }
+  | SiteSocketRepeated { socket: Int }
+  | SiteAddressRepeated { seven_bit_address: Int }
+
+type SmproSiteStanding
+  = SmproSiteAdmitted { site: SmproSite }
+  | SmproSiteRefused { cause: SmproSiteRefusal }
+
+fn first_repeat(xs: List<Int>) -> Int? {
+  filter(xs, x => count(filter(xs, y => y == x)) > 1).first()
+}
+
+// THE SITE'S ONLY MINT. The control is named by socket and must match exactly one target; every
+// socket and every address appears once. The control's position in `targets` carries nothing.
+fn smpro_site_admit(endpoint: BmcControllerEndpoint, bus: MasterWriteReadBus, targets: List<SmproTarget>, control_socket: Int, evidence: SmproSiteEvidence) -> SmproSiteStanding {
+  let controls = filter(targets, t => t.socket == control_socket)
+  if count(targets) == 0 { SmproSiteRefused { cause: SiteHasNoTargets } }
+  else if count(controls) == 0 { SmproSiteRefused { cause: SiteControlNotATarget { socket: control_socket } } }
+  else if count(controls) > 1 { SmproSiteRefused { cause: SiteControlAmbiguous { socket: control_socket, matches: count(controls) } } }
+  else {
+    match first_repeat(xs: map(targets, t => t.socket)) {
+      Present { value: s } => SmproSiteRefused { cause: SiteSocketRepeated { socket: s } }
+      Absent => match first_repeat(xs: map(targets, t => t.seven_bit_address)) {
+        Present { value: a } => SmproSiteRefused { cause: SiteAddressRepeated { seven_bit_address: a } }
+        Absent => match controls.first() {
+          Absent => SmproSiteRefused { cause: SiteControlNotATarget { socket: control_socket } }
+          Present { value: c } => SmproSiteAdmitted { site: SmproSite {
+            endpoint: endpoint, bus: bus, control: c, further_targets: filter(targets, t => t.socket != control_socket), evidence: evidence,
+          } }
+        }
+      }
+    }
+  }
+}
+
+fn smpro_site_refusal_text(c: SmproSiteRefusal) -> String {
+  match c {
+    SiteHasNoTargets => "the site names no SMpro target"
+    SiteControlNotATarget { socket: s } => concat("the control socket ", to_string(s), " is not one of the site's targets")
+    SiteControlAmbiguous { socket: s, matches: n } => concat("the control socket ", to_string(s), " matches ", to_string(n), " targets")
+    SiteSocketRepeated { socket: s } => concat("socket ", to_string(s), " appears more than once")
+    SiteAddressRepeated { seven_bit_address: a } => concat("7-bit address ", hex_byte_text(n: a), " appears more than once")
+  }
+}
+
+// Control first, then the rest in the order the site lists them.
+fn smpro_site_targets(site: SmproSite) -> List<SmproTarget> {
+  concat([site.control], site.further_targets)
+}
+
+fn smpro_site_evidence_text(e: SmproSiteEvidence) -> String {
+  match e {
+    SiteFromOperatorBrief { relay: _, private_bus_is_a_bet: bet } => if bet { "from the operator brief, the bus type a bet" } else { "from the operator brief" }
+  }
+}
+
+// ── the subject: one host's bound controller joined to its site ─────────────────────────────────
+
+type SmproPassSubject sole_constructor {
+  host: HostIdentity
+  endpoint: BmcControllerEndpoint
+  site: SmproSite
+}
+
+type SmproPassSubjectStanding
+  = SmproPassSubjectBound { subject: SmproPassSubject }
+  | SmproPassSiteRefused { cause: SmproSiteRefusal }
+  | SmproPassEndpointMismatch { bound: BmcControllerEndpoint, site: BmcControllerEndpoint }
+
+// THE SUBJECT'S MINT. A site behind another controller than the one the host is bound to refuses
+// here, so no read is ever issued against a controller the site is not evidence about.
+fn smpro_pass_subject(host: HostIdentity, endpoint: BmcControllerEndpoint, site: SmproSiteStanding) -> SmproPassSubjectStanding
+  admit_callers: [
+    decl_ref(module_path: "gunbc.managed_host", decl_name: "managed_host_smpro_subject"),
+    decl_ref(module_path: "test.claim.machine_intake.ampere_smpro_observation_witness_test", decl_name: "a_site_behind_another_controller_refuses_before_any_read"),
+  ]
+{
+  match site {
+    SmproSiteRefused { cause: c } => SmproPassSiteRefused { cause: c }
+    SmproSiteAdmitted { site: s } =>
+      if (s.endpoint.host as String) == (endpoint.host as String) {
+        SmproPassSubjectBound { subject: SmproPassSubject { host: host, endpoint: endpoint, site: s } }
+      } else {
+        SmproPassEndpointMismatch { bound: endpoint, site: s.endpoint }
+      }
+  }
+}
+
+fn smpro_pass_subject_refusal_text(s: SmproPassSubjectStanding) -> String? {
+  match s {
+    SmproPassSubjectBound { subject: _ } => none
+    SmproPassSiteRefused { cause: c } => Present { value: concat("the SMpro site is not admitted: ", smpro_site_refusal_text(c: c)) }
+    SmproPassEndpointMismatch { bound: b, site: t } => Present { value: concat("the SMpro site names controller ", t.host as String, " but the host is bound to ", b.host as String) }
+  }
+}
+
+// THE PASS'S RESULT, never outcomes without the subject they were read for.
+type SmproPassObservation sole_constructor {
+  subject: SmproPassSubject
+  outcomes: List<SmproProbeOutcome>
+}
+
+// THE OTHER MINT, admitted only to the witness helpers that supply outcomes for a real site: the
+// folds below are claims over supplied transport results, and they still need the subject they are
+// rendered against.
+fn smpro_pass_observation_fixture(host: HostIdentity, site: SmproSite, outcomes: List<SmproProbeOutcome>) -> SmproPassObservation
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.ampere_smpro_observation_witness_test", decl_name: "observed_at"),
+    decl_ref(module_path: "test.claim.machine_intake.smpro_internal_error_witness_test", decl_name: "observed"),
+    decl_ref(module_path: "test.claim.machine_intake.mtcollins1_boot_diagnostic_bundle_witness_test", decl_name: "smpro_probed"),
+    decl_ref(module_path: "test.claim.machine_intake.mtcollins1_boot_run_witness_test", decl_name: "smpro_probed_empty"),
+    decl_ref(module_path: "test.claim.machine_intake.mtcollins1_power_on_account_witness_test", decl_name: "pass_of"),
+  ]
+{
+  SmproPassObservation { subject: SmproPassSubject { host: host, endpoint: site.endpoint, site: site }, outcomes: outcomes }
+}
+
+// Per socket, in read order. The first row is the control; BOOTSTAGE is last. Each record's TYPE is
+// read before its INFO and DATA, so a record is never assembled from words read before the TYPE
+// that says whether it exists.
+data smpro_pass_read_order: List<SmproRegister> = [
+  smpro_manufacturer_id_reg, smpro_cur_bootstage_reg, smpro_bootstage_lo_reg, smpro_bootstage_hi_reg,
+  smpro_gpi_ras_err_reg, smpro_err_smpro_type_reg, smpro_err_smpro_info_lo_reg, smpro_err_smpro_info_hi_reg,
+  smpro_err_smpro_data_lo_reg, smpro_err_smpro_data_hi_reg, smpro_warn_smpro_info_lo_reg, smpro_warn_smpro_info_hi_reg,
+  smpro_err_pmpro_type_reg, smpro_err_pmpro_info_lo_reg, smpro_err_pmpro_info_hi_reg, smpro_err_pmpro_data_lo_reg,
+  smpro_err_pmpro_data_hi_reg, smpro_warn_pmpro_info_lo_reg, smpro_warn_pmpro_info_hi_reg, smpro_vrd_warn_fault_event_data_reg,
+  smpro_vrd_hot_event_data_reg, smpro_dimm_hot_event_data_reg, smpro_dimm_2x_refresh_event_data_reg,
+  smpro_bootstage_reg,
+]
+
+fn smpro_pass_probe_count(site: SmproSite) -> Int {
+  count(smpro_site_targets(site: site)) * count(smpro_pass_read_order)
+}
+
+// The reads a pass over this standing can send: a refused site mints no subject, so none.
+fn smpro_site_probe_bound(standing: SmproSiteStanding) -> Int {
+  match standing { SmproSiteAdmitted { site: s } => smpro_pass_probe_count(site: s) SmproSiteRefused { cause: _ } => 0 }
+}
+
+// ── the raw observation and its typed outcome ───────────────────────────────────────────────────
+
+// sequence IS THE PROBE'S POSITION IN THE PASS, and it is the read's own input: each read is handed
+// the number of outcomes already folded, so it cannot be issued before every earlier probe has an
+// outcome (see smpro_pass_sequenced).
+type SmproProbeRaw {
+  sequence: Int
+  socket: Int
+  register: NonEmptyStr
+  request: NonEmptyStr
+  at: NonEmptyStr
+  exit_code: Int
+  stdout: String
+  stderr: String
+}
+
+type SmproProbeOutcome
+  = SmproWordRead { raw: SmproProbeRaw, word: Int }
+  | SmproControllerRefused { raw: SmproProbeRaw, completion: MasterWriteReadCompletion }
+  | SmproTransportFailed { raw: SmproProbeRaw, timed_out: Bool }
+  | SmproResponseMalformed { raw: SmproProbeRaw, detail: NonEmptyStr }
+  | SmproNotSent { socket: Int, register: NonEmptyStr, reason: NonEmptyStr }
+  | SmproRequestUnencodable { socket: Int, register: NonEmptyStr, detail: NonEmptyStr }
+
+// THE PURE DECISION over one transport result. A zero exit with bytes that are not exactly two hex
+// bytes is malformed, never a zero word; a nonzero exit that names a completion code is the
+// controller's refusal; one that names none is the transport's failure.
+fn smpro_probe_outcome(raw: SmproProbeRaw) -> SmproProbeOutcome {
+  if raw.exit_code == 0 {
+    match master_write_read_bytes_of(stdout: raw.stdout, expected: smpro_value_size_bytes) {
+      Absent => SmproResponseMalformed { raw: raw, detail: concat("expected ", to_string(smpro_value_size_bytes), " hex bytes on stdout") as NonEmptyStr }
+      Present { value: bs } => {
+        let first = match bs.first() { Absent => 0 Present { value: b } => b }
+        let second = match bs.skip(n: 1).first() { Absent => 0 Present { value: b } => b }
+        SmproWordRead { raw: raw, word: smpro_word(first_byte: first, second_byte: second) }
+      }
+    }
+  } else {
+    match master_write_read_stderr_completion(stderr: raw.stderr) {
+      Present { value: c } => SmproControllerRefused { raw: raw, completion: master_write_read_completion_of(code: c) }
+      Absent => SmproTransportFailed { raw: raw, timed_out: raw.exit_code == coreutils_timeout_expired_exit_code }
+    }
+  }
+}
+
+fn smpro_outcome_word(o: SmproProbeOutcome) -> Int? {
+  match o {
+    SmproWordRead { raw: _, word: w } => Present { value: w }
+    SmproControllerRefused { raw: _, completion: _ } => none
+    SmproTransportFailed { raw: _, timed_out: _ } => none
+    SmproResponseMalformed { raw: _, detail: _ } => none
+    SmproNotSent { socket: _, register: _, reason: _ } => none
+    SmproRequestUnencodable { socket: _, register: _, detail: _ } => none
+  }
+}
+
+fn smpro_outcome_text(o: SmproProbeOutcome) -> String {
+  match o {
+    SmproWordRead { raw: _, word: w } => concat("read 0x", substring(s: hex_byte_text(n: w / 256), start: 2, end: 4), substring(s: hex_byte_text(n: w % 256), start: 2, end: 4))
+    SmproControllerRefused { raw: _, completion: c } => concat("REFUSED by the BMC: ", master_write_read_completion_text(c: c))
+    SmproTransportFailed { raw: r, timed_out: t } => concat("TRANSPORT FAILED (exit ", to_string(r.exit_code), if t { ", deadline" } else { "" }, "): ", trim(r.stderr))
+    SmproResponseMalformed { raw: _, detail: d } => concat("MALFORMED: ", d as String)
+    SmproNotSent { socket: _, register: _, reason: why } => concat("NOT SENT: ", why as String)
+    SmproRequestUnencodable { socket: _, register: _, detail: d } => concat("NOT SENT, request unencodable: ", d as String)
+  }
+}
+
+// Why the control did not establish a transport, or Absent when it did.
+fn smpro_control_refusal(o: SmproProbeOutcome) -> String? {
+  match o {
+    SmproWordRead { raw: _, word: w } => if w == smpro_manufacturer_id_expected { none } else {
+      Present { value: concat("MANUFACTURER_ID read ", smpro_outcome_text(o: o), ", not the 0xcd3a an SMpro answers") }
+    }
+    SmproControllerRefused { raw: _, completion: _ } => Present { value: concat("MANUFACTURER_ID ", smpro_outcome_text(o: o)) }
+    SmproTransportFailed { raw: _, timed_out: _ } => Present { value: concat("MANUFACTURER_ID ", smpro_outcome_text(o: o)) }
+    SmproResponseMalformed { raw: _, detail: _ } => Present { value: concat("MANUFACTURER_ID ", smpro_outcome_text(o: o)) }
+    SmproNotSent { socket: _, register: _, reason: _ } => Present { value: concat("MANUFACTURER_ID ", smpro_outcome_text(o: o)) }
+    SmproRequestUnencodable { socket: _, register: _, detail: _ } => Present { value: concat("MANUFACTURER_ID ", smpro_outcome_text(o: o)) }
+  }
+}
+
+// ── the reads (effects) ─────────────────────────────────────────────────────────────────────────
+
+fn smpro_request_text(bus: Int, slave: Int, reg: Int) -> NonEmptyStr {
+  concat("raw 0x06 0x52 ", hex_byte_text(n: bus), " ", hex_byte_text(n: slave), " ", hex_byte_text(n: smpro_value_size_bytes), " ", hex_byte_text(n: reg), " ", hex_byte_text(n: smpro_value_size_bytes)) as NonEmptyStr
+}
+
+fn smpro_pass_read(bmc_host: NonEmptyStr, bus: MasterWriteReadBus, username: NonEmptyStr, password_file: NonEmptyStr, target: SmproTarget, reg: SmproRegister, sequence: Int, deadline: Second, kill_after: Second) -> SmproProbeOutcome
+{
+  match master_write_read_bus_byte(bus: bus) {
+    Absent => SmproRequestUnencodable { socket: target.socket, register: reg.name, detail: "the bus fields do not fit the request's byte 1" }
+    Present { value: bus_byte } => match master_write_read_slave_byte(seven_bit_address: target.seven_bit_address) {
+      Absent => SmproRequestUnencodable { socket: target.socket, register: reg.name, detail: "the address is not a 7-bit address" }
+      Present { value: slave } => {
+        let at = clock_now_probed_at_or_unknown()
+        let r = diagnostic.ipmi.Tool.MasterWriteReadAuthenticated(
+          bmc_host: bmc_host,
+          username: username,
+          password_file: password_file,
+          bus: hex_byte_text(n: bus_byte) as NonEmptyStr,
+          slave_address: hex_byte_text(n: slave) as NonEmptyStr,
+          read_count: hex_byte_text(n: smpro_value_size_bytes) as NonEmptyStr,
+          write_first: hex_byte_text(n: reg.offset) as NonEmptyStr,
+          write_second: hex_byte_text(n: smpro_value_size_bytes) as NonEmptyStr,
+          deadline: coreutils_duration_operand(d: deadline) as NonEmptyStr,
+          kill_after: coreutils_duration_operand(d: kill_after) as NonEmptyStr,
+        )
+        smpro_probe_outcome(raw: SmproProbeRaw {
+          sequence: sequence, socket: target.socket, register: reg.name, request: smpro_request_text(bus: bus_byte, slave: slave, reg: reg.offset),
+          at: at, exit_code: r.exit_code, stdout: r.stdout, stderr: r.transport_stderr,
+        })
+      }
+    }
+  }
+}
+
+// THE ORDER IS A DATA DEPENDENCE, NOT A SOURCE POSITION. The plan is one ordered list of (socket,
+// register), and one fold walks it: each step decides from the outcomes ALREADY FOLDED whether to
+// read at all (the controls gate what follows) and hands the read its sequence, count(acc). A read
+// therefore consumes every earlier probe's outcome, so no evaluation strategy can issue BOOTSTAGE
+// before the reads the plan puts ahead of it. Independent `let` bindings carried no such
+// dependence, which is the defect this replaces. The read itself is a parameter, so a witness can
+// run this exact fold with a supplied read and observe the order.
+type SmproPlannedProbe {
+  target: SmproTarget
+  register: SmproRegister
+}
+
+// THE PLAN NAMES ITS CONTROL. The fold gates on control_socket, never on whichever probe is first,
+// so reordering the probes cannot move the control.
+type SmproPlan {
+  control_socket: Int
+  probes: List<SmproPlannedProbe>
+}
+
+fn smpro_pass_plan(site: SmproSite) -> SmproPlan {
+  SmproPlan {
+    control_socket: site.control.socket,
+    probes: flat_map(smpro_site_targets(site: site), t => map(smpro_pass_read_order, reg => SmproPlannedProbe { target: t, register: reg })),
+  }
+}
+
+fn is_control(reg: SmproRegister) -> Bool {
+  reg.offset == smpro_manufacturer_id_reg.offset
+}
+
+// The control outcome already folded for a socket, if its control has been probed.
+fn folded_control(acc: List<SmproProbeOutcome>, socket: Int) -> SmproProbeOutcome? {
+  filter(acc, o => outcome_socket(o: o) == socket && outcome_register(o: o) == (smpro_manufacturer_id_reg.name as String)).first()
+}
+
+// Why this step must not be sent, from what is already folded: the control socket's known-answer
+// read gates every other socket, and a socket's own gates its boot-progress reads.
+fn smpro_step_block(acc: List<SmproProbeOutcome>, control_socket: Int, probe: SmproPlannedProbe) -> String? {
+  let gate0 = if probe.target.socket == control_socket { none } else {
+    match folded_control(acc: acc, socket: control_socket) {
+      Absent => Present { value: concat("control socket ", to_string(control_socket), " was not probed before this socket") }
+      Present { value: c } => match smpro_control_refusal(o: c) { Absent => none Present { value: why } => Present { value: concat("control socket ", to_string(control_socket), " did not establish the transport: ", why) } }
+    }
+  }
+  match gate0 {
+    Present { value: why } => Present { value: why }
+    Absent => if is_control(reg: probe.register) { none } else {
+      match folded_control(acc: acc, socket: probe.target.socket) {
+        Absent => Present { value: concat("socket ", to_string(probe.target.socket), " control was not probed before this register") }
+        Present { value: c } => match smpro_control_refusal(o: c) { Absent => none Present { value: why } => Present { value: concat("socket ", to_string(probe.target.socket), " control: ", why) } }
+      }
+    }
+  }
+}
+
+fn smpro_pass_sequenced(plan: SmproPlan, read: fn(SmproTarget, SmproRegister, Int) -> SmproProbeOutcome) -> List<SmproProbeOutcome> {
+  let empty: List<SmproProbeOutcome> = []
+  fold(plan.probes, init: empty, f: (acc, probe) => concat(acc, [
+    match smpro_step_block(acc: acc, control_socket: plan.control_socket, probe: probe) {
+      Present { value: why } => SmproNotSent { socket: probe.target.socket, register: probe.register.name, reason: why as NonEmptyStr }
+      Absent => read(probe.target, probe.register, count(acc))
+    }
+  ]))
+}
+
+fn smpro_pass_probes(subject: SmproPassSubject, username: NonEmptyStr, password_file: NonEmptyStr, deadline: Second, kill_after: Second) -> SmproPassObservation
+{
+  SmproPassObservation { subject: subject, outcomes: smpro_pass_sequenced(plan: smpro_pass_plan(site: subject.site), read: (t, reg, n) => smpro_pass_read(bmc_host: subject.endpoint.host, bus: subject.site.bus, username: username, password_file: password_file, target: t, reg: reg, sequence: n, deadline: deadline, kill_after: kill_after)) }
+}
+
+// ── what each socket's reads establish ──────────────────────────────────────────────────────────
+
+fn outcome_socket(o: SmproProbeOutcome) -> Int {
+  match o {
+    SmproWordRead { raw: r, word: _ } => r.socket
+    SmproControllerRefused { raw: r, completion: _ } => r.socket
+    SmproTransportFailed { raw: r, timed_out: _ } => r.socket
+    SmproResponseMalformed { raw: r, detail: _ } => r.socket
+    SmproNotSent { socket: s, register: _, reason: _ } => s
+    SmproRequestUnencodable { socket: s, register: _, detail: _ } => s
+  }
+}
+
+fn outcome_register(o: SmproProbeOutcome) -> String {
+  match o {
+    SmproWordRead { raw: r, word: _ } => r.register as String
+    SmproControllerRefused { raw: r, completion: _ } => r.register as String
+    SmproTransportFailed { raw: r, timed_out: _ } => r.register as String
+    SmproResponseMalformed { raw: r, detail: _ } => r.register as String
+    SmproNotSent { socket: _, register: g, reason: _ } => g as String
+    SmproRequestUnencodable { socket: _, register: g, detail: _ } => g as String
+  }
+}
+
+// TWO INDEPENDENT READINGS PER SOCKET. CUR_BOOTSTAGE is where the SMpro says the socket IS;
+// BOOTSTAGE is the stage and status it REPORTS, which the driver advances only by the write this
+// pass never makes, so the two may differ by design. Neither is derived from the other, and a
+// failure reading one leaves the other standing.
+type SmproCurrentStage
+  = CurrentStageEstablished { stage: SmproStageReading }
+  | CurrentStageUnavailable { reason: String }
+
+type SmproReportedStage
+  = ReportedStageEstablished { bootstage: SmproBootStage }
+  | ReportedStageUnavailable { reason: String }
+
+type SmproSocketStage {
+  socket: Int
+  current: SmproCurrentStage
+  reported: SmproReportedStage
+}
+
+fn smpro_socket_word(outcomes: List<SmproProbeOutcome>, socket: Int, register: NonEmptyStr) -> SmproProbeOutcome? {
+  filter(outcomes, o => outcome_socket(o: o) == socket && outcome_register(o: o) == (register as String)).first()
+}
+
+fn register_unavailable_reason(o: SmproProbeOutcome?, name: NonEmptyStr) -> String {
+  match o {
+    Absent => concat(name as String, " was not probed")
+    Present { value: x } => concat(name as String, " ", smpro_outcome_text(o: x))
+  }
+}
+
+fn smpro_socket_stage(outcomes: List<SmproProbeOutcome>, socket: Int) -> SmproSocketStage {
+  let cur = smpro_socket_word(outcomes: outcomes, socket: socket, register: smpro_cur_bootstage_reg.name)
+  let rep = smpro_socket_word(outcomes: outcomes, socket: socket, register: smpro_bootstage_reg.name)
+  SmproSocketStage {
+    socket: socket,
+    current: match match cur { Absent => none Present { value: o } => smpro_outcome_word(o: o) } {
+      Present { value: w } => CurrentStageEstablished { stage: smpro_cur_bootstage_of(word: w) }
+      Absent => CurrentStageUnavailable { reason: register_unavailable_reason(o: cur, name: smpro_cur_bootstage_reg.name) }
+    },
+    reported: match match rep { Absent => none Present { value: o } => smpro_outcome_word(o: o) } {
+      Present { value: w } => ReportedStageEstablished { bootstage: smpro_bootstage_of(word: w) }
+      Absent => ReportedStageUnavailable { reason: register_unavailable_reason(o: rep, name: smpro_bootstage_reg.name) }
+    },
+  }
+}
+
+fn current_text(c: SmproCurrentStage) -> String {
+  match c {
+    CurrentStageEstablished { stage: st } => smpro_stage_text(r: st)
+    CurrentStageUnavailable { reason: why } => concat("UNAVAILABLE (", why, ")")
+  }
+}
+
+fn reported_text(r: SmproReportedStage) -> String {
+  match r {
+    ReportedStageEstablished { bootstage: b } => concat(smpro_stage_text(r: b.stage), ", ", smpro_status_text(r: b.status))
+    ReportedStageUnavailable { reason: why } => concat("UNAVAILABLE (", why, ")")
+  }
+}
+
+fn smpro_socket_stage_text(s: SmproSocketStage) -> String {
+  concat("SMpro socket ", to_string(s.socket), ": CUR_BOOTSTAGE ", current_text(c: s.current), "; BOOTSTAGE ", reported_text(r: s.reported))
+}
+
+fn raw_text(r: SmproProbeRaw) -> String {
+  concat("    #", to_string(r.sequence), " ", r.request as String, " at ", r.at as String, " exit=", to_string(r.exit_code), " stdout=[", trim(r.stdout), "] stderr=[", trim(r.stderr), "]")
+}
+
+fn outcome_raw_text(o: SmproProbeOutcome) -> String {
+  match o {
+    SmproWordRead { raw: r, word: _ } => raw_text(r: r)
+    SmproControllerRefused { raw: r, completion: _ } => raw_text(r: r)
+    SmproTransportFailed { raw: r, timed_out: _ } => raw_text(r: r)
+    SmproResponseMalformed { raw: r, detail: _ } => raw_text(r: r)
+    SmproNotSent { socket: _, register: _, reason: _ } => "    (no request sent)"
+    SmproRequestUnencodable { socket: _, register: _, detail: _ } => "    (no request sent)"
+  }
+}
+
+// ── the internal error records each socket reports (extdeps.ampere.smpro_internal_error) ─────────
+
+// One processor's record set on one socket, GATED as the driver gates it
+// (extdeps.ampere.smpro_internal_error smpro_record_gate): the socket's GPI_RAS_ERR from this same
+// pass decides whether a decoded TYPE/INFO/DATA record is the driver's record, ungated, or a
+// contradiction. A record is decoded only from words this pass actually read; when one was not, the
+// record is Absent and `missing` says which word, never a zero standing in for it.
+type SmproRecordSet {
+  gate: SmproRecordGate
+  missing: String?
+}
+
+type SmproSocketRecords {
+  socket: Int
+  smpro: SmproRecordSet
+  pmpro: SmproRecordSet
+  nonzero_events: List<String>
+  events_unread: List<String>
+}
+
+type SmproWordsRead
+  = AllWordsRead { words: List<Int> }
+  | WordMissing { reason: String }
+
+fn smpro_words_read(outcomes: List<SmproProbeOutcome>, socket: Int, regs: List<SmproRegister>) -> SmproWordsRead {
+  let empty: List<Int> = []
+  fold(regs, init: AllWordsRead { words: empty }, f: (acc, reg) => match acc {
+    WordMissing { reason: r } => WordMissing { reason: r }
+    AllWordsRead { words: ws } => {
+      let o = smpro_socket_word(outcomes: outcomes, socket: socket, register: reg.name)
+      match match o { Absent => none Present { value: x } => smpro_outcome_word(o: x) } {
+        Present { value: w } => AllWordsRead { words: concat(ws, [w]) }
+        Absent => WordMissing { reason: register_unavailable_reason(o: o, name: reg.name) }
+      }
+    }
+  })
+}
+
+fn nth_word(ws: List<Int>, n: Int) -> Int {
+  match ws.skip(n: n).first() { Absent => 0 Present { value: w } => w }
+}
+
+fn smpro_socket_gpi(outcomes: List<SmproProbeOutcome>, socket: Int) -> Int? {
+  match smpro_socket_word(outcomes: outcomes, socket: socket, register: smpro_gpi_ras_err_reg.name) {
+    Absent => none
+    Present { value: o } => smpro_outcome_word(o: o)
+  }
+}
+
+// Registers in TYPE, INFO_HI, INFO_LO, DATA_HI, DATA_LO, WARN_HI, WARN_LO order.
+fn smpro_record_set(outcomes: List<SmproProbeOutcome>, socket: Int, processor: SmproProcessor, regs: List<SmproRegister>) -> SmproRecordSet {
+  let gpi = smpro_socket_gpi(outcomes: outcomes, socket: socket)
+  match smpro_words_read(outcomes: outcomes, socket: socket, regs: regs) {
+    WordMissing { reason: r } => SmproRecordSet { gate: smpro_record_gate(gpi: gpi, processor: processor, type_read: false, error: none, warning: none), missing: Present { value: r } }
+    AllWordsRead { words: w } => SmproRecordSet {
+      gate: smpro_record_gate(gpi: gpi, processor: processor, type_read: true,
+        error: smpro_internal_error_of(type_word: nth_word(ws: w, n: 0), info_hi: nth_word(ws: w, n: 1), info_lo: nth_word(ws: w, n: 2), data_hi: nth_word(ws: w, n: 3), data_lo: nth_word(ws: w, n: 4)),
+        warning: smpro_internal_warning_of(type_word: nth_word(ws: w, n: 0), warn_hi: nth_word(ws: w, n: 5), warn_lo: nth_word(ws: w, n: 6))),
+      missing: none,
+    }
+  }
+}
+
+data smpro_pass_event_regs: List<SmproRegister> = [
+  smpro_vrd_warn_fault_event_data_reg, smpro_vrd_hot_event_data_reg, smpro_dimm_hot_event_data_reg, smpro_dimm_2x_refresh_event_data_reg,
+]
+
+fn smpro_socket_records(outcomes: List<SmproProbeOutcome>, socket: Int) -> SmproSocketRecords {
+  SmproSocketRecords {
+    socket: socket,
+    smpro: smpro_record_set(outcomes: outcomes, socket: socket, processor: SmproProcessorSmpro, regs: [smpro_err_smpro_type_reg, smpro_err_smpro_info_hi_reg, smpro_err_smpro_info_lo_reg, smpro_err_smpro_data_hi_reg, smpro_err_smpro_data_lo_reg, smpro_warn_smpro_info_hi_reg, smpro_warn_smpro_info_lo_reg]),
+    pmpro: smpro_record_set(outcomes: outcomes, socket: socket, processor: SmproProcessorPmpro, regs: [smpro_err_pmpro_type_reg, smpro_err_pmpro_info_hi_reg, smpro_err_pmpro_info_lo_reg, smpro_err_pmpro_data_hi_reg, smpro_err_pmpro_data_lo_reg, smpro_warn_pmpro_info_hi_reg, smpro_warn_pmpro_info_lo_reg]),
+    nonzero_events: flat_map(smpro_pass_event_regs, reg => match match smpro_socket_word(outcomes: outcomes, socket: socket, register: reg.name) { Absent => none Present { value: x } => smpro_outcome_word(o: x) } {
+      Present { value: w } => if w == 0 { [] } else { [concat(reg.name as String, " = ", to_string(w))] }
+      Absent => []
+    }),
+    events_unread: flat_map(smpro_pass_event_regs, reg => match match smpro_socket_word(outcomes: outcomes, socket: socket, register: reg.name) { Absent => none Present { value: x } => smpro_outcome_word(o: x) } {
+      Present { value: _ } => []
+      Absent => [reg.name as String]
+    }),
+  }
+}
+
+fn record_set_lines(processor: String, rs: SmproRecordSet) -> List<String> {
+  map(smpro_record_gate_lines(g: rs.gate), l => concat(processor, " ", l))
+}
+
+fn record_set_unavailable(processor: String, rs: SmproRecordSet) -> List<String> {
+  match rs.missing {
+    Present { value: why } => [concat(processor, " records UNAVAILABLE (", why, ")")]
+    Absent => []
+  }
+}
+
+// Every gated record, ungated record, gate contradiction or nonzero event a socket reports, one line
+// each; empty when nothing was reported. A missing word is the dossier's to say, not a finding.
+fn smpro_socket_record_lines(r: SmproSocketRecords) -> List<String> {
+  map(concat(concat(record_set_lines(processor: "SMpro", rs: r.smpro), record_set_lines(processor: "PMpro", rs: r.pmpro)), map(r.nonzero_events, e => concat("event ", e))),
+    l => concat("SMpro socket ", to_string(r.socket), ": ", l))
+}
+
+fn smpro_socket_records_text(r: SmproSocketRecords) -> String {
+  let lines = smpro_socket_record_lines(r: r)
+  let gaps = concat(concat(record_set_unavailable(processor: "SMpro", rs: r.smpro), record_set_unavailable(processor: "PMpro", rs: r.pmpro)),
+    if count(r.events_unread) == 0 { [] } else { [concat("events not read: ", join(r.events_unread, ", "))] })
+  let head = if count(lines) == 0 { [concat("SMpro socket ", to_string(r.socket), ": no internal error, warning or event decoded")] } else { lines }
+  join(concat(head, map(gaps, g => concat("SMpro socket ", to_string(r.socket), ": ", g))), "\n")
+}
+
+// THE DOSSIER: every socket's stage (established or why not), then every probe with its raw
+// observation. It is rendered for any list of outcomes, including one where nothing was sent.
+fn smpro_pass_dossier_text(obs: SmproPassObservation) -> String {
+  let site = obs.subject.site
+  let outcomes = obs.outcomes
+  join([
+    concat("location: ", obs.subject.host as String, " via controller ", obs.subject.endpoint.host as String, ", bus ", to_string(site.bus.bus_id), " ", match site.bus.bus_type { PrivateBus => "private" PublicBus => "public" }, ", ", smpro_site_evidence_text(e: site.evidence), "; control socket ", to_string(site.control.socket), "; ", join(map(smpro_site_targets(site: site), t => concat("socket ", to_string(t.socket), " at 7-bit ", hex_byte_text(n: t.seven_bit_address))), ", ")),
+    join(map(smpro_site_targets(site: site), t => smpro_socket_stage_text(s: smpro_socket_stage(outcomes: outcomes, socket: t.socket))), "\n"),
+    join(map(smpro_site_targets(site: site), t => smpro_socket_records_text(r: smpro_socket_records(outcomes: outcomes, socket: t.socket))), "\n"),
+    "probes, in the order sent:",
+    join(map(outcomes, o => concat("  socket ", to_string(outcome_socket(o: o)), " ", outcome_register(o: o), ": ", smpro_outcome_text(o: o), "\n", outcome_raw_text(o: o))), "\n"),
+  ], "\n")
+}

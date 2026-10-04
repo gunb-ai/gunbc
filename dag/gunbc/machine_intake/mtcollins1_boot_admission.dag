@@ -3,7 +3,7 @@ module gunbc.machine_intake_mtcollins1_boot_admission
 import std.types { Bool, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv1 }
 
 // THE CREDENTIAL-FREE BOOT ADMISSION, IN ITS OWN MODULE BECAUSE ITS CLOSURE IS ITS COST. The
 // fleet-converge step "Mt. Collins boot admission (credential-free)" runs `gunbc run` on this entry,
