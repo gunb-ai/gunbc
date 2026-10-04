@@ -180,6 +180,37 @@ fn claim_driver_filesystem_cases() -> List<NativeEmissionCase> {
   ]
 }
 
+// RULE: an effectful fold step is realized as a loop in the enclosing async frame
+// (v1.compiler.emit_rust emit_rust_effectful_fold_loop). Iterator::fold takes its step as a
+// synchronous closure, so a step that reaches an effectful callee put that callee's `.await?` inside
+// it: E0728, the shape of gunbc.auth.approval_decision_store pending_escalations. The step here
+// reads Filesystem for every element and accumulates a record, as that fold does. Every path sits
+// under a root no host provisions, so each read is a typed refusal and the counts are decided
+// everywhere; the red rows are the record's two fields and the empty list.
+type ControlReadTally {
+  refused: Int
+  seen: Int
+}
+
+fn control_tally_absent_reads(paths: List<String>) -> ControlReadTally {
+  fold(paths, init: ControlReadTally { refused: 0, seen: 0 }, f: (acc, p) =>
+    let read = Filesystem.Read(path: p)
+    ControlReadTally { refused: if read.success { acc.refused } else { acc.refused + 1 }, seen: acc.seen + 1 }
+  )
+}
+
+fn control_absent_paths() -> List<String> {
+  ["/gunbc-native-emission-controls-absent/a", "/gunbc-native-emission-controls-absent/b", "/gunbc-native-emission-controls-absent/c"]
+}
+
+fn effectful_fold_step_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "effectful_fold_step_counts_every_refused_read", held: control_tally_absent_reads(paths: control_absent_paths()).refused == 3 },
+    NativeEmissionCase { identity: "effectful_fold_step_red_seen_counts_elements", held: control_tally_absent_reads(paths: control_absent_paths()).seen == 3 },
+    NativeEmissionCase { identity: "effectful_fold_step_red_empty_keeps_init", held: control_tally_absent_reads(paths: []).seen == 0 }
+  ]
+}
+
 data native_emission_expected_identities: List<String> = [
   "set_struct_eq_same_members_in_another_order",
   "set_struct_eq_red_bare_field_differs",
@@ -197,6 +228,9 @@ data native_emission_expected_identities: List<String> = [
   "filter_guard_receipt_red_nonblank_tail_refuses",
   "filter_guard_receipt_red_empty_tag_short_circuits",
   "claim_driver_filesystem_absent_path_read_is_refused",
+  "effectful_fold_step_counts_every_refused_read",
+  "effectful_fold_step_red_seen_counts_elements",
+  "effectful_fold_step_red_empty_keeps_init",
   "list_index_in_range_yields_the_element",
   "list_index_red_in_range_is_not_another_element",
   "list_index_red_in_range_is_not_absent",
@@ -206,7 +240,7 @@ data native_emission_expected_identities: List<String> = [
 ]
 
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(concat(concat(header_bound_cases(), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), list_index_cases())
+  concat(concat(concat(concat(header_bound_cases(), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), list_index_cases())
 }
 
 fn case_row(c: NativeEmissionCase) -> String {

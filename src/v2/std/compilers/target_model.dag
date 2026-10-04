@@ -64,7 +64,9 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected,
   invariant_port_locus,
-  rejected_with_pending
+  rejected_with_pending,
+  None,
+  outcome_with_diagnostics
 }
 import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
 import v2.std.compilers.lexing {
@@ -83,6 +85,15 @@ import v2.std.compilers.lexing {
   lex_rule_token_class_optional,
   TriviaRule,
   VoidLexRules,
+  CharClassPattern,
+  CharPattern,
+  ChoicePattern,
+  DelimitedPattern,
+  EmptyPattern,
+  OneOrMorePattern,
+  OptionalPattern,
+  RepeatPattern,
+  SequencePattern
 }
 import v2.std.find_witness {
   CandidateSet,
@@ -155,6 +166,10 @@ import v2.std.node {
   core_occurrences,
   edge_is_core,
   production_edge_label,
+  Bind,
+  Loop,
+  PositionalPlusNamedMarkerEdges,
+  PositionalPrefixThenLabeledEdges
 }
 import v2.std.witness {
   StructuralPropertyWitness

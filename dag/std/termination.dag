@@ -1,6 +1,7 @@
 module std.termination
 
 import std.algebra { BoundedLattice, Ordering }
+import std.types { List, Map }
 
 type DescentEvidence
   = Strict
