@@ -1,7 +1,7 @@
 module gunbc.auth.standing_operator_grant
 
 import std.types { String, Bool, List, NonEmptyStr, Timestamp }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import std.list { list_member }
 import std.scoped_authorization { OperatorGrant, ScopedAuthorization, AuthorizationGranted, AuthorizationRequest, Unclaimed }
 import std.decl_ref { DeclarationRef, decl_ref }

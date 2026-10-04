@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool, Int }
 import gunbc.host_effect { LocalShell }
 import std.disposition { Disposition, Terminal }
 import gunbc.clock_read { clock_now_probed_at }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.runner_unit { runner_slot_unit_name }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.host_converge {

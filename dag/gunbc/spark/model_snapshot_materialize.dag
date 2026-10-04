@@ -3,7 +3,7 @@ module gunbc.spark.model_snapshot_materialize
 import std.types { String, Bool, List, NonEmptyStr, Secret, Int }
 import std.nat { Nat }
 import std.content_hash { content_hash_atom }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import std.algebra { trim }
 import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
 import gunbc.fleet_bootstrap_principal_session {

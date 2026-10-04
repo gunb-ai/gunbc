@@ -10,7 +10,7 @@ import std.measure {
   Millisecond, millisecond, millisecond_count,
 }
 import std.decl_ref { DeclarationRef }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import product.fabric.work { ExecutionRequirements }
 import product.fabric.identity { FabricIdentity, OfferKey }
 import product.fabric.supply { SupplierOffer }

@@ -2,7 +2,7 @@ module test.claim.spark.fabric_blob_peer_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import v2.std.optional { Present, Absent }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.tools.rsync { rsyncd_conf_text, rsync_daemon_foreground_argv, rsync_exit_status_is_unreachable }
 import extdeps.tools.curl { curl_exit_status_is_unreachable }
 import gunbc.artifact_acquisition { AcquisitionSource, SourceArgv, SourceUrl, ContentDigestSha256, UpstreamRevision }

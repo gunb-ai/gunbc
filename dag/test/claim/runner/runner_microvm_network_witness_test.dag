@@ -46,7 +46,7 @@ import gunbc.runner.runner_host_filtered_egress { runner_host_egress_policy }
 import std.dissolution { UnboundDissolution, BoundDissolution }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import gunbc.runner_microvm_network { TapHolderObservation }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.exec.command { argv_words }
 import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation, InstallFile, SystemdReloadUnit,

@@ -3,7 +3,7 @@ module test.claim.spark.spark_pair_serving_desired_witness
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { token_count_value }
-import product.placement_supply { host_identity_eq }
+import product.host_identity { host_identity_eq }
 import extdeps.network.ipv4 { ipv4_address_eq }
 import v2.std.optional { Present, Absent }
 import std.measure { token_count, basis_point }

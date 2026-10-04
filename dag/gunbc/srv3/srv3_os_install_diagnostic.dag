@@ -39,7 +39,7 @@ import gunbc.network_identity_subsumption {
   srv3_bmc_static_lease_row,
 }
 import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuilt }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.srv3_actuate_shell_paths {
   srv3_bmcweb_token_path,
 }

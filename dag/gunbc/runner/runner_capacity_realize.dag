@@ -30,7 +30,7 @@ import gunbc.runner_lifecycle {
 }
 import gunbc.host_disk_observation { host_disk_observation }
 import gunbc.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 
 // PR C seam: wires gunbc.apply mode=apply to runner_capacity_plan + per-host disk preflight +
 // ADD-only dispatch. Does NOT provision runners — all nine runner_lifecycle_realize_* arms return

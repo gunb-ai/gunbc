@@ -31,7 +31,7 @@ import gunbc.runner_activation {
 }
 import gunbc.build_cache_instance { BuildCacheInstance, ProcessIdentity, ci_cache_instance, runner_slot_index_suffix }
 import gunbc.host_layout { gunbc_managed_compile_pool_slice }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import std.types { NonEmptyStr, String }
 import gunbc.fleet_intent { fleet_intent_execution_surface }
 import extdeps.toolchain.types { ToolchainCapability }

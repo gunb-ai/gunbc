@@ -4,7 +4,7 @@ import std.types { Bool, NonEmptyStr, String, List, Int }
 import extdeps.tailscale.identity { TailnetUser, TailnetIdentityAbsent }
 import extdeps.access.posix { PosixUser, LoginShellUnobserved, FilePermissions }
 import std.fabric_storage { FabricStoreUnreachable }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fabric_storage_client { FabricStorageServed, FabricStorageLocalFiles }
 import gunbc.fabric_storage_file_store { fabric_storage_file_root }
 import gunbc.fabric_storage_wire { FabricIdentityPresented, FabricIdentityUnproxied, FabricIdentityReadRefused, DoorProxied, DoorLocalPeer, DoorUnattested }

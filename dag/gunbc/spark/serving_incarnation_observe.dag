@@ -6,7 +6,7 @@ import std.decimal { ExactDecimal, decimal_pow10 }
 import std.checked_arithmetic { checked_int_multiply, checked_int_add, CheckedIntReady, CheckedIntOverflow }
 import std.measure { Hertz, hertz, hertz_count }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import product.fabric.demand { ObservationReceiptRef }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
 import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key }

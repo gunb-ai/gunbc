@@ -1,7 +1,7 @@
 module test.claim.spark.spark_fabric_reach_witness
 
 import std.types { Bool, List, String }
-import product.placement_supply { host_identity_eq }
+import product.host_identity { host_identity_eq }
 import gunbc.fleet_host_identity { operator_host_srv2, operator_host_srv9, operator_host_srv5 }
 import gunbc.fleet_host_key_enrollment { KnownHostKeyRow, fleet_host_key_enrollments }
 import gunbc.fleet_known_hosts_anchor { fleet_known_hosts_rows, known_hosts_endpoint_conflict }

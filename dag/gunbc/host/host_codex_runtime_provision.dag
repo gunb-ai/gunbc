@@ -5,7 +5,7 @@ import std.disposition { ConstructionMechanism, Disposition, Scaffold, Realizati
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.host_toolchain_ensure { host_toolchain_ensure, CodexRuntime }
 import gunbc.host_effect { HostEffect, ProvisionCodexRuntime }
 import gunbc.host_layout {

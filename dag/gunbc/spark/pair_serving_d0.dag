@@ -31,7 +31,7 @@ import extdeps.crypto.hash { sha256_digest_content_hash }
 import std.effect_grant { Write, NamespacePosition, CodeNameTree }
 import product.capacity.lease { LeaseGrant, LeasePolicy, ReleaseLaw, QuiescenceRequired, lease_grant, lease_fence_of }
 import product.capacity.event_chain { EventId, HeadExpectation, HeadAbsent, HeadAt }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fabric_event_log_host { HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds }

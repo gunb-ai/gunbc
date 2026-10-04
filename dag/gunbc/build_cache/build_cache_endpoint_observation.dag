@@ -3,7 +3,7 @@ module gunbc.build_cache_endpoint_observation
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.disposition { ConstructionMechanism, Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_shell_transport_observation {
   fleet_shell_transport_observation,
   ShellTransportSucceeded,

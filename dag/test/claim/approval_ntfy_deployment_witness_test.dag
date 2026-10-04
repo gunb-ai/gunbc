@@ -17,7 +17,7 @@ import gunbc.fleet_host_identity { operator_host_srv1 }
 import extdeps.ntfy.ntfy { NtfyTopic }
 import gunbc.auth.approval_notification { approval_ntfy_topic }
 import std.types { String }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_posix_accounts {
   notification_service_realization_standing, PersistentServiceAccount, AccountUnallocated,
   ServicePrincipalRealizationUnselected, DynamicServicePrincipal, FleetAccountNotificationService,

@@ -26,7 +26,7 @@ import gunbc.fleet_host_key_enrollment { enrolled_fingerprint_for, fleet_host_ke
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import std.upsert_decision {
   ObservationVerdict,
   Converged,

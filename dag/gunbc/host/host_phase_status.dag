@@ -36,7 +36,7 @@ import gunbc.membership_reconcile {
 }
 import gunbc.ownership { Ownership, Owned }
 import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv5, operator_host_srv6 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import std.measure { millisecond }
 
 type HostPhaseCellMemberAt = String

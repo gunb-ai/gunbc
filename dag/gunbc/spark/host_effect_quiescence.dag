@@ -4,7 +4,7 @@ import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { filter }
 import std.algebra { trim }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import product.capacity.event_chain { EventId }
 import extdeps.exec.command { argv_words }
 import extdeps.procps.pgrep { PgrepMatched, PgrepNoMatch, PgrepScanFailed, pgrep_match_full_command_line_argv, pgrep_scan_outcome }

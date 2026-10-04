@@ -24,7 +24,7 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 import extdeps.github.actions_environment { github_run_id_variable_name }
 import gunbc.actions_run_binding { ActionsVariableAbsent, ActionsVariablePresent, actions_variable_read }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.host_reset_return {
   AttemptReceiptMinted,
   AttemptReceiptPairingRefused,

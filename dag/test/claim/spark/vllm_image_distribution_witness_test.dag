@@ -1,7 +1,7 @@
 module test.claim.spark.vllm_image_distribution_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import std.measure { byte_size, byte_size_count }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import extdeps.container.oci.digest { OciSha256Digest, render_oci_content_digest_wire }

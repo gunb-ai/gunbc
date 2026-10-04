@@ -16,7 +16,7 @@ import std.realization_schedule {
 }
 import extdeps.accounting.budget { Appropriation, LineItem }
 import product.budget_tree { BudgetNode, BudgetClaim, Guaranteed, node_conserves }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.host_layout {
   CompilePoolPlacement, CompilePoolSliceDeclared, CompilePoolInRunnerSlots,
   gunbc_compile_pool_placement,

@@ -47,7 +47,7 @@ import gunbc.spark.v41_runtime_image_converge { V41ProducedImageHeld, v41_produc
 import extdeps.container.oci.digest { render_oci_content_digest_wire }
 import gunbc.spark.v41_runtime_candidate { v41_candidate_partition }
 import gunbc.spark.v41_engram_store_manifest { V41EngramStoreManifest, V41StoreManifestDerived, V41StoreManifestRefused, v41_engram_store_manifest }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 
 // ══ THE DESIGN-B RED: A BYTE-IDENTICAL DIFFERENTIAL ON THE REAL ROW STORES ════════════════════════
 //

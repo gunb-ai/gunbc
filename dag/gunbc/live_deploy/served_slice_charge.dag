@@ -3,7 +3,7 @@ module gunbc.live_deploy.served_slice_charge
 import std.types { String, NonEmptyStr, Bool, Int }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.disposition { Disposition, Terminal }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.live_deploy.slice_bounds {
   live_deploy_slice_memory_max,

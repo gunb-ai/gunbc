@@ -7,7 +7,7 @@ import extdeps.access.posix { PosixLoginName }
 import extdeps.network.endpoint { NetworkHost, HostByName, HostByAddress, render_network_host }
 import extdeps.toolchain.types { Architecture, Aarch64 }
 import extdeps.automation.playwright { PlaywrightBuild, playwright_1_62_1 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_host_identity { operator_host_srv4, operator_host_srv7 }
 import extdeps.ssh.openssh_port_forwarding {
   ForwardingAdmission,

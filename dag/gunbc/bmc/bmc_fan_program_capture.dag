@@ -1,7 +1,7 @@
 module gunbc.bmc_fan_program_capture
 
 import std.types { EpochMs, Int, List, NonEmptyStr }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 
 // THE BYTES THAT WERE RUNNING, CAPTURED BEFORE ANYTHING ELSE IS MODELLED. srv3 and srv4 hold a fan
 // control program that was arrived at by hand and that this repository cannot regenerate: the

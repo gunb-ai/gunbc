@@ -32,7 +32,7 @@ import extdeps.bmc.ipmi_sdr {
   sdr_unstructured_count,
 }
 import product.fan_tach { FanTachEndpointIdentity }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import product.fan_policy_standing {
   FanDriveDuty,
   FanDriveReading,

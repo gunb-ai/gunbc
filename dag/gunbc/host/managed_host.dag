@@ -2,7 +2,7 @@ module gunbc.managed_host
 
 import std.types { List, NonEmptyStr, String }
 import std.decl_ref { decl_ref }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObservationStanding, BmcAccessObserved, BmcAccessUnobserved }
 import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }

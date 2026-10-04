@@ -69,7 +69,7 @@ import gunbc.fleet_bmc_state {
   BmcFanDurabilityEvidenceConstructionRefusal,
   bmc_fan_durability_evidence_construction_refusal_reason,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import std.state_durability {
   DurabilityDefinitionLinkageUnavailable,
   DurabilityEvidenceAmbiguous,

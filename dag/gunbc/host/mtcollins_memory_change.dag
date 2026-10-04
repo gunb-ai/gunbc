@@ -18,7 +18,7 @@ import extdeps.memory.micron {
 }
 import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog }
 import extdeps.firmware.tianocore_edk2.sdram_spd_ddr4 { SPD4_PRIMARY_SDRAM_PACKAGE_TYPE_STRUCT }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.mtcollins_memory_placement { mtcollins_memory_position }
 import gunbc.memory_configuration {
   CatalogMemoryModule,

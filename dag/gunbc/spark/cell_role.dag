@@ -1,7 +1,7 @@
 module gunbc.spark.cell_role
 
 import std.types { String, Bool, List, NonEmptyStr }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6 }
 
 // SPARK-PAIR-0 P0. The single authority for what each DGX Spark unit is FOR. Desired serving hosts

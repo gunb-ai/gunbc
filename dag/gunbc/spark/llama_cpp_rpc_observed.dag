@@ -10,7 +10,7 @@ import std.measure {
   PositiveShardCount, positive_shard_count, positive_shard_count_value,
 }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address, ipv4_address_eq }
 import gunbc.fleet_host_identity { operator_host_srv7, operator_host_srv8 }
 import gunbc.spark.model_snapshot_acquisition { spark_models_root }

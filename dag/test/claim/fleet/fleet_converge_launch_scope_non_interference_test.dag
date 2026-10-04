@@ -1,7 +1,7 @@
 module test.claim.fleet_converge_launch_scope_non_interference
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import std.content_hash { serialize_content_hash }
 import v2.std.optional { Present, Absent }
 import gunbc.compile_diagnostic_census {

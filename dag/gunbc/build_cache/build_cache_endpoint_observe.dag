@@ -73,7 +73,7 @@ import gunbc.runner_slot_allocation {
   RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved,
   runner_width_unresolved_cause_text,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 
 data build_cache_endpoint_observe_scope_disposition: ConstructionMechanism = SingleAuthority
 

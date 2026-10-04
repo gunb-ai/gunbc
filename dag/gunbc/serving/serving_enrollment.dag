@@ -3,7 +3,7 @@ module gunbc.serving.serving_enrollment
 import std.types { String, NonEmptyStr, List, Port }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_intent_network { host_lan_address }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire }
 import gunbc.spark.group_b_serving_capacity { group_b_route_offer, group_b_restoration_serve_port }

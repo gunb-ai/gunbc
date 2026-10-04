@@ -2,7 +2,7 @@ module test.claim.build_cache_instance_readiness
 
 import std.types { String, NonEmptyStr, Bool }
 import std.measure { gibibyte, gibibyte_to_byte_size }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.cache.sccache { sccache_installed_binary_path }
 import gunbc.host_layout { CompilePoolSliceDeclared, gunbc_managed_compile_pool_slice }
 import gunbc.build_cache_instance {

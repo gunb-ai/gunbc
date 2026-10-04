@@ -22,7 +22,7 @@ import gunbc.runner_slot_allocation {
 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner_unit { runner_slot_unit_name }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.host_effect { HostEffectTransport }
 import gunbc.host_operation_exec {
   HostOperation,

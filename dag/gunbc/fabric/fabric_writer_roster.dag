@@ -3,7 +3,7 @@ module gunbc.fabric_writer_roster
 import gunbc.fabric_storage_binding { fabric_storage_binding_for }
 import std.types { String, NonEmptyStr, List, Bool }
 import extdeps.tailscale.identity { TailnetIdentity, TailnetUser, TailnetIdentityAbsent, tailnet_identity_of }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
 import gunbc.fabric_storage_file_store { fabric_storage_file_root }
 import gunbc.fabric_storage_placement { fabric_storage_placement, fabric_storage_store_root, fabric_storage_door_local_writers, fabric_storage_door_proxy_peer }

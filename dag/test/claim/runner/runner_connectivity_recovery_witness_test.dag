@@ -2,7 +2,7 @@ module test.claim.runner_connectivity_recovery_witness
 
 import std.types { String, Bool, List, Timestamp }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.build_cache_instance {
   process_identity_eq, RunnerSlotIdentity, ProcessIdentity, runner_slot_instance_name }
 import gunbc.runner_unit { runner_unit_name_of_registration }

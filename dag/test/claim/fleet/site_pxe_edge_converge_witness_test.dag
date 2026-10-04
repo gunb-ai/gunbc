@@ -5,7 +5,7 @@ import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
 import extdeps.firmware.ipxe { IpxeBuildTarget, ipxe_arm64_efi_snponly }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.machine_intake_mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
 import gunbc.site_uefi_arm64_pxe_edge { first_onboarding_known_client_mac }
 import extdeps.network.ipv4 { ipv4_address, Ipv4Parsed, Ipv4ParseFailed, Ipv4WrongOctetCount }

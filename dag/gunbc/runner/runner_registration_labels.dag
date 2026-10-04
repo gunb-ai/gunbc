@@ -1,7 +1,7 @@
 module gunbc.runner_registration_labels
 
 import std.types { String, NonEmptyStr, List }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.github.actions { SelfHosted }
 import gunbc.ci_fleet { fleet_compute_offer_for }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }

@@ -25,7 +25,7 @@ import extdeps.llm.anthropic_messages_api {
 import extdeps.ollama.api { ollama_default_port }
 import gunbc.fleet_intent_network { srv5_host_lan_endpoint, srv6_host_lan_endpoint, host_lan_address }
 import gunbc.serving.serving_enrollment { ServingRouteEndpoint, serving_route_endpoint_wire }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 
 // THE WIRE CODEC FOR THE DEDICATED HARNESS, over the shape DCH-1 already hoisted off the vendor.
 //

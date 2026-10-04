@@ -1,0 +1,19 @@
+module product.host_identity
+
+import std.types { NonEmptyStr, Bool, String, brand }
+
+// A HOST'S FLEET IDENTITY, as a leaf. It was declared in product.placement_supply beside the
+// placement and supply vocabulary (assets, racks, MAC addresses), so every reader of a host's name
+// imported extdeps.dhcp.v4 and extdeps.dns through it. Naming a host needs none of that.
+type HostIdentity = NonEmptyStr where brand("HostIdentity")
+
+// EQUALITY FOR THE BRANDED IDENTITY, BESIDE THE TYPE THAT DECLARES IT.
+//
+// Two hosts are the same host when their identities are the same string, and the brand is what
+// stops an arbitrary NonEmptyStr standing in for one. Callers were spelling this inline as
+// `x as String == y as String`, which the grammar does not accept in an `if` condition -- so the
+// choice was a helper here or a `let` at every site, and a comparison for a type belongs with the
+// type rather than being re-derived by each consumer.
+fn host_identity_eq(a: HostIdentity, b: HostIdentity) -> Bool {
+  a as String == b as String
+}

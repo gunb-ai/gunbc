@@ -7,7 +7,7 @@ import std.nat { Nat, nat_range_inclusive }
 import std.checked_arithmetic { CheckedNatOverflow, CheckedNatReady, checked_int_magnitude }
 import std.measure { celsius, rpm }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import product.fan_tach {
   FanTachEndpointIdentity,
   FanTachSample,

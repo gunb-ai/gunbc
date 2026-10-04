@@ -1,7 +1,7 @@
 module gunbc.codex_provider_runtime_receipt
 
 import std.types { String, NonEmptyStr, FilePath, Bool }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.host_layout {
   ProviderRuntimePlacement,
   provider_runtime_placement_for_host,

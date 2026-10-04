@@ -4,7 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { zip_map }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import extdeps.systemd.unit_file {
   ServiceUnitFile, Installable, NotInstallable, SystemdInstallSection, SystemdUnitDirective, SystemdServiceDirective,

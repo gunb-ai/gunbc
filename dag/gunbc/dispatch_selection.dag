@@ -50,7 +50,7 @@ import gunbc.roadmap_sizing {
   NodeSizing, NodeSizingDerivation, SizingDerived, SizingNotDerivable,
   IntricacyHigh, VolumeMedium,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_capacity_control {
   fleet_capacity_admission, fleet_capacity_admission_in, fleet_capacity_admission_admits,
   HostCapacityWithdrawal, ProviderCapacityWithdrawal,

@@ -14,7 +14,7 @@ import gunbc.memory_change_evaluation { QualificationMemoryPurchase }
 import std.goal_assessment { ObservationRefused }
 import gunbc.mtcollins_memory_placement { mtcollins_memory_position }
 import product.installed_bom_reconcile { DimmSlotLocator }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.boards.types { AmpereMtCollins }
 import std.nat { nat_range_inclusive }
 import std.nat { Nat }

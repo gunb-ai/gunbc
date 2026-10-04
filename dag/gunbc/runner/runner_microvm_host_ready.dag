@@ -44,7 +44,7 @@ import gunbc.hostname_read { HostnameShortCaptured, HostnameShortCaptureRefused,
 import gunbc.actions_run_binding {
   actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.runner_host_deploy {
   RunnerHostSpec, RunnerHostSpecFound, RunnerHostSpecAbsent, runner_host_spec_for,
 }

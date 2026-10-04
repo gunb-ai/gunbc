@@ -78,7 +78,7 @@ import gunbc.fabric.engram_materialization {
   PoolReliefStanding, NoPoolReliefEveryHopInMemoryPool, PoolReliefBoundedByWorkingSet, PoolReliefNeedsWorkingSetEvidence,
   PoolReliefRouteUnresolved,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.spark.serving_subject {
   ServingSubject, PairServingUnitOn, PlacedServingArm, serving_subject_wire,
   ServingRulingCitation, serving_ruling_2026_09_12_v4_1_takes_over_the_deepseek_deployment,

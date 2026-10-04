@@ -23,7 +23,7 @@ import gunbc.spark.native_serving_apply {
   spark_native_stage_has_mutated_the_serving_arm, spark_native_stage_created_removable_artifacts,
   spark_native_readback_disagreements, spark_native_image_readback_gap,
 }
-import product.placement_supply { host_identity_eq }
+import product.host_identity { host_identity_eq }
 import gunbc.spark.pair_serving_apply { SparkPairHostApplyOutcome, SparkPairHostApplied, SparkPairHostApplyFailed }
 import gunbc.spark.pair_serving_launch_receipt { serving_standing }
 import extdeps.vllm.usage_stats { vllm_usage_stats_disable_assignment_wire }

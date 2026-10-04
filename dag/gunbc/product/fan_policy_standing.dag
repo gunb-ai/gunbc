@@ -13,7 +13,7 @@ import std.measure {
   second_count,
 }
 import extdeps.units.iec_61672 { AWeightedSoundPressureLevel }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import product.fan_tach { FanTachEndpointIdentity }
 import product.acoustic_ceiling {
   AcousticCeiling,

@@ -23,7 +23,7 @@ import extdeps.dns.domain_name {
   domain_name_wire,
 }
 import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseRow, Cr1000aDhcpLeaseTable }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_host_identity { operator_host_srv3 }
 import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 

@@ -2,7 +2,7 @@ module gunbc.fabric_cell_observe
 
 import std.types { String, List, Bool, NonEmptyStr }
 import std.disposition { ConstructionMechanism, SingleAuthority }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name, runner_slot_identity_equal, runner_slot_instance_name_prefix, slot_name_could_belong_to_host }
 import gunbc.runner_slot_allocation {
   fabric_execution_slot_identities,

@@ -3,7 +3,7 @@ module test.claim.build_cache_latency_probe_witness
 import std.logic { Bool }
 import std.types { String, List, Int }
 import std.measure { Millisecond, millisecond, measure_count }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
 import gunbc.build_cache_latency_probe {
   BuildLatencyPopulation,

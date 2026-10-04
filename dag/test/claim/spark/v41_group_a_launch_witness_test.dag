@@ -8,7 +8,7 @@ import extdeps.systemd { Active }
 import gunbc.compute.host_occupancy { HostUnoccupied, HostOccupiedBy, ServingUnitActive }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
 import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpected, LeaseRunningStale }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.container.oci.digest { oci_sha256_content_digest }
 import extdeps.vllm.engine_args { PrefixCachingExplicit }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, fabric_group_hosts }

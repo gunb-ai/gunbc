@@ -27,7 +27,7 @@ import extdeps.systems.nvidia_fleet_lifecycle {
   StatusOk,
   StatusError,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_of_value }
 import extdeps.uuid { Uuid }
 import gunbc.fleet_lifecycle_observation {

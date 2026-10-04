@@ -16,7 +16,7 @@ import extdeps.access.posix_effective_principal {
   effective_posix_principal_name,
 }
 import extdeps.access.posix_effective_principal_read_op { effective_posix_principal_read }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.command_runner { run_shell_commands }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.host_layout { srv1_gunbc_repo_root, instance_receipts_dir }

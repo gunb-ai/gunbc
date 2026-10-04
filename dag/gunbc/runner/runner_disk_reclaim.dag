@@ -2,7 +2,7 @@ module gunbc.runner_disk_reclaim
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { Second, second }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_host_identity { operator_host_srv4 }
 import gunbc.ownership { Ownership, Owned }
 import v2.std.algebra { any, list_flat_map }

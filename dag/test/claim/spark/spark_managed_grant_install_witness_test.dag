@@ -1,6 +1,6 @@
 module test.claim.spark_managed_grant_install_witness
 
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import std.types { Bool, String, NonEmptyStr, List }
 import gunbc.spark.managed_access_bootstrap {
   EnableLingerForOwnAccount,

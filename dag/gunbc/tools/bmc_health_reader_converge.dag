@@ -56,7 +56,7 @@ import gunbc.auth.access_token_source {
   select_access_token_source,
 }
 import std.types { NonEmptyStr, Secret, String }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import std.logic { Bool }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 

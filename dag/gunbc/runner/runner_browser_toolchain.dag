@@ -58,7 +58,7 @@ import gunbc.host_effect_realize {
   Srv3HostPredicate, Srv3PredicateHolds, Srv3PredicateFails, Srv3PredicateUnobserved,
   srv3_ensure_apt, AptPresenceSubject, AptBinaryOnPath, AptPackageInstalled,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.runner_registration_labels { runner_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused }
 import gunbc.runner_host_deploy { RunnerHostDeploy, RunnerHostSpec, fleet_runner_host_deploys }

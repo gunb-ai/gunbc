@@ -4,7 +4,7 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.algebra { trim }
 import std.measure { TokenCount, ConcurrentRequestHundredths }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.python { PythonProgramText, python_run_program_argv }
 import extdeps.nvidia.cuda_driver {

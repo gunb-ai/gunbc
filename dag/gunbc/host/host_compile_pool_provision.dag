@@ -6,7 +6,7 @@ import std.process { ProcessExit }
 import std.types { Bool, String }
 import gunbc.host_effect { HostEffect, EnsureCompilePoolSlice }
 import gunbc.host_toolchain_ensure { host_toolchain_ensure, CompilePool }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 
 data host_compile_pool_provision_scope_disposition: ConstructionMechanism = SingleAuthority
 

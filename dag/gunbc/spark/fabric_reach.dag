@@ -2,7 +2,7 @@ module gunbc.spark.fabric_reach
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.algebra { trim }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.network.ipv4 { render_ipv4_address }
 import extdeps.exec.command { LocalExec }
 import extdeps.tools.hostname { hostname_read_command }

@@ -2,7 +2,7 @@ module gunbc.spark.systemd_execution_cell
 
 import std.types { Bool, String, NonEmptyStr, List, Port }
 import std.nat { Nat }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.exec.command { shell_quote }
 import gunbc.spark.execution_cell {
   ExecutionCellPhase, CellPhaseInventory, CellPhaseQuiescence, CellPhaseDisposal, CellPhaseSettlement,

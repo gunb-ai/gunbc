@@ -3,7 +3,7 @@ module gunbc.spark.standing_host_effect_recover
 import std.types { String, Bool, List, NonEmptyStr, EpochSecs }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import v2.std.optional { Present, Absent }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import product.capacity.event_chain { EventId }
 import gunbc.auth.standing_operator_grant { StandingOperatorGrant, standing_grant_covers, StandingHostEffectRecover }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, fabric_group_of_host, fabric_group_wire }

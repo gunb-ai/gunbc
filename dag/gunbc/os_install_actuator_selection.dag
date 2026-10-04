@@ -15,7 +15,7 @@ import product.network_topology {
   network_reachability,
   Lan,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.bmc.os_install_actuator_toolchain {
   ActuatorToolchainRequirement,
   os_install_actuator_toolchain_requirement,

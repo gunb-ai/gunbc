@@ -81,7 +81,7 @@ import gunbc.spark.managed_grant_reconcile {
   spark_managed_grant_dropin_path,
   spark_managed_grant_sudoers_content,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.host_effect_realize { HostEffectTransport, FleetSsh }

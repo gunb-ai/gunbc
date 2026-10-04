@@ -6,7 +6,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.mkdir { mkdir_parents_command }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.command_runner { run_shell_commands, LocalExec }
 import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
 import gunbc.host_effect { LocalShell }

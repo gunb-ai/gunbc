@@ -4,7 +4,7 @@ import std.types { Bool, NonEmptyStr, String, List }
 import std.nat { Nat }
 import std.scoped_authorization { AttemptIdentity }
 import product.fabric.identity { FabricIdentity, WorkKey }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import std.measure {
   ObservationInstant, SharedMonotonic, WallClock, CpuClock, ClockBasis,
   nanosecond, nanosecond_count, hardware_thread_count, measure_count,

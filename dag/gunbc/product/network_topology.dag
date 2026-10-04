@@ -1,6 +1,7 @@
 module product.network_topology
 
-import product.placement_supply { HostIdentity, PhysicalAssetIdentity }
+import product.placement_supply { PhysicalAssetIdentity }
+import product.host_identity { HostIdentity }
 import std.measure { Bandwidth }
 import std.types { NonEmptyStr, Bool, List }
 import std.cache_interface { ReadLatencyClass }

@@ -120,7 +120,8 @@ import gunbc.install_transport_qualification {
   UsbGadgetFrameworkPresent,
   target_bound_reinstall_path,
 }
-import product.placement_supply { HostIdentity, SiteIdentity }
+import product.placement_supply { SiteIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.network_boot_delivery {
   ArchitectureChainloader,
   ControlledNetworkTrustObservation,

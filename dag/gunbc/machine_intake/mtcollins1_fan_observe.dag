@@ -7,7 +7,7 @@ import std.types { Int, List, NonEmptyStr, String }
 import std.measure { ObservationRoundCount, Second, observation_round_count, percent, second, second_count }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import product.fan_policy_standing {
   FanDutyCeilingVerdict,
   ExcursionBound,

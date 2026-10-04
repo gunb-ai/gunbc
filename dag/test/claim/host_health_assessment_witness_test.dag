@@ -2,7 +2,7 @@ module test.claim.host_health_assessment_witness
 
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.measure { celsius }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import product.fan_tach { FanTachWindow }
 import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
 import gunbc.fleet_fan_tach_expectation { srv1_fan_tach_expectation, srv2_fan_tach_expectation }

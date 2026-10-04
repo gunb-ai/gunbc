@@ -19,7 +19,7 @@ import extdeps.vllm.usage_stats {
   VllmUsageStatsLaunchStanding, UsageStatsDisabledByLaunch, UsageStatsEnabledByDefault,
   UsageStatsLaunchUnread, vllm_usage_stats_disable_assignment_wire, vllm_usage_stats_reporting,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.spark.fabric_switch_observed { FabricGroupA }
 import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch, vllm_endpoint_process_launch }
 import gunbc.spark.vllm_serving_launch {

@@ -19,7 +19,7 @@ import std.goal_assessment {
   ObservationRefused,
 }
 import v2.std.algebra { non_empty_to_list }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_intent { ComputeHost, fleet_intent_known_hosts }
 import gunbc.fleet_fan_tach_expectation {
   HostFanTachExpectationAbsent,

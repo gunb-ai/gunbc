@@ -1,7 +1,7 @@
 module test.claim.installed_bom_reconcile_witness_test
 
 import std.types { Bool, Int, List, NonEmptyStr }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import product.installed_bom_reconcile {
   AtPopulationGrain,
   AtSlot,

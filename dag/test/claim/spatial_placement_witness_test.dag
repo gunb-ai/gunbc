@@ -1,7 +1,6 @@
 module test.claim.spatial_placement
 
 import product.placement_supply {
-  HostIdentity,
   PhysicalAssetIdentity,
   SiteIdentity,
   RackIdentity,
@@ -39,6 +38,7 @@ import product.placement_supply {
   wifi_bootstrap_chain_admissible,
   host_spatial_facts_for,
 }
+import product.host_identity { HostIdentity }
 import std.types { NonEmptyStr, List }
 import gunbc.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet_physical_inventory {

@@ -5,7 +5,7 @@ import std.content_hash { ContentHash }
 import std.temporal_effect { HeldLease, HeldLeaseObservedState, held_lease_observed_verdict }
 import std.upsert_decision { ObservationVerdict, Converged, Absent, Drifted, Conflict, Inaccessible, UnknownRefused }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, fabric_group_wire, fabric_group_hosts }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.spark.released_baseline { ReleasedBaselineSpec }
 
 // WHOSE HOSTS WE CLAIM AND WHAT WE MAY DO WITH THEM ARE TWO QUESTIONS WITH ONE ANSWER, AND IT IS HERE.

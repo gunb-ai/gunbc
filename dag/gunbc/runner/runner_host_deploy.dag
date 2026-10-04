@@ -18,7 +18,7 @@ import extdeps.cache.sccache { SccacheBinaryRelease, sccache_release_0_15_0, scc
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.container.docker_ce { docker_ce_apt_repo_noble_arm64, docker_ce_packages, docker_ce_repo_install_script }
 import gunbc.fleet_intent { fleet_intent_known_hosts }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.build_cache_instance { runner_slot_index_suffix, RunnerSlotIdentity }
 import gunbc.runner_unit { runner_unit_name_of_registration }
 import gunbc.runner_slot_allocation {

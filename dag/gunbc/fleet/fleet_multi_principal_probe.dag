@@ -37,7 +37,7 @@ import gunbc.fleet_ssh_credential_verify {
 import extdeps.ssh.session { ssh_session_exec_portable_words }
 import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.auth.access_token_source { GcloudPrintToken }
 import gunbc.spark.credential_workflow { run_with_materialized_fleet_ssh_binding, spark_administrator_credential_roster_hosts }
 import gunbc.fleet_ssh_access { fleet_automation_ssh_key, fleet_automation_ssh_key_fingerprint }
@@ -59,7 +59,7 @@ import gunbc.spark.managed_access_bootstrap {
 }
 import gunbc.spark.managed_grant_reconcile { spark_managed_grant_report }
 import gunbc.spark.managed_access_bootstrap { SparkGrantOutcome, GrantEnumerated, GrantAbsent, GrantProbeRefused }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
 
 // READ-ONLY measurement (parent msg_e767a783): before anyone grants new access, measure

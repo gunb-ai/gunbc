@@ -4,7 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr, Int, Secret }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { ContentHash, serialize_content_hash }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { shell_quote }
 import extdeps.ssh { ssh_public_key_line }

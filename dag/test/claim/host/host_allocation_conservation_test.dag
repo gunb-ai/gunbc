@@ -10,7 +10,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, Bool, Int, List }
 import std.measure { ByteSize, byte_size, hardware_thread_count_value }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.live_deploy.served_slice_charge { host_served_deployment_claim, HostServedDeploymentClaim, ServedDeploymentNotPlaced, ServedDeploymentClaimResolved, ServedDeploymentClaimUnmeasured }
 import gunbc.fleet_host_budget {

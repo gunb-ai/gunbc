@@ -2,7 +2,7 @@ module gunbc.operator_fan_declaration
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 
 // WHAT AN OPERATOR SAID, AS A FACT THE COMPILER CAN READ. This module exists because six wiring
 // rows carried an operator's part declaration with the declarant, the date, the quotation and the

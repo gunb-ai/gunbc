@@ -19,7 +19,7 @@ import extdeps.ollama.binary_release {
   OllamaBinaryRelease, ollama_binary_release_for_observed_asset_digest,
   ollama_reported_version_matches_release,
 }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import std.measure {
   ByteSize, byte_size, byte_size_count,
   TokenCount, token_count, token_count_value,

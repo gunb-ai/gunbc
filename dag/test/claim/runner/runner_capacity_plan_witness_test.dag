@@ -40,7 +40,7 @@ import gunbc.fleet_runner_connectivity {
   OrganizationRunnerRosterEvidence,
 }
 import std.types { String, NonEmptyStr, Int, List }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_host_identity { operator_host_srv2 }
 import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration, GitHubRunnerOnline }
 import gunbc.runner_capacity_plan {

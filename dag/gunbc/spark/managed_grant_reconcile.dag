@@ -2,7 +2,7 @@ module gunbc.spark.managed_grant_reconcile
 
 import std.types { String, NonEmptyStr, List, Bool }
 import std.algebra { trim }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.spark.managed_access_bootstrap {
   SparkManagedGrant,
   EnableLingerForOwnAccount,

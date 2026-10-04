@@ -1,7 +1,7 @@
 module gunbc.runner_throughput_selection
 
 import std.types { NonEmptyStr }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import product.fabric.work { ExecutionRequirements }
 import product.fabric.supply { SupplierOffer }
 import gunbc.runner_slot_allocation { gunbc_floor_minimum_viable_armed_budget, gunbc_runner_cores_per_slot }

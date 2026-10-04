@@ -22,7 +22,7 @@ import gunbc.frontend_eval.experiment {
 import extdeps.zhipu.glm_5_3_flash { GlmReasoningEffort, GlmEffortLow, GlmEffortMax }
 import gunbc.frontend_eval.serving_identity { RealizedServing, ObservedServing, RuntimeUnobserved, realized_serving_identity }
 import gunbc.spark.vllm_observed { vllm_models_route_readback, vllm_models_entry_created, vllm_self_reported_version }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.frontend_eval.card { frontend_language_card }
 import gunbc.frontend_eval.control { RefusalStageRead, StageRead, StageUnclassified, refusal_stage, refusal_names, mutation_site_occurrences, test_fns }
 import std.measure { millisecond, token_count, token_count_value }

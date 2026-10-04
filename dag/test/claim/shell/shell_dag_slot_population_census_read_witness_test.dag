@@ -1,7 +1,7 @@
 module test.claim.shell.shell_dag_slot_population_census_read_witness_test
 
 import std.types { Bool, String, List }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.host_effect { EmitArtifactThenThinRun, BootstrapFragment, ThinInvocation, HostEffectTransport }
 import gunbc.host_effect_realize { observe_slot_population_over_host_effect_transport }
 import gunbc.runner_slot_population_census { SlotCensus, CensusRefused, slot_census_from_command_outcome }

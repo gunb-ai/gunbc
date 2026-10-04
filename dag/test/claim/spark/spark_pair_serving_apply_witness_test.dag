@@ -1,7 +1,7 @@
 module test.claim.spark.spark_pair_serving_apply_witness
 
 import std.types { Bool, List, NonEmptyStr, String, EpochSecs }
-import product.placement_supply { host_identity_eq }
+import product.host_identity { host_identity_eq }
 import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
 import gunbc.spark.pair_serving_realization { spark_pair_realizations }
 import gunbc.spark.pair_serving_apply {
