@@ -58,12 +58,13 @@ import gunbc.spark.serving_rank_observe {
   rank_observation_refusal_text,
 }
 import gunbc.spark.serving_relaunch_transaction {
-  relaunch_delta, delta_comparisons, delta_unclaimed_env,
+  relaunch_delta, delta_comparisons, delta_unclaimed_env, observed_env_assignments,
   FieldComparison, FieldAgrees, FieldDiffersOnAxis, FieldDiffersOffAxis, FieldUnreadable,
   field_comparison_text, relaunch_delta_text,
 }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text, json_field_string, json_field_string_list, json_field_value }
 import extdeps.nvidia.nccl { NcclTransportReading, NcclTransportIbVerbs, NcclTransportSocket }
-import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, HostCli }
+import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, HostCli, spark_remote_run, SparkRemoteRun, RemoteRan, RemoteUnreachable }
 import gunbc.spark.serving_arm { glm_native_concurrent_profile, ServingLaunchProfile }
 import gunbc.spark.native_serving_realization { glm_native_launch_lines, glm_native_master_endpoint }
 import std.nat { Nat }
@@ -1412,17 +1413,58 @@ fn spark_native_readback_disagreements(comparisons: List<FieldComparison>) -> Li
 // own trigger -- resolve the reference on the host first -- not a silently skipped field. Leaving the
 // image uncompared is what this whole change exists to stop: it is the field that was about to
 // relaunch Group B onto a 2026-09-12 build.
-fn spark_native_image_readback_gap(spec: DockerCreateSpec, observed: ContainerInspect) -> List<String> {
-  if !string_contains(s: spec.image as String, pattern: "sha256:") {
-    [join([
-      "the planned image reference ", spec.image as String,
-      " is not a bare content id, so it is not literally comparable to the content id the daemon reports;",
-      " resolving it on the host first is the declared trigger on gunbc.spark.serving_relaunch_transaction's image row",
-    ], "")]
-  } else if observed.image == (spec.image as String) {
-    []
-  } else {
-    [join(["the answering container was created from image ", observed.image, " and the plan names ", spec.image as String], "")]
+// THE IMAGE THE CONTAINER RUNS, READ ONCE IN THE ADMINISTRATOR SESSION: its content id and its own
+// Config.Env, from `docker image inspect` of the PLANNED reference. A planned tag is resolved here, which
+// is the declared trigger on gunbc.spark.serving_relaunch_transaction's image row; a bare id resolves to
+// itself. The env is what makes an image-inherited assignment distinguishable from an unplanned one.
+type SparkNativeImageFacts
+  = ImageFactsRead { id: String, env: List<String> }
+  | ImageFactsUnread { cause: String }
+
+fn spark_native_image_facts(ctx: SparkMaterializeContext, reference: NonEmptyStr) -> SparkNativeImageFacts {
+  match spark_remote_run(ctx: ctx, argv: ["docker", "image", "inspect", "--format", "\{\"Id\":\{\{json .Id}},\"Env\":\{\{json .Config.Env}}}", reference as String]) {
+    RemoteUnreachable { cause: c } => ImageFactsUnread { cause: join(["docker image inspect ", reference as String, " was not run: ", c], "") }
+    RemoteRan { exit_code: code, stdout: out, stderr: err } =>
+      if code != 0 { ImageFactsUnread { cause: join(["docker image inspect ", reference as String, " exited ", to_string(code), ": ", trim(s: err)], "") } }
+      else {
+        match parse_json_document(s: trim(s: out)) {
+          JsonDocumentUnreadable { gap: g } => ImageFactsUnread { cause: join(["the image inspect of ", reference as String, " is not a JSON document: ", json_document_gap_text(gap: g)], "") }
+          JsonDocumentParsed { value: v } =>
+            match json_field_value(r: json_field_string(obj: v, key: "Id")) {
+              Absent => ImageFactsUnread { cause: join(["the image inspect of ", reference as String, " reports no Id"], "") }
+              Present { value: id } =>
+                match json_field_value(r: json_field_string_list(obj: v, key: "Env")) {
+                  Absent => ImageFactsUnread { cause: join(["the image inspect of ", reference as String, " reports no Config.Env, so which assignments it declares is unread"], "") }
+                  Present { value: env } => ImageFactsRead { id: id, env: env }
+                }
+            }
+        }
+      }
+  }
+}
+
+// THE IMAGE GAP: the container must have been created from the image the plan resolves to. Refused
+// BEFORE any environment comparison, because an image's env only explains a container created from it.
+fn spark_native_image_readback_gap(spec: DockerCreateSpec, observed: ContainerInspect, facts: SparkNativeImageFacts) -> List<String> {
+  match facts {
+    ImageFactsUnread { cause: c } => [join(["the planned image could not be read on this host, so neither the image nor its inherited environment is established: ", c], "")]
+    ImageFactsRead { id: id, env: _ } =>
+      if observed.image == id { [] }
+      else { [join(["the answering container was created from image ", observed.image, " and the plan's ", spec.image as String, " resolves on this host to ", id], "")] }
+  }
+}
+
+// ASSIGNMENTS NOBODY PLANNED: an observed NAME=VALUE whose name the spec does not claim and which is not
+// identical to an assignment in the image's own Config.Env. Inherited means the same assignment; a name the
+// image declares with a DIFFERENT observed value is an override nobody planned and still refuses.
+fn spark_native_unplanned_assignments(observed: ContainerInspect, unclaimed_names: List<String>, image_env: List<String>) -> List<String> {
+  match observed_env_assignments(c: observed) {
+    Absent => map(unclaimed_names, n => join([n, " (container env unread)"], ""))
+    Present { value: assignments } =>
+      filter(assignments, a => {
+        let name = match split(s: a, delimiter: "=") |> first { Present { value: n } => n, Absent => a }
+        count(filter(unclaimed_names, n => n == name)) > 0 && count(filter(image_env, e => e == a)) == 0
+      })
   }
 }
 
@@ -1438,16 +1480,20 @@ fn spark_native_rank_readback(ctx: SparkMaterializeContext, step: SparkNativeHos
         Present { value: incarnation } => {
           let delta = relaunch_delta(spec: step.launch.container, observed: c, gid_selection: arm_rail_gid_selection)
           let disagreeing = spark_native_readback_disagreements(comparisons: delta_comparisons(d: delta))
-          let unclaimed = delta_unclaimed_env(d: delta)
-          let image_gap = spark_native_image_readback_gap(spec: step.launch.container, observed: c)
-          if count(disagreeing) > 0 || count(unclaimed) > 0 {
+          let facts = spark_native_image_facts(ctx: ctx, reference: step.launch.container.image)
+          let image_gap = spark_native_image_readback_gap(spec: step.launch.container, observed: c, facts: facts)
+          let unplanned = match facts {
+            ImageFactsRead { id: _, env: image_env } => spark_native_unplanned_assignments(observed: c, unclaimed_names: delta_unclaimed_env(d: delta), image_env: image_env)
+            ImageFactsUnread { cause: _ } => [] as List<String>
+          }
+          if count(image_gap) > 0 {
+            NativeRankRefused { host: step.host, cause: join(image_gap, "; ") }
+          } else if count(disagreeing) > 0 || count(unplanned) > 0 {
             NativeRankRefused { host: step.host, cause: join([
               "the realized container is not the planned one: ",
               join(map(disagreeing, fc => field_comparison_text(c: fc)), "; "),
-              if count(unclaimed) > 0 { join(["; environment assignments nobody planned: ", join(unclaimed, ", ")], "") } else { "" },
+              if count(unplanned) > 0 { join(["; environment assignments neither planned nor inherited unchanged from the image: ", join(unplanned, ", ")], "") } else { "" },
             ], "") }
-          } else if count(image_gap) > 0 {
-            NativeRankRefused { host: step.host, cause: join(image_gap, "; ") }
           } else if incarnation.node_rank != step.launch.node.node_rank {
             NativeRankRefused { host: step.host, cause: join([
               "this host is declared rank ", to_string(step.launch.node.node_rank),
