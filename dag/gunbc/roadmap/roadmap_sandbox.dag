@@ -1,4 +1,6 @@
 module gunbc.roadmap_sandbox
+import gunbc.site.document { SiteStyles, site_document }
+import gunbc.site.document { SiteStyles, SiteThemeDecls, site_styles_css, site_extend_styles }
 
 import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, NodeInProgress, EventPrincipalAuthenticated }
 import gunbc.principal_projection { fabric_workflow_principal }
@@ -8,7 +10,8 @@ import gunbc.harness.harness_throughput {
 import gunbc.harness.harness_throughput { RoundObservation, RoundsObserved }
 import std.markup { Fragment, Element, FragmentText, RawNode, Attribute, attr }
 import gunbc.site.markup { txt, el, el_class, el_attrs }
-import gunbc.roadmap_page { roadmap_header, render_task_row, node_li_attributes, workspace_entries_ul, round_strip_nodes }
+import gunbc.roadmap_page { render_task_row, node_li_attributes, workspace_entries_ul, round_strip_nodes }
+import gunbc.site.document { site_header }
 import gunbc.roadmap.roadmap_project { membership_index }
 import gunbc.roadmap_presentation {
   WorkRowView, ActivityView, NoDisclosure,
@@ -25,7 +28,7 @@ import gunbc.roadmap_workflow_stage {
   GoalAuditWorkflowSegment,
 }
 import gunbc.worker_lifecycle { WorkerProcessExited }
-import gunbc.roadmap_style { roadmap_css, workspace_band_paints }
+import gunbc.roadmap_style { roadmap_styles, roadmap_styles, roadmap_css, workspace_band_paints }
 import gunbc.design.material { BuildRule, StaticRule, CssDecl, decl, serialize_rules, Material, paint }
 import gunbc.design.theme {
   ThemeRole, theme_roles, role_key, role_var, role_decl,
@@ -35,7 +38,7 @@ import gunbc.design.theme {
 import gunbc.design.scale {
   ScaleToken, spacing_scale, type_scale, font_stack, dimension_scale,
   scale_var, scale_pair, scale_border, scale_value_wire,
-  space_2, space_6, space_8, space_16, space_24, text_12, font_mono, radius_3, border_1, measure_page,
+  space_2, space_6, space_8, space_16, space_24, text_12, font_mono, radius_surface, border_1, measure_page,
 }
 import gunbc.design.component { ComponentState, component_terminal_states }
 import gunbc.roadmap_component { strip_lab_replay_class, strip_lab_slow_class, strip_lab_section_class }
@@ -106,7 +109,7 @@ fn sandbox_rules() -> List<BuildRule> {
       decl(prop: Display, value: "inline-block"),
       decl(prop: Width, value: scale_var(t: space_24)),
       decl(prop: Height, value: scale_var(t: space_24)),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
       decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
     ] },
     StaticRule { selector: ClassSelector { name: "role-name" }, decls: [
@@ -154,7 +157,7 @@ fn sandbox_rules() -> List<BuildRule> {
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: FontSize, value: scale_var(t: text_10)),
       decl(prop: Padding, value: scale_pair(a: space_1, b: space_6)),
-      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
     ] },
   ]
 }
@@ -188,9 +191,7 @@ fn fixture_frame_rules() -> List<BuildRule> {
   ]
 }
 
-fn sandbox_css() -> String {
-  join([roadmap_css(), serialize_rules(rules: concat(sandbox_rules(), fixture_frame_rules()))], "\n")
-}
+
 
 fn role_swatch(theme: Theme, role: ThemeRole) -> Fragment {
   Element {
@@ -572,13 +573,13 @@ fn instrument_labs_section() -> Fragment {
 }
 
 fn sandbox_page() -> Fragment {
-  sandbox_page_with_stylesheet(stylesheet: sandbox_css())
+  sandbox_page_with_stylesheet(stylesheet: sandbox_styles())
 }
 
 // The supplied-stylesheet seam: the sandbox page fold with only the head's style text handed in, so
 // a claim about the gallery or the live instances does not pay for a stylesheet it never reads.
 // sandbox_page passes sandbox_css(); a claim about the stylesheet reads sandbox_css directly.
-fn sandbox_page_with_stylesheet(stylesheet: String) -> Fragment {
+fn sandbox_page_with_stylesheet(stylesheet: SiteStyles) -> Fragment {
   sandbox_page_with(stylesheet: stylesheet, sections: sandbox_sections())
 }
 
@@ -599,38 +600,29 @@ fn sandbox_sections() -> List<Fragment> {
 
 // The page fold over supplied sections: the header, the auditioner bar, the sections and the client
 // asset. A claim about one section reads it through this fold without building the other seven.
-fn sandbox_page_with(stylesheet: String, sections: List<Fragment>) -> Fragment {
-  Element {
-    tag: "html",
-    attributes: [],
-    children: [
-      el("head", [
-        Element { tag: "meta", attributes: [ attr(name: "charset", value: "utf-8" ) ], children: [] },
-        el("style", [ txt(stylesheet) ]),
-        el("title", [ txt("gunbc — sandbox") ]),
-      ]),
-      el("body", [
-        roadmap_header(page: "sandbox"),
-        el_class("div", "auditioner-bar", concat(
+fn sandbox_page_with(stylesheet: SiteStyles, sections: List<Fragment>) -> Fragment {
+  site_document(title: "gunbc — sandbox", heading: "sandbox", styles: stylesheet, content: [
+el_class("div", "auditioner-bar", concat(
           [ el_attrs("button", [
               attr(name: "class", value: swatch_toggle_class ),
               attr(name: "type", value: "button" ),
             ], []) ],
           map(workspace_band_paints(), p => band_chip(key: p.key)))),
-        el_class("main", "sandbox", sections),
-        Element {
+el_class("main", "sandbox", sections),
+Element {
           tag: "script",
           attributes: [
             attr(name: "src", value: sandbox_asset_path ),
             attr(name: "defer", value: "" ),
           ],
           children: [],
-        },
-      ]),
-    ],
-  }
+        }
+])
 }
 
 fn sandbox_gallery_terminal_labels() -> List<String> {
   map(component_terminal_states(c: dispatch_button_component()), s => s.key)
 }
+
+fn sandbox_styles() -> SiteStyles { site_extend_styles(base: roadmap_styles(), rules: concat(sandbox_rules(), fixture_frame_rules())) }
+fn sandbox_css() -> String { site_styles_css(styles: sandbox_styles()) }

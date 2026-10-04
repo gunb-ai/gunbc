@@ -1,0 +1,29 @@
+module gunbc.site.brand
+import std.types { String, List }
+import std.markup { Fragment, attr }
+import gunbc.site.markup { el_attrs }
+import gunbc.site.robot_mark { robot_mark_svg, robot_mark_ink, robot_mark_badge_background }
+import gunbc.design.palette { swatch_paint }
+import gunbc.site.avatar_marks { avatar_robot_face }
+import extdeps.languages.html { serialize_html_source }
+import extdeps.http.server { MediaType, TopLevelImage }
+
+data site_favicon_path: String = "/favicon.svg"
+data site_favicon_type: MediaType = MediaType { top_level: TopLevelImage, subtype: "svg+xml", parameters: [] }
+
+fn site_brand_link() -> Fragment {
+  el_attrs("a", [attr(name: "class", value: "site-brand"), attr(name: "href", value: "/"), attr(name: "aria-label", value: "gunb · workspace"), attr(name: "title", value: "Open workspace")], [robot_mark_svg(class_name: "site-brand-mark", label: "gunb")])
+}
+
+// The favicon reuses the brand geometry on a fixed neutral badge for browser chrome.
+fn site_favicon_source() -> String {
+  let svg = el_attrs("svg", [attr(name: "xmlns", value: "http://www.w3.org/2000/svg"), attr(name: "viewBox", value: "0 0 128 128"), attr(name: "color", value: swatch_paint(sw: robot_mark_ink))], [
+    el_attrs("rect", [attr(name: "width", value: "128"), attr(name: "height", value: "128"), attr(name: "rx", value: "28"), attr(name: "fill", value: swatch_paint(sw: robot_mark_badge_background))], []),
+    el_attrs("g", [attr(name: "transform", value: "translate(10 12) scale(.9)")], [avatar_robot_face(antenna: true)]),
+  ])
+  serialize_html_source(node: svg)
+}
+
+fn site_favicon_nodes() -> List<Fragment> {
+  [el_attrs("link", [attr(name: "rel", value: "icon"), attr(name: "type", value: "image/svg+xml"), attr(name: "sizes", value: "any"), attr(name: "href", value: site_favicon_path)], [])]
+}

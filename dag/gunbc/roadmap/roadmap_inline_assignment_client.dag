@@ -9,7 +9,7 @@ import extdeps.languages.typescript.program {
 // Both assignment surfaces consume the same session-bound context and existing POST.
 // Cookies and CSRF travel together; recorded-but-refused launch responses stay visible
 // on the affected issue. No automatic retry duplicates a consequential request.
-// THE SESSION STANDING rides THE ONE SESSION READ (gunbc.roadmap_session_client's
+// THE SESSION STANDING rides THE ONE SESSION READ (gunbc.site.session_client's
 // gunbcSessionRead — the assignment client never fetches /auth/session itself): the shared
 // read's rejection lands in this catch, which disables every assignment control with the
 // session-unavailable title; the CSRF token still comes from the /assignment context alone.
@@ -17,6 +17,7 @@ fn inline_assignment_bind_statements() -> List<TsStmt> {
   [
     ts_const(name: "assignmentButtons", value: ts_call(callee: ts_member(object: ts_ident(name: "Array"), property: "from"), args: [ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"), args: [ts_lit_str(value: ".issue-inline-assign")])])),
     ts_const(name: "assignmentForms", value: ts_call(callee: ts_member(object: ts_ident(name: "Array"), property: "from"), args: [ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"), args: [ts_lit_str(value: ".issue-assign-form")])])),
+    ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "assignmentForms"), property: "forEach"), args: [ts_arrow(params: ["form"], body: ts_block(stmts: [ts_const(name: "submit", value: ts_call(callee: ts_member(object: ts_ident(name: "form"), property: "querySelector"), args: [ts_lit_str(value: "[type=\"submit\"]")])), ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "form"), property: "addEventListener"), args: [ts_lit_str(value: "site-choice"), ts_arrow(params: ["event"], body: ts_block(stmts: [ts_const(name: "workflow", value: ts_member(object: ts_member(object: ts_ident(name: "event"), property: "detail"), property: "workflow")), ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "submit"), property: "hidden"), op: "=", right: ts_prefix(op: "!", expr: ts_ident(name: "workflow")))), ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "submit"), property: "textContent"), op: "=", right: ts_cond(test: ts_ident(name: "workflow"), consequent: ts_lit_str(value: "Assign and dispatch"), alternate: ts_lit_str(value: "Assign")))), ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "workflow")), then: ts_block(stmts: [ts_if(cond: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "submit"), property: "disabled")), then: ts_block(stmts: [ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "form"), property: "requestSubmit"), args: [ts_ident(name: "submit")]))]), else_stmt: none)]), else_stmt: none)]))]))]))])),
     ts_const(name: "assignmentResult", value: ts_arrow(params: ["container"], body: ts_block(stmts: [
             ts_let(name: "result", value: ts_call(callee: ts_member(object: ts_ident(name: "container"), property: "querySelector"), args: [ts_lit_str(value: ".issue-inline-result")])),
             ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "result")), then: ts_block(stmts: [
@@ -50,88 +51,7 @@ fn inline_assignment_bind_statements() -> List<TsStmt> {
                 ]))]) })
     ]))),
     ts_const(name: "assignmentSetSession", value: ts_arrow(params: ["session"], body: ts_block(stmts: [
-            ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "assignmentButtons"), property: "forEach"), args: [ts_arrow(params: ["button"], body: ts_block(stmts: [
-                        ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "button"), property: "disabled"), op: "=", right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "session"), property: "authenticated")))),
-                        ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "button"), property: "title"), op: "=", right: ts_cond(test: ts_member(object: ts_ident(name: "session"), property: "authenticated"), consequent: ts_lit_str(value: "Assign this issue"), alternate: ts_lit_str(value: "Sign in to assign this issue.")))),
-                        ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "button"), property: "addEventListener"), args: [ts_lit_str(value: "click"), ts_arrow(params: [], body: ts_block(stmts: [
-                                    ts_const(name: "row", value: ts_call(callee: ts_member(object: ts_ident(name: "button"), property: "closest"), args: [ts_lit_str(value: "li.node")])),
-                                    ts_const(name: "cell", value: ts_member(object: ts_ident(name: "button"), property: "parentElement")),
-                                    ts_const(name: "path", value: ts_binop(left: ts_lit_str(value: "/issue/"), op: "+", right: ts_call(callee: ts_ident(name: "encodeURIComponent"), args: [ts_member(object: ts_member(object: ts_ident(name: "button"), property: "dataset"), property: "assignNode")]))),
-                                    ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "button"), property: "disabled"), op: "=", right: ts_ident(name: "true"))),
-                                    ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "button"), property: "title"), op: "=", right: ts_lit_str(value: "Loading assignees…"))),
-                                    ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_call(callee: ts_member(object: ts_cond(test: ts_member(object: ts_ident(name: "button"), property: "assignmentPendingContext"), consequent: ts_call(callee: ts_member(object: ts_ident(name: "Promise"), property: "resolve"), args: [ts_member(object: ts_ident(name: "button"), property: "assignmentPendingContext")]), alternate: ts_call(callee: ts_ident(name: "assignmentContext"), args: [ts_ident(name: "path")])), property: "then"), args: [ts_arrow(params: ["context"], body: ts_block(stmts: [
-                                                    ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "button"), property: "assignmentPendingContext"), op: "=", right: ts_ident(name: "context"))),
-                                                    ts_const(name: "select", value: ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "createElement"), args: [ts_lit_str(value: "select")])),
-                                                    ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "select"), property: "className"), op: "=", right: ts_lit_str(value: "issue-inline-picker"))),
-                                                    ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "select"), property: "setAttribute"), args: [ts_lit_str(value: "aria-label"), ts_lit_str(value: "Choose assignee")])),
-                                                    ts_const(name: "placeholder", value: ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "createElement"), args: [ts_lit_str(value: "option")])),
-                                                    ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "placeholder"), property: "textContent"), op: "=", right: ts_lit_str(value: "Assign to…"))),
-                                                    ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "placeholder"), property: "value"), op: "=", right: ts_lit_str(value: ""))),
-                                                    ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "select"), property: "appendChild"), args: [ts_ident(name: "placeholder")])),
-                                                    ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_member(object: ts_ident(name: "context"), property: "options"), property: "forEach"), args: [ts_arrow(params: ["choice"], body: ts_block(stmts: [
-                                                                ts_const(name: "option", value: ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "createElement"), args: [ts_lit_str(value: "option")])),
-                                                                ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "option"), property: "value"), op: "=", right: ts_member(object: ts_ident(name: "choice"), property: "value"))),
-                                                                ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "option"), property: "textContent"), op: "=", right: ts_member(object: ts_ident(name: "choice"), property: "label"))),
-                                                                ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "option"), property: "disabled"), op: "=", right: ts_binop(left: ts_binop(left: ts_member(object: ts_ident(name: "choice"), property: "disabled"), op: "===", right: ts_ident(name: "true")), op: "||", right: ts_binop(left: ts_member(object: ts_ident(name: "context"), property: "pendingAssignee"), op: "&&", right: ts_binop(left: ts_member(object: ts_ident(name: "context"), property: "pendingAssignee"), op: "!==", right: ts_member(object: ts_ident(name: "choice"), property: "value")))))),
-                                                                ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "select"), property: "appendChild"), args: [ts_ident(name: "option")]))
-                                                    ]))])),
-                                                    ts_let(name: "closed", value: ts_ident(name: "false")),
-                                                    ts_const(name: "close", value: ts_arrow(params: [], body: ts_block(stmts: [
-                                                            ts_if(cond: ts_ident(name: "closed"), then: ts_block(stmts: [
-                                                                  ts_return(expr: none)
-                                                              ]), else_stmt: none),
-                                                            ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "closed"), op: "=", right: ts_ident(name: "true"))),
-                                                            ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "select"), property: "remove"), args: [])),
-                                                            ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "button"), property: "hidden"), op: "=", right: ts_ident(name: "false"))),
-                                                            ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "button"), property: "disabled"), op: "=", right: ts_ident(name: "false"))),
-                                                            ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "button"), property: "title"), op: "=", right: ts_lit_str(value: "Assign this issue"))),
-                                                            ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "button"), property: "focus"), args: []))
-                                                    ]))),
-                                                    ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "select"), property: "addEventListener"), args: [ts_lit_str(value: "keydown"), ts_arrow(params: ["event"], body: ts_block(stmts: [
-                                                                ts_if(cond: ts_binop(left: ts_member(object: ts_ident(name: "event"), property: "key"), op: "===", right: ts_lit_str(value: "Escape")), then: ts_block(stmts: [
-                                                                      ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "close"), args: []))
-                                                                  ]), else_stmt: none)
-                                                    ]))])),
-                                                    ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "select"), property: "addEventListener"), args: [ts_lit_str(value: "blur"), ts_arrow(params: [], body: ts_block(stmts: [
-                                                                ts_if(cond: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "select"), property: "disabled")), then: ts_block(stmts: [
-                                                                      ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "close"), args: []))
-                                                                  ]), else_stmt: none)
-                                                    ]))])),
-                                                    ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "select"), property: "addEventListener"), args: [ts_lit_str(value: "change"), ts_arrow(params: [], body: ts_block(stmts: [
-                                                                ts_if(cond: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "select"), property: "value")), then: ts_block(stmts: [
-                                                                      ts_return(expr: none)
-                                                                  ]), else_stmt: none),
-                                                                ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "context"), property: "pendingAssignee"), op: "=", right: ts_member(object: ts_ident(name: "select"), property: "value"))),
-                                                                ts_const(name: "choice", value: ts_call(callee: ts_member(object: ts_member(object: ts_ident(name: "context"), property: "options"), property: "find"), args: [ts_arrow(params: ["option"], body: ts_block(stmts: [
-                                                                            ts_return(expr: Present { value: ts_binop(left: ts_member(object: ts_ident(name: "option"), property: "value"), op: "===", right: ts_member(object: ts_ident(name: "select"), property: "value")) })
-                                                                ]))])),
-                                                                ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "select"), property: "disabled"), op: "=", right: ts_ident(name: "true"))),
-                                                                ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_call(callee: ts_member(object: ts_call(callee: ts_ident(name: "assignmentPost"), args: [ts_ident(name: "path"), ts_ident(name: "context"), ts_member(object: ts_ident(name: "select"), property: "value"), ts_ident(name: "row")]), property: "then"), args: [ts_arrow(params: ["recorded"], body: ts_block(stmts: [
-                                                                                ts_if(cond: ts_ident(name: "recorded"), then: ts_block(stmts: [
-                                                                                      ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "button"), property: "assignmentPendingContext"), op: "=", right: ts_ident(name: "null"))),
-                                                                                      ts_if(cond: ts_member(object: ts_ident(name: "choice"), property: "chip_html"), then: ts_block(stmts: [
-                                                                                            ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "button"), property: "innerHTML"), op: "=", right: ts_member(object: ts_ident(name: "choice"), property: "chip_html")))
-                                                                                        ]), else_stmt: Present { value: ts_block(stmts: [
-                                                                                              ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "button"), property: "textContent"), op: "=", right: ts_member(object: ts_ident(name: "choice"), property: "label")))
-                                                                                          ]) }),
-                                                                                      ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_member(object: ts_ident(name: "cell"), property: "dataset"), property: "sortValue"), op: "=", right: ts_member(object: ts_ident(name: "choice"), property: "label")))
-                                                                                  ]), else_stmt: none),
-                                                                                ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "close"), args: []))
-                                                                      ]))]), property: "catch"), args: [ts_arrow(params: ["error"], body: ts_block(stmts: [
-                                                                            ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_call(callee: ts_ident(name: "assignmentResult"), args: [ts_ident(name: "row")]), property: "textContent"), op: "=", right: ts_binop(left: ts_binop(left: ts_lit_str(value: "Could not confirm assignment: "), op: "+", right: ts_member(object: ts_ident(name: "error"), property: "message")), op: "+", right: ts_lit_str(value: ". Retry the same assignment to confirm its original result; reload before changing it.")))),
-                                                                            ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "close"), args: []))
-                                                                ]))]))
-                                                    ]))])),
-                                                    ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "button"), property: "hidden"), op: "=", right: ts_ident(name: "true"))),
-                                                    ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "cell"), property: "appendChild"), args: [ts_ident(name: "select")])),
-                                                    ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "select"), property: "focus"), args: []))
-                                          ]))]), property: "catch"), args: [ts_arrow(params: ["error"], body: ts_block(stmts: [
-                                                ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_call(callee: ts_ident(name: "assignmentResult"), args: [ts_ident(name: "row")]), property: "textContent"), op: "=", right: ts_member(object: ts_ident(name: "error"), property: "message"))),
-                                                ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "button"), property: "disabled"), op: "=", right: ts_ident(name: "true"))),
-                                                ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "button"), property: "title"), op: "=", right: ts_binop(left: ts_member(object: ts_ident(name: "error"), property: "message"), op: "+", right: ts_lit_str(value: " Reload before assigning."))))
-                                    ]))]))
-                        ]))]))
-            ]))])),
+            ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "assignmentButtons"), property: "forEach"), args: [ts_arrow(params: ["button"], body: ts_block(stmts: [ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "button"), property: "setAttribute"), args: [ts_lit_str(value: "title"), ts_lit_str(value: "Open the assignee picker")])), ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "button"), property: "disabled"), op: "=", right: ts_ident(name: "false"))), ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "button"), property: "addEventListener"), args: [ts_lit_str(value: "click"), ts_arrow(params: ["event"], body: ts_block(stmts: [ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "location"), property: "href"), op: "=", right: ts_binop(left: ts_binop(left: ts_lit_str(value: "/issue/"), op: "+", right: ts_call(callee: ts_ident(name: "encodeURIComponent"), args: [ts_member(object: ts_member(object: ts_ident(name: "button"), property: "dataset"), property: "assignNode")])), op: "+", right: ts_lit_str(value: "#issue-assign-input"))))]))]))]))])),
             ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "assignmentForms"), property: "forEach"), args: [ts_arrow(params: ["form"], body: ts_block(stmts: [
                         ts_const(name: "submit", value: ts_call(callee: ts_member(object: ts_ident(name: "form"), property: "querySelector"), args: [ts_lit_str(value: "[type=\"submit\"]")])),
                         ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "submit"), property: "disabled"), op: "=", right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "session"), property: "authenticated")))),

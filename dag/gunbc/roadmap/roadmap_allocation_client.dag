@@ -7,7 +7,9 @@ import extdeps.languages.typescript.program {
   ts_prefix, ts_binop, ts_array,
 }
 
-import gunbc.roadmap_component { account_swap_statements, theme_toggle_bind_statements, sound_preamble_statements, sound_toggle_bind_statements }
+import gunbc.site.session_client { session_read_bind_statements }
+
+import gunbc.site.controls { account_swap_statements, theme_toggle_bind_statements, sound_preamble_statements, sound_toggle_bind_statements }
 
 fn allocation_element(id: String) -> TsExpr {
   ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "getElementById"), args: [ts_lit_str(value: id)])
@@ -46,11 +48,15 @@ fn allocation_draft_source() -> String {
 }
 
 // Reuse shared header behavior without workspace observation or workflow polling.
-fn allocation_client_source() -> String {
-  serialize_typescript_program(p: TsProgram {
+fn allocation_client_program() -> TsProgram {
+  TsProgram {
     ts_nocheck: false,
     header_lines: ["Allocation draft and shared account/theme controls; no allocation writes."],
-    statements: concat(sound_preamble_statements(), concat(sound_toggle_bind_statements(),
-      concat(theme_toggle_bind_statements(), concat(account_swap_statements(), allocation_draft_statements())))),
-  })
+    statements: concat([], concat([],
+      concat([], concat([], concat([], allocation_draft_statements()))))),
+  }
+}
+
+fn allocation_client_source() -> String {
+  serialize_typescript_program(p: allocation_client_program())
 }

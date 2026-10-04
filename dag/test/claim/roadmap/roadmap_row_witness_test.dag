@@ -20,7 +20,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // fresh literal).
 
 fn expected_taskbar_block() -> String {
-  ".taskbar { position: relative; display: flex; align-items: center; min-height: var(--h-taskbar); background: var(--surface); border: var(--border-1) solid var(--border); border-radius: var(--radius-3); overflow: hidden }"
+  ".taskbar { position: relative; display: flex; align-items: center; min-height: var(--h-taskbar); background: var(--surface); border: var(--border-1) solid var(--border); border-radius: var(--radius-surface); overflow: hidden }"
 }
 
 fn expected_taskbar_face_block() -> String {

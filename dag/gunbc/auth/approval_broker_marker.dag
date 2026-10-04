@@ -166,6 +166,8 @@ fn approval_broker_marked_body(content_type: MediaType, body: String, m: Approva
   let token = approval_broker_served_token(p: process, m: m) as String
   if content_type.subtype == "html" {
     join([body, "\n<!-- ", token, " -->\n"], "")
+  } else if content_type.subtype == "javascript" {
+    join([body, "\n// x-approval-broker: ", token, "\n"], "")
   } else {
     join([body, "x-approval-broker: ", token, "\n"], "")
   }

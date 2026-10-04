@@ -1,4 +1,8 @@
 module test.claim.long.allocation_page_witness
+import gunbc.design.material { StaticRule }
+import extdeps.languages.css.selectors { ClassSelector }
+import gunbc.site.document { SiteStyles, site_styles, site_styles_css, site_extend_styles }
+import gunbc.roadmap_allocation_style { allocation_rules }
 
 import std.types { String, Bool }
 import gunbc.roadmap_allocation_page { allocation_page_with_stylesheet }
@@ -9,7 +13,7 @@ import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected 
 // The roadmap stylesheet is supplied: no claim below reads it, and rendering the real one is the
 // whole cost of the page. The route that supplies roadmap_css() is gunbc.roadmap_serve
 // allocation_page_response.
-data fx_roadmap_stylesheet: String = ".fx-roadmap-sheet{}"
+data fx_roadmap_stylesheet: SiteStyles = site_styles(rules: [StaticRule { selector: ClassSelector { name: "fx-roadmap-sheet" }, decls: [] }])
 
 fn allocation_preview_signed_in() -> String {
   match try_serialize_html_source(node: allocation_page_with_stylesheet(signed_in: true, roadmap_stylesheet: fx_roadmap_stylesheet)) {
@@ -50,5 +54,5 @@ test fn allocation_client_has_no_request_effect() -> Bool {
 
 // The supplied stylesheet reaches the page head, ahead of the allocation rules, in one style element.
 test fn allocation_head_carries_the_supplied_stylesheet_then_the_allocation_rules() -> Bool {
-  string_contains(s: allocation_preview_signed_in(), pattern: concat("<style>", concat(fx_roadmap_stylesheet, allocation_css())))
+  string_contains(s: allocation_preview_signed_in(), pattern: concat("<style>", site_styles_css(styles: site_extend_styles(base: fx_roadmap_stylesheet, rules: allocation_rules()))))
 }

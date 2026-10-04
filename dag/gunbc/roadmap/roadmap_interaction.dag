@@ -31,11 +31,8 @@ import gunbc.design.interaction {
   house_pointer_detents,
 }
 import gunbc.design.scale { travel_lift, travel_press, scale_var }
-import gunbc.roadmap_component {
-  dispatch_class_requested, dispatch_class_ok, dispatch_class_refused, dispatch_class_loud,
-  sound_toggle_class,
-  disclosure_mark_class, disclosure_open_class,
-}
+import gunbc.roadmap_component { dispatch_class_requested, dispatch_class_ok, dispatch_class_refused, dispatch_class_loud, disclosure_mark_class, disclosure_open_class }
+import gunbc.site.controls { sound_toggle_class }
 import gunbc.site.moodboard {
   RealizedBehavior, RealizedRules, UnrealizedBehavior,
   approach_triggers,

@@ -1,4 +1,7 @@
 module test.claim.long.roadmap_page_witness
+import extdeps.languages.css.selectors { selector_subject_wire }
+import extdeps.languages.css.properties { css_property_wire }
+import gunbc.site.document { SiteStyles, site_styles, site_styles_css, site_styles_rules }
 
 import gunbc.roadmap.roadmap_project { membership_index }
 import test.claim.roadmap.roadmap_authority_subtree_fixture { fx_authority_subtree_roadmap_page, fx_authority_subtree_daily_page, fx_multi_parent_ids, fx_live_project_ids }
@@ -45,20 +48,13 @@ import gunbc.roadmap_model {
   RoadmapEdge,
   section_group,
 }
-import gunbc.roadmap_component {
-  dispatch_client_js_source, dispatch_client_program, dispatch_fetch_url_expr,
-  sound_preamble_statements, dispatch_preamble_statements, observe_impact_preamble_statements,
-  dispatch_bind_statements, issue_action_bind_statements, sound_toggle_bind_statements,
-  theme_toggle_bind_statements, disclosure_bind_statements, swatch_toggle_bind_statements,
-  observation_fetch_statements, workflow_fetch_statements, row_selection_bind_statements,
-  issue_filter_bind_statements, session_read_bind_statements, account_swap_statements,
-  issue_sort_bind_statements, inline_assignment_bind_statements, dashboard_instance_fetch_statements,
-}
+import gunbc.roadmap_component { dispatch_client_js_source, dispatch_client_program, dispatch_fetch_url_expr, dispatch_preamble_statements, observe_impact_preamble_statements, dispatch_bind_statements, issue_action_bind_statements, disclosure_bind_statements, swatch_toggle_bind_statements, observation_fetch_statements, workflow_fetch_statements, row_selection_bind_statements, issue_filter_bind_statements, session_read_bind_statements, issue_sort_bind_statements, inline_assignment_bind_statements, dashboard_instance_fetch_statements }
+import gunbc.site.controls { sound_preamble_statements, sound_toggle_bind_statements, theme_toggle_bind_statements, account_swap_statements }
 import extdeps.languages.typescript.program { TsProgram, TsStmt, serialize_typescript_program }
 import gunbc.roadmap_style { roadmap_css, roadmap_rules, issue_tracker_root_css, band_root_css, audition_sets, audition_block_css }
 import gunbc.design.scale { scale_root_css }
 import gunbc.design.theme { theme_root_css, day_theme, night_theme }
-import gunbc.design.material { serialize_rule, reduced_motion_block, ambient_cycles, serialize_cycle, all_transition_carriers, serialize_transition_carriers }
+import gunbc.design.material { BuildRule, StaticRule, ResponseRule, serialize_rule, reduced_motion_block, ambient_cycles, serialize_cycle, all_transition_carriers, serialize_transition_carriers }
 import gunbc.roadmap_belt_actuate { belt_dispatch_all_status_labels }
 import test.claim.roadmap_belt_actuate_witness { completed_attempt_progress }
 import extdeps.languages.json.emit { serialize_json }
@@ -75,7 +71,7 @@ fn authority_page_html() -> HtmlEmitResult {
   try_serialize_html_source(node: roadmap_page_for_doc(doc: gunbc.roadmap_authority.roadmap_authority()))
 }
 
-data header_pin_a1_note: String = "The header assertions moved TWICE at A1 (presentation recon, operator feedback 2026-08-01). First the content: the unselected site mark (candidate A, whose aria-label said gunb.ai on a gunbc tool surface) is replaced by the text wordmark, the h1 carries the PAGE name alone so it never restates the wordmark, and both toggles are server-rendered with visible content and an accessible name — the theme toggle with its parse-time-true initial state ('theme · auto': no data-theme exists until the client program runs, so prefers-color-scheme governs, which IS auto), the sound toggle with its name only (its state has no parse-time truth; see gunbc.roadmap_page.sound_toggle_placement_note). Second the SHAPE of the assertion: the former whole-header byte pin asserted the accidental composition — element order and adjacency that nobody decided — so it redded on any reorder while proving nothing semantic. Each assertion below is now ONE claim (wordmark exists; page-name h1 exists; each control is labeled before JavaScript). Header composition is deliberately NOT pinned: the A1 list layout is a provisional renderer, per the PR's own scope statement."
+data header_pin_a1_note: String = "Superseded 2026-10-04 by owner request: use the gunb logo linked to the workspace, preserving page-name and labeled controls. Historical ruling: The header assertions moved TWICE at A1 (presentation recon, operator feedback 2026-08-01). First the content: the unselected site mark (candidate A, whose aria-label said gunb.ai on a gunbc tool surface) is replaced by the text wordmark, the h1 carries the PAGE name alone so it never restates the wordmark, and both toggles are server-rendered with visible content and an accessible name — the theme toggle with its parse-time-true initial state ('theme · auto': no data-theme exists until the client program runs, so prefers-color-scheme governs, which IS auto), the sound toggle with its name only (its state has no parse-time truth; see gunbc.roadmap_page.sound_toggle_placement_note). Second the SHAPE of the assertion: the former whole-header byte pin asserted the accidental composition — element order and adjacency that nobody decided — so it redded on any reorder while proving nothing semantic. Each assertion below is now ONE claim (wordmark exists; page-name h1 exists; each control is labeled before JavaScript). Header composition is deliberately NOT pinned: the A1 list layout is a provisional renderer, per the PR's own scope statement."
 
 // The /roadmap fold over the authority's own multi-parent rows (the shared subtree fixture): the page
 // chrome and the row markup are claims about the fold, so they read a projection holding real rows
@@ -95,13 +91,13 @@ test fn witness_empty_doc_is_minimal_shell() -> Bool {
     EmitOk { html: h } =>
       starts_with(s: h, prefix: "<html lang=\"en\"><head><meta charset=\"utf-8\"")
         && string_contains(s: h, pattern: "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"")
-        && string_contains(s: h, pattern: "<title>gunbc — roadmap</title></head>")
-        && string_contains(s: h, pattern: "<span class=\"wordmark\">gunbc</span>")
+        && string_contains(s: h, pattern: "<title>gunbc — roadmap</title>")
+        && string_contains(s: h, pattern: "<a class=\"site-brand\" href=\"/\" aria-label=\"gunb · workspace\"")
         && string_contains(s: h, pattern: "<h1>roadmap</h1>")
         && string_contains(s: h, pattern: "<button class=\"sound-toggle\" type=\"button\">sound</button>")
         && string_contains(s: h, pattern: "<button class=\"theme-toggle\" type=\"button\">theme · auto</button>")
         && string_contains(s: h, pattern: "<main class=\"roadmap\"></main></body></html>")
-        && !string_contains(s: h, pattern: "<script")
+        && occurrence_count(s: h, pattern: "<script src=\"/assets/site.js\"") == 1
   }
 }
 
@@ -223,7 +219,7 @@ fn dispatch_doc_html_for(rn: RoadmapNode) -> HtmlEmitResult {
 // asserts the ROUTE (the external script the live page emits) rather than only a shape.
 data supplied_stylesheet_note: String = "A stylesheet no assertion reads is an input, not a subject. The supplied text is a recognizable sentinel rather than empty so that a claim accidentally asserting on head chrome reds loudly instead of matching the empty string."
 
-fn supplied_stylesheet() -> String { "/* supplied by test.claim.long.roadmap_page_witness */" }
+fn supplied_stylesheet() -> SiteStyles { site_styles(rules: []) }
 
 fn dispatch_doc_html_supplied(rn: RoadmapNode) -> HtmlEmitResult {
   dispatch_doc_html_supplied_with_merged(rn: rn, merged: [])
@@ -298,7 +294,7 @@ test fn witness_ready_node_doc_emits_button_and_external_script() -> Bool {
         && string_contains(s: h, pattern: "data-node=")
         && !string_contains(s: h, pattern: "workflow-progress")
         && string_contains(s: h, pattern: roadmap_css())
-        && !string_contains(s: h, pattern: supplied_stylesheet())
+        && !string_contains(s: h, pattern: site_styles_css(styles: supplied_stylesheet()))
         && !string_contains(s: h, pattern: "data-workflow-stage=")
         && !string_contains(s: h, pattern: "workflow-strip")
         && !string_contains(s: h, pattern: "workflow-lamp")
@@ -413,7 +409,7 @@ test fn witness_supporting_facts_live_in_disclosure_not_head() -> Bool {
       string_contains(s: h, pattern: "<span class=\"taskbar-title\">dispatch-me</span>")
         && string_contains(
           s: h,
-          pattern: "<details class=\"taskbar-inspect\"><summary><span class=\"disclosure-mark\">›</span>inspect</summary><div class=\"inspect-body\"><div class=\"item-facts\"><span class=\"repo\">gunbc</span></div></div></details>")
+          pattern: "<details class=\"taskbar-inspect\"><summary>inspect</summary><div class=\"inspect-body\"><div class=\"item-facts\"><span class=\"repo\">gunbc</span></div></div></details>")
         && !string_contains(s: h, pattern: "class=\"sizing\"")
         && !string_contains(s: h, pattern: "class=\"taskbar-title\">dispatch-me</span><span class=\"repo\"")
   }
@@ -547,7 +543,7 @@ test fn witness_real_ticket_row_renders_structured() -> Bool {
       match row_html(rn: rn) {
         EmitRejected { reason: _ } => false
         EmitOk { html: h } =>
-          string_contains(s: h, pattern: "<details class=\"taskbar-inspect\"><summary><span class=\"disclosure-mark\">›</span>inspect</summary>")
+          string_contains(s: h, pattern: "<details class=\"taskbar-inspect\"><summary>inspect</summary>")
             && string_contains(s: h, pattern: "class=\"ticket-brief\"")
             && string_contains(s: h, pattern: ">displaced cost</span>")
             && string_contains(s: h, pattern: "href=\"https://github.com/gunb-ai/gunbc/blob/main/")
@@ -586,7 +582,7 @@ test fn witness_ticket_rows_render_structured() -> Bool {
   match row_html(rn: structured_ticket_fixture()) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      string_contains(s: h, pattern: "class=\"taskbar-inspect\"><summary><span class=\"disclosure-mark\">›</span>inspect</summary>")
+      string_contains(s: h, pattern: "class=\"taskbar-inspect\"><summary>inspect</summary>")
         && string_contains(s: h, pattern: "class=\"ticket-brief\"")
         && string_contains(s: h, pattern: ">displaced cost</span>")
         && !renders_updates_block(rn: updates_fixture(updates: []))
@@ -628,7 +624,7 @@ data combinator_witness_repoint_note: String = "Repointed at A1: the former subj
 fn fx_rules_page_html() -> HtmlEmitResult {
   let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: [ready_dispatch_node()], edges: []) ] }
   let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
-  try_serialize_html_source(node: roadmap_page_launch_with_stylesheet(doc: doc, merged: [], launch: dispatch_doc_standing(), stylesheet: fx_css_rule_blocks()))
+  try_serialize_html_source(node: roadmap_page_launch_with_stylesheet(doc: doc, merged: [], launch: dispatch_doc_standing(), stylesheet: site_styles(rules: roadmap_rules())))
 }
 
 test fn witness_style_child_combinator_unescaped() -> Bool {
@@ -663,9 +659,9 @@ test fn witness_item_detail_disclosure_present() -> Bool {
     EmitRejected { reason: _ } => ""
     EmitOk { html: h } => h
   }
-  string_contains(s: ticket, pattern: "<details class=\"taskbar-inspect\"><summary><span class=\"disclosure-mark\">›</span>inspect</summary>")
+  string_contains(s: ticket, pattern: "<details class=\"taskbar-inspect\"><summary>inspect</summary>")
     && string_contains(s: ticket, pattern: "class=\"inspect-body\"")
-    && string_contains(s: legacy, pattern: "<details class=\"taskbar-inspect\"><summary><span class=\"disclosure-mark\">›</span>inspect</summary>")
+    && string_contains(s: legacy, pattern: "<details class=\"taskbar-inspect\"><summary>inspect</summary>")
     && string_contains(s: legacy, pattern: "class=\"inspect-body\"")
 }
 
@@ -697,14 +693,10 @@ test fn witness_dispatch_button_carries_accent() -> Bool {
 // padding; no max-width cap or auto-centering survives on .roadmap / .header-inner /
 // .daily-workspace.
 test fn witness_page_containers_full_width() -> Bool {
-  match fx_rules_page_html() {
-    EmitRejected { reason: _ } => false
-    EmitOk { html: h } =>
-      string_contains(s: h, pattern: ".roadmap { padding: var(--space-16) var(--space-24) }")
-        && !string_contains(s: h, pattern: ".roadmap { padding: var(--space-16) var(--space-24); max-width")
-        && !string_contains(s: h, pattern: ".header-inner { max-width")
-        && !string_contains(s: h, pattern: ".daily-workspace { padding: var(--space-16) var(--space-24); max-width")
-  }
+  fx_emitted_property(selector: ".roadmap", property: "max-width", value: "100%")
+    && fx_emitted_property(selector: ".roadmap", property: "min-width", value: "0")
+    && fx_emitted_property(selector: ".roadmap", property: "padding", value: "var(--space-24)")
+    && fx_emitted_property(selector: ".header-inner", property: "min-width", value: "0")
 }
 
 test fn witness_authority_leads_within_budget() -> Bool {
@@ -819,21 +811,21 @@ test fn witness_parity_wire_carries_the_server_sentence() -> Bool {
 // reds there, and the per-part claims below still cover every group the asset ships.
 fn fx_client_groups() -> List<List<TsStmt>> {
   [
-    sound_preamble_statements(),
+    [], // shared site client owns sound_preamble_statements
     dispatch_preamble_statements(),
     observe_impact_preamble_statements(),
     dispatch_bind_statements(selector: ".dispatch-btn", url_expr: dispatch_fetch_url_expr()),
     issue_action_bind_statements(),
-    sound_toggle_bind_statements(),
-    theme_toggle_bind_statements(),
+    [], // shared site client owns sound_toggle_bind_statements
+    [], // shared site client owns theme_toggle_bind_statements
     disclosure_bind_statements(),
     swatch_toggle_bind_statements(),
     observation_fetch_statements(),
     workflow_fetch_statements(),
     row_selection_bind_statements(),
     issue_filter_bind_statements(),
-    session_read_bind_statements(),
-    account_swap_statements(),
+    [], // shared site client owns session_read_bind_statements
+    [], // shared site client owns account_swap_statements
     issue_sort_bind_statements(),
     inline_assignment_bind_statements(),
     dashboard_instance_fetch_statements(),
@@ -889,7 +881,7 @@ test fn witness_client_asset_part_1_negatives_hold() -> Bool {
 }
 
 test fn witness_client_asset_part_2_negatives_hold() -> Bool {
-  fx_client_part_holds(js: fx_client_part_js(lo: 11, hi: 16), session_fetches: 1, summary_only_marks: 0)
+  fx_client_part_holds(js: fx_client_part_js(lo: 11, hi: 16), session_fetches: 0, summary_only_marks: 0)
 }
 
 // The last part runs to the end of the group list, so a group appended to the asset is still read.
@@ -1028,8 +1020,16 @@ fn fx_css_audition_part(index: Int) -> String {
   join(map(audition_sets.skip(n: index).take(n: 1), a => audition_block_css(a: a)), "\n")
 }
 
+fn fx_emitted_property(selector: String, property: String, value: String) -> Bool {
+  any(site_styles_rules(styles: site_styles(rules: roadmap_rules())), r => match r {
+    StaticRule { selector: subject, decls } => selector_subject_wire(s: subject) == selector && any(decls, d => css_property_wire(p: d.prop) == property && d.value == value)
+    ResponseRule { subject: _, shape: _, trigger: _, transition_props: _, timing: _, base_decls: _, response_decls: _ } => false
+    AmbientRule { selector: _, cycle: _, timing: _, repeat: _ } => false
+  })
+}
+
 fn fx_css_rule_blocks() -> String {
-  join(map(roadmap_rules(), r => serialize_rule(rule: r)), "\n")
+  join(map(site_styles_rules(styles: site_styles(rules: roadmap_rules())), r => serialize_rule(rule: r)), "\n")
 }
 
 fn fx_css_tail_part() -> String {
@@ -1049,7 +1049,7 @@ data fx_issue_token_names: List<String> = ["text", "text-dim", "border", "bg-hov
 // max-width page containers never ship, and every issue token is declared three times (day root, night attribute,
 // dark media query) -- all of them in the issue-tracker root block.
 fn fx_css_part_holds(css: String, rail_widths: Int, grid_templates: Int, token_declarations: Int) -> Bool {
-  occurrence_count(s: css, pattern: "width: 34ch") == rail_widths
+  occurrence_count(s: css, pattern: "flex: 0 1 34ch") == rail_widths
     && !string_contains(s: css, pattern: "action-live")
     && occurrence_count(s: css, pattern: join(["grid-template-columns: ", issue_results_row_tracks()], "")) == grid_templates
     && !string_contains(s: css, pattern: ".issue-table-header { display: grid")
@@ -1089,7 +1089,8 @@ test fn witness_prominence_and_frame_rules_present_in_css() -> Bool {
     && string_contains(s: css, pattern: ".dispatch-btn.action-focal { color: var(--band-invite-ink); background: var(--band-invite); border-color: var(--band-invite) }")
     && string_contains(s: css, pattern: "li.node:focus-visible { outline: var(--border-2) solid var(--focus) }")
     && !string_contains(s: css, pattern: "action-live")
-    && string_contains(s: css, pattern: ".header-inner { display: flex; align-items: center; gap: var(--space-12) }")
+    && fx_emitted_property(selector: ".header-inner", property: "display", value: "flex")
+    && fx_emitted_property(selector: ".header-inner", property: "align-items", value: "center")
 }
 
 // ── Project hierarchy, rendering half (operator request 2026-09-20) ─────────────────────────────
@@ -1131,7 +1132,7 @@ fn fx_page_project_doc() -> RoadmapDocument {
 }
 
 fn fx_page_project_html() -> HtmlEmitResult {
-  try_serialize_html_source(node: roadmap_daily_workspace_page_launch_with_stylesheet(doc: fx_page_project_doc(), merged: [], launch: dispatch_doc_standing(), memberships: fixture_nesting_relation(edges: doc_all_edges(doc: fx_page_project_doc())), stylesheet: ""))
+  try_serialize_html_source(node: roadmap_daily_workspace_page_launch_with_stylesheet(doc: fx_page_project_doc(), merged: [], launch: dispatch_doc_standing(), memberships: fixture_nesting_relation(edges: doc_all_edges(doc: fx_page_project_doc())), stylesheet: site_styles(rules: [])))
 }
 
 fn occurrence_count(s: String, pattern: String) -> Int {
@@ -1244,7 +1245,7 @@ fn fx_page_chain_doc() -> RoadmapDocument {
 }
 
 fn fx_page_chain_html() -> HtmlEmitResult {
-  try_serialize_html_source(node: roadmap_daily_workspace_page_launch_with_stylesheet(doc: fx_page_chain_doc(), merged: [], launch: dispatch_doc_standing(), memberships: fixture_nesting_relation(edges: doc_all_edges(doc: fx_page_chain_doc())), stylesheet: ""))
+  try_serialize_html_source(node: roadmap_daily_workspace_page_launch_with_stylesheet(doc: fx_page_chain_doc(), merged: [], launch: dispatch_doc_standing(), memberships: fixture_nesting_relation(edges: doc_all_edges(doc: fx_page_chain_doc())), stylesheet: site_styles(rules: [])))
 }
 
 fn fx_chain_top_project_view() -> gunbc.roadmap_presentation.ProjectTreeView {
@@ -1326,7 +1327,7 @@ test fn witness_collapsed_chain_renders_one_row_with_chain_line() -> Bool {
       elements: [ section_group(label: "", nodes: [top, mid, t1, t2], edges: edges) ],
     } ],
   }
-  match try_serialize_html_source(node: roadmap_daily_workspace_page_launch_with_stylesheet(doc: doc, merged: [], launch: dispatch_doc_standing(), memberships: fixture_nesting_relation(edges: doc_all_edges(doc: doc)), stylesheet: "")) {
+  match try_serialize_html_source(node: roadmap_daily_workspace_page_launch_with_stylesheet(doc: doc, merged: [], launch: dispatch_doc_standing(), memberships: fixture_nesting_relation(edges: doc_all_edges(doc: doc)), stylesheet: site_styles(rules: []))) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       let top_row = li_of_node(html: h, node_id: "page-collapse-top")
@@ -1719,7 +1720,7 @@ fn fx_issue_detail_body(view: gunbc.roadmap_presentation.WorkRowView, panel: gun
     attributes: [ attr(name: "lang", value: "en" ) ],
     children: [
       Element { tag: "body", attributes: [], children: [
-        gunbc.roadmap_page.roadmap_header(page: "issue"),
+        gunbc.site.document.site_header(page: "issue"),
         gunbc.roadmap_page.issue_detail_page(view: view, panel: panel, observation: observation, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context),
         gunbc.roadmap_page.dispatch_client_script(),
       ] },
@@ -1764,7 +1765,7 @@ test fn witness_issue_detail_page_renders_header_fields_and_tabs() -> Bool {
         && string_contains(s: h, pattern: "<aside class=\"issue-rail\">")
         && string_contains(s: h, pattern: "<span class=\"issue-field-label\">assignee</span>")
         && string_contains(s: h, pattern: "<span class=\"issue-field-label\">status</span>")
-        && string_contains(s: h, pattern: "<span class=\"issue-field-value\">Agent working</span>")
+        && string_contains(s: h, pattern: "<details class=\"issue-status-detail\"><summary>Active</summary>")
         && string_contains(s: h, pattern: "<span class=\"issue-field-label\">reporter</span>")
         && string_contains(s: h, pattern: "<span class=\"issue-field-label\">reporter</span><span class=\"issue-field-value\">not recorded (authored roadmap row)</span>")
         && !string_contains(s: h, pattern: "<span class=\"issue-field-label\">reporter</span><span class=\"issue-field-value\">agent-35</span>")
@@ -1845,7 +1846,7 @@ fn fx_summary_only_page_html(stale: Bool) -> HtmlEmitResult {
     stale_nodes: if stale { ["page-task-one"] } else { [] },
     profiles: [],
     memberships: fixture_nesting_relation(edges: doc_all_edges(doc: fx_page_project_doc())),
-    stylesheet: ""))
+    stylesheet: site_styles(rules: [])))
 }
 
 fn table_region(html: String) -> String {
@@ -1856,7 +1857,7 @@ fn table_region(html: String) -> String {
   }
 }
 
-test fn witness_issue_table_is_summary_only_and_stale_rows_fall_back_to_scheduling_voice() -> Bool {
+test fn witness_issue_table_is_summary_only_and_stale_attempts_preserve_current_standing() -> Bool {
   match fx_summary_only_page_html(stale: false) {
     EmitRejected { reason: _ } => false
     EmitOk { html: live_h } =>
@@ -1869,10 +1870,10 @@ test fn witness_issue_table_is_summary_only_and_stale_rows_fall_back_to_scheduli
             && occurrence_count(s: stale_table, pattern: "taskbar-inspect") == 0
             && string_contains(s: li_of_node(html: live_table, node_id: "page-task-one"), pattern: "data-search=\"page task one page-task-one \"")
             && string_contains(s: li_of_node(html: live_table, node_id: "page-task-one"), pattern: "data-summary-only=\"\"")
-            && string_contains(s: live_table, pattern: "<span class=\"taskbar-signal issue-status activity-line-error-refusal\">Submission · failed</span>")
+            && string_contains(s: live_table, pattern: "<span class=\"taskbar-signal issue-status\" title=\"Submission · failed\">Active</span>")
             && !string_contains(s: live_table, pattern: "earlier attempt")
             && !string_contains(s: stale_table, pattern: "earlier attempt")
-            && string_contains(s: stale_table, pattern: "<span class=\"taskbar-signal issue-status activity-line-neutral\">ready to dispatch</span>")
+            && string_contains(s: stale_table, pattern: "<span class=\"taskbar-signal issue-status\" title=\"ready to dispatch\">Active</span>")
       }
   }
 }
@@ -1970,7 +1971,7 @@ test fn witness_issue_table_assignee_renders_the_avatar_chip_or_placeholder() ->
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       let table = table_region(html: h)
-      occurrence_count(s: table, pattern: "class=\"issue-avatar\" data-avatar=\"absent\"") == 1
+      occurrence_count(s: table, pattern: "class=\"site-avatar site-avatar-default\" data-avatar=\"absent\"") == 1
         && occurrence_count(s: table, pattern: ">--</button>") == 2
         && occurrence_count(s: table, pattern: "class=\"issue-inline-assign\" disabled=\"disabled\"") == 3
         && string_contains(s: table, pattern: "Sign in to assign this issue; checking session.")
@@ -2016,7 +2017,7 @@ test fn witness_issue_table_rows_share_the_header_template() -> Bool {
         && marker_before(s: row_body, first: "data-col=\"assignee\"", second: "data-col=\"status\"")
         && marker_before(s: row_body, first: "data-col=\"status\"", second: "data-col=\"last-modified\"")
         && string_contains(s: row_body, pattern: "href=\"/issue/page-task-one\"")
-        && string_contains(s: row_body, pattern: "data-sort-value=\"Submission · failed\"")
+        && string_contains(s: row_body, pattern: "data-sort-value=\"Active\"")
         && !string_contains(s: table, pattern: "data-col=\"type\"")
         && !string_contains(s: table, pattern: "data-col=\"actions\"")
   }
@@ -2053,7 +2054,8 @@ test fn witness_issue_table_cells_are_direct_grid_children() -> Bool {
   string_contains(s: css, pattern: ".issue-table ul { display: contents }")
     && string_contains(s: css, pattern: ".issue-table li { display: contents }")
     && string_contains(s: css, pattern: ".issue-table-heading { font-family: var(--issue-font-heading); font-size: var(--text-15); font-weight: 500; margin-bottom: var(--space-8); grid-column: 1 / -1 }")
-    && string_contains(s: css, pattern: ".issue-empty { display: none; color: var(--text-dim); font-size: var(--text-13); padding: var(--space-12) var(--space-8); grid-column: 1 / -1 }")
+    && fx_emitted_property(selector: ".issue-empty", property: "display", value: "none")
+    && fx_emitted_property(selector: ".issue-empty", property: "grid-column", value: "1 / -1")
     && string_contains(s: css, pattern: ".issue-line:hover .issue-cell { background: var(--issue-bg-hover) }")
 }
 
@@ -2094,7 +2096,7 @@ fn fx_long_title_page_html(long: String) -> HtmlEmitResult {
     stale_nodes: [],
     profiles: [],
     memberships: fixture_nesting_relation(edges: doc_all_edges(doc: fx_long_title_doc(long: long))),
-    stylesheet: ""))
+    stylesheet: site_styles(rules: [])))
 }
 
 test fn witness_issue_table_long_cells_clip_within_their_tracks() -> Bool {
@@ -2110,7 +2112,7 @@ test fn witness_issue_table_long_cells_clip_within_their_tracks() -> Bool {
         && occurrence_count(s: table, pattern: "data-col=\"actions\"") == 0
         && string_contains(s: css, pattern: ".issue-cell { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis")
         && string_contains(s: css, pattern: join([".issue-table { display: grid; grid-template-columns: ", issue_results_row_tracks()], ""))
-        && string_contains(s: css, pattern: ".roadmap { padding: var(--space-16) var(--space-24) }")
+        && fx_emitted_property(selector: ".roadmap", property: "padding", value: "var(--space-24)")
   }
 }
 
@@ -2130,22 +2132,21 @@ test fn witness_issue_detail_renders_enabled_modeled_action_and_attempt_assignee
         Absent => h
       }
       occurrence_count(s: body, pattern: "dispatch-btn") == 0
-        && string_contains(s: body, pattern: "<form class=\"issue-assign-form\" method=\"post\" enctype=\"application/x-www-form-urlencoded\" action=\"/issue/issue-detail-specimen/assign\">")
-        && string_contains(s: body, pattern: "<input class=\"issue-assign-input\" name=\"assignee\" id=\"issue-assign-input\" type=\"text\" list=\"issue-assign-recents\"")
-        && string_contains(s: body, pattern: "<datalist id=\"issue-assign-recents\">")
-        && string_contains(s: body, pattern: "<option value=\"fabric@gunb.ai\"></option>")
-        && string_contains(s: body, pattern: "<option value=\"teammate@gunb.ai\"></option>")
-        && !string_contains(s: body, pattern: "<option value=\"principal:")
-        && occurrence_count(s: body, pattern: "class=\"issue-assign-suggestion\"") == 3
-        && string_contains(s: body, pattern: "data-principal=\"principal:gunbc/workflows/fabric\" data-kind=\"workflow\"")
-        && string_contains(s: body, pattern: "class=\"issue-avatar issue-avatar-workflow\" data-avatar=\"absent\" title=\"Fabric — workflow · fabric@gunb.ai\"><svg class=\"issue-avatar-mark\" viewBox=\"0 0 120 120\" role=\"img\" aria-label=\"Fabric\">")
-        && !string_contains(s: body, pattern: "issue-avatar-badge")
+        && string_contains(s: body, pattern: "data-site-choice=\"rich\"")
+        && string_contains(s: body, pattern: "role=\"combobox\"")
+        && !string_contains(s: body, pattern: "<datalist")
+        && string_contains(s: body, pattern: "data-choice-value=\"fabric@gunb.ai\" data-workflow=\"1\"")
+        && string_contains(s: body, pattern: "data-choice-value=\"teammate@gunb.ai\" data-workflow=\"0\"")
+        && !string_contains(s: body, pattern: "data-choice-value=\"principal:")
+        && occurrence_count(s: body, pattern: "class=\"site-choice-option issue-assign-suggestion\"") == 2
+        && string_contains(s: body, pattern: "Group · starts a workflow run")
+        && string_contains(s: body, pattern: "aria-label=\"Fabric group\"")
         && string_contains(s: body, pattern: "name=\"expected_revision\" type=\"hidden\"")
         && occurrence_count(s: body, pattern: "class=\"issue-action\"") == 0
         && string_contains(s: body, pattern: "data-action=\"Assign\" data-idiom=\"text\" data-action-route=\"assign\" data-action-state=\"enabled\"")
+        && string_contains(s: body, pattern: "class=\"issue-assign-submit issue-action-text\" hidden")
         && occurrence_count(s: body, pattern: "Start Work") == 0
-        && occurrence_count(s: body, pattern: "issue-action-bar") == 0
-        && string_contains(s: body, pattern: "<span class=\"issue-field-label\">assignee</span><span class=\"issue-field-value\">")
+
   }
 }
 
@@ -2158,12 +2159,12 @@ test fn witness_issue_detail_parent_and_blocking_render_separately() -> Bool {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       occurrence_count(s: h, pattern: "<span class=\"issue-field-label\">parent</span>") == 1
-        && occurrence_count(s: h, pattern: "<h3 class=\"issue-deps-heading\">parent</h3>") == 1
-        && occurrence_count(s: h, pattern: "<h3 class=\"issue-deps-heading\">children</h3>") == 1
-        && occurrence_count(s: h, pattern: "<h3 class=\"issue-deps-heading\">blocked by</h3>") == 1
-        && occurrence_count(s: h, pattern: "<h3 class=\"issue-deps-heading\">blocking</h3>") == 1
-        && occurrence_count(s: h, pattern: "<h3 class=\"issue-deps-heading\">related</h3>") == 1
-        && occurrence_count(s: h, pattern: "<h3 class=\"issue-deps-heading\">supersedes</h3>") == 1
+        && occurrence_count(s: h, pattern: "class=\"issue-dag-role\">Prerequisite</span>") == 1
+        && occurrence_count(s: h, pattern: "class=\"issue-dag-role\">Depends on this issue</span>") == 1
+        && occurrence_count(s: h, pattern: "<h3>Project membership</h3>") == 1
+        && occurrence_count(s: h, pattern: "class=\"issue-membership-tree\"") == 1
+        && occurrence_count(s: h, pattern: "class=\"issue-membership-children\"") == 1
+        && string_contains(s: h, pattern: "aria-current=\"true\" data-current=\"1\"")
         && occurrence_count(s: h, pattern: "href=\"/issue/issue-detail-parent\"") == 3
         && occurrence_count(s: h, pattern: "href=\"/issue/issue-detail-child\"") == 2
         && string_contains(s: h, pattern: "<span class=\"issue-field-label\">blocked by</span><span class=\"issue-field-value\"><button class=\"issue-rail-link\" type=\"button\" data-tab-chip=\"dependencies\">1 issue</button></span>")
@@ -2192,7 +2193,7 @@ test fn witness_issue_detail_attempt_does_not_invent_a_workflow_assignee() -> Bo
     EmitOk { html: h } =>
       let region = string_at(parts: split(s: string_at(parts: split(s: h, delimiter: "issue-field-label\">assignee"), index: 1), delimiter: "<form"), index: 0)
       !string_contains(s: region, pattern: "title=\"Fabric — fabric@gunb.ai\"")
-        && !string_contains(s: region, pattern: "issue-avatar issue-avatar-workflow")
+        && !string_contains(s: region, pattern: "site-avatar site-avatar-workflow")
         && !string_contains(s: region, pattern: "feedface")
         && string_contains(s: h, pattern: "<span class=\"issue-field-label\">assignee</span>")
   }
@@ -2306,7 +2307,7 @@ test fn witness_issue_comment_stream_renders_description_avatars_numbers_times_a
         && string_contains(s: h, pattern: "reply to #comment-1")
         && occurrence_count(s: h, pattern: "class=\"issue-comment issue-comment-deleted\"") == 1
         && string_contains(s: h, pattern: "<div class=\"issue-comment-body\">comment deleted</div>")
-        && occurrence_count(s: h, pattern: "data-avatar=\"absent\"") == 7
+        && occurrence_count(s: h, pattern: "data-avatar=\"absent\"") == 8
   }
 }
 
@@ -2324,7 +2325,7 @@ test fn witness_issue_comment_composer_posts_urlencoded_with_stable_key_and_csrf
         && occurrence_count(s: h, pattern: "name=\"key\" type=\"hidden\"") == 2
         && occurrence_count(s: h, pattern: "name=\"csrf\" type=\"hidden\"") == 2
         && occurrence_count(s: h, pattern: "name=\"expected_revision\" type=\"hidden\"") == 2
-        && string_contains(s: h, pattern: "<textarea name=\"body\" class=\"issue-comment-input\" placeholder=\"comment — markdown, @mentions\"></textarea>")
+        && string_contains(s: h, pattern: "<textarea name=\"body\" class=\"issue-comment-input\" placeholder=\"Write a comment. Type @ to mention a person or group.\"")
         && occurrence_count(s: h, pattern: "class=\"issue-comment-submit issue-action-text\" type=\"submit\"") == 1
         && occurrence_count(s: h, pattern: "issue-action\" type=\"button\"") == 0
   }
@@ -2364,7 +2365,7 @@ test fn witness_issue_publication_handoff_renders_the_compact_automated_entry() 
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       occurrence_count(s: h, pattern: "data-event-kind=\"publication_observed\"") == 2
-        && string_contains(s: h, pattern: "<span class=\"issue-avatar issue-avatar-workflow\" data-avatar=\"absent\" title=\"Fabric — workflow · fabric@gunb.ai\"><svg class=\"issue-avatar-mark\" viewBox=\"0 0 120 120\" role=\"img\" aria-label=\"Fabric\">")
+        && string_contains(s: h, pattern: "<span class=\"site-avatar site-avatar-workflow\" data-avatar=\"absent\" title=\"Fabric — workflow · fabric@gunb.ai\"><svg class=\"site-avatar-default-mark\" viewBox=\"0 0 64 64\" role=\"img\" aria-label=\"Fabric group\">")
         && string_contains(s: h, pattern: "published gunb-ai/gunbc#12210 at 52c56a8 — reassigned for merge to principal:google-oidc/accounts/sub-viewer")
         && string_contains(s: h, pattern: "ready for review — published gunb-ai/gunbc#12210 at 52c56a8; reassigned for merge to principal:google-oidc/accounts/sub-viewer")
         && string_contains(s: h, pattern: "issue-comment issue-publication")
@@ -2377,9 +2378,9 @@ test fn witness_issue_publication_handoff_renders_the_compact_automated_entry() 
 // child with no padding at all — and the rail is a narrow 34ch column that cannot starve the
 // panels.
 test fn witness_issue_detail_pads_its_content_and_sized_the_rail() -> Bool {
-  let css = fx_css_rule_blocks()
-  string_contains(s: css, pattern: ".issue-detail { display: flex; flex-direction: column; gap: var(--space-12); font-family: var(--issue-font); color: var(--issue-text); padding: var(--space-16) var(--space-24) }")
-    && occurrence_count(s: css, pattern: "width: 34ch") == 1
+  fx_emitted_property(selector: ".issue-detail", property: "padding", value: "var(--space-24)")
+    && fx_emitted_property(selector: ".issue-rail", property: "flex", value: "0 1 34ch")
+    && fx_emitted_property(selector: ".issue-rail", property: "max-width", value: "100%")
 }
 
 fn issue_detail_fixture_view_with_brief(lifecycle: gunbc.roadmap_presentation.WorkLifecycle, control_label: String = "red control") -> gunbc.roadmap_presentation.WorkRowView {
@@ -2479,7 +2480,7 @@ test fn witness_header_account_static_body_carries_hidden_target_and_no_login_co
       let body = match (split(s: h, delimiter: "</style>")).skip(n: 1).first() { Present { value: b } => b  Absent => h }
       occurrence_count(s: body, pattern: "<span class=\"header-account header-account-session\" data-account-session=\"\" hidden=\"\">") == 1
         && occurrence_count(s: body, pattern: "<button class=\"header-account-trigger\" type=\"button\" data-account-trigger=\"\">") == 1
-        && occurrence_count(s: body, pattern: "<span class=\"issue-avatar\" data-account-avatar=\"\" data-avatar=\"absent\"></span>") == 1
+        && occurrence_count(s: body, pattern: "<span class=\"site-avatar\" data-account-avatar=\"\" data-avatar=\"absent\"></span>") == 1
         && occurrence_count(s: body, pattern: "<span class=\"header-account-name\" data-account-name=\"\"></span>") == 1
         && !string_contains(s: body, pattern: "/auth/login")
         && !string_contains(s: body, pattern: "/auth/logout")
@@ -2495,8 +2496,9 @@ test fn witness_header_account_rules_hide_and_crop() -> Bool {
   string_contains(s: css, pattern: ".header-account-session[hidden] { display: none }")
     && !string_contains(s: css, pattern: "header-account-signin")
     && !string_contains(s: css, pattern: "header-account-menu")
-    && string_contains(s: css, pattern: ".issue-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover }")
-    && string_contains(s: css, pattern: "var(--issue-text-dim); position: relative; overflow: hidden }")
+    && string_contains(s: css, pattern: ".site-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover }")
+    && fx_emitted_property(selector: ".site-avatar", property: "position", value: "relative")
+    && fx_emitted_property(selector: ".site-avatar", property: "overflow", value: "hidden")
 }
 
 // THE SWAP TABLE (the client program's contract), ONE SESSION READ since the 2026-09-27
@@ -2544,10 +2546,11 @@ test fn witness_header_account_swap_table() -> Bool {
 // overflowing — and the form wraps as the belt-and-braces, so the input+button row's declared
 // geometry fits the 34ch rail's inner width (padding included) by construction.
 test fn witness_issue_assign_form_fits_the_rail() -> Bool {
-  let css = fx_css_rule_blocks()
-  string_contains(s: css, pattern: ".issue-assign-form { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-4) }")
-    && string_contains(s: css, pattern: ".issue-assign-input { font-family: var(--font-mono); font-size: var(--text-13); color: var(--issue-text); border: var(--border-1) solid var(--issue-border); border-radius: var(--radius-3); padding: var(--space-2) var(--space-4); min-width: 0; flex: 1 }")
-    && occurrence_count(s: css, pattern: "width: 34ch") == 1
+  fx_emitted_property(selector: ".site-choice-rich", property: "display", value: "block")
+    && fx_emitted_property(selector: ".site-choice-rich", property: "width", value: "100%")
+    && fx_emitted_property(selector: ".issue-assign-input", property: "min-width", value: "0")
+    && fx_emitted_property(selector: ".issue-assign-input", property: "width", value: "100%")
+    && fx_emitted_property(selector: ".issue-rail", property: "flex", value: "0 1 34ch")
 }
 
 // ── The profile-bound assignee identity (owner ask 2026-09-28) ──────────────────────────────────
@@ -2585,11 +2588,13 @@ test fn witness_assignee_chip_renders_the_profile_identity_when_known() -> Bool 
   let known = fixture_assignee_chip_html(holder: fixture_human_principal(), profiles: [fixture_human_profile()])
   let unknown = fixture_assignee_chip_html(holder: fixture_human_principal(), profiles: [])
   let stranger = fixture_assignee_chip_html(holder: gunbc.roadmap.roadmap_event_log.EventPrincipalAuthenticated { ref: fixture_stranger_ref() }, profiles: [fixture_human_profile()])
-  string_contains(s: known, pattern: "class=\"issue-avatar\" data-avatar=\"resolved\" title=\"Fixture Viewer — viewer@gunb.ai\">FV</span><span class=\"issue-assignee-text\">viewer@gunb.ai</span>")
-    && string_contains(s: unknown, pattern: "class=\"issue-avatar\" data-avatar=\"absent\" title=\"principal:google-oidc/accounts/sub-viewer — principal:google-oidc/accounts/sub-viewer\">s</span>")
+  string_contains(s: known, pattern: "<img src=\"https://lh3.googleusercontent.com/a/fixture-picture\"")
+    && string_contains(s: known, pattern: "class=\"issue-assignee-text\">viewer@gunb.ai</span>")
+    && string_contains(s: unknown, pattern: "— unknown profile")
     && !string_contains(s: unknown, pattern: "issue-assignee-text")
-    && string_contains(s: stranger, pattern: "class=\"issue-avatar\" data-avatar=\"absent\" title=\"principal:google-oidc/accounts/sub-stranger — principal:google-oidc/accounts/sub-stranger\">s</span>")
+    && string_contains(s: stranger, pattern: "— unknown profile")
     && !string_contains(s: stranger, pattern: "issue-assignee-text")
+
 }
 
 // THE DETAIL PAGE carries the roster on the decided row: the rail's assignee chip and the
@@ -2644,7 +2649,8 @@ test fn witness_issue_detail_rail_and_comments_render_the_profile_identity() -> 
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       let rail_region = string_at(parts: split(s: h, delimiter: "<aside class=\"issue-rail\">"), index: 1)
-      occurrence_count(s: rail_region, pattern: "class=\"issue-avatar\" data-avatar=\"resolved\" title=\"Fixture Viewer — viewer@gunb.ai\">FV</span><span class=\"issue-assignee-text\">viewer@gunb.ai</span>") == 2
+      string_contains(s: rail_region, pattern: "value=\"viewer@gunb.ai\"")
+        && string_contains(s: rail_region, pattern: "<img src=\"https://lh3.googleusercontent.com/a/fixture-picture\"")
         && occurrence_count(s: h, pattern: "class=\"issue-comment-author\">Fixture Viewer</span>") == 3
         && string_contains(s: h, pattern: "reassigned for merge to Fixture Viewer")
   }

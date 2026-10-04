@@ -101,8 +101,8 @@ data starlight_edge: Material = Material { name: "starlight-edge", hue: 45, sat_
 data night_brass: Material = Material { name: "night-brass", hue: 42, sat_pct: 48, light_pct: 62, area: PointArea }
 data night_clay: Material = Material { name: "night-clay", hue: 8, sat_pct: 52, light_pct: 56, area: HairlineArea }
 
-data day_canvas: Material = Material { name: "day-canvas", hue: 40, sat_pct: 32, light_pct: 95, area: FieldArea }
-data day_surface: Material = Material { name: "day-surface", hue: 40, sat_pct: 28, light_pct: 91, area: FieldArea }
+data day_canvas: Material = Material { name: "day-canvas", hue: 220, sat_pct: 20, light_pct: 97, area: FieldArea }
+data day_surface: Material = Material { name: "day-surface", hue: 220, sat_pct: 0, light_pct: 100, area: FieldArea }
 data day_border: Material = Material { name: "day-border", hue: 40, sat_pct: 12, light_pct: 45, area: HairlineArea }
 data day_ink: Material = Material { name: "day-ink", hue: 230, sat_pct: 14, light_pct: 22, area: TextArea }
 data day_ink_dim: Material = Material { name: "day-ink-dim", hue: 230, sat_pct: 8, light_pct: 42, area: TextArea }

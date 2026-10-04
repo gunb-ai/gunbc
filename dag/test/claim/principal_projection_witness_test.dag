@@ -17,9 +17,9 @@ import product.data_category { personal_identity_ref }
 import product.data_class { classified_category }
 import gunbc.principal_projection {
   HumanPrincipalMint, HumanPrincipalMinted, HumanPrincipalRefused,
-  PrincipalProfileProjection, PrincipalProfileProjected, PrincipalProfileRefused,
+  VerifiedOidcProfileSnapshotProjection, VerifiedOidcProfileSnapshotProjected, VerifiedOidcProfileSnapshotRefused,
   VerifiedOidcProjectionProjected, VerifiedOidcProjectionRefused,
-  mint_human_principal_from_verdict, project_principal_profile, principal_profile_with_revision,
+  mint_human_principal_from_verdict, observe_verified_oidc_profile,
   verified_oidc_projection,
   principal_ref_eq, principal_ref_label, principal_ref_parse_label,
   google_oidc_issuer, fabric_workflow_principal, fabric_display_alias,
@@ -93,15 +93,15 @@ fn witness_refused_verdict() -> OidcIdTokenVerdict {
   )
 }
 
-// THE ADMITTED WRAPPERS. mint_human_principal_from_verdict and project_principal_profile are
+// THE ADMITTED WRAPPERS. mint_human_principal_from_verdict and observe_verified_oidc_profile are
 // admit_callers-sealed; these two decls are the roster entries the witness tests call through —
 // the same boundary-admission shape product.data_class uses for its witness fixture builder.
 fn witness_mint_human_principal(verdict: OidcIdTokenVerdict) -> HumanPrincipalMint {
   mint_human_principal_from_verdict(verdict: verdict)
 }
 
-fn witness_project_principal_profile(verdict: OidcIdTokenVerdict) -> PrincipalProfileProjection {
-  project_principal_profile(verdict: verdict)
+fn witness_observe_verified_oidc_profile(verdict: OidcIdTokenVerdict) -> VerifiedOidcProfileSnapshotProjection {
+  observe_verified_oidc_profile(verdict: verdict)
 }
 
 // THE POSITIVE CONTROL. A verified Google token mints principal:google-oidc/accounts/<sub>, the
@@ -164,36 +164,18 @@ test fn fabric_is_the_one_workflow_principal_with_a_display_alias() -> Bool {
     && (fabric_display_alias as String) == "fabric@gunb.ai"
 }
 
-// THE PROFILE IS A MUTABLE PROJECTION OF THE SAME VERDICT: it carries the email/name facts the
-// mint refuses to read, minted only beside the principal, and the profile revision advances on
-// update without the principal ever moving.
-test fn the_profile_projects_mutable_facts_and_revises_without_reidentifying() -> Bool {
-  let verdict = witness_verdict(sub: "sub-123" as NonEmptyStr, email: "person@gunb.ai")
-  match witness_mint_human_principal(verdict: verdict) {
-    HumanPrincipalRefused { cause: _ } => false
-    HumanPrincipalMinted { principal: p } =>
-      match witness_project_principal_profile(verdict: verdict) {
-        PrincipalProfileRefused { cause: _ } => false
-        PrincipalProfileProjected { profile: prof } =>
-          prof.profile_revision == 1
-            && principal_ref_eq(a: prof.principal, b: p)
-            && prof.primary_email == Present { value: "person@gunb.ai" }
-            && prof.display_name == Present { value: "A Person" }
-            && prof.hosted_domain == Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } }
-            && {
-              let revised = principal_profile_with_revision(
-                profile: prof,
-                primary_email: Present { value: "renamed@gunb.ai" },
-                email_verified: prof.email_verified,
-                hosted_domain: prof.hosted_domain,
-                display_name: Present { value: "A New Name" },
-                picture: prof.picture,
-              )
-              revised.profile_revision == 2
-                && principal_ref_eq(a: revised.principal, b: p)
-                && revised.primary_email == Present { value: "renamed@gunb.ai" }
-                && revised.display_name == Present { value: "A New Name" }
-            }
+// Re-observation may change profile facts without changing stable identity. It is
+// not a second mutable profile store or a directory write.
+test fn verified_profile_snapshots_change_facts_without_reidentifying() -> Bool {
+  match witness_observe_verified_oidc_profile(verdict: witness_verdict(sub: "sub-123" as NonEmptyStr, email: "person@gunb.ai")) {
+    VerifiedOidcProfileSnapshotRefused { cause: _ } => false
+    VerifiedOidcProfileSnapshotProjected { profile: first } =>
+      match witness_observe_verified_oidc_profile(verdict: witness_verdict(sub: "sub-123" as NonEmptyStr, email: "renamed@gunb.ai")) {
+        VerifiedOidcProfileSnapshotRefused { cause: _ } => false
+        VerifiedOidcProfileSnapshotProjected { profile: second } =>
+          principal_ref_eq(a: first.principal, b: second.principal)
+            && first.primary_email == Present { value: "person@gunb.ai" }
+            && second.primary_email == Present { value: "renamed@gunb.ai" }
       }
   }
 }

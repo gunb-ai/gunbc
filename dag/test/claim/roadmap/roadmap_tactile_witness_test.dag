@@ -38,13 +38,10 @@ import gunbc.roadmap_interaction {
   detent_rest, detent_hover, detent_pressed, detent_requested, detent_accepted,
 }
 import gunbc.roadmap_style { roadmap_css, roadmap_rules }
-import gunbc.roadmap_component {
-  dispatch_client_js_source, sound_toggle_class,
-  dispatch_class_requested, dispatch_class_ok,
-  dispatch_ack_prefix, dispatch_ack_word,
-  sound_toggle_label_on, sound_toggle_label_off,
-}
-import gunbc.roadmap_page { roadmap_header, roadmap_page_for_authority }
+import gunbc.roadmap_component { dispatch_client_js_source, dispatch_class_requested, dispatch_class_ok, dispatch_ack_prefix, dispatch_ack_word }
+import gunbc.site.controls { sound_toggle_class, sound_toggle_label_on, sound_toggle_label_off }
+import gunbc.roadmap_page { roadmap_page_for_authority }
+import gunbc.site.document { site_header }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -304,8 +301,8 @@ fn header_has_sound_toggle(h: Fragment) -> Bool {
 }
 
 test fn witness_sound_toggle_ships_on_every_page_header() -> Bool {
-  header_has_sound_toggle(h: roadmap_header(page: "roadmap"))
-    && header_has_sound_toggle(h: roadmap_header(page: "daily workspace"))
+  header_has_sound_toggle(h: site_header(page: "roadmap"))
+    && header_has_sound_toggle(h: site_header(page: "daily workspace"))
 }
 
 test fn witness_sound_toggle_scan_discriminates() -> Bool {

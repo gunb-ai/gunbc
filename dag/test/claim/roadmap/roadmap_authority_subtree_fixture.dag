@@ -1,4 +1,5 @@
 module test.claim.roadmap.roadmap_authority_subtree_fixture
+import gunbc.site.document { site_styles }
 
 import std.types { String, Bool, List }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
@@ -83,7 +84,7 @@ fn fx_authority_subtree_roadmap_page(ids: List<String>) -> Fragment {
   roadmap_page_for_projection_launch_with_stylesheet(
     proj: fx_authority_subtree_projection(ids: ids),
     launch: launch_host_unobserved_static_render(),
-    stylesheet: "",
+    stylesheet: site_styles(rules: []),
   )
 }
 
@@ -99,6 +100,6 @@ fn fx_authority_subtree_daily_page(ids: List<String>) -> Fragment {
     stale_nodes: [],
     profiles: [],
     memberships: roadmap_memberships(),
-    stylesheet: "",
+    stylesheet: site_styles(rules: []),
   )
 }

@@ -1,4 +1,5 @@
 module test.claim.roadmap_serve_witness
+import gunbc.site.document { site_styles }
 import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, AccessPathLocalDev, RequestAccessPath }
 
 import gunbc.roadmap_serve {
@@ -606,7 +607,7 @@ fn daily_page_html_over_plan(plan: RoadmapAuthorityProjection) -> String {
     stale_nodes: [],
     profiles: [],
     memberships: roadmap_memberships(),
-    stylesheet: "",
+    stylesheet: site_styles(rules: []),
   )) {
     EmitOk { html } => html
     EmitRejected { reason } => reason

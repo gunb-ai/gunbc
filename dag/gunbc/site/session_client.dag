@@ -1,4 +1,4 @@
-module gunbc.roadmap_session_client
+module gunbc.site.session_client
 
 import extdeps.languages.typescript.program {
   TsStmt, ts_ident, ts_lit_str, ts_member, ts_call,

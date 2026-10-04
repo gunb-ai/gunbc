@@ -1,0 +1,33 @@
+module gunbc.principal_mention
+
+import gunbc.principal_projection { PrincipalRef, principal_ref_label, principal_ref_parse_label }
+import extdeps.uri { uri_percent_encode_component, UriPercentComponentEncoded, UriPercentComponentRefused }
+import extdeps.http.form_urlencoded { form_component }
+
+// Persisted v1 mention: Markdown display snapshot plus canonical stable principal label.
+// Decode exactly once, refuse malformed UTF-8, require uppercase escapes and canonical
+// re-encoding. A mention identifies a profile; it grants no authority or notification.
+data principal_mention_scheme: String = "gunbc-principal:"
+fn principal_mention_uri(principal: PrincipalRef) -> String {
+  match uri_percent_encode_component(value: principal_ref_label(p: principal) as NonEmptyStr) {
+    UriPercentComponentEncoded(wire) => concat(principal_mention_scheme, wire as String)
+    UriPercentComponentRefused { cause: _ } => ""
+  }
+}
+fn principal_mention_read(uri: String) -> PrincipalRef? {
+  let prefix_length = string_length(s: principal_mention_scheme)
+  if substring(s: uri, start: 0, end: prefix_length) != principal_mention_scheme || string_contains(s: uri, pattern: "+") { none }
+  else {
+    match form_component(wire: substring(s: uri, start: prefix_length, end: string_length(s: uri))) {
+      Absent => none
+      Present { value: label } => match principal_ref_parse_label(s: label) {
+        Absent => none
+        Present { value: principal } => if principal_mention_uri(principal: principal) == uri { Present { value: principal } } else { none }
+      }
+    }
+  }
+}
+fn principal_mention_markdown(principal: PrincipalRef, label: String) -> String {
+  let snapshot = replace(replace(replace(label, "\\", "\\\\"), "[", "\\["), "]", "\\]")
+  join(["[@", snapshot, "](", principal_mention_uri(principal: principal), ")"], "")
+}

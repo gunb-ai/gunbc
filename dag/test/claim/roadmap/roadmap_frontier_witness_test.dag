@@ -14,10 +14,8 @@ import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap_launch_canary { roadmap_launch_canary_execution_contract }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_spawner { spawn_frontier, next_spawnable }
-import gunbc.roadmap_page {
-  roadmap_header, workspace_markup,
-  daily_row_activity, daily_row_rounds, page_launch_context,
-}
+import gunbc.roadmap_page { workspace_markup, daily_row_activity, daily_row_rounds, page_launch_context }
+import gunbc.site.document { site_header }
 import gunbc.roadmap_presentation { DailyWorkspaceView, work_row_view, daily_workspace_view, observation_impact_view }
 import gunbc.roadmap_launch_admission { launch_host_unobserved_static_render }
 import gunbc.roadmap_spawner { doc_all_nodes, doc_all_edges }
@@ -192,7 +190,7 @@ fn workspace_band_html(doc: RoadmapDocument, merged: List<Int>) -> String {
 }
 
 fn daily_workspace_header_html() -> String {
-  match try_serialize_html_source(node: roadmap_header(page: "daily workspace")) {
+  match try_serialize_html_source(node: site_header(page: "daily workspace")) {
     EmitOk { html: h } => h
     EmitRejected { reason: _ } => ""
   }
