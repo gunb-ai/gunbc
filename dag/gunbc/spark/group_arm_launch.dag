@@ -23,7 +23,7 @@ import extdeps.nvidia.system_management_interface { parse_compute_apps, ComputeA
 import extdeps.systemd.systemctl { systemctl_list_all_service_units_argv }
 import extdeps.exec.command { argv_words }
 import std.algebra { trim }
-import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
+import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun, ArgvLegMayHaveRun }
 import extdeps.systemd { Active }
 import gunbc.fabric_event_log_host { now_epoch_seconds, HostStoreResolved, HostStoreRefused, event_log_store_for_host }
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach, ReachFabricRail, spark_reach_endpoint }
@@ -717,6 +717,7 @@ fn group_arm_read_own_fence(run: fn(List<String>) -> ArgvRun, units: ArmUnitIden
   let markers = map([units.head_unit_name, units.rank_unit_name], u => join([spark_native_unit_path(unit_name: u), spark_native_unresolved_rollback_suffix], ""))
   match run(["sh", "-c", join(["for f in ", join(paths, " "), "; do if [ -e \"$f\" ]; then echo own-fence=held; exit 0; fi; done; for f in ", join(markers, " "), "; do if [ -e \"$f\" ]; then echo own-fence=rollback-unresolved; exit 0; fi; done; echo own-fence=absent"], "")]) {
     ArgvLegDidNotRun { cause: c } => ArmOwnFenceUnread { cause: c }
+    ArgvLegMayHaveRun { cause: c } => ArmOwnFenceUnread { cause: join(["the fence read was sent and its result never arrived (unread, not absent): ", c], "") }
     ArgvRan { exit_code: code, stdout: out, stderr: err } =>
       if code != 0 { ArmOwnFenceUnread { cause: join(["exit ", to_string(code), ": ", trim(s: err)], "") } }
       else if string_contains(s: out, pattern: "own-fence=held") { ArmOwnFenceHeld }
@@ -812,7 +813,7 @@ fn group_arm_launch_wet(arm: ArmWetSession, receipt_path: String) -> ProcessExit
 // this. Every leg that did not run says so: an unread host is reported, never listed as empty.
 fn observe_leg(ctx: SparkMaterializeContext, what: String, argv: List<String>) -> String {
   match spark_remote_run(ctx: ctx, argv: argv) {
-    RemoteUnreachable { cause: c } => join(["  ", what, ": NOT READ (", c, ")\n"], "")
+    RemoteUnreachable { cause: c, reach: _ } => join(["  ", what, ": NOT READ (", c, ")\n"], "")
     RemoteRan { exit_code: code, stdout: out, stderr: err } =>
       if code != 0 { join(["  ", what, ": NOT READ (exit ", to_string(code), ": ", trim(s: err), ")\n"], "") }
       else { join(["  ", what, ":\n", join(map(filter(split(out, "\n"), l => trim(s: l) != ""), l => join(["    ", l, "\n"], "")), "")], "") }
@@ -821,7 +822,7 @@ fn observe_leg(ctx: SparkMaterializeContext, what: String, argv: List<String>) -
 
 fn running_unit_lines(ctx: SparkMaterializeContext) -> String {
   match spark_remote_run(ctx: ctx, argv: systemctl_list_all_service_units_argv()) {
-    RemoteUnreachable { cause: c } => join(["  running service units: NOT READ (", c, ")\n"], "")
+    RemoteUnreachable { cause: c, reach: _ } => join(["  running service units: NOT READ (", c, ")\n"], "")
     RemoteRan { exit_code: code, stdout: out, stderr: err } =>
       if code != 0 { join(["  running service units: NOT READ (exit ", to_string(code), ": ", trim(s: err), ")\n"], "") }
       else { join(["  running service units:\n", join(map(filter(split(out, "\n"), l => string_contains(s: l, pattern: " running ")), l => join(["    ", trim(s: l), "\n"], "")), "")], "") }
@@ -942,7 +943,7 @@ fn rail_ping_line(ctx: SparkMaterializeContext, peer: HostIdentity) -> String {
     Absent => join(["    rail ", peer as String, ": no rail address\n"], "")
     Present { value: addr } =>
       match spark_remote_run(ctx: ctx, argv: ["ping", "-c", "2", "-W", "1", addr as String]) {
-        RemoteUnreachable { cause: c } => join(["    rail ", peer as String, " (", addr as String, "): NOT READ (", c, ")\n"], "")
+        RemoteUnreachable { cause: c, reach: _ } => join(["    rail ", peer as String, " (", addr as String, "): NOT READ (", c, ")\n"], "")
         RemoteRan { exit_code: code, stdout: _, stderr: _ } => join(["    rail ", peer as String, " (", addr as String, "): ", ping_word(code: code), "\n"], "")
       }
   }
@@ -952,7 +953,7 @@ fn group_host_link_health(ctx: SparkMaterializeContext, h: HostIdentity) -> Stri
   let run = spark_ctx_argv_run(ctx: ctx)
   let kernel = spark_remote_run(ctx: ctx, argv: journalctl_kernel_current_boot_argv())
   let kernel_line = match kernel {
-    RemoteUnreachable { cause: c } => join(["  kernel ring: NOT READ (", c, ")\n"], "")
+    RemoteUnreachable { cause: c, reach: _ } => join(["  kernel ring: NOT READ (", c, ")\n"], "")
     RemoteRan { exit_code: code, stdout: out, stderr: err } =>
       if code != 0 { join(["  kernel ring: NOT READ (exit ", to_string(code), ": ", trim(s: err), ")\n"], "") } else {
         join(["  kernel ring this boot: oom=", to_string(kernel_marker_count(kernel_log: out, markers: link_health_oom_markers)),

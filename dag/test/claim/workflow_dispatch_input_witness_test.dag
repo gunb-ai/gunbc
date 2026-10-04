@@ -1,18 +1,19 @@
 module test.claim.workflow_dispatch_input_witness
 
+import gunbc.fleet_converge_scope { LiveDeploy, FullHost, LaunchEnvironment, FabricExecutionCellsOnly, FabricAllocationStoreOnly, WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly }
+
 import extdeps.github.actions {
   WorkflowDispatch, DispatchInput, InputString, InputChoice, Step, RunStep, UsesStep
 }
-import gunbc.fleet_converge_plan {
-  LiveDeploy, FullHost, LaunchEnvironment, FabricExecutionCellsOnly, FabricAllocationStoreOnly, WorkspaceAllocationOnly,
-}
+
 import v2.std.collection { Present, Absent }
 import gunbc.fleet_converge_workflow {
   fleet_converge_fabric_writer_identity_observe_receipt_if, fleet_converge_fabric_writer_identity_observe_step_if,
   FleetConvergeWorkflowMode, fleet_converge_workflow_modes, fleet_converge_workflow_mode_wire,
   fleet_converge_mode_step_if, fleet_converge_mode_scope, fleet_converge_host_reset_return_job, fleet_converge_host_reset_return_step_if, fleet_converge_reset_observer_dispatch_admission_step,
   ApprovalBrokerDarkInstall, fleet_converge_approval_broker_dark_install_step_if,
-  FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, DashboardDeploy, HostResetReturn,
+  FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, DashboardDeploy, HostResetReturn,
+  fleet_converge_workspace_commissioning_plan_step, fleet_converge_any_plan_step_if,
   RunnerPasswordSessionToolConverge,
   RunnerBrowserToolchainConverge,
   fleet_converge_spark_bootstrap_step_if, fleet_converge_mode_options,
@@ -667,10 +668,11 @@ test fn dashboard_deploy_selects_live_deploy_scope_while_the_plan_modes_do() -> 
       FabricExecutionCellsOnly => false
       FabricAllocationStoreOnly => false
     WorkspaceAllocationOnly => false
+    WorkspaceSlotCommissioningOnly => false
     }
   }
   let plans_present = all(
-    [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan],
+    [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan],
     m => match fleet_converge_mode_scope(mode: m) { Present { value: _ } => true  Absent => false },
   )
   deploy_live && plans_present
@@ -924,4 +926,30 @@ test fn the_enrolment_code_issue_is_keyed_to_its_store_and_the_keyring_stays_wit
     && issue == fleet_converge_mutation_group_for(mode: ApprovalDeviceEnrolmentCodeIssue, host: "srv2", target: "srv2", run_id: "0")
     && fleet_converge_mutation_group_for(mode: ApprovalKeyringConverge, host: "srv1", target: "srv1", run_id: "0") == fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1", target: "srv1", run_id: "0")
     && string_contains(s: fleet_converge_mutation_concurrency_group_expression, pattern: "github.event.inputs.mode == 'approval_device_enrolment_code_issue' && 'gunbc-subject-mutation-approval-device-store-srv1'")
+}
+
+// The plan choice must reach the commissioning-only entry with both admission bindings,
+// and participate in the shared plan artifact upload rather than silently losing its receipt.
+test fn workspace_commissioning_plan_is_bound_and_uploaded() -> Bool {
+  let step = fleet_converge_workspace_commissioning_plan_step()
+  let env = step_env_text(step: step)
+  let scope_matches = match fleet_converge_mode_scope(mode: WorkspaceCommissioningPlan) {
+    Present { value: WorkspaceSlotCommissioningOnly } => true
+    _ => false
+  }
+  scope_matches
+    && step_id_text(step: step) == "workspace_commissioning_plan"
+    && string_contains(s: step_run_text(step: step), pattern: "--function fleet_converge_workspace_commissioning_plan_wet")
+    && string_contains(s: env, pattern: "FLEET_CONVERGE_EXPECTED_HOST=$\{\{ github.event.inputs.host \}\}")
+    && string_contains(s: env, pattern: "RLM_EXPECTED_REVISION=$\{\{ github.event.inputs.expected_revision \}\}")
+    && string_contains(s: fleet_converge_any_plan_step_if, pattern: "workspace_commissioning_plan")
+    && match step {
+      RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: Present { value: bound } } =>
+        bound == gunbc.fleet_workflow_steps.gunbc_ci_fleet_converge_plan_step_timeout_minutes
+      _ => false
+    }
+    && match fleet_converge_mode_fleet_ssh_key_demand(mode: WorkspaceCommissioningPlan) {
+      FleetSshKeyConsumed => true
+      FleetSshKeyNotConsumed => false
+    }
 }

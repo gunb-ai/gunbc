@@ -4,11 +4,22 @@ module extdeps.filesystem.posix
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.filesystem.types { EntryKind }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/basedefs/sys_stat.h.html"
   }
+}
+
+// Reading: POSIX sys_stat.h basedefs owns the file-type macros; type PosixFileType is the seven S_IF* constants exactly, so the type is the surface this citation owns.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.filesystem.posix", decl_name: "PosixFileType", field: WholeDeclaration
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 type PosixFileType

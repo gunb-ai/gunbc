@@ -1485,7 +1485,7 @@ type SparkNativeImageFacts
 
 fn spark_native_image_facts(ctx: SparkMaterializeContext, reference: NonEmptyStr) -> SparkNativeImageFacts {
   match spark_remote_run(ctx: ctx, argv: ["docker", "image", "inspect", "--format", "\{\"Id\":\{\{json .Id}},\"Env\":\{\{json .Config.Env}}}", reference as String]) {
-    RemoteUnreachable { cause: c } => ImageFactsUnread { cause: join(["docker image inspect ", reference as String, " was not run: ", c], "") }
+    RemoteUnreachable { cause: c, reach: _ } => ImageFactsUnread { cause: join(["docker image inspect ", reference as String, " was not run: ", c], "") }
     RemoteRan { exit_code: code, stdout: out, stderr: err } =>
       if code != 0 { ImageFactsUnread { cause: join(["docker image inspect ", reference as String, " exited ", to_string(code), ": ", trim(s: err)], "") } }
       else {

@@ -73,7 +73,7 @@ type Glm53KvplanProbe
 // its count. Anything else refuses and the receipt carries what was answered.
 fn glm53_kvplan_probe(ctx: SparkMaterializeContext, digest: NonEmptyStr, r: VllmContainerBuildRecipe) -> Glm53KvplanProbe {
   match spark_remote_run(ctx: ctx, argv: glm53_kvplan_probe_argv(digest: digest)) {
-    RemoteUnreachable { cause: c } => Glm53KvplanProbeRefused { receipt: join(["probe inside ", digest as String, " DID NOT RUN: ", c, "\n"], "") }
+    RemoteUnreachable { cause: c, reach: _ } => Glm53KvplanProbeRefused { receipt: join(["probe inside ", digest as String, " DID NOT RUN: ", c, "\n"], "") }
     RemoteRan { exit_code: code, stdout: out, stderr: err } => {
       let archs = registry_dump_architectures(stdout: out)
       let version = probe_line_value(stdout: out, prefix: "VLLM_VERSION ")
