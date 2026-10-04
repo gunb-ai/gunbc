@@ -36,6 +36,7 @@ import gunbc.runner_throughput_qualification_route { ephemeral_slot_unit, epheme
 type HostUnitSlot sole_constructor {
   host: ManagedHostBinding
   attempt: NonEmptyStr
+  workflow: NonEmptyStr
   unit: NonEmptyStr
   labels: List<String>
   argv: List<String>
@@ -58,7 +59,10 @@ fn host_unit_slot_listener_argv() -> List<String> {
   [concat(actions_runner_base_dir, actions_runner_listener_relative_path), actions_runner_listener_run_verb]
 }
 
-fn host_unit_slot_for(host: ManagedHostBindingStanding, attempt: NonEmptyStr) -> HostUnitSlotStanding {
+// THE WORKFLOW IS THE CALLER'S: the slot exists to run one workflow, and the mint refuses a runner
+// group restricted to any other (gunbc.runner_jit_mint jit_slot_workflow). It is spelled the way
+// GitHub identifies a selected workflow, `<owner>/<repo>/<path>@<ref>`.
+fn host_unit_slot_for(host: ManagedHostBindingStanding, attempt: NonEmptyStr, workflow: NonEmptyStr) -> HostUnitSlotStanding {
   match host {
     ManagedHostBound { binding: b } =>
       match actions_runner_binary_artifact_for_arch(binary_release: host_unit_slot_runner_release, arch: Aarch64) {
@@ -69,6 +73,7 @@ fn host_unit_slot_for(host: ManagedHostBindingStanding, attempt: NonEmptyStr) ->
             slot: HostUnitSlot {
               host: b,
               attempt: attempt,
+              workflow: workflow,
               unit: unit,
               labels: ephemeral_slot_labels(host: b.host.host, attempt: attempt),
               argv: ephemeral_slot_argv(unit: unit, desired: gunbc_runner_slot_desired(), command_argv: host_unit_slot_listener_argv()),

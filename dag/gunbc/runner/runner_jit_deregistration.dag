@@ -4,15 +4,18 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.resources { Network }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import extdeps.transports.rest { RestExchangePerformance, RestExchangeSucceeded }
+import extdeps.github.app { GitHubAppInstallationId }
 import extdeps.github.effect { GitHubOrganizationRef, DeleteOrganizationRunner }
 import extdeps.github.actions_jit_runner { JitRunnerName }
 import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire }
-import gunbc.auth.github_apps { GitHubAppControlPlaneState }
+import gunbc.auth.github_apps { DeclaredGitHubApp, GitHubAppControlPlaneState }
 import gunbc.auth.github_credential {
   GitHubCredentialAuthority, CredentialCapability, credential_authorizes, unsatisfied_capabilities,
 }
 import gunbc.runner_jit_mint { JitSlot }
-import gunbc.runner.runner_jit_perform { JitMintDispatch, JitMintDispatchAuthorized, JitMintDispatchRefused }
+import gunbc.runner.runner_jit_perform {
+  JitMintDispatch, JitMintDispatchAuthorized, JitMintDispatchRefused, authority_installation,
+}
 import gunbc.github_effect_perform {
   ControllerInstallationToken, OrganizationRunnerListRead, list_runners_by_name_with, delete_runner_with,
 }
@@ -26,18 +29,6 @@ import gunbc.github_effect_perform {
 // the deregistration is total over how the slot exited (JitSlotExit), records that exit in its
 // receipt, and decides only from what GitHub lists now.
 //
-// THE REGISTRATION IS IDENTIFIED BY THE NAME IT WAS MINTED UNDER, which an authorized dispatch fixes
-// BEFORE GitHub answers (gunbc.runner_jit_mint jit_slot_runner_name). So a mint whose answer was lost
-// -- the one case where a runner may exist under an id nobody received -- still yields a
-// registration this fold can find and remove. A refused dispatch minted nothing and yields none.
-//
-// SUCCESS IS A READBACK, NEVER A DELETE STATUS. The organization's listing filtered by the name
-// (extdeps.github.actions_self_hosted_runners ListOrganizationRunnersByName) is read before and,
-// when anything was removed, after; JitRunnerDeregistered is constructed only from a listing that
-// does not contain the name. A 204 with the runner still listed, an ambiguous delete, or a listing
-// that could not be read are each a typed refusal -- the line stops (DESIGN §5), it does not
-// report the slot clean.
-//
 // AUTHORIZATION IS THE DISPATCHING RUN'S (operator ruling 2026-10-03): registration and
 // deregistration are pre-approved under the fleet-converge run's own federated identity, with no
 // per-registration approval. That is recorded where the corpus records authorization patterns --
@@ -49,17 +40,25 @@ type JitSlotExit
   | SlotJobFailed { cause: NonEmptyStr }
   | SlotNeverLaunched { cause: NonEmptyStr }
 
-type JitRegistration {
+// THE SUBJECT IS MINTED FROM THE AUTHORIZED DISPATCH AND NOWHERE ELSE. jit_registration_of is its
+// only constructor, so the runner this fold may delete is one an authorized mint named -- a caller
+// cannot point the delete at an arbitrary runner name. The name is fixed by the dispatch BEFORE
+// GitHub answers (gunbc.runner_jit_mint jit_slot_runner_name), so a mint whose answer was lost --
+// the one case where a runner may exist under an id nobody received -- still yields a subject. The
+// App and installation are the dispatch's, so the token that deletes must be the one that minted.
+type JitRegistration sole_constructor {
   organization: GitHubOrganizationRef
   name: JitRunnerName
   slot: JitSlot
+  app: DeclaredGitHubApp
+  installation: GitHubAppInstallationId
 }
 
 fn jit_registration_of(dispatch: JitMintDispatch) -> JitRegistration? {
   match dispatch {
     JitMintDispatchRefused { refusal: _ } => none
-    JitMintDispatchAuthorized { slot: s, app: _, installation: _, organization: o, request: r } =>
-      Present { value: JitRegistration { organization: o, name: r.name, slot: s } }
+    JitMintDispatchAuthorized { slot: s, app: a, installation: i, organization: o, request: r } =>
+      Present { value: JitRegistration { organization: o, name: r.name, slot: s, app: a, installation: i } }
   }
 }
 
@@ -68,23 +67,27 @@ type JitRunnerListing
   | JitRunnerNotListed
   | JitRunnerListingUnreadable { performance: RestExchangePerformance, cause: NonEmptyStr }
 
-// A PAGE SHORTER THAN total_count IS NOT A LISTING. The name filter makes more than one page
-// implausible, but a runner on an unread page would read as absent, which is the one wrong answer
-// this fold exists to refuse.
-fn jit_runner_listing_of(name: JitRunnerName, read: OrganizationRunnerListRead) -> JitRunnerListing {
-  match read.performance {
+// THE PURE CLASSIFIER. A page shorter than total_count is not a listing: the name filter makes more
+// than one page implausible, but a runner on an unread page would read as absent, which is the one
+// wrong answer this fold exists to refuse.
+fn jit_runner_listing_of(name: JitRunnerName, performance: RestExchangePerformance, body: OrganizationRunnerListWire) -> JitRunnerListing {
+  match performance {
     RestExchangeSucceeded =>
-      if count(read.body.runners) != read.body.total_count {
+      if count(body.runners) != body.total_count {
         JitRunnerListingUnreadable {
-          performance: read.performance,
-          cause: join(["runner listing returned ", to_string(count(read.body.runners)), " of total_count ", to_string(read.body.total_count)], "") as NonEmptyStr,
+          performance: performance,
+          cause: join(["runner listing returned ", to_string(count(body.runners)), " of total_count ", to_string(body.total_count)], "") as NonEmptyStr,
         }
       } else {
-        let ids = read.body.runners |> filter(r => r.name == (name.value as String)) |> map(r => r.id)
+        let ids = body.runners |> filter(r => r.name == (name.value as String)) |> map(r => r.id)
         if count(ids) == 0 { JitRunnerNotListed } else { JitRunnerListed { ids: ids } }
       }
     other => JitRunnerListingUnreadable { performance: other, cause: "the organization runner listing did not succeed" as NonEmptyStr }
   }
+}
+
+fn jit_runner_listing_of_read(name: JitRunnerName, read: OrganizationRunnerListRead) -> JitRunnerListing {
+  jit_runner_listing_of(name: name, performance: read.performance, body: read.body)
 }
 
 fn plan_jit_deregistration(listing: JitRunnerListing) -> UpsertDecision<List<Int>> {
@@ -101,35 +104,108 @@ type JitRunnerDeleteAttempt {
 }
 
 type JitDeregistrationRefusal
-  = DeregistrationCredentialRefused { unsatisfied: List<CredentialCapability> }
+  = DeregistrationTokenForAnotherInstallation { app: DeclaredGitHubApp, installation: GitHubAppInstallationId }
+  | DeregistrationAuthorityForAnotherInstallation
+  | DeregistrationCredentialRefused { unsatisfied: List<CredentialCapability> }
   | DeregistrationListingUnreadable { performance: RestExchangePerformance, cause: NonEmptyStr }
   | DeregistrationRunnerStillListed { ids: List<Int>, deletes: List<JitRunnerDeleteAttempt> }
 
+// THE VERDICT OVER A READBACK, decided without I/O and witnessable on supplied listings. It carries
+// no success payload: absence is a reading here, not a receipt.
+type JitDeregistrationVerdict
+  = ReadbackShowsAbsent
+  | ReadbackRefused { refusal: JitDeregistrationRefusal }
+
+fn classify_jit_deregistration(readback: JitRunnerListing, deletes: List<JitRunnerDeleteAttempt>) -> JitDeregistrationVerdict {
+  match readback {
+    JitRunnerNotListed => ReadbackShowsAbsent
+    JitRunnerListed { ids: ids } => ReadbackRefused { refusal: DeregistrationRunnerStillListed { ids: ids, deletes: deletes } }
+    JitRunnerListingUnreadable { performance: p, cause: c } => ReadbackRefused { refusal: DeregistrationListingUnreadable { performance: p, cause: c } }
+  }
+}
+
+// THE SUCCESS RECEIPT IS SEALED. It binds the sealed subject to the listing GitHub returned AFTER
+// the deletes (or the listing that already showed the name absent), and conclude_from_readback in
+// this module is its only constructor -- reachable only from ensure_jit_runner_deregistered, with a
+// readback only gunbc.github_effect_perform list_runners_by_name_with produces. No delete status can
+// mint it.
+type JitDeregistrationReceipt sole_constructor {
+  registration: JitRegistration
+  exit: JitSlotExit
+  deletes: List<JitRunnerDeleteAttempt>
+  readback: OrganizationRunnerListRead
+}
+
 type JitDeregistration
-  = JitRunnerDeregistered { registration: JitRegistration, exit: JitSlotExit, deletes: List<JitRunnerDeleteAttempt> }
+  = JitRunnerDeregistered { receipt: JitDeregistrationReceipt }
   | JitDeregistrationRefused { registration: JitRegistration, exit: JitSlotExit, refusal: JitDeregistrationRefusal }
 
-// THE CONCLUSION READS THE LISTING AND NOTHING ELSE. The delete attempts are carried into the
-// receipt as evidence of what was tried, but no delete status can mint the deregistered arm.
-fn conclude_jit_deregistration(
+fn conclude_from_readback(
   registration: JitRegistration,
   exit: JitSlotExit,
   deletes: List<JitRunnerDeleteAttempt>,
-  readback: JitRunnerListing,
+  readback: OrganizationRunnerListRead,
 ) -> JitDeregistration {
-  match readback {
-    JitRunnerNotListed => JitRunnerDeregistered { registration: registration, exit: exit, deletes: deletes }
-    JitRunnerListed { ids: ids } =>
-      JitDeregistrationRefused { registration: registration, exit: exit, refusal: DeregistrationRunnerStillListed { ids: ids, deletes: deletes } }
-    JitRunnerListingUnreadable { performance: p, cause: c } =>
-      JitDeregistrationRefused { registration: registration, exit: exit, refusal: DeregistrationListingUnreadable { performance: p, cause: c } }
+  match classify_jit_deregistration(readback: jit_runner_listing_of_read(name: registration.name, read: readback), deletes: deletes) {
+    ReadbackShowsAbsent =>
+      JitRunnerDeregistered { receipt: JitDeregistrationReceipt { registration: registration, exit: exit, deletes: deletes, readback: readback } }
+    ReadbackRefused { refusal: r } => JitDeregistrationRefused { registration: registration, exit: exit, refusal: r }
   }
 }
 
 fn jit_runner_deregistered(result: JitDeregistration) -> Bool {
   match result {
-    JitRunnerDeregistered { registration: _, exit: _, deletes: _ } => true
+    JitRunnerDeregistered { receipt: _ } => true
     JitDeregistrationRefused { registration: _, exit: _, refusal: _ } => false
+  }
+}
+
+// THE READBACK CONSUMES THE COMPLETED DELETES. The listing is taken inside a function whose input
+// is the delete receipts, so it is causally after them by data dependency rather than by the
+// accident of two sibling lets being evaluated in source order.
+type DeletesThenReadback {
+  deletes: List<JitRunnerDeleteAttempt>
+  readback: OrganizationRunnerListRead
+}
+
+fn readback_after_deletes(
+  token: ControllerInstallationToken,
+  registration: JitRegistration,
+  deletes: List<JitRunnerDeleteAttempt>,
+) -> DeletesThenReadback uses net: Network {
+  DeletesThenReadback {
+    deletes: deletes,
+    readback: list_runners_by_name_with(token: token, organization: registration.organization.login, name: registration.name.value),
+  }
+}
+
+// THE TOKEN AND THE AUTHORITY MUST BE THE MINT'S. A token minted for another App or installation is
+// refused before any request, as gunbc.github_effect_perform perform_organization_jit_mint refuses
+// one for the mint; so is an authority naming another installation, because its capability check
+// would then be about a credential that is not the one performing the delete.
+fn deregistration_credential_refusal(
+  token: ControllerInstallationToken,
+  authority: GitHubCredentialAuthority,
+  control_plane: GitHubAppControlPlaneState,
+  registration: JitRegistration,
+) -> JitDeregistrationRefusal? {
+  let effect = DeleteOrganizationRunner { organization: registration.organization }
+  if token.app != registration.app || token.installation != registration.installation {
+    Present { value: DeregistrationTokenForAnotherInstallation { app: token.app, installation: token.installation } }
+  } else {
+    match authority_installation(authority: authority) {
+      Absent => Present { value: DeregistrationAuthorityForAnotherInstallation }
+      Present { value: held } =>
+        if held.app != registration.app || held.installation != registration.installation {
+          Present { value: DeregistrationAuthorityForAnotherInstallation }
+        } else if !credential_authorizes(authority: authority, control_plane: control_plane, effect: effect) {
+          Present { value: DeregistrationCredentialRefused {
+            unsatisfied: unsatisfied_capabilities(authority: authority, control_plane: control_plane, effect: effect),
+          } }
+        } else {
+          none
+        }
+    }
   }
 }
 
@@ -140,25 +216,22 @@ fn ensure_jit_runner_deregistered(
   registration: JitRegistration,
   exit: JitSlotExit,
 ) -> JitDeregistration uses net: Network {
-  let effect = DeleteOrganizationRunner { organization: registration.organization }
-  if !credential_authorizes(authority: authority, control_plane: control_plane, effect: effect) {
-    JitDeregistrationRefused {
-      registration: registration,
-      exit: exit,
-      refusal: DeregistrationCredentialRefused {
-        unsatisfied: unsatisfied_capabilities(authority: authority, control_plane: control_plane, effect: effect),
-      },
-    }
-  } else {
-    let org = registration.organization.login
-    let before = jit_runner_listing_of(name: registration.name, read: list_runners_by_name_with(token: token, organization: org, name: registration.name.value))
-    match plan_jit_deregistration(listing: before) {
-      Noop => conclude_jit_deregistration(registration: registration, exit: exit, deletes: [], readback: before)
-      Refuse { reason: _ } => conclude_jit_deregistration(registration: registration, exit: exit, deletes: [], readback: before)
-      Apply { plan: ids } => {
-        let deletes = ids |> map(id => JitRunnerDeleteAttempt { runner_id: id, performance: delete_runner_with(token: token, organization: org, runner_id: id) })
-        let after = jit_runner_listing_of(name: registration.name, read: list_runners_by_name_with(token: token, organization: org, name: registration.name.value))
-        conclude_jit_deregistration(registration: registration, exit: exit, deletes: deletes, readback: after)
+  match deregistration_credential_refusal(token: token, authority: authority, control_plane: control_plane, registration: registration) {
+    Present { value: r } => JitDeregistrationRefused { registration: registration, exit: exit, refusal: r }
+    Absent => {
+      let org = registration.organization.login
+      let before = list_runners_by_name_with(token: token, organization: org, name: registration.name.value)
+      match plan_jit_deregistration(listing: jit_runner_listing_of_read(name: registration.name, read: before)) {
+        Noop => conclude_from_readback(registration: registration, exit: exit, deletes: [], readback: before)
+        Refuse { reason: _ } => conclude_from_readback(registration: registration, exit: exit, deletes: [], readback: before)
+        Apply { plan: ids } => {
+          let after = readback_after_deletes(
+            token: token,
+            registration: registration,
+            deletes: ids |> map(id => JitRunnerDeleteAttempt { runner_id: id, performance: delete_runner_with(token: token, organization: org, runner_id: id) }),
+          )
+          conclude_from_readback(registration: registration, exit: exit, deletes: after.deletes, readback: after.readback)
+        }
       }
     }
   }
