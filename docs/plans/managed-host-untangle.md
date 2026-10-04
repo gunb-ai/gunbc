@@ -259,6 +259,29 @@ Controls:
 
 `rotation_route_consumption_frontier` is retired by the actuator in O1c reading this standing.
 
+#### Request shapes, and what a grounding establishes (O1a-2, ruled 2026-10-04)
+
+The route standing is per **request shape**, per controller and build. Two shapes exist.
+
+- **Set User Password** (`IpmiSetUserPassword`). mtcollins1's committed execution grounds it **at BMC 0.32 only**. The controller is now on 0.45.3, so for the current build this route is another build's and the Apply refuses (`RouteForAnotherBuild`).
+- **Set User Access, privilege-limit-only form** (`IpmiSetUserPrivilegeLimit`). It is needed because the `BmcSecure` conjunction requires the published credential refused on every LAN member, and a password write cannot set a channel privilege to no-access. mtcollins1 is a **candidate** only, and nothing is grounded.
+
+What the model holds:
+- **One shape never admits another.** A route grounded for one request shape does not admit an Apply of the other.
+- **A grounding records what it established.** `EffectObserved`, or `AcceptedEffectUnobserved`, computed from before and after readings. A privilege-**lowering** write is admitted only over an effect-observed grounding.
+- **The lockout guard runs before the first dangerous write, including the qualification write itself.** The live transport may be driven only from a sealed admitted qualification request. For the privilege-limit shape, that request requires a sealed, evidence-bound readback from the same run showing the goal's managed account at administrator on that channel. The readback must be for the same controller and build, with one unambiguous row.
+- **mtcollins1's qualifying request is non-destructive.** It re-asserts the value already there. That grounds acceptance only, so it does **not** admit closing the factory administrator.
+
+**What mtcollins1's wet transition therefore needs, in order.** Each item is an operator-gated act; eager-gull-22 batches them into one go-ahead.
+1. A committed read-only post-reflash probe: firmware version, channel info for every channel, and user access and user name for every user id on each LAN channel. The last of these is what lets a candidate name a spare slot.
+2. Qualify Set User Password at 0.45.3.
+3. Converge the managed account and read it back.
+4. Qualify the privilege-limit shape with a **discriminating, harmless** request: a spare user slot changed, read back, then restored.
+5. Only then, the closing write on the factory administrator.
+6. The independent re-read from which `BmcSecure` is derived.
+
+The convergence refuses at each step that is not yet grounded. It never widens.
+
 #### `BmcSecure` as a desired state (O1b)
 
 Today `derive_bmc_secure` is rotation-event shaped. A rejected bootstrap credential is `PreviouslyRotatedCredentialRequired`, an accepted one with no rotation is `CredentialRotationNotApplied`, and only `RotationApplied` with an advanced epoch can mint `BmcSecured`. **So a correctly secured controller cannot be observed as a Noop through the existing fold.** The phase is therefore decomposed in `gunbc.machine_intake_bmc_secure`, with its conjunction unchanged:
@@ -280,6 +303,8 @@ Controls:
 - **O1b lands in shadow.** Boot is gap-intolerant, so O1b lands the state-shaped derivation, the carriers, the clock and the controls, with mtcollins1's live observation and the rotation-event path untouched and frozen.
 - **One later transition** lands the honest re-expression and deletes the old path, **together with** a committed read-only post-reflash probe and the operator-approved wet `BmcSecure` Apply on mtcollins1.
 - **Declared drop.** Until then, main's stale claim is a declared drop under `gunbc.rung_drop`, whose trigger is that capability.
+- **What the state-shaped fold refuses** (side-chat reviews of #13221). The firmware build that admits a route is read from the observation, never supplied. The published account's replacement is the goal's exact break-glass generation, checked before the write, in the assessment and in the post-read. An unaddressed LAN channel, or channel access not closed, is refused with a typed cause naming the missing operation; it is not planned as a password write.
+- **`rotation_route_consumption_frontier` stays open** until the planner is on a production path. This shadow cut supplies the consumer's code, not its production route.
 - **Order on the hardware:** the operator's DIMM change, then cut 2 (#13131) landing, then the probe and the wet `BmcSecure`, then the census boot the runner lane needs, on a secured BMC.
 
 **mtcollins1 is not assumed satisfied.** This withdraws the earlier sentence that it "enters at its satisfied state and every step is a Noop". After the 2026-10-02 reflash the `gunbc` user and IPMI admin were restored by hand and the factory `admin` was not disabled (eager-gull-22, 2026-10-03). The readback is therefore expected to find managed accepted and factory accepted: not Noop.
