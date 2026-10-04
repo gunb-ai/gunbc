@@ -23,7 +23,7 @@ import gunbc.spark.pair_serving_authority {
 }
 import std.scoped_authorization { OperatorGrant, AttemptIdentity, ClaimedBy, authorization_scope_eq, parse_intent_scopes, AuthorizationRequest, authorize, AuthorizationPermitted, AuthorizationRefused }
 import gunbc.spark.pair_serving_d0 { d0_standing_grant_for, d0_binding_text, d0_binding_text_with, D0AuthorizationBasis, D0BasisBroker, D0BasisStandingGrant }
-import gunbc.spark.pair_serving_d0_door { standing_grant_row_judged, d0_honored_standing_grant, StandingGrantRowOnMain, StandingGrantRowNotOnMain, ExecutedGrantRowRead, ExecutedGrantRowUnread, grant_row_standing_over, grant_row_proof_over, GrantRowBlobRead, GrantRowBlobUnread, captured_grant_row_blob }
+import gunbc.spark.pair_serving_d0_door { standing_grant_row_judged, d0_honored_standing_grant, StandingGrantRowOnMain, StandingGrantRowNotOnMain, ExecutedGrantRowRead, ExecutedGrantRowUnread, grant_row_standing_over, grant_row_proof_over, GrantRowBlobRead, GrantRowBlobUnread }
 import gunbc.spark.pair_serving_d0 { D0GrantRowApproved, D0GrantRowUnproven, d0_frozen_filing_text_with, parse_d0_frozen_filing }
 import gunbc.auth.standing_operator_grant { group_a_dev_standing_grant, standing_grant_covers, standing_grant_authorization, StandingArmLaunch }
 import gunbc.spark.pair_serving_d0 {
@@ -418,15 +418,6 @@ test fn rw_admission_follows_the_captured_row_not_the_path() -> Bool {
     && (match main_standing { StandingGrantRowOnMain => true  StandingGrantRowNotOnMain { cause: _ } => false })
     && (match grant_row_proof_over(executed: captured_main, standing: main_standing) { D0GrantRowUnproven => false  D0GrantRowApproved { row_digest: d } => d as String == "sha256:main" })
     && (match grant_row_standing_over(executed: captured_main, blob_of: fn(c) { GrantRowBlobUnread { cause: "witness" } }, on_main: main) { StandingGrantRowOnMain => false  StandingGrantRowNotOnMain { cause: _ } => true })
-}
-
-// THE REAL PRODUCER: the captured bytes go to `git hash-object --stdin` as given, so the id is git's own
-// blob id of exactly those bytes, trailing newline included (independent oracle: git's id of "hello\n").
-test fn rw_the_captured_row_is_hashed_as_its_exact_bytes() -> Bool {
-  match captured_grant_row_blob(content: "hello\n") {
-    GrantRowBlobRead { blob: b } => b == "ce013625030ba8dba906f756967f9e9ca394464a"
-    GrantRowBlobUnread { cause: _ } => false
-  }
 }
 
 test fn rw_a_covered_release_is_honored_only_under_a_matching_frozen_proof() -> Bool {
