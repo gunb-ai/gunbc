@@ -6883,16 +6883,15 @@ type UnresolvedMethodFrontierRow {
   dissolution: DissolutionCondition
 }
 
+// THE extdeps.dns.domain_name list_push ROW IS DELETED, observed 0 (an equality, so it is deleted,
+// not lowered), and its recorded cause was a misattribution corrected here rather than carried:
+// `ok` was not the variant's name but the owner's FORMAL. The payload `labels` was bound out of an
+// accumulator typed as the uninstantiated declaration Result<ok, err>, because the fold's
+// constructor init `Ok { value: .. }` widened to its owner declaration and dropped the expected
+// application. variant_literal_expected_application types that literal as the declared return's
+// application, so the receiver is List<DnsLabel> and the method resolves at tier0.
 fn unresolved_method_frontier() -> List<UnresolvedMethodFrontierRow> {
   [
-    {
-      module_name: "extdeps.dns.domain_name",
-      method: "list_push",
-      occurrences: 1,
-      receiver_shape: "Primitive(ok)",
-      cause: "receiver is a coproduct payload bound by pattern destructuring, which arrives typed as the VARIANT name rather than the field type.",
-      dissolution: unbound_dissolution(description: "coproduct payload binding typed as the field type, at which point the receiver is List and DECIDABLE")
-    },
     {
       module_name: "v1.compiler.trace",
       method: "map",
