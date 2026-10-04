@@ -2349,6 +2349,12 @@ fn issue_alignment_breadcrumb_node(resolution: AlignmentResolution) -> Fragment 
 }
 
 fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> Fragment {
+  issue_detail_page_with_alignment(view: view, panel: panel, observation: observation, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context,
+    alignment: alignment_resolve(node_id: view.node_id, turns_elapsed: 1, state: alignment_base_cadence_state()))
+}
+
+// The page consumes the resolved project path; the authority-bound entry above supplies it.
+fn issue_detail_page_with_alignment(view: WorkRowView, panel: IssueLinkPanel, observation: ObservationImpactView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }, alignment: AlignmentResolution) -> Fragment {
   el_attrs("main", [
     attr(name: "class", value: "issue-detail" ),
     attr(name: "data-tab", value: "comments" ),
@@ -2364,7 +2370,7 @@ fn issue_detail_page(view: WorkRowView, panel: IssueLinkPanel, observation: Obse
       issue_tab_chip(label: "Work", tab: "work"),
       issue_tab_chip(label: "History", tab: "history"),
     ]),
-    issue_alignment_breadcrumb_node(resolution: alignment_resolve(node_id: view.node_id, turns_elapsed: 1, state: alignment_base_cadence_state())),
+    issue_alignment_breadcrumb_node(resolution: alignment),
     el_class("div", "issue-body", [
       el_class("div", "issue-panels", [
         el_class("section", "panel-comments", issue_comments_tab_nodes(view: view, events: events, expected_revision: expected_revision, command_context: command_context)),

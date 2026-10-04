@@ -22,9 +22,12 @@ fn site_extend_styles(base: SiteStyles, rules: List<BuildRule>, themes: List<Sit
 }
 fn site_styles_rules(styles: SiteStyles) -> List<BuildRule> { concat(site_layout_rules(), styles.rules) }
 
+fn site_styles_theme_css(styles: SiteStyles) -> String {
+  join([theme_root_css(base: day_theme, alternate: night_theme),
+    join(map(styles.themes, d => theme_scoped_blocks(base: day_theme, alternate: night_theme, decls_for: t => if t.name == night_theme.name { d.night } else { d.day })), "\n")], "\n")
+}
 fn site_styles_css(styles: SiteStyles) -> String {
-  join([scale_root_css(), theme_root_css(base: day_theme, alternate: night_theme),
-    join(map(styles.themes, d => theme_scoped_blocks(base: day_theme, alternate: night_theme, decls_for: t => if t.name == night_theme.name { d.night } else { d.day })), "\n"),
+  join([scale_root_css(), site_styles_theme_css(styles: styles),
     serialize_rules(rules: site_styles_rules(styles: styles)), reduced_motion_block(rules: site_styles_rules(styles: styles))], "\n")
 }
 fn site_document(title: String, heading: String, styles: SiteStyles, content: List<Fragment>, navigation: List<Fragment> = site_navigation()) -> Fragment {

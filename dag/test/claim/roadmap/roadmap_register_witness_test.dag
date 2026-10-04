@@ -1,11 +1,11 @@
 module test.claim.roadmap_register_witness
 import gunbc.site.brand { site_brand_link }
-import gunbc.site.document { site_styles, site_styles_rules }
+import gunbc.site.document { site_styles, site_styles_rules, site_styles_theme_css }
 
 import std.types { Int, String, Bool }
 import std.markup { Fragment, Element, FragmentText, RawNode }
 import gunbc.design.material {
-  BuildRule, StaticRule, CssDecl, decl,
+  BuildRule, StaticRule, ResponseRule, AmbientRule, CssDecl, decl,
   Material, FieldArea, PointArea, paint, reduced_motion_block, respond_fast,
   serialize_rules,
 }
@@ -17,7 +17,9 @@ import gunbc.design.theme {
   theme_root_css,
 }
 import gunbc.site.moodboard { moodboard_rules, moodboard_css }
-import gunbc.design.theme_transition { unthemed_color_decls, untokened_length_decls }
+import v2.std.algebra { any, filter }
+import extdeps.languages.css.selectors { selector_subject_wire }
+import gunbc.design.theme_transition { rule_decls, unthemed_color_decls, untokened_length_decls }
 import gunbc.design.scale { scale_root_css }
 import gunbc.site.markup { txt, el_class }
 import gunbc.design.interaction {
@@ -25,7 +27,7 @@ import gunbc.design.interaction {
   ElementId, DispatchBtnElement, element_id_eq, element_id_key,
   verb_key, coverage_gaps, coverage_complete,
 }
-import gunbc.roadmap_style { roadmap_rules, roadmap_css, roadmap_instance_rules }
+import gunbc.roadmap_style { roadmap_rules, roadmap_css, roadmap_styles, roadmap_instance_rules }
 import gunbc.site.document { site_header }
 import gunbc.roadmap_interaction {
   roadmap_elements, roadmap_behaviors,
@@ -55,7 +57,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // used-but-undeclared each red (names-not-values made executable). Slice 3 is the PROPAGATION PROOF
 // (the operator-named deliverable): one in-memory perturbation of a day-theme material moves the
 // shared theme_root_css derivation both pages embed verbatim (proven by string containment against
-// each page's shipped css), and both surfaces consume the perturbed role — one authority edit,
+// the production theme-emission fragments), and both surfaces consume the perturbed role — one authority edit,
 // every site moves, by derivation not hand-hunt. The scoped control: a FigureLitRole perturbation
 // moves the shared var block but reaches PAINT only on the site (moodboard consumes
 // var(--figure-lit); the roadmap's archetype demand excludes it and its rules carry no such var) —
@@ -94,18 +96,27 @@ test fn witness_local_px_literal_refused() -> Bool {
     && all(caught, c => c.selector == ".rogue-pad" && c.prop == "padding" && c.value == "14px")
 }
 
+fn rules_consume(rules: List<BuildRule>, token: String) -> Bool {
+  any(rules, r => any(rule_decls(rule: r), d => string_contains(s: d.value, pattern: token)))
+}
+
 test fn witness_scale_block_is_the_px_home() -> Bool {
   string_contains(s: scale_root_css(), pattern: "14px")
-    && string_contains(s: roadmap_css(), pattern: "var(--text-14)")
+    && rules_consume(rules: site_styles_rules(styles: roadmap_styles()), token: "var(--text-14)")
     && untokened_length_decls(rules: site_styles_rules(styles: site_styles(rules: roadmap_instance_rules()))).length() == 0
 }
 
 test fn witness_derived_responses_ship_with_reduced_motion_collapse() -> Bool {
-  reduced_motion_block(rules: site_styles_rules(styles: site_styles(rules: roadmap_rules()))) != ""
-    && string_contains(s: roadmap_css(), pattern: "@media (prefers-reduced-motion: reduce)")
-    && string_contains(s: roadmap_css(), pattern: ".dispatch-btn:hover")
-    && string_contains(s: roadmap_css(), pattern: ".dispatch-btn:focus-visible")
-    && string_contains(s: roadmap_css(), pattern: ".dispatch-btn:active")
+  let rules = filter(site_styles_rules(styles: roadmap_styles()), r => match r {
+    ResponseRule { subject, shape: _, trigger: _, transition_props: _, timing: _, base_decls: _, response_decls: _ } => selector_subject_wire(s: subject) == ".dispatch-btn"
+    StaticRule { selector: _, decls: _ } => false
+    AmbientRule { selector: _, cycle: _, timing: _, repeat: _ } => false
+  })
+  let css = serialize_rules(rules: rules)
+  string_contains(s: reduced_motion_block(rules: rules), pattern: "@media (prefers-reduced-motion: reduce)")
+    && string_contains(s: css, pattern: ".dispatch-btn:hover")
+    && string_contains(s: css, pattern: ".dispatch-btn:focus-visible")
+    && string_contains(s: css, pattern: ".dispatch-btn:active")
 }
 
 test fn witness_roadmap_coverage_complete() -> Bool {
@@ -249,10 +260,10 @@ test fn witness_upstream_edit_propagates_to_both_surfaces() -> Bool {
   let unchanged = base == moved
   !unchanged
     && string_contains(s: moved, pattern: paint(m: probe_canvas_material()))
-    && string_contains(s: roadmap_css(), pattern: base)
+    && string_contains(s: site_styles_theme_css(styles: roadmap_styles()), pattern: base)
     && string_contains(s: moodboard_css(), pattern: theme_root_css(base: night_theme, alternate: day_theme))
-    && string_contains(s: serialize_rules(rules: site_styles_rules(styles: site_styles(rules: roadmap_rules()))), pattern: "var(--canvas)")
-    && string_contains(s: serialize_rules(rules: moodboard_rules()), pattern: "var(--canvas)")
+    && rules_consume(rules: site_styles_rules(styles: roadmap_styles()), token: "var(--canvas)")
+    && rules_consume(rules: moodboard_rules(), token: "var(--canvas)")
 }
 
 test fn witness_round_strip_percolates_once_and_pulses_forever() -> Bool {

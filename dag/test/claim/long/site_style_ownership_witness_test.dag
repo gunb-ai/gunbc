@@ -1,5 +1,6 @@
 module test.claim.long.site_style_ownership_witness_test
 import gunbc.site.document { site_document_over, site_styles, site_styles_rules, site_styles_css, ApprovalShell }
+import std.list { distinct_by_key }
 import gunbc.site.layout { site_layout_rules }
 import gunbc.roadmap_surface_style { roadmap_surface_rules }
 import gunbc.design.material { BuildRule, StaticRule, ResponseRule, decl }
@@ -16,7 +17,7 @@ fn static_selectors(rules: List<BuildRule>) -> List<String> {
   })
 }
 fn distinct_names(names: List<String>) -> Bool {
-  all(names, n => count(filter(names, other => other == n)) == 1)
+  count(distinct_by_key(xs: names, key: n => n)) == count(names)
 }
 fn surface_rules() -> List<BuildRule> {
   site_styles_rules(styles: site_styles(rules: roadmap_surface_rules()))

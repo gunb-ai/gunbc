@@ -86,7 +86,8 @@ fn empty_doc_html() -> HtmlEmitResult {
 }
 
 test fn witness_empty_doc_is_minimal_shell() -> Bool {
-  match empty_doc_html() {
+  let empty = RoadmapDocument { preamble: [], lead_lanes: [], sections: [] }
+  match try_serialize_html_source(node: roadmap_page_launch_with_stylesheet(doc: empty, merged: [], launch: launch_host_unobserved_static_render(), stylesheet: site_styles(rules: []))) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       starts_with(s: h, prefix: "<html lang=\"en\"><head><meta charset=\"utf-8\"")
@@ -1707,13 +1708,10 @@ fn fixture_teammate_legacy() -> gunbc.roadmap.roadmap_event_log.EventPrincipal {
   gunbc.roadmap.roadmap_event_log.LegacyEmailPrincipal { email: "teammate@gunb.ai" as NonEmptyStr, authentication_unestablished: true }
 }
 
-// THE ISSUE PAGE'S BODY, WITHOUT THE STYLESHEET (DESIGN section 3, a witness discriminates at one
-// interface). gunbc.roadmap_page issue_detail_page_launch inlines roadmap_css() into its head --
-// ~165k of each claim's ~213k steps -- and no issue-page claim here reads the head. This renders
-// the same html > body the launch renders, from the same producers (roadmap_header, the
-// issue_detail_page component, the dispatch client script tag), so every body assertion reads the
-// markup the served page carries. The launch's composition is NOT re-asserted here: holding it
-// in budget needs a stylesheet-supplied launch seam like roadmap_page_launch_with_stylesheet.
+// Content witnesses use the real page body, header and client tag. Their synthetic issue is
+// absent from the live roadmap authority, so supply its typed undeclared alignment result at
+// the production render boundary instead of rebuilding the entire authority for every field.
+// The full stylesheet and authority-backed alignment are separate rendering inputs.
 fn fx_issue_detail_body(view: gunbc.roadmap_presentation.WorkRowView, panel: gunbc.roadmap_presentation.IssueLinkPanel, observation: gunbc.roadmap_presentation.ObservationImpactView, attempts: List<gunbc.roadmap_workflow_progress.WorkflowAttemptProgress>, events: List<gunbc.roadmap.roadmap_event_log.RoadmapEventEnvelope>, viewer: String, recents: List<gunbc.roadmap.roadmap_event_log.EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }, profiles: List<PrincipalProfile>) -> Fragment {
   Element {
     tag: "html",
@@ -1721,7 +1719,7 @@ fn fx_issue_detail_body(view: gunbc.roadmap_presentation.WorkRowView, panel: gun
     children: [
       Element { tag: "body", attributes: [], children: [
         gunbc.site.document.site_header(page: "issue"),
-        gunbc.roadmap_page.issue_detail_page(view: view, panel: panel, observation: observation, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context),
+        gunbc.roadmap_page.issue_detail_page_with_alignment(view: view, panel: panel, observation: observation, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context, alignment: gunbc.roadmap.roadmap_alignment.alignment_resolve_chain(chain: gunbc.roadmap.roadmap_alignment.AlignmentChainRowUndeclared { node_id: view.node_id }, turns_elapsed: 1, state: gunbc.roadmap.roadmap_alignment.alignment_base_cadence_state())),
         gunbc.roadmap_page.dispatch_client_script(),
       ] },
     ],
@@ -2101,7 +2099,12 @@ fn fx_long_title_page_html(long: String) -> HtmlEmitResult {
 
 test fn witness_issue_table_long_cells_clip_within_their_tracks() -> Bool {
   let long_title = "an deliberately enormous issue title that would run the row entirely off the page when its track sized to the content the way the old per-row grids did"
-  let css = fx_css_rule_blocks()
+  let rules = filter(site_styles_rules(styles: site_styles(rules: roadmap_rules())), r => match r {
+    StaticRule { selector, decls: _ } => selector_subject_wire(s: selector) == ".issue-cell" || selector_subject_wire(s: selector) == ".issue-table"
+    ResponseRule { subject: _, shape: _, trigger: _, transition_props: _, timing: _, base_decls: _, response_decls: _ } => false
+    AmbientRule { selector: _, cycle: _, timing: _, repeat: _ } => false
+  })
+  let css = join(map(rules, r => serialize_rule(rule: r)), "\n")
   match fx_long_title_page_html(long: long_title) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
