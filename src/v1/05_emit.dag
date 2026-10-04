@@ -1603,7 +1603,7 @@ data native_service_route_denominator: NativeEffectDenominator = NativeEffectDen
 }
 
 data native_claim_route_denominator: NativeEffectDenominator = NativeEffectDenominator {
-  ruling: "native claim route: std.compiler_entry NativeClaimDriver declares the resource set {Filesystem} (#13180)",
+  ruling: "native claim route: std.compiler_entry NativeClaimDriver declares the resource set \{Filesystem\} (#13180)",
   scope: NativeAdmitOnly { admitted: ["Filesystem"] }
 }
 
