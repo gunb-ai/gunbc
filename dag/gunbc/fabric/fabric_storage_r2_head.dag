@@ -259,7 +259,8 @@ fn r2_head_result_of(expected: FabricHeadExpectation, successor: FabricHeadReadi
           } else {
             R2HeadAdvanceKnown { settled: R2HeadMovedFrom { expected: expected, observed: r }, credential: credential, staging: staging }
           }
-        _ => R2HeadAdvanceOutcomeUnknown { expected: expected, attempted_successor: successor, cause: c, credential: credential, staging: staging }
+        Present { value: FabricHeadReadRefused { fault: _ } } => R2HeadAdvanceOutcomeUnknown { expected: expected, attempted_successor: successor, cause: c, credential: credential, staging: staging }
+        Absent => R2HeadAdvanceOutcomeUnknown { expected: expected, attempted_successor: successor, cause: c, credential: credential, staging: staging }
       }
   }
 }
@@ -353,7 +354,9 @@ fn r2_head_advance(binding: R2HeadBinding, expected: FabricHeadExpectation, to: 
           let readback = match put.verdict {
             R2ObjectStored { tag: _ } => none
             R2PutRefused { cause: _ } => none
-            other => Present { value: r2_head_observe(binding: binding, token_source: token_source) }
+            R2ObjectAlreadyPresent => Present { value: r2_head_observe(binding: binding, token_source: token_source) }
+            R2ObjectTagMoved => Present { value: r2_head_observe(binding: binding, token_source: token_source) }
+            R2PutOutcomeUnknown { cause: _ } => Present { value: r2_head_observe(binding: binding, token_source: token_source) }
           }
           let readback_staging = match readback { Present { value: o } => o.staging  Absent => R2HeadStagingRemoved }
           r2_head_result_of(
