@@ -7,7 +7,7 @@ import extdeps.transports.rest {
   RestExchangeSucceeded, RestExchangeStatusRefused, RestExchangeUnreached,
   RestOutcome, RestOk, RestTransportRefused, RestStatusRefused, RestBodyUndecodable, RestMutationExchange, classify_rest_outcome,
 }
-import extdeps.github.actions { Workflow, Job, WorkflowDispatch, RunsOnExpression, SelfHosted, RunnerSpec }
+import extdeps.github.actions { Workflow, Job, WorkflowDispatch, RunsOnExpression, SelfHosted, RunnerSpec, Step, RunStep, UsesStep }
 import extdeps.github.effect { DispatchWorkflow, GitHubOrganizationRef }
 import extdeps.github.workflow_runs {
   WorkflowRun, WorkflowJobRun, WorkflowJobRunList, Completed, InProgress, Success, Failure,
@@ -31,7 +31,8 @@ import gunbc.runner.runner_qualification_ref_pin {
   qualification_ref_pin_of, QualificationRefPinned, QualificationRefPinRefused,
 }
 import gunbc.runner.runner_qualification_dispatch {
-  qualification_attempt_dispatch_input, qualification_dispatch_inputs, qualification_dispatch_effect,
+  qualification_attempt_dispatch_input, qualification_revision_dispatch_input, qualification_dispatch_inputs, qualification_dispatch_effect,
+  qualification_floor_revision_guard_step, SubjectFloorRevisionGuardNotFirst, SubjectFloorStepRunsPastTheGuard,
   QualificationSubjectAdmitted, QualificationSubjectRefused,
   SubjectSlotForAnotherWorkflow, SubjectAttemptInputUndeclared, SubjectFloorJobAbsent, SubjectFloorRunsOnNotTheAttemptInput,
   SubjectFloorNameNotUnique, SubjectDeliveryForAnotherDispatch,
@@ -85,12 +86,23 @@ fn group_with_id(id: Int, workflow: NonEmptyStr) -> MicrovmRunnerGroupStanding {
 }
 
 fn floor_job(runs_on: RunnerSpec) -> Job {
+  floor_job_with_steps(runs_on: runs_on, steps: [qualification_floor_revision_guard_step(), floor_work_step(if_condition: none)])
+}
+
+fn floor_work_step(if_condition: String?) -> Step {
+  RunStep {
+    name: Present { value: "run the floor" }, id: none, run: "claim_executor --required-ci",
+    shell: none, env: none, working_directory: none, if_condition: if_condition, continue_on_error: none, timeout_minutes: none,
+  }
+}
+
+fn floor_job_with_steps(runs_on: RunnerSpec, steps: List<Step>) -> Job {
   Job {
     id: floor_job_id as String,
     name: Present { value: "qualification floor" },
     runner: runs_on,
     environment: none,
-    steps: [],
+    steps: steps,
     needs: [],
     env: none,
     outputs: none,
@@ -108,7 +120,7 @@ fn workflow_with(declares_input: Bool, runs_on: RunnerSpec) -> Workflow {
   Workflow {
     name: "fleet-converge",
     run_name: none,
-    on: [WorkflowDispatch { inputs: if declares_input { [qualification_attempt_dispatch_input] } else { [] } }],
+    on: [WorkflowDispatch { inputs: if declares_input { [qualification_attempt_dispatch_input, qualification_revision_dispatch_input] } else { [qualification_revision_dispatch_input] } }],
     concurrency: none,
     jobs: [floor_job(runs_on: runs_on)],
     env: none,
@@ -159,8 +171,12 @@ test fn the_real_mint_admits_the_attempt_through_the_sealed_subject() -> Bool {
                 && (expected.registered_runner as String) == (ephemeral_slot_unit(host: h.host, attempt: attempt) as String)
                 && (expected.floor_job_name as String) == "qualification floor"
                 && (expected.revision as String) == (revision as String)
-                && count(map_keys(qualification_dispatch_inputs(attempt: s.attempt))) == 1
-                && (match map_get(qualification_dispatch_inputs(attempt: s.attempt), qualification_attempt_dispatch_input.name) {
+                && count(map_keys(qualification_dispatch_inputs(attempt: s.attempt, revision: s.pin.revision))) == 2
+                && (match map_get(qualification_dispatch_inputs(attempt: s.attempt, revision: s.pin.revision), qualification_revision_dispatch_input.name) {
+                  Present { value: v } => v == (revision as String)
+                  Absent => false
+                })
+                && (match map_get(qualification_dispatch_inputs(attempt: s.attempt, revision: s.pin.revision), qualification_attempt_dispatch_input.name) {
                   Present { value: v } => v == (attempt as String) && (ephemeral_slot_labels(host: h.host, attempt: attempt) |> any(l => l == v))
                   Absent => false
                 })
@@ -296,7 +312,7 @@ fn workflow_sharing_the_floor_name() -> Workflow {
   Workflow {
     name: "fleet-converge",
     run_name: none,
-    on: [WorkflowDispatch { inputs: [qualification_attempt_dispatch_input] }],
+    on: [WorkflowDispatch { inputs: [qualification_attempt_dispatch_input, qualification_revision_dispatch_input] }],
     concurrency: none,
     jobs: [floor_job(runs_on: attempt_runs_on), helper],
     env: none,
@@ -564,5 +580,62 @@ test fn an_unfinished_unpinned_or_unreadable_run_refuses() -> Bool {
     && (match decide_qualification_run(subject: expect, run_id: 77, run_performance: RestExchangeSucceeded, run: dispatched_run(attempt_n: 1), jobs_performance: RestExchangeStatusRefused { status: 404, body: "fixture" }, jobs: floor) {
       RunVerdictRefused { refusal: RunJobsUnreadable { performance: _ } } => true
       _ => false
+    })
+}
+
+// THE FLOOR CONTRACT CHECKS OUT THE PINNED REVISION FIRST AND NOTHING RUNS PAST A REFUSAL
+// (decision: eager-gull-22, 2026-10-04). The guard is the floor job's FIRST step; on a mismatch it exits
+// nonzero, and GitHub skips every later step of a failed job unless the step opts back in -- so the
+// contract also refuses any step with an if: condition or continue-on-error, and a job with
+// continue-on-error. REDs: the revision input undeclared; no guard; the guard after another step; a
+// later step with if: always(); a later step with continue-on-error. The guard itself compares HEAD with
+// the revision input and exits 1 on a mismatch. The post-run head_sha refusal is
+// RunRevisionNotPinned (an_unfinished_unpinned_or_unreadable_run_refuses).
+fn floor_refused(workflow: Workflow) -> Bool {
+  match qualification_floor_admission(workflow: workflow, floor_job_id: floor_job_id) {
+    QualificationFloorRefused { refusal: SubjectFloorRevisionGuardNotFirst { job_id: _ } } => true
+    QualificationFloorRefused { refusal: SubjectFloorStepRunsPastTheGuard { job_id: _ } } => true
+    QualificationFloorRefused { refusal: SubjectAttemptInputUndeclared { input: i } } => i == "qualification_revision"
+    _ => false
+  }
+}
+
+fn workflow_with_floor(job: Job, inputs_declare_revision: Bool) -> Workflow {
+  Workflow {
+    name: "fleet-converge",
+    run_name: none,
+    on: [WorkflowDispatch { inputs: if inputs_declare_revision { [qualification_attempt_dispatch_input, qualification_revision_dispatch_input] } else { [qualification_attempt_dispatch_input] } }],
+    concurrency: none,
+    jobs: [job],
+    env: none,
+    permissions: none,
+  }
+}
+
+test fn the_floor_checks_out_the_pinned_revision_first_and_nothing_runs_past_a_refusal() -> Bool {
+  let guard = qualification_floor_revision_guard_step()
+  let work = floor_work_step(if_condition: none)
+  let tolerant = RunStep {
+    name: Present { value: "run the floor anyway" }, id: none, run: "claim_executor --required-ci",
+    shell: none, env: none, working_directory: none, if_condition: none, continue_on_error: Present { value: true }, timeout_minutes: none,
+  }
+  (match qualification_floor_admission(workflow: workflow_with_floor(job: floor_job_with_steps(runs_on: attempt_runs_on, steps: [guard, work]), inputs_declare_revision: true), floor_job_id: floor_job_id) {
+    QualificationFloorAdmitted { floor_job_name: _ } => true
+    QualificationFloorRefused { refusal: _ } => false
+  })
+    && floor_refused(workflow: workflow_with_floor(job: floor_job_with_steps(runs_on: attempt_runs_on, steps: [guard, work]), inputs_declare_revision: false))
+    && floor_refused(workflow: workflow_with_floor(job: floor_job_with_steps(runs_on: attempt_runs_on, steps: [work]), inputs_declare_revision: true))
+    && floor_refused(workflow: workflow_with_floor(job: floor_job_with_steps(runs_on: attempt_runs_on, steps: [work, guard]), inputs_declare_revision: true))
+    && floor_refused(workflow: workflow_with_floor(job: floor_job_with_steps(runs_on: attempt_runs_on, steps: [guard, floor_work_step(if_condition: Present { value: "always()" })]), inputs_declare_revision: true))
+    && floor_refused(workflow: workflow_with_floor(job: floor_job_with_steps(runs_on: attempt_runs_on, steps: [guard, tolerant]), inputs_declare_revision: true))
+    && (match guard {
+      RunStep { name: _, id: _, run: r, shell: _, env: e, working_directory: _, if_condition: c, continue_on_error: ce, timeout_minutes: _ } =>
+        string_contains(s: r, pattern: "git rev-parse HEAD")
+          && string_contains(s: r, pattern: "!= \"$QUALIFICATION_REVISION\"")
+          && string_contains(s: r, pattern: "exit 1")
+          && (match c { Absent => true Present { value: _ } => false })
+          && (match ce { Absent => true Present { value: _ } => false })
+          && (match e { Present { value: kvs } => kvs |> any(x => x.key == "QUALIFICATION_REVISION") Absent => false })
+      UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
     })
 }
