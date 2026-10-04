@@ -205,8 +205,12 @@ fn grounding_is_executed(g: MegaRacOperationGrounding) -> Bool {
   }
 }
 
+fn standing_grounds(standing: MegaRacOperationStanding, operation: MegaRacOperation, identity: BmcObservedIdentity, executed_only: Bool) -> Bool {
+  megarac_operation_eq(a: standing.operation, b: operation) && megarac_identity_eq(a: standing.identity, b: identity) && (!executed_only || grounding_is_executed(g: standing.grounding))
+}
+
 fn standings_ground(standings: List<MegaRacOperationStanding>, operation: MegaRacOperation, identity: BmcObservedIdentity, executed_only: Bool) -> Bool {
-  any(standings, s => megarac_operation_eq(a: s.operation, b: operation) && megarac_identity_eq(a: s.identity, b: identity) && (!executed_only || grounding_is_executed(g: s.grounding)))
+  count(filter(standings, st => standing_grounds(standing: st, operation: operation, identity: identity, executed_only: executed_only))) > 0
 }
 
 fn megarac_operation_grounded_at(evidence: MegaRacOperationEvidence, operation: MegaRacOperation, identity: BmcObservedIdentity) -> Bool {

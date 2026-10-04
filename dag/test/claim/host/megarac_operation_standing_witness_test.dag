@@ -2,7 +2,7 @@ module test.claim.megarac_operation_standing_witness
 
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.algebra { any }
+import v2.std.algebra { any, filter }
 import std.content_hash { Sha256Digest, Sha256Hash }
 import std.decl_ref { decl_ref }
 import extdeps.boards.types { AmpereMtCollins }
@@ -62,11 +62,15 @@ test fn w_a_receipt_across_a_reflash_grounds_no_build() -> Bool {
 // read), the KVM still by RECOVERY from the served bundle. Nothing is grounded at 0.45.3, because no
 // reading of that build is committed and the 2026-10-03 run's receipts sit across the 2026-10-02 reflash
 // from the only reading there is.
-fn grounded_by(standings: List<MegaRacOperationStanding>, operation: MegaRacOperation, executed: Bool) -> Bool {
-  any(standings, s => megarac_identity_eq(a: s.identity, b: mtcollins1_identity) && megarac_operation_eq(a: s.operation, b: operation) && match s.grounding {
+fn standing_is(s: MegaRacOperationStanding, operation: MegaRacOperation, executed: Bool) -> Bool {
+  megarac_identity_eq(a: s.identity, b: mtcollins1_identity) && megarac_operation_eq(a: s.operation, b: operation) && match s.grounding {
     OperationExecutedAtBuild { receipt: _, build: _ } => executed
     OperationRecoveredFromServedArtifact { recovery: _ } => !executed
-  })
+  }
+}
+
+fn grounded_by(standings: List<MegaRacOperationStanding>, operation: MegaRacOperation, executed: Bool) -> Bool {
+  count(filter(standings, st => standing_is(s: st, operation: operation, executed: executed))) > 0
 }
 
 test fn w_the_committed_rows_ground_0_32_by_route_and_nothing_at_0_45_3() -> Bool {
