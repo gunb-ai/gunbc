@@ -1,14 +1,17 @@
 module gunbc.runner_group_restriction_ensure
 
 import std.types { NonEmptyStr, String, Bool, Int, List }
-import extdeps.github.org_actions { RunnerGroupVisibility, SelectedRepositories, runner_group_visibility_wire }
+import extdeps.github.org_actions { RunnerGroupVisibility, SelectedRepositories, AllRepositories, PrivateRepositories, runner_group_visibility_wire }
 import gunbc.repository { gunbc_repository_numeric_identity }
 import gunbc.auth.heal_publisher_federation { private_heal_publisher_federation, heal_publisher_federation_workflow_ref }
 import gunbc.fleet.org_actions_inspection { org_actions_organization, RunnerGroupListDecode }
+import gunbc.runner.runner_qualification_ref_pin {
+  qualification_runner_group_name, qualification_pin_prefix, qualification_unpinned_selected_workflow,
+}
 import gunbc.runner_group_restriction_observation {
   RestrictedRunnerGroup, MicrovmRunnerGroupStanding,
   RunnerGroupRestrictedToWorkflow, RunnerGroupRestrictionRefused,
-  RunnerGroupAbsent, observe_runner_group_restriction, microvm_shakedown_runner_group_name,
+  RunnerGroupAbsent, observe_runner_group_restriction, observe_pinned_runner_group, microvm_shakedown_runner_group_name,
   microvm_shakedown_selected_workflow, runner_group_restriction_refusal_text,
 }
 
@@ -37,7 +40,17 @@ type RunnerGroupCreateSubject {
   allows_public_repositories: Bool
   restricted_to_workflows: Bool
   selected_workflow: NonEmptyStr
+  workflow_policy: GroupWorkflowPolicy
 }
+
+// WHAT A GROUP'S WORKFLOW RESTRICTION IS EXPECTED TO BE ONCE IT EXISTS. Most groups select one fixed
+// workflow forever. The dedicated qualification group is re-pinned every attempt to the qualification
+// workflow at that attempt's branch (gunbc.runner.runner_qualification_ref_pin), so its expected
+// restriction is the pin family, and a group already pinned to some attempt is the same group, left
+// alone -- never re-created and never edited by this ensure.
+type GroupWorkflowPolicy
+  = FixedSelectedWorkflow
+  | PinnedPerAttempt { pin_prefix: NonEmptyStr }
 
 // EVERY RESTRICTED GROUP IS THIS SHAPE: selected visibility with one repository, no public
 // repositories, restricted to exactly one workflow. Only the name, the repository and the workflow
@@ -51,6 +64,7 @@ fn restricted_runner_group_subject(name: NonEmptyStr, repository_id: Int, select
     allows_public_repositories: false,
     restricted_to_workflows: true,
     selected_workflow: selected_workflow,
+    workflow_policy: FixedSelectedWorkflow,
   }
 }
 
@@ -86,8 +100,49 @@ fn private_heal_publisher_runner_group_subject() -> RunnerGroupCreateSubject {
 // THE ROSTER THE ENSURE RUN WALKS, like gcp_iam_converge_targets: each group is read, left alone when
 // already restricted, created under its own approval when absent, and refused when it holds the
 // name with any other restriction.
+// THE DEDICATED QUALIFICATION GROUP (decision: eager-gull-22, 2026-10-04). The same three walls as
+// every restricted group -- selected visibility with this repository alone, no public repositories,
+// restricted to one workflow -- created pinned to the reserved unpinned branch, which no attempt can
+// name, so it admits nothing until the first attempt pins it. Its expected restriction afterwards is
+// the pin family (PinnedPerAttempt). This ensure only ever creates it; the per-attempt re-pin is
+// gunbc.runner.runner_qualification_ref_pin's, and only on this group.
+fn qualification_runner_group_subject() -> RunnerGroupCreateSubject {
+  RunnerGroupCreateSubject {
+    organization: org_actions_organization,
+    name: qualification_runner_group_name,
+    visibility: SelectedRepositories,
+    selected_repository_id: gunbc_repository_numeric_identity.repository_id,
+    allows_public_repositories: false,
+    restricted_to_workflows: true,
+    selected_workflow: qualification_unpinned_selected_workflow(),
+    workflow_policy: PinnedPerAttempt { pin_prefix: qualification_pin_prefix() },
+  }
+}
+
 fn restricted_runner_groups() -> List<RunnerGroupCreateSubject> {
-  [microvm_runner_group_create_subject(), private_heal_publisher_runner_group_subject()]
+  [microvm_runner_group_create_subject(), private_heal_publisher_runner_group_subject(), qualification_runner_group_subject()]
+}
+
+// A CREATE BODY IS REFUSED BEFORE IT IS SENT unless it holds the three walls: selected visibility,
+// no public repositories, restricted to workflows. The roster's constructors always hold them; this is
+// the check the effect performs on whatever subject reaches it, so a subject assembled any other way
+// cannot create an open group.
+fn runner_group_create_refusal(subject: RunnerGroupCreateSubject) -> NonEmptyStr? {
+  match subject.visibility {
+    SelectedRepositories =>
+      if subject.allows_public_repositories { Present { value: "RunnerGroupCreateRefused: allows_public_repositories=true" as NonEmptyStr } }
+      else if !subject.restricted_to_workflows { Present { value: "RunnerGroupCreateRefused: restricted_to_workflows=false" as NonEmptyStr } }
+      else { none }
+    AllRepositories => Present { value: "RunnerGroupCreateRefused: visibility=all" as NonEmptyStr }
+    PrivateRepositories => Present { value: "RunnerGroupCreateRefused: visibility=private" as NonEmptyStr }
+  }
+}
+
+fn observe_subject_restriction(subject: RunnerGroupCreateSubject, listed: RunnerGroupListDecode) -> MicrovmRunnerGroupStanding {
+  match subject.workflow_policy {
+    FixedSelectedWorkflow => observe_runner_group_restriction(name: subject.name, selected_workflow: subject.selected_workflow, listed: listed)
+    PinnedPerAttempt { pin_prefix: p } => observe_pinned_runner_group(name: subject.name, pin_prefix: p, listed: listed)
+  }
 }
 
 // The subject as one line, the text the operator reads and the intent a request digests.
@@ -111,7 +166,7 @@ type RunnerGroupEnsurePlan
 // unreadable list, a duplicated name, a group holding the name with another restriction -- refuses
 // the ensure, because the update is a different effect nobody has modeled or approved.
 fn plan_runner_group_ensure(subject: RunnerGroupCreateSubject, listed: RunnerGroupListDecode) -> RunnerGroupEnsurePlan {
-  match observe_runner_group_restriction(name: subject.name, selected_workflow: subject.selected_workflow, listed: listed) {
+  match observe_subject_restriction(subject: subject, listed: listed) {
     RunnerGroupRestrictedToWorkflow { restriction } => GroupAlreadyRestricted { restriction: restriction }
     RunnerGroupRestrictionRefused { name: _, cause: RunnerGroupAbsent } => GroupCreateRequired { subject: subject }
     RunnerGroupRestrictionRefused { name, cause } =>

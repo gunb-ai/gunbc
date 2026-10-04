@@ -9,6 +9,7 @@ import extdeps.github.actions {
   WorkflowTrigger, Push, PullRequest, Schedule, WorkflowDispatch, WorkflowCall, WorkflowRunCompleted, MergeGroup,
 }
 import gunbc.fleet.org_actions_inspection { RunnerGroupListDecoded, RunnerGroupIdentity }
+import extdeps.github.org_actions { SelectedRepositories }
 import gunbc.runner_group_restriction_observation { RunnerGroupRestrictionRefused, RunnerGroupAbsent }
 import gunbc.fleet_desired_admission_workflow { fleet_desired_admission_workflow }
 import test.claim.github_app_registry { group_restricted_to }
@@ -72,7 +73,7 @@ test fn a_preexisting_branch_refuses_and_a_lost_create_is_ambiguous() -> Bool {
 }
 
 fn group_row(id: Int, name: NonEmptyStr) -> RunnerGroupIdentity {
-  RunnerGroupIdentity { id: id, name: name, allows_public_repositories: false, restricted_to_workflows: true, selected_workflows: [] }
+  RunnerGroupIdentity { id: id, name: name, visibility: SelectedRepositories, allows_public_repositories: false, restricted_to_workflows: true, selected_workflows: [] }
 }
 
 // RED: A WRITE TO ANY OTHER GROUP. Only the dedicated qualification group can become a write target:

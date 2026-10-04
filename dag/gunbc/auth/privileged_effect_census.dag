@@ -560,7 +560,7 @@ data runner_lifecycle_ruling_scope_interpretation: RulingScopeInterpretation = R
   ],
   interpreted_by: "eager-gull-22" as NonEmptyStr,
   interpreted_on: "2026-10-04" as NonEmptyStr,
-  standing: "covers register, deregister and the qualification dispatch, and -- as part of registration -- the create-once per-attempt branch refs/heads/qualification/<attempt> at the pinned revision, its removal on every exit, and pinning the DEDICATED qualification runner group's selected workflow to that branch; reported to the operator, who may narrow it" as NonEmptyStr,
+  standing: "covers register, deregister and the qualification dispatch, and -- as part of registration -- the create-once per-attempt branch refs/heads/qualification/<attempt> at the pinned revision, its removal on every exit, and pinning the DEDICATED qualification runner group's selected workflow to that branch, and the one-time creation of that group (realized through the restricted_runner_groups ensure, whose operator approval per absent group is kept as the stricter route); reported to the operator, who may narrow it" as NonEmptyStr,
 }
 
 // A SITE IS DISCHARGED BY THE RULING ONLY WHILE THE INTERPRETATION NAMES IT. Removing a site from
@@ -676,7 +676,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.runner_group_restriction_ensure_run", decl_name: "microvm_runner_group_after_gate"),
     effect: PrivilegedEffect {
-      subject: "create the microVM runner group restricted to the shakedown workflow, under an org-admin installation token" as NonEmptyStr,
+      subject: "create, only when absent, each runner group on the restricted_runner_groups roster -- the microVM shakedown group, gunbc-private's heal publisher group, and the dedicated runner-qualification group (eager-gull-22, 2026-10-04, under the 2026-10-03 interpretation; created pinned to the reserved unpinned branch) -- each with selected visibility, this repository alone, no public repositories and a workflow restriction, refusing any same-named group of another shape and never editing one, under an org-admin installation token" as NonEmptyStr,
       frequency: FleetOnce,
       reversibility: ReversibleByReapply,
       surface: ApiSurface,

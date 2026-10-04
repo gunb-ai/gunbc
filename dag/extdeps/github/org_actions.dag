@@ -14,16 +14,28 @@ import std.resources { Network }
 // repositories they must admit is a fleet policy fact and lives in gunbc.fleet, never
 // here.
 
+// THREE VALUES, AS UPSTREAM DOCUMENTS THEM ("selected | all | private"): a reader that met a private
+// group could not decode it while only two were modeled.
 type RunnerGroupVisibility
   = AllRepositories
   | SelectedRepositories
+  | PrivateRepositories
 
 // The request/response wire spelling of a visibility, as the docs name it.
 fn runner_group_visibility_wire(v: RunnerGroupVisibility) -> NonEmptyStr {
   match v {
     AllRepositories => "all" as NonEmptyStr
     SelectedRepositories => "selected" as NonEmptyStr
+    PrivateRepositories => "private" as NonEmptyStr
   }
+}
+
+// The inverse, for a decoder: an unknown spelling is absent, never a guessed visibility.
+fn runner_group_visibility_of_wire(raw: String) -> RunnerGroupVisibility? {
+  if raw == "all" { Present { value: AllRepositories } }
+  else if raw == "selected" { Present { value: SelectedRepositories } }
+  else if raw == "private" { Present { value: PrivateRepositories } }
+  else { none }
 }
 
 // The runner_groups[] element shape. selected_repositories_url is populated only when

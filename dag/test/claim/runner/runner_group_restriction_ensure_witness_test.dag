@@ -11,7 +11,10 @@ import gunbc.runner_group_restriction_ensure {
   plan_runner_group_ensure, readback_after_create, microvm_runner_group_create_subject,
   runner_group_create_subject_text, private_heal_publisher_runner_group_subject,
   private_heal_publisher_runner_group_name, restricted_runner_groups,
+  qualification_runner_group_subject, runner_group_create_refusal, RunnerGroupCreateSubject,
 }
+import extdeps.github.org_actions { AllRepositories, SelectedRepositories }
+import gunbc.runner.runner_qualification_ref_pin { qualification_runner_group_name, qualification_selected_workflow }
 import gunbc.auth.heal_publisher_federation { private_heal_publisher_federation, heal_publisher_federation_workflow_ref }
 
 // THE PLAN'S SUBJECT IS ONE INTERFACE: the organization's runner-groups wire body as GitHub's REST
@@ -144,4 +147,101 @@ test fn witness_private_publisher_group_is_admitted_for_its_workflow_and_refused
     _ => false
   }
   admitted && refused
+}
+
+// ── THE DEDICATED QUALIFICATION GROUP ───────────────────────────────────────────────────────────
+
+fn qualification_wire(id: Int, visibility: String, public: Bool, restricted: Bool, selected: List<String>) -> OrgRunnerGroupWire {
+  OrgRunnerGroupWire {
+    id: id,
+    name: qualification_runner_group_name as String,
+    visibility: visibility,
+    allows_public_repositories: public,
+    restricted_to_workflows: restricted,
+    selected_workflows: selected,
+    workflow_restrictions_read_only: false,
+  }
+}
+
+fn pinned_to(attempt: String) -> String {
+  qualification_selected_workflow(branch: concat("qualification/", attempt) as NonEmptyStr) as String
+}
+
+fn qualification_planned(groups: List<OrgRunnerGroupWire>) -> RunnerGroupEnsurePlan {
+  plan_runner_group_ensure(subject: qualification_runner_group_subject(), listed: listed(groups: groups))
+}
+
+fn refused_plan(p: RunnerGroupEnsurePlan) -> Bool {
+  match p { GroupEnsureRefused { cause: _ } => true _ => false }
+}
+
+// FOUND BY ITS EXACT NAME, CREATED WHEN ABSENT, LEFT ALONE WHEN PINNED. The roster carries the
+// dedicated group; an organization without it plans the create (selected visibility, this repository,
+// no public repositories, restricted, pinned to the reserved unpinned branch); a group already pinned
+// to any attempt's branch is the same group and is left alone.
+test fn the_qualification_group_is_created_when_absent_and_left_alone_when_pinned() -> Bool {
+  (restricted_runner_groups() |> any(g => (g.name as String) == (qualification_runner_group_name as String)))
+    && (match qualification_planned(groups: [default_group()]) {
+      GroupCreateRequired { subject: g } =>
+        (match g.visibility { SelectedRepositories => true _ => false }) && !g.allows_public_repositories && g.restricted_to_workflows
+          && string_contains(s: g.selected_workflow as String, pattern: "@refs/heads/qualification/unpinned")
+      _ => false
+    })
+    && (match qualification_planned(groups: [default_group(), qualification_wire(id: 30, visibility: "selected", public: false, restricted: true, selected: [pinned_to(attempt: "q-7")])]) {
+      GroupAlreadyRestricted { restriction: r } => r.group.value == 30
+      _ => false
+    })
+}
+
+// RED: SAME NAME, DIFFERENT SHAPE. A group holding the dedicated name that is visible to all or to
+// private repositories, admits public repositories, is unrestricted, selects another workflow, or
+// selects a ref outside the qualification/<attempt> family is REFUSED -- never adopted or edited.
+test fn a_same_named_group_of_another_shape_refuses() -> Bool {
+  refused_plan(p: qualification_planned(groups: [qualification_wire(id: 30, visibility: "all", public: false, restricted: true, selected: [pinned_to(attempt: "q-7")])]))
+    && refused_plan(p: qualification_planned(groups: [qualification_wire(id: 30, visibility: "private", public: false, restricted: true, selected: [pinned_to(attempt: "q-7")])]))
+    && refused_plan(p: qualification_planned(groups: [qualification_wire(id: 30, visibility: "selected", public: true, restricted: true, selected: [pinned_to(attempt: "q-7")])]))
+    && refused_plan(p: qualification_planned(groups: [qualification_wire(id: 30, visibility: "selected", public: false, restricted: false, selected: [])]))
+    && refused_plan(p: qualification_planned(groups: [qualification_wire(id: 30, visibility: "selected", public: false, restricted: true, selected: [shakedown()])]))
+    && refused_plan(p: qualification_planned(groups: [qualification_wire(id: 30, visibility: "selected", public: false, restricted: true, selected: [pinned_to(attempt: "q-7/extra")])]))
+    && refused_plan(p: qualification_planned(groups: [qualification_wire(id: 30, visibility: "selected", public: false, restricted: true, selected: [pinned_to(attempt: "q-7"), pinned_to(attempt: "q-8")])]))
+}
+
+// RED: A CREATE REQUEST THAT IS NOT CLOSED REFUSES BEFORE IT IS SENT -- visibility all or private,
+// public repositories, or no workflow restriction. Positive control: the roster's subject passes.
+test fn a_create_request_with_visibility_all_refuses() -> Bool {
+  let ok = qualification_runner_group_subject()
+  let open_all = RunnerGroupCreateSubject {
+    organization: ok.organization, name: ok.name, visibility: AllRepositories, selected_repository_id: ok.selected_repository_id,
+    allows_public_repositories: false, restricted_to_workflows: true, selected_workflow: ok.selected_workflow, workflow_policy: ok.workflow_policy,
+  }
+  let open_public = RunnerGroupCreateSubject {
+    organization: ok.organization, name: ok.name, visibility: SelectedRepositories, selected_repository_id: ok.selected_repository_id,
+    allows_public_repositories: true, restricted_to_workflows: true, selected_workflow: ok.selected_workflow, workflow_policy: ok.workflow_policy,
+  }
+  (match runner_group_create_refusal(subject: ok) { Absent => true Present { value: _ } => false })
+    && (match runner_group_create_refusal(subject: open_all) { Present { value: _ } => true Absent => false })
+    && (match runner_group_create_refusal(subject: open_public) { Present { value: _ } => true Absent => false })
+}
+
+// RED: THE READBACK MISMATCH. After a create, the group must read back with the shape the subject
+// asked for; one that reads back visible to all, pinned outside the family, or absent refuses.
+// Positive control: read back pinned to the reserved unpinned branch.
+test fn the_qualification_group_readback_must_match_the_create() -> Bool {
+  let subject = qualification_runner_group_subject()
+  (match readback_after_create(subject: subject, listed: listed(groups: [qualification_wire(id: 31, visibility: "selected", public: false, restricted: true, selected: [subject.selected_workflow as String])])) {
+    CreatedGroupRestricted { restriction: r } => r.group.value == 31
+    CreatedGroupNotRestricted { cause: _ } => false
+  })
+    && (match readback_after_create(subject: subject, listed: listed(groups: [qualification_wire(id: 31, visibility: "all", public: false, restricted: true, selected: [subject.selected_workflow as String])])) {
+      CreatedGroupNotRestricted { cause: _ } => true
+      _ => false
+    })
+    && (match readback_after_create(subject: subject, listed: listed(groups: [qualification_wire(id: 31, visibility: "selected", public: false, restricted: true, selected: [shakedown()])])) {
+      CreatedGroupNotRestricted { cause: _ } => true
+      _ => false
+    })
+    && (match readback_after_create(subject: subject, listed: listed(groups: [default_group()])) {
+      CreatedGroupNotRestricted { cause: _ } => true
+      _ => false
+    })
 }

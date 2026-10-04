@@ -23,7 +23,7 @@ import extdeps.languages.json.parse {
   JsonMemberNotAnObject
 }
 import extdeps.shell.credentials { env_credential }
-import extdeps.github.org_actions { OrgRunnerGroupListWire }
+import extdeps.github.org_actions { OrgRunnerGroupListWire, RunnerGroupVisibility, runner_group_visibility_of_wire }
 import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -88,6 +88,7 @@ fn render_org_actions_read_refusal(cause: OrgActionsReadRefusal) -> String {
 type RunnerGroupIdentity {
   id: Int
   name: NonEmptyStr
+  visibility: RunnerGroupVisibility
   allows_public_repositories: Bool
   restricted_to_workflows: Bool
   selected_workflows: List<NonEmptyStr>
@@ -191,13 +192,22 @@ fn runner_groups_from_wire(body: OrgRunnerGroupListWire) -> RunnerGroupListDecod
     if any(body.runner_groups, g => g.name == "" || any(g.selected_workflows, w => w == "")) {
       RunnerGroupListDecodeRefused { reason: "runner_groups contains an element with an empty name or an empty selected_workflows entry" }
     } else {
-      RunnerGroupListDecoded { groups: map(body.runner_groups, g => RunnerGroupIdentity {
-        id: g.id,
-        name: g.name as NonEmptyStr,
-        allows_public_repositories: g.allows_public_repositories,
-        restricted_to_workflows: g.restricted_to_workflows,
-        selected_workflows: map(g.selected_workflows, w => w as NonEmptyStr),
-      }) }
+      let rows = flat_map(body.runner_groups, g => match runner_group_visibility_of_wire(raw: g.visibility) {
+        Absent => []
+        Present { value: v } => [RunnerGroupIdentity {
+          id: g.id,
+          name: g.name as NonEmptyStr,
+          visibility: v,
+          allows_public_repositories: g.allows_public_repositories,
+          restricted_to_workflows: g.restricted_to_workflows,
+          selected_workflows: map(g.selected_workflows, w => w as NonEmptyStr),
+        }]
+      })
+      if count(rows) != count(body.runner_groups) {
+        RunnerGroupListDecodeRefused { reason: "runner_groups contains an element whose visibility is not one of selected, all, private" }
+      } else {
+        RunnerGroupListDecoded { groups: rows }
+      }
     }
   }
 }

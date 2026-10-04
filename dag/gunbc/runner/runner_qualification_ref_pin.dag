@@ -12,7 +12,7 @@ import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
 import gunbc.fleet.org_actions_inspection { RunnerGroupListDecode, RunnerGroupListDecoded, RunnerGroupListDecodeRefused }
 import gunbc.runner_group_restriction_observation {
   MicrovmRunnerGroupStanding, RunnerGroupRestrictedToWorkflow, RunnerGroupRestrictionRefused, RestrictedRunnerGroup,
-  observe_runner_group_restriction,
+  observe_runner_group_restriction, scope_refusal, runner_group_restriction_refusal_text,
 }
 import gunbc.github_effect_perform {
   ControllerInstallationToken, GitRefRead, read_git_ref_with, create_git_ref_with, delete_git_ref_with,
@@ -66,6 +66,23 @@ fn qualification_workflow_path() -> NonEmptyStr {
 fn qualification_selected_workflow(branch: NonEmptyStr) -> NonEmptyStr {
   join([gunbc_repository.full_name, "/", qualification_workflow_path() as String, "@refs/heads/", branch as String], "") as NonEmptyStr
 }
+
+// The family every pin of the dedicated group belongs to: the qualification workflow at
+// refs/heads/qualification/<one segment> (gunbc.runner_group_restriction_observation
+// observe_pinned_runner_group).
+fn qualification_pin_prefix() -> NonEmptyStr {
+  join([gunbc_repository.full_name, "/", qualification_workflow_path() as String, "@refs/heads/", qualification_branch_prefix as String], "") as NonEmptyStr
+}
+
+// THE GROUP IS CREATED PINNED TO A BRANCH NO ATTEMPT CAN NAME. GitHub requires a selected workflow
+// at creation; this reserved segment is refused as an attempt label (attempt_is_one_ref_segment), so
+// no qualification branch with it is ever created and the freshly created group admits no run until
+// the first attempt pins it.
+data qualification_unpinned_attempt: NonEmptyStr = "unpinned"
+
+fn qualification_unpinned_selected_workflow() -> NonEmptyStr {
+  qualification_selected_workflow(branch: concat(qualification_branch_prefix as String, qualification_unpinned_attempt as String) as NonEmptyStr)
+}
 data qualification_runner_group_name: NonEmptyStr = "runner-qualification"
 
 // ── THE BRANCH NAME ─────────────────────────────────────────────────────────────────────────────
@@ -84,6 +101,7 @@ type QualificationBranchNameStanding
 // invalid one, so it refuses rather than being escaped.
 fn attempt_is_one_ref_segment(attempt: String) -> Bool {
   string_length(s: attempt) > 0
+    && attempt != (qualification_unpinned_attempt as String)
     && !starts_with(s: attempt, prefix: ".")
     && !string_contains(s: attempt, pattern: "/")
     && !string_contains(s: attempt, pattern: "..")
@@ -143,7 +161,11 @@ fn qualification_group_target(requested: NonEmptyStr, listed: RunnerGroupListDec
             if count(rows) != 1 {
               QualificationGroupNotTargetable { cause: "the dedicated qualification runner group name is duplicated" as NonEmptyStr }
             } else {
-              QualificationGroupTargeted { target: QualificationGroupWriteTarget { group_id: row.id } }
+              match scope_refusal(row: row) {
+                Present { value: cause } =>
+                  QualificationGroupNotTargetable { cause: concat("the group holding the dedicated name is another shape: ", runner_group_restriction_refusal_text(cause: cause)) as NonEmptyStr }
+                Absent => QualificationGroupTargeted { target: QualificationGroupWriteTarget { group_id: row.id } }
+              }
             }
         }
       }

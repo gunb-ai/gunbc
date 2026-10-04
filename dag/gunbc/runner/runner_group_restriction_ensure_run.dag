@@ -26,7 +26,7 @@ import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
 import gunbc.runner_group_restriction_ensure {
   RunnerGroupCreateSubject, restricted_runner_groups, runner_group_create_subject_text,
   RunnerGroupEnsurePlan, GroupAlreadyRestricted, GroupCreateRequired, GroupEnsureRefused, plan_runner_group_ensure,
-  CreatedGroupRestricted, CreatedGroupNotRestricted, readback_after_create,
+  CreatedGroupRestricted, CreatedGroupNotRestricted, readback_after_create, runner_group_create_refusal,
 }
 
 // THE CREATE, PERFORMED UNDER ONE OPERATOR APPROVAL -- the first site that turns an admitted approval
@@ -184,6 +184,13 @@ fn microvm_runner_group_after_gate(
 }
 
 fn microvm_runner_group_create_under(s: RunnerGroupCreateSubject, escalation: NonEmptyStr, decided_by: NonEmptyStr) -> GroupEnsureOutcome {
+  match runner_group_create_refusal(subject: s) {
+    Present { value: cause } => failed(reason: concat("microvm runner group: ", cause as String))
+    Absent => microvm_runner_group_create_admitted(s: s, escalation: escalation, decided_by: decided_by)
+  }
+}
+
+fn microvm_runner_group_create_admitted(s: RunnerGroupCreateSubject, escalation: NonEmptyStr, decided_by: NonEmptyStr) -> GroupEnsureOutcome {
   let created = github.CliOrgRunnerGroups.CreateRunnerGroupJson(
     org: s.organization,
     name: s.name,

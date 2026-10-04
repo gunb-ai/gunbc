@@ -2,6 +2,7 @@ module gunbc.runner_group_restriction_observation
 
 import std.types { NonEmptyStr, String, Bool, Int, List }
 import extdeps.github.actions_jit_runner { JitRunnerGroupId }
+import extdeps.github.org_actions { RunnerGroupVisibility, AllRepositories, SelectedRepositories, PrivateRepositories, runner_group_visibility_wire }
 import gunbc.repository { gunbc_repository }
 import gunbc.generated_artifact { artifact_path, MicrovmShakedownYamlArtifact }
 import gunbc.fleet.org_actions_inspection {
@@ -61,6 +62,8 @@ type RunnerGroupRestrictionRefusal
   | RunnerGroupAbsent
   | RunnerGroupDuplicated { count: Int }
   | RunnerGroupNotRestrictedToWorkflows { group: JitRunnerGroupId }
+  | RunnerGroupVisibleBeyondSelected { group: JitRunnerGroupId, visibility: RunnerGroupVisibility }
+  | RunnerGroupAdmitsPublicRepositories { group: JitRunnerGroupId }
   | RunnerGroupSelectsOtherWorkflows { group: JitRunnerGroupId, selected: List<NonEmptyStr>, expected: NonEmptyStr }
 
 fn runner_group_restriction_refusal_text(cause: RunnerGroupRestrictionRefusal) -> String {
@@ -69,6 +72,10 @@ fn runner_group_restriction_refusal_text(cause: RunnerGroupRestrictionRefusal) -
     RunnerGroupListUnreadable { reason } => concat("RunnerGroupListUnreadable: ", reason as String)
     RunnerGroupAbsent => "RunnerGroupAbsent: the org's runner groups contain no group with this name"
     RunnerGroupDuplicated { count } => concat("RunnerGroupDuplicated: groups with this name: ", to_string(count))
+    RunnerGroupVisibleBeyondSelected { group, visibility } =>
+      join(["RunnerGroupVisibleBeyondSelected: group ", to_string(group.value), " has visibility=", runner_group_visibility_wire(v: visibility) as String, ", so repositories beyond the selected one may use it"], "")
+    RunnerGroupAdmitsPublicRepositories { group } =>
+      join(["RunnerGroupAdmitsPublicRepositories: group ", to_string(group.value), " has allows_public_repositories=true"], "")
     RunnerGroupNotRestrictedToWorkflows { group } =>
       join(["RunnerGroupNotRestrictedToWorkflows: group ", to_string(group.value), " has restricted_to_workflows=false, so every workflow may use it"], "")
     RunnerGroupSelectsOtherWorkflows { group, selected, expected } =>
@@ -87,7 +94,29 @@ type MicrovmRunnerGroupStanding
 // heal publisher's. The authorization record still has one constructor -- this observer -- and it
 // carries the workflow it was observed restricted to, so a mint cannot be handed a group observed
 // for another workflow.
+// THE SCOPE WALLS EVERY RESTRICTED GROUP HOLDS, whatever its workflow policy: selected visibility
+// only, and no public repositories. A group holding the name with either opened is another shape and
+// refuses, never adopted.
+fn scope_refusal(row: RunnerGroupIdentity) -> RunnerGroupRestrictionRefusal? {
+  let group = JitRunnerGroupId { value: row.id }
+  match row.visibility {
+    SelectedRepositories =>
+      if row.allows_public_repositories { Present { value: RunnerGroupAdmitsPublicRepositories { group: group } } }
+      else if !row.restricted_to_workflows { Present { value: RunnerGroupNotRestrictedToWorkflows { group: group } } }
+      else { none }
+    AllRepositories => Present { value: RunnerGroupVisibleBeyondSelected { group: group, visibility: AllRepositories } }
+    PrivateRepositories => Present { value: RunnerGroupVisibleBeyondSelected { group: group, visibility: PrivateRepositories } }
+  }
+}
+
 fn restriction_of(name: NonEmptyStr, selected_workflow: NonEmptyStr, row: RunnerGroupIdentity) -> MicrovmRunnerGroupStanding {
+  match scope_refusal(row: row) {
+    Present { value: cause } => RunnerGroupRestrictionRefused { name: name, cause: cause }
+    Absent => restriction_of_scoped(name: name, selected_workflow: selected_workflow, row: row)
+  }
+}
+
+fn restriction_of_scoped(name: NonEmptyStr, selected_workflow: NonEmptyStr, row: RunnerGroupIdentity) -> MicrovmRunnerGroupStanding {
   let group = JitRunnerGroupId { value: row.id }
   if !row.restricted_to_workflows {
     RunnerGroupRestrictionRefused { name: name, cause: RunnerGroupNotRestrictedToWorkflows { group: group } }
@@ -124,6 +153,49 @@ fn observe_runner_group_restriction(name: NonEmptyStr, selected_workflow: NonEmp
 }
 
 // The shakedown's own reading, which the microVM mint and controller consume.
+// A GROUP PINNED PER ATTEMPT (gunbc.runner.runner_qualification_ref_pin) is restricted to ONE workflow
+// whose ref changes every attempt: the same workflow file at refs/heads/<prefix><attempt>. So the
+// expected entry is a family, not a string: exactly one selected workflow, beginning with pin_prefix,
+// whose remainder is one non-empty ref segment. The scope walls are the same as every group's.
+fn pinned_selected_workflow(pin_prefix: NonEmptyStr, entry: NonEmptyStr) -> Bool {
+  let e = entry as String
+  let p = pin_prefix as String
+  starts_with(s: e, prefix: p)
+    && string_length(s: e) > string_length(s: p)
+    && !string_contains(s: substring(s: e, start: string_length(s: p), end: string_length(s: e)), pattern: "/")
+}
+
+fn observe_pinned_runner_group(name: NonEmptyStr, pin_prefix: NonEmptyStr, listed: RunnerGroupListDecode) -> MicrovmRunnerGroupStanding {
+  match listed {
+    RunnerGroupListDecodeRefused { reason } =>
+      RunnerGroupRestrictionRefused { name: name, cause: RunnerGroupListUnreadable { reason: reason } }
+    RunnerGroupListDecoded { groups } => {
+      let rows = filter(groups, g => (g.name as String) == (name as String))
+      if count(rows) > 1 {
+        RunnerGroupRestrictionRefused { name: name, cause: RunnerGroupDuplicated { count: count(rows) } }
+      } else {
+        match rows.first() {
+          Absent => RunnerGroupRestrictionRefused { name: name, cause: RunnerGroupAbsent }
+          Present { value: row } =>
+            match scope_refusal(row: row) {
+              Present { value: cause } => RunnerGroupRestrictionRefused { name: name, cause: cause }
+              Absent =>
+                match row.selected_workflows.first() {
+                  Present { value: entry } =>
+                    if count(row.selected_workflows) == 1 && pinned_selected_workflow(pin_prefix: pin_prefix, entry: entry) {
+                      restriction_of_scoped(name: name, selected_workflow: entry, row: row)
+                    } else {
+                      RunnerGroupRestrictionRefused { name: name, cause: RunnerGroupSelectsOtherWorkflows { group: JitRunnerGroupId { value: row.id }, selected: row.selected_workflows, expected: pin_prefix } }
+                    }
+                  Absent => RunnerGroupRestrictionRefused { name: name, cause: RunnerGroupSelectsOtherWorkflows { group: JitRunnerGroupId { value: row.id }, selected: [], expected: pin_prefix } }
+                }
+            }
+        }
+      }
+    }
+  }
+}
+
 fn observe_shakedown_runner_group_restriction(name: NonEmptyStr, listed: RunnerGroupListDecode) -> MicrovmRunnerGroupStanding {
   observe_runner_group_restriction(name: name, selected_workflow: microvm_shakedown_selected_workflow(), listed: listed)
 }
