@@ -262,3 +262,77 @@ test fn vfp_the_arm_binder_types_from_the_payload_field_holds() -> Bool {
 test fn vfp_the_partial_match_refuses_as_not_covering_the_carrier_holds() -> Bool {
   vfp_reports(reading: vfp_partial_reading(), reason: ^infer_match_non_exhaustive)
 }
+// ---- TEMPORARY BISECTION LADDER (deleted once the route gap is fixed): each row asserts one
+// ---- property of the round-trip reading so CI's adjudication decodes the refusal chain into
+// ---- pass/fail bits instead of a single Bool(false).
+test fn vfp_rt_chain_has_arrow_body_uninhabited_holds() -> Bool {
+  vfp_reports(reading: vfp_round_trip_reading(), reason: ^arrow_body_does_not_inhabit_declared_return)
+}
+
+test fn vfp_rt_chain_has_grounding_not_derived_holds() -> Bool {
+  vfp_reports(reading: vfp_round_trip_reading(), reason: ^infer_grounding_not_derived)
+}
+
+test fn vfp_rt_chain_has_undecidable_argument_holds() -> Bool {
+  vfp_reports(reading: vfp_round_trip_reading(), reason: ^inhabitance_undecidable_argument_type_not_derived)
+}
+
+test fn vfp_rt_chain_has_non_exhaustive_holds() -> Bool {
+  vfp_reports(reading: vfp_round_trip_reading(), reason: ^infer_match_non_exhaustive)
+}
+
+test fn vfp_rt_chain_has_lexical_reference_unrecorded_holds() -> Bool {
+  vfp_reports(reading: vfp_round_trip_reading(), reason: ^infer_reason_lexical_reference_unrecorded)
+}
+
+test fn vfp_rt_chain_has_match_scrutinee_not_bool_holds() -> Bool {
+  vfp_reports(reading: vfp_round_trip_reading(), reason: ^infer_match_scrutinee_not_bool)
+}
+
+test fn vfp_rt_chain_has_relation_coverage_reason_holds() -> Bool {
+  vfp_reports(reading: vfp_round_trip_reading(), reason: ^infer_reason_match_arms_do_not_cover_scrutinee)
+}
+
+test fn vfp_rt_construction_fact_is_underived_sentinel_holds() -> Bool {
+  vfp_round_trip_reading().construction_fact == ^vfp_underived
+}
+
+test fn vfp_rt_construction_fact_is_absent_sentinel_holds() -> Bool {
+  vfp_round_trip_reading().construction_fact == ^vfp_subject_absent
+}
+
+test fn vfp_rt_construction_fact_is_no_facts_sentinel_holds() -> Bool {
+  vfp_round_trip_reading().construction_fact == ^vfp_no_facts
+}
+
+test fn vfp_rt_match_fact_is_underived_sentinel_holds() -> Bool {
+  vfp_round_trip_reading().match_fact == ^vfp_underived
+}
+
+test fn vfp_rt_match_fact_is_absent_sentinel_holds() -> Bool {
+  vfp_round_trip_reading().match_fact == ^vfp_subject_absent
+}
+
+test fn vfp_rt_match_fact_is_no_facts_sentinel_holds() -> Bool {
+  vfp_round_trip_reading().match_fact == ^vfp_no_facts
+}
+
+test fn vfp_rt_arm_fact_is_underived_sentinel_holds() -> Bool {
+  vfp_round_trip_reading().arm_body_fact == ^vfp_underived
+}
+
+test fn vfp_rt_arm_fact_is_absent_sentinel_holds() -> Bool {
+  vfp_round_trip_reading().arm_body_fact == ^vfp_subject_absent
+}
+
+test fn vfp_rt_arm_fact_is_no_facts_sentinel_holds() -> Bool {
+  vfp_round_trip_reading().arm_body_fact == ^vfp_no_facts
+}
+
+test fn vfp_rt_tag_carrier_refused_at_resolve_holds() -> Bool {
+  vfp_round_trip_reading().construction_tag_carrier == ^vfp_refused_at_resolve
+}
+
+test fn vfp_rt_tag_carrier_is_seal_holds() -> Bool {
+  vfp_round_trip_reading().construction_tag_carrier == ^Seal
+}
