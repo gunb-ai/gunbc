@@ -1666,9 +1666,9 @@ fn infer_application_result_type(
                 instances: instances
               )
               if inhabitance_node_mentions_type_variable(n: declared, type_variables: infer_application_type_params(node: node, entries: entries)) {
-                Absent
+                optional_absent()
               } else {
-                Present { value: declared }
+                optional_present(value: declared)
               }
             _ => Absent
           }
