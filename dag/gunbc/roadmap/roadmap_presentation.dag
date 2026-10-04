@@ -2163,6 +2163,22 @@ fn issue_status_label(view: WorkRowView) -> String {
   else if scheduling == "ready" { "Ready" }
   else { "Open" }
 }
+// Owner 2026-10-04: descending status means Ready first, not lexical order.
+// The same numeric value drives the initial server order and interactive column sorting.
+fn issue_status_sort_rank(view: WorkRowView) -> Int {
+  let label = issue_status_label(view: view)
+  if label == "Ready" { 10 }
+  else if label == "Active" { 9 }
+  else if label == "Review" { 8 }
+  else if label == "Assigned" { 7 }
+  else if label == "Returned" { 6 }
+  else if label == "Open" { 5 }
+  else if label == "Blocked" { 4 }
+  else if label == "Unknown" { 3 }
+  else if label == "Done" { 2 }
+  else { 1 }
+}
+
 fn issue_status_details(view: WorkRowView) -> IssueStatusDetails {
   let planning = join([work_lifecycle_key(l: view.lifecycle), " · ", match view.scheduling {
     SchedulingReady => "Ready to dispatch"

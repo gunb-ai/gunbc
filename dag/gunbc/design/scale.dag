@@ -111,8 +111,8 @@ data type_scale: List<ScaleToken> = [
 ]
 
 data font_sans: ScaleToken = font_token(name: "font-sans", families: [
-  NamedFamily { name: "Noto Sans" },
-  GenericFamily { kind: GenericSystemUi },
+  NamedFamily { name: "Roboto" },
+  NamedFamily { name: "Arial" },
   GenericFamily { kind: GenericSansSerif },
 ])
 data font_mono: ScaleToken = font_token(name: "font-mono", families: [

@@ -1,11 +1,24 @@
 module gunbc.roadmap_surface_style
+import gunbc.design.typography { interface_text_decls, InterfaceBody, InterfaceLabel, InterfaceMetadata, InterfaceHeading, InterfaceSectionHeading }
 import gunbc.roadmap_component { roadmap_row_height }
-import extdeps.google.issue_tracker { issue_results_row_tracks }
+import extdeps.google.issue_tracker { issue_results_columns, IssueColumnPriority, IssueColumnTitle, IssueColumnAssignee, IssueColumnStatus, IssueColumnLastModified }
 import gunbc.design.material { BuildRule, StaticRule, ResponseRule, SelfResponse, WithinSubject, PseudoElementOfSubject, OnHover, OnFocusVisible, respond_fast, decl }
 import extdeps.languages.css.selectors { RawSelector }
 import extdeps.languages.css.properties { CustomProperty, AlignItems, Background, Border, BorderBottom, BorderLeft, BorderRadius, BoxShadow, Color, Cursor, Display, Fill, Flex, FlexDirection, FlexWrap, FontFamily, FontSize, FontWeight, Gap, GridColumn, GridTemplateColumns, Height, Inset, JustifyContent, LetterSpacing, LineHeight, ListStyle, Margin, MarginBottom, MarginLeft, MarginRight, MarginTop, MaxWidth, MinHeight, MinWidth, Opacity, Outline, Overflow, Padding, PaddingLeft, Position, Stroke, TextDecoration, TextTransform, Transform, WhiteSpace, Width, RawProperty }
 import gunbc.design.scale { scale_var, scale_pair, scale_triple, scale_border, height_control, control_geometry, CompactChoice, RichIdentity, space_0, space_1, space_2, space_4, space_6, space_8, space_12, space_16, space_24, text_11, text_12, text_13, text_14, text_15, text_18, font_sans, font_mono, radius_surface, radius_999, border_1, border_2, width_status, height_compact_face }
 import gunbc.design.theme { role_decl, TextRole, TextDimRole, SurfaceRole, CanvasRole, FocusRole }
+
+// Local control geometry needs wider priority badges and an intrinsic modified heading.
+// Keep the upstream column roster; do not change the observed upstream layout model.
+fn workspace_issue_tracks() -> String {
+  join(map(issue_results_columns, c => match c.kind {
+    IssueColumnPriority => "minmax(6ch, max-content)"
+    IssueColumnLastModified => "max-content"
+    IssueColumnTitle => c.track as String
+    IssueColumnAssignee => c.track as String
+    IssueColumnStatus => c.track as String
+  }), " ")
+}
 
 fn roadmap_surface_rules() -> List<BuildRule> {
   [
@@ -42,10 +55,9 @@ fn roadmap_surface_rules() -> List<BuildRule> {
     StaticRule { selector: RawSelector { text: ".workspace-meta .program-progress" }, decls: [
       decl(prop: MarginLeft, value: "auto")
     ] },
-    StaticRule { selector: RawSelector { text: ".issue-hidden-summary" }, decls: [
-      decl(prop: FontSize, value: scale_var(t: text_12)),
+    StaticRule { selector: RawSelector { text: ".issue-hidden-summary" }, decls: concat([
       role_decl(prop: Color, r: TextDimRole)
-    ] },
+    ], interface_text_decls(role: InterfaceMetadata)) },
     StaticRule { selector: RawSelector { text: ".issue-sort-undo[hidden], .issue-sort-status:empty" }, decls: [
       decl(prop: Display, value: "none")
     ] },
@@ -57,9 +69,7 @@ fn roadmap_surface_rules() -> List<BuildRule> {
       decl(prop: Gap, value: scale_var(t: space_6)),
       decl(prop: FlexWrap, value: "wrap")
     ] },
-    StaticRule { selector: RawSelector { text: ".issue-search" }, decls: [
-      decl(prop: FontSize, value: scale_var(t: text_13)),
-      decl(prop: FontFamily, value: scale_var(t: font_sans)),
+    StaticRule { selector: RawSelector { text: ".issue-search" }, decls: concat([
       role_decl(prop: Color, r: TextRole),
       role_decl(prop: Background, r: SurfaceRole),
       decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
@@ -68,7 +78,7 @@ fn roadmap_surface_rules() -> List<BuildRule> {
       decl(prop: MinHeight, value: scale_var(t: height_control)),
       decl(prop: Flex, value: "1 1 30ch"),
       decl(prop: MinWidth, value: "0")
-    ] },
+    ], interface_text_decls(role: InterfaceBody)) },
     StaticRule { selector: RawSelector { text: ".issue-table-scroll" }, decls: [
       decl(prop: MinWidth, value: "0"),
       decl(prop: MaxWidth, value: "100%"),
@@ -79,10 +89,38 @@ fn roadmap_surface_rules() -> List<BuildRule> {
     ] },
     StaticRule { selector: RawSelector { text: ".issue-table" }, decls: [
       decl(prop: Display, value: "grid"),
-      decl(prop: GridTemplateColumns, value: issue_results_row_tracks()),
+      decl(prop: GridTemplateColumns, value: workspace_issue_tracks()),
       decl(prop: Gap, value: scale_var(t: space_0)),
       decl(prop: AlignItems, value: "stretch"),
       decl(prop: MinWidth, value: "65ch")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-cell-status" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-cell-priority" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: JustifyContent, value: "center")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-priority" }, decls: [
+      decl(prop: Display, value: "inline-flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: JustifyContent, value: "center"),
+      decl(prop: MinWidth, value: scale_var(t: height_compact_face)),
+      decl(prop: Height, value: scale_var(t: height_compact_face)),
+      decl(prop: LineHeight, value: "1"),
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
+      role_decl(prop: Color, r: TextDimRole)
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-priority[data-priority=\"0\"]" }, decls: [
+      decl(prop: Color, value: "var(--surface)"),
+      decl(prop: Background, value: "var(--issue-error)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-priority[data-priority=\"1\"]" }, decls: [
+      decl(prop: Color, value: "var(--issue-error)")
     ] },
     StaticRule { selector: RawSelector { text: ".issue-empty" }, decls: [
       decl(prop: Display, value: "none"),
@@ -620,7 +658,6 @@ fn roadmap_surface_rules() -> List<BuildRule> {
       decl(prop: Border, value: "var(--border-2) solid var(--issue-action-hover)"),
       decl(prop: BorderRadius, value: "var(--radius-999)"),
       decl(prop: Background, value: "var(--surface)"),
-      decl(prop: BoxShadow, value: "0 0 0 var(--space-6) color-mix(in srgb, var(--issue-action-hover) 15%, transparent)"),
       decl(prop: RawProperty { name: "top" }, value: "var(--h-compact-face)")
     ] },
     StaticRule { selector: RawSelector { text: ".issue-dag-aggregate .issue-dag-selected-anchor .issue-dag-row" }, decls: [
@@ -999,7 +1036,6 @@ fn roadmap_surface_rules() -> List<BuildRule> {
       decl(prop: Border, value: "var(--border-1) solid var(--issue-border)"),
       decl(prop: BorderRadius, value: "var(--radius-surface)"),
       decl(prop: Color, value: "var(--issue-text)"),
-      decl(prop: BoxShadow, value: "0 var(--space-8) var(--space-24) color-mix(in srgb, var(--text) 13%, transparent)"),
       decl(prop: RawProperty { name: "overflow-wrap" }, value: "anywhere")
     ] },
     ResponseRule { subject: RawSelector { text: ".issue-mention" }, shape: WithinSubject { target: ".issue-profile-card" }, trigger: OnHover, transition_props: "opacity", timing: respond_fast, base_decls: [], response_decls: [
@@ -1094,7 +1130,6 @@ fn roadmap_surface_rules() -> List<BuildRule> {
       decl(prop: BorderRadius, value: "var(--radius-999)"),
       decl(prop: Border, value: "var(--border-2) solid var(--issue-action-hover)"),
       decl(prop: Background, value: "var(--surface)"),
-      decl(prop: BoxShadow, value: "0 0 0 var(--space-2) color-mix(in srgb, var(--issue-action-hover) 15%, transparent)")
     ] },
 
     StaticRule { selector: RawSelector { text: ".issue-membership-children[open] > summary::after" }, decls: [

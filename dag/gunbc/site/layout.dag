@@ -1,4 +1,5 @@
 module gunbc.site.layout
+import gunbc.design.typography { interface_text_decls, InterfaceBody, InterfaceLabel, InterfaceMetadata, InterfaceHeading, InterfaceSectionHeading }
 import gunbc.design.material { BuildRule, StaticRule, ResponseRule, SelfResponse, OnHover, OnFocusVisible, respond_fast, decl }
 import extdeps.languages.css.selectors { RawSelector }
 import extdeps.languages.css.properties { FlexDirection, MarginTop, Position, Inset, Height, AlignItems, Background, Border, BorderBottom, BorderRadius, BoxShadow, BoxSizing, Color, Cursor, Display, FlexWrap, FontFamily, FontSize, FontWeight, Gap, GridTemplateColumns, Height, Inset, JustifyContent, LetterSpacing, LineHeight, ListStyle, Margin, MarginLeft, MarginRight, MaxWidth, MinHeight, MinWidth, Opacity, Outline, Overflow, Padding, Position, TextAlign, TextDecoration, TextTransform, Transform, Width, RawProperty }
@@ -12,17 +13,13 @@ fn site_layout_rules() -> List<BuildRule> {
       decl(prop: Padding, value: scale_var(t: space_0)),
       decl(prop: BoxSizing, value: "border-box")
     ] },
-    StaticRule { selector: RawSelector { text: "body" }, decls: [
+    StaticRule { selector: RawSelector { text: "body" }, decls: concat([
       decl(prop: Margin, value: "0"),
       decl(prop: MinWidth, value: "0"),
       decl(prop: MaxWidth, value: "100%"),
-      decl(prop: FontSize, value: "var(--text-14)"),
-      decl(prop: LineHeight, value: "1.5"),
       decl(prop: Background, value: "var(--canvas)"),
       decl(prop: Color, value: "var(--text)"),
-      decl(prop: FontFamily, value: "var(--font-sans)"),
-      decl(prop: LetterSpacing, value: "normal")
-    ] },
+    ], interface_text_decls(role: InterfaceBody)) },
     StaticRule { selector: RawSelector { text: "header" }, decls: [
       decl(prop: Padding, value: scale_pair(a: space_12, b: space_24)),
       decl(prop: Background, value: "var(--surface)"),
@@ -45,15 +42,11 @@ fn site_layout_rules() -> List<BuildRule> {
       decl(prop: Padding, value: "var(--space-8)"),
       decl(prop: BorderRadius, value: "var(--radius-surface)")
     ] },
-    StaticRule { selector: RawSelector { text: "h1" }, decls: [
-      decl(prop: FontSize, value: scale_var(t: text_18)),
-      decl(prop: FontWeight, value: "500")
-    ] },
-    StaticRule { selector: RawSelector { text: "h2" }, decls: [
-      decl(prop: FontSize, value: scale_var(t: text_15)),
-      decl(prop: FontWeight, value: "500"),
+    StaticRule { selector: RawSelector { text: "h1" }, decls: concat([
+    ], interface_text_decls(role: InterfaceHeading)) },
+    StaticRule { selector: RawSelector { text: "h2" }, decls: concat([
       decl(prop: Margin, value: scale_triple(a: space_16, b: space_0, c: space_8))
-    ] },
+    ], interface_text_decls(role: InterfaceSectionHeading)) },
     StaticRule { selector: RawSelector { text: ".chip" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_11)),
       role_decl(prop: Color, r: TextDimRole),
@@ -141,7 +134,6 @@ fn site_layout_rules() -> List<BuildRule> {
       decl(prop: Background, value: "var(--surface)"),
       decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
       decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
-      decl(prop: BoxShadow, value: "0 var(--space-8) var(--space-24) color-mix(in srgb, var(--text) 13%, transparent)"),
       decl(prop: Padding, value: scale_var(t: space_4)),
       decl(prop: RawProperty { name: "z-index" }, value: "var(--layer-menu)")
     ] },
@@ -184,6 +176,7 @@ fn site_layout_rules() -> List<BuildRule> {
       decl(prop: MinHeight, value: scale_var(t: height_control)),
       decl(prop: BorderRadius, value: "var(--radius-surface)"),
       decl(prop: FontFamily, value: "var(--font-sans)"),
+      decl(prop: FontWeight, value: "inherit"),
       decl(prop: LetterSpacing, value: "normal")
     ] },
     StaticRule { selector: RawSelector { text: "html" }, decls: [
@@ -269,7 +262,6 @@ fn site_layout_rules() -> List<BuildRule> {
       decl(prop: Border, value: "var(--border-1) solid var(--border)"),
       decl(prop: BorderRadius, value: "var(--radius-surface)"),
       decl(prop: Padding, value: "var(--space-4)"),
-      decl(prop: BoxShadow, value: "0 var(--space-8) var(--space-24) color-mix(in srgb, var(--text) 13%, transparent)")
     ] },
     StaticRule { selector: RawSelector { text: "[hidden]" }, decls: [
       decl(prop: Display, value: "none !important")
@@ -314,20 +306,19 @@ fn site_layout_rules() -> List<BuildRule> {
       decl(prop: Width, value: scale_var(t: height_compact_face)),
       decl(prop: Height, value: scale_var(t: height_compact_face))
     ] },
-    StaticRule { selector: RawSelector { text: ".site-choice-compact summary, .site-button-compact" }, decls: [
+    StaticRule { selector: RawSelector { text: ".site-choice-compact summary, .site-button-compact" }, decls: concat([
       decl(prop: ListStyle, value: "none"),
       decl(prop: Cursor, value: "pointer"),
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "center"),
       decl(prop: Padding, value: "var(--space-4) var(--space-12)"),
       decl(prop: BorderRadius, value: "var(--radius-surface)"),
-      decl(prop: FontSize, value: "var(--text-13)"),
       decl(prop: MinHeight, value: scale_var(t: height_control)),
       decl(prop: Border, value: "0"),
       decl(prop: Background, value: "transparent"),
       decl(prop: Position, value: "relative"),
       decl(prop: RawProperty { name: "isolation" }, value: "isolate")
-    ] },
+    ], interface_text_decls(role: InterfaceBody)) },
     StaticRule { selector: RawSelector { text: ".site-choice-compact summary::marker" }, decls: [
       decl(prop: RawProperty { name: "content" }, value: "\"\"")
     ] },

@@ -32,8 +32,8 @@ ts_return(expr: Present { value: ts_call(callee: ts_member(object: ts_ident(name
 ]))),
 ts_const(name: "initial", value: ts_call(callee: ts_ident(name: "rows"), args: [])),
 ts_const(name: "history", value: ts_array(elements: [])),
-ts_let(name: "key", value: ts_lit_str(value: "")),
-ts_let(name: "direction", value: ts_lit_str(value: "ascending")),
+ts_let(name: "key", value: ts_lit_str(value: "status")),
+ts_let(name: "direction", value: ts_lit_str(value: "descending")),
 ts_let(name: "topo", value: ts_ident(name: "false")),
 ts_let(name: "project", value: ts_lit_str(value: "")),
 ts_let(name: "selected", value: ts_lit_str(value: "")),
@@ -196,10 +196,11 @@ ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "place"), args: [ts_ident(name
 ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "project"), op: "=", right: ts_lit_str(value: ""))),
 ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "selected"), op: "=", right: ts_lit_str(value: ""))),
 ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "topo"), op: "=", right: ts_ident(name: "false"))),
-ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "key"), op: "=", right: ts_lit_str(value: ""))),
+ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "key"), op: "=", right: ts_lit_str(value: "status"))),
 ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "expanded"), op: "=", right: ts_ident(name: "false"))),
+ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "direction"), op: "=", right: ts_lit_str(value: "descending"))),
 ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "paint"), args: [])),
-ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "status"), property: "textContent"), op: "=", right: ts_lit_str(value: "All issues; original order restored.")))
+ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "status"), property: "textContent"), op: "=", right: ts_lit_str(value: "All issues; Ready-first status order restored.")))
 ]))])),
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "undo"), property: "addEventListener"), args: [ts_lit_str(value: "click"), ts_ident(name: "restore")])),
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "buttons"), property: "forEach"), args: [ts_arrow(params: ["button"], body: ts_block(stmts: [

@@ -1,4 +1,5 @@
 module gunbc.roadmap_style
+import gunbc.design.typography { interface_text_decls, InterfaceBody, InterfaceLabel, InterfaceMetadata, InterfaceHeading, InterfaceSectionHeading }
 import gunbc.roadmap_surface_style { roadmap_surface_rules }
 import gunbc.site.document { SiteStyles, SiteThemeDecls, site_styles_css }
 
@@ -588,8 +589,8 @@ fn issue_token_decls(t: IssueTrackerVisualTokens) -> List<CssDecl> {
     decl(prop: CustomProperty { name: "issue-error" }, value: swatch_paint(sw: Swatch { name: "issue-error", color: t.error })),
     decl(prop: CustomProperty { name: "fabric-badge-bg" }, value: swatch_paint(sw: robot_mark_badge_background)),
     decl(prop: CustomProperty { name: "fabric-badge-ink" }, value: swatch_paint(sw: robot_mark_ink)),
-    decl(prop: CustomProperty { name: "issue-font" }, value: t.font_body),
-    decl(prop: CustomProperty { name: "issue-font-heading" }, value: t.font_heading),
+    decl(prop: CustomProperty { name: "issue-font" }, value: scale_var(t: font_sans)),
+    decl(prop: CustomProperty { name: "issue-font-heading" }, value: scale_var(t: font_sans)),
   ]
 }
 
@@ -876,13 +877,10 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     StaticRule { selector: RawSelector { text: ".issue-table li" }, decls: [
       decl(prop: Display, value: "contents"),
     ] },
-    StaticRule { selector: ClassSelector { name: "issue-table-header" }, decls: [
+    StaticRule { selector: ClassSelector { name: "issue-table-header" }, decls: concat([
       decl(prop: Display, value: "contents"),
-      decl(prop: FontFamily, value: "var(--issue-font)"),
-      decl(prop: FontSize, value: scale_var(t: text_11)),
-      decl(prop: FontWeight, value: "500"),
       decl(prop: Color, value: "var(--issue-text-dim)"),
-    ] },
+    ], interface_text_decls(role: InterfaceLabel)) },
     StaticRule { selector: RawSelector { text: ".roadmap-frontier[data-band-filter=\"active\"] .view-table li.node:not([data-band=\"active\"])" }, decls: [
       decl(prop: Display, value: "none"),
     ] },
@@ -901,12 +899,10 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
     StaticRule { selector: RawSelector { text: ".taskbar-sub:empty, .taskbar-signal:empty, .taskbar-count:empty" }, decls: [
       decl(prop: Display, value: "none"),
     ] },
-    StaticRule { selector: ClassSelector { name: "issue-line" }, decls: [
+    StaticRule { selector: ClassSelector { name: "issue-line" }, decls: concat([
       decl(prop: Display, value: "contents"),
-      decl(prop: FontFamily, value: "var(--issue-font)"),
-      decl(prop: FontSize, value: scale_var(t: text_13)),
       decl(prop: Color, value: "var(--issue-text)"),
-    ] },
+    ], interface_text_decls(role: InterfaceBody)) },
     StaticRule { selector: ClassSelector { name: "issue-col" }, decls: [
       decl(prop: MinWidth, value: "0"),
       decl(prop: Overflow, value: "hidden"),
@@ -957,10 +953,9 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Color, value: "var(--issue-text)"),
       decl(prop: Background, value: "var(--issue-bg-hover)"),
     ] },
-    StaticRule { selector: ClassSelector { name: "issue-sort-status" }, decls: [
-      decl(prop: FontSize, value: scale_var(t: text_11)),
+    StaticRule { selector: ClassSelector { name: "issue-sort-status" }, decls: concat([
       decl(prop: Color, value: "var(--issue-text-dim)"),
-    ] },
+    ], interface_text_decls(role: InterfaceMetadata)) },
     StaticRule { selector: ClassSelector { name: "issue-cell" }, decls: [
       decl(prop: MinWidth, value: "0"),
       decl(prop: Overflow, value: "hidden"),
@@ -1193,15 +1188,13 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Color, value: "var(--issue-text-dim)"),
       decl(prop: FontSize, value: scale_var(t: text_13)),
     ] },
-    StaticRule { selector: ClassSelector { name: dashboard_instance_class }, decls: [
+    StaticRule { selector: ClassSelector { name: dashboard_instance_class }, decls: concat([
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "center"),
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      decl(prop: FontSize, value: scale_var(t: text_11)),
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: BorderLeft, value: scale_border(w: border_2, color_var: "var(--focus)")),
       decl(prop: PaddingLeft, value: scale_var(t: space_6)),
-    ] },
+    ], interface_text_decls(role: InterfaceMetadata)) },
     StaticRule { selector: ClassSelector { name: "program-progress" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: AlignItems, value: "baseline"),
@@ -1211,12 +1204,10 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: FontWeight, value: "500"),
       decl(prop: FontSize, value: scale_var(t: text_14)),
     ] },
-    StaticRule { selector: ClassSelector { name: "program-progress-count" }, decls: [
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
-      decl(prop: FontSize, value: scale_var(t: text_12)),
+    StaticRule { selector: ClassSelector { name: "program-progress-count" }, decls: concat([
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: FontVariantNumeric, value: "tabular-nums"),
-    ] },
+    ], interface_text_decls(role: InterfaceMetadata)) },
     StaticRule { selector: ClassSelector { name: "finish-line-counts" }, decls: [
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       decl(prop: FontSize, value: scale_var(t: text_12)),
@@ -1316,11 +1307,9 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: FontWeight, value: "500"),
       decl(prop: MarginRight, value: scale_var(t: space_8)),
     ] },
-    StaticRule { selector: ClassSelector { name: "taskbar-signal" }, decls: [
-      decl(prop: FontSize, value: scale_var(t: text_11)),
-      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+    StaticRule { selector: ClassSelector { name: "taskbar-signal" }, decls: concat([
       role_decl(prop: Color, r: TextDimRole),
-    ] },
+    ], interface_text_decls(role: InterfaceBody)) },
     StaticRule { selector: RawSelector { text: join([".taskbar-signal.", activity_line_prefix_class, "done"], "") }, decls: [
       role_decl(prop: Color, r: FigureRole),
     ] },

@@ -1,4 +1,6 @@
 module gunbc.roadmap_page
+import gunbc.roadmap_presentation { issue_status_sort_rank }
+import gunbc.roadmap_priority { DerivedPriority, issue_priority_of, roadmap_priority_rank, roadmap_priority_label, issue_priority_explanation }
 import gunbc.site.choice { site_choice_list, site_compact_choice, site_choice_input }
 import gunbc.site.dependency_graph { DependencyGraphItem, dependency_graph_interactive }
 import gunbc.roadmap_presentation { dependency_cycle_touches }
@@ -1620,17 +1622,17 @@ fn issue_controls_markup() -> Fragment {
     [ el_attrs("input", [
         attr(name: "type", value: "search" ),
         attr(name: "class", value: "issue-search" ),
-        attr(name: "placeholder", value: "filter issues — title · id · owner" ),
+        attr(name: "placeholder", value: "Filter issues · title, ID or assignee" ),
         attr(name: "aria-label", value: "filter issues" ),
       ], []) ],
     [
       site_compact_choice(id: "issue-status-options", label: "All issues", accessible_label: "Issue status filter", options: [
-        issue_band_chip(label: "all", band: "all"),
-        issue_band_chip(label: "active", band: "active"),
-        issue_band_chip(label: "ready", band: "ready"),
-        issue_band_chip(label: "not ready", band: "not-ready"),
-        issue_band_chip(label: "done", band: "done"),
-        issue_band_chip(label: "superseded", band: "superseded"),
+        issue_band_chip(label: "All issues", band: "all"),
+        issue_band_chip(label: "Active", band: "active"),
+        issue_band_chip(label: "Ready", band: "ready"),
+        issue_band_chip(label: "Not ready", band: "not-ready"),
+        issue_band_chip(label: "Done", band: "done"),
+        issue_band_chip(label: "Superseded", band: "superseded"),
       ]),
       el_attrs("button", [
         attr(name: "type", value: "button"),
@@ -1660,9 +1662,14 @@ fn issue_line_cell_class(kind: IssueResultsColumnKind) -> String {
   join(["issue-cell issue-cell-", issue_results_column_kind_wire(kind: kind)], "")
 }
 
-fn issue_line_cell_content(col: IssueResultsColumn, view: WorkRowView, bar: TaskBarView) -> List<Fragment> {
+fn issue_line_cell_content(col: IssueResultsColumn, view: WorkRowView, bar: TaskBarView, priority: DerivedPriority) -> List<Fragment> {
   match col.kind {
-    IssueColumnPriority => []
+    IssueColumnPriority => [el_attrs("span", [
+      attr(name: "class", value: "issue-priority"),
+      attr(name: "data-priority", value: to_string(roadmap_priority_rank(priority: priority.priority))),
+      attr(name: "title", value: issue_priority_explanation(value: priority)),
+      attr(name: "aria-label", value: issue_priority_explanation(value: priority))
+    ], [txt(roadmap_priority_label(priority: priority.priority))])]
     IssueColumnTitle =>
       [ el_attrs("a", [
           attr(name: "class", value: "issue-title-link" ),
@@ -1686,16 +1693,16 @@ fn issue_line_cell_content(col: IssueResultsColumn, view: WorkRowView, bar: Task
 }
 
 // Sort the underlying identity and status text, never avatar initials or DOM decorations.
-// Priority and modified have no authored facts yet, so they remain missing, not invented.
-fn issue_line_sort_value(col: IssueResultsColumn, view: WorkRowView, bar: TaskBarView) -> String {
+// Priority is derived from classified project ancestry; modified remains absent without a fact.
+fn issue_line_sort_value(col: IssueResultsColumn, view: WorkRowView, bar: TaskBarView, priority: DerivedPriority) -> String {
   match col.kind {
-    IssueColumnPriority => ""
+    IssueColumnPriority => to_string(roadmap_priority_rank(priority: priority.priority))
     IssueColumnTitle => view.headline
     IssueColumnAssignee => match issue_assignee_holder(view: view, attempts: []) {
       Absent => ""
       Present { value: holder } => event_principal_display_with_profile(p: holder, profiles: view.profiles).name
     }
-    IssueColumnStatus => issue_status_label(view: view)
+    IssueColumnStatus => to_string(issue_status_sort_rank(view: view))
     IssueColumnLastModified => ""
   }
 }
@@ -1719,6 +1726,7 @@ fn issue_dependencies_of(index: Map<String, List<String>>, node_id: String) -> L
 
 fn issue_line_li(row: IssueTableRow, observation: ObservationImpactView, memberships: RoadmapMembershipIndex, dependencies: Map<String, List<String>>) -> Fragment {
   let view = row.view
+  let priority = issue_priority_of(node_id: view.node_id, index: memberships)
   let bar = if view.attempt_stale { task_bar_idle_view(view: view) } else { task_bar_view_of(view: view, observation: observation) }
   Element {
     tag: "li",
@@ -1734,9 +1742,9 @@ fn issue_line_li(row: IssueTableRow, observation: ObservationImpactView, members
       map(issue_results_columns, c => el_attrs("span", [
         attr(name: "class", value: issue_line_cell_class(kind: c.kind) ),
         attr(name: "data-col", value: issue_results_column_kind_wire(kind: c.kind) ),
-        attr(name: "data-sort-value", value: issue_line_sort_value(col: c, view: view, bar: bar) ),
+        attr(name: "data-sort-value", value: issue_line_sort_value(col: c, view: view, bar: bar, priority: priority) ),
         attr(name: "role", value: "cell"),
-      ], issue_line_cell_content(col: c, view: view, bar: bar)))) ],
+      ], issue_line_cell_content(col: c, view: view, bar: bar, priority: priority)))) ],
   }
 }
 
@@ -1744,6 +1752,16 @@ fn issue_line_li(row: IssueTableRow, observation: ObservationImpactView, members
 // in roster order. The header div is a display:
 // contents wrapper like the row divs, so these cells land in the table's one grid beside the
 // rows' cells — same tracks, by construction.
+fn workspace_column_label(col: IssueResultsColumn) -> String {
+  match col.kind {
+    IssueColumnPriority => "P"
+    IssueColumnTitle => "Title"
+    IssueColumnAssignee => "Assignee"
+    IssueColumnStatus => "Status"
+    IssueColumnLastModified => "Last modified"
+  }
+}
+
 fn issue_table_header_nodes() -> Fragment {
   el_attrs("div", [attr(name: "class", value: "issue-table-header"), attr(name: "role", value: "row")],
     map(issue_results_columns, c =>
@@ -1751,14 +1769,14 @@ fn issue_table_header_nodes() -> Fragment {
         attr(name: "class", value: join(["issue-col issue-col-", issue_results_column_kind_wire(kind: c.kind)], "") ),
         attr(name: "data-col", value: issue_results_column_kind_wire(kind: c.kind) ),
         attr(name: "role", value: "columnheader" ),
-        attr(name: "aria-sort", value: "none" ),
+        attr(name: "aria-sort", value: if c.kind == IssueColumnStatus { "descending" } else { "none" } ),
       ], [ el_attrs("button", [
         attr(name: "type", value: "button" ),
         attr(name: "class", value: "issue-sort" ),
         attr(name: "data-sort-key", value: issue_results_sort_key_wire(key: c.sort_key) ),
-        attr(name: "data-sort-numeric", value: if issue_results_sort_numeric(key: c.sort_key) { "true" } else { "false" } ),
-        attr(name: "aria-label", value: join(["Sort by ", c.header as String], "") ),
-      ], [ txt(c.header as String) ]) ])))
+        attr(name: "data-sort-numeric", value: if c.kind == IssueColumnStatus || issue_results_sort_numeric(key: c.sort_key) { "true" } else { "false" } ),
+        attr(name: "aria-label", value: join(["Sort by ", workspace_column_label(col: c)], "") ),
+      ], [ txt(workspace_column_label(col: c)) ]) ])))
 }
 
 fn issue_table_markup(rows: List<IssueTableRow>, observation: ObservationImpactView, edges: List<RoadmapEdge>, memberships: List<RoadmapMembership> = roadmap_memberships()) -> Fragment {
@@ -1767,7 +1785,7 @@ fn issue_table_markup(rows: List<IssueTableRow>, observation: ObservationImpactV
   el_attrs("div", [attr(name: "class", value: "issue-table"), attr(name: "role", value: "table"), attr(name: "aria-label", value: "Issue search results")], [
     issue_table_header_nodes(),
     el_class("div", "issue-empty", [ txt("No issues match your search.") ]),
-    el_attrs("ul", [attr(name: "role", value: "rowgroup")], map(rows, r => issue_line_li(row: r, observation: observation, memberships: membership_index_of_table, dependencies: dependency_index_of_table))),
+    el_attrs("ul", [attr(name: "role", value: "rowgroup")], map(sort_by(rows, r => -issue_status_sort_rank(view: r.view)), r => issue_line_li(row: r, observation: observation, memberships: membership_index_of_table, dependencies: dependency_index_of_table))),
   ])
 }
 

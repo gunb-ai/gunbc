@@ -1,4 +1,6 @@
 module test.claim.long.roadmap_page_witness
+import gunbc.roadmap_page { workspace_column_label }
+import gunbc.roadmap_surface_style { workspace_issue_tracks }
 import extdeps.languages.css.selectors { selector_subject_wire }
 import extdeps.languages.css.properties { css_property_wire }
 import gunbc.site.document { SiteStyles, site_styles, site_styles_css, site_styles_rules }
@@ -59,7 +61,7 @@ import gunbc.roadmap_belt_actuate { belt_dispatch_all_status_labels }
 import test.claim.roadmap_belt_actuate_witness { completed_attempt_progress }
 import extdeps.languages.json.emit { serialize_json }
 import extdeps.google.issue_tracker {
-  issue_results_columns, issue_results_column_kind_wire, issue_results_row_tracks,
+  issue_results_columns, issue_results_column_kind_wire,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -1052,7 +1054,7 @@ data fx_issue_token_names: List<String> = ["text", "text-dim", "border", "bg-hov
 fn fx_css_part_holds(css: String, rail_widths: Int, grid_templates: Int, token_declarations: Int) -> Bool {
   occurrence_count(s: css, pattern: "flex: 0 1 34ch") == rail_widths
     && !string_contains(s: css, pattern: "action-live")
-    && occurrence_count(s: css, pattern: join(["grid-template-columns: ", issue_results_row_tracks()], "")) == grid_templates
+    && occurrence_count(s: css, pattern: join(["grid-template-columns: ", workspace_issue_tracks()], "")) == grid_templates
     && !string_contains(s: css, pattern: ".issue-table-header { display: grid")
     && !string_contains(s: css, pattern: ".issue-line { display: grid")
     && !string_contains(s: css, pattern: "data-view")
@@ -1985,8 +1987,9 @@ test fn witness_issue_table_header_derives_from_the_model_roster() -> Bool {
       let table = table_region(html: h)
       all(issue_results_columns, c =>
         string_contains(s: table, pattern: join(["data-sort-key=\"", extdeps.google.issue_tracker.issue_results_sort_key_wire(key: c.sort_key), "\""], ""))
-          && string_contains(s: table, pattern: join([">", c.header as String, "</button>"], "")))
-        && occurrence_count(s: table, pattern: "aria-sort=\"none\"") == count(issue_results_columns)
+          && string_contains(s: table, pattern: join([">", workspace_column_label(col: c), "</button>"], "")))
+        && occurrence_count(s: table, pattern: "aria-sort=\"none\"") == count(issue_results_columns) - 1
+        && occurrence_count(s: table, pattern: "aria-sort=\"descending\"") == 1
         && !string_contains(s: table, pattern: "data-col=\"type\"")
         && !string_contains(s: table, pattern: "data-col=\"actions\"")
   }
@@ -2015,7 +2018,7 @@ test fn witness_issue_table_rows_share_the_header_template() -> Bool {
         && marker_before(s: row_body, first: "data-col=\"assignee\"", second: "data-col=\"status\"")
         && marker_before(s: row_body, first: "data-col=\"status\"", second: "data-col=\"last-modified\"")
         && string_contains(s: row_body, pattern: "href=\"/issue/page-task-one\"")
-        && string_contains(s: row_body, pattern: "data-sort-value=\"Active\"")
+        && string_contains(s: row_body, pattern: "data-sort-value=\"9\"")
         && !string_contains(s: table, pattern: "data-col=\"type\"")
         && !string_contains(s: table, pattern: "data-col=\"actions\"")
   }
@@ -2030,7 +2033,7 @@ test fn witness_issue_table_rows_share_the_header_template() -> Bool {
 // one spelling of the tracks anywhere in the sheet.
 test fn witness_issue_table_grid_template_comes_from_the_model() -> Bool {
   let css = fx_css_rule_blocks()
-  let tracks = issue_results_row_tracks()
+  let tracks = workspace_issue_tracks()
   string_contains(s: css, pattern: join([".issue-table { display: grid; grid-template-columns: ", tracks], ""))
     && occurrence_count(s: css, pattern: join(["grid-template-columns: ", tracks], "")) == 1
     && string_contains(s: css, pattern: ".issue-table-header { display: contents")
@@ -2114,7 +2117,7 @@ test fn witness_issue_table_long_cells_clip_within_their_tracks() -> Bool {
         && occurrence_count(s: table, pattern: "class=\"issue-cell issue-cell-") == 5
         && occurrence_count(s: table, pattern: "data-col=\"actions\"") == 0
         && string_contains(s: css, pattern: ".issue-cell { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis")
-        && string_contains(s: css, pattern: join([".issue-table { display: grid; grid-template-columns: ", issue_results_row_tracks()], ""))
+        && string_contains(s: css, pattern: join([".issue-table { display: grid; grid-template-columns: ", workspace_issue_tracks()], ""))
         && fx_emitted_property(selector: ".roadmap", property: "padding", value: "var(--space-24)")
   }
 }
