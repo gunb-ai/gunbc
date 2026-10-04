@@ -40,9 +40,9 @@ import std.measure { minute_to_second }
 // reused, as that module reuses Spark's.
 data workspace_demo_use_posture: FirstPartySelfUsePosture = FirstPartySelfUsePosture {
   assertion: OperatorAllocation {
-    decided_by: "PENDING: dashboard escalation msg_62c723e4 (recommended option P, the sentence in basis) has not been answered",
+    decided_by: "operator approval of escalation msg_62c723e4 (option P, the sentence as written), relayed by the owning parent session snappy-gull-889 in msg_d316d720",
     decided_on: "2026-10-04",
-    basis: "Proposed for operator approval through escalation msg_62c723e4: 'Workspace microVMs on my hosts serve only me, the enrolled operator principal; they hold only my own gunbc work, stay on my hosts, and send no route material to any third party.' Until the operator answers, this row records a proposal, not an approval.",
+    basis: "Escalation msg_62c723e4 was approved by the operator on 2026-10-04 with the sentence: 'Workspace microVMs on my hosts serve only me, the enrolled operator principal; they hold only my own gunbc work, stay on my hosts, and send no route material to any third party.' The approval reached this lane relayed by the parent session (msg_d316d720), not as a direct operator utterance here. It is an attributable statement of intent, not a measurement: who a workspace serves is a fact about our intent, which no probe reads off a running microVM.",
   },
   serves: "the enrolled operator principal only (gunbc.workspace_allocation_policy workspace_operator_principal). No other principal can own a request under this revision.",
   data_subject: "the operator's own gunbc work inside a microVM on an operator-held host. No customer data and no third-party data; no route material leaves the operator's hosts.",
