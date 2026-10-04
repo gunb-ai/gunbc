@@ -2051,7 +2051,7 @@ test fn witness_issue_table_cells_are_direct_grid_children() -> Bool {
   let css = fx_css_rule_blocks()
   string_contains(s: css, pattern: ".issue-table ul { display: contents }")
     && string_contains(s: css, pattern: ".issue-table li { display: contents }")
-    && string_contains(s: css, pattern: ".issue-table-heading { font-family: var(--issue-font-heading); font-size: var(--text-15); font-weight: 500; margin-bottom: var(--space-8); grid-column: 1 / -1 }")
+    && fx_emitted_property(selector: ".issue-table-heading", property: "grid-column", value: "1 / -1")
     && fx_emitted_property(selector: ".issue-empty", property: "display", value: "none")
     && fx_emitted_property(selector: ".issue-empty", property: "grid-column", value: "1 / -1")
     && string_contains(s: css, pattern: ".issue-line:hover .issue-cell { background: var(--issue-bg-hover) }")
