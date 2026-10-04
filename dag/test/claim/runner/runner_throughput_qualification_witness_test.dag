@@ -11,6 +11,8 @@ import std.measure {
 }
 import std.decl_ref { decl_ref }
 import extdeps.currency.currency { Usd }
+import extdeps.exec.command { argv_words }
+import extdeps.systemd.systemd_run { SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
 import product.placement_supply { HostIdentity }
 import product.fabric.work { ControlPlaneCapacity, CustomerExecutableCapacity, Shape, HardRequirements }
@@ -74,7 +76,7 @@ import gunbc.runner_throughput_qualification_route {
   QualificationStage, BootHostUnderApprovalGate, RegisterEphemeralRunnerSlot, DispatchFloorToSlot,
   CollectInstruments, DeregisterRunnerSlot,
   BmcWrite, GitHubControlPlaneWrite, ObservationOnly, stage_effect, stage_egress,
-  mtcollins1_qualification_route, ephemeral_slot_argv, ephemeral_slot_labels, ephemeral_slot_unit,
+  mtcollins1_qualification_route, ephemeral_slot_command, ephemeral_slot_labels, ephemeral_slot_unit,
   route_bmc_writes_are_gated, route_bmc_write_count, route_control_plane_write_count,
   route_effectful_stage_count, route_is_executable,
   route_registers_one_slot, route_deregisters_what_it_registered, route_dispatch_selector_names_the_attempt,
@@ -842,14 +844,24 @@ test fn the_collect_stage_owes_the_rate_specimen_and_the_cgroup_rows() -> Bool {
 // THE EPHEMERAL SLOT CARRIES THE FLEET SLOT SHAPE, spelled through the systemd-run authority; under
 // SlotCpuQuotaUnbounded no CPUQuota word is emitted, which is the transient unit's own "no ceiling".
 test fn the_ephemeral_slot_argv_carries_the_fleet_memory_max() -> Bool {
-  let argv = ephemeral_slot_argv(unit: slot_unit(), desired: gunbc_runner_slot_desired(), command_argv: ["/mnt/runner/run.sh"])
-  let has_quota_word = argv |> any(w => string_contains(s: w, pattern: "--property=CPUQuota="))
-  (argv |> any(w => w == concat("--property=MemoryMax=", byte_size_count(b: gunbc_runner_slot_desired().memory_max) as String)))
-    && (match gunbc_runner_slot_desired().cpu_quota {
-      SlotCpuQuotaUnbounded => !has_quota_word
-      CpuQuotaResolved { threads: t } =>
-        argv |> any(w => w == concat("--property=CPUQuota=", concat((hardware_thread_count_value(t: t) * 100) as String, "%")))
-    })
+  let reading = ephemeral_slot_command(unit: slot_unit(), desired: gunbc_runner_slot_desired(), command_argv: ["/mnt/runner/run.sh"])
+  ephemeral_slot_words_carry_fleet_shape(reading: reading)
+}
+
+fn ephemeral_slot_words_carry_fleet_shape(reading: SystemdRunCommandReading) -> Bool {
+  match reading {
+    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandReady { command: command } => {
+      let argv = argv_words(command: command)
+      let has_quota_word = argv |> any(w => string_contains(s: w, pattern: "--property=CPUQuota="))
+      (argv |> any(w => w == concat("--property=MemoryMax=", byte_size_count(b: gunbc_runner_slot_desired().memory_max) as String)))
+        && (match gunbc_runner_slot_desired().cpu_quota {
+          SlotCpuQuotaUnbounded => !has_quota_word
+          CpuQuotaResolved { threads: t } =>
+            argv |> any(w => w == concat("--property=CPUQuota=", concat((hardware_thread_count_value(t: t) * 100) as String, "%")))
+        })
+    }
+  }
 }
 
 // THE CLASS LABEL IS READ OFF THE SLOT AUTHORITY, not written here (review 68972 -- the class this

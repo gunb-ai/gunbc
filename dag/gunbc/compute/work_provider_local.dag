@@ -11,7 +11,9 @@ import extdeps.shell
 import extdeps.git { shape_git_worktree_add_detached_argv }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
 import extdeps.systemd.systemd_run {
-  systemd_run_user_wait_arguments, systemd_run_property, SystemdSummaryPrintingWait, systemd_summary_printing_wait_argv,
+  SystemdSummaryPrintingWait, systemd_summary_printing_wait_argv, SystemdSetenvBinding,
+  SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused, SystemdRunProperty,
+  systemd_run_user_wait_command,
   SystemdRunWaitSummary, systemd_run_wait_summary, SystemdServiceResultReading, ServiceResultRead, ServiceResultUnrecognized, ServiceResultNotReported,
   SystemdServiceResult, ServiceResultOomKill, systemd_service_result_wire,
   SystemdMemoryPeakReading, MemoryPeakRead, MemoryPeakUnparseable, MemoryPeakNotReported,
@@ -311,7 +313,7 @@ fn compute_unit_name(identity_hex: String) -> NonEmptyStr {
 // THE PROPERTIES ARE A FOLD SO THE BOUND POLICY IS CHECKABLE, and the fold is
 // gunbc.compute.unit_bounds compute_grant_unit_properties -- the one authority from a grant to a
 // unit, shared with the agent session's unit. A compute unit states no process bounds.
-fn compute_unit_properties(layout: ComputeLayout, granted: Kibibyte) -> List<String> {
+fn compute_unit_properties(layout: ComputeLayout, granted: Kibibyte) -> List<SystemdRunProperty> {
   compute_grant_unit_properties(granted: granted, working_directory: layout.checkout, process_bounds: none)
 }
 
@@ -378,26 +380,35 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
       ComputeExecOk { stdout: v, stderr: _ } => v
       ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => ""
     })
-    let launcher = systemd_run_user_wait_arguments(
+    match systemd_run_user_wait_command(
       unit: compute_unit_name(identity_hex: identity_hex),
       properties: compute_unit_properties(layout: layout, granted: granted),
       setenv_bindings: [
-        join(["CARGO_TARGET_DIR=", layout.target_dir], ""),
-        join(["RUSTC_WRAPPER=", sccache_installed_binary_path], ""),
+        SystemdSetenvBinding { name: "CARGO_TARGET_DIR", value: layout.target_dir },
+        SystemdSetenvBinding { name: "RUSTC_WRAPPER", value: sccache_installed_binary_path },
       ],
       command_argv: argv,
-    )
-    let r = compute_exec(
-      program: systemd_run,
-      workdir: layout.checkout,
-      args: systemd_summary_printing_wait_argv(w: launcher),
-    )
-    ComputeUnitRun {
-      exec: r,
-      summary: systemd_run_wait_summary(launcher: launcher, standing: standing, stderr: match r {
-        ComputeExecOk { stdout: _, stderr } => stderr
-        ComputeExecFailed { exit_code: _, stdout: _, stderr } => stderr
-      }),
+    ) {
+      SystemdRunCommandRefused { reason: why } =>
+        ComputeUnitRun {
+          exec: ComputeExecFailed { exit_code: 126, stdout: "", stderr: concat("systemd-run command refused: ", why) },
+          summary: SystemdRunWaitSummary { result: ServiceResultNotReported { absence: SummaryNoInvocation }, memory_peak: MemoryPeakNotReported { absence: SummaryNoInvocation } },
+        }
+      SystemdRunCommandReady { command: command } => {
+        let launcher = SystemdSummaryPrintingWait { command: command }
+        let r = compute_exec(
+          program: systemd_run,
+          workdir: layout.checkout,
+          args: systemd_summary_printing_wait_argv(w: launcher),
+        )
+        ComputeUnitRun {
+          exec: r,
+          summary: systemd_run_wait_summary(launcher: launcher, standing: standing, stderr: match r {
+            ComputeExecOk { stdout: _, stderr } => stderr
+            ComputeExecFailed { exit_code: _, stdout: _, stderr } => stderr
+          }),
+        }
+      }
     }
   }
 }
@@ -543,7 +554,7 @@ fn unit_termination_decide(o: UnitObservations) -> UnitTermination {
           PopulationEmpty { detail: pd } =>
             UnitAttemptCompleted {
               detail: join([
-                "systemd-run --wait returned success under ", compute_kill_mode_property, "=", compute_kill_mode_value,
+                "systemd-run --wait returned success under ", compute_kill_mode_property as String, "=", compute_kill_mode_value as String,
                 " and ", pd,
               ], ""),
             }

@@ -88,7 +88,7 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_brief_fields_for_environment,
   dispatch_brief_with_centering,
   dispatch_continuation_alignment_preamble,
-  dispatch_supervisor_unit_argv, dispatch_supervisor_unit_name, dispatch_supervisor_attempt_identity,
+  dispatch_supervisor_unit_command, dispatch_unit_exec_argv, dispatch_supervisor_unit_name, dispatch_supervisor_attempt_identity,
   DispatchSpawnCommands,
   HostExecArgv,
   SystemdUnitContainer,
@@ -119,8 +119,10 @@ import gunbc.roadmap_dispatch_actuator {
   SpawnSession,
   dispatch_current_attempt_events_projection_argv_for_instance,
   gunbc_harness_review_argv,
-  dispatch_review_unit_argv,
+  dispatch_review_unit_command,
 }
+import extdeps.exec.command { argv_words }
+import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.dispatch_selection {
   dispatch_selection_standing_ineligible_reason,
   default_provider_selection_request,
@@ -1159,14 +1161,14 @@ test fn witness_review_argv_carries_spawner_minted_attempt_identity() -> Bool {
   string_contains(s: join(argv, separator: "\0"), pattern: "\0--arg\0attempt_identity=reviewer:node-1-att-20260920-c")
 }
 
-// THE SPAWN SITE, not just the argv row: dispatch_review_unit_argv is where the mint lives, and it
-// is the fold the belt's review pass actually spawns through. This witness fails if a future edit
-// re-drops the argument between the unit fold and the argv row, which compilation alone would not
-// catch once the parameter exists and could be ignored.
+// THE SPAWN SITE, not just the argv row: dispatch_review_unit_command is where the mint lives, and
+// dispatch_unit_exec_argv is the fold the belt's review pass actually spawns through (the resolved
+// program head, the projected option and command words after it). This witness fails if a future
+// edit re-drops the argument between the unit fold and the argv row, which compilation alone would
+// not catch once the parameter exists and could be ignored.
 
 test fn witness_review_unit_argv_mints_per_criterion_attempt_identity() -> Bool {
-  let cmd = dispatch_review_unit_argv(
-    systemd_run_program: "/usr/bin/systemd-run" as FilePath,
+  match dispatch_review_unit_command(
     instance: srv1_lab_dashboard_instance(),
     node_id: roadmap_dispatch_actuator_nid(s: "node-1"),
     attempt_key: "att-20260920",
@@ -1174,8 +1176,37 @@ test fn witness_review_unit_argv_mints_per_criterion_attempt_identity() -> Bool 
     brief: "brief",
     head_sha: "abc123",
     criterion_key: "conformance-external-facts",
-  )
-  string_contains(s: join(cmd.args, separator: "\0"), pattern: "attempt_identity=reviewer:node-1-att-20260920-conformance-external-facts")
+  ) {
+    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandReady { command: command } => {
+      let cmd = dispatch_unit_exec_argv(command: command, resolved_program: "/usr/bin/systemd-run" as FilePath)
+      string_contains(s: join(cmd.args, separator: "\0"), pattern: "attempt_identity=reviewer:node-1-att-20260920-conformance-external-facts")
+    }
+  }
+}
+
+// POSITIVE CONTROL FOR THE CUTOVER: the projected option words for this caller are the words the
+// string-built form rendered -- user manager, unit, one -p pair per property, then the command.
+test fn witness_review_unit_option_words_are_the_string_form_words() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  match dispatch_review_unit_command(
+    instance: lab,
+    node_id: roadmap_dispatch_actuator_nid(s: "node-1"),
+    attempt_key: "att-20260920",
+    worktree_path: "/opt/gunbc/dispatch-worktrees/node-1",
+    brief: "brief",
+    head_sha: "abc123",
+    criterion_key: "conformance-external-facts",
+  ) {
+    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandReady { command: command } => {
+      let wire = join(argv_words(command: command), separator: "\0")
+      string_contains(
+        s: wire,
+        pattern: concat("systemd-run\0--user\0--unit=gunbc-review-node-1-att-20260920-conformance-external-facts.service\0-p\0MemoryMax=", to_string(value: byte_size_count(lab.dispatch_worker_memory_max)), "\0-p\0WorkingDirectory=", lab.repo_root as String, "\0-p\0"),
+      )
+    }
+  }
 }
 
 // THE ROW THAT WOULD HAVE CAUGHT THE ORIGINAL BUG: an attempt identity built from a path-bearing
@@ -1353,16 +1384,23 @@ test fn an_unresolved_alignment_refuses_the_real_spawn_fold_with_zero_commands()
 // reads. The session invokes the supervisor's own CLI function, never the worker's.
 test fn witness_supervisor_unit_argv_shapes_one_session_per_escalation_record() -> Bool {
   let lab = srv1_lab_dashboard_instance()
-  let argv = dispatch_supervisor_unit_argv(
-    systemd_run_program: "/usr/bin/systemd-run" as FilePath,
+  match dispatch_supervisor_unit_command(
     instance: lab,
     node_id: roadmap_dispatch_actuator_nid(s: "shell-dag-cron-entry-line-builder"),
     attempt_key: "cd172fe81b806160",
     turn: 3,
     worktree_path: "/x/attempts/wt",
     brief: "BRIEF-MARKER",
-  )
-  let wire = join(argv.args, separator: "\0")
+  ) {
+    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandReady { command: command } => {
+      let cmd = dispatch_unit_exec_argv(command: command, resolved_program: "/usr/bin/systemd-run" as FilePath)
+      supervisor_wire_checks(wire: join(cmd.args, separator: "\0"))
+    }
+  }
+}
+
+fn supervisor_wire_checks(wire: String) -> Bool {
   wire.contains("gunbc-supervisor-shell-dag-cron-entry-line-builder-cd172fe81b806160-t3.service")
     && wire.contains("\0--function\0harness_supervisor_cli\0")
     && wire.contains("\0worktree=/x/attempts/wt\0")

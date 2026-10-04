@@ -5,6 +5,9 @@ import extdeps.filesystem.filesystem_io {
   filesystem_listing_observation,
   filesystem_file_observation,
 }
+import extdeps.exec.command { argv_words }
+import extdeps.systemd { MemoryMax, WorkingDirectoryProperty }
+import extdeps.systemd.systemd_run { SystemdRunProperty, SystemdRunCommandReady, SystemdRunCommandRefused, systemd_run_transient_unit_command }
 import gunbc.host_effect_nbd_proxy_serve {
   BmcwebSessionTokenObservation,
   BmcwebSessionTokenUsable,
@@ -216,11 +219,14 @@ test fn nbd_proxy_observe_port_local_shell_is_active_active_wires_through() -> B
 }
 
 test fn witness_systemd_run_transient_operation_argv_matches_authority() -> Bool {
-  systemd_run_transient_operation_argv_matches_authority(
+  match systemd_run_transient_unit_command(
     unit: "nbd-proxy-srv3-nbd-proxy-10809" as NonEmptyStr,
     properties: [],
     command_argv: ["nbdkit", "-p", "10809", "file", "/var/lib/gunbc/artifacts/x.iso"],
-  )
+  ) {
+    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandReady { command: command } => systemd_run_transient_operation_argv_matches_authority(command: command)
+  }
 }
 
 // THE EMPTY POPULATION ABOVE CANNOT SEE A PROPERTY THAT NEVER REACHES THE EXECUTED WORDS, which is
@@ -229,11 +235,14 @@ test fn witness_systemd_run_transient_operation_argv_matches_authority() -> Bool
 // is launched unbounded. This control carries a real population so the materialized argv and the
 // extdeps authority must agree on the property word itself.
 test fn witness_systemd_run_transient_property_reaches_materialized_argv() -> Bool {
-  systemd_run_transient_operation_argv_matches_authority(
+  match systemd_run_transient_unit_command(
     unit: "nbd-proxy-srv3-nbd-proxy-10809" as NonEmptyStr,
     properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
     command_argv: ["nbdkit", "-p", "10809", "file", "/var/lib/gunbc/artifacts/x.iso"],
-  )
+  ) {
+    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandReady { command: command } => systemd_run_transient_operation_argv_matches_authority(command: command)
+  }
 }
 
 // THE WHITESPACE ARM IS THE ONE THE OLD COMPARISON COULD NOT SEE. join(a," ")==join(b," ") cannot
@@ -242,11 +251,14 @@ test fn witness_systemd_run_transient_property_reaches_materialized_argv() -> Bo
 // such a value here means the control fails if argv agreement is ever weakened back to a text
 // comparison: the words still join to the same text, and only cardinality separates them.
 test fn witness_systemd_run_property_value_with_space_keeps_token_identity() -> Bool {
-  systemd_run_transient_operation_argv_matches_authority(
+  match systemd_run_transient_unit_command(
     unit: "nbd-proxy-srv3-nbd-proxy-10809" as NonEmptyStr,
     properties: [SystemdRunProperty { property: WorkingDirectoryProperty, value: "/srv/path with space" as NonEmptyStr }],
     command_argv: ["nbdkit", "-p", "10809"],
-  )
+  ) {
+    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandReady { command: command } => systemd_run_transient_operation_argv_matches_authority(command: command)
+  }
 }
 
 // THE ENCODING'S OWN PRECONDITION IS ASSERTED, not assumed. argv_exact_token_equal is injective
@@ -261,13 +273,19 @@ test fn witness_argv_exact_token_equal_separates_split_words() -> Bool {
 // authority against one materialization; if the transport template silently dropped the property
 // words, BOTH sides would drop them together only if the authority also stopped rendering them --
 // which this asserts it does not. The property word must be present in the authority's own output.
+// POSITIVE CONTROL FOR THE CUTOVER: the wire name reaches the projected words untransformed, in
+// position, in the non-wait start the nbd proxy's serve path actually runs.
 test fn witness_systemd_run_property_argv_renders_the_wire_name() -> Bool {
-  join(
-    systemd_run_property_argv(
-      properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
-    ),
-    " ",
-  ) == "--property=MemoryMax=17179869184"
+  match systemd_run_transient_unit_command(
+    unit: "nbd-proxy-witness.service",
+    properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
+    command_argv: ["/bin/true"],
+  ) {
+    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandReady { command: command } =>
+      join(argv_words(command: command), " ")
+        == "systemd-run --unit=nbd-proxy-witness.service --property=MemoryMax=17179869184 --collect -- /bin/true"
+  }
 }
 
 test fn witness_systemctl_stop_operation_argv_matches_authority() -> Bool {

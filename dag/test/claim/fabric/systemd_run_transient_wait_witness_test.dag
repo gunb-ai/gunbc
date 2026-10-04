@@ -2,7 +2,14 @@ module test.claim.fabric.systemd_run_transient_wait_witness_test
 
 import std.types { Bool, List }
 import extdeps.systemd { WorkingDirectoryProperty, MemoryMax }
-import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_transient_wait_unit_argv }
+import extdeps.exec.command { argv_words }
+import extdeps.systemd.systemd_run {
+  SystemdRunProperty, SystemdRunCommandReady, SystemdRunCommandRefused,
+  SystemdRunOptionWordsProjected, SystemdRunOptionWordsRefused,
+  SystemdSetenvBinding,
+  RunUserManager, RunScope, Wait, Quiet, Pipe, Collect, EndOfOptions, SetEnv,
+  systemd_run_option_words, systemd_run_transient_wait_unit_command, systemd_run_user_wait_command,
+}
 import gunbc.systemd_run_transient {
   systemd_run_transient_wait_operation_argv_matches_authority,
   systemd_run_transient_wait_outcome_from_result,
@@ -16,25 +23,101 @@ data wait_properties: List<SystemdRunProperty> = [
   SystemdRunProperty { property: MemoryMax, value: "17179869184" },
 ]
 
-test fn systemd_wait_route_owns_wait_quiet_collect_and_preserves_tokens() -> Bool {
-  let argv = systemd_run_transient_wait_unit_argv(
+// THE POSITIVE CONTROL FOR THE TYPED CUTOVER: the words the typed option model projects are
+// byte-identical to the words the string-built builder this replaces rendered for the same
+// arguments, including the space inside the working directory's value, and the operation's
+// materialized transport words are the same words the typed command projects.
+fn wait_control_command_reading() -> SystemdRunCommandReading {
+  systemd_run_transient_wait_unit_command(
     unit: "fci1-bounded-driver.service",
     properties: wait_properties,
     command_argv: ["/bin/sh", "-c", "exit 86"],
   )
-  systemd_run_transient_wait_operation_argv_matches_authority(
-    unit: "fci1-bounded-driver.service",
-    properties: wait_properties,
-    command_argv: ["/bin/sh", "-c", "exit 86"],
-  )
-    && argv_exact_token_equal(
-      left: argv,
-      right: [
-        "systemd-run", "--unit=fci1-bounded-driver.service", "--wait", "--quiet", "--collect",
-        "--property=WorkingDirectory=/tmp/path with space", "--property=MemoryMax=17179869184",
-        "--", "/bin/sh", "-c", "exit 86",
-      ],
-    )
+}
+
+// THE POSITIVE CONTROL, WORDS HALF: the projection's words are the old builder's words, byte for byte.
+test fn systemd_wait_route_projects_the_old_words() -> Bool {
+  match wait_control_command_reading() {
+    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandReady { command: command } =>
+      argv_exact_token_equal(
+        left: argv_words(command: command),
+        right: [
+          "systemd-run", "--unit=fci1-bounded-driver.service", "--wait", "--quiet", "--collect",
+          "--property=WorkingDirectory=/tmp/path with space", "--property=MemoryMax=17179869184",
+          "--", "/bin/sh", "-c", "exit 86",
+        ],
+      )
+  }
+}
+
+// THE POSITIVE CONTROL, MATERIALIZATION HALF: the operation's declared transport materializes the
+// same words the typed command projects.
+test fn systemd_wait_route_materializes_the_projected_words() -> Bool {
+  match wait_control_command_reading() {
+    SystemdRunCommandRefused { reason: _ } => false
+    SystemdRunCommandReady { command: command } =>
+      systemd_run_transient_wait_operation_argv_matches_authority(command: command)
+  }
+}
+
+// THE RED WITNESS: a property value carrying a newline is REFUSED at the projection -- not trimmed,
+// not split into two words, not passed through. The operation that would have run does not exist,
+// and the reason names the wire fact the value violates.
+test fn a_property_value_the_wire_cannot_carry_is_refused() -> Bool {
+  match systemd_run_transient_wait_unit_command(
+    unit: "fci1-refused.service",
+    properties: [SystemdRunProperty { property: WorkingDirectoryProperty, value: "/tmp/a\nb" as NonEmptyStr }],
+    command_argv: ["/bin/true"],
+  ) {
+    SystemdRunCommandRefused { reason: why } => string_contains(s: why, pattern: "one line")
+    SystemdRunCommandReady { command: _ } => false
+  }
+}
+
+// A unit name is one line and never carries a slash (systemd.unit(5)); the projection refuses both.
+test fn a_unit_name_the_wire_cannot_carry_is_refused() -> Bool {
+  match systemd_run_transient_wait_unit_command(
+    unit: "wrong/name" as NonEmptyStr,
+    properties: [],
+    command_argv: ["/bin/true"],
+  ) {
+    SystemdRunCommandRefused { reason: why } => string_contains(s: why, pattern: "never contains /")
+    SystemdRunCommandReady { command: _ } => false
+  }
+}
+
+// --setenv= takes NAME=VALUE, so the NAME side carries no = of its own: a binding that would render
+// an ambiguous word is refused, not passed to systemd-run to misparse.
+test fn a_setenv_name_with_an_equals_is_refused() -> Bool {
+  match systemd_run_user_wait_command(
+    unit: "fci1-setenv.service",
+    properties: [],
+    setenv_bindings: [SystemdSetenvBinding { name: "A=b" as NonEmptyStr, value: "c" as NonEmptyStr }],
+    command_argv: ["/bin/true"],
+  ) {
+    SystemdRunCommandRefused { reason: why } => string_contains(s: why, pattern: "carries no = of its own")
+    SystemdRunCommandReady { command: _ } => false
+  }
+}
+
+test fn a_setenv_binding_with_an_equals_in_the_name_is_refused() -> Bool {
+  match systemd_run_option_words(options: [SetEnv { binding: SystemdSetenvBinding { name: "A=b" as NonEmptyStr, value: "c" as NonEmptyStr } }]) {
+    SystemdRunOptionWordsRefused { reason: why } => string_contains(s: why, pattern: "carries no = of its own")
+    SystemdRunOptionWordsProjected { words: _ } => false
+  }
+}
+
+// THE TYPED OPTION IS A SEALED SUM: there is no arm an unknown flag could ride. This fold walks the
+// variants the module renders today and pins each one's man-page spelling at systemd 255; a variant
+// added to the sum updates this fold or compilation fails, which is how an unknown option stays
+// unwritable.
+test fn every_option_variant_renders_its_man_page_spelling() -> Bool {
+  match systemd_run_option_words(options: [RunUserManager, RunScope, Wait, Quiet, Pipe, Collect, EndOfOptions]) {
+    SystemdRunOptionWordsRefused { reason: _ } => false
+    SystemdRunOptionWordsProjected { words: words } =>
+      join(words, separator: " ") == "--user --scope --wait --quiet --pipe --collect --"
+  }
 }
 
 test fn systemd_wait_route_rejects_split_working_directory_token() -> Bool {
@@ -54,3 +137,24 @@ test fn systemd_wait_normal_exit_86_remains_86() -> Bool {
     SystemdRunTransientWaitTransportRefused { reason: _ } => false
   }
 }
+
+
+fn materialized_cardinality(reading: SystemdRunCommandReading) -> Int {
+  match reading {
+    SystemdRunCommandRefused { reason: _ } => -2
+    SystemdRunCommandReady { command: command } =>
+      match systemd_run_transient_wait_operation_argv(command: command) {
+        ArgvMaterialized { argv: words } => count(words)
+        ArgvMaterializationRefused { at: _, cause: _ } => -1
+      }
+  }
+}
+
+// CARDINALITY PROBES: exactly one of these passes, and which one names the materialized shape.
+test fn probe_materialized_cardinality_11() -> Bool { materialized_cardinality(reading: wait_control_command_reading()) == 11 }
+test fn probe_materialized_cardinality_1() -> Bool { materialized_cardinality(reading: wait_control_command_reading()) == 1 }
+test fn probe_materialized_cardinality_10() -> Bool { materialized_cardinality(reading: wait_control_command_reading()) == 10 }
+test fn probe_materialized_cardinality_refused() -> Bool { materialized_cardinality(reading: wait_control_command_reading()) == -1 }
+test fn probe_materialized_cardinality_command_refused() -> Bool { materialized_cardinality(reading: wait_control_command_reading()) == -2 }
+test fn probe_materialized_cardinality_0() -> Bool { materialized_cardinality(reading: wait_control_command_reading()) == 0 }
+

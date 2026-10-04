@@ -1,5 +1,6 @@
 module test.claim.runner.runner_microvm_slot_controller_witness_test
 
+import std.algebra { list_append }
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat }
 import std.measure { byte_size_count, byte_size, gibibyte, gibibyte_to_byte_size, second_count }
@@ -26,7 +27,10 @@ import gunbc.runner_microvm_attempt {
   MicroVmAttempt, microvm_attempt, MicroVmAttemptAccepted, MicroVmAttemptRefused,
   runner_microvm_attempt_slice_property, runner_microvm_attempt_part_of_property,
 }
-import extdeps.systemd.systemd_run { systemd_run_property_argv }
+import extdeps.exec.command { argv_words }
+import extdeps.systemd.systemd_run {
+  SystemdRunCommandReady, SystemdRunCommandRefused, systemd_run_transient_unit_command,
+}
 import gunbc.runner_microvm_shakedown { microvm_shakedown_work, microvm_shakedown_demand, microvm_shakedown_offer }
 import gunbc.runner_attempt_launch {
   ReservationAuthorization, ReservationAuthorizes, ReservationArmRequiresInternalFleetTrust,
@@ -322,10 +326,27 @@ test fn only_a_delivered_mint_carries_a_registration_into_the_controller() -> Bo
 // what makes the control-group kill insufficient, so a future edit that dropped Slice would make
 // PartOf redundant rather than load-bearing, and one that dropped PartOf leaks the guest.
 fn attempt_launch_property_words(attempt: MicroVmAttempt) -> List<String> {
-  systemd_run_property_argv(properties: [
-    runner_microvm_attempt_slice_property(attempt: attempt),
-    runner_microvm_attempt_part_of_property(attempt: attempt),
-  ])
+  match systemd_run_transient_unit_command(
+    unit: "w-42.service",
+    properties: [
+      runner_microvm_attempt_slice_property(attempt: attempt),
+      runner_microvm_attempt_part_of_property(attempt: attempt),
+    ],
+    command_argv: [],
+  ) {
+    SystemdRunCommandRefused { reason: _ } => []
+    SystemdRunCommandReady { command: command } => property_words_of(argv: argv_words(command: command))
+  }
+}
+
+fn property_words_of(argv: List<String>) -> List<String> {
+  argv |> fold([], (acc, w) =>
+    if substring(s: w, start: 0, end: 11) == "--property=" {
+      list_append(left: acc, right: [w])
+    } else {
+      acc
+    }
+  )
 }
 
 test fn the_attempt_unit_is_bound_to_the_slot_unit_that_supervises_it() -> Bool {
