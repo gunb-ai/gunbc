@@ -35,6 +35,13 @@ import v2.std.node { Symbol }
 //                                     or a field-pattern binder (`{ module: module }`, `{ module }`).
 //                                     A keyword is not an identifier; a field LABEL may still be one
 //                                     (`x.module`, `Rec { module: e }`). Located at the keyword.
+//   TokenStartsNotIncreasing       -- the token stream handed to the parse does not have strictly
+//                                     increasing token starts. A stream position IS its token's
+//                                     start (v2.compiler.parse parse_current_position keys the memo
+//                                     and decides repeat progress), so two tokens at one start would
+//                                     be one position and the parse would silently serve one's
+//                                     answer for the other. Located at the first token whose start
+//                                     does not exceed its predecessor's.
 type ParseRefusalReason =
     FnExpressionBodyMissingAfterEq
   | DataValueMissingAfterEq
@@ -44,6 +51,7 @@ type ParseRefusalReason =
   | LetInExpressionDropped
   | DeclarationMarkerNotTest
   | KeywordAsValueName
+  | TokenStartsNotIncreasing
 
 // The diagnostic identity each reason refuses under (`v2.std.diagnostic` `Diagnostic.reason`).
 fn parse_refusal_reason_symbol(reason: ParseRefusalReason) -> Symbol {
@@ -56,5 +64,6 @@ fn parse_refusal_reason_symbol(reason: ParseRefusalReason) -> Symbol {
     LetInExpressionDropped => ^parse_let_in_expression_dropped
     DeclarationMarkerNotTest => ^parse_declaration_marker_not_test
     KeywordAsValueName => ^parse_keyword_as_value_name
+    TokenStartsNotIncreasing => ^parse_token_starts_not_increasing
   }
 }

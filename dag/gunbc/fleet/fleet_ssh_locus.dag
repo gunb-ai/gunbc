@@ -19,7 +19,7 @@ module gunbc.fleet_ssh_locus
 
 
 import std.types { String, Bool, NonEmptyStr }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_known_hosts_anchor {
   FleetSshExecutionContext,
   FleetSshAttemptIdentity,

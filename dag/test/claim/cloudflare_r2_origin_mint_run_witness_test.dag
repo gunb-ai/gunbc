@@ -70,6 +70,13 @@ import gunbc.cloudflare.r2_origin {
   FabricCommitManifestsAndContentAddressedOutputs,
   DigestKeyedBootArtifacts,
   KeyAddressedCacheBlobs,
+  ContentAddressedWorkspaceHistory,
+  FabricWorkspace,
+  fabric_workspace_standing,
+  fabric_workspace_read_secret_id,
+  fabric_workspace_write_secret_id,
+  origin_admission_is_create_only,
+  bucket_purpose_admits_public_read,
   bucket_purpose_admission,
   OriginCredentialStanding,
   OriginCredentialPinned,
@@ -375,6 +382,7 @@ test fn r2_origin_bucket_read_credential_is_the_minted_container() -> Bool {
              FabricCommitManifestsAndContentAddressedOutputs {} => true
              DigestKeyedBootArtifacts {} => false
              KeyAddressedCacheBlobs {} => false
+             ContentAddressedWorkspaceHistory {} => false
            }
   }
 }
@@ -501,6 +509,7 @@ fn origin_with_latest_read_pin() -> R2OriginStanding {
     bucket: R2OriginBucket {
       bucket_name: "gunbai-fabric-origin",
       jurisdiction: R2JurisdictionDefault,
+      location_hint: none,
       purpose: FabricDurableOrigin {},
       read_credential: OriginCredentialPinned {
         access_key_id: fabric_durable_origin_read_access_key_id,
@@ -879,6 +888,52 @@ test fn r2_boot_origin_read_mint_is_scoped_to_the_boot_bucket() -> Bool {
     profile: R2OriginTokenProfileArg { profile: R2OriginObjectRead, suffix: "-object-read" },
     purpose: FabricBootOrigin {},
   )
+}
+
+// THE WORKSPACE PLACEMENT: both mints are scoped to gunbai-fabric-workspace (never the durable
+// origin), store into the containers fabric_workspace_standing declares, and the standing names the
+// two run_workspace_* entries the fleet-converge modes dispatch. Its admission is create-only and
+// private, like the durable origin's, and it is a distinct bucket.
+test fn r2_workspace_mints_are_scoped_to_the_workspace_bucket() -> Bool {
+  purpose_mint_is_scoped_to_its_bucket(
+    profile: R2OriginTokenProfileArg { profile: R2OriginObjectRead, suffix: "-object-read" },
+    purpose: FabricWorkspace {},
+  )
+    && purpose_mint_is_scoped_to_its_bucket(
+      profile: R2OriginTokenProfileArg { profile: R2OriginObjectWrite, suffix: "-object-write" },
+      purpose: FabricWorkspace {},
+    )
+    && purpose_bucket_name(purpose: FabricWorkspace {}) == "gunbai-fabric-workspace"
+    && purpose_bucket_name(purpose: FabricWorkspace {}) != purpose_bucket_name(purpose: FabricCacheBlobs {})
+}
+
+test fn r2_workspace_standing_names_its_mint_entries_and_custody() -> Bool {
+  let read = r2_origin_token_secret_id(profile: R2OriginObjectRead, origin: fabric_workspace_standing())
+  let write = r2_origin_token_secret_id(profile: R2OriginObjectWrite, origin: fabric_workspace_standing())
+  let entries = match fabric_workspace_standing() {
+    R2OriginUnallocated { purpose: _ } => false
+    R2OriginAllocated { bucket: b } =>
+      match b.read_credential {
+        OriginCredentialUnminted { mint_entry: e, secret_id: _ } => e.decl_name == "run_workspace_object_read"
+        _ => false
+      }
+        && match b.write_credential {
+          OriginCredentialUnminted { mint_entry: e, secret_id: _ } => e.decl_name == "run_workspace_object_write"
+          _ => false
+        }
+  }
+  entries
+    && match read {
+      Present { value: a } => (a as String) == (fabric_workspace_read_secret_id as String) && (a as String) == "cloudflare-r2-workspace-read-token"
+      Absent => false
+    }
+    && match write {
+      Present { value: a } => (a as String) == (fabric_workspace_write_secret_id as String) && (a as String) == "cloudflare-r2-workspace-write-token"
+      Absent => false
+    }
+    && bucket_purpose_key(purpose: FabricWorkspace {}) == "fabric-workspace"
+    && origin_admission_is_create_only(admission: bucket_purpose_admission(purpose: FabricWorkspace {}))
+    && !bucket_purpose_admits_public_read(purpose: FabricWorkspace {})
 }
 
 // THE CUSTODY SECRET IS THE ONE THE PURPOSE'S STANDING DECLARES. The durable rows keep their ids

@@ -832,7 +832,9 @@ fn media_loss_after_handoff(handoff: MtCollins1HandoffMedia, end: MtCollins1EndM
             EndMediaNotTaken { reason: _ } => MediaLossNotAffirmed
           }
       }
-    _ => MediaLossNotAffirmed
+    HandoffMediaAttempted { before: _, handoff: HandoffAttemptedUnconfirmed { reason: _ }, after: _ } => MediaLossNotAffirmed
+    HandoffMediaNotReached { reason: _ } => MediaLossNotAffirmed
+        HandoffMediaWithheldAtRecheck { before: _ } => MediaLossNotAffirmed
   }
 }
 
@@ -1311,7 +1313,7 @@ fn sel_channel(channel: NonEmptyStr, s: SelSnapshotReading) -> BmcChannelRead {
   } }
 }
 
-fn members_channel(channel: NonEmptyStr, m: MembersReading<T>) -> BmcChannelRead {
+fn members_channel<T>(channel: NonEmptyStr, m: MembersReading<T>) -> BmcChannelRead {
   BmcChannelRead { channel: channel, standing: match m {
     MembersRead { members: _ } => BmcChannelAnswered
     MembersUnread { cause: c } => BmcChannelFailed { cause: c }

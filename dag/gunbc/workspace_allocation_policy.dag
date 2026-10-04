@@ -1,0 +1,19 @@
+module gunbc.workspace_allocation_policy
+
+import std.types { NonEmptyStr }
+import gunbc.principal_projection { PrincipalRef }
+import gunbc.workspace_allocation_admission { WorkspaceAuthorizationPolicy }
+
+// The operator explicitly confirmed this subject from the existing verified Google session.
+// Email is presentation; this stable subject is the authorization identity for the demo.
+fn workspace_operator_principal() -> PrincipalRef {
+  PrincipalRef {
+    authority: "google-oidc" as NonEmptyStr,
+    namespace: "accounts" as NonEmptyStr,
+    subject: "116084671989231734979" as NonEmptyStr,
+  }
+}
+
+fn workspace_authorization_policy() -> WorkspaceAuthorizationPolicy {
+  WorkspaceAuthorizationPolicy { principals: [workspace_operator_principal()] }
+}
