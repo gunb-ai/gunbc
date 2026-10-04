@@ -380,7 +380,7 @@ fn roadmap_surface_rules() -> List<BuildRule> {
       decl(prop: AlignItems, value: "center"),
       decl(prop: Padding, value: "var(--space-12)"),
       decl(prop: BorderRadius, value: "var(--radius-surface)"),
-      decl(prop: Background, value: "color-mix(in srgb, var(--issue-action-hover) 9%, var(--surface))"),
+      decl(prop: Background, value: "color-mix(in srgb, var(--status-assigned-ink) 9%, var(--surface))"),
       decl(prop: Color, value: "var(--issue-text)"),
       decl(prop: FontWeight, value: "500")
     ] },
@@ -661,7 +661,7 @@ fn roadmap_surface_rules() -> List<BuildRule> {
       decl(prop: RawProperty { name: "left" }, value: "calc(var(--space-24) + var(--space-4))"),
       decl(prop: Width, value: "var(--space-24)"),
       decl(prop: Height, value: "var(--space-24)"),
-      decl(prop: Border, value: "var(--border-2) solid var(--issue-action-hover)"),
+      decl(prop: Border, value: "var(--border-2) solid var(--status-assigned-ink)"),
       decl(prop: BorderRadius, value: "var(--radius-999)"),
       decl(prop: Background, value: "var(--surface)"),
       decl(prop: RawProperty { name: "top" }, value: "var(--h-compact-face)")
@@ -1135,7 +1135,7 @@ fn roadmap_surface_rules() -> List<BuildRule> {
       decl(prop: Width, value: "var(--space-12)"),
       decl(prop: Height, value: "var(--space-12)"),
       decl(prop: BorderRadius, value: "var(--radius-999)"),
-      decl(prop: Border, value: "var(--border-2) solid var(--issue-action-hover)"),
+      decl(prop: Border, value: "var(--border-2) solid var(--status-assigned-ink)"),
       decl(prop: Background, value: "var(--surface)"),
     ] },
 
@@ -1174,7 +1174,7 @@ fn roadmap_surface_rules() -> List<BuildRule> {
       decl(prop: Width, value: "100%")
     ] },
     ResponseRule { subject: RawSelector { text: ".issue-membership-children > summary.issue-membership-current" }, shape: SelfResponse, trigger: OnHover, transition_props: "background-color, color, outline-color", timing: respond_fast, base_decls: [], response_decls: [
-      decl(prop: Background, value: "color-mix(in srgb, var(--issue-action-hover) 15%, var(--surface))")
+      decl(prop: Background, value: "color-mix(in srgb, var(--status-assigned-ink) 15%, var(--surface))")
     ] },
 
     StaticRule { selector: RawSelector { text: ".issue-membership-count" }, decls: [
