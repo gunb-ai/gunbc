@@ -13,6 +13,8 @@ import v2.workflow.floor_unimported_bare_provider_debt_roster {
   FileDeleted,
   RelocatedOutOfSourceRoots,
   NotAReference,
+  BindsWithoutDeclaration,
+  ResolvesInClosure,
   unimported_bare_provider_roster_rows,
 }
 
@@ -127,45 +129,50 @@ fn unimported_bare_provider_row_standing(
   is_checked: Bool,
   is_carried: Bool,
 ) -> List<String> {
-  let relocation_not_done = match r.standing {
-    Retired { cause: RelocatedOutOfSourceRoots { to: _ } } => exists
-    ActiveDebt => false
-    Retired { cause: ImportsFixed } => false
-    Retired { cause: FileDeleted } => false
-    Retired { cause: NotAReference } => false
-  }
-  if r.active && !exists {
-    ["ActiveDebtOnAbsentFile " + r.identity + " -- the file is gone; retire the row as FileDeleted"]
-  } else {
-    if r.file_deleted && exists {
-      ["RetiredFileDeletedButPresent " + r.identity]
-    } else {
-      if relocation_not_done {
-        ["RetiredRelocatedButPresent " + r.identity + " -- the file still sits under a source root; the relocation did not happen"]
+  match r.standing {
+    ActiveDebt =>
+      if !exists {
+        ["ActiveDebtOnAbsentFile " + r.identity + " -- the file is gone; retire the row as FileDeleted"]
       } else {
-        if r.imports_fixed && !exists {
-          ["RetiredImportsFixedButFileAbsent " + r.identity + " -- the cause is FileDeleted"]
+        if is_checked && !is_carried {
+          ["RosterStale " + r.identity + " -- the file no longer carries this pair; retire it as ImportsFixed if the file changed, BindsWithoutDeclaration if the name binds a builtin or kernel method, or ResolvesInClosure if it binds a declaration inside the file's own import closure"]
         } else {
-          if r.not_a_reference && !exists {
-            ["RetiredNotAReferenceButFileAbsent " + r.identity + " -- the cause is FileDeleted"]
-          } else {
-            if r.active && is_checked && !is_carried {
-              ["RosterStale " + r.identity + " -- the file no longer carries this pair; retire it as ImportsFixed"]
-            } else {
-              if r.imports_fixed && is_checked && is_carried {
-                ["RetiredImportsFixedButCarried " + r.identity]
-              } else {
-                if r.not_a_reference && is_checked && is_carried {
-                  ["RetiredNotAReferenceButCarried " + r.identity]
-                } else {
-                  []
-                }
-              }
-            }
-          }
+          []
         }
       }
-    }
+    Retired { cause: FileDeleted } =>
+      if exists { ["RetiredFileDeletedButPresent " + r.identity] } else { [] }
+    Retired { cause: RelocatedOutOfSourceRoots { to: _ } } =>
+      if exists {
+        ["RetiredRelocatedButPresent " + r.identity + " -- the file still sits under a source root; the relocation did not happen"]
+      } else {
+        []
+      }
+    Retired { cause: ImportsFixed } =>
+      reader_retirement_standing(cause: "ImportsFixed", r: r, exists: exists, is_checked: is_checked, is_carried: is_carried)
+    Retired { cause: NotAReference } =>
+      reader_retirement_standing(cause: "NotAReference", r: r, exists: exists, is_checked: is_checked, is_carried: is_carried)
+    Retired { cause: BindsWithoutDeclaration } =>
+      reader_retirement_standing(cause: "BindsWithoutDeclaration", r: r, exists: exists, is_checked: is_checked, is_carried: is_carried)
+    Retired { cause: ResolvesInClosure } =>
+      reader_retirement_standing(cause: "ResolvesInClosure", r: r, exists: exists, is_checked: is_checked, is_carried: is_carried)
+  }
+}
+
+// A retirement whose claim is that the file still exists and, re-derived on every run, no longer
+// carries the pair. ImportsFixed (the file changed), NotAReference, BindsWithoutDeclaration and
+// ResolvesInClosure (the reader changed) make the same claim; `cause` is the arm's own spelling.
+fn reader_retirement_standing(
+  cause: String,
+  r: UnimportedBareProviderRowView,
+  exists: Bool,
+  is_checked: Bool,
+  is_carried: Bool,
+) -> List<String> {
+  if !exists {
+    ["Retired" + cause + "ButFileAbsent " + r.identity + " -- the cause is FileDeleted"]
+  } else {
+    if is_checked && is_carried { ["Retired" + cause + "ButCarried " + r.identity] } else { [] }
   }
 }
 
