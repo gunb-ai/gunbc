@@ -30,7 +30,7 @@ import gunbc.fleet.fleet_site_locale {
   provisioned_portal_language_tag,
 }
 import product.placement_supply { SiteIdentity, HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv4, operator_host_srv5, operator_host_srv6 }
+import gunbc.fleet_host_identity { operator_host_srv4, operator_host_srv5, operator_host_srv6 }
 import std.types { Int }
 import gunbc.fleet.fleet_site_locale {
   HostZoneConverged,

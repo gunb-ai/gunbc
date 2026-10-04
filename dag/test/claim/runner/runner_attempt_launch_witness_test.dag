@@ -21,7 +21,7 @@ import product.fabric.grant_issue { GrantCommitted, GrantRefused }
 import product.fabric.execution { ExecutionGrant }
 import product.fabric.budget { MoneyAccount }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fleet_intent_network { operator_host_srv2 }
+import gunbc.fleet_host_identity { operator_host_srv2 }
 import gunbc.runner_microvm_attempt {
   MicroVmAttempt, MicroVmAttemptAccepted, MicroVmAttemptRefused, microvm_attempt,
   runner_microvm_attempt_jail_base,
