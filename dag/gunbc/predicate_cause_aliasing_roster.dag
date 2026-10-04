@@ -35,8 +35,7 @@ module gunbc.predicate_cause_aliasing_roster
 // separate change already in review, which lifted their comparison out of the shell transport first.
 
 import std.logic { Bool }
-import std.types { String }
-import v2.std.collection { List }
+import std.types { String, List }
 
 type AliasedPredicateSite {
   module_path: String

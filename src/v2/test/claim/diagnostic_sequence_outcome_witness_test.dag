@@ -1,5 +1,6 @@
 module v2.test.claim.diagnostic_sequence_outcome_witness
 
+import std.types { List }
 import v2.std.diagnostic {
   Outcome,
   Accepted,
@@ -16,7 +17,6 @@ import v2.std.diagnostic {
   ExternalContractUnknown,
   Unavailable,
 }
-import v2.std.collection { List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

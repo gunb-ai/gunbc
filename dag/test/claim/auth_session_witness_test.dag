@@ -1,5 +1,6 @@
 module test.claim.auth_session_witness_test
 
+import extdeps.http.server { set_cookie_value }
 import std.types { Bool, NonEmptyStr, String, FilePath }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.auth.jwt {
@@ -27,7 +28,7 @@ import gunbc.auth.session {
   mint_authenticated_session, csrf_decision, session_not_expired,
   session_cookie_secure, session_cookie_http_only, session_cookie_same_site_lax, session_cookie_path,
   session_cookie_id_of_header, SessionCookieIdParsed, SessionCookieIdNotPresent, SessionCookieIdMalformed,
-  session_cookie_set_cookie_line, session_cookie_clear_line,
+  session_cookie_set_cookie, session_cookie_clear,
   SessionCookieStanding, SessionCookieValid, SessionCookieExpired, SessionCookieAbsent,
   SessionCookieUnknown, SessionCookieUnread, SessionCookieMalformed,
   SessionClientTrackerWeb, SessionClientApprovalsWeb,
@@ -556,10 +557,11 @@ test fn the_session_file_codec_round_trips_the_optional_picture_member() -> Bool
 // HttpOnly, SameSite=Lax, path-bound, bounded lifetime — and the logout clearing line zeroes the
 // lifetime so the browser drops the cookie.
 test fn the_set_cookie_lines_spell_the_ruling_attributes() -> Bool {
-  let line = session_cookie_set_cookie_line(session_id: "abc-123" as NonEmptyStr, max_age_seconds: 43200)
-  let cleared = session_cookie_clear_line()
+  let line = set_cookie_value(cookie: session_cookie_set_cookie(session_id: "abc-123" as NonEmptyStr, max_age_seconds: 43200))
+  let cleared = set_cookie_value(cookie: session_cookie_clear())
   string_contains(s: line, pattern: "gunbc_session=abc-123; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=43200")
-    && string_contains(s: cleared, pattern: "gunbc_session=; Path=/")
+    && string_contains(s: cleared, pattern: "gunbc_session=; ")
+    && string_contains(s: cleared, pattern: "Path=/")
     && string_contains(s: cleared, pattern: "Max-Age=0")
     && string_contains(s: cleared, pattern: "Secure")
     && string_contains(s: cleared, pattern: "HttpOnly")
