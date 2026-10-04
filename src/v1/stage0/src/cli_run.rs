@@ -28229,7 +28229,7 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
     #[test]
     fn the_13126_claim_trim_charges_no_surviving_claim() {
         let path = "src/v2/test/claim/parse/test_marker_channel_test.dag";
-        let head = include_str!("../testdata/test_marker_channel_head_587c833.dag");
+        let head = include_str!("../testdata/test_marker_channel_head_587c833.dag.txt");
         let diff = include_str!("../testdata/test_marker_channel_trim_587c833.diff");
         let edits = text_attribution_edits(
             diff,
