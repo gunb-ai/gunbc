@@ -5,14 +5,12 @@ import gunbc.roadmap_presentation { dependency_cycle_touches }
 import gunbc.roadmap_authority { edge }
 import std.markup { Fragment, Element, FragmentText, RawNode }
 import gunbc.site.document { site_document, site_styles, site_styles_css }
-import gunbc.site.controls { site_client_path, site_client_program }
-import gunbc.site.client_bindings { client_program_free_names }
+import gunbc.site.controls { site_client_path }
 import gunbc.principal_mention { principal_mention_uri, principal_mention_read }
 import gunbc.principal_projection { PrincipalRef, principal_ref_eq, fabric_workflow_principal }
 import gunbc.roadmap_presentation { issue_status_label, issue_status_details, WorkRowView, OpenLifecycle, DoneLifecycle, ReviewLifecycle, SchedulingReady, SchedulingNotReady, NoActiveWork, ActivityUnobservable, CompletedWork, ActiveWorkRefused, ActionView, NoDisclosure, ActivityEvidenceRow }
 import gunbc.roadmap.roadmap_event_log { NodeOpen }
 import gunbc.harness.harness_throughput { RoundsUnobserved }
-import test.claim.long.site_allocation_bindings_witness { allocation_client_has_no_unbound_names, deleting_session_binding_is_detected_in_real_program }
 
 fn element_count(f: Fragment, tag_name: String, attribute: String, value: String) -> Int {
   match f {
@@ -28,9 +26,6 @@ test fn shell_installs_one_shared_initializer_and_viewport() -> Bool {
   element_count(f: page, tag_name: "script", attribute: "src", value: site_client_path) == 1
     && element_count(f: page, tag_name: "meta", attribute: "name", value: "viewport") == 1
     && element_count(f: page, tag_name: "header", attribute: "", value: "") == 1
-}
-test fn shared_client_and_allocation_have_no_free_application_names() -> Bool {
-  allocation_client_has_no_unbound_names() && deleting_session_binding_is_detected_in_real_program()
 }
 test fn mentions_persist_canonical_principals_and_reject_noncanonical_forms() -> Bool {
   let uri = principal_mention_uri(principal: fabric_workflow_principal)
