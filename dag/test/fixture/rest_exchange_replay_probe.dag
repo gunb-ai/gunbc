@@ -29,6 +29,10 @@ type WireUncontractedShape {
 // WifProvidersPage and WifPool carry the OUTPUT SHAPES of extdeps.cloud.gcp.iam_admin
 // ListWorkloadIdentityPoolProviders and GetWorkloadIdentityPool verbatim, so a recorded IAM body
 // reaches the same type-directed decode gunbc.auth.heal_publisher_provision reads through.
+// TextBody spells response_format as the std.serialization WireFormat variant github.Pulls.Diff
+// uses, so a plain-text body must come back as text through dispatch_rest rather than through the
+// JSON decoder. FormatUnrecognized spells it as no WireFormat variant, which must refuse rather than
+// default to Json.
 service test.RestReplay {
   config { endpoint: "https://rest-replay.invalid" }
 
@@ -41,8 +45,6 @@ service test.RestReplay {
     transport rest { method: GET, path: "/answer" }
   }
 
-  // THE RESPONSE FORMAT, SPELLED AS THE std.serialization WireFormat VARIANT github.Pulls.Diff uses.
-  // A plain-text body must come back as text through dispatch_rest, not through the JSON decoder.
   operation TextBody {
     output {
       text: String
@@ -53,7 +55,6 @@ service test.RestReplay {
     response { 200 => String }
   }
 
-  // A response_format that is no WireFormat variant: a refusal, never a silent Json default.
   operation FormatUnrecognized {
     output {
       text: String
