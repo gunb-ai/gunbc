@@ -12,7 +12,7 @@ import product.fabric.identity { FabricIdentity, DemandKey, OfferKey, WorkKey }
 import product.fabric.demand { Demand }
 import product.fabric.supply { SupplierOffer }
 import product.fabric.sanitation { CellId }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.ownership { Owned }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
 import gunbc.durable_cas_file_store { observe_cas_slot_state }
@@ -271,9 +271,20 @@ fn observe_required_build_cell_wet(
   demand: Demand<NonEmptyStr>,
   offer: SupplierOffer<NonEmptyStr>,
 ) -> RequiredBuildCellObservation {
+  observe_required_build_cell_for_identity(root: root, host: host, slot: slot,
+    work: demand.work, demand: demand.id, offer: offer.id, executor: offer.executor)
+}
+
+// Both CI and workspace consumers observe the same actual hold and owned substrate.
+fn observe_required_build_cell_for_identity(
+  root: NonEmptyStr, host: HostIdentity, slot: RunnerSlotIdentity,
+  work: FabricIdentity<NonEmptyStr, WorkKey>,
+  demand: FabricIdentity<NonEmptyStr, DemandKey>, offer: FabricIdentity<NonEmptyStr, OfferKey>,
+  executor: NonEmptyStr,
+) -> RequiredBuildCellObservation {
   let slot_key = fabric_cell_allocation_key(slot: slot)
-  if (offer.executor as String) != (slot_key as String) {
-    SelectedOfferCellMismatch { slot_key: slot_key, executor: offer.executor }
+  if (executor as String) != (slot_key as String) {
+    SelectedOfferCellMismatch { slot_key: slot_key, executor: executor }
   } else {
     match observe_cas_slot_state(root: root, key: slot_key) {
       CasObservedUnreadable { cause: c } => ReservationUnreadable { slot_key: slot_key, cause: c }
@@ -285,7 +296,7 @@ fn observe_required_build_cell_wet(
           HoldPayloadDecoded { state: DurableHoldHeld { owner: held } } =>
             if !durable_hold_owner_equal(
               left: held,
-              right: fabric_hold_owner(reservation: fabric_money_reservation_ref(demand: demand.id, offer: offer.id)),
+              right: fabric_hold_owner(reservation: fabric_money_reservation_ref(demand: demand, offer: offer)),
             ) {
               ReservationPayloadWorkMismatch { slot_key: slot_key }
             } else {
@@ -302,9 +313,9 @@ fn observe_required_build_cell_wet(
                       UnownedCell { cell: fabric_cell_id_for_slot(slot: slot) }
                     } else {
                       RequiredBuildCellObserved { snapshot: RequiredBuildCellSnapshot {
-                        work: demand.work,
-                        demand: demand.id,
-                        offer: offer.id,
+                        work: work,
+                        demand: demand,
+                        offer: offer,
                         cell: fabric_cell_id_for_slot(slot: slot),
                         slot_key: slot_key,
                         generation: version.generation as Int,

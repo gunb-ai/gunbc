@@ -19,6 +19,7 @@ import gunbc.target_binding {
   EvaluationStoreAddressExactHeadProducer,
   EmittedCrateWorkspaceProducer,
   NativeClaimProgramProducer,
+  NativeServeProgramProducer,
   CompileCleanDiagnosticCensusStanding,
   CompileCleanDiagnosticCensusCompleted,
   CompileCleanDiagnosticCensusRefused,
@@ -51,6 +52,7 @@ import gunbc.target_binding {
   SelfHostBehavioralEquivalenceProducer,
   V2NativeCensusProducer, ResolveRefusalReading, TypeDeclarationUseReading,
   DependencyDemandCensusProducer,
+  GenericIdentityCensusProducer,
   BareChannelEligibility, BareChannelRuns, BareChannelDisabledByImportLine,
   BareReferenceChannelEntryReading, BareReferenceChannelExpectation,
   BareReferenceChannelStanding, BareReferenceChannelRead,
@@ -327,6 +329,25 @@ fn native_app_attest_entry() -> String {
 // drop gunbc.rung_drop.dag_emit_real_grammar_round_trips_off_floor, which names this label as the
 // route that still runs them; run by name, not a merge gate.
 // `gunbc test //gunbc/instruments:dag-emit-real-grammar-round-trips`.
+// THE NATIVE SERVE DOOR: std.compiler_entry NativeServeDriver exercised end to end. The seed emits
+// and builds the fixture service gunbc.instruments.native_serve_fixture, starts it on a loopback
+// port the OS chooses, sends gunbc.native_serve_probe's requests over real TCP and lets that module
+// judge the answers -- handler routes, the handler's own refusal, the door's 400 refusals, /livez
+// read back through gunbc.serve_liveness observe_serve_liveness -- plus a launch with a branch name
+// for a release, which must refuse before binding. Run by name, not a merge gate.
+// `gunbc test //gunbc/instruments:native-serve`.
+fn native_serve_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "native-serve" } }
+}
+
+fn native_serve_entry() -> String {
+  "dag/gunbc/instruments/native_serve_fixture.dag"
+}
+
+fn native_serve_binding() -> TargetBinding {
+  TargetBinding { target: native_serve_label() producer: NativeServeProgramProducer { entry: native_serve_entry() } }
+}
+
 fn dag_emit_real_grammar_round_trips_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "dag-emit-real-grammar-round-trips" } }
 }
@@ -441,6 +462,18 @@ fn dependency_demand_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "dependency-demand-census" } }
 }
 
+// THE DERIVED-NODE-IDENTITY STEP-2 INSTRUMENT (docs/plans/derived-node-identity-design.md section 7;
+// class gunbc.recurring_failure_mode generic_identity_decided_by_spelling). The seed's own
+// v1.tests.claim.generic_identity_census reads the typed graph and reports, per stored type node,
+// which generic-identity mark it carries. The standing is decided by the census's controls over
+// fixtures/generic_identity_census; the report beside it covers the v2.compiler.compile closure. It
+// states the populations it cannot reach in every run and never renders them as a count of none.
+// Run by name, on no lane: its consumers are the step-2 changes, each of which executes it at its
+// own head. `gunbc test //gunbc/instruments:generic-identity-census`.
+fn generic_identity_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "generic-identity-census" } }
+}
+
 // THE INSTRUMENT IS A `TestRule` WITH NO DEPENDENCIES, and both halves are measurements rather
 // than placeholders. It answers a test question — does the heads reading read the same grammar as
 // the full reading — so it is not a `BuildRule`; and it depends on no other target in this graph,
@@ -523,6 +556,10 @@ fn self_host_behavioral_equivalence_binding() -> TargetBinding {
 
 fn dependency_demand_census_binding() -> TargetBinding {
   TargetBinding { target: dependency_demand_census_label() producer: DependencyDemandCensusProducer {} }
+}
+
+fn generic_identity_census_binding() -> TargetBinding {
+  TargetBinding { target: generic_identity_census_label() producer: GenericIdentityCensusProducer {} }
 }
 
 fn emitted_crate_workspace_binding() -> TargetBinding {
@@ -706,11 +743,11 @@ fn instrument_targets() -> List<Label> {
     primitive_egress_census_v2_label(), primitive_egress_census_dag_label(),
     primitive_egress_census_seed_label(), floor_memory_qualification_label(), typed_graph_exclusive_bytes_label(), typed_graph_exclusive_bytes_floor_subject_label(),
     required_lane_resolution_census_label(), bare_reference_channel_outcome_label(),
-    self_host_behavioral_equivalence_label(), dependency_demand_census_label(),
+    self_host_behavioral_equivalence_label(), dependency_demand_census_label(), generic_identity_census_label(),
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
     native_materialization_store_closure_label(),
-    native_emission_controls_label()
+    native_emission_controls_label(), native_serve_label()
   ]
 }
 
@@ -723,11 +760,11 @@ fn instrument_bindings() -> List<TargetBinding> {
     primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
     primitive_egress_census_seed_binding(), floor_memory_qualification_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
     required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
-    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(),
+    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), generic_identity_census_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
-    native_emission_controls_binding()
+    native_emission_controls_binding(), native_serve_binding()
   ]
 }
 

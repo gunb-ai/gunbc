@@ -15,7 +15,7 @@ import gunbc.machine_intake_mtcollins1_boot_run {
   ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded, mtcollins1_boot_run_record,
 }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
-  MediaAttachNotAttempted, HandoffMediaNotReached, EndMediaNotTaken, BootParam5Read, SmproNotTaken, SmproProbed, PoweredOffAfterCensusEnd, OverrideNotHandedOff, OverrideConsumedByCensusBoot, OverrideNoLongerPendingAfterAttempt,
+  MediaAttachNotAttempted, HandoffMediaNotReached, EndMediaNotTaken, BootParam5Read, SmproNotTaken, SmproProbed, SmproReading, PoweredOffAfterCensusEnd, OverrideNotHandedOff, OverrideConsumedByCensusBoot, OverrideNoLongerPendingAfterAttempt,
 }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_cdrom_selection }
 import gunbc.machine_intake_mtcollins1_boot_run {
@@ -52,7 +52,9 @@ import gunbc.machine_intake_mtcollins1_boot_admission { mtcollins1_boot_host_mus
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_diagnostics_allowance }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
 import gunbc.machine_intake_mtcollins1_boot_phase_timing { mtcollins1_boot_phase_timing_not_taken }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_mtcollins1 }
+import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
+import gunbc.machine_intake_ampere_smpro_observation { SmproSiteAdmitted, SmproSiteRefused, smpro_pass_observation_fixture }
 import gunbc.fleet_converge_workflow { fleet_converge_mtcollins1_boot_runner, fleet_converge_mtcollins1_boot_steps_around, fleet_converge_mtcollins1_boot_step, fleet_converge_checkout_ref_expr, fleet_converge_event_sha_checkout_ref_expr, fleet_converge_mtcollins1_boot_job_if, fleet_converge_mtcollins1_boot_concurrency_group }
 import gunbc.fleet_workflow_steps { ci_fleet_key_agent_step }
 import extdeps.github.actions { Step, RunStep, UsesStep, RunnerSpec, SelfHosted, RunsOnExpression, HostedRunner }
@@ -69,6 +71,15 @@ import gunbc.machine_intake_mtcollins1_boot_authorization {
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A PROBED READING OVER SUPPLIED OUTCOMES, rendered against mtcollins1's real admitted site. A refused
+// site yields NOT TAKEN with the marker, so a claim expecting a probed reading fails loudly.
+fn smpro_probed_empty() -> SmproReading {
+  match mtcollins1_smpro_site() {
+    SmproSiteAdmitted { site: s } => SmproProbed { observation: smpro_pass_observation_fixture(host: operator_host_mtcollins1, site: s, outcomes: []) }
+    SmproSiteRefused { cause: _ } => SmproNotTaken { reason: "FIXTURE SITE REFUSED" }
+  }
+}
 
 // NO APPROVAL WINDOW (operator ruling 2026-09-23): the step budget is the boot's own phases only.
 test fn the_step_timeout_covers_the_boot_phases() -> Bool {
@@ -744,7 +755,7 @@ test fn the_run_record_is_decided_by_the_actuation_stage() -> Bool {
   let never = mtcollins1_boot_run_record(media: MediaAttachNotAttempted { reason: "fixture" }, handoff_media: HandoffMediaNotReached { reason: "fixture" }, end_media: EndMediaNotTaken { reason: "fixture" }, stage: ActuationNotPoweredOn { reason: "the handoff refused" }, before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd, timing: mtcollins1_boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"))
   let ended = mtcollins1_boot_run_record(
     media: MediaAttachNotAttempted { reason: "fixture" }, handoff_media: HandoffMediaNotReached { reason: "fixture" }, end_media: EndMediaNotTaken { reason: "fixture" },
-    stage: ActuationCensusEnded { selection: mtcollins1_cdrom_selection, smpro_power_on: SmproProbed { outcomes: [] }, smpro_census: SmproProbed { outcomes: [] } },
+    stage: ActuationCensusEnded { selection: mtcollins1_cdrom_selection, smpro_power_on: smpro_probed_empty(), smpro_census: smpro_probed_empty() },
     before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd,
     timing: mtcollins1_boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"),
   )
@@ -753,11 +764,11 @@ test fn the_run_record_is_decided_by_the_actuation_stage() -> Bool {
     && (match ended.override { OverrideConsumedByCensusBoot => true _ => false })
     && (match mtcollins1_boot_run_record(
       media: MediaAttachNotAttempted { reason: "fixture" }, handoff_media: HandoffMediaNotReached { reason: "fixture" }, end_media: EndMediaNotTaken { reason: "fixture" },
-      stage: ActuationPoweredOn { selection: mtcollins1_cdrom_selection, smpro_power_on: SmproProbed { outcomes: [] }, smpro_census: SmproNotTaken { reason: "x" } },
+      stage: ActuationPoweredOn { selection: mtcollins1_cdrom_selection, smpro_power_on: smpro_probed_empty(), smpro_census: SmproNotTaken { reason: "x" } },
       before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd,
       timing: mtcollins1_boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"),
     ).override { OverrideNoLongerPendingAfterAttempt => true _ => false })
-    && (match ended.smpro_census { SmproProbed { outcomes: _ } => true _ => false })
+    && (match ended.smpro_census { SmproProbed { observation: _ } => true _ => false })
 }
 
 // THE PENDING FOLD IS STATE-AWARE (review 5326655399). A poll can land between the footprint line and

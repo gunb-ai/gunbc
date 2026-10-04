@@ -1,8 +1,10 @@
 module test.claim.runner_service_activation
 
+import gunbc.fleet_converge_terminal { FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied }
+
 import std.types { Bool, String, NonEmptyStr, Int, List, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import extdeps.exec.command { shell_command_render }
 import extdeps.systemd.systemctl { systemctl_enable_verb, systemctl_start_verb }
@@ -52,17 +54,7 @@ import gunbc.runner_service_activation {
   runner_host_activation_units,
 }
 import gunbc.fleet_converge_plan {
-  fleet_converge_apply_shell,
-  fleet_converge_apply_terminal,
-  FleetConvergeRequest,
-  FullHostConverge,
-  fleet_converge_apply_terminal_line,
-  timer_retirement_plan,
-  caps_reconcile,
-  fleet_converge_desired_caps,
-  FleetConvergeApplyTerminal,
-  FullyApplied,
-  PartiallyApplied,
+  fleet_converge_apply_shell, fleet_converge_apply_terminal, FleetConvergeRequest, FullHostConverge, fleet_converge_apply_terminal_line, timer_retirement_plan, caps_reconcile, fleet_converge_desired_caps,
 }
 import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder, StructurallyGuaranteed }
 import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, ClimbableButUnbuilt, CannotClimbFurther, BoundedPopulation, UncountedNotEnumerable, stall_is_below_ceiling }
