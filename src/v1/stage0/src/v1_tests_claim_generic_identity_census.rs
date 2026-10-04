@@ -10,6 +10,7 @@ pub use crate::std_types::{Bool, List, Map};
 pub use crate::v1_compiler_compile::compile_to_resolved;
 pub use crate::v1_compiler_compile::{ResolvedPipelineResult, SourceFile};
 pub use crate::v1_compiler_infer::{param_is_generic_decl, type_node_label};
+pub use crate::v1_compiler_infer_env::node_with_children;
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 use crate::v1_compiler_infer_sigs::ResolvedFormals::{
     DeclarationBoundFormals, KernelGroundedFormals, LocalFormalsAwaitingModuleContext,
@@ -1242,6 +1243,192 @@ pub fn gi_bound_call_observed_clean(o: Rc<ResultCarrierObservation>) -> bool {
     }
 }
 
+pub fn gi_sig_with_params(
+    sig: Rc<ResolvedFuncSig>,
+    params: Rc<Vec<Rc<Node>>>,
+) -> Rc<ResolvedFuncSig> {
+    Rc::new(ResolvedFuncSig {
+        name: sig.name.clone(),
+        params: params.clone(),
+        resolved_formals: sig.resolved_formals.clone(),
+        inferred: sig.inferred.clone(),
+        output_provenance: sig.output_provenance.clone(),
+        variant_provenance: sig.variant_provenance.clone(),
+    })
+}
+
+pub fn gi_foreign_label_under_owner(
+    owner: Rc<ResolvedFuncSig>,
+    subject: Rc<Node>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    gi_foreign_label(gi_foreign_reading(
+        Rc::new(GenericIdentityContext {
+            module_file: "gic.a".to_string(),
+            enclosing: "caller_literal".to_string(),
+            generic_names: Rc::new(vec![]),
+            si: si.clone(),
+            sigs: v1_rt::rc_map_insert(
+                v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
+                "gic.a::head_of".to_string(),
+                owner.clone(),
+            ),
+        }),
+        subject.clone(),
+    ))
+}
+
+pub fn gi_owner_argument_arms_discriminate(
+    g: Rc<ResolvedGraph>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    sigs: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+) -> bool {
+    match v1_rt::map_get(&sigs, "gic.a::head_of".to_string()) {
+        std::option::Option::None => false,
+        Some(head_of) => {
+            let generic_params = Rc::new({
+                let mut __result = Vec::new();
+                for p in head_of.params.clone().iter().cloned() {
+                    if crate::v1_compiler_infer::param_is_generic_decl(p.clone(), si.clone()) {
+                        __result.push(p);
+                    }
+                }
+                __result
+            });
+            let value_params = Rc::new({
+                let mut __result = Vec::new();
+                for p in head_of.params.clone().iter().cloned() {
+                    if !crate::v1_compiler_infer::param_is_generic_decl(p.clone(), si.clone()) {
+                        __result.push(p);
+                    }
+                }
+                __result
+            });
+            let literal_list_type = Rc::new({
+                let mut __result = Vec::new();
+                for item in Rc::new({
+                    let mut __result = Vec::new();
+                    for item in Rc::new({
+                        let mut __result = Vec::new();
+                        for m in g.modules.clone().iter().cloned() {
+                            __result.extend((*m.items.clone()).iter().cloned());
+                        }
+                        __result
+                    })
+                    .iter()
+                    .cloned()
+                    {
+                        if (crate::v1_std_core::authored_name_at(si.clone(), item.clone())
+                            == "ints".to_string())
+                        {
+                            __result.push(item);
+                        }
+                    }
+                    __result
+                })
+                .iter()
+                .cloned()
+                {
+                    __result.extend(
+                        (*match item.body.clone() {
+                            Some(b) => match gi_result_expression_type(b.clone(), 0) {
+                                Some(rt) => Rc::new(vec![rt.clone()]),
+                                std::option::Option::None => Rc::new(vec![]),
+                            },
+                            std::option::Option::None => Rc::new(vec![]),
+                        })
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            })
+            .first()
+            .cloned();
+            match value_params.clone().first().cloned() {
+                std::option::Option::None => false,
+                Some(xs_param) => match value_params.clone().last().cloned() {
+                    std::option::Option::None => false,
+                    Some(d_param) => match literal_list_type.clone() {
+                        std::option::Option::None => false,
+                        Some(minted) => {
+                            let subject = crate::v1_std_core::param_node_type_expr(d_param.clone());
+                            let unmarked_param = crate::v1_compiler_infer_env::node_with_children(
+                                xs_param.clone(),
+                                v1_rt::concat(
+                                    Rc::new(vec![minted.clone()]),
+                                    Rc::new(
+                                        xs_param
+                                            .children
+                                            .clone()
+                                            .iter()
+                                            .cloned()
+                                            .skip(1 as usize)
+                                            .collect::<Vec<_>>(),
+                                    ),
+                                ),
+                            );
+                            (((gi_foreign_label_under_owner(
+                                head_of.clone(),
+                                subject.clone(),
+                                si.clone(),
+                            ) == "foreign_in_a_value_argument".to_string())
+                                && (gi_foreign_label_under_owner(
+                                    gi_sig_with_params(
+                                        head_of.clone(),
+                                        v1_rt::concat(
+                                            generic_params.clone(),
+                                            Rc::new(vec![unmarked_param.clone()]),
+                                        ),
+                                    ),
+                                    subject.clone(),
+                                    si.clone(),
+                                ) == "foreign_value_argument_undecided".to_string()))
+                                && (gi_foreign_label_under_owner(
+                                    gi_sig_with_params(head_of.clone(), generic_params.clone()),
+                                    subject.clone(),
+                                    si.clone(),
+                                ) == "foreign_in_no_value_argument".to_string()))
+                        }
+                    },
+                },
+            }
+        }
+    }
+}
+
+pub fn gi_missing_carriers_are_unobserved(
+    g: Rc<ResolvedGraph>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    sigs: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+) -> bool {
+    {
+        let no_such_item = match (*gi_result_carrier_observation(
+            g.clone(),
+            si.clone(),
+            sigs.clone(),
+            "gic_no_such_function".to_string(),
+        ))
+        .clone()
+        {
+            ResultCarrierObservation::ResultCarrierUnobserved { why: _, .. } => true,
+            ResultCarrierObservation::ResultCarrierObserved { .. } => false,
+        };
+        let no_body = match (*gi_result_carrier_observation(
+            g.clone(),
+            si.clone(),
+            sigs.clone(),
+            "Box".to_string(),
+        ))
+        .clone()
+        {
+            ResultCarrierObservation::ResultCarrierUnobserved { why: _, .. } => true,
+            ResultCarrierObservation::ResultCarrierObserved { .. } => false,
+        };
+        (no_such_item.clone() && no_body.clone())
+    }
+}
+
 pub fn generic_identity_fixture_standing(sources: Rc<Vec<Rc<SourceFile>>>) -> String {
     {
         let result = crate::v1_compiler_compile::compile_to_resolved(sources.clone());
@@ -1291,9 +1478,16 @@ pub fn generic_identity_fixture_standing(sources: Rc<Vec<Rc<SourceFile>>>) -> St
                 );
                 let bound_call_observed_clean = gi_bound_call_observed_clean(bound_call.clone());
                 let unobserved_declared = ((generic_identity_unobserved().len() as i64) == 4);
-                let held = (((marked_signature_leaf.clone() && minted_container_child.clone())
+                let owner_argument_arms =
+                    gi_owner_argument_arms_discriminate(g.clone(), si.clone(), sigs.clone());
+                let missing_carriers =
+                    gi_missing_carriers_are_unobserved(g.clone(), si.clone(), sigs.clone());
+                let held = (((((marked_signature_leaf.clone()
+                    && minted_container_child.clone())
                     && bound_call_observed_clean.clone())
-                    && unobserved_declared.clone());
+                    && unobserved_declared.clone())
+                    && owner_argument_arms.clone())
+                    && missing_carriers.clone());
                 Rc::new(vec![
                     v1_rt::concat(
                         "STANDING ".to_string(),
@@ -1318,6 +1512,14 @@ pub fn generic_identity_fixture_standing(sources: Rc<Vec<Rc<SourceFile>>>) -> St
                     gi_control_line(
                         "unobserved_populations_declared".to_string(),
                         unobserved_declared.clone(),
+                    ),
+                    gi_control_line(
+                        "owner_argument_arms_discriminate".to_string(),
+                        owner_argument_arms.clone(),
+                    ),
+                    gi_control_line(
+                        "missing_carriers_are_unobserved".to_string(),
+                        missing_carriers.clone(),
                     ),
                     v1_rt::concat(
                         "reading bound_call: ".to_string(),

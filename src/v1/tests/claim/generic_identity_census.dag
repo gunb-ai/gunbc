@@ -4,6 +4,7 @@ import v1.compiler.compile { SourceFile, ResolvedPipelineResult, compile_to_reso
 import v1.compiler.infer_items { ResolvedGraph, TypedModule }
 import v1.compiler.infer_sigs { ResolvedFuncSig, ResolvedFormals, DeclarationBoundFormals, KernelGroundedFormals, LocalFormalsAwaitingModuleContext }
 import v1.compiler.infer { param_is_generic_decl, type_node_label }
+import v1.compiler.infer_env { node_with_children }
 import v1.std.core { Node, NewlineIndex, ResolvedFormal, authored_name_at, param_node_type_expr, param_node_name_at, Resolved, TypeVariable, Arrow }
 import std.decl_ref { DeclarationRef, TypeParameter, WholeDeclaration, NamedField, declaration_ref_display_key }
 import std.types { List, String, Map, Bool }
@@ -610,6 +611,89 @@ fn gi_bound_call_observed_clean(o: ResultCarrierObservation) -> Bool {
   }
 }
 
+// THE THREE ARMS OF THE OWNER-ARGUMENT READING, EACH EXECUTED OVER A SUPPLIED OWNER (DESIGN section 3
+// witness rule; section 4b, a refusal authorable at a fixture boundary is enrolled there). The
+// real corpus never authors the undecided state -- no stored signature leaf has been seen unmarked
+// -- so its owner is built from nodes the real producer emitted: head_of's own signature with its
+// value arguments replaced. The subject node is the same in all three: head_of's parameter d, a
+// bare T carrying head_of's mark, asked about from inside another function.
+//   marked: head_of as compiled (xs: List<T> and d: T, both marked) -> in a value argument.
+//   unmarked spelling: one value argument, typed as the list LITERAL's type, whose element child
+//     is spelled T and carries no mark -> undecided.
+//   no value argument: the type-parameter declarations alone -> in no value argument.
+fn gi_sig_with_params(sig: ResolvedFuncSig, params: List<Node>) -> ResolvedFuncSig {
+  ResolvedFuncSig {
+    name: sig.name,
+    params: params,
+    resolved_formals: sig.resolved_formals,
+    inferred: sig.inferred,
+    output_provenance: sig.output_provenance,
+    variant_provenance: sig.variant_provenance
+  }
+}
+
+fn gi_foreign_label_under_owner(owner: ResolvedFuncSig, subject: Node, si: Map<String, NewlineIndex>) -> String {
+  gi_foreign_label(f: gi_foreign_reading(
+    ctx: GenericIdentityContext {
+      module_file: "gic.a",
+      enclosing: "caller_literal",
+      generic_names: [],
+      si: si,
+      sigs: map_insert(empty_map(), "gic.a::head_of", owner)
+    },
+    n: subject))
+}
+
+fn gi_owner_argument_arms_discriminate(g: ResolvedGraph, si: Map<String, NewlineIndex>, sigs: Map<String, ResolvedFuncSig>) -> Bool {
+  match map_get(sigs, "gic.a::head_of") {
+    Absent => false
+    Present { value: head_of } =>
+      let generic_params = head_of.params |> filter(p => param_is_generic_decl(p: p, source_indices: si))
+      let value_params = head_of.params |> filter(p => !param_is_generic_decl(p: p, source_indices: si))
+      let literal_list_type = g.modules |> flat_map(m => m.items)
+        |> filter(item => authored_name_at(source_indices: si, node: item) == "ints")
+        |> flat_map(item => match item.body {
+          Present { value: b } => match gi_result_expression_type(e: b, depth: 0) {
+            Present { value: rt } => [rt]
+            Absent => []
+          }
+          Absent => []
+        })
+        |> first
+      match value_params |> first {
+        Absent => false
+        Present { value: xs_param } =>
+          match value_params |> last {
+            Absent => false
+            Present { value: d_param } =>
+              match literal_list_type {
+                Absent => false
+                Present { value: minted } =>
+                  let subject = param_node_type_expr(n: d_param)
+                  let unmarked_param = node_with_children(n: xs_param, children: concat([minted], xs_param.children |> skip(1)))
+                  gi_foreign_label_under_owner(owner: head_of, subject: subject, si: si) == "foreign_in_a_value_argument"
+                    && gi_foreign_label_under_owner(owner: gi_sig_with_params(sig: head_of, params: concat(generic_params, [unmarked_param])), subject: subject, si: si) == "foreign_value_argument_undecided"
+                    && gi_foreign_label_under_owner(owner: gi_sig_with_params(sig: head_of, params: generic_params), subject: subject, si: si) == "foreign_in_no_value_argument"
+              }
+          }
+      }
+  }
+}
+
+// A CARRIER THAT IS NOT THERE ANSWERS UNOBSERVED, in both ways one can be missing: no item of that
+// name, and an item with no body (the fixture's record declaration).
+fn gi_missing_carriers_are_unobserved(g: ResolvedGraph, si: Map<String, NewlineIndex>, sigs: Map<String, ResolvedFuncSig>) -> Bool {
+  let no_such_item = match gi_result_carrier_observation(g: g, si: si, sigs: sigs, function_name: "gic_no_such_function") {
+    ResultCarrierUnobserved { why: _ } => true
+    ResultCarrierObserved { type_label: _, carries_foreign_parameter: _ } => false
+  }
+  let no_body = match gi_result_carrier_observation(g: g, si: si, sigs: sigs, function_name: "Box") {
+    ResultCarrierUnobserved { why: _ } => true
+    ResultCarrierObserved { type_label: _, carries_foreign_parameter: _ } => false
+  }
+  no_such_item && no_body
+}
+
 fn generic_identity_fixture_standing(sources: List<SourceFile>) -> String {
   let result = compile_to_resolved(sources: sources)
   match result.graph {
@@ -626,13 +710,17 @@ fn generic_identity_fixture_standing(sources: List<SourceFile>) -> String {
       let bound_call = gi_result_carrier_observation(g: g, si: si, sigs: sigs, function_name: "caller_function")
       let bound_call_observed_clean = gi_bound_call_observed_clean(o: bound_call)
       let unobserved_declared = (generic_identity_unobserved() |> count) == 4
-      let held = marked_signature_leaf && minted_container_child && bound_call_observed_clean && unobserved_declared
+      let owner_argument_arms = gi_owner_argument_arms_discriminate(g: g, si: si, sigs: sigs)
+      let missing_carriers = gi_missing_carriers_are_unobserved(g: g, si: si, sigs: sigs)
+      let held = marked_signature_leaf && minted_container_child && bound_call_observed_clean && unobserved_declared && owner_argument_arms && missing_carriers
       [
         concat("STANDING ", if held { "held" } else { "unmet" }),
         gi_control_line(name: "marked_signature_leaf", held: marked_signature_leaf),
         gi_control_line(name: "minted_container_child", held: minted_container_child),
         gi_control_line(name: "bound_call_observed_clean", held: bound_call_observed_clean),
         gi_control_line(name: "unobserved_populations_declared", held: unobserved_declared),
+        gi_control_line(name: "owner_argument_arms_discriminate", held: owner_argument_arms),
+        gi_control_line(name: "missing_carriers_are_unobserved", held: missing_carriers),
         concat("reading bound_call: ", gi_collision_reading(o: bound_call)),
         concat("reading spelling_collision_call: ", gi_collision_reading(o: gi_result_carrier_observation(g: g, si: si, sigs: sigs, function_name: "caller_literal")))
       ] |> join(separator: "\n")
