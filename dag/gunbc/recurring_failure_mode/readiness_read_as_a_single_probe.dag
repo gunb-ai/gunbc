@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.readiness_read_as_a_single_probe
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data readiness_read_as_a_single_probe: RecurringFailureMode = RecurringFailureMode {
+  identity: "readiness_read_as_a_single_probe" as NonEmptyStr,
+
+  receipts: [
+    "A READINESS FACT WAS READ AS ONE PROBE, so a correctly launching subject read as a failed one. The native apply's front-door readback asked `curl /v1/models` once with a 30 s budget, while the engine it asked is allowed VLLM_ENGINE_READY_TIMEOUT_S (3600 s for the GLM arms) to load before the port listens at all. A connection refused during load is 'not yet', not 'no'; the single probe had no way to say the difference, and the transaction rolled the arm back.",
+
+    "SPECIMEN, 2026-10-04, gunbc#13040, Group A fp8-8 launch run 37175686123: container readback passed 4/4 and NCCL verified IB on all four ranks; the head was probed about 90 s after start while ranks were still loading a 306 GB checkpoint ('curl: (7) Failed to connect to 127.0.0.1 port 30000 after 0 ms'), READBACK-REFUSED-front-door-unanswered, clean rollback 4/4. The link is shared: gunbc.spark.native_serving_apply spark_native_front_door_plans serves every native arm, so a Group B relaunch through it carried the same defect.",
+
+    "THE OVER-CORRECTIONS THIS CLASS INVITES are a longer fixed sleep (a second, unowned number) and an unbounded wait (a crashed engine waited out). The readiness bound already has one authority -- the engine's own VLLM_ENGINE_READY_TIMEOUT_S in the head's environment (gunbc.spark.arm_memory_fit engine_ready_timeout_for) -- and a wait is valid only for the SAME incarnation it began on.",
+
+    "REPAIR (gunbc#13040): the front door polls until the engine's own ready timeout, records the head container's id at the start and refuses immediately if the id, running state or restart count moves, and every refusal names elapsed time and the last front-door observation; an unreadable timeout refuses by name. Witness w_the_front_door_waits_for_the_engine_ready_timeout_on_one_incarnation. RUNG FOUND AT: mitigatable (refused loudly, but refused a correct arm). RUNG NOW: mechanically preventable. CEILING: mechanically preventable -- readiness is an external fact. NEXT-RUNG TRIGGER: a readiness wait carrier shared by every serving readback (pair and native), so no readback can spell a one-shot readiness probe.",
+  ],
+
+  evidence: [],
+}

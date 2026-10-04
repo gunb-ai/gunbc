@@ -69,6 +69,7 @@ import gunbc.spark.serving_arm { glm_native_concurrent_profile, ServingLaunchPro
 import gunbc.spark.native_serving_realization { glm_native_launch_lines, glm_native_master_endpoint }
 import std.nat { Nat }
 import std.measure { Second, second, second_count }
+import gunbc.spark.arm_memory_fit { engine_ready_timeout_for, EngineReadyTimeoutResolved, EngineReadyTimeoutUnreadable }
 
 // THE NATIVE ARM'S FIRST CONVERGENCE, OVER THE ADMINISTRATOR'S PASSWORD SESSION. Group B ran from
 // 2026-09-10 as a bare `docker run` per host written by the cutover transaction: supervised by
@@ -724,10 +725,31 @@ fn spark_native_metadata_cleanup_script(unit_name: NonEmptyStr, transaction_id: 
 // IT IS THE ONE READBACK LEG THAT STAYS A SHELL COMMAND, because the front door is an HTTP fact about
 // the endpoint rather than a fact about a container, and gunbc.spark.serving_rank_observe's producers
 // are all container-scoped. The container-shaped half of the readback no longer runs here at all.
-fn spark_native_front_door_script(port_text: String, served_alias: NonEmptyStr) -> String {
+//
+// AND IT WAITS AS LONG AS THE ENGINE IS ALLOWED TO TAKE, NO LONGER. The ranks' transport verdict is read
+// as soon as NCCL initializes, but the API server answers only after the weights load, and the engine's
+// own bound on that is VLLM_ENGINE_READY_TIMEOUT_S in the head's environment (gunbc.spark.arm_memory_fit
+// engine_ready_timeout_for). A single 30 s probe refused a correctly launching 328 GB arm on every
+// attempt (Group A fp8-8, run 37175686123: all four ranks verified on IB, then 'connection refused').
+// It polls until that deadline, and stops early -- with its own cause -- the moment the head container
+// is no longer the SAME running incarnation (id changed, stopped, or restarted), so a crashed engine is
+// not waited out; every refusal names the elapsed time and the last front-door observation.
+// This is the one front-door link for every native arm (Group B's relaunch reaches it too), fixed here once.
+fn spark_native_front_door_script(port_text: String, served_alias: NonEmptyStr, ready_within_seconds: Nat, container: NonEmptyStr) -> String {
   join([
     "set -e\n",
-    "if ! curl -fsS --max-time 30 http://127.0.0.1:", port_text, "/v1/models > ", spark_native_readback_dir, "/models.json; then echo READBACK-REFUSED-front-door-unanswered; exit 1; fi\n",
+    "start=$(date +%s); deadline=$(( start + ", to_string(ready_within_seconds), " ))\n",
+    "incarnation=$(docker inspect --format '\{\{.Id}}' ", shell_quote(arg: container as String), " 2>/dev/null || true)\n",
+    "if [ -z \"$incarnation\" ]; then echo READBACK-REFUSED-head-container-absent-before-readiness; exit 1; fi\n",
+    "last=not-yet-probed\n",
+    "until curl -fsS --max-time 30 http://127.0.0.1:", port_text, "/v1/models > ", spark_native_readback_dir, "/models.json 2>", spark_native_readback_dir, "/models.err; do\n",
+    "  last=$(tr '\\n' ' ' < ", spark_native_readback_dir, "/models.err | cut -c1-200)\n",
+    "  now=$(docker inspect --format '\{\{.Id}} \{\{.State.Running}} \{\{.RestartCount}}' ", shell_quote(arg: container as String), " 2>/dev/null || echo absent)\n",
+    "  if [ \"$now\" != \"$incarnation true 0\" ]; then echo \"READBACK-REFUSED-head-incarnation-changed-after-$(( $(date +%s) - start ))s: was $incarnation running, now $now; last front-door observation: $last\"; exit 1; fi\n",
+    "  if [ $(date +%s) -ge $deadline ]; then echo \"READBACK-REFUSED-front-door-unanswered-within-", to_string(ready_within_seconds), "s (VLLM_ENGINE_READY_TIMEOUT_S): elapsed $(( $(date +%s) - start ))s; last observation: $last\"; exit 1; fi\n",
+    "  sleep 15\n",
+    "done\n",
+    "echo \"front-door-ready-after-$(( $(date +%s) - start ))s\"\n",
     "tr -d ' \\n' < ", spark_native_readback_dir, "/models.json > ", spark_native_readback_dir, "/models.compact\n",
     "if ! grep -Fq ", shell_quote(arg: join(["\"id\":\"", served_alias as String, "\""], "")), " ", spark_native_readback_dir, "/models.compact; then echo READBACK-REFUSED-front-door-serves-another-model; exit 1; fi\n",
     "echo front-door-serves-", served_alias as String, "\n",
@@ -1184,9 +1206,14 @@ fn spark_native_apply_stage_plans(steps: List<SparkNativeHostStep>) -> List<Spar
 fn spark_native_front_door_plans(steps: List<SparkNativeHostStep>) -> List<SparkPairHostApplyPlan> {
   flat_map(steps, st =>
     if spark_native_step_is_head(st: st) {
-      [spark_native_plan_of(step: st, script: spark_native_front_door_script(
-        port_text: to_string(st.serve_port),
-        served_alias: st.served_alias))]
+      [spark_native_plan_of(step: st, script: match engine_ready_timeout_for(env: st.launch.container.env) {
+        EngineReadyTimeoutUnreadable { cause: c } => join(["echo ", shell_quote(arg: join(["READBACK-REFUSED-engine-ready-timeout-unreadable: ", c as String], "")), "; exit 1\n"], "")
+        EngineReadyTimeoutResolved { timeout: t } => spark_native_front_door_script(
+          port_text: to_string(st.serve_port),
+          served_alias: st.served_alias,
+          ready_within_seconds: second_count(s: t),
+          container: st.launch.container.name)
+      })]
     } else {
       [] as List<SparkPairHostApplyPlan>
     })

@@ -6,7 +6,7 @@ import gunbc.fleet_wireless_link { observe_wireless_link, spark_wireless_link_de
 import extdeps.systemd.journalctl { journalctl_kernel_current_boot_argv }
 import gunbc.auth.standing_operator_grant { standing_grant_covers, StandingArmLaunch }
 import gunbc.spark.pair_serving_d0 { d0_standing_grants }
-import gunbc.spark.pair_serving_d0_door { StandingGrantRowStanding, StandingGrantRowOnMain, StandingGrantRowNotOnMain, fresh_grant_row_standing }
+import gunbc.spark.pair_serving_d0_door { StandingGrantRowStanding, StandingGrantRowOnMain, StandingGrantRowNotOnMain, fresh_grant_row_standing, executed_grant_row }
 import extdeps.git
 import gunbc.output_policy { ExpectSuccess }
 import std.types { String, Bool, List, NonEmptyStr, GitRef, Int }
@@ -443,7 +443,7 @@ fn group_arm_launch_admission_live(
   incumbent: ArmDeclaredIncumbent,
 ) -> GroupArmLaunchAdmission {
   let held = spark_serving_admissible_hosts(subject: PairServingUnitOn { group: group })
-  let grant_row = fresh_grant_row_standing()
+  let grant_row = fresh_grant_row_standing(executed: executed_grant_row())
   match observe_executor_reach() {
     ExecutorReachUnknown { cause: c } => GroupArmLaunchAdmissionRefused { causes: [join(["the executor could not be identified, so the group's authority log could not be read: ", c], "")] }
     ExecutorReachKnown { short_hostname: executor, path: _ } =>
