@@ -9,6 +9,7 @@ import gunbc.durable_cas_file_store {
   DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
 }
 import gunbc.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance, isolated_dashboard_instance, dashboard_instance_dispatch_attempt_state_root,
   DashboardActuating, DashboardLocalProvision,
@@ -32,6 +33,7 @@ import gunbc.roadmap_belt_tick_cli { belt_start_record_exit }
 fn fresh_instance(tag: String) -> HostDashboardInstance {
   let dir = shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_dogfood_", tag, ".XXXXXX"], "")).path
   isolated_dashboard_instance(
+    deployment: deployment_id(name: "dogfood-wet" as NonEmptyStr),
     instance_id: "dogfood-wet" as NonEmptyStr,
     layout: srv1_host_layout(),
     root: dir as FilePath,
