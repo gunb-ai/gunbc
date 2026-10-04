@@ -1,11 +1,11 @@
 module gunbc.machine_intake_bmc_rotation_route_evidence
 
-import std.types { NonEmptyStr, String }
+import std.types { Int, NonEmptyStr, String }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.content_hash { Sha256Hash }
 import std.content_hash { sha256_hex_digest }
-import extdeps.bmc.endpoint { BmcControllerEndpoint }
-import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.access_profile { SurfaceManagerIdentity }
 import extdeps.network.ipv4 { render_ipv4_address }
 import gunbc.machine_intake_receipt { EvidenceRef }
@@ -19,10 +19,12 @@ import gunbc.machine_intake_mtjade1_access_observation {
   read_mtjade1_recorded_manager_identity,
 }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_firmware }
-import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_user3_route_evidence }
+import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_user3_route_evidence, mtcollins1_published_user }
+import extdeps.bmc.ipmi_channel { IpmiPrivilegeNoAccess, ipmi_user_channel_access, extdeps_external_authority_anchor }
+import extdeps.ampere.mt_collins_firmware_release { mt_collins_bmc_0_45_3_hpm }
 import gunbc.machine_intake_bmc_rotation_route {
-  BmcRotationRouteStanding, HistoricalRotationRouteObservation, IpmiSetUserPassword, ObservedSurfaceRead,
-  rotation_route_from_committed_execution, redfish_account_password_write,
+  BmcRotationRouteStanding, HistoricalRotationRouteObservation, IpmiSetUserPassword, IpmiSetUserAccess, ObservedSurfaceRead,
+  PublicStandardOperation, rotation_route_candidate, rotation_route_from_committed_execution, redfish_account_password_write,
 }
 
 // THE ROTATION ROUTE STANDING OF EACH CONTROLLER THIS FLEET HAS EVIDENCE FOR, derived from that
@@ -43,6 +45,47 @@ fn mtcollins1_rotation_route_standing() -> BmcRotationRouteStanding {
     request: IpmiSetUserPassword { user: 3 },
     request_receipt: mtcollins1_user3_route_evidence,
     response_receipt: mtcollins1_user3_route_evidence,
+  )
+}
+
+// MTCOLLINS1'S CHANNEL-ACCESS ROUTE (cut O1a-2): A CANDIDATE, NOT GROUNDED. The BmcSecure conjunction
+// needs the published account refused on every LAN census member, and a password write cannot set a
+// channel privilege limit to NO ACCESS; Set User Access can. No execution of it on this controller is
+// committed, so the standing is a qualification candidate and nothing more.
+//
+// THE CONTROLLER AND BUILD ARE THE CURRENT ONES. The endpoint is the unit's controller address. The
+// build is BMC 0.45.3, the release extdeps.ampere.mt_collins_firmware_release mt_collins_bmc_0_45_3_hpm
+// installed on 2026-10-02 (gunbc.fleet.mtcollins_firmware_converge credential_effect_of records that
+// reflash), so it is NOT mtcollins1_firmware (0.32), and the executed password route on 0.32 does not
+// carry over to it (admit_rotation_apply refuses another build). The raw string is the release's own
+// version; no post-reflash version readback is committed (see the evidence note below).
+//
+// THE REQUEST is the one the operator-gated qualification would execute: the published account
+// (mtcollins1_published_user) to NO ACCESS on LAN channel 2, the first of the channels the operator
+// reports the factory administrator still holds after the reflash (eager-gull-22, 2026-10-04). Those
+// channel numbers are an operator report, not a committed observation.
+//
+// EVIDENCE IS THE PUBLIC STANDARD ONLY. The IPMI v2.0 specification defines Set User Access
+// (extdeps.bmc.ipmi_channel's cited authority). NO post-reflash channel-access observation is
+// committed, so none is cited. The read-only observations missing, each to be committed as a
+// content-addressed receipt from the controller at its current address: Get Channel Info for every
+// channel 0h-Fh (the post-reflash channel census), Get User Access for the published user on every
+// channel that census returns, and a version readback (Get Device ID / mc info) naming the installed
+// BMC build.
+fn mtcollins1_current_bmc_firmware() -> BmcFirmwareReleaseIdentity {
+  let v = mt_collins_bmc_0_45_3_hpm.version
+  bmc_firmware_release_identity_of_wire(
+    family: AmiMegaRac,
+    wire: join([to_string(v.major as Int), ".", to_string(v.minor as Int), ".", to_string(v.patch as Int)], "") as NonEmptyStr,
+  )
+}
+
+fn mtcollins1_channel_access_route_standing() -> BmcRotationRouteStanding {
+  rotation_route_candidate(
+    endpoint: mtcollins1_endpoint,
+    firmware: mtcollins1_current_bmc_firmware(),
+    request: IpmiSetUserAccess { access: ipmi_user_channel_access(channel: 2, user: mtcollins1_published_user, privilege: IpmiPrivilegeNoAccess) },
+    evidence: PublicStandardOperation { authority: extdeps_external_authority_anchor },
   )
 }
 
