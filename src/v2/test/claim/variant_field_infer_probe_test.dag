@@ -397,3 +397,17 @@ test fn vfp_mo_the_match_types_from_its_arms_holds() -> Bool {
 test fn vfp_mo_the_arm_binder_types_from_the_payload_field_holds() -> Bool {
   vfp_match_only_reading().arm_body_fact == ^Int
 }
+// ---- BISECTION: verdict agreement between the full fixture and each half. The full fixture is
+// ---- known to refuse (the infers row above fails), so a PASS here means the half refuses too and
+// ---- a FAIL means the half infers. Same temporary status as the ladder.
+test fn vfp_rt_and_mo_agree_on_the_verdict_holds() -> Bool {
+  (vfp_infers(reading: vfp_round_trip_reading()) == vfp_infers(reading: vfp_match_only_reading()))
+}
+
+test fn vfp_rt_and_co_agree_on_the_verdict_holds() -> Bool {
+  (vfp_infers(reading: vfp_round_trip_reading()) == vfp_infers(reading: vfp_construction_only_reading()))
+}
+
+test fn vfp_mo_and_co_agree_on_the_verdict_holds() -> Bool {
+  (vfp_infers(reading: vfp_match_only_reading()) == vfp_infers(reading: vfp_construction_only_reading()))
+}
