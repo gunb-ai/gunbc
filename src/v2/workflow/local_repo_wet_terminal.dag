@@ -1666,6 +1666,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.host_boot_attempt_admission_wet_witness", function: "one_changed_byte_changes_the_receipt_digest_by_real_execution" },
+      entry: "dag/test/claim/host/host_boot_attempt_admission_wet_witness_test.dag",
+      function: "one_changed_byte_changes_the_receipt_digest_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.host_boot_attempt_admission_wet_witness", function: "an_attempt_slot_admits_each_nonce_once_across_later_attempts_and_hold_releases_by_real_execution" },
+      entry: "dag/test/claim/host/host_boot_attempt_admission_wet_witness_test.dag",
+      function: "an_attempt_slot_admits_each_nonce_once_across_later_attempts_and_hold_releases_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.durable_cas_file_store_wet_witness", function: "commit_then_independent_read_back_agrees_by_real_execution" },
       entry: "dag/test/claim/durable_cas_file_store_wet_witness_test.dag",
       function: "commit_then_independent_read_back_agrees_by_real_execution",
