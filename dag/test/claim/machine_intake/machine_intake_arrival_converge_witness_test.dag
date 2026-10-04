@@ -43,7 +43,7 @@ import gunbc.machine_intake_arrival_converge {
   ArrivalStepReceipt, AccessDiscoverReceipt, IdentityBindReceipt, ArrivalStepRefusal,
   IdentityBindObserveRefused, IdentityBindAccessForAnotherInstance, UnitKeyNotBound, AccessDiscoverObserveRefused, ReadOnlyPhaseRefused,
   IdentityBindInputs, AccessDiscoverEstablished,
-  access_discover_step_ref, identity_bind_provisional_step_ref, arrival_order_authority, arrival_planning_authority, identity_bind_inputs_supplied,
+  access_discover_step_ref, identity_bind_provisional_step_ref, arrival_order_authority, arrival_planning_authority,
   arrival_prefix_through, arrival_prefix_steps, ArrivalPrefixStepped, ArrivalPrefixPhaseUnstepped,
   arrival_prefix_last, arrival_receipt_projection, access_discover, identity_bind_provisional,
   converge_mtjade1_arrival_prefix, converge_arrival_prefix, mtjade1_identity_bind_inputs,
@@ -248,50 +248,10 @@ fn established_access(o: StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal>) ->
   }
 }
 
-// SUPPLIED at the IdentityBindProvisional boundary: a board serial and a provisional assembly, so the
-// step can be shown to converge and to bind the run's attempt. Neither is a fact about mtjade1; the
-// real path (first claim) is the BoardSerialAbsent refusal.
-fn supplied_identity_inputs() -> IdentityBindInputs {
-  identity_bind_inputs_supplied(
-    board_serials: [BoardSerialObservation { source: BmcFru, serial: "SUPPLIED-SERIAL-0001" }],
-    other_units: [],
-    assembly: Present { value: AssemblyManifest { chassis_part_number: "SUPPLIED-CHASSIS", components: [ComponentIdentity { kind: ChassisComponent, slot: "chassis", identity: "SUPPLIED-CHASSIS" }] } },
-  )
-}
-
 fn fold_real(run: ConvergenceRunId, subject: StepSubjectKey, outcomes: List<StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal>>) -> ConvergenceRunVerdict<ArrivalStepReceipt, ArrivalStepRefusal>? {
   match admit_convergence_plan(planning: arrival_planning_authority(), steps: real_steps()) {
     ConvergencePlanAdmitted { plan: p } => Present { value: fold_convergence_run(plan: p, run: run, subject: subject, outcomes: outcomes, projection: arrival_receipt_projection()) }
     ConvergencePlanRefused { cause: _ } => none
-  }
-}
-
-// POSITIVE CONTROL: with a supplied serial and assembly the same run converges both instances, and
-// the subject carries this run as its one intake attempt.
-test fn w_supplied_identity_inputs_converge_and_bind_the_run_attempt() -> Bool {
-  let read = read_mtjade1_current_manager_read()
-  let access = real_access(run: run_a, subject: mtjade1_key, read: read)
-  match established_access(o: access) {
-    Absent => false
-    Present { value: a } => {
-      let identity = identity_bind_provisional(key: step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: mtjade1_key), access: a, inputs: supplied_identity_inputs())
-      match fold_real(run: run_a, subject: mtjade1_key, outcomes: [access, identity]) {
-        Present { value: v } => match v {
-          RunConverged { run: r } => match r.ledger.instances.last() {
-            Present { value: s } => match s {
-              InstanceConverged { key: _, receipt: r } => match r {
-                IdentityBindReceipt { receipt: i } => ((i.subject.attempt_id as NonEmptyStr) as String) == "o1c1-witness-run-a"
-                AccessDiscoverReceipt { receipt: _ } => false
-              }
-              _ => false
-            }
-            Absent => false
-          }
-          _ => false
-        }
-        Absent => false
-      }
-    }
   }
 }
 
@@ -318,7 +278,8 @@ fn stopped_on_unmet_access_precondition<R, C>(v: ConvergenceRunVerdict<R, C>?) -
 // A PRECONDITION IS NOT SATISFIED BY A RECEIPT FOR ANOTHER SUBJECT. SUPPLIED at the fold's
 // interface: the Manager read is sealed and binds to mtjade1 alone, so no real AccessDiscover receipt
 // for another unit exists to hand it. The probe receipt below carries its key and consumed set as
-// plain fields, read through a projection this witness is admitted to mint. Over the real admitted
+// plain fields, read through a projection minted inside the test function itself: the fold admits
+// these two Bool-returning claims as callers, and no function here returns a sealed carrier. Over the real admitted
 // plan, an IdentityBindProvisional instance for mtjade1 that consumed mtjade2's AccessDiscover
 // instance stops the line naming mtjade1's own AccessDiscover instance as the unmet precondition,
 // although mtjade1's AccessDiscover converged.
@@ -335,10 +296,6 @@ fn probe_consumed(r: ProbeReceipt) -> List<StepInstanceKey> {
   r.consumed
 }
 
-fn probe_receipt_projection() -> ConvergenceReceiptProjection<ProbeReceipt> {
-  convergence_receipt_projection(key_of: probe_key, consumed_of: probe_consumed)
-}
-
 test fn w_a_precondition_is_not_satisfied_by_a_receipt_for_another_subject() -> Bool {
   let own_access = step_instance_key(run: run_a, step: access_discover_step_ref, subject: mtjade1_key)
   let foreign_access = step_instance_key(run: run_a, step: access_discover_step_ref, subject: "mtjade2" as StepSubjectKey)
@@ -349,7 +306,7 @@ test fn w_a_precondition_is_not_satisfied_by_a_receipt_for_another_subject() -> 
   ]
   match admit_convergence_plan(planning: arrival_planning_authority(), steps: real_steps()) {
     ConvergencePlanAdmitted { plan: p } =>
-      stopped_on_unmet_access_precondition(v: Present { value: fold_convergence_run(plan: p, run: run_a, subject: mtjade1_key, outcomes: outcomes, projection: probe_receipt_projection()) })
+      stopped_on_unmet_access_precondition(v: Present { value: fold_convergence_run(plan: p, run: run_a, subject: mtjade1_key, outcomes: outcomes, projection: convergence_receipt_projection(key_of: probe_key, consumed_of: probe_consumed)) })
     ConvergencePlanRefused { cause: _ } => false
   }
 }
@@ -365,7 +322,7 @@ test fn w_a_precondition_is_not_satisfied_by_a_receipt_from_another_run() -> Boo
   ]
   match admit_convergence_plan(planning: arrival_planning_authority(), steps: real_steps()) {
     ConvergencePlanAdmitted { plan: p } =>
-      stopped_on_unmet_access_precondition(v: Present { value: fold_convergence_run(plan: p, run: run_a, subject: mtjade1_key, outcomes: outcomes, projection: probe_receipt_projection()) })
+      stopped_on_unmet_access_precondition(v: Present { value: fold_convergence_run(plan: p, run: run_a, subject: mtjade1_key, outcomes: outcomes, projection: convergence_receipt_projection(key_of: probe_key, consumed_of: probe_consumed)) })
     ConvergencePlanRefused { cause: _ } => false
   }
 }
@@ -377,7 +334,7 @@ test fn w_identity_bind_refuses_an_access_receipt_from_another_run() -> Bool {
   match established_access(o: real_access(run: run_b, subject: mtjade1_key, read: read_mtjade1_current_manager_read())) {
     Absent => false
     Present { value: earlier } => {
-      let outcome: StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal> = identity_bind_provisional(key: step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: mtjade1_key), access: earlier, inputs: supplied_identity_inputs())
+      let outcome: StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal> = identity_bind_provisional(key: step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: mtjade1_key), access: earlier, inputs: mtjade1_identity_bind_inputs())
       let refusal: ArrivalStepRefusal? = step_outcome_refusal(outcome: outcome)
       match refusal {
         Present { value: c } => match c { IdentityBindAccessForAnotherInstance { access: k } => ((k.run as NonEmptyStr) as String) == "o1c1-witness-run-b"  _ => false }

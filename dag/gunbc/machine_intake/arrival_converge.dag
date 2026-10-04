@@ -244,9 +244,8 @@ fn current_route_standing_of(access: AccessObservation) -> BmcRotationRouteStand
 // What the unit supplies from its committed observations: board serials (FRU, SMBIOS), the unit keys
 // already bound elsewhere in the fleet, and the provisional assembly readable before boot. The access
 // receipt is the step's precondition and is the one input the fold checks against the ledger.
-// SEALED. Production inputs are constructed only in this module, by the per-unit function that reads
-// the unit's committed captures (mtjade1_identity_bind_inputs). Supplied inputs reach the step only
-// through identity_bind_inputs_supplied, whose callers are named witness facades.
+// SEALED. Constructed only in this module, by the per-unit function that reads the unit's committed
+// evidence (mtjade1_identity_bind_inputs). No supplied-value path reaches the step.
 type IdentityBindInputs sole_constructor {
   board_serials: List<BoardSerialObservation>
   other_units: List<UnitKey>
@@ -323,14 +322,6 @@ type IdentityBoundProvisional sole_constructor {
   key: StepInstanceKey
   consumed_access: StepInstanceKey
   subject: MachineIntakeSubject
-}
-
-fn identity_bind_inputs_supplied(board_serials: List<BoardSerialObservation>, other_units: List<UnitKey>, assembly: AssemblyManifest?) -> IdentityBindInputs
-  admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "supplied_identity_inputs"),
-  ]
-{
-  IdentityBindInputs { board_serials: board_serials, other_units: other_units, assembly: assembly }
 }
 
 // ONE INTAKE ATTEMPT PER RUN, BY CONSTRUCTION: the attempt identity is the run identity.
