@@ -1,7 +1,6 @@
 module std.keyed_row
 
 import std.types { List }
-import v2.std.optional { Present }
 
 // Minimal keyed-row carrier split from std.change for stage0 emit: KeyedRow plus keyed_row_find
 // only. std.change retains merge/diff/three-way patch machinery; this module is the stage0-safe

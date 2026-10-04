@@ -4,7 +4,6 @@ import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef }
 import std.roster_frontier { declaration_ref_eq }
 import extdeps.uri { Uri, File }
-import v2.std.optional { Absent, Present }
 
 type ExternalAuthority {
   uri: Uri
