@@ -56,6 +56,7 @@ import gunbc.runner.runner_jit_perform {
 
 import extdeps.uri { Uri, uri_https }
 import extdeps.auth.jws { JwsSigningKeyRef, HostKeyFile }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
