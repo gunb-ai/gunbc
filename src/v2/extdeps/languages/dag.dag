@@ -7759,7 +7759,15 @@ type DagEmitText {
 fn dag_emit_text_step(lex: LexRules, acc: DagEmitText, t: GrammarEmitTerminal) -> Outcome<DagEmitText> {
   match t {
     GrammarEmitLineBreak => outcome_accepted(value: DagEmitText { text: acc.text, break_pending: true })
-    _ =>
+    GrammarEmitClassTerminal { token_class: _, captured: _ } =>
+      bind_outcome(
+        o: dag_emit_token_spelling(lex: lex, terminal: t),
+        f: fn(spelled) {
+          let separator = if acc.text == "" { "" } else if acc.break_pending { "\n" } else { " " }
+          outcome_accepted(value: DagEmitText { text: concat(acc.text, concat(separator, spelled)), break_pending: false })
+        }
+      )
+    GrammarEmitLexemeTerminal { token_class: _, lexeme: _ } =>
       bind_outcome(
         o: dag_emit_token_spelling(lex: lex, terminal: t),
         f: fn(spelled) {
