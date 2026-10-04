@@ -1588,7 +1588,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         }
         CompilerDiagnostic::ModuleFilenameCollision { .. } => "ModuleFilenameCollision",
         CompilerDiagnostic::EmittedSymbolCollision { .. } => "EmittedSymbolCollision",
-        CompilerDiagnostic::NativeEffectRealizationRefused { .. } => "NativeEffectRealizationRefused",
+        CompilerDiagnostic::NativeEffectRealizationRefused { .. } => {
+            "NativeEffectRealizationRefused"
+        }
         CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { .. } => {
             "EffectSummaryIncompleteAtFunctionValue"
         }
@@ -1700,7 +1702,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::EffectfulSelfRecursionUnrealized { name, .. } => name.clone(),
         CompilerDiagnostic::ModuleFilenameCollision { filename, .. } => filename.clone(),
         CompilerDiagnostic::EmittedSymbolCollision { symbol, .. } => symbol.clone(),
-        CompilerDiagnostic::NativeEffectRealizationRefused { entry, refusals, .. } => format!(
+        CompilerDiagnostic::NativeEffectRealizationRefused {
+            entry, refusals, ..
+        } => format!(
             "{entry}: {}",
             refusals.iter().cloned().collect::<Vec<_>>().join("; ")
         ),

@@ -2673,7 +2673,9 @@ fn native_serve_start(
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .map_err(|cause| format!("NATIVE-SERVE REFUSAL cause=SpawnFailed entry={entry} — {cause}"))?;
+        .map_err(|cause| {
+            format!("NATIVE-SERVE REFUSAL cause=SpawnFailed entry={entry} — {cause}")
+        })?;
     let pipe = match child.stderr.take() {
         Some(pipe) => pipe,
         None => {
