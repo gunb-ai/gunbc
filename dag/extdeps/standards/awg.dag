@@ -1,0 +1,60 @@
+module extdeps.standards.awg
+
+import std.types { List, NonEmptyStr }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure { MicroohmPerMetre, microohm_per_metre }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
+import extdeps.uri { Uri, Https }
+import v2.std.optional { Present, Absent }
+
+// AMERICAN WIRE GAUGE: solid copper conductor resistance per metre at 20 C, the figure a 12 V
+// branch's voltage-drop derivation multiplies by its length.
+//
+// The gauge is defined by ASTM B258 and the resistance figures every table prints derive from it
+// with annealed copper's resistivity. The rows below are the rounded values relayed through search
+// summaries of published tables (misumi, hyperphysics) on 2026-10-04, not a first-party read of
+// the standard, and are graded so. Stranded conductors run a few percent higher; the derivation
+// that consumes these must say which it assumed.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "hyperphysics.gsu.edu/hbase/Tables/wirega.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.standards.awg",
+      decl_name: "awg_copper_resistance_rows",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+type AwgCopperResistanceRow {
+  gauge: Nat
+  resistance_per_metre: MicroohmPerMetre
+}
+
+data awg_copper_resistance_rows: List<AwgCopperResistanceRow> = [
+  AwgCopperResistanceRow { gauge: 10, resistance_per_metre: microohm_per_metre(count: 3280) },
+  AwgCopperResistanceRow { gauge: 12, resistance_per_metre: microohm_per_metre(count: 5210) },
+  AwgCopperResistanceRow { gauge: 14, resistance_per_metre: microohm_per_metre(count: 8280) },
+  AwgCopperResistanceRow { gauge: 16, resistance_per_metre: microohm_per_metre(count: 13200) },
+  AwgCopperResistanceRow { gauge: 18, resistance_per_metre: microohm_per_metre(count: 20900) },
+]
+
+data awg_copper_resistance_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Read ASTM B258 / NEC Chapter 9 Table 8 and replace the rounded relayed values (3.28, 5.21, 8.28, 13.2, 20.9 ohm/km for 10-18 AWG solid copper at 20 C) with the table's own.",
+}
+
+// A gauge the table does not carry is a refusal, never a nearest neighbour.
+fn awg_copper_resistance(gauge: Nat) -> MicroohmPerMetre? {
+  fold(awg_copper_resistance_rows, init: none, f: (acc, row) =>
+    if row.gauge == gauge { Present { value: row.resistance_per_metre } } else { acc })
+}

@@ -292,8 +292,8 @@ whether more printers are worth buying.
 | Build volume | 180 x 180 x 180 mm | A1 mini spec table, operator relay |
 | Fan form factor | 80 mm; **count derived**, not assumed | operator + derivation |
 | Rack unit | 2x2 block, composable | side-chat ruling |
-| Service law | fixed frame, removable cassette | operator requirement R9 |
-| PSU placement | shared 12 V supply system on fixed frame, one per four-node block | operator acceptance, 4 October 2026; supersedes cassette-resident PSU |
+| Service law | LIFO column: the cassette is the structure, a pop lifts everything above it (reversed 4 October 2026, superseding R9) | operator ruling, [milk-crate stack design](milk-crate-stack-design.md) |
+| PSU placement | one power cassette per column in the cassette format, the column's mains boundary (4 October 2026; supersedes the fixed-frame shared supply) | operator ruling, [milk-crate stack design](milk-crate-stack-design.md) |
 | External bundle | 2 x Ethernet + 1 x protected, isolatable DC feed per node; AC at shared supply | operator acceptance, 4 October 2026 |
 
 ## Standing laws

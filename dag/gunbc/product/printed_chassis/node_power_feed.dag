@@ -1,0 +1,141 @@
+module product.printed_chassis.node_power_feed
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.nat { Nat, nat_sub, NatSubtraction, NatDifference, NatSubtrahendExceedsMinuend, nat_ceil_div }
+import std.measure {
+  Watt, watt_count, Volt, volt_count, Millivolt, millivolt, millivolt_count,
+  Ampere, ampere_count, Milliampere, milliampere, milliampere_count,
+  Millimeter, millimeter_count, MicroohmPerMetre, microohm_per_metre_count, Percent, percent, percent_count,
+}
+import v2.std.optional { Present, Absent }
+import extdeps.boards.types { PowerInputPopulationStanding, PowerInputPopulationSpecified, PowerInputMinimumOneStated, PowerInputPopulationUnresolved }
+import extdeps.boards.asrock_rack {
+  asrock_altrad8ud_required_input_population, asrock_altrad8ud_atx12v_twelve_volt_pins, asrock_altrad8ud_atx12v_nominal_input,
+  asrock_altrad8ud_system_fan_header_count,
+}
+import extdeps.connector.molex_mini_fit_jr { MiniFitJrTerminalRating }
+import extdeps.standards.awg { awg_copper_resistance }
+import extdeps.standards.atx12v_psdg { DcOutputRegulationBand }
+import extdeps.fans.arctic { arctic_p8_rated_current, arctic_p8_pwm_sharing, PwmSharingChain, PstPassThrough, NoPassThrough }
+
+// ONE NODE'S 12 V FEED, DERIVED END TO END: how many of the board's three 8-pin inputs must be
+// populated for a given load, what current the branch carries, what voltage reaches the connector
+// after the branch's own drop, and whether that voltage is still inside the band the board is
+// designed to. Every input is either a cited row or a DECLARED assumption carried by name, and the
+// output is a typed admission or a typed refusal naming the limit that failed.
+//
+// THE LOAD IS SUPPLIED, NOT INVENTED HERE. product.node_power_envelope derives a node's DC load and
+// refuses while the DIMM population is unread; a caller passes that derived figure, or passes a
+// declared bound and says so. This module never reads a TDP and calls it a load.
+
+// Declared, not cited: the fraction of the connector's rated current the design RETAINS. A
+// connector rating is a 30 C rise figure at the vendor's test condition; a chassis with warm
+// exhaust across its front edge wants headroom, and the amount is policy. Carried as the retained
+// fraction (70 means seventy percent of the rating is used) so no subtraction is needed.
+type DeclaredConnectorDerating sole_constructor { retained: Percent }
+fn declared_connector_derating(retained: Percent) -> DeclaredConnectorDerating { DeclaredConnectorDerating { retained: retained } }
+data zero_ma: Nat = 0
+data one_input: Nat = 1
+
+type NodeFeedInputs {
+  node_dc_load: Watt
+  connector_rating: MiniFitJrTerminalRating
+  derating: DeclaredConnectorDerating
+  branch_gauge_awg: Nat
+  branch_length: Millimeter
+  station_setpoint: Millivolt
+  regulation: DcOutputRegulationBand
+}
+
+type FeedRefusalCause
+  = LoadExceedsBoardInputs { required_inputs: Nat, available_inputs: Nat, per_input_limit: Milliampere }
+  | PopulationRuleUnresolved
+  | BranchGaugeUnknown { gauge: Nat }
+  | ConnectorVoltageBelowBand { at_connector: Millivolt, band_minimum: Millivolt, drop: Millivolt }
+  | SetpointAboveBand { setpoint: Millivolt, band_maximum: Millivolt }
+
+type NodeFeed {
+  node_current: Milliampere
+  inputs_populated: Nat
+  per_input_limit: Milliampere
+  branch_round_trip_drop: Millivolt
+  at_connector: Millivolt
+}
+
+type NodeFeedReading
+  = NodeFeedAdmitted { feed: NodeFeed }
+  | NodeFeedRefused { cause: FeedRefusalCause }
+
+// I = P / V at the nominal input, in milliamperes: W * 1e6 / mV.
+fn node_current_ma(load: Watt, nominal: Volt) -> Milliampere {
+  milliampere(count: watt_count(w: load) * 1000000 / (volt_count(v: nominal) * 1000))
+}
+
+// What one 8-pin input may carry: four 12 V contacts at the rated current, derated as declared.
+fn per_input_limit_ma(rating: MiniFitJrTerminalRating, derating: DeclaredConnectorDerating) -> Milliampere {
+  let contacts = count(asrock_altrad8ud_atx12v_twelve_volt_pins)
+  milliampere(count: contacts * ampere_count(a: rating.rated_current_per_circuit) * 1000 * percent_count(p: derating.retained) / 100)
+}
+
+fn ceil_div(a: Nat, b: Nat) -> Nat { match nat_ceil_div(a: a, b: b) { Present { value: v } => v Absent => b } }
+
+// The population: at least the manual's floor, at most what the board offers, otherwise refuse.
+fn inputs_required(current: Milliampere, limit: Milliampere, standing: PowerInputPopulationStanding) -> NodeFeedReading? {
+  let needed = ceil_div(a: milliampere_count(i: current), b: milliampere_count(i: limit))
+  match standing {
+    PowerInputPopulationSpecified { required_inputs: r } => if needed > r { Present { value: NodeFeedRefused { cause: LoadExceedsBoardInputs { required_inputs: needed, available_inputs: r, per_input_limit: limit } } } } else { none }
+    PowerInputMinimumOneStated { available_inputs: a, stated_condition: _ } => if needed > a { Present { value: NodeFeedRefused { cause: LoadExceedsBoardInputs { required_inputs: needed, available_inputs: a, per_input_limit: limit } } } } else { none }
+    PowerInputPopulationUnresolved { available_inputs: _ } => Present { value: NodeFeedRefused { cause: PopulationRuleUnresolved } }
+  }
+}
+
+fn populated_count(current: Milliampere, limit: Milliampere) -> Nat {
+  let needed = ceil_div(a: milliampere_count(i: current), b: milliampere_count(i: limit))
+  if needed < one_input { one_input } else { needed }
+}
+
+// Round-trip branch drop in millivolts: two conductors of the branch length at the gauge's
+// resistance per metre, times the node current. uohm/m * mm / 1000 = uohm; uohm * mA / 1e6 = mV.
+fn branch_drop_mv(resistance: MicroohmPerMetre, length: Millimeter, current: Milliampere) -> Millivolt {
+  let round_trip_uohm = 2 * microohm_per_metre_count(r: resistance) * millimeter_count(m: length) / 1000
+  millivolt(count: round_trip_uohm * milliampere_count(i: current) / 1000000)
+}
+
+fn node_feed(inputs: NodeFeedInputs) -> NodeFeedReading {
+  let current = node_current_ma(load: inputs.node_dc_load, nominal: asrock_altrad8ud_atx12v_nominal_input)
+  let limit = per_input_limit_ma(rating: inputs.connector_rating, derating: inputs.derating)
+  match inputs_required(current: current, limit: limit, standing: asrock_altrad8ud_required_input_population) {
+    Present { value: refused } => refused
+    Absent => match awg_copper_resistance(gauge: inputs.branch_gauge_awg) {
+      Absent => NodeFeedRefused { cause: BranchGaugeUnknown { gauge: inputs.branch_gauge_awg } }
+      Present { value: resistance } => {
+        if millivolt_count(v: inputs.station_setpoint) > millivolt_count(v: inputs.regulation.maximum) {
+          NodeFeedRefused { cause: SetpointAboveBand { setpoint: inputs.station_setpoint, band_maximum: inputs.regulation.maximum } }
+        } else {
+          let drop = branch_drop_mv(resistance: resistance, length: inputs.branch_length, current: current)
+          let at_connector = match nat_sub(a: millivolt_count(v: inputs.station_setpoint), b: millivolt_count(v: drop)) { NatDifference { value: v } => millivolt(count: v) NatSubtrahendExceedsMinuend => millivolt(count: zero_ma) }
+          if millivolt_count(v: at_connector) < millivolt_count(v: inputs.regulation.minimum) {
+            NodeFeedRefused { cause: ConnectorVoltageBelowBand { at_connector: at_connector, band_minimum: inputs.regulation.minimum, drop: drop } }
+          } else {
+            NodeFeedAdmitted { feed: NodeFeed { node_current: current, inputs_populated: populated_count(current: current, limit: limit), per_input_limit: limit, branch_round_trip_drop: drop, at_connector: at_connector } }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE FAN BANK ON ONE HEADER. The rear bank chains fan-to-fan through PST and reaches the board on
+// one header, so that header carries the whole bank's current. The board states no header limit
+// (asrock_altrad8ud_fan_header_current_limit_standing), so the verdict is the load plus the
+// unread limit, never a pass.
+type FanHeaderLoad
+  = FanHeaderLoadAgainstUnreadLimit { header_current: Milliampere, fans: Nat }
+  | FanBankNeedsOneHeaderPerFan { fans: Nat, headers_available: Nat }
+
+fn fan_bank_header_load(fans: Nat) -> FanHeaderLoad {
+  match arctic_p8_pwm_sharing {
+    PstPassThrough { max_chained_standing: _ } => FanHeaderLoadAgainstUnreadLimit { header_current: milliampere(count: fans * milliampere_count(i: arctic_p8_rated_current)), fans: fans }
+    NoPassThrough => FanBankNeedsOneHeaderPerFan { fans: fans, headers_available: asrock_altrad8ud_system_fan_header_count }
+  }
+}

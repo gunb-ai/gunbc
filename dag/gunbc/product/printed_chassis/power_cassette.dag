@@ -1,0 +1,85 @@
+module product.printed_chassis.power_cassette
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.nat { Nat, nat_sub, NatSubtraction, NatDifference, NatSubtrahendExceedsMinuend }
+import std.measure { Watt, watt, watt_count, Gram }
+import product.node_power_envelope { EfficiencyRating, efficiency_percent, PsuAdequacy, PsuAdequate, PsuUndersized, PsuUndecidable, psu_adequacy_for_load }
+import std.measure { percent_count }
+
+// THE POWER STATION AS A STACK MEMBER. Operator direction, 2026-10-04: a cassette in the same
+// format that stacks with 1..N node cassettes and feeds everything below or beside it. It is the
+// mains boundary of the whole column: the supply stays in its vendor enclosure inside this
+// cassette, the IEC inlet and the protective-earth bond are here, and what leaves it is 12 V on
+// protected branches. Every node cassette below is then a low-voltage zone with no mains part and
+// no earth obligation of its own, which is what lets the node cassettes be printed polymer
+// without violating the program's grounding law.
+//
+// PLACEMENT IS A PARAMETER, NOT A RULING. Top of column is the operator's first picture; bottom of
+// column puts the heaviest unit lowest (the mechanics instrument prices both) and keeps the one
+// unit nobody wants to move out of every LIFO pop. Beside the column is the withdrawn frame
+// proposal's arrangement, kept as an arm so the harness census can show what it costs in cable.
+
+type PowerCassettePlacement = TopOfColumn | BottomOfColumn | BesideColumn
+
+type PowerCassette {
+  nodes_fed: Nat
+  placement: PowerCassettePlacement
+  supply_rated_output: Watt
+  supply_efficiency: EfficiencyRating
+  mass: Gram
+}
+
+// Station adequacy is the per-node verdict applied to the sum, reusing the one adequacy fold.
+fn station_adequacy(station: PowerCassette, node_dc_loads: List<Watt>) -> PsuAdequacy {
+  let total = fold(node_dc_loads, init: 0, f: (acc, w) => acc + watt_count(w: w))
+  psu_adequacy_for_load(load: watt(count: total), rated: station.supply_rated_output)
+}
+
+// Wall draw of the column at the station's efficiency grade, for the site feed.
+fn station_wall_draw(station: PowerCassette, node_dc_loads: List<Watt>) -> Watt {
+  let total = fold(node_dc_loads, init: 0, f: (acc, w) => acc + watt_count(w: w))
+  watt(count: total * 100 / percent_count(p: efficiency_percent(e: station.supply_efficiency)))
+}
+
+// WHAT THE GROUNDING WITNESSES G1-G5 BECOME under this arrangement, as rows a build can check off.
+// They were written against a metal rack; the subject moves to the power cassette and the node
+// cassettes drop out of the earth network entirely because nothing in them is at mains potential.
+type EarthObligation
+  = SupplyEnclosureBondedToInletEarth
+  | DcReturnBondedOnceAtStation
+  | NoMainsPartOutsidePowerCassette
+  | NoPrintedPolymerInEarthPath
+  | NodeCassetteRemovalLeavesEarthIntact
+
+data power_cassette_earth_obligations: List<EarthObligation> = [
+  SupplyEnclosureBondedToInletEarth,
+  DcReturnBondedOnceAtStation,
+  NoMainsPartOutsidePowerCassette,
+  NoPrintedPolymerInEarthPath,
+  NodeCassetteRemovalLeavesEarthIntact,
+]
+
+// Which units a pop of node k must lift, by placement. A pop lifts everything above k; a station
+// on top is lifted by every pop, a station at the bottom by none.
+data no_units: Nat = 0
+// Nodes above index i in a column of n: n - (i + 1); an index past the top is no node and lifts nothing.
+fn nodes_above(node_count: Nat, node_index_from_bottom: Nat) -> Nat {
+  match nat_sub(a: node_count, b: node_index_from_bottom + 1) { NatDifference { value: v } => v NatSubtrahendExceedsMinuend => no_units }
+}
+fn units_lifted_to_pop(station: PowerCassette, node_count: Nat, node_index_from_bottom: Nat) -> Nat {
+  let nodes_above = nodes_above(node_count: node_count, node_index_from_bottom: node_index_from_bottom)
+  match station.placement {
+    TopOfColumn => nodes_above + 1
+    BottomOfColumn => nodes_above
+    BesideColumn => nodes_above
+  }
+}
+
+// Supply telemetry: the board's PSU_SMB1 can monitor ONE supply from ONE host. A shared station
+// is monitored by at most one of its nodes, or by nothing. Stated so a fleet reader does not
+// assume every node sees the supply.
+type StationTelemetryRoute
+  = MonitoredByOneNodePsuSmbus { node_index_from_bottom: Nat }
+  | StationUnmonitored
+
+data station_telemetry_default: StationTelemetryRoute = StationUnmonitored

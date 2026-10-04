@@ -1,0 +1,93 @@
+module product.printed_chassis.exhaust_thermal
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure {
+  Watt, watt_count, Celsius, celsius, celsius_count, CelsiusDelta, celsius_delta, celsius_delta_count,
+  MillilitrePerSecond, millilitre_per_second, millilitre_per_second_count,
+  gram_per_cubic_metre_count, joule_per_kilogram_kelvin_count, Percent, percent_count,
+}
+import extdeps.physics.dry_air { dry_air_at_20c }
+import extdeps.fans.arctic { arctic_p8_published_airflow }
+import extdeps.printing.bambu_lab_filament { FilamentTechnicalDataSheetRow }
+import extdeps.cpu.ampere { ampere_altra_max_m12830_thermal_limits }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_operating_ambient_max }
+
+// WOULD THE PRINTED FAN MOUNT SOFTEN BEHIND A 100 C PROCESSOR? The question conflates two
+// temperatures, and the derivation separates them. The processor's junction limit
+// (ampere_altra_max_m12830_thermal_limits, 100 C continuous) is the die; the fan mount sees the
+// EXHAUST AIR, whose temperature is the inlet air plus the heat the node rejects divided by the
+// air's mass flow and specific heat:
+//
+//     dT = Q / (rho * V * cp)
+//
+// with Q the node's electrical power (all of it becomes heat), rho and cp from the dry-air row,
+// and V the rear bank's volume flow. At full flow that rise is single-digit kelvin; at a low fan
+// duty with full load it is not, which is why the verdict is a function of flow rather than a
+// pass, and why the BMC fan curve's floor is a safety input to this chassis rather than a
+// comfort setting.
+//
+// WHAT THE DERIVATION DOES NOT COVER, named so nobody reads a pass as broader than it is:
+// radiative heating of the mount from the heatsink's fins, conduction into the tray through the
+// standoffs under the socket, the cooler's own fan adding to or short-circuiting the bank's flow,
+// and the stress dependence of HDT (the sheet's 0.45 MPa figure softens earlier under a higher
+// load). Each is a boundary row; a measured mount temperature under load retires it.
+
+type UnmodelledThermalCoupling
+  = RadiationFromHeatsinkFins
+  | ConductionThroughStandoffs
+  | CoolerFanInteractionWithBank
+  | HdtStressDependence
+
+data unmodelled_couplings: List<UnmodelledThermalCoupling> = [RadiationFromHeatsinkFins, ConductionThroughStandoffs, CoolerFanInteractionWithBank, HdtStressDependence]
+
+// Exhaust rise in whole kelvin at the floor: Q[W] / (rho[g/m3] * V[mL/s] * 1e-9 [kg/mL*m3/g... ] * cp)
+// Arithmetic: mass flow in mg/s = rho(g/m3) * V(mL/s) / 1000; dT = Q * 1e6 / (mdot_mg_s * cp).
+fn exhaust_rise(heat: Watt, flow: MillilitrePerSecond) -> CelsiusDelta? {
+  let mass_flow_mg_s = gram_per_cubic_metre_count(d: dry_air_at_20c.density) * millilitre_per_second_count(f: flow) / 1000
+  if mass_flow_mg_s == 0 { none } else {
+    Present { value: celsius_delta(count: watt_count(w: heat) * 1000000 / (mass_flow_mg_s * joule_per_kilogram_kelvin_count(c: dry_air_at_20c.specific_heat_cp))) }
+  }
+}
+
+// The rear bank's flow at a duty fraction, scaled linearly from the published maximum: the
+// published curve is one point, so linear is the declared stand-in and the duty is the caller's.
+fn bank_flow(fans: Nat, duty: Percent) -> MillilitrePerSecond {
+  millilitre_per_second(count: fans * millilitre_per_second_count(f: arctic_p8_published_airflow) * percent_count(p: duty) / 100)
+}
+
+type ThermalMargin
+  = PrintedPartBelowHdt { exhaust: Celsius, hdt: Celsius, margin: CelsiusDelta }
+  | PrintedPartReachesHdt { exhaust: Celsius, hdt: Celsius, excess: CelsiusDelta }
+  | NoAirflow
+
+type ExhaustCase {
+  node_heat: Watt
+  fans: Nat
+  duty: Percent
+  inlet: Celsius
+  margin_required: CelsiusDelta
+}
+
+fn mount_thermal_margin(case: ExhaustCase, sheet: FilamentTechnicalDataSheetRow) -> ThermalMargin {
+  match exhaust_rise(heat: case.node_heat, flow: bank_flow(fans: case.fans, duty: case.duty)) {
+    Absent => NoAirflow
+    Present { value: rise } => {
+      let exhaust = celsius(count: celsius_count(c: case.inlet) + celsius_delta_count(delta: rise))
+      let hdt = sheet.heat_deflection_at_0_45_mpa
+      let headroom = celsius_count(c: hdt) - celsius_count(c: exhaust)
+      if headroom >= celsius_delta_count(delta: case.margin_required) {
+        PrintedPartBelowHdt { exhaust: exhaust, hdt: hdt, margin: celsius_delta(count: headroom) }
+      } else {
+        PrintedPartReachesHdt { exhaust: exhaust, hdt: hdt, excess: celsius_delta(count: celsius_delta_count(delta: case.margin_required) - headroom) }
+      }
+    }
+  }
+}
+
+// The hottest honest inlet is the board's own ambient ceiling, not a room guess.
+fn worst_inlet() -> Celsius { asrock_altrad8ud_operating_ambient_max }
+
+// The junction limit is NOT an input to the air derivation; it is exposed so a reader can see
+// the two numbers side by side and stop asking whether the mount sees the die.
+fn processor_junction_limit() -> Celsius { ampere_altra_max_m12830_thermal_limits.maximum_continuous_junction_temperature }

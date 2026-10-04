@@ -1,0 +1,65 @@
+module test.claim.printed_chassis_power_facts_witness
+import std.types { Bool, List }
+import std.nat { Nat }
+import std.measure {
+  celsius_count, millivolt_count, microohm_per_metre_count, millilitre_per_second_count, gram_count, ampere_count,
+}
+import v2.std.optional { Present, Absent }
+import extdeps.boards.asrock_rack {
+  asrock_altrad8ud_power_input_requirement, BoardPowerInputMode, DcIn12V, AtxPsu,
+  BoardPowerConnectorKind, Atx12V8Pin, MicroFitAtx4PinSignal,
+  PowerInputRequirement, InputRequired, InputRequiredViaBundledConverter, InputNotUsed,
+  asrock_altrad8ud_atx12v_twelve_volt_pins, asrock_altrad8ud_atx4pin_signal, MicroFit4PinSignal, PsOnActiveLow, AtxPwrOk, SignalGround, Atx5Vsb,
+  asrock_altrad8ud_connector_edge, BoardEdge, RearIoEdge, FrontEdge, SideEdgeNearDimmBankA, SideEdgeNearPcieSlots,
+  asrock_altrad8ud_manual_held, asrock_altrad8ud_operating_ambient_max,
+}
+import extdeps.standards.awg { awg_copper_resistance }
+import extdeps.standards.atx12v_psdg { atx12v_twelve_volt_regulation }
+import extdeps.printing.bambu_lab_filament { bambu_pla_basic_tds, bambu_petg_hf_tds }
+import extdeps.fans.arctic { arctic_p8_pwm_sharing, PwmSharingChain, PstPassThrough, NoPassThrough, arctic_p8_published_airflow, arctic_p8_mass }
+import extdeps.cooling.dynatron { dynatron_w1_mass_active, dynatron_w1_mass_passive, dynatron_w1_fan_duty_points }
+import extdeps.connector.molex_mini_fit_jr { mini_fit_jr_standard_terminal_rating, mini_fit_jr_hcs_terminal_rating }
+import extdeps.physics.dry_air { dry_air_at_20c }
+
+// The manual's 2.8 table, cell by cell: DC-IN needs the 8-pin and not the 4-pin; ATX needs both,
+// the 4-pin through the bundled converter.
+test fn dc_in_uses_the_8_pin_and_not_the_4_pin_signal() -> Bool {
+  (match asrock_altrad8ud_power_input_requirement(mode: DcIn12V, kind: Atx12V8Pin) { InputRequired => true InputRequiredViaBundledConverter => false InputNotUsed => false })
+  && (match asrock_altrad8ud_power_input_requirement(mode: DcIn12V, kind: MicroFitAtx4PinSignal) { InputRequired => false InputRequiredViaBundledConverter => false InputNotUsed => true })
+  && (match asrock_altrad8ud_power_input_requirement(mode: AtxPsu, kind: MicroFitAtx4PinSignal) { InputRequired => false InputRequiredViaBundledConverter => true InputNotUsed => false })
+}
+
+// Four 12 V contacts per 8-pin input, pins 5-8; PSON# is pin 4 and pin 5 is not a signal pin.
+test fn eight_pin_carries_four_twelve_volt_contacts_and_the_signal_pinout_is_total() -> Bool {
+  count(asrock_altrad8ud_atx12v_twelve_volt_pins) == 4
+  && (match asrock_altrad8ud_atx4pin_signal(pin: 4) { Present { value: v } => match v { PsOnActiveLow => true AtxPwrOk => false SignalGround => false Atx5Vsb => false } Absent => false })
+  && (match asrock_altrad8ud_atx4pin_signal(pin: 5) { Present { value: _ } => false Absent => true })
+}
+
+// The fact the harness inherits: power and fan headers are on the FRONT edge, PANEL1 is not.
+test fn power_and_fan_headers_sit_on_the_front_edge() -> Bool {
+  let front = fn(d) { match asrock_altrad8ud_connector_edge(designator: d) { Present { value: e } => match e { FrontEdge => true RearIoEdge => false SideEdgeNearDimmBankA => false SideEdgeNearPcieSlots => false } Absent => false } }
+  front("ATX12V1") && front("ATX12V2") && front("ATX12V3") && front("FAN1") && front("FAN5")
+  && !front("PANEL1")
+  && (match asrock_altrad8ud_connector_edge(designator: "NOPE") { Present { value: _ } => false Absent => true })
+}
+
+test fn wire_table_answers_listed_gauges_and_refuses_others() -> Bool {
+  (match awg_copper_resistance(gauge: 10) { Present { value: r } => microohm_per_metre_count(r: r) == 3280 Absent => false })
+  && (match awg_copper_resistance(gauge: 18) { Present { value: r } => microohm_per_metre_count(r: r) > 20000 Absent => false })
+  && (match awg_copper_resistance(gauge: 11) { Present { value: _ } => false Absent => true })
+}
+
+test fn cited_rows_are_internally_ordered() -> Bool {
+  millivolt_count(v: atx12v_twelve_volt_regulation.minimum) < millivolt_count(v: atx12v_twelve_volt_regulation.nominal)
+  && millivolt_count(v: atx12v_twelve_volt_regulation.nominal) < millivolt_count(v: atx12v_twelve_volt_regulation.maximum)
+  && celsius_count(c: bambu_petg_hf_tds.heat_deflection_at_0_45_mpa) > celsius_count(c: bambu_pla_basic_tds.heat_deflection_at_0_45_mpa)
+  && celsius_count(c: bambu_pla_basic_tds.heat_deflection_at_0_45_mpa) > celsius_count(c: asrock_altrad8ud_operating_ambient_max)
+  && gram_count(g: dynatron_w1_mass_active) > gram_count(g: dynatron_w1_mass_passive)
+  && gram_count(g: dynatron_w1_mass_active) > gram_count(g: arctic_p8_mass)
+  && count(dynatron_w1_fan_duty_points) == 3
+  && ampere_count(a: mini_fit_jr_hcs_terminal_rating.rated_current_per_circuit) > ampere_count(a: mini_fit_jr_standard_terminal_rating.rated_current_per_circuit)
+  && millilitre_per_second_count(f: arctic_p8_published_airflow) > 0
+  && asrock_altrad8ud_manual_held.page_count == 95
+  && (match arctic_p8_pwm_sharing { PstPassThrough { max_chained_standing: _ } => true NoPassThrough => false })
+}
