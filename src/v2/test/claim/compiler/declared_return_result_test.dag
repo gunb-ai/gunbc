@@ -1,0 +1,77 @@
+module v2.test.claim.compiler.declared_return_result
+
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_infer_tree, fmi_reason }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_has_reason }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool }
+import v2.std.node { Symbol }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: a call whose callee DECLARES a non-kernel return type has that type as its result
+// (v2.compiler.infer infer_application_result_type), so the call is judged at the declared position it
+// reaches. BOUNDARY: source text in, through the production assembly route
+// (v2.test.claim.compiler.infer_fold_member_instance fmi_assemble), then v2.compiler.infer infer.
+// RED ON THE BASE for the refusal controls: each was ACCEPTED, the call staying underived
+// (gunbc.recurring_failure_mode call_result_of_a_declared_return_type_unjudged_in_v2_infer). The
+// accepted controls hold that deriving the result does not over-refuse, and the unbound-variable
+// control holds that a return still mentioning the callee's own type parameter stays on the counted
+// frontier instead of being typed as anything.
+
+data drr_prelude: String = "module p\n\nimport v2.std.collection { List }\n\ntype Tally\n  = Nil0\n  | More { prev: Tally }\n\ntype Box<T> {\n  item: T\n}\n\nfn mk() -> Tally {\n  Nil0\n}\n\nfn mkg<T>(xs: List<T>) -> Tally {\n  Nil0\n}\n\nfn boxed<T>(x: T) -> Box<T> {\n  Box { item: x }\n}\n\nfn none_of<T>(n: Int) -> List<T> {\n  []\n}\n\nfn wants_bool(b: Bool) -> Int {\n  0\n}\n\nfn wants_tally(t: Tally) -> Int {\n  0\n}\n\nfn wants_int(n: Int) -> Int {\n  0\n}\n\n"
+
+data drr_plain_at_bool: String = drr_prelude + "fn k() -> Int {\n  wants_bool(mk())\n}\n"
+data drr_generic_at_bool: String = drr_prelude + "fn k(xs: List<Int>) -> Int {\n  wants_bool(mkg(xs))\n}\n"
+data drr_plain_at_own_type: String = drr_prelude + "fn k() -> Int {\n  wants_tally(mk())\n}\n"
+data drr_instantiated_field_agrees: String = drr_prelude + "fn k() -> Int {\n  wants_int(boxed(1).item)\n}\n"
+data drr_instantiated_field_disagrees: String = drr_prelude + "fn k() -> Int {\n  wants_bool(boxed(1).item)\n}\n"
+data drr_unbound_variable: String = drr_prelude + "fn k() -> Int {\n  wants_bool(none_of(1))\n}\n"
+
+fn drr_reason(src: String) -> Symbol {
+  match fmi_assemble(src: src) {
+    Rejected { diagnostics: _ } => ^drr_assembly_refused
+    Accepted { value: tree, diagnostics: _ } => fmi_reason(o: fmi_infer_tree(tree: tree))
+  }
+}
+
+// The unbound-variable call is ACCEPTED only as the counted frontier: its acceptance carries the
+// not-derived undecidable obligation, so a fabricated instance (which would type and then judge it)
+// cannot pass as this control.
+fn drr_unbound_variable_stays_on_the_frontier() -> Bool {
+  match fmi_assemble(src: drr_unbound_variable) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match fmi_infer_tree(tree: tree) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: d } =>
+          diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_argument_type_not_derived)
+      }
+  }
+}
+
+// RED: a plain call declared to return Tally, at a Bool parameter.
+test fn drr_plain_declared_return_at_a_mismatched_parameter_refuses() -> Bool {
+  drr_reason(src: drr_plain_at_bool) == ^application_argument_does_not_inhabit
+}
+
+// RED: the same through a generic callee whose return mentions none of its type parameters.
+test fn drr_generic_declared_return_at_a_mismatched_parameter_refuses() -> Bool {
+  drr_reason(src: drr_generic_at_bool) == ^application_argument_does_not_inhabit
+}
+
+// ACCEPTED: the derived result at its own declared type.
+test fn drr_declared_return_at_its_own_type_is_accepted() -> Bool {
+  drr_reason(src: drr_plain_at_own_type) == ^accepted
+}
+
+// INSTANTIATED: boxed(1) derives Box<Int> (T bound by this call's argument), so its item field
+// grounds as Int: admitted at Int, refused at Bool.
+test fn drr_instantiated_generic_return_grounds_its_field_read() -> Bool {
+  drr_reason(src: drr_instantiated_field_agrees) == ^accepted
+    && drr_reason(src: drr_instantiated_field_disagrees) == ^application_argument_does_not_inhabit
+}
+
+// FRONTIER: List<T> with T bound by no argument stays not derived, never typed as some instance.
+test fn drr_return_mentioning_an_unbound_type_parameter_stays_on_the_frontier() -> Bool {
+  drr_unbound_variable_stays_on_the_frontier()
+}

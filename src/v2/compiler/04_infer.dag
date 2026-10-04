@@ -1634,6 +1634,48 @@ fn infer_arrow_declared_return_type(arrow: Node) -> Optional<Node> {
   }
 }
 
+// A CALL'S RESULT HAS THE TYPE ITS CALLEE DECLARES, KERNEL OR NOT. infer_arrow_declared_return_type
+// knows only the kernel value types (and Bool by authority), so a callee declared to return a
+// corpus type -- Nat, Outcome<ParseArtifact> -- answered Absent, the call stayed underived, and every
+// declared position it reached accepted it as undecidable (gunbc.recurring_failure_mode
+// call_result_of_a_declared_return_type_unjudged_in_v2_infer). Every other declared type in this
+// stage is already used as written (a parameter's declared node, a lexical binding's instantiated
+// declaration); this reader now does the same. The kernel answer is consulted FIRST, so the Int and
+// Bool paths are byte-identical. Otherwise the declared return node, alias-normalized through the one
+// normalization (#13187) and instantiated with the instances the argument walk bound at THIS site, is
+// the result. A return that still mentions one of the callee's own type parameters after
+// instantiation is not derived (the counted frontier) -- never a fabricated instance; nor is a return
+// that is not a type node.
+fn infer_application_result_type(
+  node: Node,
+  arrow: Node,
+  entries: List<InferredFactsEntry>,
+  instances: List<TypeVariableInstance>,
+  declarations: SymbolIndex
+) -> Optional<Node> {
+  match infer_arrow_declared_return_type(arrow: arrow) {
+    Present { value: kernel } => Present { value: kernel }
+    Absent =>
+      match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) {
+        Absent => Absent
+        Present { value: ret } =>
+          match ret.kind {
+            TypeNode { connective: _ } =>
+              let declared = infer_type_instantiated(
+                t: infer_type_alias_normalized(t: ret, declarations: declarations),
+                instances: instances
+              )
+              if inhabitance_node_mentions_type_variable(n: declared, type_variables: infer_application_type_params(node: node, entries: entries)) {
+                Absent
+              } else {
+                Present { value: declared }
+              }
+            _ => Absent
+          }
+      }
+  }
+}
+
 fn infer_atom_binding_sym(node: Node) -> Optional<Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: sym } } => Present { value: sym }
@@ -3679,17 +3721,26 @@ fn infer_judge_application_argument_instantiating(
   }
 }
 
+// THE SITE'S INSTANTIATION IS KEPT, NOT DISCARDED. The argument walk already ends with the call's
+// TypeVariableInstance list (infer_judge_formal_args); the result step reads it to instantiate a
+// generic declared return (infer_application_result_type), so the one instantiation that judged the
+// arguments is the one that types the result. An unresolved formal set judges nothing and binds no
+// instance.
 fn infer_application_argument_inhabitance(
   node: Node,
   entries: List<InferredFactsEntry>,
   declarations: SymbolIndex
-) -> Outcome<Bool> {
+) -> Outcome<List<TypeVariableInstance>> {
   match infer_application_formals(node: node, entries: entries) {
     FormalsUnresolved =>
-      infer_inhabitance_undecidable_accepted(
+      match infer_inhabitance_undecidable_accepted(
         application: node,
         reason: undecidable_formal_unresolved()
-      )
+      ) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: _, diagnostics: d } =>
+          Accepted { value: infer_no_type_variable_instances(), diagnostics: d }
+      }
     FormalsOrderRefused { reason: reason } =>
       outcome_rejected(application_parameter_order_diagnostic(application: node, reason: reason))
     FormalsInDeclaredOrder { formals: formals } =>
@@ -3705,7 +3756,7 @@ fn infer_application_argument_inhabitance(
             type_params: infer_application_type_params(node: node, entries: entries)
           ) {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
-            Accepted { value: _, diagnostics: d } => Accepted { value: true, diagnostics: d }
+            Accepted { value: instances, diagnostics: d } => Accepted { value: instances, diagnostics: d }
           }
       }
   }
@@ -4375,14 +4426,15 @@ fn infer_gather_application_row_on_entries(
         await_transform_row: false,
         children_remaining: 0
       )
-    Accepted { value: _, diagnostics: id } =>
+    Accepted { value: instances, diagnostics: id } =>
       let merged_pending = diagnostics_merge(outer: pending, inner: id)
       match infer_transform_derived_optional(
         node: node,
         partials: partials,
         entries: entries,
         resolved: resolved,
-        arguments_decided: infer_diagnostics_none(d: id)
+        arguments_decided: infer_diagnostics_none(d: id),
+        instances: instances
       ) {
         Present { value: derived } =>
         match derived {
@@ -4518,13 +4570,14 @@ fn infer_transform_derived_optional(
   entries: List<InferredFactsEntry>,
   resolved: ResolvedTree,
   arguments_decided: Bool,
+  instances: List<TypeVariableInstance>,
 ) -> Optional<Outcome<InferredFacts>> {
   if infer_transform_is_binary_infix_algebra_shape(node: node) {
     optional_present(value: infer_transform_binary_infix(node: node, partials: partials, entries: entries, resolved: resolved))
   } else if infer_transform_is_cast(node: node) {
     infer_transform_cast_optional(node: node, entries: entries, resolved: resolved)
   } else if arguments_decided {
-    infer_transform_application_optional(node: node, entries: entries)
+    infer_transform_application_optional(node: node, entries: entries, instances: instances, declarations: resolved.resolved_declarations)
   } else {
     optional_absent()
   }
@@ -4536,7 +4589,12 @@ fn infer_transform_derived_optional(
 // derived -- so arrow introduction has checked its body against that return. An underived callee,
 // a non-Arrow operator, or a return the language join does not denote stays on the counted
 // frontier: Absent here, never an admission.
-fn infer_transform_application_optional(node: Node, entries: List<InferredFactsEntry>) -> Optional<Outcome<InferredFacts>> {
+fn infer_transform_application_optional(
+  node: Node,
+  entries: List<InferredFactsEntry>,
+  instances: List<TypeVariableInstance>,
+  declarations: SymbolIndex,
+) -> Optional<Outcome<InferredFacts>> {
   match infer_application_callee_arrow_with_facts(node: node, entries: entries) {
     Absent => optional_absent()
     Present { value: arrow } =>
@@ -4549,7 +4607,7 @@ fn infer_transform_application_optional(node: Node, entries: List<InferredFactsE
           if !inferred_facts_grounding_derived(facts: arrow_facts) {
             optional_absent()
           } else {
-            match infer_arrow_declared_return_type(arrow: arrow) {
+            match infer_application_result_type(node: node, arrow: arrow, entries: entries, instances: instances, declarations: declarations) {
               Absent => optional_absent()
               Present { value: return_type } =>
                 optional_present(
