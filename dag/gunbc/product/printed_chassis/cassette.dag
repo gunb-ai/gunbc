@@ -1,0 +1,197 @@
+module product.printed_chassis.cassette
+
+import std.types { Bool, Int, String, List }
+import std.measure { micrometer_count }
+import std.euclidean_geometry { Axis3X, Axis3Y, Axis3Z }
+import product.printed_chassis.assembly_geometry {
+  Primitive, AssemblyPart, MechanicalInterface, Printed, Purchased, Metal, Clearance,
+  Cassette, FixedFrame, LayOnXZ, LayOnXY, LayOnYZ, block, round, part, mechanical_interface,
+}
+import extdeps.boards.asrock_rack { asrock_altrad8ud_extent_along_rear_io, asrock_altrad8ud_extent_depth }
+import product.printed_chassis.fan_mount {
+  arctic_p8_fan_mount, FanMountAdmitted, fan_mount_plate, fan_mount_bore, fan_mount_mounting_holes,
+}
+import product.printed_chassis.coupon { OpThroughHole }
+import extdeps.fans.arctic { arctic_p8_mounting_pattern }
+
+// This root owns the entire review assembly formerly authored in the browser.
+// Nominal board lengths come from the board authority; design allowances below are proposals.
+// No measured board thickness, standoff thread, PSU rating or thermal result is invented.
+data board_w: Int = micrometer_count(m: asrock_altrad8ud_extent_along_rear_io)
+data board_d: Int = micrometer_count(m: asrock_altrad8ud_extent_depth)
+data margin: Int = 14000
+data tray_w: Int = board_w + 2 * margin
+data tray_d: Int = board_d + 2 * margin
+data panel_t: Int = 5000
+data seam: Int = 2000
+data panel_w: Int = (tray_w - seam) / 2
+data panel_d: Int = (tray_d - seam) / 2
+data bay_pitch: Int = 140000
+data bay_w: Int = tray_w + 48000
+data rear_plate_z: Int = 0 - tray_d / 2 - 76000
+data rear_beam_z: Int = rear_plate_z + 20000
+data fan_spacing: Int = 94000
+data fan_hole_offset: Int = micrometer_count(m: arctic_p8_mounting_pattern.hole_pitch) / 2
+data fan_hole_d: Int = micrometer_count(m: arctic_p8_mounting_pattern.hole_clearance_diameter)
+data m3_clearance: Int = 3400
+// Fan fit reported by operator 2026-10-04: physical plate/fan fit passed. Does not
+// rewrite the upstream ConventionUnverified row into a dimensional measurement.
+data fan_fit_observation: String = "Operator reported the printed rear fan plate fits the fan, 2026-10-04. No additional gauge required."
+fn bolt_y(x: Int,z: Int) -> Primitive { round(diameter: m3_clearance,length: 40000,axis: Axis3Y,x: x,y: 0,z: z) }
+
+fn panel(sx: Int,sz: Int,id: String) -> AssemblyPart {
+  let cx = sx * (tray_w + seam) / 4
+  let cz = sz * (tray_d + seam) / 4
+  let slot_w = (panel_w - 52000) / 4
+  let vents = fold([0,1,2,3],init: [],f: fn(acc,i) {
+    let x = 0 - panel_w / 2 + 26000 + slot_w / 2 + i * slot_w
+    let width = slot_w - 4000
+    let half_run = (panel_d - 56000 - width) / 2
+    concat(acc,[block(w: width,h: 9000,d: half_run*2,x: x,y: 2500,z: 0),
+      round(diameter: width,length: 9000,axis: Axis3Y,x: x,y: 2500,z: half_run),
+      round(diameter: width,length: 9000,axis: Axis3Y,x: x,y: 2500,z: 0-half_run)])
+  })
+  // Seam holes sit in the perimeter rim. Bridges below share these exact global centres.
+  let seam_x = fold([-5000,5000],init: [],f: fn(acc,dz) { concat(acc,[bolt_y(x: sx*12000-cx,z: dz)]) })
+  let seam_z = fold([-5000,5000],init: [],f: fn(acc,dx) { concat(acc,[bolt_y(x: dx,z: sz*12000-cz)]) })
+  let rail = fold([-1,1],init: [],f: fn(acc,j) { concat(acc,[bolt_y(x: sx*(tray_w/2-7000)-cx,z: j*(panel_d/2-18000))]) })
+  let handle = if sz==1 { [bolt_y(x: sx*50000-cx,z: tray_d/2-10000-cz)] } else { [] }
+  let extension = if sz== -1 { [bolt_y(x: sx*(tray_w/2-7000)-cx,z: 0-tray_d/2+20000-cz)] } else { [] }
+  let retainer = if sz==1 { [bolt_y(x: sx*(tray_w/2-22000)-cx,z: tray_d/2-18000-cz)] } else { [] }
+  part(id: id,name: concat("Carrier panel ",id),kind: Printed,scope: Cassette,
+    adds: [block(w: panel_w,h: panel_t,d: panel_d,x: 0,y: panel_t/2,z: 0)],
+    cuts: concat(vents,concat(seam_x,concat(seam_z,concat(rail,concat(handle,concat(extension,retainer)))))),
+    x: cx,y: 0,z: cz,ex: sx*65000,ey: 12000,ez: sz*55000,plane: LayOnXZ,
+    notes: "Four vented panels; M3 through-bolted seams and rail interfaces. Board supports remain a separate unresolved interface; do not place a powered board directly on this tray.")
+}
+fn panel_bridge(sx: Int,sz: Int,id: String) -> AssemblyPart {
+  let across_x = sx==0
+  let w = if across_x { 42000 } else { 20000 }
+  let d = if across_x { 20000 } else { 42000 }
+  let holes = fold([-1,1],init: [],f: fn(acc,a) { concat(acc,fold([-1,1],init: [],f: fn(inner,b) { concat(inner,[bolt_y(x: a*(if across_x {12000} else {5000}),z: b*(if across_x {5000} else {12000}))]) })) })
+  part(id: id,name: "Panel seam splice",kind: Printed,scope: Cassette,adds:[block(w:w,h:5000,d:d,x:0,y:0,z:0)],cuts:holes,
+    x:sx*(tray_w+seam)/4,y: -2500,z:sz*(tray_d+seam)/4,ex:sx*40000,ey: -45000,ez:sz*40000,plane:LayOnXZ,notes:"Four M3 through-bolts; joint geometry proposal, unpowered assembly fit first.")
+}
+fn rail(sx: Int,sz: Int,id: String) -> AssemblyPart {
+  let cx=sx*(tray_w/2-2000)
+  let cz=sz*(tray_d+seam)/4
+  let holes=concat(fold([-1,1],init:[],f:fn(acc,j){concat(acc,[bolt_y(x:0-sx*5000,z:j*(panel_d/2-18000))])}),
+    [bolt_y(x:0-sx*5000,z:sz*12000-cz)])
+  let cuts=if sz== -1 {concat(holes,[bolt_y(x:0-sx*5000,z:0-tray_d/2+20000-cz)])} else {holes}
+  part(id:id,name:"Segmented carrier rail",kind:Printed,scope:Cassette,
+    adds:[block(w:24000,h:4000,d:panel_d,x:0,y: -2000,z:0),block(w:4000,h:16000,d:panel_d,x:sx*10000,y:4000,z:0)],cuts:cuts,
+    x:cx,y:0,z:cz,ex:sx*85000,ey: -20000,ez:sz*30000,plane:LayOnXZ,notes:"L section; overlaps panel edge by 14 mm. M3 bolts to panel and separate rail splice. Sliding clearance/load qualification remains open.")
+}
+fn rail_bridge(sx: Int,id: String) -> AssemblyPart {
+  part(id:id,name:"Rail seam splice",kind:Printed,scope:Cassette,adds:[block(w:18000,h:4000,d:42000,x:0,y:0,z:0)],cuts:[bolt_y(x:0,z: -12000),bolt_y(x:0,z:12000)],
+    x:sx*(tray_w/2-7000),y: -6000,z:0,ex:sx*90000,ey: -45000,ez:0,plane:LayOnXZ,notes:"Two M3 through-bolts across the rail seam; backing nuts/washers remain accessible below.")
+}
+fn handle() -> AssemblyPart {
+  part(id:"H1",name:"Front pull handle",kind:Printed,scope:Cassette,
+    adds:[block(w:110000,h:10000,d:12000,x:0,y:0,z:30000),block(w:18000,h:10000,d:48000,x: -46000,y:0,z:12000),block(w:18000,h:10000,d:48000,x:46000,y:0,z:12000)],
+    cuts:[bolt_y(x: -50000,z:0),bolt_y(x:50000,z:0)],x:0,y:10000,z:tray_d/2-10000,ex:0,ey:15000,ez:110000,plane:LayOnXZ,notes:"M3 through-bolts into both front panels. Pull/load test before carrying a populated node; front kept clear of chassis fans.")
+}
+fn retaining_tab(sx: Int,id: String) -> AssemblyPart {
+  part(id:id,name:"Front retaining stop",kind:Printed,scope:Cassette,
+    adds:[block(w:24000,h:5000,d:36000,x:0,y:0,z:0),block(w:6000,h:12000,d:9000,x:sx*9000,y:6000,z:13000)],cuts:[bolt_y(x:0,z: -8000)],
+    x:sx*(tray_w/2-22000),y:7500,z:tray_d/2-10000,ex:sx*50000,ey:40000,ez:55000,plane:LayOnXZ,notes:"Rigid stop with pivot bolt, not a snap latch. Engagement with the metal rack still needs review.")
+}
+fn extension(sx: Int,id: String) -> AssemblyPart {
+  part(id:id,name:"Rear fan-bank extension",kind:Printed,scope:Cassette,
+    adds:[block(w:20000,h:8000,d:112000,x:0,y:0,z:0)],cuts:[bolt_y(x:0,z:30000),bolt_y(x:0,z: -46000)],
+    x:sx*(tray_w/2-7000),y: -8000,z:0-tray_d/2-10000,ex:sx*55000,ey: -45000,ez: -50000,plane:LayOnXZ,
+    notes:"Connects the rear panel/rail stack to the fan crossmember. Cantilever stiffness and creep unqualified.")
+}
+fn fan_beam(sx: Int,id: String) -> AssemblyPart {
+  let width=2*fan_spacing+92000
+  let cx=sx*(width+seam)/4
+  let w=(width-seam)/2
+  let feet=fold([-1,0,1],init:[],f:fn(acc,i){concat(acc,fold([-1,1],init:[],f:fn(inner,j){
+    let x=i*fan_spacing+j*25000
+    if x*sx>0 {concat(inner,[bolt_y(x:x-cx,z:0)])} else {inner}
+  }))})
+  part(id:id,name:"Rear fan crossmember half",kind:Printed,scope:Cassette,
+    adds:[block(w:w,h:8000,d:24000,x:0,y:0,z:0)],cuts:concat(feet,[bolt_y(x:sx*12000-cx,z:0),bolt_y(x:sx*(tray_w/2-7000)-cx,z:0)]),
+    x:cx,y:0,z:rear_beam_z,ex:sx*50000,ey: -10000,ez: -85000,plane:LayOnXZ,notes:"Three fan feet bolt to this split crossmember. End holes align with rear extension arms; centre splice bridges the print split.")
+}
+fn fan_beam_bridge() -> AssemblyPart {
+  part(id:"FBJ",name:"Fan crossmember splice",kind:Printed,scope:Cassette,adds:[block(w:42000,h:4000,d:20000,x:0,y:0,z:0)],cuts:[bolt_y(x: -12000,z:0),bolt_y(x:12000,z:0)],
+    x:0,y: -6000,z:rear_beam_z,ex:0,ey: -50000,ez: -85000,plane:LayOnXZ,notes:"Two M3 bolts join the rear crossmember halves.")
+}
+fn fan_plate(i: Int,id: String) -> AssemblyPart {
+  // Read the sealed geometry used by the successfully fitted print. No copied pattern.
+  let adds=match arctic_p8_fan_mount { FanMountAdmitted {geometry:g} => {
+    let p=fan_mount_plate(g:g)
+    [block(w:micrometer_count(m:p.size_x),h:micrometer_count(m:p.size_y),d:micrometer_count(m:p.size_z),x:0,y:0,z:0)]
+  } _ => [] }
+  let cuts=match arctic_p8_fan_mount { FanMountAdmitted {geometry:g} => {
+    let p=fan_mount_plate(g:g)
+    concat([fan_mount_bore(g:g)],fan_mount_mounting_holes(g:g)) |> map(op => match op {
+      OpThroughHole {diameter:diam,center_x:x,center_y:y} => round(diameter:micrometer_count(m:diam),length:10000,axis:Axis3Z,
+        x:micrometer_count(m:x)-micrometer_count(m:p.size_x)/2,y:micrometer_count(m:y)-micrometer_count(m:p.size_y)/2,z:0)
+    })
+  } _ => [] }
+  part(id:id,name:"Rear fan mounting plate",kind:Printed,scope:Cassette,adds:adds,cuts:cuts,
+    x:i*fan_spacing,y:55000,z:rear_plate_z,ex:i*40000,ey:0,ez: -60000,plane:LayOnXY,notes:fan_fit_observation)
+}
+fn fan_foot(i: Int,id: String) -> AssemblyPart {
+  part(id:id,name:"Rear fan plate foot",kind:Printed,scope:Cassette,
+    adds:[block(w:92000,h:5000,d:35000,x:0,y:6500,z:10500),block(w:92000,h:25000,d:5000,x:0,y:16500,z: -4500)],
+    cuts:concat(if i==0 {[]} else {[bolt_y(x:i*(tray_w/2-7000-fan_spacing),z:20000)]},[bolt_y(x: -25000,z:20000),bolt_y(x:25000,z:20000),round(diameter:fan_hole_d,length:12000,axis:Axis3Z,x: -fan_hole_offset,y:55000-fan_hole_offset,z: -4500),round(diameter:fan_hole_d,length:12000,axis:Axis3Z,x:fan_hole_offset,y:55000-fan_hole_offset,z: -4500)]),
+    x:i*fan_spacing,y:0,z:rear_plate_z,ex:i*40000,ey: -20000,ez: -60000,plane:LayOnXZ,notes:"L bracket: two lower fan bolts and two M3 crossmember bolts. Printed flat on its base; vertical wall has no unsupported overhang.")
+}
+fn fan_guard(i: Int,id: String) -> AssemblyPart {
+  let rim=[block(w:92000,h:8000,d:3000,x:0,y:42000,z:0),block(w:92000,h:8000,d:3000,x:0,y: -42000,z:0),block(w:8000,h:92000,d:3000,x:42000,y:0,z:0),block(w:8000,h:92000,d:3000,x: -42000,y:0,z:0)]
+  let pads=fold([-1,1],init:[],f:fn(acc,x){concat(acc,fold([-1,1],init:[],f:fn(inner,y){concat(inner,[block(w:12000,h:12000,d:3000,x:x*fan_hole_offset,y:y*fan_hole_offset,z:0)])}))})
+  let bars=fold([-3,-2,-1,0,1,2,3],init:[],f:fn(acc,j){concat(acc,[block(w:84000,h:4000,d:3000,x:0,y:j*11000,z:0)])})
+  let holes=fold([-1,1],init:[],f:fn(acc,x){concat(acc,fold([-1,1],init:[],f:fn(inner,y){concat(inner,[round(diameter:fan_hole_d,length:8000,axis:Axis3Z,x:x*fan_hole_offset,y:y*fan_hole_offset,z:0)])}))})
+  part(id:id,name:"Rear fan guard",kind:Printed,scope:Cassette,adds:concat(rim,concat(pads,bars)),cuts:holes,
+    x:i*fan_spacing,y:55000,z:rear_plate_z-10500,ex:i*40000,ey:0,ez: -105000,plane:LayOnXY,notes:"7 mm nominal grille gaps, provisional guard geometry; not a certified finger-protection rating. Upper 7 mm and lower 2 mm spacers clear the 5 mm foot behind the plate.")
+}
+fn guard_spacer(i:Int,sx:Int,sy:Int,id:String) -> AssemblyPart {
+  let len=if sy==1 {7000} else {2000}
+  part(id:id,name:"Fan guard spacer",kind:Printed,scope:Cassette,
+    adds:[round(diameter:8000,length:len,axis:Axis3Z,x:0,y:0,z:0)],cuts:[round(diameter:fan_hole_d,length:len+2000,axis:Axis3Z,x:0,y:0,z:0)],
+    x:i*fan_spacing+sx*fan_hole_offset,y:55000+sy*fan_hole_offset,z:rear_plate_z-9000+len/2,ex:i*40000+sx*10000,ey:sy*12000,ez: -85000,plane:LayOnXY,
+    notes:"Spacing proposal for the guard/plate/foot fastener stack. Verify clearance and fastener engagement in complete assembly.")
+}
+fn guide(sx:Int,id:String) -> AssemblyPart {
+  let gx=fan_spacing+46000+3000
+  let reach=gx-(tray_w/2-7000)
+  part(id:id,name:"Rear side airflow guide",kind:Printed,scope:Cassette,
+    adds:[block(w:3000,h:80000,d:120000,x:0,y:40000,z:0),block(w:reach+10000,h:4000,d:120000,x:0-sx*reach/2,y:2000,z:0)],
+    cuts:[bolt_y(x:0-sx*reach,z:30000),bolt_y(x:0-sx*reach,z: -46000)],
+    x:sx*gx,y:13000,z:0-tray_d/2-10000,ex:sx*75000,ey:20000,ez: -35000,plane:LayOnYZ,
+    notes:"L-section guide shares the extension stack. Front bolt passes an 8 mm spacer, panel, rail and extension; rear bolt passes a 4 mm spacer, outer fan foot, crossmember and extension. Guide clears rail flange by 1 mm. Air sealing/thermal effectiveness are unqualified.")
+}
+fn guide_shim(sx:Int,front:Bool,id:String) -> AssemblyPart {
+  let height=if front {8000} else {4000}
+  part(id:id,name:"Rear guide spacer",kind:Printed,scope:Cassette,
+    adds:[round(diameter:8000,length:height,axis:Axis3Y,x:0,y:0,z:0)],cuts:[bolt_y(x:0,z:0)],
+    x:sx*(tray_w/2-7000),y:13000-height/2,z:if front {0-tray_d/2+20000} else {rear_beam_z},ex:sx*75000,ey:15000,ez: -55000,plane:LayOnXZ,notes:"Derived guide support stack: front rests on panel, rear on outer fan foot. Both top faces at 13 mm, clearing rail flange.")
+}
+fn printed_parts() -> List<AssemblyPart> {
+  concat([
+    panel(sx: -1,sz: -1,id:"P1"),panel(sx:1,sz: -1,id:"P2"),panel(sx: -1,sz:1,id:"P3"),panel(sx:1,sz:1,id:"P4"),
+    panel_bridge(sx:0,sz: -1,id:"J1"),panel_bridge(sx:0,sz:1,id:"J2"),panel_bridge(sx: -1,sz:0,id:"J3"),panel_bridge(sx:1,sz:0,id:"J4"),
+    rail(sx: -1,sz: -1,id:"R1"),rail(sx: -1,sz:1,id:"R2"),rail(sx:1,sz: -1,id:"R3"),rail(sx:1,sz:1,id:"R4"),rail_bridge(sx: -1,id:"RJ1"),rail_bridge(sx:1,id:"RJ2"),
+    guide_shim(sx: -1,front:false,id:"DS1"),guide_shim(sx:1,front:false,id:"DS2"),guide_shim(sx: -1,front:true,id:"DS3"),guide_shim(sx:1,front:true,id:"DS4"),handle(),retaining_tab(sx: -1,id:"T1"),retaining_tab(sx:1,id:"T2"),extension(sx: -1,id:"E1"),extension(sx:1,id:"E2"),fan_beam(sx: -1,id:"FB1"),fan_beam(sx:1,id:"FB2"),fan_beam_bridge(),
+    fan_plate(i: -1,id:"M1"),fan_plate(i:0,id:"M2"),fan_plate(i:1,id:"M3"),fan_foot(i: -1,id:"MF1"),fan_foot(i:0,id:"MF2"),fan_foot(i:1,id:"MF3"),
+    fan_guard(i: -1,id:"G1"),fan_guard(i:0,id:"G2"),fan_guard(i:1,id:"G3"),guide(sx: -1,id:"D1"),guide(sx:1,id:"D2")
+  ],fold([-1,0,1],init:[],f:fn(acc,i){concat(acc,fold([-1,1],init:[],f:fn(inner,x){concat(inner,fold([-1,1],init:[],f:fn(last,y){concat(last,[guard_spacer(i:i,sx:x,sy:y,id:join(["SP",to_string(i),to_string(x),to_string(y)],"_"))])}))}))}))
+}
+
+fn interfaces() -> List<MechanicalInterface> {
+ [mechanical_interface(id:"panel-seams",members:["P1","P2","P3","P4","J1","J2","J3","J4"],fastener:"M3 bolt + washer + nut; length selected from stack",quantity:16,status:"proposed",requirement:"Matched 3.4 mm through-holes; panel seam gap 2 mm."),
+ mechanical_interface(id:"panel-rails",members:["P1","P2","P3","P4","R1","R2","R3","R4"],fastener:"M3 bolt + washer + nut",quantity:8,status:"proposed",requirement:"9 mm nominal plastic stack; no screw-tip contact with board."),
+ mechanical_interface(id:"rail-splices",members:["R1","R2","R3","R4","RJ1","RJ2"],fastener:"M3 bolt + washer + nut",quantity:4,status:"proposed",requirement:"Two bolts per splice; 8 mm stack."),
+ mechanical_interface(id:"handle",members:["H1","P3","P4"],fastener:"M3 bolt + washer + nut",quantity:2,status:"proposed",requirement:"15 mm stack; pull/load qualification pending."),
+ mechanical_interface(id:"retention",members:["T1","T2","P3","P4","FRAME"],fastener:"M3 pivot bolt + washer + locknut",quantity:2,status:"proposed",requirement:"Rack-stop engagement and extraction clearance to review."),
+ mechanical_interface(id:"rear-extensions",members:["E1","E2","R1","R3","P1","P2","D1","D2","DS1","DS2","DS3","DS4","MF1","MF3","FB1","FB2"],fastener:"M3 through-bolts + nuts; guide spacers",quantity:4,status:"proposed",requirement:"Front and rear shared stacks; verify guide spacers and accessible nuts."),
+ mechanical_interface(id:"fan-beam-splice",members:["FB1","FB2","FBJ"],fastener:"M3 bolt + washer + nut",quantity:2,status:"proposed",requirement:"12 mm stack."),
+ mechanical_interface(id:"fan-feet",members:["MF1","MF2","MF3","FB1","FB2"],fastener:"M3 bolt + washer + nut",quantity:6,status:"proposed",requirement:"13 mm stack, two bolts per fan foot."),
+ mechanical_interface(id:"fan-pattern",members:["F1","F2","F3","M1","M2","M3","MF1","MF2","MF3","G1","G2","G3"],fastener:"M4 through-bolts + nuts; 7 mm upper / 2 mm lower guard spacers",quantity:12,status:"plate fit passed; new stack proposed",requirement:"39 mm nominal stack before washers/nut; assess M4x45 engagement and actual fan fastener path."),
+ mechanical_interface(id:"board-support",members:["BOARD","P1","P2","P3","P4"],fastener:"Standoffs and adjustable support hardware not selected",quantity:0,status:"unresolved",requirement:"Known 1–3 and 3–4 alignment passes; no further gauges requested. Underside keep-outs/thread/height required before populated operation. No fabricated standoff geometry."),
+ mechanical_interface(id:"power",members:["PSU","PDB","DC","FEEDS"],fastener:"Four rated protected/isolatable 12 V branches",quantity:4,status:"unresolved",requirement:"Shared supply per block. No wattage, wire gauge, connector pinout or live hot-swap admission."),
+ mechanical_interface(id:"rack-ground",members:["FRAME","SHELF","PSU"],fastener:"Dedicated protective-earth bonding hardware",quantity:0,status:"unresolved",requirement:"Bond persists with every cassette removed; printed polymer is not the bond or mains enclosure.")]
+}

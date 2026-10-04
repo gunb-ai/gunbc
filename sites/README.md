@@ -1,11 +1,36 @@
-# Chassis concept site
+# Chassis workbench
 
-[Altra Chassis Workbench](https://altra-chassis-workbench.briansrls448156.chatgpt.site) is the private interactive design surface for iterating on the Altra carrier and rack. Site project: `appgprj_6ac187f2fe208191b1ec7ad6703d93e8`.
+[Altra Chassis Workbench](https://altra-chassis-workbench.briansrls448156.chatgpt.site) is the private
+assembly review site. Reuse project `appgprj_6ac187f2fe208191b1ec7ad6703d93e8` and the separate
+Sites-managed checkout at `sites/chassis-workbench/`; do not create a second site.
 
-The separate Site checkout is `sites/chassis-workbench/` in the printing worktree. Its source is committed to the Sites-managed repository, first published commit `44ea76b0914cf99f6e80e94fee26554544b72cfe`. Reopen that same project for edits rather than creating another site.
+Review 05 consumes meshes and metadata generated from `product.printed_chassis.cassette_review`.
+Mechanical geometry, placements, print orientation and interfaces belong to `.dag`. The browser
+only displays those meshes; the former `concept.js` and mechanical sliders are removed. View
+controls change the camera, visibility, explosion and cassette withdrawal, never printable geometry.
 
-Concept 04 source: `c2a49273da70f20a23e2e044fe552dceb74b773f`. The page provides 29 selectable parts/reference objects in rack view (25 on a cassette) at the default three-fan setting, isolated orbit inspection, exploded assembly, a conceptual 2×2 fixed frame, cassette withdrawal, design sliders and copyable settings. No persistent user data, credentials, printer controls or external application access are included.
+- Carrier: all 49 printed instances, purchased hardware and labeled clearance reservations.
+- All pieces: 29 unique authored print geometries with required quantities; isolate and rotate any.
+- Rack: four cassettes in a fixed metal frame, fixed runners and one shared-power reservation.
+- Downloads: individual STL/STEP, assembly STEP, logical manifest and a complete review ZIP with
+  parts, print quantities and interface hardware lists.
+- Assembly review: the passed fan fit, proposed joints and remaining hardware decisions.
 
-This is visualization geometry, not a manufacturing model. The accepted requirements remain in `docs/plans/printed-chassis-program.md`. Dynatron W1 is the target cooler and its published active envelope is depicted; installed offset/orientation remain unresolved. Concept 03 uses one fixed-frame shared 12 V supply system per four-node block, with four protected/isolatable node feeds. PSU capacity and distribution hardware remain unselected; the former per-node 400–600 W example is superseded. Actual standoff, underside, accepted PSU interfaces and load inputs remain unresolved; proposed geometry does not establish their dimensions. Before printing structural parts, selected geometry must move through the repository's modeled CAD and admission workflow.
+The tray is 271.840 × 294.700 mm, split for the 180 mm A1 mini. The custom frame uses 140 mm bay
+pitch; it is not a standard rack-unit compliance claim. Dynatron W1 and P8 envelopes come from
+vendor authority. One fan plate has already physically fit; reuse it when counting the next prints.
+Shared 12 V power remains fixed per four-node block with four isolatable/protected feeds. Capacity,
+branch circuitry, connector choice and redundancy remain unresolved. Board supports are explicitly
+unresolved rather than invented geometry. See `docs/plans/printed-chassis-program.md` for evidence,
+reproduction, first-assembly scope and the existing fabrication/printing workflow.
 
-Concept 04 moves fans to rear exhaust and provides the DAG-generated 92 × 92 × 4 mm fan plate as STL/STEP downloads. The plate is an unpowered fit prototype; cassette attachment and a finger guard remain unresolved.
+CadQuery validation covers all printed solids, STL manifoldness/bounds/volume, STEP round-trip,
+180 mm bed fit, 56 matched fastener axes and zero positive-volume intersections between printed
+parts. It does not qualify strength, engagement, thermals or electrical operation. Local browser
+checks cover generated mesh loading, roster, selection/isolation/keyboard rotation, rack extraction,
+all-pieces view, filters, hardware/clearance visibility, downloads, interface table and mobile layout.
+There are no printer controls, credentials, external application access or persistent user data.
+
+Earlier visual-only source: concept 04 `c2a49273da70f20a23e2e044fe552dceb74b773f`.
+
+Published review 05 Site source: `a9658fd05d27e83220c611b5fb00ac4397b74739` (owner-private audience unchanged).

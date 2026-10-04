@@ -1280,3 +1280,74 @@ print_error 0, exact digest filename `gunbc-71da943ff2ed73a6b47c54759ba288e82af7
 not yet evidence of deposited layers or completed fit. The snapshot is retained locally and on srv1.
 The operator independently reported probably heating. Printer-02 was not started. Temporary copies
 of the operator token were deleted from both hosts.
+
+### Complete logical cassette review — 4 October 2026
+
+The operator reports that the printed rear fan plate fits. Record this as a physical fit
+observation, not a caliper measurement or a promotion of the upstream conventional hole pattern.
+The operator requests the whole cassette model now, review of all pieces together, then the first
+cassette print. Stop the individual gauge sequence. No printer start is authorized by this review
+artifact generation alone; the next print follows assembly review and the existing print workflow.
+
+Review 05 replaces browser-authored mechanical geometry with `product.printed_chassis.cassette`
+and `rack_assembly`. `assembly_geometry` carries typed box/cylinder CSG, micrometre coordinates,
+part kind, fixed/moving scope, print orientation and mating-interface records. `cassette_review`
+emits the full manifest. `review_realization` emits the generic CadQuery host adapter; it chooses
+no mechanical dimensions and grants no fabrication admission. The old Site `concept.js` is removed.
+Vendor board outline, fan plate/pattern, W1 envelope and P8 depth resolve from their existing owners.
+
+One cassette has 49 printed instances / 29 distinct authored geometries: four vented tray panels,
+four panel splices, four rails, two rail splices, a handle, two retaining stops, two rear extension
+arms, two fan crossmember halves and a splice, three fitted-pattern fan plates, three feet, three
+guards, two side airflow guides, four guide spacers and twelve guard spacers. The tray is
+271.840 × 294.700 mm. Each piece fits the 180 mm A1 mini envelope in its declared orientation.
+The two-level block retains a 140 mm bay pitch; this is a custom frame, not a claim of standard
+2U/4U rack compliance. The fixed metal frame includes runner proposals. Shared 12 V supply,
+four protected/isolatable feeds and distribution space remain fixed when a cassette is extracted.
+Supply dimensions are explicitly space reservations; no supply wattage or circuit is selected.
+
+The guides initially intersected the rail flanges and outer fan feet. The corrected model raises
+the guide foot to 13 mm, adds front 8 mm / rear 4 mm spacers, and drills the outer foot for the shared
+rear bolt stack. The front rests on the panel; the rear rests on the outer fan foot. This clears
+the rail flange by 1 mm. Guard pads enclose the four fan fastener holes; upper 7 mm / lower 2 mm
+spacers account for the 5 mm fan foot. Guard protection, fan bolt length and engagement still need
+assembly review. All 56 distinct modeled fastener axes have a coaxial mate in another printed part.
+This is geometric alignment evidence, not a fastener strength or engagement test.
+
+Reproduction (from this worktree; use a memory-limited scope for the compiler):
+
+```sh
+systemd-run --user --scope -p MemoryMax=24G -p MemorySwapMax=0 gunbc run \
+  --source-root dag --source-root src/v2 \
+  --entry dag/gunbc/product/printed_chassis/cassette_review.dag --function main > model.json
+systemd-run --user --scope -p MemoryMax=24G -p MemorySwapMax=0 gunbc run \
+  --source-root dag --source-root src/v2 \
+  --entry dag/gunbc/product/printed_chassis/review_realization.dag --function main > realize-review.py
+python realize-review.py model.json fresh-output-directory
+```
+
+Use the exercised CadQuery 2.8.0 environment. Output includes bed-oriented STL for each printed
+instance, local-coordinate STEP, cassette assembly STEP, viewer meshes, a manifest with digests,
+parts/print-quantity/interface CSVs and one review ZIP. Generated artifacts and run logs are retained
+under `/home/briansrls/print-prep-2026-10-04/cassette-r05`; the Site carries the review package.
+The adapter refuses invalid/disconnected printed solids, cuts missing material, out-of-bed parts,
+nonmanifold STL, STEP/STL bounds or volume divergence, unmatched fastener bores, orphan interface
+members and intersections between printed parts. Kernel bounding boxes explicitly ignore cached
+triangulation, while STL bounds allow the modeled tessellation deflection.
+
+Remaining interfaces are deliberately represented as unresolved: board support thread/height and
+underside keep-outs, loaded rail/joint/material behavior, real cooler pose and rear cable access,
+fastener engagement, selected power/distribution hardware, thermal performance and unspecified
+storage/expansion. No invented standoffs are provided. The first cassette is an unpowered assembly
+fit, not a populated operational chassis. Review the complete parts and these interfaces together;
+do not restart a gauge-by-gauge process.
+
+Final exercised generation passed for all 49 printed pieces, 29 unique geometries, 56 matched
+fastener axes and zero printed-part intersections. Negative controls separately refused an oversized
+part, a disconnected solid, an unknown primitive, a displaced mating bore and an orphan interface.
+The emitted adapter was the code actually executed. Local browser checks passed with the final
+package; the Site shows the same generated mesh geometry as the downloadable CAD. No slicing,
+approval request or printer start was performed in this review step. Reuse the already fitted fan
+plate when scheduling quantities after review.
+
+Review 05 published successfully at the existing private workbench, Site source `a9658fd05d27e83220c611b5fb00ac4397b74739`.

@@ -1,7 +1,7 @@
 module extdeps.cooling.dynatron
 
 import std.types { NonEmptyStr, List }
-import std.measure { watt, rack_unit }
+import std.measure { Micrometer, micrometer, watt, rack_unit }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.cooling.types { CpuCoolerCatalogRow }
 import extdeps.cpu.types {
@@ -40,3 +40,8 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
+
+// Manufacturer active W1 envelope; installation pose belongs to the product assembly.
+data dynatron_w1_active_length: Micrometer = micrometer(count: 141100)
+data dynatron_w1_active_width: Micrometer = micrometer(count: 84000)
+data dynatron_w1_active_height: Micrometer = micrometer(count: 72000)
