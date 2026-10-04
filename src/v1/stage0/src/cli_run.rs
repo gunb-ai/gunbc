@@ -7375,43 +7375,6 @@ struct DiscoveryEntryResolve {
     stage_nanos: ResolveStageNanos,
 }
 
-fn resolve_discovery_entry_for_corpus_row(
-    index: &MultiEntryIndex,
-    entry_path: &str,
-    execution_mode: v1_interpreter::ExecutionMode,
-    whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
-    closure_modules: &mut HashSet<String>,
-) -> Result<DiscoveryEntryResolve, String> {
-    let sources = load_sources_for_entry_with_pool(index, entry_path)
-        .map_err(|msg| format!("load sources failed for {entry_path}: {msg}"))?;
-    let closure_subject = subject_digest_for_closure(&sources);
-    let resolve_started = std::time::Instant::now();
-    set_phase(FloorPhase::Resolve, entry_path);
-    let (graph, source_indices) = resolve_entry_with_index(index, entry_path)
-        .map_err(|msg| format!("resolve failed for {entry_path}: {msg}"))?;
-    let resolve_nanos = resolve_started.elapsed().as_nanos();
-    // Same thread, immediately after the resolve that filled it: this entry's split.
-    let stage_nanos = resolve_stage_slot_snapshot();
-    collect_typed_module_names(
-        graph.modules.iter().cloned(),
-        &source_indices,
-        closure_modules,
-    );
-    let entry_ctx = make_eval_context_with_runtime_options(
-        &graph,
-        source_indices,
-        execution_mode,
-        None,
-        whole_tree_published_keys,
-    );
-    Ok(DiscoveryEntryResolve {
-        ctx: entry_ctx,
-        closure_subject,
-        resolve_nanos,
-        stage_nanos,
-    })
-}
-
 /// The closure-node definition SHARED by the falsifier/floor calibration emission and the
 /// space-lens memory predictor (THIS function is the single authority — the predictor binds to
 /// it, never re-derives; predictor design in flight on PR #6442, landed parent-lane authorities
@@ -7450,22 +7413,6 @@ fn collect_both_closure_module_names_for_entry(
         }
     }
     Ok(())
-}
-
-pub fn roster_import_closure_nodes_pre_resolve(
-    rows: &[DiscoveryRow],
-    prefix_entries: &[&str],
-    index: &MultiEntryIndex,
-) -> Result<usize, String> {
-    let mut closure_modules: HashSet<String> = HashSet::new();
-    for entry in rows
-        .iter()
-        .map(|r| r.entry.as_str())
-        .chain(prefix_entries.iter().copied())
-    {
-        collect_both_closure_module_names_for_entry(index, entry, &mut closure_modules)?;
-    }
-    Ok(closure_modules.len())
 }
 
 // NO LONGER TEST-ONLY. The whole-root import walk was open-coded in `main.rs` and this was its
@@ -15565,64 +15512,6 @@ pub fn index_retention_snapshot(index: &MultiEntryIndex) -> IndexRetentionSnapsh
     }
 }
 
-fn retention_snapshot_peak(
-    a: &IndexRetentionSnapshot,
-    b: &IndexRetentionSnapshot,
-) -> IndexRetentionSnapshot {
-    IndexRetentionSnapshot {
-        typed_module_cache_entries: a
-            .typed_module_cache_entries
-            .max(b.typed_module_cache_entries),
-        parse_cache_entries: a.parse_cache_entries.max(b.parse_cache_entries),
-        resolved_graph_memo_entries: a
-            .resolved_graph_memo_entries
-            .max(b.resolved_graph_memo_entries),
-        normalize_diag_cache_entries: a
-            .normalize_diag_cache_entries
-            .max(b.normalize_diag_cache_entries),
-        ownership_diag_cache_entries: a
-            .ownership_diag_cache_entries
-            .max(b.ownership_diag_cache_entries),
-        intern_table_entries: a.intern_table_entries.max(b.intern_table_entries),
-        typed_cache_evictions: a.typed_cache_evictions.max(b.typed_cache_evictions),
-        schedule_releases: a.schedule_releases.max(b.schedule_releases),
-        schedule_evictions: a.schedule_evictions.max(b.schedule_evictions),
-        retention_unknown: a.retention_unknown.max(b.retention_unknown),
-        resolved_graph_evictions: a.resolved_graph_evictions.max(b.resolved_graph_evictions),
-        peak_rss_bytes: match (a.peak_rss_bytes, b.peak_rss_bytes) {
-            (Some(x), Some(y)) => Some(x.max(y)),
-            (Some(x), None) => Some(x),
-            (None, Some(y)) => Some(y),
-            (None, None) => None,
-        },
-    }
-}
-
-fn emit_floor_drain_group_line(
-    group_idx: usize,
-    total_groups: usize,
-    prev: &IndexRetentionSnapshot,
-    cur: &IndexRetentionSnapshot,
-) {
-    eprintln!(
-        "[floor-drain] group={group_idx}/{total_groups} \
-         typed_cache={}({:+}) parse_cache={}({:+}) resolved_memo={}({:+}) \
-         intern_table={}({:+}) evictions={} peak_rss={}",
-        cur.typed_module_cache_entries,
-        cur.typed_module_cache_entries as i64 - prev.typed_module_cache_entries as i64,
-        cur.parse_cache_entries,
-        cur.parse_cache_entries as i64 - prev.parse_cache_entries as i64,
-        cur.resolved_graph_memo_entries,
-        cur.resolved_graph_memo_entries as i64 - prev.resolved_graph_memo_entries as i64,
-        cur.intern_table_entries,
-        cur.intern_table_entries as i64 - prev.intern_table_entries as i64,
-        cur.typed_cache_evictions,
-        cur.peak_rss_bytes
-            .map(|b| b.to_string())
-            .unwrap_or_else(|| "unreadable".into()),
-    );
-}
-
 fn p1_matrix_cell() -> Option<char> {
     let raw = std::env::var("GUNBC_P1_MATRIX_CELL")
         .unwrap_or_default()
@@ -15637,85 +15526,6 @@ fn p1_matrix_cell() -> Option<char> {
     } else {
         None
     }
-}
-
-/// Whether the cross-worker JSON byte store arms typed-module sharing for this run.
-/// Production: ControlledWidthTwo always shares; Serial never shares on the pump index.
-/// Experiment (`p1_cohort_experiment_active`): matrix cell or `GUNBC_P1_SHARED_TYPED_STORE`.
-pub fn p1_experimental_arm_shared_typed_store(scheduled_width: usize) -> bool {
-    if let Some(cell) = p1_matrix_cell() {
-        return matches!(cell, 'B' | 'D');
-    }
-    let raw = std::env::var("GUNBC_P1_SHARED_TYPED_STORE")
-        .unwrap_or_else(|_| "auto".to_string())
-        .trim()
-        .to_ascii_lowercase();
-    match raw.as_str() {
-        "1" | "true" | "shared" => true,
-        "0" | "false" | "private" => false,
-        _ => scheduled_width > 1,
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn emit_p1_cohort_entry_line(
-    group_idx: usize,
-    total_groups: usize,
-    entry: &str,
-    wall_ms: u128,
-    resolve_ms: u128,
-    eval_ms: u128,
-    typecheck_cache_hit: bool,
-    resolved_graph_hit: bool,
-    modules_evicted: u64,
-    graphs_evicted: u64,
-    process_rss: Option<u64>,
-    cgroup_memory_current: Option<u64>,
-    cgroup_memory_peak: Option<u64>,
-) {
-    eprintln!(
-        "[p1-cohort] entry={group_idx}/{total_groups} name='{entry}' wall_ms={wall_ms} \
-         resolve_ms={resolve_ms} eval_ms={eval_ms} typecheck_cache_hit={} \
-         resolved_graph_hit={} modules_evicted={modules_evicted} graphs_evicted={graphs_evicted} \
-         process_rss={} cgroup_memory_current={} cgroup_memory_peak={}",
-        typecheck_cache_hit as u8,
-        resolved_graph_hit as u8,
-        process_rss
-            .map(|b| b.to_string())
-            .unwrap_or_else(|| "unreadable".into()),
-        cgroup_memory_current
-            .map(|b| b.to_string())
-            .unwrap_or_else(|| "unreadable".into()),
-        cgroup_memory_peak
-            .map(|b| b.to_string())
-            .unwrap_or_else(|| "unreadable".into()),
-    );
-}
-
-fn emit_floor_drain_receipt(
-    index: &MultiEntryIndex,
-    total_groups: usize,
-    peaks: &IndexRetentionSnapshot,
-) {
-    eprintln!(
-        "[floor-drain] receipt: groups={total_groups} \
-         typed_cache_peak={} parse_cache_peak={} resolved_memo_peak={} \
-         intern_table_peak={} evictions={} schedule_releases={} schedule_evictions={} \
-         retention_unknown={} peak_rss={} cap_entries={}",
-        peaks.typed_module_cache_entries,
-        peaks.parse_cache_entries,
-        peaks.resolved_graph_memo_entries,
-        peaks.intern_table_entries,
-        peaks.typed_cache_evictions,
-        peaks.schedule_releases,
-        peaks.schedule_evictions,
-        peaks.retention_unknown,
-        peaks
-            .peak_rss_bytes
-            .map(|b| b.to_string())
-            .unwrap_or_else(|| "unreadable".into()),
-        typed_module_cache_cap(index),
-    );
 }
 
 /// Enforce the host-budget-derived entry cap on the private typed cache. Evictions
@@ -19884,70 +19694,6 @@ pub fn seed_runner_bool_false_failure_detail(
     append_witness_verdict_diagnostic_loudness(&mut detail, ctx, witness_function);
     detail
 }
-
-/// Derive every distinct entry's leg once, against the index the caller already built.
-///
-/// Cost shape (§6 — measured, not assumed): the label itself is ~5us, but the classification
-/// authority's evaluation context is expensive to stand up, and resolving it through
-/// `resolve_entry_graph_shared` keys a *separate* corpus-wide index from the floor's own.
-/// That second index is not a duplicate lookup, it is a duplicate corpus: it cost ~6GB, took
-/// the floor from 10GB to 17GB of swap, and added 426s (+44%) to batch 3 against main.
-/// Resolving through the caller's `index` reuses the corpus already resident.
-pub(crate) fn prime_witness_execution_legs<'a>(
-    index: &MultiEntryIndex,
-    entries: impl IntoIterator<Item = &'a str>,
-) {
-    prime_witness_execution_legs_from_authority(index, None, entries)
-}
-
-fn prime_witness_execution_legs_from_authority<'a>(
-    subject_index: &MultiEntryIndex,
-    inherited_authority_roots: Option<&[String]>,
-    entries: impl IntoIterator<Item = &'a str>,
-) {
-    let mut distinct: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    for entry in entries {
-        let rel = repo_relative_dag_path(entry);
-        if witness_execution_leg_cached(&rel).is_none() {
-            distinct.insert(rel);
-        }
-    }
-    if distinct.is_empty() {
-        return;
-    }
-    let resolved = match inherited_authority_roots {
-        None => resolve_entry_with_index(
-            subject_index,
-            WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY,
-        ),
-        Some(roots) => {
-            resolve_entry_graph_shared(roots, WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY)
-        }
-    };
-    let (graph, indices) = resolved.unwrap_or_else(|e| {
-        panic!(
-            "witness execution leg: resolve census authority \
-                     {WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY}: {e} (refuse)"
-        )
-    });
-    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
-    for rel in distinct {
-        let leg = match eval_census_string_fn(&ctx, "census_execution_leg_label", &rel) {
-            Ok(leg) if !leg.trim().is_empty() => leg,
-            Ok(_) => panic!(
-                "witness execution leg: census_execution_leg_label({rel:?}) returned an empty label (refuse)"
-            ),
-            Err(e) => panic!("witness execution leg: {e} (refuse)"),
-        };
-        witness_execution_leg_cache_put(&rel, &leg);
-    }
-}
-
-/// Memo of derived labels, keyed on the entry path the rule is a function of. This is a
-/// cache of a pure computation, not a second representation of it: it is built from the
-/// `.dag` authority in-process, never written down, and cannot drift from the rule.
-static WITNESS_EXECUTION_LEG_CACHE: OnceLock<std::sync::RwLock<HashMap<String, String>>> =
-    OnceLock::new();
 
 const WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY: &str =
     "src/v2/compiler/self_host/witness_entry_eligibility_census.dag";
@@ -24938,78 +24684,6 @@ fn matching_discovery_exclusion_substring(path: &str) -> Option<String> {
         .cloned()
 }
 
-/// Scan `*_test.dag` witnesses excluded from discovery by `exclude_substrings` and return
-/// counted, typed rows for the floor receipt (§5: deferred-and-detected, never silent).
-pub fn collect_deferred_discovery_rows(
-    source_roots: &[String],
-    exclude_substrings: &[String],
-) -> Result<Vec<DeferredDiscoveryRow>, String> {
-    let facts = build_module_graph_facts_live(source_roots);
-    let mut out: Vec<DeferredDiscoveryRow> = Vec::new();
-    let mut seen: std::collections::BTreeSet<(String, String)> = std::collections::BTreeSet::new();
-    for root in source_roots {
-        let mut dag_files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(Path::new(root), &mut dag_files);
-        dag_files.sort();
-        for path in dag_files {
-            let entry = path.to_string_lossy().into_owned();
-            let rel = repo_relative_dag_path(&entry);
-            if !rel.ends_with("_test.dag") {
-                continue;
-            }
-            let Some(exclude_reason) = exclude_substrings
-                .iter()
-                .find(|sub| rel.contains(sub.as_str()))
-                .cloned()
-            else {
-                continue;
-            };
-            let content = std::fs::read_to_string(&path)
-                .map_err(|e| format!("read deferred discovery entry {rel}: {e}"))?;
-            let reads_live_tree = reads_live_tree_effective(&rel, &content, &facts)?;
-            for (function, _) in scan_test_decl_lines(&content) {
-                if seen.insert((rel.clone(), function.clone())) {
-                    out.push(DeferredDiscoveryRow {
-                        entry: rel.clone(),
-                        function,
-                        exclude_reason: exclude_reason.clone(),
-                        reads_live_tree,
-                    });
-                }
-            }
-        }
-    }
-    // Exact admissions are the SECOND reason a row leaves discovery, and the receipt must
-    // count them too. Before this lane they arrived here as a side effect of the file-level
-    // pattern that used to sit beside each one; with the pattern deleted, an admitted witness
-    // would otherwise vanish from the deferred receipt entirely — the uncounted degradation
-    // §5 forbids, in the mechanism whose whole job is to make deferral visible.
-    for (entry, function) in explicit_witness_admission_pairs() {
-        if seen.contains(&(entry.clone(), function.clone())) {
-            continue;
-        }
-        let path = workspace_root().join(&entry);
-        let content = std::fs::read_to_string(&path).map_err(|e| {
-            format!("read exact-admitted witness entry {entry}: {e} — an admission naming a file that cannot be read is a refusal, never a skipped row")
-        })?;
-        let reads_live_tree = reads_live_tree_effective(&entry, &content, &facts)?;
-        seen.insert((entry.clone(), function.clone()));
-        out.push(DeferredDiscoveryRow {
-            entry,
-            function,
-            exclude_reason: "exact witness admission (gunbc.explicit_witness_admission)"
-                .to_string(),
-            reads_live_tree,
-        });
-    }
-    out.sort_by(|a, b| {
-        a.entry
-            .cmp(&b.entry)
-            .then_with(|| a.function.cmp(&b.function))
-    });
-    Ok(out)
-}
-
 fn path_matches_any_substring(path: &str, subs: &[String]) -> bool {
     subs.iter().any(|sub| path.contains(sub.as_str()))
 }
@@ -25394,25 +25068,6 @@ fn classify_deferred_discovery_rows_in(
         .collect()
 }
 
-/// THE COVERAGE QUESTION. Only one arm means covered. A frozen row answers `false`, so nothing
-/// downstream asking "is this behavior exercised" receives an admission success for a witness that
-/// executes nowhere.
-pub fn witness_standing_has_executing_consumer(standing: WitnessExecutionStanding) -> bool {
-    matches!(standing, WitnessExecutionStanding::HasExecutingConsumer)
-}
-
-/// THE FLOOR GATE, a different question: may the floor proceed with this row today. It admits a
-/// real consumer unconditionally and additionally TOLERATES the frozen legacy debt — but the
-/// toleration is conditional on the roster axis, enforced by
-/// `refuse_frozen_path_deferral_additions` and `refuse_stale_frozen_path_deferrals` above, which
-/// stop the whole run when the baseline grows or rots. That is why this function does not silently
-/// widen: the frozen arm is only reachable while those two refusals are silent.
-pub fn collect_unexecuted_deferred_witnesses(
-    deferred_rows: &[DeferredDiscoveryRow],
-) -> Vec<DeferredAdmissionRefusal> {
-    refusals_from_standings(&classify_deferred_discovery_rows(deferred_rows))
-}
-
 fn refusals_from_standings(rows: &[DeferredRowStanding]) -> Vec<DeferredAdmissionRefusal> {
     rows.iter()
         .filter_map(|row| {
@@ -25433,15 +25088,6 @@ fn refusals_from_standings(rows: &[DeferredRowStanding]) -> Vec<DeferredAdmissio
             })
         })
         .collect()
-}
-
-/// The tolerated-but-uncovered population, counted so the debt is observable in the receipt rather
-/// than hidden inside a green gate. This is the number that must fall to zero, and it is a COUNT
-/// OF A DERIVED SET rather than a stored literal — nothing asserts it against a number.
-pub fn count_legacy_frozen_debt_rows(rows: &[DeferredRowStanding]) -> usize {
-    rows.iter()
-        .filter(|r| r.standing == WitnessExecutionStanding::LegacyFrozenPathDeferral)
-        .count()
 }
 
 /// The second direction of the identity join: a frozen row whose witness the tree no longer
@@ -25797,35 +25443,6 @@ fn refuse_stale_frozen_path_deferrals(
         stale.len(),
         lines.join("; ")
     ))
-}
-
-fn eprintln_deferred_discovery_rows(rows: &[DeferredDiscoveryRow]) {
-    if rows.is_empty() {
-        return;
-    }
-    let live = rows.iter().filter(|r| r.reads_live_tree).count();
-    let frozen_debt = count_legacy_frozen_debt_rows(&classify_deferred_discovery_rows(rows));
-    let ts = floor_ts();
-    eprintln!(
-        "{ts} [deferred-discovery] {} witness row(s) excluded from per-PR discovery \
-         ({} declare ReadsLiveTree, {} are frozen legacy debt with NO executing consumer — \
-         tolerated by the migration ratchet, not covered) — counted, not silent",
-        rows.len(),
-        live,
-        frozen_debt
-    );
-    for row in rows.iter().take(8) {
-        eprintln!(
-            "{ts} [deferred-discovery]   {} ({}) reason={}",
-            row.function, row.entry, row.exclude_reason
-        );
-    }
-    if rows.len() > 8 {
-        eprintln!(
-            "{ts} [deferred-discovery]   … and {} more deferred row(s)",
-            rows.len() - 8
-        );
-    }
 }
 
 /// Does this tree hold at least one `.dag` file? EXISTENCE, not inventory.
@@ -26693,82 +26310,6 @@ pub(crate) fn refuse_on_module_graph_read_refusals(
     ))
 }
 
-pub struct DiscoveryCorpusOptions {
-    /// Module universe that owns executor decisions such as affected-set selection and witness
-    /// execution-leg classification. Normally identical to `source_roots`; scoped batches
-    /// inherit the enclosing walk roots so executor machinery does not widen the witness subject.
-    pub execution_authority_source_roots: Vec<String>,
-    pub explicit_roster_only: bool,
-    /// Path-substring exclusion list. Non-plan callers default to
-    /// `witness_exclusion_substrings()`; plan-driven paths supply this from
-    /// RunnableDiscoveryBatch.exclude_substrings (the model authority).
-    pub exclude_substrings: Vec<String>,
-    /// When non-empty, scopes the source-root `test fn` tree walk to files under one of these
-    /// directories. Import resolution still uses the full source_roots. Empty = full walk.
-    pub discovery_scope_dirs: Vec<String>,
-    /// Fast-lane per-witness eval budget (operator ruling 2026-08-17). This is a distinct
-    /// PR-path posture from the required-floor claim loop; that loop now carries
-    /// `claim_eval_step_budget_for_identity` (the claim ceiling, a comparison rather than a
-    /// deadline), `required_floor_claim_wall_safety_limit_ms` (the one armed deadline) and
-    /// `required_floor_claim_cost_line_ms` (completed-cost, diagnostic only). This field is
-    /// unaffected by any of that and still names one ceiling on the fast lane's own CPU clock.
-    /// When set, every
-    /// discovered witness eval is deadline-armed and an over-budget eval unwinds as the
-    /// typed EvalBudgetExceeded runtime error (a FAIL row naming the witness). None = no
-    /// bound (the long-lane / local recipe posture).
-    pub fast_lane_eval_budget_ms: Option<u64>,
-    /// Whole-receipt wall budget for the nightly falsifier Wet self-host lane (emit+cargo).
-    pub wet_receipt_wall_budget_ms: Option<u64>,
-    /// Secondary interpreter CPU budget for the falsifier Wet self-host lane.
-    pub wet_receipt_interp_eval_budget_ms: Option<u64>,
-}
-
-#[derive(Clone, Copy, Debug, Default)]
-pub struct WitnessBudgetPolicy {
-    pub cpu_eval_budget_ms: Option<u64>,
-    pub wet_receipt_wall_budget_ms: Option<u64>,
-}
-
-impl DiscoveryCorpusOptions {
-    pub fn witness_budget_policy(&self) -> WitnessBudgetPolicy {
-        WitnessBudgetPolicy {
-            cpu_eval_budget_ms: self
-                .fast_lane_eval_budget_ms
-                .or(self.wet_receipt_interp_eval_budget_ms),
-            wet_receipt_wall_budget_ms: self.wet_receipt_wall_budget_ms,
-        }
-    }
-}
-
-impl Default for DiscoveryCorpusOptions {
-    fn default() -> Self {
-        Self {
-            execution_authority_source_roots: vec![],
-            explicit_roster_only: false,
-            exclude_substrings: witness_exclusion_substrings(),
-            discovery_scope_dirs: vec![],
-            fast_lane_eval_budget_ms: None,
-            wet_receipt_wall_budget_ms: None,
-            wet_receipt_interp_eval_budget_ms: None,
-        }
-    }
-}
-
-/// How the discovery corpus parallelizes. `Serial` runs every row on the caller's thread —
-/// the calibration path that also carries the width-1 closure-drift oracle. Production
-/// uses `DerivedSchedule`, which computes a fixed width from `std.realize_pack` once the
-/// roster is known (witness-realization P4) — no runtime AIMD admission.
-pub enum DiscoveryWidthPolicy {
-    Serial,
-    /// Experimental fixed width-2 pool over one process-scoped typed-module byte store.
-    /// Not production-default — cohort A/B harness only.
-    ControlledWidthTwo,
-    /// Compute width from derived per-witness space bounds + host budget after roster assembly.
-    DerivedSchedule,
-    /// Fixed worker count (internal projection of `DerivedSchedule`, or probe overrides).
-    FixedWidth(usize),
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FileLineRange {
     start: i64,
@@ -27445,16 +26986,6 @@ fn parse_entry_live_tree_disposition(entry: &str, content: &str) -> Result<bool,
     // Undeclared = ReadsLiveTree: a row must DECLARE it does not read the live
     // tree to become selection-eligible (fail-closed).
     Ok(declared.unwrap_or(true))
-}
-
-fn read_entry_live_tree_disposition(entry: &str) -> Result<bool, String> {
-    let content = std::fs::read_to_string(entry).map_err(|e| {
-        format!(
-            "failed to read entry {entry} for live-tree disposition: {e} — a \
-             discovered roster row's file must be readable; no silent reclassification"
-        )
-    })?;
-    parse_entry_live_tree_disposition(entry, &content)
 }
 
 // SCAFFOLD (§7 HAND-RUST — `cli_run_effect_reach_inference_bridge`):
@@ -28252,136 +27783,10 @@ fn entry_touches_rerun_frontier(
     Ok(!saw_claim)
 }
 
-/// Discovery per-phase wall totals (CI floor endgame D4 — the lever-1 re-diagnosis
-/// instrumentation): process-wide accumulators for the pump's named phases, drained into
-/// the floor resolve receipt as TYPED ROWS (take_discovery_phase_totals_receipt_rows), so
-/// the 643–1024s discovery wall decomposes in a receipt rather than a log read. The
-/// per-entry resolve and eval serial sums already ride the receipt via ClaimResult
-/// (discovery_corpus_resolve_ms / discovery_corpus_eval_ms); these keys cover the phases
-/// that were previously unattributed. Atomics because worker shards may pump concurrently;
-/// totals are serial-sum semantics like the existing corpus counters.
-mod discovery_phase_totals {
-    use std::sync::atomic::{AtomicU64, Ordering};
-
-    pub static PUMP_WALL_MS: AtomicU64 = AtomicU64::new(0);
-    pub static ROSTER_WALK_MS: AtomicU64 = AtomicU64::new(0);
-    pub static DIFF_OBSERVE_MS: AtomicU64 = AtomicU64::new(0);
-    pub static FRONTIER_ATTRIBUTION_MS: AtomicU64 = AtomicU64::new(0);
-    pub static SHARED_INDEX_BUILD_MS: AtomicU64 = AtomicU64::new(0);
-    pub static PRERESOLVE_CALIBRATION_MS: AtomicU64 = AtomicU64::new(0);
-    pub static RUNNER_RESOLVE_MS: AtomicU64 = AtomicU64::new(0);
-
-    pub fn add(counter: &AtomicU64, elapsed: std::time::Duration) {
-        counter.fetch_add(elapsed.as_millis() as u64, Ordering::Relaxed);
-    }
-}
-
-/// Drain the discovery phase totals as receipt rows (one `key=value` line each, trailing
-/// newline included; empty totals still emit rows so the receipt schema is stable).
-pub fn take_discovery_phase_totals_receipt_rows() -> String {
-    use discovery_phase_totals as t;
-    use std::sync::atomic::Ordering;
-    format!(
-        "discovery_pump_wall_ms={}\ndiscovery_roster_walk_ms={}\ndiscovery_diff_observe_ms={}\ndiscovery_frontier_attribution_ms={}\ndiscovery_shared_index_build_ms={}\ndiscovery_preresolve_calibration_ms={}\ndiscovery_runner_resolve_ms={}\n",
-        t::PUMP_WALL_MS.swap(0, Ordering::Relaxed),
-        t::ROSTER_WALK_MS.swap(0, Ordering::Relaxed),
-        t::DIFF_OBSERVE_MS.swap(0, Ordering::Relaxed),
-        t::FRONTIER_ATTRIBUTION_MS.swap(0, Ordering::Relaxed),
-        t::SHARED_INDEX_BUILD_MS.swap(0, Ordering::Relaxed),
-        t::PRERESOLVE_CALIBRATION_MS.swap(0, Ordering::Relaxed),
-        t::RUNNER_RESOLVE_MS.swap(0, Ordering::Relaxed),
-    )
-}
-
 pub fn expand_explicit_witness_entries(
     explicit_entries: &[(String, String)],
 ) -> Result<Vec<(String, String)>, String> {
     test_module_hygiene_bridge::expand_explicit_entries(explicit_entries)
-}
-
-fn finalize_discovery_summary(
-    mut summary: DiscoverySummary,
-    rows: &[DiscoveryRow],
-    deferred_rows: Vec<DeferredDiscoveryRow>,
-) -> DiscoverySummary {
-    summary.deferred_rows = deferred_rows;
-    summary.total_entry_groups = entry_row_groups(rows).len();
-    summary.selected_entry_groups = summary
-        .witness_outcomes
-        .iter()
-        .map(|o| o.entry.as_str())
-        .collect::<std::collections::HashSet<_>>()
-        .len();
-    emit_batch_summary(&summary);
-    summary
-}
-
-/// Contiguous same-entry row groups, order-preserving: the unit a pool worker pulls (rows
-/// sharing an entry resolve once against the worker's index).
-fn entry_row_groups(rows: &[DiscoveryRow]) -> Vec<Vec<usize>> {
-    let mut entry_groups: Vec<Vec<usize>> = Vec::new();
-    let mut current: Vec<usize> = Vec::new();
-    let mut current_entry: Option<&str> = None;
-    for (i, row) in rows.iter().enumerate() {
-        if current_entry != Some(row.entry.as_str()) {
-            if !current.is_empty() {
-                entry_groups.push(current);
-            }
-            current = vec![i];
-            current_entry = Some(&row.entry);
-        } else {
-            current.push(i);
-        }
-    }
-    if !current.is_empty() {
-        entry_groups.push(current);
-    }
-    entry_groups
-}
-
-fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySummary {
-    let mut merged = DiscoverySummary {
-        total: 0,
-        passed: 0,
-        skipped: 0,
-        deferred_rows: Vec::new(),
-        divergences: Vec::new(),
-        failures: Vec::new(),
-        witness_outcomes: Vec::new(),
-        entry_resolve_receipts: Vec::new(),
-        total_resolve_nanos: 0,
-        total_stage_nanos: ResolveStageNanos::default(),
-        performance_receipts: Vec::new(),
-        total_measured_nanos: 0,
-        roster_closure_nodes: 0,
-        total_entry_groups: 0,
-        selected_entry_groups: 0,
-    };
-    for summary in summaries {
-        merged.total += summary.total;
-        merged.passed += summary.passed;
-        merged.skipped += summary.skipped;
-        merged.divergences.extend(summary.divergences);
-        merged.failures.extend(summary.failures);
-        merged.witness_outcomes.extend(summary.witness_outcomes);
-        merged
-            .entry_resolve_receipts
-            .extend(summary.entry_resolve_receipts);
-        merged.total_resolve_nanos += summary.total_resolve_nanos;
-        merged
-            .total_stage_nanos
-            .accumulate(&summary.total_stage_nanos);
-        merged
-            .performance_receipts
-            .extend(summary.performance_receipts);
-        merged.total_measured_nanos += summary.total_measured_nanos;
-        // Max, not sum: shards share the std/spec prefix, so summing would double-count it. The
-        // heaviest single shard's closure is the number the per-shard memory peak is a function of.
-        merged.roster_closure_nodes = merged
-            .roster_closure_nodes
-            .max(summary.roster_closure_nodes);
-    }
-    merged
 }
 
 /// The ONE line that stands in for every routine witness the fold swallowed.
@@ -28452,70 +27857,6 @@ fn emit_batch_summary(merged: &DiscoverySummary) {
 // (`ci-floor-fractal-gantt (plan doc deleted 2026-08-28)` § dissolution) — this narration collapses into that
 // carrier and is deleted. Until then it is counted seed Rust, not a new authority; do not accrete
 // further floor logic here — extend the `.dag` render/observability surface instead.
-
-/// The Applied-mode report, rendered purely so both of its states are assertable.
-///
-/// Its other state — `located` is `Some` — names the case in which the observation
-/// carried NO changed path at all.
-///
-/// A zero-changed-path observation and "the diff proves these rows unaffected" are
-/// different states, and the ordinary categorization line renders the first as the
-/// second — every row lands in the `unaffected (import-closure, skipped without
-/// resolve)` bucket, which reads as a computed verdict. That is the exact mirror of
-/// DESIGN §5's absorbing fallback: there, a mechanism that cannot compute the affected
-/// set substitutes the SUPERSET and conflates ⊤-as-answer with ⊤-as-ignorance; here it
-/// substitutes the EMPTY set and conflates ⊥-as-answer with ⊥-as-ignorance. The narrow
-/// is the worse of the two, because a widen is merely expensive while a narrow is
-/// silently uncovered.
-///
-/// It is not hypothetical: a push whose baseline ref IS the pushed ref compares the
-/// commit to itself, so a merge to the default branch observes nothing and every entry
-/// the merge itself modified skips, with no line naming it (skips are counted, not
-/// narrated). Receipt: main-push runs 30774223741 and 30773369033 report an identical
-/// `4118 unaffected` on two different commits — a skip count that cannot be a function
-/// of a diff it does not depend on.
-///
-/// This is REPORTING ONLY. The run disposition is untouched, deliberately: the empty
-/// diff has no special run arm (operator ruling 2026-07-05, PR-A — it was dissolved
-/// into the general disposition and must not be resurrected as one). What was missing
-/// was not an arm but the state's visibility; the baseline itself is fixed separately.
-fn affected_set_applied_report_line(
-    total: usize,
-    entries: usize,
-    skipped: Result<usize, String>,
-    located: Option<&str>,
-) -> String {
-    let head = format!("[affected-set] {total} witness(es) across {entries} entr(y/ies)");
-    match (located, skipped) {
-        (Some(located), skipped) => {
-            let under = match skipped {
-                Ok(n) => format!("{n} of {total}"),
-                Err(_) => "an uncounted number of".to_string(),
-            };
-            format!(
-                "{head} · NO OBSERVED CHANGE ({located}): the diff observation returned ZERO changed paths, \
-                 so no row can be proven affected and {under} witness(es) skip under it. This is NOT the \
-                 verdict 'nothing is affected' — a baseline that names the head commit itself (a push whose \
-                 base ref is the pushed ref) produces exactly this observation, and that is ignorance about \
-                 what changed, not a finding that nothing did. Read every `skipped` count in this run's \
-                 receipts as skipped-under-no-observation, never as skipped-because-unaffected. Run \
-                 disposition is unchanged by this line (the empty diff has no special run arm — operator \
-                 ruling 2026-07-05); it makes the state countable, it neither widens nor narrows the run."
-            )
-        }
-        (None, Ok(skipped)) => {
-            let candidates = total.saturating_sub(skipped);
-            format!(
-                "{head} · {skipped} unaffected (import-closure, skipped without resolve) · \
-                 {candidates} in the affected closure (resolving to decide node-frontier)"
-            )
-        }
-        (None, Err(e)) => format!(
-            "{head} · upfront import-closure categorization unavailable ({e}); per-shard \
-             selection is authoritative"
-        ),
-    }
-}
 
 #[derive(Clone, Copy)]
 pub struct ShardStyle {

@@ -284,14 +284,6 @@ pub fn floor_walk_attempt_id_from_env() -> String {
         .unwrap_or_else(|_| "local".to_string())
 }
 
-pub(crate) fn floor_drain_retention_detail_enabled() -> bool {
-    std::env::var("GUNBC_FLOOR_DRAIN_RETENTION")
-        .ok()
-        .as_deref()
-        .map(|v| matches!(v, "1" | "true" | "TRUE"))
-        .unwrap_or(false)
-}
-
 pub fn make_eval_context(
     graph: &v1_compiler_compile::ResolvedGraph,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -4441,23 +4433,6 @@ pub(crate) fn floor_stream_enabled() -> bool {
     !std::env::var("GUNBC_FLOOR_QUIET")
         .map(|v| v == "1" || v == "true")
         .unwrap_or(false)
-}
-
-pub(crate) fn floor_color_enabled() -> bool {
-    if std::env::var("NO_COLOR").is_ok() {
-        return false;
-    }
-    if std::env::var("GUNBC_FLOOR_COLOR")
-        .map(|v| v == "1" || v == "true")
-        .unwrap_or(false)
-    {
-        return true;
-    }
-    use std::io::IsTerminal;
-    std::io::stderr().is_terminal()
-        || std::env::var("GITHUB_ACTIONS")
-            .map(|v| v == "true")
-            .unwrap_or(false)
 }
 
 /// THE SEEDS OF THE REQUIRED FLOOR'S NOMINAL PREPARED SUBJECT -- what the floor prepares when a

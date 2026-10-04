@@ -123,14 +123,6 @@ pub(crate) fn p1_cohort_receipt_enabled() -> bool {
         .unwrap_or(false)
 }
 
-/// P1 cohort / 2×2 matrix experiment is active — gates optional shared-store arms on Serial
-/// and private-store arms on ControlledWidthTwo without affecting production defaults.
-pub(crate) fn p1_cohort_experiment_active() -> bool {
-    p1_cohort_receipt_enabled()
-        || std::env::var("GUNBC_P1_MATRIX_CELL").is_ok()
-        || std::env::var("GUNBC_P1_SHARED_TYPED_STORE").is_ok()
-}
-
 /// Best-effort cgroup `memory.current` / `memory.peak` readback for the P1 cohort
 /// receipt (§3 reuse of `memory_governor`'s cgroup-walk authority — no second
 /// cgroup-path derivation here). `memory.peak` is absent on some kernels; that
