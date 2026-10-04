@@ -35,3 +35,14 @@ fn group_avatar_svg(class_name: String, label: String) -> Fragment {
     Element { tag: "g", attributes: [attr(name: "transform", value: "translate(15 30) scale(.29)")], children: [avatar_robot_face(antenna: true, opaque: true)] },
   ] }
 }
+
+// No assignee is a distinct state from an assigned identity whose profile is unknown.
+fn unassigned_avatar() -> Fragment {
+  Element { tag: "span", attributes: [attr(name: "class", value: "site-avatar site-avatar-unassigned"), attr(name: "data-avatar", value: "unassigned"), attr(name: "title", value: "Choose an assignee")], children: [
+    Element { tag: "svg", attributes: [attr(name: "class", value: "site-avatar-default-mark"), attr(name: "viewBox", value: "0 0 24 24"), attr(name: "role", value: "img"), attr(name: "aria-label", value: "Unassigned")], children: [
+      Element { tag: "circle", attributes: [attr(name: "cx", value: "12"), attr(name: "cy", value: "12"), attr(name: "r", value: "8"), attr(name: "fill", value: "none"), attr(name: "stroke", value: "currentColor"), attr(name: "stroke-width", value: "1.5")], children: [] },
+      Element { tag: "path", attributes: [attr(name: "d", value: "M10 9.5 C10 7.2 14 7.2 14 9.5 C14 11 12 11 12 13"), attr(name: "fill", value: "none"), attr(name: "stroke", value: "currentColor"), attr(name: "stroke-width", value: "1.5"), attr(name: "stroke-linecap", value: "round")], children: [] },
+      Element { tag: "circle", attributes: [attr(name: "cx", value: "12"), attr(name: "cy", value: "15.5"), attr(name: "r", value: ".8"), attr(name: "fill", value: "currentColor")], children: [] },
+    ] },
+  ] }
+}

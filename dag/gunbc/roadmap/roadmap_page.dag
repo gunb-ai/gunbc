@@ -1,4 +1,6 @@
 module gunbc.roadmap_page
+import gunbc.roadmap_view_preferences { default_issue_view_preferences, issue_view_preferences_json }
+import extdeps.languages.json.emit { serialize_json }
 import gunbc.roadmap_auth_route_paths { auth_login_route_path }
 import gunbc.site.status { status_badge, status_tone }
 import gunbc.roadmap_surface_style { workspace_issue_columns }
@@ -13,7 +15,7 @@ import gunbc.site.controls { site_client_path }
 import gunbc.site.document { SiteStyles, site_document }
 
 import gunbc.site.robot_mark { robot_mark_svg }
-import gunbc.site.avatar_marks { unknown_avatar_svg, group_avatar_svg }
+import gunbc.site.avatar_marks { unknown_avatar_svg, group_avatar_svg, unassigned_avatar }
 import gunbc.roadmap_nesting { RoadmapMembership, roadmap_memberships }
 import gunbc.roadmap.roadmap_project { RoadmapMembershipIndex, membership_index, project_root_for_node_in }
 import gunbc.roadmap.roadmap_lineage { lineage_lookup }
@@ -1630,6 +1632,7 @@ fn issue_controls_markup() -> Fragment {
   el_class("div", "issue-controls", concat(
     [ el_attrs("input", [
         attr(name: "type", value: "search" ),
+        attr(name: "maxlength", value: "500"),
         attr(name: "class", value: "issue-search" ),
         attr(name: "placeholder", value: "Filter issues · title, ID or assignee" ),
         attr(name: "aria-label", value: "filter issues" ),
@@ -1642,6 +1645,17 @@ fn issue_controls_markup() -> Fragment {
         issue_band_chip(label: "Not ready", band: "not-ready"),
         issue_band_chip(label: "Done", band: "done"),
         issue_band_chip(label: "Superseded", band: "superseded"),
+      ]),
+      el_attrs("div", [attr(name: "class", value: "issue-sort-settings"), attr(name: "data-view-default", value: serialize_json(v: issue_view_preferences_json(prefs: default_issue_view_preferences()))), attr(name: "role", value: "group"), attr(name: "aria-label", value: "Multi-column sort")], [
+        el_class("span", "issue-sort-caption", [txt("Sort by")]),
+        el_attrs("span", [attr(name: "class", value: "issue-sort-terms"), attr(name: "data-sort-terms", value: "")], []),
+        site_compact_choice(id: "issue-add-sort", label: "Add column", accessible_label: "Add sort column", options: map(workspace_issue_columns(), col => el_attrs("button", [
+          attr(name: "type", value: "button"), attr(name: "class", value: "site-choice-option"), attr(name: "role", value: "option"), attr(name: "aria-selected", value: "false"),
+          attr(name: "data-choice-value", value: issue_results_sort_key_wire(key: col.sort_key)), attr(name: "data-add-sort", value: issue_results_sort_key_wire(key: col.sort_key)),
+        ], [txt(if col.kind == IssueColumnPriority { "Priority" } else { workspace_column_label(col: col) })]))),
+        el_attrs("button", [attr(name: "type", value: "button"), attr(name: "class", value: "site-button-compact"), attr(name: "data-view-reset", value: "")], [txt("Reset view")]),
+        el_attrs("button", [attr(name: "type", value: "button"), attr(name: "class", value: "site-button-compact"), attr(name: "data-view-retry", value: ""), attr(name: "hidden", value: "")], [txt("Save this view")]),
+        el_attrs("span", [attr(name: "class", value: "issue-view-save-status"), attr(name: "data-view-save-status", value: ""), attr(name: "role", value: "status"), attr(name: "aria-live", value: "polite")], [txt("Loading preferences…")]),
       ]),
       el_attrs("button", [
         attr(name: "type", value: "button"),
@@ -1703,7 +1717,7 @@ fn issue_line_cell_content(col: IssueResultsColumn, view: WorkRowView, bar: Task
           attr(name: "aria-label", value: join(["Assign ", view.headline], "")),
           attr(name: "data-assign-node", value: view.node_id),
         ], match issue_assignee_holder(view: view, attempts: []) {
-          Absent => [el_attrs("span", [attr(name: "class", value: "site-avatar site-avatar-default"), attr(name: "data-avatar", value: "absent"), attr(name: "title", value: "Choose an assignee")], [unknown_avatar_svg(class_name: "site-avatar-default-mark", label: "Unassigned")]), el_class("span", "issue-assignee-text", [txt("Unassigned")])]
+          Absent => [unassigned_avatar(), el_class("span", "issue-assignee-text", [txt("Unassigned")])]
           Present { value: holder } => [
             issue_avatar_chip_node(display: event_principal_display_with_profile(p: holder, profiles: view.profiles), workflow: event_principal_is_fabric(p: holder)),
             el_attrs("span", [attr(name: "class", value: "issue-assignee-text"), attr(name: "title", value: event_principal_display_with_profile(p: holder, profiles: view.profiles).detail)], [txt(workspace_assignee_label(holder: holder, profiles: view.profiles))])
@@ -1791,7 +1805,7 @@ fn issue_table_header_nodes() -> Fragment {
         attr(name: "class", value: join(["issue-col issue-col-", issue_results_column_kind_wire(kind: c.kind)], "") ),
         attr(name: "data-col", value: issue_results_column_kind_wire(kind: c.kind) ),
         attr(name: "role", value: "columnheader" ),
-        attr(name: "aria-sort", value: if c.kind == IssueColumnPriority { "other" } else { "none" } ),
+        attr(name: "aria-sort", value: if c.kind == IssueColumnStatus { "other" } else { "none" } ),
       ], [ el_attrs("button", [
         attr(name: "type", value: "button" ),
         attr(name: "class", value: "issue-sort" ),
@@ -2524,7 +2538,7 @@ fn issue_standing_text(s: RoadmapNodeStanding, profiles: List<PrincipalProfile>)
 // The current identity becomes the editor in place; closing restores the projected holder.
 fn issue_rail_assignee_row(view: WorkRowView, attempts: List<WorkflowAttemptProgress>, assignment: IssueAssignmentProjection, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> Fragment {
   let face = match assignment.holder {
-    Absent => el_attrs("span", [attr(name: "class", value: "site-avatar site-avatar-default"), attr(name: "data-avatar", value: "absent"), attr(name: "title", value: "Choose an assignee")], [unknown_avatar_svg(class_name: "site-avatar-default-mark", label: "Unassigned")])
+    Absent => unassigned_avatar()
     Present { value: holder } => issue_avatar_chip_node(display: event_principal_display_with_profile(p: holder, profiles: view.profiles), workflow: event_principal_is_fabric(p: holder))
   }
   let label = match assignment.holder { Absent => "Unassigned" Present { value: holder } => event_principal_display_with_profile(p: holder, profiles: view.profiles).detail }

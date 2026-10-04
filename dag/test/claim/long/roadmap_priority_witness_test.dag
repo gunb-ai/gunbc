@@ -44,9 +44,9 @@ test fn only_v2_project_work_inherits_p1_and_debt_override_stays_p3() -> Bool {
 }
 
 // Ready work leads even urgent blocked work; urgency then orders each readiness bucket.
-test fn ready_bucket_then_priority_then_status_orders_workspace() -> Bool {
+test fn status_then_priority_orders_workspace() -> Bool {
   workspace_priority_order_key(priority: PriorityP3, status_rank: 10) < workspace_priority_order_key(priority: PriorityP0, status_rank: 4)
     && workspace_priority_order_key(priority: PriorityP1, status_rank: 10) < workspace_priority_order_key(priority: PriorityP2, status_rank: 10)
-    && workspace_priority_order_key(priority: PriorityP1, status_rank: 4) < workspace_priority_order_key(priority: PriorityP2, status_rank: 9)
+    && workspace_priority_order_key(priority: PriorityP2, status_rank: 9) < workspace_priority_order_key(priority: PriorityP1, status_rank: 4)
     && workspace_priority_order_key(priority: PriorityP2, status_rank: 9) < workspace_priority_order_key(priority: PriorityP2, status_rank: 4)
 }

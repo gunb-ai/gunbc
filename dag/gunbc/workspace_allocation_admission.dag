@@ -8,7 +8,7 @@ import extdeps.http.server { RequestSecurityContext }
 import gunbc.principal_projection { PrincipalRef, principal_ref_eq }
 import gunbc.auth.request_authentication { RequestAccessPath,
   RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid, AuthAbsent, DeploymentAccessPolicy,
-  ServeActionCreateAllocation, ServeActionReleaseAllocation, ServeActionAssignIssue, ServeActionCommentIssue, ServeActionApproveDecision, ServeRouteAction,
+  ServeActionCreateAllocation, ServeActionReleaseAllocation, ServeActionAssignIssue, ServeActionCommentIssue, ServeActionSaveOwnView, ServeActionApproveDecision, ServeRouteAction,
   human_authentication_decision, csrf_write_decision, deployment_path_decision, write_refused,
 }
 
@@ -51,6 +51,7 @@ fn workspace_write_admission(
     ServeActionReleaseAllocation => workspace_mutation_admission(security: security, owner: owner, policy: policy, deployment_policy: deployment_policy, observed_at: observed_at, route_path: route_path, action: action, csrf_presented: csrf_presented)
     ServeActionAssignIssue => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
     ServeActionCommentIssue => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
+    ServeActionSaveOwnView => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
     ServeActionApproveDecision => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
   }
 }

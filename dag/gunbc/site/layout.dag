@@ -438,6 +438,10 @@ fn site_layout_rules() -> List<BuildRule> {
       decl(prop: Background, value: "var(--border)"),
       decl(prop: Color, value: "var(--text-dim)")
     ] },
+    StaticRule { selector: RawSelector { text: ".site-avatar-unassigned" }, decls: [
+      decl(prop: Background, value: "transparent"),
+      role_decl(prop: Color, r: TextDimRole)
+    ] },
     StaticRule { selector: RawSelector { text: ".site-avatar-workflow" }, decls: [
       decl(prop: Background, value: "var(--canvas)"),
       decl(prop: Color, value: "var(--text-dim)")

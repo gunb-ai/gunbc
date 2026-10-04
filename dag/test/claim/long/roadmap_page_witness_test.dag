@@ -884,7 +884,12 @@ test fn witness_client_asset_part_1_negatives_hold() -> Bool {
 }
 
 test fn witness_client_asset_part_2_negatives_hold() -> Bool {
-  fx_client_part_holds(js: fx_client_part_js(lo: 11, hi: 16), session_fetches: 0, summary_only_marks: 0)
+  fx_client_part_holds(js: fx_client_part_js(lo: 11, hi: 15), session_fetches: 0, summary_only_marks: 0)
+}
+
+// Assignment remains covered separately as the persisted multi-sort controller grows.
+test fn witness_client_asset_assignment_part_negatives_hold() -> Bool {
+  fx_client_part_holds(js: fx_client_part_js(lo: 15, hi: 16), session_fetches: 0, summary_only_marks: 0)
 }
 
 // The last part runs to the end of the group list, so a group appended to the asset is still read.
@@ -1962,7 +1967,8 @@ test fn witness_issue_table_assignee_renders_the_avatar_chip_or_placeholder() ->
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       let table = table_region(html: h)
-      occurrence_count(s: table, pattern: "class=\"site-avatar site-avatar-default\" data-avatar=\"absent\"") == 3
+      occurrence_count(s: table, pattern: "class=\"site-avatar site-avatar-default\" data-avatar=\"absent\"") == 1
+        && occurrence_count(s: table, pattern: "data-avatar=\"unassigned\"") == 2
         && string_contains(s: table, pattern: "issue-assignee-text")
         && occurrence_count(s: table, pattern: ">Unassigned</span>") == 2
         && occurrence_count(s: table, pattern: "class=\"issue-inline-assign\" disabled=\"disabled\"") == 3

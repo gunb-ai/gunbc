@@ -3160,6 +3160,7 @@ fn issue_filter_bind_statements() -> List<TsStmt> {
     ts_for_each(selector: "[data-band-chip]", item: "c", body: [
       ts_on_click(obj: "c", body: [
         ts_const(name: "root", value: ts_closest(obj: "c", selector: ".roadmap-frontier")),
+        ts_if(cond: ts_binop(left: ts_ident(name: "root"), op: "&&", right: ts_call(callee: ts_member(object: ts_ident(name: "root"), property: "querySelector"), args: [ts_lit_str(value: ".issue-table")])), then: ts_block(stmts: [ts_return(expr: none)]), else_stmt: none),
         ts_expr_stmt(expr: ts_binop(
           left: ts_ident(name: "root"),
           op: "&&",
@@ -3206,6 +3207,7 @@ fn issue_filter_bind_statements() -> List<TsStmt> {
           ts_lit_str(value: "input"),
           ts_arrow(params: ["e"], body: ts_block(stmts: [
             ts_const(name: "root", value: ts_closest(obj: "q", selector: ".roadmap-frontier")),
+        ts_if(cond: ts_binop(left: ts_ident(name: "root"), op: "&&", right: ts_call(callee: ts_member(object: ts_ident(name: "root"), property: "querySelector"), args: [ts_lit_str(value: ".issue-table")])), then: ts_block(stmts: [ts_return(expr: none)]), else_stmt: none),
             ts_const(name: "needle", value: ts_call(
               callee: ts_member(
                 object: ts_member(

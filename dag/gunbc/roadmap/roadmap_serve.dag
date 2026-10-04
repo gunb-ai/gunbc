@@ -1,4 +1,10 @@
 module gunbc.roadmap_serve
+import gunbc.roadmap_view_preferences { issue_view_preferences_of, issue_view_preferences_json }
+import gunbc.roadmap_view_preference_store { issue_view_store_key, issue_view_store_root, issue_view_store_read, issue_view_store_save, IssueViewAbsent, IssueViewFound, IssueViewUnread, IssueViewSaveOk, IssueViewSaveConflict, IssueViewSaveRefused }
+import gunbc.auth.request_authentication { ServeActionSaveOwnView }
+import extdeps.http.server { ServeResponseHeaderNoStore }
+import extdeps.languages.json.emit { JsonNull }
+
 import gunbc.site.document { site_document }
 import gunbc.site.markup { el, txt }
 import gunbc.site.brand { site_favicon_path, site_favicon_type, site_favicon_source }
@@ -310,6 +316,8 @@ type RoadmapServeHandler
   | IssueAssignHandler
   | IssueAssignmentContextHandler
   | IssueAssigneePickerHandler
+  | IssueViewPreferencesReadHandler
+  | IssueViewPreferencesSaveHandler
   | IssueCommentHandler
   | ProjectSuitePageHandler
   | AuthSessionHandler
@@ -396,6 +404,8 @@ fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>>
     ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/assign", handler: IssueAssignHandler },
     ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/comment", handler: IssueCommentHandler },
     ServedRouteSpec { method: GET, raw: "/auth/session", handler: AuthSessionHandler },
+    ServedRouteSpec { method: GET, raw: "/preferences/issues", handler: IssueViewPreferencesReadHandler },
+    ServedRouteSpec { method: POST, raw: "/preferences/issues", handler: IssueViewPreferencesSaveHandler },
     ServedRouteSpec { method: GET, raw: auth_login_route_path, handler: AuthLoginHandler },
     ServedRouteSpec { method: GET, raw: "/auth/google/callback", handler: AuthGoogleCallbackHandler },
     ServedRouteSpec { method: POST, raw: auth_logout_route_path, handler: AuthLogoutHandler },
@@ -1374,6 +1384,8 @@ fn roadmap_serve_invoke_over(
     IssueAssigneePickerHandler => serve_issue_assignee_picker_over(instance: instance, plan: plan(), request: request, params: params)
     IssueAssignHandler => serve_issue_assign_response_over(instance: instance, plan: plan(), request: request, params: params)
     IssueCommentHandler => serve_issue_comment_response_over(instance: instance, request: request, params: params)
+    IssueViewPreferencesReadHandler => serve_issue_view_preferences_over(instance: instance, request: request, saving: false)
+    IssueViewPreferencesSaveHandler => serve_issue_view_preferences_over(instance: instance, request: request, saving: true)
     AuthSessionHandler => auth_session_response_over(instance: instance, request: request)
     SessionsJsonHandler => serve_sessions_response_for_instance(instance: instance)
     AttemptsJsonHandler => serve_attempts_response_for_instance(instance: instance)
@@ -2098,5 +2110,49 @@ fn allocation_page_response_over(request: ServeHttpRequest<RequestAccessPath, Re
   match try_serialize_html_source(node: allocation_page_with_stylesheet(signed_in: signed_in, roadmap_stylesheet: roadmap_stylesheet)) {
     EmitOk { html } => serve_text_response(status: 200, content_type: text_html_utf8, body: html)
     EmitRejected { reason } => serve_text_response(status: 500, content_type: text_plain_utf8, body: page_render_refusal_body(reason: reason))
+  }
+}
+
+// Preferences are owned by the seated account, independent of the session id. Neither route
+// accepts a principal selector. No-store prevents account/CSRF context entering shared caches.
+fn issue_view_response(status: Int, body: String) -> ServeHttpResponse {
+  ServeHttpResponse { status: status as HttpStatus, content_type: application_json_utf8, body: body, headers: [ServeResponseHeaderNoStore] }
+}
+fn serve_issue_view_preferences_over(instance: HostDashboardInstance, request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, saving: Bool) -> ServeHttpResponse {
+  match request.security.authentication {
+    GoogleOidcSession { session } => {
+      if saving {
+        match human_write_admission(route_path: "/preferences/issues", action: ServeActionSaveOwnView, security: request.security, authorization_policy: tracker_write_authorization_policy, deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"), observed_at: human_write_observed_at(security: request.security)) {
+          Deny { refusal: _ } => issue_view_response(status: 403, body: "Preference save requires a valid session and CSRF proof.")
+          Permit => match issue_view_preferences_of(text: issue_form_field(body: request.body, name: "preferences")) {
+            Absent => issue_view_response(status: 400, body: "Invalid issue view preferences.")
+            Present { value: prefs } => match issue_view_store_key(principal: session.principal) {
+              Absent => issue_view_response(status: 503, body: "Account preferences unavailable.")
+              Present { value: key } => match issue_view_store_save(root: issue_view_store_root(instance: instance), key: key, prefs: prefs, revision: issue_form_field(body: request.body, name: "revision")) {
+                IssueViewSaveOk { revision } => issue_view_response(status: 200, body: serialize_json(v: json_object(members: [json_kv(key: "revision", value: json_int(n: revision))])))
+                IssueViewSaveConflict => issue_view_response(status: 409, body: "Preferences changed in another tab or browser. Reload to sync.")
+                IssueViewSaveRefused => issue_view_response(status: 503, body: "Account preferences could not be saved.")
+              }
+            }
+          }
+        }
+      } else {
+        match issue_view_store_key(principal: session.principal) {
+          Absent => issue_view_response(status: 503, body: "Account preferences unavailable.")
+          Present { value: key } => match issue_view_store_read(root: issue_view_store_root(instance: instance), key: key) {
+            IssueViewUnread => issue_view_response(status: 503, body: "Account preferences could not be read.")
+            IssueViewAbsent => issue_view_response(status: 200, body: serialize_json(v: json_object(members: [
+              json_kv(key: "revision", value: json_int(n: 0)), json_kv(key: "csrf", value: json_string(s: session.csrf.token as String)), json_kv(key: "preferences", value: JsonNull),
+            ])))
+            IssueViewFound { prefs, revision, expected: _ } => issue_view_response(status: 200, body: serialize_json(v: json_object(members: [
+              json_kv(key: "revision", value: json_int(n: revision)), json_kv(key: "csrf", value: json_string(s: session.csrf.token as String)), json_kv(key: "preferences", value: issue_view_preferences_json(prefs: prefs)),
+            ])))
+          }
+        }
+      }
+    }
+    AuthAbsent => issue_view_response(status: 401, body: "Sign in for account preferences.")
+    SessionStandingInvalid { standing: _ } => issue_view_response(status: 401, body: "Sign in for account preferences.")
+    FabricServiceEvidence { kind: _, authenticated_at: _ } => issue_view_response(status: 403, body: "Human account preferences required.")
   }
 }
