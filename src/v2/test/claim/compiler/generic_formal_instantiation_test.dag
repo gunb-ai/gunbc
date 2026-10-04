@@ -1,0 +1,63 @@
+module v2.test.claim.compiler.generic_formal_instantiation
+
+import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_infer_tree, fmi_reason }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: a call argument at a formal that CONTAINS a type parameter inside a constructor (`a: List<T>`) is
+// matched against the argument's derived type and judged (v2.compiler.infer infer_judge_generic_formal),
+// never admitted as UndecidableGenericFormal. BOUNDARY: source text in, through the production assembly
+// route (v2.test.claim.compiler.infer_fold_member_instance fmi_assemble), then v2.compiler.infer infer.
+// RED ON THE BASE for the three refusal controls: each was ACCEPTED (gunbc.recurring_failure_mode
+// generic_formal_containing_a_type_variable_unjudged). The accepted controls hold that the match does
+// not over-refuse.
+
+data gfi_prelude: String = "module p\n\nimport v2.std.collection { List }\n\ntype Pair {\n  target: Int\n}\n\nfn g<T>(a: List<T>, b: List<T>) -> List<T> {\n  a\n}\n\nfn h<T>(a: List<List<T>>, b: T) -> T {\n  b\n}\n\n"
+
+data gfi_not_a_list: String = gfi_prelude + "fn f(a: Int, b: Int) -> Int {\n  0\n}\n\nfn k(a: Int, b: Int) -> List<Int> {\n  g(a, b)\n}\n"
+data gfi_two_instances: String = gfi_prelude + "fn k(a: List<Int>, b: List<Pair>) -> List<Int> {\n  g(a, b)\n}\n"
+data gfi_nested_mismatch: String = gfi_prelude + "fn k(a: List<List<Int>>, b: Pair) -> Pair {\n  h(a, b)\n}\n"
+data gfi_one_instance: String = gfi_prelude + "fn k(a: List<Pair>, b: List<Pair>) -> List<Pair> {\n  g(a, b)\n}\n"
+data gfi_nested_agrees: String = gfi_prelude + "fn k(a: List<List<Int>>, b: Int) -> Int {\n  h(a, b)\n}\n"
+
+fn gfi_reason(src: String) -> Symbol {
+  match fmi_assemble(src: src) {
+    Rejected { diagnostics: _ } => ^gfi_assembly_refused
+    Accepted { value: tree, diagnostics: _ } => fmi_reason(o: fmi_infer_tree(tree: tree))
+  }
+}
+
+fn gfi_not_a_list_reason() -> Symbol { gfi_reason(src: gfi_not_a_list) }
+fn gfi_two_instances_reason() -> Symbol { gfi_reason(src: gfi_two_instances) }
+fn gfi_nested_mismatch_reason() -> Symbol { gfi_reason(src: gfi_nested_mismatch) }
+fn gfi_one_instance_reason() -> Symbol { gfi_reason(src: gfi_one_instance) }
+fn gfi_nested_agrees_reason() -> Symbol { gfi_reason(src: gfi_nested_agrees) }
+
+// RED: an Int at a List<T> formal -- the constructor does not match.
+test fn gfi_non_list_argument_at_a_list_formal_refuses() -> Bool {
+  gfi_not_a_list_reason() == ^application_argument_does_not_inhabit
+}
+
+// RED: T bound to Int by the first List<T>, then List<Pair> at the second.
+test fn gfi_one_variable_at_two_instances_refuses() -> Bool {
+  gfi_two_instances_reason() == ^application_argument_does_not_inhabit
+}
+
+// RED, NESTED: List<List<T>> binds T to Int, and a Pair at the bare T refuses.
+test fn gfi_nested_instance_disagreement_refuses() -> Bool {
+  gfi_nested_mismatch_reason() == ^application_argument_does_not_inhabit
+}
+
+// ACCEPTED: one consistent instance.
+test fn gfi_one_consistent_instance_is_accepted() -> Bool {
+  gfi_one_instance_reason() == ^accepted
+}
+
+// ACCEPTED, NESTED: List<List<Int>> and Int agree on T.
+test fn gfi_nested_consistent_instance_is_accepted() -> Bool {
+  gfi_nested_agrees_reason() == ^accepted
+}
