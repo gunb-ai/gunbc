@@ -14,7 +14,7 @@ import gunbc.cloudflare.r2_staged_transfer {
   R2TransferTarget,
   WriteCredentialCustody, WriteCredentialShredded, WriteCredentialResidueRemains,
   r2_put_staged_file,
-  R2StagingCustody, R2StagingNotCreated, R2StagingRemoved, R2StagingResidue, r2_release_staging,
+  R2StagingCustody, R2StagingNotCreated, r2_release_staging,
   R2Fetch, R2FetchStaged, R2FetchObjectAbsent, R2FetchStoreRefused, R2FetchTransportUnanswered, R2FetchLocalFailure,
   r2_fetch_into_staging,
 }
@@ -272,15 +272,6 @@ fn classify_origin_fetch(answer: S3TransferAnswer, staged_path: NonEmptyStr, std
 type OriginFetch {
   outcome: OriginFetchOutcome
   staging: R2StagingCustody
-}
-
-// A STAGING DIRECTORY LEFT ON DISK IS REPORTED ON EVERY ARM, INCLUDING A CONFIRMED READ.
-fn fetch_is_clean(fetch: OriginFetch) -> Bool {
-  match fetch.staging {
-    R2StagingNotCreated => true
-    R2StagingRemoved => true
-    R2StagingResidue { path: _ } => false
-  }
 }
 
 // The staged arm, pure over the reading and the release so a residue beside a confirmed reading

@@ -88,8 +88,6 @@ import gunbc.cloudflare.r2_origin_object {
   resolve_origin_target_under,
   OriginPut,
   put_is_clean,
-  OriginFetch,
-  fetch_is_clean,
   origin_fetch_of_staged,
 }
 import gunbc.cloudflare.r2_staged_transfer { R2StagingNotCreated, R2StagingRemoved, R2StagingResidue }
@@ -540,7 +538,6 @@ test fn a_staging_residue_is_carried_out_of_the_fetch_on_both_staged_arms() -> B
           R2StagingRemoved => false
           R2StagingNotCreated => false
         })
-        && (fetch_is_clean(fetch: confirmed) == false)
         && (match unreadable.outcome {
           OriginFetchUnavailable { key: _, cause: c } => (c as String) == "unreadable"
           OriginObjectStaged { key: _, reading: _ } => false
@@ -555,8 +552,12 @@ test fn a_staging_residue_is_carried_out_of_the_fetch_on_both_staged_arms() -> B
   }
 }
 
-// THE DISCRIMINATING CONTROL: a removed directory is clean, so the residue above is what reddened it.
-test fn a_released_staging_directory_is_clean() -> Bool {
-  fetch_is_clean(fetch: origin_fetch_of_staged(key: "k", read: OriginReadingUnavailable { staged_path: "/tmp/stage.X/object", cause: "unreadable" }, released: R2StagingRemoved))
-    && fetch_is_clean(fetch: OriginFetch { outcome: OriginObjectAbsent { key: "k" }, staging: R2StagingNotCreated })
+// THE DISCRIMINATING CONTROL: a removed directory is carried out as Removed, not as a residue, so
+// the residue above is the release's answer and not a constant of the fold.
+test fn a_released_staging_directory_is_carried_out_as_removed() -> Bool {
+  match origin_fetch_of_staged(key: "k", read: OriginReadingUnavailable { staged_path: "/tmp/stage.X/object", cause: "unreadable" }, released: R2StagingRemoved).staging {
+    R2StagingRemoved => true
+    R2StagingResidue { path: _ } => false
+    R2StagingNotCreated => false
+  }
 }

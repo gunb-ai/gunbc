@@ -32,7 +32,7 @@ import gunbc.fabric_m0_origin_commit {
   OriginCommitObservation, OriginObjectCommit, OriginObjectWrite, OriginObjectWritten, OriginObjectWriteRefused,
   OriginWritePermitStanding, PermitAuthorisesThisOrigin, PermitNamesAnotherSink, PermitNamesAnotherRoute, PermitNamesAnotherOperation,
   commit_manifest_to_origin, commit_object_to_origin,
-  process_exit_with_credential_custody, job_output_bytes, fabric_durable_origin_route,
+  process_exit_with_credential_custody, staging_residue_text, job_output_bytes, fabric_durable_origin_route,
 }
 import std.decl_ref { DeclarationRef, decl_ref }
 import product.fabric.provider_route { CompliancePostureRevision }
@@ -46,7 +46,6 @@ import product.data_class {
 import gunbc.fabric_m0_job_ending { end_required_job }
 import gunbc.cloudflare.r2_staged_transfer {
   WriteCredentialShredded, WriteCredentialResidueRemains,
-  R2StagingNotCreated, R2StagingRemoved, R2StagingResidue,
 }
 import gunbc.cloudflare.r2_origin_object {
   OriginPut,
@@ -115,14 +114,15 @@ fn probe_token_source() -> ProbeCredential {
   }
 }
 
-// A FETCH IS JUDGED ONLY ONCE ITS STAGING DIRECTORY IS ACCOUNTED FOR. A residue is reported as the
-// probe's failure beside whatever the origin answered, never read past.
+// A FETCH IS JUDGED ONLY ONCE ITS STAGING DIRECTORY IS ACCOUNTED FOR, through the same residue
+// query the canary's exit uses (gunbc.fabric_m0_origin_commit staging_residue_text). A residue is
+// reported as the probe's failure beside whatever the origin answered, never read past.
 fn fetch_concluded(fetch: OriginFetch, concluded: ProcessExit, answered: String) -> ProcessExit {
-  match fetch.staging {
-    R2StagingNotCreated => concluded
-    R2StagingRemoved => concluded
-    R2StagingResidue { path: p } =>
-      exit_failure(reason: concat("THE FETCH'S STAGING DIRECTORY WAS NOT REMOVED: ", concat(p as String, concat("; the origin answered ", answered))))
+  let residue = staging_residue_text(s: fetch.staging)
+  if residue == "" {
+    concluded
+  } else {
+    exit_failure(reason: concat(residue, concat("; the origin answered ", answered)))
   }
 }
 
