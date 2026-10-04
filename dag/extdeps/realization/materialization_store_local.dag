@@ -23,6 +23,7 @@ import std.fabric_blob {
 }
 import std.checked_arithmetic { int_inclusive_max }
 import v2.std.algebra { skip }
+import v2.std.collection { empty_map, map_lookup, map_insert }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed, CatalogCasContentEncoding }
@@ -558,7 +559,7 @@ fn local_store_index_of(store: ArtifactStore, names: List<String>, doomed: List<
   LocalStoreIndex {
     next_ordinal: store.next_ordinal,
     doomed: doomed,
-    rows: store.rows |> fold(init: [], f: (acc, row) => match map_get(by_key, serialize_content_hash(hash: row.key) as String) {
+    rows: store.rows |> fold(init: [], f: (acc, row) => match map_lookup(by_key, serialize_content_hash(hash: row.key) as String) {
       Absent => acc
       Present { value: n } => acc |> list_push(LocalStoreIndexRow { name: n, bytes: row.artifact_bytes, ordinal: row.last_use_ordinal })
     })
@@ -712,6 +713,33 @@ type LocalStoreReservation
   | LocalStoreReservationProviderRefused { construction: StoreConstruction }
   | LocalStoreReservationNotAttempted
 
+// A LIVE ROW IS NOT YET A PRESENT OBJECT. A row is written at reservation, before its object is
+// published, and a commit refused as cleanup outstanding leaves its row live with no object behind it.
+// So a request whose name is already live is decided by the object itself: (a) present -- it was
+// materialized, and the commit converges on it with no new bytes; (b) absent -- the reservation is
+// UNFINISHED, and it may proceed only if the bytes charged to live rows plus the doomed bytes still on
+// disk fit the budget. Otherwise a retry stays cleanup outstanding until the host confirms the doomed
+// bytes gone, exactly as a fresh request would; a retry is never a way around undeleted bytes.
+fn local_store_reserve_live_row(root_path: String, name: String, index: LocalStoreIndex, undeleted: Int, budget: ByteSize) -> LocalStoreReservation {
+  let converged = LocalStoreReserved { budget: budget, evicted: [], retired: [], reclamation: CasReclamationNotCommitted }
+  match local_store_read(path: store_path(root_path: root_path, name: name)) {
+    FilesystemExactPathRead { path: _, content: _ } => converged
+    FilesystemExactPathAbsent { path: _ } => local_store_reserve_unfinished(name: name, index: index, undeleted: undeleted, budget: budget, converged: converged)
+    FilesystemExactPathUnreadable { path: _, kind: _, error: _ } => local_store_reserve_unfinished(name: name, index: index, undeleted: undeleted, budget: budget, converged: converged)
+    FilesystemExactPathKindUnrecognized { path: _, observed: _, error: _ } => local_store_reserve_unfinished(name: name, index: index, undeleted: undeleted, budget: budget, converged: converged)
+  }
+}
+
+fn local_store_reserve_unfinished(name: String, index: LocalStoreIndex, undeleted: Int, budget: ByteSize, converged: LocalStoreReservation) -> LocalStoreReservation {
+  let live = fold(index.rows, init: 0, f: (acc, r) => acc + measure_count(m: r.bytes))
+  let own = fold(index.rows |> filter(r => r.name == name), init: 0, f: (acc, r) => acc + measure_count(m: r.bytes))
+  if live + undeleted > measure_count(m: budget) {
+    LocalStoreReservationRefused { refusal: StoreCommitCleanupOutstanding { artifact_bytes: byte_size(count: own), budget: budget, undeleted: byte_size(count: undeleted) } }
+  } else {
+    converged
+  }
+}
+
 fn local_store_reserve(root: MaterializationStoreRoot, budgets: List<LocalStoreFamilyBudget>, family: ArtifactKindId, name: String, bytes: ByteSize, attempt: Int) -> LocalStoreReservation {
   let root_path = materialization_store_root_path(root: root)
   if attempt > local_store_reservation_attempt_bound {
@@ -738,7 +766,7 @@ fn local_store_reserve(root: MaterializationStoreRoot, budgets: List<LocalStoreF
                 if artifact > budget_total {
                   LocalStoreReservationRefused { refusal: StoreCommitDidNotFit { artifact_bytes: bytes, budget: ready.budget } }
                 } else if set_contains(live_names, name) {
-                  LocalStoreReserved { budget: ready.budget, evicted: [], retired: [], reclamation: CasReclamationNotCommitted }
+                  local_store_reserve_live_row(root_path: root_path, name: name, index: index, undeleted: undeleted, budget: ready.budget)
                 } else if artifact > budget_total - undeleted {
                   LocalStoreReservationRefused { refusal: StoreCommitCleanupOutstanding { artifact_bytes: bytes, budget: ready.budget, undeleted: byte_size(count: undeleted) } }
                 } else {
@@ -873,10 +901,11 @@ fn local_store_record_delete_split(attempts: List<LocalStoreRecordDeleteAttempt>
 // One refused part filed under its record: one map lookup per refused part, never a scan.
 fn local_store_group_refused_part(by_record: Map<String, List<LocalStoreDeleteAttempt>>, attempt: LocalStoreDeleteAttempt) -> Map<String, List<LocalStoreDeleteAttempt>> {
   let r = local_store_record_of(name: attempt.name)
-  match map_get(by_record, r) {
-    Present { value: xs } => map_insert(by_record, r, xs |> list_push(attempt))
-    Absent => map_insert(by_record, r, [attempt])
+  let filed: List<LocalStoreDeleteAttempt> = match map_lookup(by_record, r) {
+    Present { value: xs } => xs
+    Absent => []
   }
+  map_insert(by_record, r, filed |> list_push(attempt))
 }
 
 fn local_store_delete_records(root_path: String, records: List<String>) -> List<LocalStoreRecordDeleteAttempt> {
@@ -895,9 +924,9 @@ fn local_store_delete_records(root_path: String, records: List<String>) -> List<
         let parts_refused: Map<String, List<LocalStoreDeleteAttempt>> = fold(part_split.refused, init: empty_map(), f: (m, t) => local_store_group_refused_part(by_record: m, attempt: t))
         records |> map(r => LocalStoreRecordDeleteAttempt {
           name: r,
-          outcome: match map_get(record_refused, r) {
+          outcome: match map_lookup(record_refused, r) {
             Present { value: t } => LocalStoreRecordFileRefused { attempt: t }
-            Absent => match map_get(parts_refused, r) {
+            Absent => match map_lookup(parts_refused, r) {
               Present { value: ps } => LocalStoreRecordPartsRefused { parts: ps }
               Absent => LocalStoreRecordGone
             }
