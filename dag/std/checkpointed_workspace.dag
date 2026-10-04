@@ -3,10 +3,11 @@ module std.checkpointed_workspace
 import std.types { String, NonEmptyStr, Int, Bool, List }
 import v2.std.optional { Present, Absent }
 import std.algebra { Cons, Empty }
-import std.measure { ByteSize, measure_count, Nanosecond, nanosecond, nanosecond_count, ObservationInstant, InstantOrder, InstantBefore, InstantSame, InstantAfter, InstantIncomparable, compare_instants }
+import std.measure { ByteSize, byte_size, measure_count, Nanosecond, nanosecond, nanosecond_count, ObservationInstant, InstantOrder, InstantBefore, InstantSame, InstantAfter, InstantIncomparable, compare_instants }
 import std.durable_compare_and_set { CasGeneration }
 import std.nat { nat_sub, NatDifference, NatSubtrahendExceedsMinuend }
 import std.fabric_blob { FabricBlobAddress, fabric_blob_object_name }
+import std.content_hash { sha256_hex_digest }
 import std.fabric_storage {
   FabricObject, FabricObjectRef,
   FabricHeadExpectation, ExpectHeadAbsent, ExpectHeadAt,
@@ -43,12 +44,15 @@ import std.fabric_storage {
 //
 // CONSUMERS, A DECLARED FRONTIER (DESIGN 3c). Executed today only by test.claim.std_checkpointed_workspace
 // over supplied values. The real-path consumers are, by name:
-//   * the demo stage-1 restore entry (create, edit, barrier, destroy, recreate), which commits and
-//     restores through std.fabric_storage heads on R2. TRIGGER: gunbc.fabric_storage_r2_head
-//     (gunbc#13088) on main AND a durable workspace bucket placement with minted credentials (the
-//     operator escalation of 2026-10-03). It owes the pairing claim the witness rule demands: one
-//     claim that runs a real head advance and restore, so the supplied-value witnesses stop being the
-//     only execution of this module;
+//   * the demo stage-1 restore entry (create, edit, barrier, destroy, recreate):
+//     gunbc.fabric.workspace_checkpoint_instrument workspace_checkpoint_restore_wet, which commits
+//     through workspace_advance_plan, workspace_commit_classify and workspace_state_after_commit and
+//     restores through workspace_head_entry_decode, workspace_stored_entry_of and
+//     workspace_restore_point over the R2 head's closure. It is the pairing claim the witness rule
+//     demands, and it REFUSES before any advance until the R2 head's CAS ground is cited
+//     (gunbc.fabric_storage_r2_head r2_head_cas_admission) and the workspace credentials are pinned
+//     (gunbc.cloudflare.r2_origin fabric_workspace_standing); until both hold the supplied-value
+//     witnesses remain the only execution of the commit and restore arms;
 //   * the control-plane reconciler that publishes WorkspaceFence entries (docs/plans/
 //     workspace-control-plane.md, gunbc#13084). TRIGGER: the same head realization on main.
 
@@ -105,11 +109,142 @@ fn workspace_head_entry_object(entry: WorkspaceHeadEntry) -> FabricObject {
     WorkspaceRevision { writer: w, parent: p, entries: es } => FabricObject {
       links: workspace_parent_links(parent: p),
       body: join(["workspace.revision;W", to_string(length(w.workspace as String)), ":", w.workspace as String, ";epoch=", to_string(w.epoch), ";",
-                  fold(es, init: "", f: (acc, e) => join([acc, workspace_entry_line(entry: e)], ""))], "") as NonEmptyStr,
+                  join(map(es, e => workspace_entry_line(entry: e)), "")], "") as NonEmptyStr,
     }
     WorkspaceFence { writer: w, parent: p } => FabricObject {
       links: workspace_parent_links(parent: p),
       body: join(["workspace.fence;W", to_string(length(w.workspace as String)), ":", w.workspace as String, ";epoch=", to_string(w.epoch), ";"], "") as NonEmptyStr,
+    }
+  }
+}
+
+// THE INVERSE OF workspace_head_entry_object, FOR A READ. It decodes a stored object's body back into
+// the entry it claims to be; workspace_stored_entry_of then re-encodes that entry and compares, so a
+// decode that misreads is refused there rather than trusted here. Every malformed body is absent.
+// The parent is the object's single link, or none; more than one link is not an entry this module
+// wrote.
+type WorkspaceBodyField {
+  value: String
+  next: String
+}
+
+fn workspace_body_prefixed(text: String, tag: String) -> WorkspaceBodyField? {
+  if !starts_with(s: text, prefix: tag) {
+    none
+  } else {
+    let tail = substring(s: text, start: length(tag), end: length(text))
+    match first(split(tail, separator: ":")) {
+      Absent => none
+      Present { value: digits } =>
+        match parse_int(s: digits) {
+          Absent => none
+          Present { value: n } => {
+            let start = length(digits) + 1
+            if n < 0 || length(digits) == length(tail) || start + n > length(tail) {
+              none
+            } else {
+              Present { value: WorkspaceBodyField { value: substring(s: tail, start: start, end: start + n), next: substring(s: tail, start: start + n, end: length(tail)) } }
+            }
+          }
+        }
+    }
+  }
+}
+
+fn workspace_body_until(text: String, separator: String) -> WorkspaceBodyField? {
+  match first(split(text, separator: separator)) {
+    Absent => none
+    Present { value: v } =>
+      if length(v) == length(text) { none } else { Present { value: WorkspaceBodyField { value: v, next: substring(s: text, start: length(v) + 1, end: length(text)) } } }
+  }
+}
+
+fn workspace_body_entries(text: String, acc: List<WorkspaceEntry>) -> List<WorkspaceEntry>? {
+  if text == "" {
+    Present { value: acc }
+  } else {
+    match workspace_body_prefixed(text: text, tag: "F") {
+      Absent => none
+      Present { value: path } =>
+        if path.value == "" || !starts_with(s: path.next, prefix: " ") {
+          none
+        } else {
+          match workspace_body_until(text: substring(s: path.next, start: 1, end: length(path.next)), separator: " ") {
+            Absent => none
+            Present { value: hex } =>
+              match sha256_hex_digest(hex: hex.value) {
+                Absent => none
+                Present { value: digest } =>
+                  match workspace_body_until(text: hex.next, separator: ";") {
+                    Absent => none
+                    Present { value: size } =>
+                      match parse_int(s: size.value) {
+                        Absent => none
+                        Present { value: n } =>
+                          if n < 0 {
+                            none
+                          } else {
+                            workspace_body_entries(text: size.next, acc: concat(acc, [WorkspaceEntry { path: path.value as NonEmptyStr, chunk: FabricBlobAddress { key: digest }, size: byte_size(count: n) }]))
+                          }
+                      }
+                  }
+              }
+          }
+        }
+    }
+  }
+}
+
+type WorkspaceBodyHeader {
+  writer: WorkspaceWriterEpoch
+  rest: String
+}
+
+fn workspace_body_header(text: String, kind: String) -> WorkspaceBodyHeader? {
+  if !starts_with(s: text, prefix: kind) {
+    none
+  } else {
+    match workspace_body_prefixed(text: substring(s: text, start: length(kind), end: length(text)), tag: "W") {
+      Absent => none
+      Present { value: ws } =>
+        if ws.value == "" || !starts_with(s: ws.next, prefix: ";epoch=") {
+          none
+        } else {
+          match workspace_body_until(text: substring(s: ws.next, start: 7, end: length(ws.next)), separator: ";") {
+            Absent => none
+            Present { value: e } =>
+              match parse_int(s: e.value) {
+                Absent => none
+                Present { value: epoch } => Present { value: WorkspaceBodyHeader { writer: WorkspaceWriterEpoch { workspace: ws.value as NonEmptyStr, epoch: epoch }, rest: e.next } }
+              }
+          }
+        }
+    }
+  }
+}
+
+fn workspace_head_entry_decode(object: FabricObject) -> WorkspaceHeadEntry? {
+  let parent = match object.links {
+    Empty => Present { value: none }
+    Cons { head: p, tail: Empty } => Present { value: Present { value: p } }
+    Cons { head: _, tail: Cons { head: _, tail: _ } } => none
+  }
+  match parent {
+    Absent => none
+    Present { value: link } => {
+      let body = object.body as String
+      match workspace_body_header(text: body, kind: "workspace.revision;") {
+        Present { value: h } =>
+          match workspace_body_entries(text: h.rest, acc: []) {
+            Absent => none
+            Present { value: es } => Present { value: WorkspaceRevision { writer: h.writer, parent: link, entries: es } }
+          }
+        Absent =>
+          match workspace_body_header(text: body, kind: "workspace.fence;") {
+            Absent => none
+            Present { value: h } => if h.rest == "" { Present { value: WorkspaceFence { writer: h.writer, parent: link } } } else { none }
+          }
+      }
     }
   }
 }

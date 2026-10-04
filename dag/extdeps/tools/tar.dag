@@ -52,3 +52,20 @@ fn tar_extract_command(archive: String, into_directory: String, strip_components
     ],
   )
 }
+
+// CREATE FROM AN EXPLICIT MEMBER LIST, AND NOTHING ELSE. -T names a file of member paths (one per
+// line, relative to -C's directory); --no-recursion stops a listed directory from pulling in members
+// the list did not name, so the archive's membership IS the list -- a caller that filtered the list
+// has filtered the archive. --verbatim-files-from reads each line as a path, never as an option.
+fn tar_create_from_list_command(archive: String, from_directory: String, member_list: String) -> ArgvCommand {
+  argv_command(
+    program: tar_program(),
+    arguments: ["-C", from_directory, "-cf", archive, "--no-recursion", "--verbatim-files-from", "-T", member_list],
+  )
+}
+
+// LIST AN ARCHIVE'S MEMBERS, one path per line on stdout: the readback of what an archive holds,
+// independent of whatever list built it.
+fn tar_list_command(archive: String) -> ArgvCommand {
+  argv_command(program: tar_program(), arguments: ["-tf", archive])
+}
