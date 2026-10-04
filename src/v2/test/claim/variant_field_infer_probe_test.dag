@@ -343,3 +343,57 @@ test fn vfp_rt_tag_carrier_refused_at_resolve_holds() -> Bool {
 test fn vfp_rt_tag_carrier_is_seal_holds() -> Bool {
   vfp_round_trip_reading().construction_tag_carrier == ^Seal
 }
+// ---- BISECTION: the construction route alone (no match) -- separates the construct-read gap from
+// ---- the coproduct-match gap. Same temporary status as the ladder above.
+data vfp_construction_only_src: String = "module p\n\ntype Seal = Boxed(Int) | Held { value: Int }\n\nfn make_boxed() -> Seal {\n  Boxed(41)\n}"
+
+fn vfp_construction_only_reading() -> VfpReading { vfp_reading(src: vfp_construction_only_src) }
+
+test fn vfp_co_the_fixture_infers_holds() -> Bool {
+  vfp_infers(reading: vfp_construction_only_reading())
+}
+
+test fn vfp_co_chain_has_arrow_body_uninhabited_holds() -> Bool {
+  vfp_reports(reading: vfp_construction_only_reading(), reason: ^arrow_body_does_not_inhabit_declared_return)
+}
+
+test fn vfp_co_chain_has_undecidable_argument_holds() -> Bool {
+  vfp_reports(reading: vfp_construction_only_reading(), reason: ^inhabitance_undecidable_argument_type_not_derived)
+}
+
+test fn vfp_co_the_construction_types_as_its_carrier_holds() -> Bool {
+  vfp_construction_only_reading().construction_fact == ^Seal
+}
+
+test fn vfp_co_the_construction_tag_resolves_to_its_carrier_holds() -> Bool {
+  vfp_construction_only_reading().construction_tag_carrier == ^Seal
+}
+
+// ---- BISECTION: the match route alone (no construction fn) -- the mirror separation.
+data vfp_match_only_src: String = "module p\n\ntype Seal = Boxed(Int) | Held { value: Int }\n\nfn seal_unbox(s: Seal) -> Int {\n  match s {\n    Boxed(v) => v\n    Held { value: w } => w\n  }\n}"
+
+fn vfp_match_only_reading() -> VfpReading { vfp_reading(src: vfp_match_only_src) }
+
+test fn vfp_mo_the_fixture_infers_holds() -> Bool {
+  vfp_infers(reading: vfp_match_only_reading())
+}
+
+test fn vfp_mo_chain_has_arrow_body_uninhabited_holds() -> Bool {
+  vfp_reports(reading: vfp_match_only_reading(), reason: ^arrow_body_does_not_inhabit_declared_return)
+}
+
+test fn vfp_mo_chain_has_undecidable_argument_holds() -> Bool {
+  vfp_reports(reading: vfp_match_only_reading(), reason: ^inhabitance_undecidable_argument_type_not_derived)
+}
+
+test fn vfp_mo_chain_has_non_exhaustive_holds() -> Bool {
+  vfp_reports(reading: vfp_match_only_reading(), reason: ^infer_match_non_exhaustive)
+}
+
+test fn vfp_mo_the_match_types_from_its_arms_holds() -> Bool {
+  vfp_match_only_reading().match_fact == ^Int
+}
+
+test fn vfp_mo_the_arm_binder_types_from_the_payload_field_holds() -> Bool {
+  vfp_match_only_reading().arm_body_fact == ^Int
+}
