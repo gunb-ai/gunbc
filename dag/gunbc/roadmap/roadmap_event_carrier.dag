@@ -243,6 +243,7 @@ fn roadmap_event_append_after_no_operation_receipt(
   layout: RoadmapEventCarrierLayout,
   event: RoadmapEvent,
   env: RoadmapEventEnvelope,
+  operation: String,
   receipt_path: String,
   expected_commit: String,
 ) -> RoadmapEventAppend {
@@ -268,6 +269,7 @@ fn roadmap_event_append_private(layout: RoadmapEventCarrierLayout, event: Roadma
             layout: layout,
             event: event,
             env: env,
+            operation: operation,
             receipt_path: receipt_path,
             expected_commit: trim(revision),
           )
@@ -291,6 +293,7 @@ fn roadmap_event_append_private(layout: RoadmapEventCarrierLayout, event: Roadma
                 layout: layout,
                 event: event,
                 env: env,
+                operation: operation,
                 receipt_path: receipt_path,
                 expected_commit: trim(revision),
               )
