@@ -1,0 +1,54 @@
+module test.claim.argv_word_construction.probe_test
+
+import std.types { Bool, Int, String, List }
+import v2.lens.argv_word_construction { argv_words_diagnostic_stream, argv_words_diagnostic_fact_decls }
+
+data probe_path: String = "test/fixture_roots/argv_word_construction/host_words.dag"
+
+fn member(xs: List<String>, needle: String) -> Bool {
+  xs |> any(w => w == needle)
+}
+
+test fn probe_read_established() -> Bool {
+  !member(xs: argv_words_diagnostic_fact_decls(path: probe_path), needle: "READ-REFUSED")
+}
+
+test fn probe_raw_parse_established() -> Bool {
+  !member(xs: argv_words_diagnostic_stream(path: probe_path), needle: "RAW-NOT-ESTABLISHED")
+}
+
+test fn probe_stream_has_module_production() -> Bool {
+  member(xs: argv_words_diagnostic_stream(path: probe_path), needle: "dag_surface_module")
+}
+
+test fn probe_stream_has_fn_decl() -> Bool {
+  member(xs: argv_words_diagnostic_stream(path: probe_path), needle: "dag_surface_fn_decl")
+}
+
+test fn probe_stream_has_test_fn_decl() -> Bool {
+  member(xs: argv_words_diagnostic_stream(path: probe_path), needle: "dag_surface_test_fn_decl")
+}
+
+test fn probe_stream_has_data_decl() -> Bool {
+  member(xs: argv_words_diagnostic_stream(path: probe_path), needle: "dag_surface_data_decl")
+}
+
+test fn probe_stream_has_wait_flags_identifier() -> Bool {
+  member(xs: argv_words_diagnostic_stream(path: probe_path), needle: "fixture_wait_flags")
+}
+
+test fn probe_stream_has_string_literal_token() -> Bool {
+  member(xs: argv_words_diagnostic_stream(path: probe_path), needle: "dag_token_string_literal")
+}
+
+test fn probe_stream_large() -> Bool {
+  count(argv_words_diagnostic_stream(path: probe_path)) > 100
+}
+
+test fn probe_facts_include_wait_flags() -> Bool {
+  member(xs: argv_words_diagnostic_fact_decls(path: probe_path), needle: "fixture_wait_flags")
+}
+
+test fn probe_facts_count_at_least_one() -> Bool {
+  count(argv_words_diagnostic_fact_decls(path: probe_path)) >= 1
+}

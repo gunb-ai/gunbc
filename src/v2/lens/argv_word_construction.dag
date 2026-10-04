@@ -825,3 +825,29 @@ fn argv_word_construction_gates(live: List<ArgvWordsSite>, roster: List<ArgvWord
     refused => refused
   }
 }
+
+// ── THROWAWAY DIAGNOSTICS (strip before commit) ─────────────────────────────────────────────────
+fn argv_words_diagnostic_stream(path: String) -> List<String> {
+  let read = Filesystem.Read(path: path)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: _ } => ["READ-REFUSED"]
+    FilesystemReadSucceeded { content: text } =>
+      match raw_tree_of_text(text: text) {
+        RawTreeNotEstablished { cause: c } => ["RAW-NOT-ESTABLISHED", source_cause_name(c: c)]
+        RawTreeEstablished { root: root } => fold_list(xs: atoms_reversed(n: root, acc: Empty), empty: Empty, cons: fn(acc, a) { Cons { head: a.lexeme, tail: acc } })
+      }
+  }
+}
+
+fn argv_words_diagnostic_fact_decls(path: String) -> List<String> {
+  let read = Filesystem.Read(path: path)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: _ } => ["READ-REFUSED"]
+    FilesystemReadSucceeded { content: text } =>
+      match raw_tree_of_text(text: text) {
+        RawTreeNotEstablished { cause: _ } => ["RAW-NOT-ESTABLISHED"]
+        RawTreeEstablished { root: root } =>
+          fold_list(xs: facts_of(walked: walk_tree(root: root)), empty: Empty, cons: fn(acc, f) { Cons { head: f.decl, tail: acc } })
+      }
+  }
+}
