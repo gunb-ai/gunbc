@@ -1,5 +1,6 @@
 module v2.compiler.eval
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.infer {
   DerivedGrounding,
@@ -28,13 +29,14 @@ import v2.std.arrow_signature {
 import v2.std.algebra { fold_list, length }
 import v2.std.cardinality { RankingComponent, TerminationProof }
 import v2.std.collection {
-  List,
   Map,
   empty_map,
   list_at_optional,
   list_nth
 }
-import v2.std.qualified_name { declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional }
+import v2.std.qualified_name {
+  qualified_name_snoc,
+  qualified_name_to_dotted_string, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional }
 import v2.std.optional {
   Absent,
   Optional,
@@ -59,6 +61,9 @@ import v2.std.runtime {
   ValueInterpreter,
   Return,
   RuntimeAggregate,
+  RuntimeFieldFound,
+  RuntimeFieldMissing,
+  runtime_aggregate_field_selection,
   RuntimeClosure,
   RuntimeClosureValue,
   RuntimePrimitive,
@@ -91,6 +96,7 @@ import v2.std.runtime {
   runtime_value_resolved_type
 }
 import v2.std.node {
+  symbol_intern_lexeme,
   StructuralLabel,
   positional_edges,
   ArrowBodyForm,
@@ -134,7 +140,13 @@ import v2.std.node {
   node_for_structural_equality,
   well_formed,
 }
-import v2.std.node_query { find_arrow_body_child, node_positional_child_targets }
+import v2.std.node_query {
+  FieldProjection,
+  field_projection_edge_base_optional,
+  field_projection_optional,
+  find_arrow_body_child,
+  node_positional_child_targets
+}
 import v2.std.diagnostic {
   AmbiguousIntent,
   ByteRange,
@@ -1327,6 +1339,14 @@ fn eval_lexical_reference(node: Node, label: Symbol, environment: EvaluationEnvi
 // accepted program reaches this arm. DECLARED FRONTIER, TRIGGER NAMING THE CAPABILITY: gunbc#12506's
 // named-call route evaluates a declared fn body over resolver output, SUFFICIENT FOR eval to key
 // parameters by QualifiedName with this refusal arm deleted.
+//
+// THE REFERENCE CARRIES ITS OWN KEY, so the body looks the actual up under the path the call bound it
+// at -- the same key eval_parameter_binding_key produced, which is why that constructor is the only
+// place either side derives one. The refusal that stood here answered for EVERY parameter reference,
+// which was honest while no route evaluated a declared body over resolver output and became a wall
+// against the capability once one did. It does not disappear: a reference whose path the environment
+// does not hold still refuses with the same reason, so a wrong path or an unbound parameter is still
+// a located refusal and only a BOUND one now executes.
 fn eval_type_node_atom(
   node: Node,
   interpretation: InterpretationAlgebra,
@@ -1339,10 +1359,14 @@ fn eval_type_node_atom(
       )
     Absent =>
   match parameter_reference_path_optional(node: node) {
-    Present { value: _ } =>
-      outcome_rejected(
-        d: eval_diagnostic(reason: ^eval_rejected_parameter_reference_unbound, node: node)
-      )
+    Present { value: path } =>
+      match environment.bindings.lookup(eval_parameter_binding_key(parameter_path: path)) {
+        Present { value: v } => Accepted { value: v, diagnostics: None }
+        Absent =>
+          outcome_rejected(
+            d: eval_diagnostic(reason: ^eval_rejected_parameter_reference_unbound, node: node)
+          )
+      }
     Absent =>
   match lexical_reference_label_optional(node: node) {
     Present { value: label } => eval_lexical_reference(node: node, label: label, environment: environment)
@@ -1380,12 +1404,67 @@ fn eval_type_node_atom(
 // for each declared parameter, which of them fills it -- the same plan v2.compiler.infer checked, so
 // the two stages cannot bind one call differently. A domain with no named binder keeps its positional
 // edges, bound in their own order.
+// THE PARAMETER BINDING KEY, AND IT IS ONE CONSTRUCTOR BECAUSE BINDING AND LOOKUP MUST NOT DISAGREE.
+// gunbc#12766 made a named fn's parameter use a PATH-KEYED parameter reference and declared eval's keying a
+// frontier whose trigger is this lane's named-call route. Binding by the bare label while the body looks the
+// parameter up by its declaring path is exactly the two-authorities defect that frontier existed to prevent,
+// so the key is derived here and nowhere else: the callee's declaring path, then the formal's label.
+//
+// THE FULL PATH, NEVER THE LEAF. `p.f.x` and `p.g.x` are different parameters of different declarations, and
+// keying on `x` would alias them -- one function's actual answering another function's body. That is the same
+// reasoning v2.compiler.infer records for symbol_index_lookup, which asks for the whole declaring path
+// precisely because a leaf answer fabricated a type from an unrelated declaration.
+//
+// THE KEY IS INTERNED, because EnvironmentBindingKey carries a Symbol (v2.std.runtime) rather than a path,
+// and the dotted rendering is v2.std.qualified_name's own. A separator that could occur inside a segment
+// would make two distinct paths collide, and `.` cannot: it is the segment separator of the very grammar
+// these names come from.
+fn eval_parameter_binding_key(parameter_path: QualifiedName) -> EnvironmentBindingKey {
+  environment_binding_key_for_symbol(
+    sym: symbol_intern_lexeme(lexeme: qualified_name_to_dotted_string(qn: parameter_path))
+  )
+}
+
+// WHICH KEYING A FORMAL GETS, decided once. A call whose callee is a resolved declaration reference supplies
+// a declaring path, so its formals are keyed by path. A LAMBDA supplies none: gunbc#12766 deliberately left
+// lambda parameters on their lexical bare-label route, because an anonymous Arrow has no index path to key
+// by, so Absent keeps exactly the behaviour that route already had. This is not a fallback for the
+// path-keyed case -- a named declaration NEVER keys by bare label, because binding both spellings would make
+// the route look repaired while preserving the two authorities the frontier forbids.
+fn eval_formal_binding_key(callee_path: Optional<QualifiedName>, label: Symbol) -> EnvironmentBindingKey {
+  match callee_path {
+    Present { value: path } =>
+      eval_parameter_binding_key(parameter_path: qualified_name_snoc(qn: path, segment: label))
+    Absent => environment_binding_key_for_symbol(sym: label)
+  }
+}
+
+fn eval_parameter_reference_is_value(node: Node) -> Bool {
+  match parameter_reference_path_optional(node: node) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn eval_parameter_reference_value(node: Node, environment: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  match parameter_reference_path_optional(node: node) {
+    Absent => outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_parameter_reference_unbound, node: node))
+    Present { value: path } =>
+      match environment.bindings.lookup(eval_parameter_binding_key(parameter_path: path)) {
+        Present { value: v } => Accepted { value: v, diagnostics: None }
+        Absent =>
+          outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_parameter_reference_unbound, node: node))
+      }
+  }
+}
+
 fn eval_bind_arrow_params(
   arrow: Node,
   args: List<RuntimeValue>,
   environment: EvaluationEnvironment,
   bind: BindInterpreter,
-  node: Node
+  node: Node,
+  callee_path: Optional<QualifiedName>
 ) -> Outcome<EvaluationEnvironment> {
   bind_outcome(
     o: eval_nth_child(node: arrow, wanted: 0, absent_reason: ^eval_rejected_callee_absent),
@@ -1405,7 +1484,13 @@ fn eval_bind_arrow_params(
                       absent: eval_diagnostic(reason: ^eval_rejected_argument_bind_absent, node: node)
                     )
                   ),
-                  f: fn(value) { bind.bind_value(environment_binding_key_for_symbol(sym: slot.label), value, env) }
+                  f: fn(value) {
+                    bind.bind_value(
+                      eval_formal_binding_key(callee_path: callee_path, label: slot.label),
+                      value,
+                      env
+                    )
+                  }
                 )
               })
             })
@@ -1469,16 +1554,62 @@ fn eval_node_is_arrow(node: Node) -> Bool {
   }
 }
 
+// A RESOLVED DECLARATION REFERENCE IS A CALLEE REFERENCE, RECOGNIZED THROUGH ITS MARKER READER AND
+// NOT BY ITS CONNECTIVE. The carrier is a marked Conj (v2.std.qualified_name
+// declaration_reference_node), and admitting Conj as such would admit every record shape with it --
+// so the third arm asks declaration_reference_path_optional, the same reader infer and translate ask.
+//
+// WHAT THIS FIXES IS THE WALK BEFORE IT IS THE DISPATCH. Until the classifier recognized the
+// reference, eval_fold_is_callee_reference_edge answered false, eval_fold_child_for_edge took its
+// ordinary recursive arm, and the walk DESCENDED INTO THE REFERENCE'S ENCODED DECLARING PATH --
+// demanding value-grounding for the internal representation of a declaration identity. That spine is
+// built at OccurrenceSynthetic because the authored occurrence belongs to the marker node, and infer
+// visits it too, so each component held an entry with grounding underived and the walk refused with
+// eval_rejected_grounding_not_derived anchored on path data. The regression control for exactly that
+// anchor is v2.test.claim.callexec.declaration_reference_eval.
+//
 // A lexical reference is the name a bare Atom callee was before resolve marked it, so it routes as one.
 fn eval_node_is_callee_reference(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Arrow } => true
     TypeNode { connective: Atom { identity: _ } } => true
     _ =>
-      match lexical_reference_label_optional(node: node) {
+      match declaration_reference_path_optional(node: node) {
         Present { value: _ } => true
-        Absent => false
+        Absent =>
+          match lexical_reference_label_optional(node: node) {
+            Present { value: _ } => true
+            Absent => false
+          }
       }
+  }
+}
+
+// THE EXECUTABLE DECLARATION A CALLEE REFERENCE NAMES, taken from the denotation infer recorded with
+// the guarded index lookup (v2.compiler.inferred_tree InferredFacts denotation). eval does not
+// re-resolve: it holds no symbol index, and a second resolution path here would be a weaker authority
+// that could accept a reference the guard refuses.
+//
+// A REFERENCE WHOSE FACTS ARE ABSENT OR CARRY NO DENOTATION REFUSES, and refuses as a missing runtime
+// binding rather than being guessed at, inlined by name, or silently treated as a primitive.
+fn eval_callee_declaration_optional(tree: InferredTree, callee: Node) -> Optional<Node> {
+  match declaration_reference_path_optional(node: callee) {
+    Absent => optional_absent()
+    Present { value: _ } =>
+      match tree.facts.lookup(callee) {
+        Absent => optional_absent()
+        Present { value: facts } => facts.denotation
+      }
+  }
+}
+
+// THE NODE THE CALL DISPATCHES THROUGH. For an ordinary Arrow callee it is the callee itself, exactly
+// as before; for a declaration reference it is the DENOTED declaration. Returning the callee unchanged
+// when no denotation is reachable keeps the existing refusal arms in charge of saying so.
+fn eval_callee_dispatch_node(tree: InferredTree, callee: Node) -> Node {
+  match eval_callee_declaration_optional(tree: tree, callee: callee) {
+    Present { value: declaration } => declaration
+    Absent => callee
   }
 }
 
@@ -1712,6 +1843,20 @@ fn eval_callee_body_refusal_reason(form: ArrowBodyForm) -> Symbol {
   }
 }
 
+// THE CALL DISPATCHES THROUGH THE DENOTED DECLARATION WHEN ITS CALLEE IS A REFERENCE, and through the
+// callee itself otherwise. `callee_target` below is that one node, read by both the body lookup and
+// the parameter binding, so a reference binds the CALLEE's own formals against the CALLEE's own body
+// -- never a body from one declaration paired with formals from another.
+//
+// A REFERENCE THAT REACHED NO EXECUTABLE DECLARATION REFUSES AS AN UNBOUND RUNTIME BINDING. Either no
+// facts entry carried a denotation -- so infer refused the reference's contract -- or the denoted
+// declaration is not an Arrow with an admissible body. Neither arm falls through to the primitive
+// table, where a reference would be looked up by a name it does not have and reported as a missing
+// primitive rather than as the declaration it actually names.
+// THE CALLEE'S OWN DECLARING PATH, read off the reference the call carries rather than
+// re-resolved: eval is a consumer of resolution's answer here, never a second naming
+// authority. A callee that is not a declaration reference (a lambda) yields Absent and
+// its formals stay on the lexical route.
 fn eval_transform_node(
   node: Node,
   args: List<RuntimeValue>,
@@ -1739,18 +1884,20 @@ fn eval_transform_node(
         bind_outcome(
           o: eval_transform_callee_edge(node: node),
           f: fn(callee_edge) {
-            match find_arrow_body_child(root: callee_edge.target) {
+            let callee_target = eval_callee_dispatch_node(tree: tree, callee: callee_edge.target)
+            match find_arrow_body_child(root: callee_target) {
               Accepted { value: body, diagnostics: _ } =>
                 let body_form = classify_arrow_body_form(target: body)
-                if eval_arrow_admits_callee_dispatch(arrow: callee_edge.target)
+                if eval_arrow_admits_callee_dispatch(arrow: callee_target)
                   && arrow_body_admits_eval_entry(form: body_form) {
                   bind_outcome(
                     o: eval_bind_arrow_params(
-                      arrow: callee_edge.target,
+                      arrow: callee_target,
                       args: args,
                       environment: environment,
                       bind: interpretation.bind,
-                      node: node
+                      node: node,
+                      callee_path: declaration_reference_path_optional(node: callee_edge.target)
                     ),
                     f: fn(call_environment) {
                       match body_form {
@@ -1776,15 +1923,27 @@ fn eval_transform_node(
                   outcome_rejected(
                     d: eval_diagnostic(
                       reason: eval_callee_body_refusal_reason(form: body_form),
-                      node: callee_edge.target
+                      node: callee_target
                     )
                   )
                 }
               Rejected { diagnostics: _ } =>
-                if eval_node_is_arrow(node: callee_edge.target) {
+                if eval_node_is_arrow(node: callee_target) {
                   outcome_rejected(
-                    d: eval_diagnostic(reason: ^eval_rejected_unsupported_callee, node: callee_edge.target)
+                    d: eval_diagnostic(reason: ^eval_rejected_unsupported_callee, node: callee_target)
                   )
+                } else if eval_node_is_callee_reference(node: callee_edge.target)
+                  && !eval_node_is_arrow(node: callee_edge.target) {
+                  match declaration_reference_path_optional(node: callee_edge.target) {
+                    Present { value: _ } =>
+                      outcome_rejected(
+                        d: eval_diagnostic(
+                          reason: ^eval_rejected_runtime_binding_lookup_miss,
+                          node: callee_edge.target
+                        )
+                      )
+                    Absent => transform.call_primitive(node, args, environment)
+                  }
                 } else {
                   transform.call_primitive(node, args, environment)
                 }
@@ -2173,15 +2332,88 @@ fn eval_interpret_node(
             effect_io: effect_io
           )
         TypeNode { connective: _ } =>
-          eval_type_node_atom(
-            node: node,
-            interpretation: interpretation,
-            environment: environment
-          )
+          match field_projection_optional(n: node) {
+            Present { value: projection } =>
+              eval_field_projection(node: node, projection: projection, args: args)
+            Absent =>
+              eval_type_node_atom(
+                node: node,
+                interpretation: interpretation,
+                environment: environment
+              )
+          }
       }
     }
   )
 }
+
+// A FIELD PROJECTION SELECTS A FIELD FROM THE RECEIVER'S VALUE, and refuses on anything else. Without
+// this arm a projection reached the default TypeNode route and was handed to allocate_literal, which
+// would fabricate a literal out of a two-edge Conj -- a value for an expression that selects, not one
+// that constructs.
+//
+// THE RECEIVER'S VALUE ARRIVES AS THE ONE RUNTIME ARGUMENT, through the same seam the evaluator already
+// uses to decide which children are values (eval_edge_is_runtime_argument). So the base is evaluated
+// ONCE, by the ordinary walk, rather than re-evaluated here: re-entering the base would compute it a
+// second time for every projection off it, which is the duplicated work DESIGN section 2 forbids at any
+// n. The FIELD edge is deliberately not an argument -- it carries a name, not a value, and evaluating it
+// would ask for the grounding of a field-name atom.
+//
+// EVERY NON-SELECTING CASE REFUSES, TYPED AND LOCATED. A receiver that is not an aggregate has no
+// fields to select from; an aggregate that does not carry the field is a value disagreeing with the type
+// that admitted the projection, which is a fail-closed refusal here rather than a fabricated default,
+// because infer has already established that the receiver's type declares the field
+// (v2.compiler.infer infer_field_projection_facts) -- so reaching this arm means the VALUE and the TYPE
+// disagree, and that is worth its own reason rather than being folded into "no such field".
+fn eval_field_projection(
+  node: Node,
+  projection: FieldProjection,
+  args: List<RuntimeValue>
+) -> Outcome<RuntimeValue> {
+  match list_at_optional(xs: args, index: 0) {
+    Absent =>
+      outcome_rejected(
+        d: eval_diagnostic(reason: ^eval_rejected_projection_receiver_absent, node: node)
+      )
+    Present { value: receiver } =>
+      eval_field_projection_of_receiver(
+        node: node,
+        projection: projection,
+        receiver: receiver
+      )
+  }
+}
+
+// THE RECEIVER CROSSES INTO A TYPED PARAMETER BEFORE ANY FIELD IS READ. list_at_optional answers
+// Optional<T>, and a value destructured straight out of it does not carry RuntimeValue through a field
+// access -- measured: reading `aggregate.fields` inline produced a runtime type error while the
+// non-aggregate arm, which reads no field, passed. Naming the parameter is what restores the type, and it
+// is the same shape v2.std.runtime runtime_fields_list_node already uses for its own element.
+fn eval_field_projection_of_receiver(
+  node: Node,
+  projection: FieldProjection,
+  receiver: RuntimeValue
+) -> Outcome<RuntimeValue> {
+  match receiver {
+    RuntimeAggregate { value: aggregate } =>
+      match runtime_aggregate_field_selection(fields: aggregate.fields, name: projection.field) {
+        RuntimeFieldFound { value: field_value } =>
+          Accepted { value: field_value, diagnostics: None }
+        RuntimeFieldMissing =>
+          outcome_rejected(
+            d: eval_diagnostic(
+              reason: ^eval_rejected_projected_field_absent_from_value,
+              node: node
+            )
+          )
+      }
+    _ =>
+      outcome_rejected(
+        d: eval_diagnostic(reason: ^eval_rejected_projection_receiver_not_aggregate, node: node)
+      )
+  }
+}
+
 
 fn empty_runtime_values() -> List<RuntimeValue> {
   []
@@ -2213,7 +2445,14 @@ fn eval_edge_is_runtime_argument(parent: Node, progress: EvalProgress, edge: Edg
   } else if eval_node_is_transform(node: parent) {
     !edge_is_cast_target(e: edge)
   } else {
-    is_positional(e: edge)
+    match field_projection_optional(n: parent) {
+      Present { value: _ } =>
+        match field_projection_edge_base_optional(e: edge) {
+          Present { value: _ } => true
+          Absent => false
+        }
+      Absent => is_positional(e: edge)
+    }
   }
 }
 
@@ -2306,6 +2545,17 @@ fn eval_fold_control_transfer_state(
   }
 }
 
+// THIS PREDICATE IDENTIFIES THE CALLEE EDGE BY A PROCESSED COUNT, WHICH IS A STANDING OBSERVATION AND
+// NOT A REPAIR THIS FUNCTION CONTAINS. `p == 0 && is_positional(edge)` names the callee only while the
+// callee is the first child the fold happens to process, so the discriminator is child ORDER rather
+// than the callee -- and eval_transform_callee_edge already answers the question directly.
+//
+// IT IS LEFT ALONE BECAUSE REWRITING IT CHANGED NO VERDICT. Keying on eval_transform_callee_edge was
+// written and measured: all seven controls in v2.test.claim.callexec.declaration_reference_eval pass
+// either way, in both directions. A second formulation nothing needs is redundant work (DESIGN section
+// 2), so the count-based test stays and the observation is recorded here rather than acted on. Whoever
+// finds a call shape where the two DISAGREE has the discriminating case this lacked, and that case is
+// what would justify the change.
 fn eval_fold_is_callee_reference_edge(
   parent: Node,
   progress: EvalProgress,
@@ -2673,6 +2923,16 @@ fn eval_runtime_node_via_data_flow_fold(
   eval_fold_state_value(state: folded)
 }
 
+// A PARAMETER REFERENCE IS A LEAF HERE, NOT A STRUCTURE TO WALK. Its carrier is a marked Conj whose child
+// is the encoded declaring path (v2.std.qualified_name parameter_reference_node), so letting the data-flow
+// fold see it descends into that path and demands value-grounding for the internal representation of a
+// parameter identity -- the same defect this module already fixed for DECLARATION references, recorded at
+// eval_fold_is_callee_reference_edge, and the reason its regression control exists.
+//
+// IT RESOLVES THROUGH THE SAME KEY THE CALL BOUND IT AT, so eval_parameter_binding_key stays the only
+// place either side derives a key. A reference whose path the environment does not hold still refuses with
+// ^eval_rejected_parameter_reference_unbound, which is now a statement about a MISSING BINDING rather than
+// about the body's form.
 fn eval_runtime_node(
   node: Node,
   tree: InferredTree,
@@ -2681,7 +2941,9 @@ fn eval_runtime_node(
   runtime: V4EvaluatorRuntime,
   effect_io: EffectIoEvalContext
 ) -> Outcome<RuntimeValue> {
-  if eval_runtime_node_is_control_transfer(node: node) {
+  if eval_parameter_reference_is_value(node: node) {
+    eval_parameter_reference_value(node: node, environment: environment)
+  } else if eval_runtime_node_is_control_transfer(node: node) {
     eval_runtime_control_node(
       node: node,
       tree: tree,

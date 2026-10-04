@@ -12,6 +12,7 @@ import std.cache_interface {
   ReleasedAtProviderScopeExit,
   ReleasedNever,
   ReleasedManually,
+  ReleasedAfterInterval,
   CapacityUnbounded,
   CapacityBounded,
   CapacityUnobserved,
@@ -538,6 +539,7 @@ fn retention_admission(r: ProviderRetention) -> RetentionAdmission {
     ReleasedAtProviderScopeExit => RetentionAdmitted
     ReleasedNever => capacity_admission(c: r.capacity)
     ReleasedManually => capacity_admission(c: r.capacity)
+    ReleasedAfterInterval { after_write: _ } => capacity_admission(c: r.capacity)
   }
 }
 

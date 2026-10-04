@@ -1,0 +1,136 @@
+module test.claim.fabric_blob
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import v2.std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.measure { byte_size, measure_count }
+import std.content_hash { sha256_hex_digest, Sha256Digest }
+import std.fabric_blob {
+  FabricBlobAddress, FabricBlobRead, FabricBlobReadRefused, read_staged_fabric_blob,
+  fabric_blob_reading_size, fabric_blob_reading_digest,
+  FabricBlobPutAdmitted, FabricBlobPutTooLarge, fabric_blob_put_plan, fabric_blob_address_eq, fabric_blob_fits,
+}
+import gunbc.fabric.fabric_blob_placement { fabric_cache_blob_key, fabric_cache_object_bound }
+import gunbc.fabric.fabric_blob_r2 {
+  CacheBlobRead, CacheBlobWrite, CacheBlobTargetReady, CacheBlobTargetRefused, resolve_cache_blob_target,
+}
+import gunbc.cloudflare.r2_origin { FabricCacheBlobs, bucket_purpose_lifecycle_rules, FabricDurableOrigin, FabricBootOrigin }
+import extdeps.cloudflare.r2_lifecycle {
+  R2LifecycleRule, R2LifecycleRulesRead, R2LifecycleRulesUnmodeled, R2LifecycleReadRefused,
+  r2_lifecycle_read_body, r2_lifecycle_rules_canonical,
+}
+import gunbc.cloudflare.r2_bucket_ensure { classify_r2_lifecycle }
+import std.upsert_decision { Noop, Apply, Refuse }
+
+// READS THE LIVE TREE: a FabricBlobReading is sole_constructor, so the reading arms are taken through
+// read_staged_fabric_blob over a committed fixture. Under the hermetic route its two handlers replay
+// their mocks -- sha256sum's empty-input digest and stat's zero size -- so the fixture is the empty
+// file, and what this establishes is the mint's wiring (digest and size from the handlers into one
+// reading), not the hashing, which extdeps.crypto.hash's own witnesses own.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data fixture_blob_path: NonEmptyStr = "dag/test/fixture/fabric_blob/empty.bin"
+data empty_sha256_hex: String = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+data key_hex: String = "89427e487454c1b5b3cafc50013e056c2d496587b9922f4e8600a3b3c7e3be4f"
+
+// A MISTYPED FIXTURE DIGEST FAILS THE CLAIM, never substitutes another digest.
+fn witness_address() -> FabricBlobAddress? {
+  match sha256_hex_digest(hex: key_hex) {
+    Present { value: d } => Present { value: FabricBlobAddress { key: d } }
+    Absent => none
+  }
+}
+
+test fn reading_carries_the_handlers_digest_and_size() -> Bool {
+  match read_staged_fabric_blob(path: fixture_blob_path) {
+    FabricBlobRead { reading: r } =>
+      (fabric_blob_reading_digest(reading: r).hex as String) == empty_sha256_hex
+        && measure_count(m: fabric_blob_reading_size(reading: r)) == 0
+    FabricBlobReadRefused { fault: _ } => false
+  }
+}
+
+// ── THE PUT PLAN: AN OBJECT OVER THE BOUND NEVER REACHES THE NETWORK ───────────────────────────
+
+test fn the_put_plan_admits_within_the_bound_and_refuses_beyond_it() -> Bool {
+  match read_staged_fabric_blob(path: fixture_blob_path) {
+    FabricBlobReadRefused { fault: _ } => false
+    FabricBlobRead { reading: r } => {
+      let within = match witness_address() {
+        Absent => false
+        Present { value: addr } =>
+          match fabric_blob_put_plan(address: addr, reading: r, bound: fabric_cache_object_bound()) {
+            FabricBlobPutAdmitted { address: a, reading: _ } => fabric_blob_address_eq(a: a, b: addr)
+            FabricBlobPutTooLarge { address: _, size: _, bound: _ } => false
+          }
+      }
+      within && fabric_blob_fits(size: byte_size(count: 0), bound: byte_size(count: 0))
+        && !fabric_blob_fits(size: byte_size(count: 1), bound: byte_size(count: 0))
+        && !fabric_blob_fits(size: byte_size(count: 4 * 1024 * 1024 * 1024 + 1), bound: fabric_cache_object_bound())
+    }
+  }
+}
+
+test fn the_blob_key_is_the_address_under_the_cache_prefix() -> Bool {
+  match witness_address() {
+    Present { value: addr } => (fabric_cache_blob_key(address: addr) as String) == concat("blobs/", key_hex)
+    Absent => false
+  }
+}
+
+// ── THE CACHE'S CREDENTIALS ARE UNMINTED, SO EVERY TRANSFER REFUSES BEFORE THE NETWORK ─────────
+
+test fn cache_blob_targets_refuse_naming_the_unminted_credential() -> Bool {
+  let read = match resolve_cache_blob_target(direction: CacheBlobRead, key: "blobs/x" as NonEmptyStr) {
+    CacheBlobTargetRefused { cause: c } => string_contains(s: c as String, pattern: "cloudflare-r2-cache-blobs-read-token") && string_contains(s: c as String, pattern: "run_cache_object_read")
+    CacheBlobTargetReady { target: _ } => false
+  }
+  let write = match resolve_cache_blob_target(direction: CacheBlobWrite, key: "blobs/x" as NonEmptyStr) {
+    CacheBlobTargetRefused { cause: c } => string_contains(s: c as String, pattern: "cloudflare-r2-cache-blobs-write-token") && string_contains(s: c as String, pattern: "run_cache_object_write")
+    CacheBlobTargetReady { target: _ } => false
+  }
+  read && write
+}
+
+// ── LIFECYCLE: ONLY THE CACHE EXPIRES, AND A READ IT CANNOT DESCRIBE REFUSES ───────────────────
+
+test fn only_the_cache_purpose_declares_release_by_age() -> Bool {
+  bucket_purpose_lifecycle_rules(purpose: FabricDurableOrigin {}).length() == 0
+    && bucket_purpose_lifecycle_rules(purpose: FabricBootOrigin {}).length() == 0
+    && r2_lifecycle_rules_canonical(rules: bucket_purpose_lifecycle_rules(purpose: FabricCacheBlobs {}))
+      == "fabric-cache-blobs-release enabled prefix=blobs/ max_age=604800"
+}
+
+data lifecycle_converged_body: String = "{\"success\":true,\"errors\":[],\"messages\":[],\"result\":{\"rules\":[{\"id\":\"fabric-cache-blobs-release\",\"enabled\":true,\"conditions\":{\"prefix\":\"blobs/\"},\"deleteObjectsTransition\":{\"condition\":{\"type\":\"Age\",\"maxAge\":604800}}}]}}"
+data lifecycle_empty_body: String = "{\"success\":true,\"errors\":[],\"messages\":[],\"result\":{\"rules\":[]}}"
+data lifecycle_unmodeled_body: String = "{\"success\":true,\"errors\":[],\"messages\":[],\"result\":{\"rules\":[{\"id\":\"abort\",\"enabled\":true,\"conditions\":{\"prefix\":\"\"},\"abortMultipartUploadsTransition\":{\"condition\":{\"type\":\"Age\",\"maxAge\":86400}}}]}}"
+
+test fn a_converged_rule_set_noops_and_an_empty_one_applies() -> Bool {
+  let desired = bucket_purpose_lifecycle_rules(purpose: FabricCacheBlobs {})
+  let converged = match classify_r2_lifecycle(desired: desired, read: r2_lifecycle_read_body(body: lifecycle_converged_body)).decision {
+    Noop => true
+    _ => false
+  }
+  let empty = match classify_r2_lifecycle(desired: desired, read: r2_lifecycle_read_body(body: lifecycle_empty_body)).decision {
+    Apply { plan: _ } => true
+    _ => false
+  }
+  converged && empty
+}
+
+test fn a_rule_this_model_cannot_describe_refuses_rather_than_being_replaced() -> Bool {
+  let desired = bucket_purpose_lifecycle_rules(purpose: FabricCacheBlobs {})
+  let unmodeled = match r2_lifecycle_read_body(body: lifecycle_unmodeled_body) {
+    R2LifecycleRulesUnmodeled { cause: _ } => true
+    _ => false
+  }
+  let refused = match classify_r2_lifecycle(desired: desired, read: r2_lifecycle_read_body(body: lifecycle_unmodeled_body)).decision {
+    Refuse { reason: _ } => true
+    _ => false
+  }
+  let unreadable = match r2_lifecycle_read_body(body: "not json") {
+    R2LifecycleReadRefused { cause: _ } => true
+    _ => false
+  }
+  unmodeled && refused && unreadable
+}

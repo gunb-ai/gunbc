@@ -1,7 +1,6 @@
 module gunbc.machine_intake_mtcollins1_kvm_still
 
 import std.types { Bool, FilePath, Int, List, NonEmptyStr, Unit }
-import std.string_type { String }
 import std.algebra { trim }
 import std.measure { Second, second, second_count, Millisecond, millisecond, millisecond_count, second_to_millisecond }
 import std.checked_arithmetic { checked_int_to_nat }

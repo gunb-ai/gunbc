@@ -18,7 +18,6 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.optional { Absent, Present }
 import v2.std.node { Hash, Node, Symbol, content_hash, node_subtree_nodes }
 import v2.std.node_query { node_positional_child_targets }
@@ -26,7 +25,8 @@ import v2.std.qualified_name { declaration_reference_path_optional, qualified_na
 import v2.std.map_introduction { MapIntroductionKeyRepeated, MapIntroductionKeysDistinct, map_introduction_duplicate_key, map_introduction_head_path }
 import v2.std.algebra { length }
 import v2.std.text { String }
-import v2.std.collection { List, list_at_optional }
+import std.types { List }
+import v2.std.collection { list_at_optional }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import extdeps.communication.medium { Lossless, Medium }
 

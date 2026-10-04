@@ -3,7 +3,6 @@ module extdeps.tmux
 import std.algebra { trim }
 
 import std.types { List, NonEmptyStr, Int, Bool, RenderedTerminalText, Unit }
-import std.string_type { String }
 import std.workspace_artifact { WorkspaceFootprint, WorkspaceArtifact, CitedUpstream, SessionRuntimeState }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }

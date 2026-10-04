@@ -111,6 +111,25 @@ type TypeDeclarationProvenance
   | KernelMinted { minted_name: String }
   | DeclarationIdentityAbsent
 
+// THE TWO REPRESENTATIONS OF TEXT (operator Ruling 3, 2026-07-15; XL-0T ruling B). Kernel String is
+// HOST TEXT; a FreeMonoid<Char> declared in the corpus is a CODE-POINT SEQUENCE. One type, two
+// representations, and the only declared route between them is the literal homomorphism
+// (gunbc.structural_realization_bindings literal_homomorphism_rows UnicodeScalarSequenceUnfold). A
+// value of one representation at a position of the other is therefore a crossing with no route,
+// and the type-compatibility relation refuses it rather than matching the two by spelling.
+// NotText is every other type: this classification says nothing about it.
+type TextRepresentation = HostText | CodePointSequence | NotText | TextRepresentationUnidentified
+
+// TextRepresentationUnidentified: the node's declaration could not be read by identity (no declaring
+// span in the global index, no resolvable qualified name, an alias chain that cycles or exceeds its
+// bound). It is never read as NotText, and it is not refused either: a boundary where one side is
+// unidentified is UNJUDGED by the text wall. text_representations_cross answers false for it, the
+// wall adds no verdict, base type compatibility decides exactly as before, and the site emits only
+// the non-blocking TextRepresentationUnidentifiedAtBoundary advisory, located. That population is
+// the declared drop gunbc.rung_drop text_boundary_identity_wall, whose restoration trigger is the
+// capability: the resolver records declaration identity on every type reference; zero unidentified
+// in the self-host and dag closures.
+
 // WHICH STATE A TYPE REFERENCE IS IN WHEN ITS DECLARATION IS ASKED FOR -- the split of the one arm
 // the reference-site read used to answer for two states. v1.std.core type_reference_provenance
 // falls back to the reference node's OWN span whenever no Resolved node is bound, so `this node IS

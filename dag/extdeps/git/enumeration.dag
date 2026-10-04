@@ -1,7 +1,6 @@
 module extdeps.git.enumeration
 
 import std.types { String, List, Bool, Int }
-import std.string_type { string_is_lexicographically_before }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.git { git_for_each_ref_external_authority_anchor }
@@ -79,7 +78,8 @@ fn git_ref_decode_admit(state: GitRefDecodeState, refs: List<GitRefIdentity>, id
 //
 // THE COMPARATOR IS NOT THE SAME ONE GIT USED, and that is worth stating where the check lives rather
 // than only where the flag is pinned. git orders refnames BYTEWISE (they are byte strings);
-// string_is_lexicographically_before compares CODE POINTS. The two coincide over well-formed UTF-8
+// host String `<` compares CODE POINTS (test.claim.emitter_string_order_present_binding_witness_test
+// host_string_order_is_code_point_order_in_the_interpreter). The two coincide over well-formed UTF-8
 // because that encoding is order-preserving, so this check does not produce false refusals -- but the
 // agreement is a property of UTF-8, not of either comparator, and swapping this call for a
 // locale-aware one would break it while looking like an improvement. The upstream half of the fact,
@@ -96,7 +96,7 @@ fn git_ref_decode_ordered_admit(
   match state.previous_refname {
     Absent => git_ref_decode_admit(state: state, refs: refs, identity: identity)
     Present { value: previous } =>
-      if string_is_lexicographically_before(left: previous, right: identity.refname) {
+      if previous < identity.refname {
         git_ref_decode_admit(state: state, refs: refs, identity: identity)
       } else {
         git_ref_set_undecodable(

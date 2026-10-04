@@ -2,7 +2,6 @@ module extdeps.http.client
 import std.resources { Network }
 
 import std.types { NonEmptyStr, Bool, List, Unit, Int }
-import std.string_type { String }
 import std.measure { Second, second_count }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -249,7 +248,7 @@ service http.Client {
       argv: [
         "curl",
         "--fail-with-body",
-        "-sk",
+        "-sS",
         "--max-time", "{max_seconds}",
         "-X", "POST",
         "{url}",
@@ -271,7 +270,7 @@ service http.Client {
       argv: [
         "curl",
         "--fail-with-body",
-        "-sk",
+        "-sS",
         "--max-time", "{max_seconds}",
         "-X", "POST",
         "{url}",

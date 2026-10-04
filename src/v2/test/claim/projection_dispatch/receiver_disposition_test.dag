@@ -1,0 +1,65 @@
+module v2.test.claim.projection_dispatch.receiver_disposition
+
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional }
+import v2.std.node_query { field_projection_node, field_projection_optional }
+import v2.std.node { Atom, Node, Symbol, TypeNode, node_synthetic }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.algebra { Cons, Empty }
+import v2.std.optional { Absent, Present }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE TWO REPRESENTATIONS ARE DISJOINT, AND THAT IS THE FACT THE NEXT DIAGNOSIS DEPENDS ON. A declaration
+// reference is a ONE-edge marked Conj whose child is a synthetic qualified-name spine; a field projection is
+// an exact TWO-edge Conj carrying the base and field roles. The readers are therefore each other's
+// negative, and these rows establish it by executing both readers on both shapes rather than by reading
+// their contracts.
+//
+// WHY THIS IS WRITTEN BEFORE ANY REPAIR. The native eight refuse with
+// infer_reason_projection_receiver_declares_no_fields over an anchor that IS a declaration reference
+// carrying v2 -> std -> live_tree -> LiveTreeDisposition. Two readings fit that observation and they lead
+// to opposite repairs: either a declaration reference is entering the projection reader (a representation
+// overlap, repaired in the readers), or the anchor is the RECEIVER'S TYPE of a genuine projection whose base
+// is typed by that declaration (no overlap at all, repaired in the receiver rule). The node shape alone does
+// not separate them, and an earlier causal sentence in this lane was asserted from shape alone and
+// falsified by the next run. So the disjointness is measured first and the causal claim waits.
+fn rd_declaration_reference() -> Node {
+  declaration_reference_node(
+    qn: Cons { head: ^v2, tail: Cons { head: ^std, tail: Cons { head: ^live_tree, tail: Cons { head: ^LiveTreeDisposition, tail: Empty } } } },
+    occurrence_id: OccurrenceSynthetic
+  )
+}
+
+fn rd_atom(name: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: name } }, children: Empty)
+}
+
+fn rd_real_projection() -> Node {
+  field_projection_node(base: rd_atom(name: ^b), field: rd_atom(name: ^tree), source: rd_atom(name: ^src))
+}
+
+// (1) A DECLARATION REFERENCE IS NOT READ AS A PROJECTION.
+test fn rd_a_declaration_reference_is_not_a_projection_holds() -> Bool {
+  (match declaration_reference_path_optional(node: rd_declaration_reference()) {
+     Present { value: _ } => true
+     Absent => false
+   })
+  && (match field_projection_optional(n: rd_declaration_reference()) {
+        Absent => true
+        Present { value: _ } => false
+      })
+}
+
+// (2) AND A PROJECTION IS NOT READ AS A DECLARATION REFERENCE. The pair is the control: either row alone is
+// satisfied by a reader that always answers Absent.
+test fn rd_a_projection_is_not_a_declaration_reference_holds() -> Bool {
+  (match field_projection_optional(n: rd_real_projection()) {
+     Present { value: _ } => true
+     Absent => false
+   })
+  && (match declaration_reference_path_optional(node: rd_real_projection()) {
+        Absent => true
+        Present { value: _ } => false
+      })
+}

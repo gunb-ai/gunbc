@@ -275,7 +275,10 @@ data vllm_kv_cache_dtype_requests: List<VllmKvCacheDtypeRequest> = [KvAuto, KvFp
 // WIRE MATCH IS NOT ADMISSION: this names the request a spelling denotes, and nothing about whether
 // any runtime accepts it.
 fn vllm_kv_cache_dtype_request_matching_wire(wire: NonEmptyStr) -> VllmKvCacheDtypeRequest? {
-  (filter(vllm_kv_cache_dtype_requests, k => (vllm_kv_cache_dtype_wire(request: k) as String) == (wire as String))).first()
+  fold(vllm_kv_cache_dtype_requests, init: none, f: (acc, k) => match acc {
+    Present { value: _ } => acc
+    Absent => if (vllm_kv_cache_dtype_wire(request: k) as String) == (wire as String) { Present { value: k } } else { acc }
+  })
 }
 
 // ── THE SPARSE-ATTENTION INDEXER'S K CACHE DTYPE, AN AXIS INDEPENDENT OF THE MAIN KV DTYPE ─────
@@ -313,7 +316,10 @@ fn vllm_indexer_kv_dtype_wire(d: VllmIndexerKvDtype) -> NonEmptyStr {
 data vllm_indexer_kv_dtypes: List<VllmIndexerKvDtype> = [IndexerKvAuto, IndexerKvBf16, IndexerKvFp8, IndexerKvMxfp4, IndexerKvNvfp4]
 
 fn vllm_indexer_kv_dtype_matching_wire(wire: String) -> VllmIndexerKvDtype? {
-  (filter(vllm_indexer_kv_dtypes, d => (vllm_indexer_kv_dtype_wire(d: d) as String) == wire)).first()
+  fold(vllm_indexer_kv_dtypes, init: none, f: (acc, d) => match acc {
+    Present { value: _ } => acc
+    Absent => if (vllm_indexer_kv_dtype_wire(d: d) as String) == wire { Present { value: d } } else { acc }
+  })
 }
 
 fn vllm_indexer_kv_dtype_argv(r: VllmIndexerKvDtypeRequest) -> List<String> {

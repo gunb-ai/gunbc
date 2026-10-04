@@ -17,7 +17,9 @@ import v2.std.diagnostic {
   None,
   diagnostics_merge,
   diagnostics_singleton,
-  rejected_with_pending
+  rejected_with_pending,
+  bind_outcome,
+  outcome_accepted
 }
 import v2.std.node {
   Edge,
@@ -57,7 +59,11 @@ import v2.compiler.body_lowering_fold {
   body_lower_resource_decl_declared_kind_optional,
   body_lower_is_deferred_lower_at_normalize,
   DeclaredTypeKind,
+  DeclaredTypeModifiers,
+  DeclaredTypeModifiersAbsent,
+  DeclaredTypeModifiersPresent,
   body_lower_type_decl_declared_kind_optional,
+  body_lower_type_decl_declared_modifiers,
   declared_record_names,
   declared_resource_names
 }
@@ -398,6 +404,36 @@ fn type_declaration_kind_capture(nodes: List<Node>) -> FreeMonoid<DeclaredTypeKi
   )
 }
 
+// WHICH MODIFIERS EACH TYPE DECLARATION'S SLOT CARRIES, read from the parse tree for the reason
+// type_declaration_kind_capture is: lowering leaves no trace of the slot in the node. The question is
+// answered by the lowering's own reader (v2.compiler.body_lowering_fold
+// body_lower_type_decl_declared_modifiers), and a slot it cannot read refuses the module, located --
+// never a declaration silently carried as unmodified.
+fn type_declaration_modifier_capture(nodes: List<Node>) -> Outcome<FreeMonoid<DeclaredTypeModifiers>> {
+  fold_list(
+    xs: nodes,
+    empty: outcome_accepted(value: Empty),
+    cons: fn(acc, n) {
+      bind_outcome(o: acc, f: fn(rows) {
+        match parse_production_emitted_identity_optional(node: n) {
+          Absent => outcome_accepted(value: rows)
+          Present { value: id } =>
+            if id == ^dag_surface_type_decl {
+              bind_outcome(o: body_lower_type_decl_declared_modifiers(shell: n), f: fn(capture) {
+                match capture {
+                  DeclaredTypeModifiersAbsent => outcome_accepted(value: rows)
+                  DeclaredTypeModifiersPresent { row: row } => outcome_accepted(value: list_snoc_item(xs: rows, item: row))
+                }
+              })
+            } else {
+              outcome_accepted(value: rows)
+            }
+        }
+      })
+    }
+  )
+}
+
 // The record names alone, for the census and the fixtures that fill a symbol index: a projection of
 // the one capture above, never a second reading of the parse.
 fn record_declaration_capture(nodes: List<Node>) -> FreeMonoid<Symbol> {
@@ -453,16 +489,22 @@ fn normalize_with(parse_tree: ParseTree, source: NormalizeAllocatorSource) -> Ou
                   Rejected { diagnostics: r } =>
                     Rejected { diagnostics: rejected_with_pending(pending: d1, rejected: r) }
                   Accepted { value: bindings, diagnostics: _ } =>
-                    match admit_normalized_tree(
-                      root: grafted,
-                      test_markers: markers,
-                      import_bindings: bindings,
-                      type_declaration_kinds: type_declaration_kind_capture(nodes: parse_nodes),
-                      diagnostics: d1
-                    ) {
-                      Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                      Accepted { value: tree, diagnostics: d2 } =>
-                        Accepted { value: ScopedNormalizedTree { tree: tree, allocator: allocated.allocator }, diagnostics: d2 }
+                    match type_declaration_modifier_capture(nodes: parse_nodes) {
+                      Rejected { diagnostics: r } =>
+                        Rejected { diagnostics: rejected_with_pending(pending: d1, rejected: r) }
+                      Accepted { value: modifiers, diagnostics: _ } =>
+                        match admit_normalized_tree(
+                          root: grafted,
+                          test_markers: markers,
+                          import_bindings: bindings,
+                          type_declaration_kinds: type_declaration_kind_capture(nodes: parse_nodes),
+                          type_declaration_modifiers: modifiers,
+                          diagnostics: d1
+                        ) {
+                          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                          Accepted { value: tree, diagnostics: d2 } =>
+                            Accepted { value: ScopedNormalizedTree { tree: tree, allocator: allocated.allocator }, diagnostics: d2 }
+                        }
                     }
                 }
             }

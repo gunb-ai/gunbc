@@ -8,8 +8,9 @@ import extdeps.bmc.ipmi_sdr { SdrLineResult, SdrLineDecoded, sdr_decode_lines }
 import gunbc.machine_intake_mtcollins1_32dimm_bringup_observation { mtcollins1_sdr_capture }
 import gunbc.machine_intake_mtcollins1_bmc_sensor_observation {
   mtcollins1_sensor_socket, mtcollins1_socket_sensor_lines, mtcollins1_socket_unstructured_lines,
-  mtcollins1_sensor_findings, mtcollins1_sensor_table_text,
+  mtcollins1_sensor_anomalies, mtcollins1_sensor_table_text,
 }
+import gunbc.machine_intake_mtcollins1_power_on_account { SensorNotNominal, SensorLineWithoutReadingNotNominal, SocketSensorsAbsent }
 import std.measure { byte_size_count }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -68,8 +69,8 @@ test fn the_discrete_status_sensors_are_kept_per_socket() -> Bool {
   table_read_whole() && any(mtcollins1_socket_unstructured_lines(lines: table(), socket: 1), t => starts_with(s: t, prefix: "CPU1_CPU_Status"))
 }
 
-test fn a_two_socket_table_with_every_status_ok_has_no_finding() -> Bool {
-  table_read_whole() && count(mtcollins1_sensor_findings(lines: table(), sockets: [0, 1])) == 0
+test fn a_two_socket_table_with_every_status_ok_has_no_anomaly() -> Bool {
+  table_read_whole() && count(mtcollins1_sensor_anomalies(lines: table(), sockets: [0, 1], expected: Present { value: [0, 1] })) == 0
 }
 
 // ── discriminating reds over the same bytes ──────────────────────────────────────────────────
@@ -79,21 +80,27 @@ fn table_with(from: String, to: String) -> List<SdrLineResult> {
 }
 
 test fn a_socket_rail_with_no_reading_is_named() -> Bool {
-  let f = mtcollins1_sensor_findings(lines: table_with(from: "CPU1_CPU_VCORE   | 58h | ok  | 19.51 | 1.03 Volts", to: "CPU1_CPU_VCORE   | 58h | ns  | 19.51 | No Reading"), sockets: [0, 1])
-  table_read_whole() && count(f) == 1 && any(f, x => starts_with(s: x, prefix: "bmc sensor CPU1_CPU_VCORE status ns"))
+  let f = mtcollins1_sensor_anomalies(lines: table_with(from: "CPU1_CPU_VCORE   | 58h | ok  | 19.51 | 1.03 Volts", to: "CPU1_CPU_VCORE   | 58h | ns  | 19.51 | No Reading"), sockets: [0, 1], expected: Present { value: [0, 1] })
+  table_read_whole() && count(f) == 1 && any(f, x => match x { SensorNotNominal { line: l } => (l.name as String) == "CPU1_CPU_VCORE" && (l.status as String) == "ns" _ => false })
 }
 
 test fn a_discrete_socket_sensor_not_ok_is_named() -> Bool {
-  let f = mtcollins1_sensor_findings(lines: table_with(from: "CPU1_CPU_Status  | DAh | ok ", to: "CPU1_CPU_Status  | DAh | ns "), sockets: [0, 1])
-  table_read_whole() && count(f) == 1 && any(f, x => string_contains(s: x, pattern: "CPU1_CPU_Status"))
+  let f = mtcollins1_sensor_anomalies(lines: table_with(from: "CPU1_CPU_Status  | DAh | ok ", to: "CPU1_CPU_Status  | DAh | ns "), sockets: [0, 1], expected: Present { value: [0, 1] })
+  table_read_whole() && count(f) == 1 && any(f, x => match x { SensorLineWithoutReadingNotNominal { text: t } => string_contains(s: t as String, pattern: "CPU1_CPU_Status") _ => false })
 }
 
-test fn a_socket_with_no_sensor_at_all_is_a_finding() -> Bool {
-  let f = mtcollins1_sensor_findings(lines: table_with(from: "CPU1_", to: "GONE_"), sockets: [0, 1])
-  table_read_whole() && join(f, ";") == "bmc sensors: no CPU1_ sensor in the table"
+test fn a_socket_with_no_sensor_at_all_is_an_anomaly() -> Bool {
+  let f = mtcollins1_sensor_anomalies(lines: table_with(from: "CPU1_", to: "GONE_"), sockets: [0, 1], expected: Present { value: [0, 1] })
+  table_read_whole() && count(f) == 1 && any(f, x => match x { SocketSensorsAbsent { socket: k } => k == 1 _ => false })
 }
 
 test fn the_rendering_groups_by_socket() -> Bool {
   let t = mtcollins1_sensor_table_text(lines: table(), sockets: [0, 1])
   table_read_whole() && string_contains(s: t, pattern: "socket 1 (CPU1_ sensors:") && string_contains(s: t, pattern: "CPU1_CPU_VCORE | 58h | ok | 19.51 | 1.03 Volts")
+}
+
+// GAP 2: AN EMPTY SOCKET'S MISSING SENSORS ARE AN ANOMALY ONLY WHEN THE RECEIPT EXPECTS THE SOCKET.
+test fn a_socket_with_no_sensor_is_no_anomaly_when_only_socket_0_is_expected() -> Bool {
+  table_read_whole() && count(mtcollins1_sensor_anomalies(lines: table_with(from: "CPU1_", to: "GONE_"), sockets: [0, 1], expected: Present { value: [0] })) == 0
+    && count(mtcollins1_sensor_anomalies(lines: table_with(from: "CPU1_", to: "GONE_"), sockets: [0, 1], expected: Absent)) == 0
 }

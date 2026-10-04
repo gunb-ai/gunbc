@@ -136,8 +136,7 @@ data type_reference_identity_note: String = "A realization decision is made at R
 fn structural_declaration_modules_for(dag_name: String) -> List<String> {
   match dag_name {
     "Hash" => ["src/v2/std/node.dag"]
-    "String" => ["src/v2/std/text.dag", "dag/std/string_type.dag"]
-    "Bool" => ["src/v2/std/logic.dag"]
+    "String" => ["src/v2/std/text.dag"]
     _ => []
   }
 }
@@ -171,9 +170,11 @@ data structural_declaration_gate_note: String = "Companion to checkpoint_table_b
 // still holds, its premise does not, and a silent rewrite would erase the argument.
 //
 // NOT DELETED, and the reason is a dependency rather than caution: the ProvenUniqueKernelBinding
-// proofs for BOTH "String" and "Bool" in gunbc.rust_source_type_bindings checkpoint_row_migration_rows
-// cite structural_declaration_modules_for BY NAME as the mechanism gating their second declaration.
-// The roster is load-bearing for two standing proofs, so a vacuous row inside it is a finding to
+// proof for "String" in gunbc.rust_source_type_bindings checkpoint_row_migration_rows cites
+// structural_declaration_modules_for BY NAME as the mechanism gating its second declaration. (The
+// "Bool" row left the roster with the Bool de-fork: v2.std.logic's second declaration was retired,
+// so std.types Bool is the only one and there is nothing left to gate.) The roster is load-bearing
+// for a standing proof, so a vacuous row inside it is a finding to
 // file, not a line to cut in a change about how the roster is asked.
 fn provenance_declares_structurally(dag_name: String, p: TypeDeclarationProvenance) -> Bool {
   match p {

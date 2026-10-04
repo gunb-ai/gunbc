@@ -1,5 +1,13 @@
 module v2.lens.edit_locus
 
+import v2.compiler.inferred_tree { InferredTree }
+import v2.lens.affected_set { AffectedSetReading, affected_set_reading }
+import v2.lens.common.construction_justification { ConstructionJustification }
+import v2.std.algebra { length }
+import v2.std.artifact { NodeArtifactProvenance }
+import v2.std.diagnostic { Diagnostic, ExternalContractUnknown, Unavailable, node_locus }
+import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
+import v2.std.witness { Violates }
 
 type RepoPath = String
 
@@ -161,18 +169,16 @@ fn collect_edit_loci_from_provenance_on_paths(
 }
 
 fn resolve_edit_locus_from_loci(loci: FreeMonoid<Node>) -> Witness<Node> {
-  match length(xs: loci) {
-    0 =>
+  match loci {
+    Empty =>
       Violates { diagnostic: edit_locus_no_match_diagnostic() }
-    1 =>
-      match loci {
-        Cons { head: head, tail: _ } =>
-          Holds { value: head }
+    Cons { head: head, tail: rest } =>
+      match rest {
         Empty =>
-          Violates { diagnostic: edit_locus_no_match_diagnostic() }
+          Holds { value: head }
+        Cons { head: _, tail: _ } =>
+          Violates { diagnostic: edit_locus_ambiguous_diagnostic() }
       }
-    _ =>
-      Violates { diagnostic: edit_locus_ambiguous_diagnostic() }
   }
 }
 

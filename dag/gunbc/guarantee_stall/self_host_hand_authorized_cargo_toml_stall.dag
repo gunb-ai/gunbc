@@ -3,18 +3,19 @@ module gunbc.guarantee_stall.self_host_hand_authorized_cargo_toml_stall
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 import gunbc.guarantee_stall { GuaranteeStall, AwaitsOneGrounding, BoundedPopulation, climbs_when }
 
-// DECLARED 2026-09-06. The seed-unavailable transport's Cargo.toml is HAND-AUTHORED
-// as literal TOML text (concat of dependency lines), duplicating dependency names and
-// versions that the real emitter owns. This is medium-as-string per DESIGN §3 — the
-// transport is authoring realization inline. The ceiling is structurally guaranteed:
-// the emitter produces its own Cargo.toml from the modeled dependency declaration.
+// DECLARED 2026-09-06 against the seed-unavailable transport's Cargo.toml, which was then
+// HAND-AUTHORED as literal TOML text and duplicated dependency names and versions the emitter
+// owns. REDUCED 2026-10-03: the dependency roster is gone from every .dag harness route --
+// tools.emitted_crate_harness_manifest derives each harness manifest from the Cargo.toml the
+// emission wrote. What remains medium-as-string per DESIGN §3 is the overlay that module appends:
+// the [lib] and [[bin]] target tables and the seed path-dependency subtable are still TOML text.
 data self_host_hand_authorized_cargo_toml_stall: GuaranteeStall = GuaranteeStall {
-  subject: "hand-authored Cargo.toml in the seed-unavailable transport — medium-as-string parallel authority for the manifest",
+  subject: "harness overlay tables appended to the emitted Cargo.toml are authored as TOML text — medium-as-string for the [lib], [[bin]] and [dependencies.v1-compiler] tables; the dependency roster itself is derived from the emitted manifest and is no longer part of this stall",
   current: Mitigatable,
   ceiling: StructurallyGuaranteed,
-  blocker: AwaitsOneGrounding { grounding: "the emitter produces its own Cargo.toml from the modeled dependency declaration" },
+  blocker: AwaitsOneGrounding { grounding: "extdeps.languages.toml models an array-of-tables header and a dotted sub-table header; TomlTable.name renders through toml_render_key, which quotes a dotted name into a different table and has no [[name]] form" },
   population: BoundedPopulation { members: [
-    "dag/gunbc/instruments/self_host_logic_seed_unavailable_transport.dag — the transport hosting the hand-authored Cargo.toml (slbu_cargo_toml)",
+    "dag/gunbc/instruments/emitted_crate_harness_manifest.dag — harness_lib_target_table, harness_crate_target_tables and harness_seed_link_dependency_table spell their tables as string literals",
   ] },
-  next_rung_trigger: climbs_when(capability: "The emitter produces its own Cargo.toml from the modeled dependency declaration, SUFFICIENT FOR the hand-authored parallel authority to be replaced by a reference to the emitted manifest, at which point all version-duplication drift sites become structurally impossible."),
+  next_rung_trigger: climbs_when(capability: "extdeps.languages.toml can render an array-of-tables header and a dotted sub-table header, SUFFICIENT FOR the three harness overlay tables to be TomlTable values rendered by the serializer, leaving no TOML punctuation authored in tools.emitted_crate_harness_manifest."),
 }

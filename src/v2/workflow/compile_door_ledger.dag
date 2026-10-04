@@ -1,5 +1,6 @@
 module v2.workflow.compile_door_ledger
 
+import std.types { List }
 import extdeps.communication.medium { Lossless, Medium }
 import extdeps.filesystem.filesystem_io
 import std.algebra { Cons, Empty, FreeMonoid }
@@ -18,7 +19,7 @@ import v2.lens.module_graph {
 import v2.lens.reference_deps { reference_deps_ingest_source_text }
 import v2.std.algebra { filter, fold_list, length, list_reverse }
 import v2.workflow.compile_door_cause_ownership {
-  cause_ownership_lookup, HeadGrain
+  cause_ownership_lookup, FatalGrain
 }
 import v2.workflow.floor_diff_observe {
   FloorNameStatusDiffResult,
@@ -27,9 +28,6 @@ import v2.workflow.floor_diff_observe {
   floor_observe_git_diff_name_status_for_ci
 }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.collection {
-  List
-}
 import v2.std.optional {
   Absent,
   Optional,
@@ -38,16 +36,15 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected, diagnostics_fatal_reason }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme }
 
 // The PR-2 transport core: the AuditOnly stopped-line ledger over the v2 compile door (DESIGN 5
 // factory model; sharp-bee-290 contract 2026-07-13; mandated by the milestone-1 receipts in
 // v2.test.long.door_real_module_probe — the door's pre-existing per-node roster and resolve red
 // real corpus modules today, so Blocking is impossible until causes zero). Each subject path gets
-// exactly ONE typed row: DoorCompiled, or DoorRefused carrying the rejection's head reason —
+// exactly ONE typed row: DoorCompiled, or DoorRefused carrying the rejection's FATAL reason —
 // located by the per-path interned unit symbol, counted by the cause histogram, NEVER absorbed into
 // a widened rerun or a silent skip. The histogram over an affected set is the burn-down list toward
 // v2-compiles-the-repo; a cause reaching zero is the named flip-to-Blocking trigger for its owning
@@ -111,7 +108,7 @@ type AdmissionDerivation
 
 fn derive_module_admission(root: Node) -> AdmissionDerivation {
   match admission_from_module_root(root: root) {
-    Rejected { diagnostics: d } => AdmissionRefused { reason: d.head.reason }
+    Rejected { diagnostics: d } => AdmissionRefused { reason: diagnostics_fatal_reason(d: d) }
     Accepted { value: admission, diagnostics: _ } =>
       AdmissionDerived { admission: admission }
   }
@@ -144,6 +141,12 @@ fn closure_ingest(closure_paths: FreeMonoid<String>) -> SourceRootIngest {
   )
 }
 
+// A refused door row records the chain's FATAL cause, its last element. An advisory that rode along
+// heads the chain and is not why the door refused (advisories step 2).
+fn door_refused_row(path: String, d: NonEmptyDiagnostics) -> DoorLedgerRow {
+  DoorLedgerRow { module_path: path, outcome: DoorRefused { reason: diagnostics_fatal_reason(d: d) } }
+}
+
 fn door_ledger_row(subject_path: String, facts: ModuleGraphFacts) -> DoorLedgerRow {
   let subject_text = filesystem_read(path: subject_path).content
   match reference_deps_ingest_source_text(
@@ -151,7 +154,7 @@ fn door_ledger_row(subject_path: String, facts: ModuleGraphFacts) -> DoorLedgerR
     file: symbol_intern_lexeme(lexeme: subject_path)
   ) {
     Rejected { diagnostics: d } =>
-      DoorLedgerRow { module_path: subject_path, outcome: DoorRefused { reason: d.head.reason } }
+      door_refused_row(path: subject_path, d: d)
     Accepted { value: parse_root, diagnostics: _ } =>
       match derive_module_admission(root: parse_root) {
         AdmissionRefused { reason: r } =>
@@ -171,10 +174,7 @@ fn door_ledger_row(subject_path: String, facts: ModuleGraphFacts) -> DoorLedgerR
             Accepted { value: _, diagnostics: _ } =>
               DoorLedgerRow { module_path: subject_path, outcome: DoorCompiled }
             Rejected { diagnostics: d } =>
-              DoorLedgerRow {
-                module_path: subject_path,
-                outcome: DoorRefused { reason: d.head.reason }
-              }
+              door_refused_row(path: subject_path, d: d)
           }
       }
   }
@@ -325,11 +325,13 @@ fn ledger_all_compiled(rows: List<DoorLedgerRow>) -> Bool {
 // audit.
 
 
-// This ledger's own contract stays HEAD-grain: its DoorRefused rows carry the rejection's head
-// reason, so attribution for the door histogram asks the head-grain question. The fatal-grain
-// question is the native route's to ask (gunbc.witness_v2_native_route), through the same lookup.
+// The door histogram is a histogram of FATAL causes: DoorRefused carries the rejection's fatal
+// reason (v2.std.diagnostic diagnostics_fatal_reason, the chain's last), never its head, which is
+// an advisory whenever one rode along -- the grammar overlap residue heads every module's chain, so
+// a head-grain histogram counted the residue once per refused module and never the cause.
+// Attribution therefore asks the fatal-grain question.
 fn cause_is_attributed(cause: Symbol) -> Bool {
-  match cause_ownership_lookup(cause: cause, grain: HeadGrain) {
+  match cause_ownership_lookup(cause: cause, grain: FatalGrain) {
     Present { value: _ } => true
     Absent => false
   }

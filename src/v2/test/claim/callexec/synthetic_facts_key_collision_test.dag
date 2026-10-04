@@ -1,0 +1,194 @@
+module v2.test.claim.callexec.synthetic_facts_key_collision
+
+import v2.test.claim.callexec.declaration_reference_eval {
+  cref_bool_pair_source,
+  cref_source
+}
+import v2.compiler.infer { infer_entries_for_tree, inferred_facts_grounding_derived }
+import v2.compiler.inferred_tree { InferredFactsEntry }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.compiler.resolve { ResolvedTree }
+import v2.std.node { Node }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { fold_list }
+import std.types { List }
+import v2.std.integer { Int }
+import v2.std.runtime { runtime_value_conj_node }
+
+// ONE FACTS KEY, TWO SUBJECTS, DISAGREEING FACTS -- and which one a consumer receives depends on scan
+// order.
+//
+// v2.compiler.inferred_tree InferredTree keys its facts by Node and Node equality is STRUCTURAL, so
+// two nodes agreeing on kind, children and occurrence identity are ONE KEY. std.occurrence_identity
+// spells "no authored occurrence" as the NULLARY constructor OccurrenceSynthetic -- one VALUE, not one
+// value per synthetic node -- so every structurally identical synthetic node collapses together. The
+// lookup is a first-match scan over the entry list (v2.compiler.infer facts_map_from_entries), and its
+// constructor checks each entry's own subject correspondence without establishing any uniqueness or
+// conflict condition ACROSS entries that compare equal.
+//
+// The claims below enumerate infer's entries for one small program and measure the consequence: more
+// than one entry carries the empty synthetic Conj as its key, and those entries DISAGREE on whether
+// grounding was derived. So one key names at least two subjects whose facts differ, and a consumer
+// asking under that key receives whichever the scan reaches first.
+//
+// BOTH DIRECTIONS ARE REACHABLE, WHICH IS WHY THIS IS A SAFETY FINDING AND NOT ONLY AN ANOMALY. The
+// refusing direction is what this lane observed: a consumer receives an UNDERIVED entry and refuses
+// with eval_rejected_grounding_not_derived at a node that is not its subject, which converts a
+// fail-closed lookup miss into a grounding judgment no producer intended. The opposite direction is
+// not hypothetical here, and that is what the second claim establishes: a DERIVED entry exists under
+// the same key, so a subject whose grounding was never established can receive one that was. That is
+// a fabricated plausible output rather than a refusal (DESIGN section 5), and nothing in the current
+// relation makes it unreachable -- which of the two a given consumer gets is decided by entry order.
+//
+// WHAT THIS FILE DELIBERATELY DOES NOT CLAIM. It does not assert where the node a consumer queried
+// came from. Two earlier readings of this refusal each inferred provenance from `Node == Node` -- first
+// that the node lay inside the callee's encoded declaring path, then that it was built by the runtime
+// value constructor -- and BOTH are withdrawn, for the same reason: an empty synthetic Conj compares
+// equal to many unrelated nodes, so membership in any node set, and equality with any constructor's
+// result, are both uninformative about origin. Equality is exactly the relation under suspicion here,
+// so it cannot be the instrument that establishes provenance. These claims therefore assert only what
+// enumeration shows: that the key is shared and the facts under it conflict.
+//
+// The traversal path was measured separately, with a temporary diagnostic that gave each grounding
+// demand site in v2.compiler.eval its own reason symbol; that instrument is not retained, and its
+// result is recorded in this change's commit message rather than asserted here, because asserting it
+// would require keeping the instrumentation in the evaluator.
+// WHY EVERY ROW HERE EXECUTES THE WHOLE FRONT END, AND WHY THAT IS NOT CONVERTED AWAY. DESIGN
+// section 3's witness rule says a claim's inputs belong at the boundary it discriminates, as supplied
+// values, and the rows below supply none: each assembles authored text, resolves it and infers over it.
+// That was interrogated row by row against the rule rather than defended by habit, and the reason it
+// stands is the one DESIGN section 4b states for the top rung -- ASK WHETHER THE CHECK'S RED IS
+// AUTHORABLE BEFORE WRITING THE CHECK.
+//
+// THE SUBJECT OF THESE ROWS IS THE ENTRY POPULATION INFER ACTUALLY EMITS, not what one downstream
+// function answers for a shape. The claims count how many entries of one real compilation share one
+// key and whether they agree -- and a supplied entry list would let this file CHOOSE that count, which
+// is the whole question. There is no red to author against a fixture here: the collision would be
+// asserted by construction. So the entries stay the real producer's, and the cost stays.
+//
+// SO THESE ROWS ARE THE EXECUTION OF THE REAL PATH -- the second half of the same rule, which forbids
+// supplying inputs anywhere if it removes the last execution of the producer. Deleting resolve's
+// projection lowering, or infer's declared-field read, must make a control here fail, and does.
+//
+// WHAT WOULD ACTUALLY MOVE THEIR COST is not a narrower claim but a provider for the demand: their
+// nullary source producers are pure functions of module-constant text, which is the shape
+// v2.workflow.floor_pure_producer_share already serves across claims for hundreds of peer fixtures,
+// including the per-fixture assembled and resolved trees rostered there. Enrolment is NOT asserted or
+// proposed here, because that roster's own admission criterion is a measured serve-below-recompute on
+// a required-floor receipt, which this file cannot produce; naming the route is the honest half.
+fn sfk_entries(o: Outcome<ResolvedTree>) -> Optional<List<InferredFactsEntry>> {
+  match o {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer_entries_for_tree(tree: resolved) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: entries, diagnostics: _ } => optional_present(value: entries)
+      }
+  }
+}
+
+fn sfk_key() -> Node {
+  runtime_value_conj_node(children: Empty)
+}
+
+// ONE INFER PER FIXTURE, READ BY EVERY ROW THAT ASKS IT. Each fixture's entries are produced ONCE, by a
+// nullary producer the floor serves warm (v2.workflow.floor_pure_producer_share), and the rows read the
+// decided counts: whether infer produced any entry, how many entries stand under the synthetic key, and how
+// many of those are derived. Nothing is supplied -- the producer runs the real assemble -> resolve ->
+// infer path -- so the rows keep their reds; the counts are the old per-row folds over one entry list.
+type SfkCounts {
+  produced: Bool
+  under_key: Int
+  derived_under_key: Int
+}
+
+fn sfk_counts(o: Outcome<ResolvedTree>) -> SfkCounts {
+  match sfk_entries(o: o) {
+    Absent => SfkCounts { produced: false, under_key: 0, derived_under_key: 0 }
+    Present { value: entries } =>
+      SfkCounts {
+        produced: sfk_nonempty(entries: entries),
+        under_key: fold_list(
+          xs: entries,
+          empty: 0,
+          cons: fn(rest, entry) { if entry.node == sfk_key() { rest + 1 } else { rest } }
+        ),
+        derived_under_key: fold_list(
+          xs: entries,
+          empty: 0,
+          cons: fn(rest, entry) {
+            if entry.node == sfk_key() {
+              if inferred_facts_grounding_derived(facts: entry.facts) { rest + 1 } else { rest }
+            } else {
+              rest
+            }
+          }
+        )
+      }
+  }
+}
+
+fn sfk_nonempty(entries: List<InferredFactsEntry>) -> Bool {
+  match entries {
+    Cons { head: _, tail: _ } => true
+    Empty => false
+  }
+}
+
+fn sfk_cref_source_counts() -> SfkCounts {
+  sfk_counts(o: cref_source())
+}
+
+fn sfk_bool_pair_counts() -> SfkCounts {
+  sfk_counts(o: cref_bool_pair_source())
+}
+
+// THE POSITIVE CONTROL FOR THE INSTRUMENT: infer produces entries for this program at all, so a zero
+// count below is a shared key and not a failed inference.
+test fn sfk_infer_produces_entries_holds() -> Bool {
+  sfk_cref_source_counts().produced
+}
+
+// THE KEY IS NO LONGER SHARED, AND THESE THREE ROWS ARE THE FLIPPED EVIDENCE OF THAT CLIMB. This file's
+// whole subject was a facts-key COLLISION: structurally identical synthetic nodes keyed one facts entry, so
+// more than one entry stood under a single key and eval could refuse at a node that was not its subject.
+// Every row here asserted `total > 1` -- that the collision existed -- and all three now fail because
+// gunbc#12582's facts-key work eliminated it. MEASURED: exactly ONE entry stands under the key, for both
+// fixtures.
+//
+// DESIGN section 4b(4) IS WHY THEY ARE FLIPPED RATHER THAN DELETED. A climb deletes the lower-rung
+// production handling and KEEPS the evidence: the discriminating red becomes the permanent control that the
+// higher rung stays real. So each row keeps its fixture and its counting method and asserts the separation
+// instead of the collision. They go red the moment two entries share a key again, which is the transition
+// the identity owner needs to hear about.
+//
+// THE COUNT IS ENUMERATED, NOT INFERRED FROM A LOOKUP, and that was true of the original rows for the same
+// reason it is true of these: a lookup answering something proves only that SOME entry matched, while
+// counting proves how many stand under the key. Asserting `== 1` rather than `<= 1` is deliberate -- it
+// keeps the row non-vacuous, because a fixture that stopped producing the node at all would answer 0 and a
+// `<= 1` row would stay green while testing nothing.
+test fn sfk_exactly_one_entry_stands_under_the_key_holds() -> Bool {
+  sfk_cref_source_counts().under_key == 1
+}
+
+// AND THAT ENTRY IS GROUNDED, which is the half of the original pair that still says something about
+// quality rather than about cardinality: separation would be worthless if the surviving entry were
+// underived.
+test fn sfk_the_single_entry_under_the_key_is_derived_holds() -> Bool {
+  let counts = sfk_cref_source_counts()
+  let total = counts.under_key
+  let derived = counts.derived_under_key
+  (total == 1) && (derived == total)
+}
+
+// THE SEPARATION IS NOT AN ARTIFACT OF ONE SOURCE TEXT, which is what the original third row established in
+// the opposite direction: a second fixture reached the same collision, so it was a property of the keying
+// relation over ordinary programs. It now reaches the same separation, so the property still holds of the
+// relation and not of one text.
+test fn sfk_the_separation_is_not_specific_to_one_fixture_holds() -> Bool {
+  let counts = sfk_bool_pair_counts()
+  let total = counts.under_key
+  let derived = counts.derived_under_key
+  (total == 1) && (derived == total)
+}

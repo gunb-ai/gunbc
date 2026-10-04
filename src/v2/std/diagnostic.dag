@@ -1,5 +1,6 @@
 module v2.std.diagnostic
 
+import std.types { List }
 import v2.std.algebra { bag_eq, fold_list }
 import std.algebra { FreeMonoid, Monoid, Semigroup, list_append, list_snoc_item, freemonoid_empty }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -333,6 +334,22 @@ fn bind_outcome_accepted<U>(od: Diagnostics, inner: Outcome<U>) -> Outcome<U> {
       Rejected { diagnostics: rejected_with_pending(pending: od, rejected: r) }
   }
 }
+// THE DIAGNOSTICS AN OUTCOME CARRIES, as a reader. bind_outcome hands a continuation the VALUE and
+// merges the diagnostics itself, which is right for a pipeline and wrong for a caller that must
+// FORWARD them to a producer expecting them as an argument -- v2.compiler.parse parse_module_prepared
+// takes the grammar's validation residue that way. Without this, such a caller has to destructure the
+// outcome itself, which re-spells the arms bind_outcome already owns.
+//
+// A REJECTED OUTCOME'S DIAGNOSTICS ARE ITS NON-EMPTY ONES, returned as the same Diagnostics the
+// accepted arm answers with, so a consumer forwarding them does not have to know which arm produced
+// them.
+fn outcome_diagnostics<T>(o: Outcome<T>) -> Diagnostics {
+  match o {
+    Accepted { value: _, diagnostics: d } => d
+    Rejected { diagnostics: r } => Some { diagnostics: r }
+  }
+}
+
 fn bind_outcome<T, U>(o: Outcome<T>, f: fn(T) -> Outcome<U>) -> Outcome<U> {
   match o {
     Accepted { value: v, diagnostics: od } => bind_outcome_accepted(od: od, inner: f(v))

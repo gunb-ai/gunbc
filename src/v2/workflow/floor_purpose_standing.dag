@@ -7,7 +7,6 @@ module v2.workflow.floor_purpose_standing
 // are genuine variants. `required_floor` records the same straddle from the pattern side: an
 // earlier revision matching True {} / False {} errored 11 of 19 witnesses, several of which never
 // called the function.
-import v2.std.logic { Bool }
 import std.decl_ref { DeclarationRef }
 import std.witness_purpose {
   WitnessPurpose,

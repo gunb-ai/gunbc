@@ -24,10 +24,10 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // adds one stage after it. A green there and a green here cannot be two facts about two emissions,
 // which is exactly the property a separately-authored probe would have given up.
 //
-// WHY THE MANIFEST IS DERIVED AND NOT AUTHORED. The corpus already carries a hand-concatenated
-// probe manifest (tools.self_host_curated_seed_linked_harness
-// cssl_v1_compiled_probe_lib_cargo_toml), marked scaffold debt in its own module for being
-// concat-authored TOML. Consuming it from a merge-blocking gate would have pinned that debt open on
+// WHY THE MANIFEST IS DERIVED AND NOT AUTHORED. When this was written the corpus carried a
+// hand-concatenated probe manifest in tools.self_host_curated_seed_linked_harness, marked scaffold
+// debt in its own module for being concat-authored TOML (since replaced: that route now derives
+// its manifest from the emitted one, tools.emitted_crate_harness_manifest). Consuming it from a merge-blocking gate would have pinned that debt open on
 // the required path, and authoring a second one would have been new scaffolding the operator
 // declined on 2026-08-25. The manifest here is rendered from the modeled cargo authorities instead
 // -- extdeps.rust.version render_cargo_package_header_prefix for the package header,

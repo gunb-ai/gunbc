@@ -1,5 +1,6 @@
 module v2.extdeps.languages.rust_test
 
+import v2.extdeps.languages.rust_native_driver { RustEmitHostFamilyMember, rust_family_main_suffix }
 import v2.std.node { ArrowBodyEdge, core_edge_label, Authored, StructuralLabel }
 
 import std.algebra { Cons, Empty }
@@ -67,7 +68,7 @@ import v2.std.compilers.target_model { TokenClassEmitTransform, EmitSpellingQuot
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data rust_bool_grounding: BooleanAlgebra<v2.std.logic.Bool> = bool_boolean_algebra
+data rust_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 fn rust_grammar_production_fn_bind_literal() -> GrammarProduction {
   GrammarProduction {
@@ -2283,51 +2284,6 @@ fn rust_logic_join_target_model_staging() -> TargetModel {
   )
 }
 
-// Family-grain dispatcher (std.emit_on_demand witness_family_build_grain_ruling): ONE crate per
-// witness family — the family main is DERIVED from member arm rows (member_id -> i32 result
-// expression), never a hand-written N+1th main. Member selection is a run-time argv parameter
-// (cargo's `--` separator is this transport's convention, owned here); the derived match is
-// fail-closed — an unknown member id exits 2, a refused run, never fabricated octets.
-
-type RustEmitHostFamilyMember {
-  member_id: String,
-  result_expression: String
-}
-
-data rust_family_main_open: String = "\n\nfn main() { let member: String = std::env::args().nth(1).unwrap_or_default(); let d: i32 = match member.as_str() {\n"
-
-data rust_family_main_close: String = "    _ => std::process::exit(2),\n  }; let bytes = [0u8, (d & 0xff) as u8, ((d >> 8) & 0xff) as u8, ((d >> 16) & 0xff) as u8, ((d >> 24) & 0xff) as u8]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
-
-fn rust_family_dispatch_arm(member: RustEmitHostFamilyMember) -> String {
-  concat("    \"", member.member_id, "\" => ", member.result_expression, ",\n")
-}
-
-fn rust_family_dispatch_arms(members: List<RustEmitHostFamilyMember>) -> String {
-  fold_list(
-    xs: members,
-    empty: "",
-    cons: fn(acc, member) {
-      concat(acc, rust_family_dispatch_arm(member: member))
-    }
-  )
-}
-
-fn rust_family_main_suffix(
-  prelude: String,
-  members: List<RustEmitHostFamilyMember>
-) -> String {
-  concat(
-    prelude,
-    rust_family_main_open,
-    rust_family_dispatch_arms(members: members),
-    rust_family_main_close
-  )
-}
-
-fn rust_family_member_run_args(member_id: String) -> List<String> {
-  ["--", member_id]
-}
-
 data rust_logic_family_prelude: String = "\n\nuse Bool::*;\n\nenum Bool { True, False }"
 
 data rust_logic_family_member_meet: RustEmitHostFamilyMember = RustEmitHostFamilyMember {
@@ -4348,4 +4304,9 @@ fn rust_sg2_type_expression_projection_target_model() -> TargetModel {
     authority_source_text: rust_sg2_type_alias_text,
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
+}
+
+// Preserve the existing native-runner entry while sharing its argument contract.
+fn rust_family_member_run_args(member_id: String) -> List<String> {
+  v2.extdeps.languages.rust_native_driver.rust_family_member_run_args(member_id: member_id)
 }

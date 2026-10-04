@@ -13,7 +13,7 @@ import gunbc.approve_ios_app { approve_ios_build_standing, NotExecutedByAnyRequi
 import gunbc.approve_ios_project { expected_approve_ios_project_yml, approve_ios_project_yml_from, ApproveIosProjectGeneration, ApproveIosProjectGenerated, ApproveIosProjectRefused }
 import gunbc.auth.approval_broker_endpoint { approval_broker_base_url }
 import gunbc.fleet_intent_network { operator_host_srv1 }
-import gunbc.auth.approval_ntfy_deployment { approval_ntfy_serve_port }
+import gunbc.auth.approval_ntfy_publish { approval_ntfy_serve_port }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

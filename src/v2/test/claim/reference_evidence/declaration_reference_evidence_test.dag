@@ -1,0 +1,553 @@
+module v2.test.claim.reference_evidence.declaration_reference_evidence
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.std.symbol_index { symbol_index_lookup }
+import v2.compiler.infer { infer, inferred_facts_grounding_derived, infer_type_equal_ignoring_provenance }
+import v2.std.logic { bool_node }
+import v2.compiler.inferred_tree { DerivedGrounding, GroundingNotDerived, InferredFacts, ObligatedInferredTree }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { fold_list }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.compiler.source_authority { SourceRootIngest }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node { Node, NodeFold, TypeNode, Atom, Arrow, ComputationNode, Transform, fold_node }
+import v2.std.node_query { find_named_child, node_positional_child_targets }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.collection { list_at_optional }
+import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional }
+
+// THE REFERENCE-EVIDENCE BOUNDARY. A reference to a corpus declaration reaches
+// v2.compiler.infer's `infer_node_facts` as a declaration-reference Conj. No arm handles it: it falls
+// to `inferred_facts_not_derived`, so an entry IS admitted for the node carrying GroundingNotDerived.
+// Inference ACCEPTS that tree -- the refusal is eval's, whose `inferred_facts_for_eval` gate reports
+// eval_rejected_grounding_not_derived only when the lookup SUCCEEDS -- so a claim asserting that
+// `infer` accepted is VACUOUS here. An earlier draft of this file did exactly that and passed while
+// the defect stood; the assertions below read the use's own facts instead.
+//
+// TWO PROPERTIES, DELIBERATELY SEPARATE. That a reference grounds AT ALL, and that it grounds to the
+// contract of ITS OWN declaration. The second cannot be credited until the first is repaired -- both
+// currently fail on the same missing prerequisite -- so this file specifies it now and it earns the
+// name "detects declaration-identity collapse" only after the mutation that forces both uses onto one
+// declaration is exercised against a repaired implementation.
+//
+// LOCAL PARAMETER TYPING IS NOT THIS SUBJECT. A parameter use resolves to a canonical Atom at its own
+// occurrence, not to a declaring path, so `infer_parameter_scope_search` answers a different question
+// and is not replaced here. The refinement rows in v2.test.claim.body_cast_node are its standing
+// control and they pass on this base.
+// WHY EVERY ROW HERE EXECUTES THE WHOLE FRONT END, AND WHY THAT IS NOT CONVERTED AWAY. DESIGN
+// section 3's witness rule says a claim's inputs belong at the boundary it discriminates, as supplied
+// values, and the rows below supply none: each assembles authored text, resolves it and infers over it.
+// That was interrogated row by row against the rule rather than defended by habit, and the reason it
+// stands is the one DESIGN section 4b states for the top rung -- ASK WHETHER THE CHECK'S RED IS
+// AUTHORABLE BEFORE WRITING THE CHECK.
+//
+// THE SUBJECT OF THESE ROWS IS WHAT RESOLVE AND INFER PRODUCE FOR AUTHORED TEXT, not what one
+// downstream function answers for a shape. Every row asks whether a reference or a call GROUNDS, and
+// what it grounds to -- facts about the resolved-declaration index the front end mints and about the
+// declared-return spelling lowering leaves behind. Against a supplied index and supplied facts each of
+// those answers is a restatement of the fixture, so the row's red would not be authorable: it would
+// become a decoration, which DESIGN says is worse than an absent check because it will be cited as
+// coverage. The two same-leaf rows make this sharpest -- a hand-built index picks the declaration the
+// author intended, which is exactly the selection under test.
+//
+// SO THESE ROWS ARE THE EXECUTION OF THE REAL PATH -- the second half of the same rule, which forbids
+// supplying inputs anywhere if it removes the last execution of the producer. Deleting resolve's
+// projection lowering, or infer's declared-field read, must make a control here fail, and does.
+//
+// WHAT WOULD ACTUALLY MOVE THEIR COST is not a narrower claim but a provider for the demand: their
+// nullary source producers are pure functions of module-constant text, which is the shape
+// v2.workflow.floor_pure_producer_share serves across claims for hundreds of peer fixtures. gunbc#12506's
+// floor measured every row here past the new-witness enrolment margin, so each fixture's front end is now
+// one nullary producer listed there WARM (dre_reading, below): the demand is paid once per fixture, not
+// once per row, and no input is supplied, so the rows remain the real path's execution.
+data dre_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^declaration_reference_evidence_artifact,
+  file_path: "src/v2/pilot/declaration_reference_evidence_pilot.dag"
+}
+
+fn dre_assemble(src: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness {
+        source: Medium { carried: src, fidelity: Lossless },
+        artifact: dre_artifact,
+        compilation_unit: ^declaration_reference_evidence_cu,
+        source_root: V2Tree
+      },
+      tail: Empty
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  )
+}
+
+// `callee` names its parameter `only_arg`, so the expected contract is independently specified by the
+// fixture text and is not read back out of the implementation under test.
+fn dre_reference_source() -> Outcome<ResolvedTree> {
+  dre_assemble(src: "module p\n\nfn callee(only_arg: Int) -> Int {\n  only_arg\n}\n\nfn consumer(y: Int) -> Int {\n  callee(only_arg: y)\n}\n")
+}
+
+// The leaf is the path's last segment; QualifiedName is a FreeMonoid<Symbol> carrying no
+// last-element reader, so the fold below keeps the final one.
+// EVERY use whose decoded path ends in the wanted leaf, so the claim can require EXACTLY ONE and
+// never silently select an annotation or an unrelated reference a later change introduces.
+fn dre_leaf_of(path: QualifiedName) -> Optional<Symbol> {
+  fold_list(xs: path, empty: optional_absent(), cons: fn(_acc, seg) { optional_present(value: seg) })
+}
+
+fn dre_use_here(n: Node, wanted: Symbol) -> List<Node> {
+  match declaration_reference_path_optional(node: n) {
+    Absent => []
+    Present { value: path } =>
+      match dre_leaf_of(path: path) {
+        Absent => []
+        Present { value: leaf } => if leaf == wanted { [n] } else { [] }
+      }
+  }
+}
+
+fn dre_uses_of(root: Node, wanted: Symbol) -> List<Node> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(n0) { dre_use_here(n: n0, wanted: wanted) },
+      step: fn(acc, _e, child) { concat(acc, child) }
+    }
+  )
+}
+
+// The derived type's contract, read through the existing Arrow reader. A grounding tag alone is not
+// the property: DerivedGrounding carrying the WRONG type must fail this control.
+fn dre_grounded_domain_labels(facts: InferredFacts) -> Optional<List<Symbol>> {
+  match facts.grounding {
+    GroundingNotDerived { node: _ } => optional_absent()
+    DerivedGrounding { grounding: g } =>
+      match arrow_domain_binder_labels(children: g.witness.structural.evidence.children) {
+        DomainBinderLabelsUnreadable => optional_absent()
+        DomainBinderLabels { labels: ls } => optional_present(value: ls)
+      }
+  }
+}
+
+fn dre_single_use_domain_labels(inferred: ObligatedInferredTree, wanted: Symbol) -> Optional<List<Symbol>> {
+  match dre_uses_of(root: inferred.root, wanted: wanted) {
+    Cons { head: use_node, tail: rest } =>
+      match rest {
+        Empty =>
+          match inferred.facts.lookup(use_node) {
+            Absent => optional_absent()
+            Present { value: facts } => dre_grounded_domain_labels(facts: facts)
+          }
+        Cons { head: _, tail: _ } => optional_absent()
+      }
+    Empty => optional_absent()
+  }
+}
+
+// ONE FRONT END PER FIXTURE, READ BY EVERY ROW THAT ASKS IT. Each fixture below is assembled, resolved
+// and inferred ONCE, by a nullary producer the floor serves warm (v2.workflow.floor_pure_producer_share),
+// and the rows read the decided, portable values: the single use's grounded domain labels, whether the
+// call to the wanted callee grounds, whether infer refused, and the resolved tree's first declared
+// return. Nothing is supplied: every producer runs the real assemble -> resolve -> infer path, so these
+// rows stay the execution of that path, and each keeps the red it had -- the producers are the old
+// readers, merged so one infer answers all of them.
+type DreReading {
+  domain_labels: Optional<List<Symbol>>
+  call_grounded: Bool
+  infer_refuses: Bool
+  declared_return: Optional<Node>
+}
+
+fn dre_reading(o: Outcome<ResolvedTree>, wanted: Symbol) -> DreReading {
+  let declared = dre_declared_return_of(o: o)
+  match o {
+    Rejected { diagnostics: _ } =>
+      DreReading { domain_labels: optional_absent(), call_grounded: false, infer_refuses: false, declared_return: declared }
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: _ } =>
+          DreReading { domain_labels: optional_absent(), call_grounded: false, infer_refuses: true, declared_return: declared }
+        Accepted { value: inferred, diagnostics: _ } =>
+          DreReading {
+            domain_labels: dre_single_use_domain_labels(inferred: inferred, wanted: wanted),
+            call_grounded: dre_call_is_grounded_for(inferred: inferred, wanted: wanted),
+            infer_refuses: false,
+            declared_return: declared
+          }
+      }
+  }
+}
+
+fn dre_labels_are_exactly(labels: Optional<List<Symbol>>, wanted: Symbol) -> Bool {
+  match labels {
+    Absent => false
+    Present { value: ls } =>
+      match ls {
+        Cons { head: first, tail: rest } =>
+          match rest {
+            Empty => first == wanted
+            Cons { head: _, tail: _ } => false
+          }
+        Empty => false
+      }
+  }
+}
+
+// RED ON THIS BASE: the single use of `callee` grounds to a callable contract whose domain binds
+// `only_arg`. Fails if the reference is ungrounded, if more than one use matches, or if the derived
+// type is not that Arrow.
+fn dre_reference_reading() -> DreReading {
+  dre_reading(o: dre_reference_source(), wanted: ^callee)
+}
+
+test fn dre_a_reference_grounds_to_its_declarations_contract_holds() -> Bool {
+  dre_labels_are_exactly(labels: dre_reference_reading().domain_labels, wanted: ^only_arg)
+}
+
+// SAME LEAF, DIFFERENT DECLARING PATHS. `shared` is declared twice in this module: as a top-level
+// function (p.shared, whose domain binds `alpha`) and as a field of Wrap (p.Wrap.shared). The use in
+// `consumer` denotes p.shared. A leaf-keyed lookup can answer either; the declaring path answers only
+// one. This control is SPECIFIED but not yet QUALIFIED as an identity-collapse detector: that claim
+// requires the forced-collapse mutation to turn it red, which is exercised separately.
+fn dre_same_leaf_source() -> Outcome<ResolvedTree> {
+  dre_assemble(src: "module p\n\nfn shared(alpha: Int) -> Int {\n  alpha\n}\n\ntype Wrap {\n  shared: Int\n}\n\nfn consumer(y: Int) -> Int {\n  shared(alpha: y)\n}\n")
+}
+
+fn dre_same_leaf_reading() -> DreReading {
+  dre_reading(o: dre_same_leaf_source(), wanted: ^shared)
+}
+
+test fn dre_a_same_leaf_reference_gets_its_own_declarations_contract_holds() -> Bool {
+  dre_labels_are_exactly(labels: dre_same_leaf_reading().domain_labels, wanted: ^alpha)
+}
+
+// THE TWO-MODULE SAME-LEAF DISCRIMINATOR IS NOT IN THIS FILE, AND THAT IS A GAP, NOT AN OMISSION.
+// Five attempts did not produce one that discriminates. A single-module fixture cannot: a reference
+// reaching this arm denotes a module-level callable whose declaring path IS [module, leaf], so path
+// and leaf coincide and a leaf-keyed lookup is accidentally right. A two-module fixture reaches the
+// right shape -- two modules each declaring `shared(alpha: ...)` with different types, the consumer
+// importing one -- but the assertion needs the parameter's TYPE read out of the derived Arrow's
+// domain, and neither a walk-order atom search nor find_named_child on the domain produced the
+// declared type: the control stayed green under a mutation that forced the wrong declaration, then
+// went red on correct code once the reader changed. Both arms were wrong, so it distinguished
+// nothing.
+//
+// WHAT IS THEREFORE NOT CLAIMED: that this arm resists declaration-identity collapse. The path is
+// what it looks up and symbol_index_lookup is the guarded read, but no executed control here
+// demonstrates that a leaf-keyed answer would be caught. Qualifying it needs a reliable reader for a
+// parameter's declared type inside a derived Arrow domain, which is the missing piece and is worth
+// finding before the claim is made.
+
+// THE APPLICATION CONSUMER. A grounded reference is not a grounded application: at the base,
+// infer_application_callee_arrow read the callee EXPRESSION's own kind, and a resolved declaration
+// reference stays a Conj however well typed, so every consumer -- formals, type parameters, argument
+// inhabitance, result typing -- fell through. dre_call_is_grounded_for asserts the CALL's facts, not the
+// reference's.
+//
+// THE CALL GROUNDS. Two changes were needed and only the first is obvious: the application path had to
+// SEE the callee's callable evidence (infer_application_callee_arrow_with_facts), and the grounding
+// check had to be asked of the CALLEE USE rather than of the arrow. That second lookup was keyed by
+// `arrow`, which is correct only while an arrow can only be the callee node itself; once the arrow may
+// be a DECLARATION's Arrow reached through the use's facts, it is a node of the declaring module with
+// no entry in this tree, so the lookup answered Absent and the application dropped to the frontier
+// however well the callee was typed.
+test fn dre_a_named_call_is_grounded_holds() -> Bool {
+  dre_reference_reading().call_grounded
+}
+
+// EXECUTION, DELIBERATELY BOOL-RETURNING. The point is that a named call EXECUTES and returns its
+// callee's value -- not that equality types. An Int-returning call compared with `==` would couple this
+// first execution proof to the equality operation, which has its own typing rule and its own unproven
+// standing; a Bool-returning call is its own assertion.
+fn dre_execution_source() -> Outcome<ResolvedTree> {
+  dre_assemble(src: "module p\n\nfn truth(only_arg: Int) -> Bool {\n  true\n}\n\nfn consumer(y: Int) -> Bool {\n  truth(only_arg: y)\n}\n")
+}
+
+// A BOOL-RETURNING CALL DOES NOT GROUND, AND THAT IS A SEPARATE BOUNDARY FROM THIS REPAIR. Measured
+// three ways on this base: an Int-returning call grounds; a Bool-returning call with a literal body
+// does not; a Bool-returning call whose body is its parameter does not either. So the variable is the
+// RETURN TYPE, not the body. The reference itself grounds in every case, so this is downstream of the
+// reference repair, in the application's return derivation --
+// infer_arrow_declared_return_type -> dag_binding_denotation. Enrolled executed rather than deleted,
+// and NOT diagnosed further here: which binding symbol a Bool return actually carries is the next
+// question, and answering it is a separate change from this one.
+fn dre_execution_reading() -> DreReading {
+  dre_reading(o: dre_execution_source(), wanted: ^truth)
+}
+
+test fn dre_a_named_call_to_a_bool_fn_is_grounded_holds() -> Bool {
+  dre_execution_reading().call_grounded
+}
+
+fn dre_call_is_grounded_for(inferred: ObligatedInferredTree, wanted: Symbol) -> Bool {
+  match dre_first_application_for(n: inferred.root, wanted: wanted) {
+    Absent => false
+    Present { value: call } =>
+      match inferred.facts.lookup(call) {
+        Absent => false
+        Present { value: facts } => inferred_facts_grounding_derived(facts: facts)
+      }
+  }
+}
+
+fn dre_first_application_for(n: Node, wanted: Symbol) -> Optional<Node> {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(n0) {
+        match n0.kind {
+          ComputationNode { behavior: Transform } =>
+            match dre_uses_of(root: n0, wanted: wanted) {
+              Cons { head: _, tail: _ } => optional_present(value: n0)
+              Empty => optional_absent()
+            }
+          _ => optional_absent()
+        }
+      },
+      step: fn(acc, _e, child) {
+        match acc { Present { value: _ } => acc  Absent => child }
+      }
+    }
+  )
+}
+
+
+// Bool param AND Bool return, body is the parameter -- the same shape as the working Int case, so the
+// only variable against dre_execution_source is the literal body.
+fn dre_bool_param_source() -> Outcome<ResolvedTree> {
+  dre_assemble(src: "module p\n\nfn truth(only_arg: Bool) -> Bool {\n  only_arg\n}\n\nfn consumer(y: Bool) -> Bool {\n  truth(only_arg: y)\n}\n")
+}
+
+
+fn dre_return_atom_of(o: Outcome<ResolvedTree>, wanted: Symbol) -> Optional<Symbol> {
+  match o {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: inferred, diagnostics: _ } =>
+          match dre_uses_of(root: inferred.root, wanted: wanted) {
+            Empty => optional_absent()
+            Cons { head: use_node, tail: _ } =>
+              match inferred.facts.lookup(use_node) {
+                Absent => optional_absent()
+                Present { value: facts } =>
+                  match facts.grounding {
+                    GroundingNotDerived { node: _ } => optional_absent()
+                    DerivedGrounding { grounding: g } =>
+                      match list_at_optional(xs: node_positional_child_targets(node: g.witness.structural.evidence), index: 1) {
+                        Absent => optional_absent()
+                        Present { value: ret } =>
+                          match ret.kind {
+                            TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+                            _ => optional_absent()
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+
+
+
+
+
+
+// THE MISMATCH NEGATIVES. Recognising a Bool return must ACTIVATE the body-versus-declared-return
+// check, not merely admit more nodes: infer_arrow_declared_return_type is shared by that check and by
+// application result typing, and while it answered Absent for Bool the check SKIPPED its comparison.
+// So a Bool-declared function with an Int body, and the converse, must still refuse.
+fn dre_bool_declared_int_body() -> Outcome<ResolvedTree> {
+  dre_assemble(src: "module p\n\nfn wrong(only_arg: Int) -> Bool {\n  only_arg\n}\n")
+}
+
+fn dre_int_declared_bool_body() -> Outcome<ResolvedTree> {
+  dre_assemble(src: "module p\n\nfn wrong(only_arg: Bool) -> Int {\n  only_arg\n}\n")
+}
+
+fn dre_bool_declared_int_body_reading() -> DreReading {
+  dre_reading(o: dre_bool_declared_int_body(), wanted: ^wrong)
+}
+
+fn dre_int_declared_bool_body_reading() -> DreReading {
+  dre_reading(o: dre_int_declared_bool_body(), wanted: ^wrong)
+}
+
+// THE CHECK IS NOW REACHABLE, SO THESE REFUSE. They were red until the return-type ATOM grounded:
+// infer_arrow_body_inhabits_declared_return runs only when infer_product_child_evidence_edges answers
+// Present, which requires EVERY Arrow child to carry a resolved type, and the Bool return atom carried
+// none -- so the Arrow dropped to the frontier and the comparison never ran. A frontier is not a
+// refusal, which is why the mismatch was ACCEPTED rather than reported.
+//
+// These are the controls that distinguish a return-type recognition which activates the check from one
+// that merely admits more nodes. Recognition alone would have left them red.
+test fn dre_a_bool_declared_int_body_still_refuses_holds() -> Bool {
+  dre_bool_declared_int_body_reading().infer_refuses
+}
+
+test fn dre_an_int_declared_bool_body_still_refuses_holds() -> Bool {
+  dre_int_declared_bool_body_reading().infer_refuses
+}
+
+// A SECOND SOURCE FILE, so a reference can cross a module boundary.
+fn dre_file(src: String, id: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: src, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: "src/v2/pilot/declaration_reference_evidence_pilot.dag" },
+    compilation_unit: id,
+    source_root: V2Tree
+  }
+}
+
+// UNRESOLVED SIGNATURE: readable shape, unavailable type evidence. The parameter's declared type names
+// nothing, so the signature's structure reads while its meaning does not. A permissive fallback would
+// ground this; it must stay underived.
+fn dre_unresolved_signature_source() -> Outcome<ResolvedTree> {
+  dre_assemble(src: "module p\n\nfn opaque(only_arg: Nonexistent) -> Int {\n  1\n}\n\nfn consumer(y: Int) -> Int {\n  opaque(only_arg: y)\n}\n")
+}
+
+fn dre_unresolved_signature_reading() -> DreReading {
+  dre_reading(o: dre_unresolved_signature_source(), wanted: ^opaque)
+}
+
+test fn dre_an_unresolved_signature_does_not_ground_holds() -> Bool {
+  match dre_unresolved_signature_reading().domain_labels {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// INVALID ARGUMENT: a Bool passed where the declared parameter is Int. The call must not ground on a
+// contract its argument does not satisfy.
+fn dre_invalid_argument_source() -> Outcome<ResolvedTree> {
+  dre_assemble(src: "module p\n\nfn wants_int(only_arg: Int) -> Int {\n  only_arg\n}\n\nfn consumer(y: Bool) -> Int {\n  wants_int(only_arg: y)\n}\n")
+}
+
+fn dre_invalid_argument_reading() -> DreReading {
+  dre_reading(o: dre_invalid_argument_source(), wanted: ^wants_int)
+}
+
+test fn dre_an_invalid_argument_call_does_not_ground_holds() -> Bool {
+  dre_invalid_argument_reading().call_grounded == false
+}
+
+// IMPORTED REFERENCE, AND THE QUALIFIED IDENTITY DISCRIMINATOR. The same mechanism across a module
+// boundary: local and imported references reach the declaration by the same route, since the declaring
+// path is what the lookup uses either way.
+//
+// QUALIFIED BY MUTATION, unlike the earlier single-module attempt that could not be. Repointing this
+// reference's lookup at a DIFFERENT EXISTING declaration -- m.app rather than m.lib.helper, so the
+// lookup still SUCCEEDS -- turns this row red while the same-module call stays green. So it detects
+// wrong-declaration selection rather than missing evidence, which is the property a leaf-keyed lookup
+// would violate and an absent-path mutation could never establish.
+fn dre_imported_reference_source() -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: dre_file(src: "module m.lib\n\nfn helper(only_arg: Int) -> Int {\n  only_arg\n}\n", id: ^dre_imported_lib_cu),
+      tail: Cons {
+        head: dre_file(src: "module m.app\n\nimport m.lib { helper }\n\nfn consumer(y: Int) -> Int {\n  helper(only_arg: y)\n}\n", id: ^dre_imported_app_cu),
+        tail: Empty
+      }
+    },
+    admission: Admission {
+      subject: ResolutionSubject { name: Cons { head: ^m, tail: Cons { head: ^app, tail: Empty } } },
+      imports: Empty
+    },
+    lm: dag_language_model()
+  )
+}
+
+// A CROSS-MODULE REFERENCE DOES NOT GROUND, AND THAT IS THE SCOPE OF THE CARRIER, NOT A FAIL-OPEN.
+// The declaration a reference grounds to is read from v2.compiler.resolve ResolvedTree
+// resolved_declarations -- DECLARATIONS WITH RESOLVED BODIES -- because a declaration's return atom as
+// AUTHORED is the source spelling `Int`, which v2.extdeps.languages.dag dag_binding_denotation does not
+// denote (it is a binding-to-type table, and the authored spelling is not a binding). Reading the
+// pre-resolve symbol_index instead is what made every named call's result typing fall to the frontier.
+//
+// resolve ONCE walked a single module root and minted resolved_declarations over it, so that index carried
+// the SUBJECT module's declarations and no other. m.lib.helper was absent from it, the lookup answered
+// Absent, and the reference stayed underived. The two tempting repairs were refused then and stay refused:
+// falling back to the authored index is the absorbing fallback DESIGN section 5 forbids, and re-deriving the
+// return from the language's kernel spelling table inside infer is a second resolution authority (section 3).
+//
+// THE TRIGGER THIS ROW DECLARED HAS LANDED, which is why the row now reads in the opposite direction. It
+// named "a resolved-declaration index over every resolved module root ... minted by resolve beside the
+// per-module carrier", and that is what v2.compiler.resolve resolved_tree_of now receives: the closure's
+// resolved roots, folded through the existing single-root door, assembled by v2.compiler.name_resolve
+// closure_declarations_demand. The fact stayed resolve's to own, as this row said it must.
+//
+// DESIGN section 4b(4) IS WHY THIS DID NOT RETIRE. An expecting-red probe that greens when its wall lands
+// flips to a permanent regression control; it does not disappear, because the climb's evidence is what keeps
+// the higher rung real. So the row keeps its subject and its fixture and inverts its assertion, and its name
+// now states what holds rather than what is missing. The single-module rows above remain the positive
+// controls that the mechanism works at all, so this row cannot be satisfied by grounding being broken
+// everywhere -- and it goes red again the moment the closure index stops reaching an imported declaration.
+fn dre_imported_reference_reading() -> DreReading {
+  dre_reading(o: dre_imported_reference_source(), wanted: ^helper)
+}
+
+test fn dre_an_imported_reference_grounds_through_the_closure_index_holds() -> Bool {
+  dre_imported_reference_reading().call_grounded
+}
+
+// THE ASYMMETRY THE TWO REFUSAL ROWS ABOVE DEPEND ON, MEASURED RATHER THAN ASSERTED. A declared `Int`
+// return reaches infer as the canonical BINDING ^dag_binding_type_int, while a declared `Bool` return
+// reaches it as the DENOTED value type (v2.std.logic bool_node) -- so the binding->value-type join
+// v2.extdeps.languages.dag dag_binding_denotation answers for one and not the other. That is why
+// v2.compiler.infer asks infer_established_value_type_optional beside the join at both declared-position
+// readers, and why declared-Int mismatches refused for a while where the identical declared-Bool
+// mismatch was accepted at the frontier.
+//
+// THESE TWO ROWS ARE THE STRUCTURAL CONTROL FOR THAT REPAIR, not a restatement of it: if lowering ever
+// canonicalizes Bool to a binding, or stops canonicalizing Int, one of them goes red and the reader that
+// depends on the current shape is the thing to re-read. A refusal row alone could not say which.
+fn dre_arrow_of(o: Outcome<ResolvedTree>) -> Optional<Node> {
+  match o {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: r, diagnostics: _ } =>
+      fold_node(
+        n: r.root,
+        algebra: NodeFold {
+          init: fn(n0) {
+            match n0.kind { TypeNode { connective: Arrow } => optional_present(value: n0)  _ => optional_absent() }
+          },
+          step: fn(acc, _e, child) { match acc { Present { value: _ } => acc  Absent => child } }
+        }
+      )
+  }
+}
+
+fn dre_declared_return_of(o: Outcome<ResolvedTree>) -> Optional<Node> {
+  match dre_arrow_of(o: o) {
+    Absent => optional_absent()
+    Present { value: a } => list_at_optional(xs: node_positional_child_targets(node: a), index: 1)
+  }
+}
+
+test fn dre_a_declared_bool_return_is_already_the_bool_value_type_holds() -> Bool {
+  match dre_bool_declared_int_body_reading().declared_return {
+    Absent => false
+    Present { value: ret } => infer_type_equal_ignoring_provenance(a: ret, b: bool_node())
+  }
+}
+
+test fn dre_a_declared_int_return_is_the_int_binding_holds() -> Bool {
+  match dre_int_declared_bool_body_reading().declared_return {
+    Absent => false
+    Present { value: ret } =>
+      match ret.kind {
+        TypeNode { connective: Atom { identity: s } } => s == ^dag_binding_type_int
+        _ => false
+      }
+  }
+}

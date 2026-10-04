@@ -1,4 +1,5 @@
 module v2.compiler.self_host.direct_rust_door_fixture
+import v2.std.optional { optional_absent }
 
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import extdeps.communication.medium { Lossless, Medium }
@@ -288,7 +289,8 @@ fn direct_rust_door_inferred_facts_for(node: Node) -> Optional<InferredFacts> {
           optional_present(
             value: InferredFacts {
               grounding: DerivedGrounding { grounding: grounding },
-              descent: Holds { value: proof }
+              descent: Holds { value: proof },
+              denotation: optional_absent()
             }
           )
       }

@@ -1,5 +1,6 @@
 module gunbc.machine_intake_mtcollins1_smpro_observation
 
+import v2.std.algebra { filter, any }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
 import std.measure { Second }
@@ -12,12 +13,20 @@ import extdeps.bmc.ipmi_master_write_read {
   master_write_read_completion_of, master_write_read_completion_text, master_write_read_bytes_of, master_write_read_stderr_completion,
 }
 import extdeps.ampere.smpro_register {
-  SmproRegister, SmproBootStage, SmproStageReading, SmproStatusDefined,
+  SmproRegister, SmproBootStage, SmproStageReading,
   smpro_manufacturer_id_reg, smpro_cur_bootstage_reg, smpro_bootstage_lo_reg, smpro_bootstage_hi_reg, smpro_bootstage_reg,
   smpro_value_size_bytes, smpro_manufacturer_id_expected, smpro_word, smpro_bootstage_of, smpro_cur_bootstage_of,
   smpro_stage_text, smpro_status_text,
+  smpro_gpi_ras_err_reg, smpro_err_smpro_type_reg, smpro_err_smpro_info_lo_reg, smpro_err_smpro_info_hi_reg,
+  smpro_err_smpro_data_lo_reg, smpro_err_smpro_data_hi_reg, smpro_warn_smpro_info_lo_reg, smpro_warn_smpro_info_hi_reg,
+  smpro_err_pmpro_type_reg, smpro_err_pmpro_info_lo_reg, smpro_err_pmpro_info_hi_reg, smpro_err_pmpro_data_lo_reg,
+  smpro_err_pmpro_data_hi_reg, smpro_warn_pmpro_info_lo_reg, smpro_warn_pmpro_info_hi_reg, smpro_vrd_warn_fault_event_data_reg,
+  smpro_vrd_hot_event_data_reg, smpro_dimm_hot_event_data_reg, smpro_dimm_2x_refresh_event_data_reg,
 }
-import extdeps.ampere.scp_diagnostic { Failed }
+import extdeps.ampere.smpro_internal_error {
+  SmproInternalRecord, smpro_internal_error_of, smpro_internal_warning_of, smpro_internal_record_text,
+  SmproProcessor, SmproProcessorSmpro, SmproProcessorPmpro, SmproRecordGate, smpro_record_gate, smpro_record_gate_lines,
+}
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
 
@@ -27,12 +36,15 @@ import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint 
 // investigation could not answer from the console: at which stage socket 1 stopped.
 //
 // THE ORDER IS CONSERVATIVE (eager-owl-205, msg_8a25c38e): per socket, MANUFACTURER_ID first, then
-// CUR_BOOTSTAGE, BOOTSTAGE_LO and BOOTSTAGE_HI, then BOOTSTAGE last; socket 0 before socket 1. The
+// CUR_BOOTSTAGE, BOOTSTAGE_LO and BOOTSTAGE_HI, then the smpro-errmon internal error, warning and
+// event registers, then BOOTSTAGE last; socket 0 before socket 1. The
 // manufacturer ID is a known-answer read (extdeps.ampere.smpro_register
 // smpro_manufacturer_id_expected), so a socket whose ID read did not return it has no established
 // transport, and every read after it is NOT SENT with that as its typed reason: socket 0's control
 // gates everything, socket 1's gates socket 1. NOTHING IS EVER WRITTEN to a register; the only I2C
-// write is the [register, size] pair the SMpro's read protocol requires.
+// write is the [register, size] pair the SMpro's read protocol requires. That matters most for the
+// error registers: the driver clears them only by WRITING (extdeps.ampere.smpro_register,
+// smpro_errmon_read_safety_confirmation), so this pass reads each record without consuming it.
 //
 // EVERY PROBE IS KEPT AS ITS RAW OBSERVATION -- request bytes, exit code, stdout and stderr as the
 // transport returned them -- beside the typed outcome read from it, so the dossier can be re-read by
@@ -62,9 +74,17 @@ data mtcollins1_smpro_targets: List<SmproTarget> = [
   SmproTarget { socket: 1, seven_bit_address: 78 },
 ]
 
-// Per socket, in read order. The first row is the control; BOOTSTAGE is last.
+// Per socket, in read order. The first row is the control; BOOTSTAGE is last. Each record's TYPE is
+// read before its INFO and DATA, so a record is never assembled from words read before the TYPE
+// that says whether it exists.
 data mtcollins1_smpro_read_order: List<SmproRegister> = [
-  smpro_manufacturer_id_reg, smpro_cur_bootstage_reg, smpro_bootstage_lo_reg, smpro_bootstage_hi_reg, smpro_bootstage_reg,
+  smpro_manufacturer_id_reg, smpro_cur_bootstage_reg, smpro_bootstage_lo_reg, smpro_bootstage_hi_reg,
+  smpro_gpi_ras_err_reg, smpro_err_smpro_type_reg, smpro_err_smpro_info_lo_reg, smpro_err_smpro_info_hi_reg,
+  smpro_err_smpro_data_lo_reg, smpro_err_smpro_data_hi_reg, smpro_warn_smpro_info_lo_reg, smpro_warn_smpro_info_hi_reg,
+  smpro_err_pmpro_type_reg, smpro_err_pmpro_info_lo_reg, smpro_err_pmpro_info_hi_reg, smpro_err_pmpro_data_lo_reg,
+  smpro_err_pmpro_data_hi_reg, smpro_warn_pmpro_info_lo_reg, smpro_warn_pmpro_info_hi_reg, smpro_vrd_warn_fault_event_data_reg,
+  smpro_vrd_hot_event_data_reg, smpro_dimm_hot_event_data_reg, smpro_dimm_2x_refresh_event_data_reg,
+  smpro_bootstage_reg,
 ]
 
 fn mtcollins1_smpro_probe_count() -> Int {
@@ -350,46 +370,124 @@ fn outcome_raw_text(o: SmproProbeOutcome) -> String {
   }
 }
 
+// ── the internal error records each socket reports (extdeps.ampere.smpro_internal_error) ─────────
+
+// One processor's record set on one socket, GATED as the driver gates it
+// (extdeps.ampere.smpro_internal_error smpro_record_gate): the socket's GPI_RAS_ERR from this same
+// pass decides whether a decoded TYPE/INFO/DATA record is the driver's record, ungated, or a
+// contradiction. A record is decoded only from words this pass actually read; when one was not, the
+// record is Absent and `missing` says which word, never a zero standing in for it.
+type SmproRecordSet {
+  gate: SmproRecordGate
+  missing: String?
+}
+
+type SmproSocketRecords {
+  socket: Int
+  smpro: SmproRecordSet
+  pmpro: SmproRecordSet
+  nonzero_events: List<String>
+  events_unread: List<String>
+}
+
+type SmproWordsRead
+  = AllWordsRead { words: List<Int> }
+  | WordMissing { reason: String }
+
+fn smpro_words_read(outcomes: List<SmproProbeOutcome>, socket: Int, regs: List<SmproRegister>) -> SmproWordsRead {
+  let empty: List<Int> = []
+  fold(regs, init: AllWordsRead { words: empty }, f: (acc, reg) => match acc {
+    WordMissing { reason: r } => WordMissing { reason: r }
+    AllWordsRead { words: ws } => {
+      let o = smpro_socket_word(outcomes: outcomes, socket: socket, register: reg.name)
+      match match o { Absent => none Present { value: x } => smpro_outcome_word(o: x) } {
+        Present { value: w } => AllWordsRead { words: concat(ws, [w]) }
+        Absent => WordMissing { reason: register_unavailable_reason(o: o, name: reg.name) }
+      }
+    }
+  })
+}
+
+fn nth_word(ws: List<Int>, n: Int) -> Int {
+  match ws.skip(n: n).first() { Absent => 0 Present { value: w } => w }
+}
+
+fn smpro_socket_gpi(outcomes: List<SmproProbeOutcome>, socket: Int) -> Int? {
+  match smpro_socket_word(outcomes: outcomes, socket: socket, register: smpro_gpi_ras_err_reg.name) {
+    Absent => none
+    Present { value: o } => smpro_outcome_word(o: o)
+  }
+}
+
+// Registers in TYPE, INFO_HI, INFO_LO, DATA_HI, DATA_LO, WARN_HI, WARN_LO order.
+fn smpro_record_set(outcomes: List<SmproProbeOutcome>, socket: Int, processor: SmproProcessor, regs: List<SmproRegister>) -> SmproRecordSet {
+  let gpi = smpro_socket_gpi(outcomes: outcomes, socket: socket)
+  match smpro_words_read(outcomes: outcomes, socket: socket, regs: regs) {
+    WordMissing { reason: r } => SmproRecordSet { gate: smpro_record_gate(gpi: gpi, processor: processor, type_read: false, error: none, warning: none), missing: Present { value: r } }
+    AllWordsRead { words: w } => SmproRecordSet {
+      gate: smpro_record_gate(gpi: gpi, processor: processor, type_read: true,
+        error: smpro_internal_error_of(type_word: nth_word(ws: w, n: 0), info_hi: nth_word(ws: w, n: 1), info_lo: nth_word(ws: w, n: 2), data_hi: nth_word(ws: w, n: 3), data_lo: nth_word(ws: w, n: 4)),
+        warning: smpro_internal_warning_of(type_word: nth_word(ws: w, n: 0), warn_hi: nth_word(ws: w, n: 5), warn_lo: nth_word(ws: w, n: 6))),
+      missing: none,
+    }
+  }
+}
+
+data mtcollins1_smpro_event_regs: List<SmproRegister> = [
+  smpro_vrd_warn_fault_event_data_reg, smpro_vrd_hot_event_data_reg, smpro_dimm_hot_event_data_reg, smpro_dimm_2x_refresh_event_data_reg,
+]
+
+fn mtcollins1_smpro_socket_records(outcomes: List<SmproProbeOutcome>, socket: Int) -> SmproSocketRecords {
+  SmproSocketRecords {
+    socket: socket,
+    smpro: smpro_record_set(outcomes: outcomes, socket: socket, processor: SmproProcessorSmpro, regs: [smpro_err_smpro_type_reg, smpro_err_smpro_info_hi_reg, smpro_err_smpro_info_lo_reg, smpro_err_smpro_data_hi_reg, smpro_err_smpro_data_lo_reg, smpro_warn_smpro_info_hi_reg, smpro_warn_smpro_info_lo_reg]),
+    pmpro: smpro_record_set(outcomes: outcomes, socket: socket, processor: SmproProcessorPmpro, regs: [smpro_err_pmpro_type_reg, smpro_err_pmpro_info_hi_reg, smpro_err_pmpro_info_lo_reg, smpro_err_pmpro_data_hi_reg, smpro_err_pmpro_data_lo_reg, smpro_warn_pmpro_info_hi_reg, smpro_warn_pmpro_info_lo_reg]),
+    nonzero_events: flat_map(mtcollins1_smpro_event_regs, reg => match match smpro_socket_word(outcomes: outcomes, socket: socket, register: reg.name) { Absent => none Present { value: x } => smpro_outcome_word(o: x) } {
+      Present { value: w } => if w == 0 { [] } else { [concat(reg.name as String, " = ", to_string(w))] }
+      Absent => []
+    }),
+    events_unread: flat_map(mtcollins1_smpro_event_regs, reg => match match smpro_socket_word(outcomes: outcomes, socket: socket, register: reg.name) { Absent => none Present { value: x } => smpro_outcome_word(o: x) } {
+      Present { value: _ } => []
+      Absent => [reg.name as String]
+    }),
+  }
+}
+
+fn record_set_lines(processor: String, rs: SmproRecordSet) -> List<String> {
+  map(smpro_record_gate_lines(g: rs.gate), l => concat(processor, " ", l))
+}
+
+fn record_set_unavailable(processor: String, rs: SmproRecordSet) -> List<String> {
+  match rs.missing {
+    Present { value: why } => [concat(processor, " records UNAVAILABLE (", why, ")")]
+    Absent => []
+  }
+}
+
+// Every gated record, ungated record, gate contradiction or nonzero event a socket reports, one line
+// each; empty when nothing was reported. A missing word is the dossier's to say, not a finding.
+fn mtcollins1_smpro_record_lines(r: SmproSocketRecords) -> List<String> {
+  map(concat(concat(record_set_lines(processor: "SMpro", rs: r.smpro), record_set_lines(processor: "PMpro", rs: r.pmpro)), map(r.nonzero_events, e => concat("event ", e))),
+    l => concat("SMpro socket ", to_string(r.socket), ": ", l))
+}
+
+fn mtcollins1_smpro_records_text(r: SmproSocketRecords) -> String {
+  let lines = mtcollins1_smpro_record_lines(r: r)
+  let gaps = concat(concat(record_set_unavailable(processor: "SMpro", rs: r.smpro), record_set_unavailable(processor: "PMpro", rs: r.pmpro)),
+    if count(r.events_unread) == 0 { [] } else { [concat("events not read: ", join(r.events_unread, ", "))] })
+  let head = if count(lines) == 0 { [concat("SMpro socket ", to_string(r.socket), ": no internal error, warning or event decoded")] } else { lines }
+  join(concat(head, map(gaps, g => concat("SMpro socket ", to_string(r.socket), ": ", g))), "\n")
+}
+
 // THE DOSSIER: every socket's stage (established or why not), then every probe with its raw
 // observation. It is rendered for any list of outcomes, including one where nothing was sent.
 fn mtcollins1_smpro_dossier_text(outcomes: List<SmproProbeOutcome>) -> String {
   join([
     concat("location: bus ", to_string(mtcollins1_smpro_bus.bus_id), " (private: a bet), from the operator brief; ", join(map(mtcollins1_smpro_targets, t => concat("socket ", to_string(t.socket), " at 7-bit ", hex_byte_text(n: t.seven_bit_address))), ", ")),
     join(map(mtcollins1_smpro_targets, t => mtcollins1_smpro_stage_text(s: mtcollins1_smpro_socket_stage(outcomes: outcomes, socket: t.socket))), "\n"),
+    join(map(mtcollins1_smpro_targets, t => mtcollins1_smpro_records_text(r: mtcollins1_smpro_socket_records(outcomes: outcomes, socket: t.socket))), "\n"),
     "probes, in the order sent:",
     join(map(outcomes, o => concat("  socket ", to_string(outcome_socket(o: o)), " ", outcome_register(o: o), ": ", smpro_outcome_text(o: o), "\n", outcome_raw_text(o: o))), "\n"),
   ], "\n")
 }
 
-// FINDINGS: every socket's line, when the sockets DIFFER on either reading (an unavailable reading
-// beside an established one is a difference), or a reported status is FAILED. Nothing when no
-// reading was established anywhere (the dossier says why), or when every socket agrees.
-fn reported_failed(s: SmproSocketStage) -> Bool {
-  match s.reported {
-    ReportedStageEstablished { bootstage: b } => match b.status { SmproStatusDefined { status: Failed } => true SmproStatusDefined { status: NotStarted } => false SmproStatusDefined { status: Started } => false SmproStatusDefined { status: Completed } => false SmproStatusUndefined { code: _ } => false }
-    ReportedStageUnavailable { reason: _ } => false
-  }
-}
-
-fn established_any(s: SmproSocketStage) -> Bool {
-  (match s.current { CurrentStageEstablished { stage: _ } => true CurrentStageUnavailable { reason: _ } => false }) || (match s.reported { ReportedStageEstablished { bootstage: _ } => true ReportedStageUnavailable { reason: _ } => false })
-}
-
-// The comparison key is the readings alone: an unavailable reading keys as UNAVAILABLE whatever its
-// reason, whose text names its own socket and would make every pair differ.
-fn socket_key(s: SmproSocketStage) -> String {
-  concat(
-    match s.current { CurrentStageEstablished { stage: st } => smpro_stage_text(r: st) CurrentStageUnavailable { reason: _ } => "UNAVAILABLE" },
-    "|",
-    match s.reported { ReportedStageEstablished { bootstage: _ } => reported_text(r: s.reported) ReportedStageUnavailable { reason: _ } => "UNAVAILABLE" },
-  )
-}
-
-fn mtcollins1_smpro_findings(outcomes: List<SmproProbeOutcome>) -> List<String> {
-  let stages = map(mtcollins1_smpro_targets, t => mtcollins1_smpro_socket_stage(outcomes: outcomes, socket: t.socket))
-  let first = match stages.first() { Absent => "" Present { value: s } => socket_key(s: s) }
-  let differ = any(stages, s => socket_key(s: s) != first)
-  if !any(stages, s => established_any(s: s)) { [] }
-  else if differ || any(stages, s => reported_failed(s: s)) { map(stages, s => mtcollins1_smpro_stage_text(s: s)) }
-  else { [] }
-}

@@ -1,0 +1,63 @@
+module extdeps.transports.rest_declared
+
+import std.types { HttpStatus, String }
+import extdeps.ietf.http_semantics { HttpStatusClass }
+import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+
+// THE DECLARED VOCABULARY OF THE REST TRANSPORT (XL-2 PR3a, moved here in PR3b-i): what an operation
+// AUTHORS for this transport -- its binding fields, the channels its `from "key"` names (open: a response body member) and its response status patterns -- apart from
+// extdeps.transports.rest, which holds the host's runtime configuration and observation. It is its own
+// module so the compiler's realization wall (v2.compiler.service_realization), which body lowering
+// calls, reads it without importing the runtime module's dependencies into the self-emitted compiler.
+
+// WHAT AN OPERATION'S `response { .. }` ARM MATCHES (XL-2 PR3a). A status code is std.types HttpStatus
+// and a class (`5xx`) is extdeps.ietf.http_semantics HttpStatusClass: both are the IETF's facts,
+// referenced here rather than re-coined, so an arm carries either an exact code or the class whose
+// leading digit it spells. A named pattern (`nonzero`) belongs to the shell's exit status and is
+// refused here, not read as a code.
+// Decoded from a lowered response arm by v2.compiler.service_realization rest_response_status_of, the
+// wall's only reading of a rest status pattern.
+type RestResponseStatus
+  = RestStatusCode { status: HttpStatus }
+  | RestStatusClass { class: HttpStatusClass }
+
+// THE FIELDS A `transport rest { .. }` BLOCK DECLARES: the operation's DECLARED request, not
+// RestTransportConfig, which is the host's per-endpoint configuration (base_url, credentials, TLS
+// posture). Corpus at authoring time: method 157, path 157, body 57, query 36, headers 12, tls 2,
+// auth_basic 2, response_format 1, nothing else. An operation's `from "key"` on this transport names
+// a member of the decoded response body (RFC 8259 member names are open), so no closed vocabulary is
+// declared for it.
+type RestBindingField
+  = RestMethod
+  | RestPath
+  | RestQuery
+  | RestHeaders
+  | RestBody
+  | RestTls
+  | RestAuthBasic
+  | RestResponseFormat
+
+fn rest_binding_field_key(field: RestBindingField) -> String {
+  match field {
+    RestMethod => "method"
+    RestPath => "path"
+    RestQuery => "query"
+    RestHeaders => "headers"
+    RestBody => "body"
+    RestTls => "tls"
+    RestAuthBasic => "auth_basic"
+    RestResponseFormat => "response_format"
+  }
+}
+
+fn rest_binding_field_of_key(key: String) -> Optional<RestBindingField> {
+  if key == "method" { optional_present(value: RestMethod) }
+  else if key == "path" { optional_present(value: RestPath) }
+  else if key == "query" { optional_present(value: RestQuery) }
+  else if key == "headers" { optional_present(value: RestHeaders) }
+  else if key == "body" { optional_present(value: RestBody) }
+  else if key == "tls" { optional_present(value: RestTls) }
+  else if key == "auth_basic" { optional_present(value: RestAuthBasic) }
+  else if key == "response_format" { optional_present(value: RestResponseFormat) }
+  else { optional_absent() }
+}

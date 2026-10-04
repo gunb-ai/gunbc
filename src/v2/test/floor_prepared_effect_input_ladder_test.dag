@@ -14,7 +14,6 @@ import v2.workflow.floor_pure_producer_share {
 }
 import std.cache_interface { retention_growth_is_bounded, retention_has_exact_byte_bound }
 import std.materialization_ladder { provider_is_content_keyed, provider_is_store_tier }
-import v2.std.logic { Bool }
 
 // THE LADDER OBLIGATIONS ARE DECIDED BY THE FOLD, NOT ASSERTED IN PROSE. Each test below is
 // answered by `std.materialization_ladder` or `std.cache_interface` over the LIVE rows rather than

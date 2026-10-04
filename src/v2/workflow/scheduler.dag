@@ -1,6 +1,7 @@
 module v2.workflow.scheduler
 
-import v2.std.collection { List, list_at_optional, optional_present_witness }
+import std.types { List }
+import v2.std.collection { list_at_optional, optional_present_witness }
 import v2.std.algebra {
   contains,
   filter,

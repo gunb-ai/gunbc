@@ -1,0 +1,114 @@
+module v2.test.claim.advisories.fatal_first_readers
+
+import v2.workflow.compile_door_ledger { DoorLedgerRow, DoorRefused, all_refused_causes_attributed, door_refused_row, ledger_cause_count, ledger_refused_count }
+import v2.workflow.realization_attempt { first_located_cause, first_located_file }
+import v2.lens.enforcement.grammar_coverage { ParseRejected, grammar_coverage_stage_rejected }
+import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  NonEmptyDiagnostics,
+  Textual,
+  Unavailable,
+  WholeFile,
+  invariant_port_locus
+}
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+
+// Advisories step 2: a chain's cause is its FATAL element (the last), never its head. These claims
+// supply chains at each reader's interface (DESIGN section 3) rather than running a front end.
+
+fn residue_headed_chain(fatal: Symbol) -> NonEmptyDiagnostics {
+  NonEmptyDiagnostics {
+    head: Diagnostic {
+      reason: ^shared_advisory_head,
+      at: invariant_port_locus(port: ^fatal_first_readers, invariant: ^shared_advisory_head),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    },
+    tail: [
+      Diagnostic {
+        reason: fatal,
+        at: invariant_port_locus(port: ^fatal_first_readers, invariant: fatal),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    ]
+  }
+}
+
+// THE PROGRAM'S RED CONTROL AT THE REALIZATION SWEEP. Two refusals share the overlap residue as
+// their head and differ in their fatal cause; the exact cause must be each one's fatal.
+test fn realization_cause_is_each_chains_fatal_under_a_shared_residue_head_holds() -> Bool {
+  (first_located_cause(ds: residue_headed_chain(fatal: ^normalize_rejected)) == ^normalize_rejected)
+    && (first_located_cause(ds: residue_headed_chain(fatal: ^resolve_reason_unbound_symbol)) == ^resolve_reason_unbound_symbol)
+}
+
+// THE DOOR HISTOGRAM IS ATTRIBUTED AT FATAL GRAIN. A refused row whose cause is owned only at
+// FatalGrain (body_lowering_reason_call_argument_unread has no HeadGrain row) is attributed; the
+// head-grain lookup refused it. An unowned cause still is not.
+test fn door_ledger_attributes_a_fatal_grain_only_cause_holds() -> Bool {
+  all_refused_causes_attributed(rows: [
+    DoorLedgerRow { module_path: "a.dag", outcome: DoorRefused { reason: ^body_lowering_reason_call_argument_unread } }
+  ])
+    && !all_refused_causes_attributed(rows: [
+      DoorLedgerRow { module_path: "b.dag", outcome: DoorRefused { reason: ^fatal_first_readers_unowned_cause } }
+    ])
+}
+
+// THE GRAMMAR-COVERAGE CLASSIFIER reports a refused stage by its fatal cause. Two chains share one
+// advisory head and differ in their fatal; the classifier must report each one's own fatal, which a
+// head reader cannot (it answers ^shared_advisory_head for both). The real path is the long-lane
+// claim v2.test.claim.long.grammar_coverage_fatal_route.
+test fn grammar_coverage_stage_rejected_reports_each_chains_fatal_holds() -> Bool {
+  (grammar_coverage_stage_rejected(stage: "parse", d: residue_headed_chain(fatal: ^parse_g0_tokens_remain))
+    == ParseRejected { stage: "parse", reason: ^parse_g0_tokens_remain })
+    && (grammar_coverage_stage_rejected(stage: "parse", d: residue_headed_chain(fatal: ^tokenize_lex_e1_unrecognized_char))
+      == ParseRejected { stage: "parse", reason: ^tokenize_lex_e1_unrecognized_char })
+}
+
+// THE DOOR LEDGER'S HISTOGRAM IS OF FATAL CAUSES. The three refusal chains the long claim
+// v2.test.long.compile_door_ledger's real subjects produce (determinism, error_primitives, bit) are
+// SUPPLIED here, each headed by one shared advisory: the histogram must count their fatals, and every
+// fatal must be owned. A head-grain reader counts the advisory three times and nothing else.
+test fn door_ledger_histogram_counts_each_refusals_fatal_holds() -> Bool {
+  let rows = [
+    door_refused_row(path: "dag/std/determinism.dag", d: residue_headed_chain(fatal: ^resolve_reason_unbound_symbol)),
+    door_refused_row(path: "dag/std/error_primitives.dag", d: residue_headed_chain(fatal: ^member_not_a_binder)),
+    door_refused_row(path: "dag/std/bit.dag", d: residue_headed_chain(fatal: ^member_not_a_binder))
+  ]
+  ledger_refused_count(rows: rows) == 3
+    && all_refused_causes_attributed(rows: rows)
+    && ledger_cause_count(rows: rows, reason: ^member_not_a_binder) == 2
+    && ledger_cause_count(rows: rows, reason: ^resolve_reason_unbound_symbol) == 1
+    && ledger_cause_count(rows: rows, reason: ^shared_advisory_head) == 0
+}
+
+fn textual_diagnostic(reason: Symbol, file: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: Textual { file: file, extent: WholeFile },
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn port_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: invariant_port_locus(port: ^fatal_first_readers, invariant: reason),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// THE REALIZATION SWEEP'S FILE. A textual fatal names the file; when the fatal names none, the first
+// textual element of the WHOLE chain does, the advisory head included. Two chains share an advisory
+// head located in file A: one has a textual fatal in file B (B wins), and one has a fatal located
+// only by port (A is kept). Searching only the tail loses A and answers "".
+test fn realization_file_is_the_fatals_else_the_chains_first_holds() -> Bool {
+  (first_located_file(ds: NonEmptyDiagnostics {
+      head: textual_diagnostic(reason: ^shared_advisory_head, file: ^file_a),
+      tail: [textual_diagnostic(reason: ^normalize_rejected, file: ^file_b)]
+    }) == "file_b")
+    && (first_located_file(ds: NonEmptyDiagnostics {
+      head: textual_diagnostic(reason: ^shared_advisory_head, file: ^file_a),
+      tail: [port_diagnostic(reason: ^resolve_reason_unbound_symbol)]
+    }) == "file_a")
+}

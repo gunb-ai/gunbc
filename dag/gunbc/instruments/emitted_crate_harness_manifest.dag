@@ -1,0 +1,121 @@
+module tools.emitted_crate_harness_manifest
+
+import std.logic { Bool }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.std.text { String }
+
+// A HARNESS MANIFEST IS THE EMITTED MANIFEST PLUS WHAT THE HARNESS ITSELF ADDS, AND NOTHING ELSE.
+//
+// The emitter writes Cargo.toml into the crate directory from the dependency demand of what it
+// emitted (v1.compiler.emit_rust emit_cargo_toml over EmittedCrateDependencyDemand). Every harness
+// that then builds that crate used to OVERWRITE the file with its own literal [dependencies]
+// roster, so one question -- what does this emitted crate link -- had one answer per harness, and
+// a dependency the emitted runtime gained reached a harness only when someone remembered to copy
+// it there. That is gunbc.recurring_failure_mode probe_manifest_overwrites_emitted_dependency_demand,
+// and this module is its repair on the .dag harness routes: no function here names a registry
+// crate, so there is no roster left to forget.
+//
+// WHY APPEND AND NOT PARSE. Each thing a harness adds is its own TOML table -- the [lib] name its
+// driver addresses, the [[bin]] target it runs, the seed path dependency as the subtable
+// [dependencies.v1-compiler] -- and a table header is position-independent, so the overlay is
+// correct wherever the emitter put its own tables and needs no reader of the emitted text. If the
+// emitter ever declares one of these tables itself, cargo refuses the duplicate by name; the
+// harness cannot silently win.
+type HarnessCrateTarget = WitnessBinTarget | ProbeLibTarget
+
+type HarnessSeedLinkage
+  = SeedLinked { root: String }
+  | SeedAbsent
+
+type HarnessManifestDerivation
+  = HarnessManifestDerived { content: String }
+  | EmittedManifestUnreadable { path: String }
+  | HarnessManifestWriteFailed { path: String }
+
+// The emitted package is named by the emission (v1_compiled, or v1_compiler for a pipeline entry);
+// witness drivers address the library as v1_compiled either way, so the library name is pinned
+// here and the package table is left exactly as emitted.
+fn harness_lib_target_table() -> String {
+  "\n[lib]\nname = \"v1_compiled\"\npath = \"src/lib.rs\"\n"
+}
+
+fn harness_crate_target_tables(target: HarnessCrateTarget) -> String {
+  match target {
+    WitnessBinTarget => concat(harness_lib_target_table(), "\n[[bin]]\nname = \"witness\"\npath = \"src/main.rs\"\n")
+    ProbeLibTarget => harness_lib_target_table()
+  }
+}
+
+// The one dependency a harness owns: the seed crate a seed-linked receipt compares against. It is a
+// fact about the harness and not about the emitted program, which is why it is not in the emitted
+// manifest and is the only dependency spelled on this route. SeedAbsent adds nothing, so a
+// seed-unavailable build cannot link the seed because no table names it.
+fn harness_seed_link_dependency_table(linkage: HarnessSeedLinkage) -> String {
+  match linkage {
+    SeedLinked { root: root } => concat("\n[dependencies.v1-compiler]\npath = \"", concat(root, "/src/v1/stage0\"\n"))
+    SeedAbsent => ""
+  }
+}
+
+fn harness_manifest_over_emitted(emitted: String, target: HarnessCrateTarget, linkage: HarnessSeedLinkage) -> String {
+  concat(
+    emitted,
+    concat(
+      harness_crate_target_tables(target: target),
+      harness_seed_link_dependency_table(linkage: linkage)
+    )
+  )
+}
+
+// THE DECISION, SEPARATE FROM THE READ THAT FEEDS IT. Whether a harness manifest exists is decided
+// from what the read returned, so a claim can supply that reading instead of performing it. An
+// unread or empty emitted manifest REFUSES: there is no fallback roster to write in its place, so
+// a crate the emitter did not describe is not built under a description the harness made up.
+type HarnessManifestPlan
+  = HarnessManifestPlanned { content: String }
+  | EmittedManifestNotUsable
+
+fn plan_harness_manifest(
+  read_succeeded: Bool,
+  emitted: String,
+  target: HarnessCrateTarget,
+  linkage: HarnessSeedLinkage
+) -> HarnessManifestPlan {
+  if !read_succeeded || emitted == "" {
+    EmittedManifestNotUsable
+  } else {
+    HarnessManifestPlanned {
+      content: harness_manifest_over_emitted(emitted: emitted, target: target, linkage: linkage)
+    }
+  }
+}
+
+// Reads the manifest the emission wrote into crate_dir and replaces it with the planned one. The
+// write exists only on the planned arm, so a refusal leaves the directory as the emission left it.
+fn derive_harness_manifest_in_place(
+  crate_dir: String,
+  target: HarnessCrateTarget,
+  linkage: HarnessSeedLinkage
+) -> HarnessManifestDerivation {
+  let path = concat(crate_dir, "/Cargo.toml")
+  let emitted = Filesystem.Read(path: path)
+  match plan_harness_manifest(read_succeeded: emitted.success, emitted: emitted.content, target: target, linkage: linkage) {
+    EmittedManifestNotUsable => EmittedManifestUnreadable { path: path }
+    HarnessManifestPlanned { content: content } => {
+      let written = Filesystem.Write(path: path, content: content)
+      if written.success {
+        HarnessManifestDerived { content: content }
+      } else {
+        HarnessManifestWriteFailed { path: path }
+      }
+    }
+  }
+}
+
+fn harness_manifest_derived(derivation: HarnessManifestDerivation) -> Bool {
+  match derivation {
+    HarnessManifestDerived { content: _ } => true
+    EmittedManifestUnreadable { path: _ } => false
+    HarnessManifestWriteFailed { path: _ } => false
+  }
+}

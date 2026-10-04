@@ -72,18 +72,21 @@ test fn sol_nul_fill_sections_complete_with_exit_zero() -> Bool {
   }
 }
 
-// THE VERDICT: nproc's reading refuses beside workload's, and edac-after -- never run, because the
-// workload filled /dev/shm and SOL closed -- is named as unobserved rather than dropped. At main the
-// verdict is the one cause "workload write rc=1": nproc and boot-media pend behind the NULs and the
-// open fold discards every pending qualification once any other refuses.
-test fn sol_nul_capture_refuses_on_nproc_and_names_the_unobserved() -> Bool {
+// THE VERDICT: workload's write is the one refusing cause, and every qualification still pending is
+// named. nproc's NUL-prefixed "80" reads exactly and HOLDS against the one-socket milestone
+// (gunbc.machine_intake_mtcollins1_boot_milestone mtcollins1_boot_topology_expectation, under the declared
+// drop gunbc.rung_drop mtcollins1_boot_accepts_socket1_absent), so it is absent from the list -- and that
+// absence is the discriminator: with the fill left in, nproc and boot-media pend and are named as
+// unterminated here. numa (dropped from the trimmed capture) and edac-after (never run: the workload
+// filled /dev/shm and SOL closed) are named as unobserved rather than dropped.
+test fn sol_nul_capture_refuses_on_the_workload_and_names_the_unobserved() -> Bool {
   let medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
   let subject = mtcollins1_boot_subject_for(medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr)
   match mtcollins1_boot_terminal_verdict(capture: sol_nul_capture(), subject: subject, medium: medium) {
     TerminalRefused { causes: cs } =>
       map(cs, c => mtcollins1_boot_terminal_cause_text(cause: c)) == [
-        "nproc observed 80, qualification expects 160",
         "workload write rc=1",
+        "numa not yet observed when the open envelope refused; unqualified",
         "edac-after not yet observed when the open envelope refused; unqualified",
       ]
     _ => false
@@ -103,6 +106,7 @@ test fn open_refusal_names_a_pending_nproc() -> Bool {
       map(cs, c => mtcollins1_boot_terminal_cause_text(cause: c)) == [
         "workload write rc=1",
         "nproc section opened but had not printed its EXIT line when the open envelope refused; unqualified",
+        "numa not yet observed when the open envelope refused; unqualified",
         "edac-after not yet observed when the open envelope refused; unqualified",
       ]
     _ => false
@@ -121,6 +125,7 @@ test fn open_refusal_names_an_absent_nproc_as_unobserved() -> Bool {
       map(cs, c => mtcollins1_boot_terminal_cause_text(cause: c)) == [
         "workload write rc=1",
         "nproc not yet observed when the open envelope refused; unqualified",
+        "numa not yet observed when the open envelope refused; unqualified",
         "edac-after not yet observed when the open envelope refused; unqualified",
       ]
     _ => false

@@ -1,10 +1,9 @@
 module v2.workflow.compile_door_cause_ownership
 
-import v2.std.collection { List }
 import v2.std.node { Symbol }
 import v2.std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import v2.std.algebra { list_find_first }
-import std.types { String }
+import std.types { String, List }
 import v2.std.integer { Int }
 
 // THE CAUSE-OWNERSHIP AUTHORITY FOR THE v2 FRONT-END FRONTIER, HOMED BELOW ITS CONSUMERS.
@@ -91,6 +90,12 @@ data known_frontier_causes: List<CauseOwnership> = [
     flip_trigger: "no per-cause trigger — lexer coverage is the same grammar-surgery class (nimble-boar-198). Measured 2026-09-09 at HEAD grain by the gunbc.witness_v2_native_route census (6 modules, the annotation-channel and comment-wall syntax among them)"
   },
   CauseOwnership {
+    cause: ^member_not_a_binder,
+    grain: FatalGrain,
+    lane: MigrationOwned,
+    flip_trigger: "RETIRED WHEN v2.lens.lifecycle_carrier and v2.lens.unit_modeling narrow their carrier predicate so that a node whose Authored members are module surface nodes (a container of modules, not a record or payload type) is never judged as a record carrier; this row is then deleted and the door-ledger long test's member_not_a_binder count returns to zero. DIAGNOSIS (advisories step 2, bold-lynx-438): reading the fatal element exposed this cause on dag/std/error_primitives.dag and dag/std/bit.dag. Each refusal is located at the TARGET of the offending member edge, a synthetic dag_surface_module node: both lenses fold every TypeNode's Authored children through v2.std.node_query member_edge_type_node and refuse a child that is not a binder, and a node carrying modules as Authored members reaches that fold. That is a lens defect (the carrier predicate admits a module container), not a correct refusal of these subjects. It was masked at head grain by parse_grammar_choice_overlap_residue. The fix is owned by its own work item, not this row"
+  },
+  CauseOwnership {
     cause: ^parse_g0_tokens_remain,
     grain: FatalGrain,
     lane: MigrationOwned,
@@ -142,7 +147,13 @@ data known_frontier_causes: List<CauseOwnership> = [
     cause: ^body_lowering_reason_return_not_in_tail_position,
     grain: FatalGrain,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "a return lowers only in tail position -- a function body's tail, an arm of a tail if or match, an admitted guard's arm -- read top-down from the raw parse; every other return refuses here, located at it, rather than lowering to its operand as the value of whatever block held it (gunbc.recurring_failure_mode return_lowered_as_its_operand_outside_the_function_tail). A return out of a non-tail position (a let value, an operand, a loop body) is early exit through a continuation, which v2 core does not model; flips only if that is modeled. Count on the PR"
+    flip_trigger: "a return lowers only in tail position -- a function body's tail, an arm of a tail if or match, an admitted guard's arm -- read top-down from the raw parse; every other return refuses here, located at it, rather than lowering to its operand as the value of whatever block held it (gunbc.recurring_failure_mode return_lowered_as_its_operand_outside_the_function_tail). A let whose value is a match with returning arms, heading a tail spine with exactly ONE binding arm, lowers to that match with the rest of the spine under the binding arm (v2.compiler.body_lowering_fold body_lower_let_match_exit_join). A return out of any other non-tail position (a let value otherwise, an operand, a loop body) is early exit through a continuation, which v2 core does not model; flips only if that is modeled. Count on the PR"
+  },
+  CauseOwnership {
+    cause: ^body_lowering_reason_multi_binding_arm_early_return_needs_join_point,
+    grain: FatalGrain,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "a let-match with returning arms heading a tail spine and TWO OR MORE binding arms: each binding arm would need the rest of the spine, and copying it per arm is a cost-shape defect, so it refuses here, located at the let (v2.compiler.body_lowering_fold body_lower_exit_walk_let_match). Flips when v2 infer types a local fn value (frontier lambda_value_has_no_derived_type_in_v2_infer), which admits one shared join point k(x) = rest. Count on the PR"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_service_realization_unreachable,

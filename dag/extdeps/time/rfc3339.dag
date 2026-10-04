@@ -1,8 +1,6 @@
 module extdeps.time.rfc3339
 
 import std.types { Bool, String, NonEmptyStr, brand }
-import std.algebra { Less, Equal, Greater }
-import std.string_type { string_lex_compare }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -83,10 +81,8 @@ fn rfc3339_compare(left: Rfc3339Timestamp, right: Rfc3339Timestamp) -> Rfc3339Co
         "' do not both carry the Z designator at the same total length, so ordering them lexically would be reading the format's coincidence rather than its stated property. A caller that must order these needs a real parse."], "")
     }
   } else {
-    match string_lex_compare(left: left, right: right) {
-      Less => Rfc3339Precedes
-      Greater => Rfc3339Follows
-      Equal => Rfc3339Simultaneous
-    }
+    if left < right { Rfc3339Precedes }
+    else if left == right { Rfc3339Simultaneous }
+    else { Rfc3339Follows }
   }
 }

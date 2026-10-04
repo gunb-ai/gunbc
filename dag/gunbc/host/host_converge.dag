@@ -152,10 +152,10 @@ type GunbcPinnedTreeDriftReceipt {
 type ConvergeVerdict
   = VerdictConverged
   | Drifted
-  | Absent
+  | VerdictAbsent
 
 fn converge_verdict(effective: String, expected: String) -> ConvergeVerdict {
-  if effective == "" { Absent }
+  if effective == "" { VerdictAbsent }
   else { if effective == expected { VerdictConverged } else { Drifted } }
 }
 
@@ -163,11 +163,11 @@ fn converge_verdict_label(v: ConvergeVerdict) -> String {
   match v {
     VerdictConverged => "converged"
     Drifted => "drifted"
-    Absent => "absent"
+    VerdictAbsent => "absent"
   }
 }
 
-// The convergence verdict lattice, meet: Absent < Drifted < VerdictConverged. A host's
+// The convergence verdict lattice, meet: VerdictAbsent < Drifted < VerdictConverged. A host's
 // verdict cannot outrank the WEAKEST evidence that grounds it — so a knob verdict is met
 // with the revision standing before it is reported, and any not-converged evidence pulls
 // the joint below converged. This is the construction that makes an empty-observation
@@ -176,9 +176,9 @@ fn converge_verdict_label(v: ConvergeVerdict) -> String {
 // alone when the desired revision was never observed.
 fn converge_verdict_meet(a: ConvergeVerdict, b: ConvergeVerdict) -> ConvergeVerdict {
   match a {
-    Absent => Absent
+    VerdictAbsent => VerdictAbsent
     Drifted => match b {
-      Absent => Absent
+      VerdictAbsent => VerdictAbsent
       Drifted => Drifted
       VerdictConverged => Drifted
     }

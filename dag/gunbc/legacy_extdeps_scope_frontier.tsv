@@ -18,12 +18,9 @@ dag/extdeps/bmc/access.dag
 dag/extdeps/bmc/capability.dag
 dag/extdeps/bmc.dag
 dag/extdeps/bmc/http.dag
-dag/extdeps/bmc/ipmi.dag
-dag/extdeps/bmc/ipmi_boot_selection.dag
 dag/extdeps/bmc/openbmc.dag
 dag/extdeps/bmc/openbmc_fan_control.dag
 dag/extdeps/bmc/openbmc_operation.dag
-dag/extdeps/bmc/openbmc_password_ssh_transport.dag
 dag/extdeps/bmc/os_install_actuator_toolchain.dag
 dag/extdeps/bmc/redfish.dag
 dag/extdeps/bmc/serial_console.dag
@@ -34,8 +31,6 @@ dag/extdeps/bmc/webui/nbd_proxy_serve.dag
 dag/extdeps/boards/asrock_rack.dag
 dag/extdeps/boards/types.dag
 dag/extdeps/boot/emit.dag
-dag/extdeps/boot/framebuffer.dag
-dag/extdeps/boot/freestanding_payload.dag
 dag/extdeps/boot/freestanding_witness.dag
 dag/extdeps/boot/linux_x86_boot.dag
 dag/extdeps/bootloader/grub.dag
@@ -96,7 +91,6 @@ dag/extdeps/ctrl/gunbc_pin.dag
 dag/extdeps/currency/currency.dag
 dag/extdeps/dhcp/v4.dag
 dag/extdeps/dns/domain_name.dag
-dag/extdeps/docker/container_inspect_contracts.dag
 dag/extdeps/docker/container_inspect.dag
 dag/extdeps/docker/container_stats.dag
 dag/extdeps/docker/docker.dag
@@ -142,9 +136,7 @@ dag/extdeps/github/github_contracts.dag
 dag/extdeps/github/github.dag
 dag/extdeps/github/hosted_runners.dag
 dag/extdeps/github/log_annotations.dag
-dag/extdeps/github/mergeable_state_contracts.dag
 dag/extdeps/github/mergeable_state.dag
-dag/extdeps/github/merge_state_contracts.dag
 dag/extdeps/github/merge_state.dag
 dag/extdeps/github/pulls_contracts.dag
 dag/extdeps/github/pulls.dag
@@ -153,7 +145,6 @@ dag/extdeps/github/workflow_runs.dag
 dag/extdeps/github/workflows.dag
 dag/extdeps/git/object_store.dag
 dag/extdeps/git/versioning.dag
-dag/extdeps/gpu/apple.dag
 dag/extdeps/gpu/machine_shape.dag
 dag/extdeps/gpu/nvidia.dag
 dag/extdeps/gpu/types.dag
@@ -176,7 +167,6 @@ dag/extdeps/languages/go/syntax.dag
 dag/extdeps/languages/go/types.dag
 dag/extdeps/languages/gpu/wgsl/kernel.dag
 dag/extdeps/languages/html.dag
-dag/extdeps/languages/html_fragment.dag
 dag/extdeps/languages/json/emit.dag
 dag/extdeps/languages/json/grammar.dag
 dag/extdeps/languages/json/parse.dag
@@ -203,7 +193,6 @@ dag/extdeps/languages/yaml/ingest.dag
 dag/extdeps/languages/yaml/types.dag
 dag/extdeps/linux/proc_meminfo.dag
 dag/extdeps/linux/usb_gadget.dag
-dag/extdeps/llm/anthropic_contracts.dag
 dag/extdeps/llm/anthropic.dag
 dag/extdeps/llm/anthropic_errors.dag
 dag/extdeps/llm/anthropic_rest.dag
@@ -216,7 +205,6 @@ dag/extdeps/llm/llm.dag
 dag/extdeps/llm/openai_contracts.dag
 dag/extdeps/llm/openai.dag
 dag/extdeps/llm/openai_errors.dag
-dag/extdeps/llm/openai_rest.dag
 dag/extdeps/memory.dag
 dag/extdeps/memory/jedec.dag
 dag/extdeps/memory/types.dag
@@ -249,7 +237,6 @@ dag/extdeps/pricing/hetzner_dedicated.dag
 dag/extdeps/pricing/object_storage.dag
 dag/extdeps/pricing/regional_compute.dag
 dag/extdeps/pricing/ubicloud.dag
-dag/extdeps/process/gnu_bash_exit.dag
 dag/extdeps/process/posix_exit.dag
 dag/extdeps/provisioning/dhcp_client_arch.dag
 dag/extdeps/provisioning/network_boot.dag
@@ -325,9 +312,7 @@ dag/extdeps/sudo/nopasswd_execute_probe_check_op.dag
 dag/extdeps/sudo/nopasswd_execute_probe.dag
 dag/extdeps/systemd/oomd.dag
 dag/extdeps/systemd/systemctl.dag
-dag/extdeps/systemd/systemd_contracts.dag
 dag/extdeps/systemd/systemd.dag
-dag/extdeps/tailscale/acl_api.dag
 dag/extdeps/tailscale/acl.dag
 dag/extdeps/tailscale/serve.dag
 dag/extdeps/tcgplayer/catalog.dag
@@ -378,5 +363,4 @@ dag/extdeps/version.dag
 dag/extdeps/version/pep440.dag
 dag/extdeps/version/semver.dag
 dag/extdeps/web_audio/web_audio.dag
-dag/extdeps/languages/lean/overflow.dag
 dag/extdeps/project_schedule/cpm_pert.dag

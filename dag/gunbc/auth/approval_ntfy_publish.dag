@@ -1,0 +1,115 @@
+module gunbc.auth.approval_ntfy_publish
+
+import std.types { NonEmptyStr, String, Int, Port, Secret }
+import extdeps.ntfy.ntfy { NtfyTopic, NtfyPublishReceipt, NtfyErrorShape }
+import extdeps.transports.rest { RestOutcome, RestOk }
+import extdeps.ietf.http_semantics { POST }
+import std.resources { Network }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_tailnet { fleet_tailnet_domain, tailnet_base_url_from }
+
+// ── The publish binding: transport and address, in the layer that owns them ──────────────────
+// DESIGN §3 puts the interface shape in extdeps and the TRANSPORT in realization -- "one of N,
+// never a fact about the dependency" -- so the REST binding and the server address live here,
+// beside the deployment they belong to (gunbc.auth.approval_ntfy_deployment), rather than in extdeps.ntfy where they would narrow that
+// module to this one fleet.
+//
+// This is also what makes a second deployment additive: another server is another binding beside
+// this one, and extdeps.ntfy does not change.
+//
+// ── §3c: WHO CONSUMES THIS, AND BY WHAT ROUTE ───────────────────────────────────────────────
+// Stated plainly because the honest answer today is "nothing in production yet", and a reviewer
+// should not have to grep to discover that. `ntfy.Publish.PublishMessage`, the `RestOutcome`
+// opt-in, `ntfy_publish_outcome_of` and `approval_ntfy_human_burden` have NO production caller in
+// this tree. §3c admits exactly three states, and this is the middle one -- a DECLARED FRONTIER --
+// which is admissible only with its trigger stated, so it is stated here.
+//
+// CONSUMED BY EXECUTION TODAY: the publish operation and the outcome fold are exercised against
+// the live self-hosted server by a wet probe (NtfyPublished { message_id: znjShbquiXow }), and
+// every arm of the fold plus every intervention property is exercised by
+// test.claim.ntfy_publish_outcome_witness_test and
+// test.claim.approval_ntfy_deployment_witness_test. That is execution, not a typecheck -- but a
+// witness is not a production consumer and this note does not claim it is.
+//
+// THE NAMED CONSUMER, AND ITS TRIGGER: the approval broker publishes a notification for a pending
+// AccessRequest. It lands when the request-minting path exists -- an AccessRequest produced from a
+// real refusal, its capability signed, and gunbc.roadmap_serve's ApprovalDecideHandler redeeming
+// it rather than answering 501, which it does today. Until that lands, nothing in production has a
+// reason to publish, and manufacturing an intermediate caller would only move the danglingness up
+// one level rather than remove it.
+//
+// If that consumer does not land, THIS BINDING IS THE THING TO DELETE. It is not infrastructure
+// worth keeping on its own: it exists to carry approval requests to a phone, and with no requests
+// it carries nothing.
+//
+// THE APPROVAL NTFY SERVER'S PUBLISH BINDING: the address a client dials and the one operation the
+// broker performs against it (gunbc.auth.approval_request_submission publish_notification). It is
+// apart from the server's deployment (gunbc.auth.approval_ntfy_deployment: the system account, the
+// state and config directories, the unit, the secrets) because a publisher needs the address and
+// the operation, and none of the converge machinery that installs the server.
+fn approval_ntfy_base_url_from(domain: NonEmptyStr?) -> NonEmptyStr {
+  tailnet_base_url_from(host: operator_host_srv1 as NonEmptyStr, domain: domain, port: Present { value: approval_ntfy_serve_port })
+}
+
+// The TLS port tailscale serve publishes on, distinct from the loopback port ntfy binds. srv1's
+// :443 already carries the dashboard, so the approval server takes its own.
+data approval_ntfy_serve_port: Port = 8443
+
+data approval_ntfy_base_url: NonEmptyStr = approval_ntfy_base_url_from(domain: fleet_tailnet_domain)
+
+// THE HERMETIC PUBLISH IS THE DECODED-200 SHAPE AND NOTHING ELSE: mock_response publishes one
+// result, so the hermetic arm is a published message whose id is the fixture's identity -- a live
+// ntfy id is a random 12-character string and cannot be this spelling. It exists so that a claim
+// can run the filing fold THROUGH the publish call: deleting ntfy.Publish.PublishMessage from
+// approval_request_submission must fail a control, not only an annotation.
+data hermetic_ntfy_publish_message_id: String = "hermetic-mock-ntfy-message"
+data hermetic_ntfy_publish_outcome: RestOutcome = RestOk
+
+service ntfy.Publish {
+  config {
+    endpoint: approval_ntfy_base_url
+    auth: Bearer
+    auth_input: access_token
+  }
+
+  operation PublishMessage {
+    requires Network
+    input {
+      access_token: Secret
+      topic: NtfyTopic
+      title: NonEmptyStr
+      body: NonEmptyStr
+      priority: Int
+      click: NonEmptyStr
+      cache: NonEmptyStr
+    }
+    output {
+      message_id: String from "id"
+      outcome: RestOutcome
+    }
+    transport rest {
+      method: POST,
+      path: "/",
+      headers: {
+        "Cache": cache
+      },
+      body: {
+        topic: topic,
+        message: body,
+        title: title,
+        priority: priority,
+        click: click
+      }
+    }
+    response {
+      200 => NtfyPublishReceipt
+      401 => NtfyErrorShape
+      403 => NtfyErrorShape
+      429 => NtfyErrorShape
+      5xx => NtfyErrorShape
+    }
+    mock_response {
+      200 => { message_id: hermetic_ntfy_publish_message_id, outcome: hermetic_ntfy_publish_outcome } "hermetic POST / decoded-200 shape; the id is the fixture identity, not a live ntfy message"
+    }
+  }
+}

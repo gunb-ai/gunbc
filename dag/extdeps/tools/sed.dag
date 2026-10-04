@@ -3,7 +3,6 @@ module extdeps.tools.sed
 import extdeps.exec.program { ProgramIdentity, cataloged_program }
 
 import std.types { NonEmptyStr, Bool, Int, Unit }
-import std.string_type { String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }

@@ -1,0 +1,55 @@
+module gunbc.rung_drop.fixture_closure_corpus_emit_refusals_lost_as_passenger
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, LostAsPassenger }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// THE DECLARED RUNG DROP for passenger coverage that gunbc#13037 (floor C1) removed (DESIGN 4b(3)).
+//
+// WHAT WAS LOST. Before gunbc#13037, compile_dag_rust_emit_check and compile_dag_diagnostic_census
+// rendered every module of a fixture's import closure (RenderEveryModule). So a CORPUS module in any
+// required-floor fixture's closure had its own per-module emit refusal rendered on every required
+// run, and that refusal reached the census rows or the emit check's hard-diagnostic gate. That
+// coverage was a passenger: no claim was about those modules, but it was the only required
+// execution that rendered most of them. gunbc#13037 renders only the fixture's modules plus the
+// read-path module (v1_compiler.cli_run fixture_render_selection), and its receipt
+// (gunbc.fixture_render_selection_seed_growth current_boundary) states that the generated-artifact
+// lanes render corpus modules for real.
+//
+// WHY THAT BOUNDARY DOES NOT HOLD, BY NAME. The only required phase that renders corpus modules
+// through the rust emitter is generated-artifact's stage0-mirrors half (and regen-fixed-point),
+// both in the build lane (gunbc.compiler_gate_workflow). Its population is the v1 SEED closure:
+// the modules named by a `// Source module:` header under src/v1/stage0/src.
+// On a pull request it renders only the AFFECTED mirrors (v1_compiler.required_regen_host
+// scope_selection). Registry projections are fixed generated artifacts, not per-module renders.
+//
+// THE POPULATION IS A RULE, NOT A TRANSCRIBED LIST (DESIGN section 6: name the instrument, never
+// transcribe its output). No entry point re-derives the set today. The one-off textual scan behind
+// gunbc#13127 (its PR body states the one-off figures) found most of the closure outside the seed. A list copied from that
+// scan would go stale the first time a fixture or the seed changes, and nothing would notice. The
+// instrument that would enumerate the set is the restoration itself: a phase that renders the
+// union of fixture closures has to compute that union first.
+//
+// CHEAPEST KNOWN RESTORATION, FOR THE OPERATOR TO FUND OR DECLINE: render the UNION of the fixture
+// closures ONCE per required floor run, as one phase inside the existing floor job, refusing the floor
+// on any per-module emit refusal. That is the deduplicated form of what gunbc#13037 removed: one
+// render per run instead of one per fill claim. No new job is needed.
+data fixture_closure_corpus_emit_refusals_lost_as_passenger: RungDrop = RungDrop {
+  identity: "fixture_closure_corpus_emit_refusals_lost_as_passenger" as NonEmptyStr,
+
+  subject: "per-module rust emit refusals of corpus modules reachable from required-floor fixture closures, outside the v1 seed closure",
+
+  declared: "2026-10-03",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: LostAsPassenger { carrier: "gunbc#13037 (floor C1): compile_dag_rust_emit_check and compile_dag_diagnostic_census stopped rendering every closure module (RenderEveryModule -> v1_compiler.cli_run fixture_render_selection)" },
+    population: [
+      "every corpus module in the transitive import closure of a fixture source passed to compile_dag_rust_emit_check or compile_dag_diagnostic_census on the required floor, that is not a v1 seed module (no `// Source module:` header under src/v1/stage0/src) or is a seed mirror that the affected-set bound (v1_compiler.required_regen_host scope_selection) does not select on the run in question"
+    ],
+    restoration_trigger: "every corpus module reachable from a required-floor fixture closure is rendered at least once per required run through the rust emitter, and a per-module emit refusal refuses the floor"
+  }
+}

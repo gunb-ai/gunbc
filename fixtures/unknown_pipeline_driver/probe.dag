@@ -1,7 +1,6 @@
 module test.fixture.unknown_pipeline_driver
 
 import std.compiler_entry { CompilerEntryDriver }
-import v2.std.logic { Bool }
 
 // AN ORDINARY ACCEPTED PROGRAM THAT THE EMITTER'S ARM SELECTION CANNOT READ. The declaration below
 // denotes SourceRootEvalDriver and resolves to it; it is spelled with its declaring module's

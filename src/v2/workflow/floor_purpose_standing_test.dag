@@ -1,10 +1,7 @@
 module v2.workflow.floor_purpose_standing_test
 
-// Bool ONLY. The True/False VARIANTS are deliberately not imported: v2.std.logic Bool is realized
-// as a native machine scalar, so those variants are values the interpreter has no match arm for --
-// the straddle the sibling module's header records. Importing them here would put the wrong
-// spelling within easy reach of the next person editing these controls.
-import v2.std.logic { Bool }
+// Bool ONLY, and the True/False VARIANTS are not imported: these controls compare host booleans, and
+// the one Bool (std.types, since the Bool de-fork) needs no import to be named.
 import std.decl_ref { decl_ref, DeclarationRef }
 import std.witness_purpose {
   WitnessPurpose,

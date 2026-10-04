@@ -1,6 +1,6 @@
 module extdeps.docker.container_stats
 
-import std.string_type { String }
+import extdeps.ietf.http_semantics { GET }
 import std.types { Timestamp, Int, Float }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size, byte_size_count, Nanosecond, nanosecond, nanosecond_count, Microsecond }

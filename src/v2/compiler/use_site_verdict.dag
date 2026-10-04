@@ -1,7 +1,7 @@
 module v2.compiler.use_site_verdict
 
+import std.types { List }
 import std.algebra { list_snoc_item }
-import v2.std.collection { List }
 import v2.std.node {
   Absent,
   Ambiguous,

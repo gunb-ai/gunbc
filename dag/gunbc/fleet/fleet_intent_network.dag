@@ -1,6 +1,7 @@
 module gunbc.fleet_intent_network
 
 import std.types { NonEmptyStr }
+import gunbc.fleet_tailnet { fleet_tailnet_domain }
 import extdeps.dhcp.v4 { MacAddress, StaticDhcpReservation, Active }
 import extdeps.network.ipv4 { ipv4_address }
 import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseRow }
@@ -385,7 +386,7 @@ data printer_02_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
 }
 
 data fleet_intent_network: NetworkTopology = NetworkTopology {
-  tailnet_domain: Present { value: "tailecbe08.ts.net" },
+  tailnet_domain: fleet_tailnet_domain,
   segments: [
     operator_lan_segment,
     operator_docker_bridge_default_segment,

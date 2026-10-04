@@ -1,0 +1,331 @@
+module v2.test.claim.parse.expression_bodied_continuation
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.parse { ParseArtifact, parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostics,
+  None,
+  Outcome,
+  Rejected,
+  bind_outcome,
+  outcome_accepted,
+  outcome_diagnostics
+}
+import v2.std.node { Arrow, ArrowBodyEdge, Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode, core_edge_label }
+import v2.std.node_query { find_arrow_body_child }
+import v2.std.text { String }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.test.parse.expression_bodied_fn_decl_parse {
+  g_tokenize_parse,
+  braced_fn_control_source,
+  empty_eq_fn_source,
+  expression_bodied_fn_source,
+  expression_bodied_literal_fn_source
+}
+
+// THE SEVEN'S CHAIN, CONTINUED PAST THE ONE CONSTRUCT THAT STOPS IT. The pinned subject
+// v2.test.parse.expression_bodied_fn_decl_parse runs
+//
+//   dag_prepared_grammar -> tokenize -> parse_module_prepared -> ParseArtifact.tree
+//     -> normalize -> recursive Arrow-body search
+//
+// and its front end stops at the MATCH ARMS in that chain, which are owned by the match-inference
+// lane. This file is that same chain over the SAME sources and the SAME production functions, with
+// the match arms replaced by bind_outcome -- whose continuation is an ordinary function parameter,
+// not an arm binder. Nothing downstream is re-implemented: normalize, find_arrow_body_child and the
+// recursive fold are the production readers the subject itself calls.
+//
+// SO A RED HERE IS A DOWNSTREAM DEFECT AND NOT THE MATCH BOUNDARY, which is the whole point: it
+// separates "the seven are blocked by one construct" from "the seven are blocked by one construct
+// AND whatever follows it", and only the second is a reason to keep waiting after the match owner
+// lands. The sources are IMPORTED from the subject rather than copied, so a control here cannot
+// drift from the text the seven actually parse.
+//
+// IT IS A CONTROL AND NOT A REWRITE. The pinned subject is untouched; when the match boundary lifts,
+// the seven run unchanged and this file remains as the finer-grained account of what they cover.
+fn cont_parse(text: String, file: Symbol) -> Outcome<Node> {
+  bind_outcome(
+    o: dag_prepared_grammar(),
+    f: fn(prepared) {
+      bind_outcome(
+        o: tokenize(text: text, file: file, rules: dag_lex()),
+        f: fn(token_stream) {
+          bind_outcome(
+            o: parse_module_prepared(
+              tokens: token_stream,
+              prepared: prepared,
+              validation_residue: outcome_diagnostics(o: dag_prepared_grammar())
+            ),
+            f: fn(artifact) { cont_artifact_tree(artifact: artifact) }
+          )
+        }
+      )
+    }
+  )
+}
+
+// THE PROJECTION UNDER QUALIFICATION, on the REAL carrier. `artifact` is a ParseArtifact -- a
+// production record whose `tree` field is a ParseTree (v2.std.grammar: an alias of Node) beside a
+// span index and an allocator -- so this exercises the same field access the subject performs, not a
+// fixture record shaped to resemble it. The receiver is a function parameter rather than a match-arm
+// binder, which is exactly the isolation this file exists to make.
+fn cont_artifact_tree(artifact: ParseArtifact) -> Outcome<Node> {
+  outcome_accepted(value: artifact.tree)
+}
+
+// THE RESIDUE THE SUBJECT THREADS EXPLICITLY IS THREADED HERE TOO, and that is not a formality: the
+// prepared grammar DOES carry residue. An earlier version of this file passed None on the assumption
+// that it did not, and the claim written to check that assumption went RED -- which is the only
+// reason this control now forwards the real thing rather than parsing under a residue the seven
+// never use. bind_outcome cannot supply it, because it merges diagnostics into the continuation
+// instead of handing them back, so the residue is read with v2.std.diagnostic outcome_diagnostics.
+test fn cont_the_prepared_grammar_carries_residue_holds() -> Bool {
+  match outcome_diagnostics(o: dag_prepared_grammar()) {
+    None => false
+    _ => true
+  }
+}
+
+fn cont_accepted(o: Outcome<Node>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE SUBJECT'S OWN RECURSIVE SEARCH, called rather than re-implemented.
+fn cont_tree_has_arrow_body(root: Node) -> Bool {
+  match find_arrow_body_child(root: root) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } =>
+      fold(root.children, init: false, f: fn(found, e) {
+        found || cont_tree_has_arrow_body(root: e.target)
+      })
+  }
+}
+
+// NORMALIZE, THEN THE SEARCH OVER ITS ROOT. `normalized.root` is a second projection on a real
+// production carrier (v2.compiler.normalized_tree NormalizedTree), read through a function parameter
+// for the same reason as the artifact's.
+fn cont_normalized_root(normalized: NormalizedTree) -> Outcome<Node> {
+  outcome_accepted(value: normalized.root)
+}
+
+fn cont_normalized_tree(parsed: Outcome<Node>) -> Outcome<Node> {
+  bind_outcome(
+    o: parsed,
+    f: fn(tree) {
+      bind_outcome(
+        o: normalize(parse_tree: tree),
+        f: fn(normalized) { cont_normalized_root(normalized: normalized) }
+      )
+    }
+  )
+}
+
+fn cont_normalize_has_arrow_body(parsed: Outcome<Node>) -> Bool {
+  match cont_normalized_tree(parsed: parsed) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } => cont_tree_has_arrow_body(root: root)
+  }
+}
+
+fn cont_expression_bodied_parsed() -> Outcome<Node> {
+  cont_parse(text: expression_bodied_fn_source, file: ^probe_expr_fn)
+}
+
+fn cont_expression_bodied_literal_parsed() -> Outcome<Node> {
+  cont_parse(text: expression_bodied_literal_fn_source, file: ^probe_expr_fn_lit)
+}
+
+fn cont_braced_parsed() -> Outcome<Node> {
+  cont_parse(text: braced_fn_control_source, file: ^probe_braced_fn)
+}
+
+// THE THREE PARSE ROWS, over the subject's own sources.
+test fn cont_expression_bodied_fn_decl_parses_holds() -> Bool {
+  cont_accepted(o: cont_expression_bodied_parsed())
+}
+
+test fn cont_expression_bodied_literal_fn_decl_parses_holds() -> Bool {
+  cont_accepted(o: cont_expression_bodied_literal_parsed())
+}
+
+test fn cont_braced_fn_decl_still_parses_holds() -> Bool {
+  cont_accepted(o: cont_braced_parsed())
+}
+
+// THE EMPTY-`=` ROW KEEPS ITS MEANING. The subject asserts that `fn f(a: Int) -> Int =` with no
+// body is REFUSED -- a grammar that accepted it would accept a declaration with nothing to run. It
+// is the one row here whose green is a refusal, so it is written as the refusal and not as the
+// negation of a helper that could go green for an unrelated reason: a source that failed to TOKENIZE
+// would also make `cont_accepted` false, so the arm is read directly.
+test fn cont_empty_eq_fn_decl_refuses_holds() -> Bool {
+  match cont_parse(text: empty_eq_fn_source, file: ^probe_empty_eq) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// THE THREE NORMALIZE ROWS. THEY STAY ON THE REAL CHAIN AND THEY STAY OVER THE NEW-WITNESS MARGIN, and
+// that is reported rather than engineered away. Where their cost sits was decided by measurement rather
+// than by reasoning: claim_batch over this entry, run against a transient row asserting only that
+// normalize ACCEPTS the braced control, puts effectively all of the expense in the parse and in
+// normalize itself and effectively none in the recursive arrow-body search -- so there is no cheap half
+// to remove. Both halves ARE this row's subject, which is "the declaration this parser produces still
+// carries its arrow body after normalize", so there is nothing here to supply that would not sever the
+// link being claimed. A hand-built parse tree handed to normalize would reach the same verdict through
+// a shape this file designed rather than the one the parser emits, which is the failure DESIGN
+// section 3 names as a fixture passing after the world it was built against moved. The isolating row is
+// not retained, because it answered its question once and would otherwise stand as one more
+// over-margin witness for a split that is now known.
+// EACH SOURCE'S PARSE-THEN-NORMALIZE RUNS ONCE, in a nullary producer the floor serves WARM
+// (v2.workflow.floor_pure_producer_share): a grammar-prepared parse plus normalize is more than one claim's
+// new-witness budget, and each row inspects only the Bool the chain decides.
+fn cont_braced_survives_normalize() -> Bool {
+  cont_normalize_has_arrow_body(parsed: cont_braced_parsed())
+}
+
+fn cont_expression_bodied_survives_normalize() -> Bool {
+  cont_normalize_has_arrow_body(parsed: cont_expression_bodied_parsed())
+}
+
+fn cont_expression_bodied_literal_survives_normalize() -> Bool {
+  cont_normalize_has_arrow_body(parsed: cont_expression_bodied_literal_parsed())
+}
+
+test fn cont_braced_fn_decl_survives_normalize_holds() -> Bool {
+  cont_braced_survives_normalize()
+}
+
+test fn cont_expression_bodied_fn_decl_survives_normalize_holds() -> Bool {
+  cont_expression_bodied_survives_normalize()
+}
+
+test fn cont_expression_bodied_literal_fn_decl_survives_normalize_holds() -> Bool {
+  cont_expression_bodied_literal_survives_normalize()
+}
+
+// THE RECURSIVE FOLD'S NEGATIVE CONTROL, which the subject does not carry. Every row above answers
+// TRUE through cont_tree_has_arrow_body, so a search that answered true for ANY tree would satisfy
+// all of them and establish nothing about the search. An atom has no children and no arrow body, so
+// it is the tree that must answer false -- and a fold that returned its init unconditionally, or a
+// find_arrow_body_child that accepted anything, goes red here and nowhere else.
+fn cont_leaf_atom() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^cont_leaf } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+test fn cont_the_arrow_body_search_answers_false_for_a_leaf_holds() -> Bool {
+  !cont_tree_has_arrow_body(root: cont_leaf_atom())
+}
+
+// AND ITS POSITIVE CONTROL AT THE SAME BOUNDARY: the search must find a body that IS there, reached
+// by RECURSION rather than at the root. The tree is SUPPLIED, and that is the rule rather than a
+// saving: this claim's subject is one interface -- what cont_tree_has_arrow_body answers for a tree
+// whose arrow body sits below the root -- and it used to obtain that tree by running
+// dag_prepared_grammar, tokenize, parse_module_prepared and normalize, re-executing four stages whose
+// results it never inspected (DESIGN section 3, a witness discriminates at one interface). The
+// diagnostic was exact: the row's cost did not move when its assertions changed, because the
+// assertions were never the expense.
+//
+// THE PAIRING OBLIGATION IS DISCHARGED BY cont_braced_fn_decl_survives_normalize_holds, which runs the
+// real chain over the real source and finds the same body through the same search -- so the shape
+// supplied here is one the real producer emits, asserted over the production route and not assumed.
+// Deleting normalize from that chain makes it fail; this row would not notice, which is exactly why it
+// is not the one that may stand alone.
+fn cont_arrow_with_body(body: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn cont_root_over(child: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: Positional, target: child }],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+test fn cont_the_arrow_body_search_recurses_to_find_a_body_holds() -> Bool {
+  let root = cont_root_over(child: cont_arrow_with_body(body: cont_leaf_atom()))
+  cont_tree_has_arrow_body(root: root)
+    && !cont_root_itself_has_arrow_body(root: root)
+}
+
+fn cont_root_itself_has_arrow_body(root: Node) -> Bool {
+  match find_arrow_body_child(root: root) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE CONTROL PRODUCES WHAT THE SUBJECT PRODUCES, asserted rather than assumed. Everything above is
+// only evidence about the seven if this chain and theirs agree, and "I used the same functions" is
+// not that evidence -- the residue defect this file already caught is exactly how they can diverge
+// while every row still looks green. So the two trees are compared directly, for each source, through
+// the subject's own entry point.
+//
+// IT COMPARES THE TREE AND NOT THE VERDICT. Two chains that both answer Accepted can still have
+// parsed differently; the node is what the rest of the chain consumes.
+fn cont_agrees_with_subject(mine: Outcome<Node>, theirs: Outcome<Node>) -> Bool {
+  match mine {
+    Rejected { diagnostics: _ } =>
+      match theirs {
+        Rejected { diagnostics: _ } => true
+        Accepted { value: _, diagnostics: _ } => false
+      }
+    Accepted { value: a, diagnostics: _ } =>
+      match theirs {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: b, diagnostics: _ } => a == b
+      }
+  }
+}
+
+//
+// ONE SOURCE PER ROW. The three agreements are independent cases over three different texts, so
+// folding them into one row forced six parses through one enrolment budget and lost no coverage when
+// split -- which is the conjunction tell DESIGN section 3 names beside the reach it is a symptom of.
+test fn cont_the_continuation_parses_the_same_tree_as_the_subject_holds() -> Bool {
+  cont_agrees_with_subject(
+    mine: cont_expression_bodied_parsed(),
+    theirs: g_tokenize_parse(text: expression_bodied_fn_source, file: ^probe_expr_fn)
+  )
+}
+
+test fn cont_the_continuation_parses_the_literal_form_as_the_subject_does_holds() -> Bool {
+  cont_agrees_with_subject(
+    mine: cont_expression_bodied_literal_parsed(),
+    theirs: g_tokenize_parse(text: expression_bodied_literal_fn_source, file: ^probe_expr_fn_lit)
+  )
+}
+
+test fn cont_the_continuation_parses_the_braced_control_as_the_subject_does_holds() -> Bool {
+  cont_agrees_with_subject(
+    mine: cont_braced_parsed(),
+    theirs: g_tokenize_parse(text: braced_fn_control_source, file: ^probe_braced_fn)
+  )
+}
+
+// AND IT AGREES ON THE REFUSAL TOO, so the empty-`=` row is the subject's refusal and not merely a
+// refusal of the same shape.
+test fn cont_the_continuation_refuses_where_the_subject_refuses_holds() -> Bool {
+  cont_agrees_with_subject(
+    mine: cont_parse(text: empty_eq_fn_source, file: ^probe_empty_eq),
+    theirs: g_tokenize_parse(text: empty_eq_fn_source, file: ^probe_empty_eq)
+  )
+}

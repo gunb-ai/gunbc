@@ -34,7 +34,6 @@ import v2.std.compilers.target_model {
   target_type_expr_emitted_wire_decode
 }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.collection { list_at_optional }
 import v2.std.node_query { node_positional_child_targets }

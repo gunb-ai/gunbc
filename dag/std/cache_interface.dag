@@ -80,10 +80,22 @@ type CapacityPolicy
 // Lifetime names no frame: the provider already carries its scope as
 // List<Frame>, so ReleasedAtProviderScopeExit says storage ends with THAT
 // scope rather than re-spelling "witness" or "entry" in a second place.
+//
+// TIMED RELEASE IS RETENTION, NOT FRESHNESS. ReleasedAfterInterval says the
+// store reclaims an entry a fixed interval after it was WRITTEN (an object
+// lifecycle rule, a workflow-artifact retention period): the entry is then
+// absent, and a lookup answers an established Miss. It is not TtlExpiry, which
+// lives on InvalidationTrigger and says the VALUE stops being the answer after a
+// window while the entry may still be held. A warming cache whose key is
+// complete has no freshness window at all -- its entry is correct for as long as
+// it exists -- so spelling its lifecycle rule as TtlExpiry would claim that a
+// held entry goes stale, and spelling a freshness window as timed release would
+// claim the store deletes what it merely stops trusting. Two facts, two carriers.
 type ReleasePolicy
   = ReleasedAtProviderScopeExit
   | ReleasedNever
   | ReleasedManually
+  | ReleasedAfterInterval { after_write: Second }
 
 // The product the old sum could not express. One vocabulary serves both the
 // cited mechanism and the ladder's required class: with the axes separated,
@@ -105,11 +117,15 @@ type ProviderRetention {
 // time and never about peak. A role asks the predicate matching its obligation.
 
 // Growth over time: storage ends with the provider's scope, or a ceiling exists.
+// Timed release bounds an entry's LIFETIME, not the store's size: the held
+// population is the write rate times the interval, and no row carries a write
+// rate, so a timed-release store is bounded only when a ceiling exists as well.
 fn retention_growth_is_bounded(r: ProviderRetention) -> Bool {
   match r.release_policy {
     ReleasedAtProviderScopeExit => true
     ReleasedNever => retention_has_capacity_bound(r: r)
     ReleasedManually => retention_has_capacity_bound(r: r)
+    ReleasedAfterInterval { after_write: _ } => retention_has_capacity_bound(r: r)
   }
 }
 
@@ -316,19 +332,46 @@ type CacheWriteResult<T>
   | WriteSkippedIdempotent { receipt: CachedArtifactReceipt<T> }
   | WriteRejected { reason: CacheWriteRejectReason }
 
+// A REJECTED HIT IS NOT A MISS. Only two observations license recomputation:
+// established absence, and a declared invalidation trigger having fired
+// (FreshnessExpired -- the held value is no longer the answer, by the key's own
+// declaration). Every other rejection says the store, the transport or the held
+// bytes are not what the key promised: a digest that does not match, a missing
+// producer receipt, a malformed key, a refused or unreachable backend, a
+// transport that could not carry the value faithfully. Recomputing over those
+// is the absorbing fallback (DESIGN 5): the rebuild succeeds, the corrupt or
+// unreachable store is never reported, and the deficit never ranks for repair.
+// So they refuse, typed and located, and the line stops.
 type RecomputeReason
   = SubjectAbsent
-  | HitRefused { reason: CacheRejectReason }
+  | InvalidationFired
+
+type RefuseReason
+  = HitRefused { reason: CacheRejectReason }
 
 type RealizeRoute<T>
   = Reuse { receipt: CachedArtifactReceipt<T> }
   | Recompute { reason: RecomputeReason }
+  | Refuse { reason: RefuseReason }
 
 fn realize_route<T>(lookup: CacheLookupResult<T>) -> RealizeRoute<T> {
   match lookup {
     Hit { receipt } => Reuse { receipt: receipt }
     Miss => Recompute { reason: SubjectAbsent }
-    RejectedHit { reason: r } => Recompute { reason: HitRefused { reason: r } }
+    RejectedHit { reason: r } => rejected_hit_route(reason: r)
+  }
+}
+
+fn rejected_hit_route<T>(reason: CacheRejectReason) -> RealizeRoute<T> {
+  match reason {
+    FreshnessExpired => Recompute { reason: InvalidationFired }
+    SubjectDigestMismatch => Refuse { reason: HitRefused { reason: reason } }
+    ContentDigestMismatch => Refuse { reason: HitRefused { reason: reason } }
+    ProducerReceiptMissing => Refuse { reason: HitRefused { reason: reason } }
+    BackendKeyMalformed => Refuse { reason: HitRefused { reason: reason } }
+    BackendUnauthorized => Refuse { reason: HitRefused { reason: reason } }
+    BackendUnavailable => Refuse { reason: HitRefused { reason: reason } }
+    TransportFaithfulnessFailure { reason: _ } => Refuse { reason: HitRefused { reason: reason } }
   }
 }
 

@@ -50,11 +50,15 @@ import gunbc.cloudflare.r2_permission_group_observe {
 }
 import gunbc.cloudflare.r2_token_mint { cloudflare_r2_token_mint_frontier_rows }
 import product.supplier.cloudflare_r2 { cloudflare_r2_supplier_frontier_rows }
-import gunbc.cloudflare.r2_origin_object {
+import gunbc.cloudflare.r2_staged_transfer {
   S3TransferAnswer,
   S3Answered,
   S3NotAnswered,
   classify_s3_transfer,
+  WriteCredentialShredded,
+  WriteCredentialResidueRemains,
+}
+import gunbc.cloudflare.r2_origin_object {
   classify_origin_put,
   classify_origin_fetch,
   OriginPutOutcome,
@@ -73,8 +77,6 @@ import gunbc.cloudflare.r2_origin_object {
   resolve_origin_target,
   resolve_origin_target_under,
   OriginPut,
-  WriteCredentialShredded,
-  WriteCredentialResidueRemains,
   put_is_clean,
 }
 import gunbc.fabric_m0_origin_readback {
@@ -395,6 +397,7 @@ test fn origin_write_target_refuses_while_the_write_credential_is_unminted() -> 
       },
       write_credential: OriginCredentialUnminted {
         mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint_run", decl_name: "run_object_write"),
+        secret_id: "witness-write",
       },
     },
   }
