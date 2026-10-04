@@ -3078,7 +3078,7 @@ pub fn is_list_shrink_expr(
                     .clone()
                     {
                         ExprData::ExprLiteral { ref value, .. }
-                            if matches!(value.as_ref(), LiteralValue::LitInt { value: _, .. }) =>
+                            if matches!(value.as_ref(), LiteralValue::LitInt { .. }) =>
                         {
                             let LiteralValue::LitInt { value: n, .. } = value.as_ref() else {
                                 unreachable!()
@@ -3115,7 +3115,7 @@ pub fn is_generalized_shrink(expr: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIn
                     .clone()
                     {
                         ExprData::ExprLiteral { ref value, .. }
-                            if matches!(value.as_ref(), LiteralValue::LitInt { value: _, .. }) =>
+                            if matches!(value.as_ref(), LiteralValue::LitInt { .. }) =>
                         {
                             let LiteralValue::LitInt { value: n, .. } = value.as_ref() else {
                                 unreachable!()
@@ -4517,10 +4517,7 @@ pub fn is_arithmetic_descent_expr(
                         == param_name.clone())
                         && match (*right.expr_data.clone()).clone() {
                             ExprData::ExprLiteral { ref value, .. }
-                                if matches!(
-                                    value.as_ref(),
-                                    LiteralValue::LitInt { value: _, .. }
-                                ) =>
+                                if matches!(value.as_ref(), LiteralValue::LitInt { .. }) =>
                             {
                                 let LiteralValue::LitInt { value: n, .. } = value.as_ref() else {
                                     unreachable!()
