@@ -38,10 +38,9 @@ import gunbc.github_effect_perform {
 // repository Administration (write) permission (extdeps.github.effect ManageRepositoryRulesets). The
 // ensure asks credential_authorizes of the authority -- whose App and installation must be the
 // token's -- over the observed control-plane state, before any request. Approval: the operator,
-// by default through this ensure, conditional on gunbai-ci already holding administration:write.
-// That permission is not yet established: fleet-converge app_control_plane_observe run 37215976003
-// failed at the webhook-config read before reporting the registration's permissions
-// (gunbc.auth.privileged_effect_census). The code gate refuses without it either way.
+// by default through this ensure, conditional on gunbai-ci already holding administration:write;
+// the evidence is the App registration read by fleet-converge app_control_plane_observe run
+// 37215976003 (gunbc.auth.privileged_effect_census).
 
 data qualification_ruleset_name: NonEmptyStr = "runner-qualification-pins"
 data qualification_ruleset_include: NonEmptyStr = "refs/heads/qualification/**"
