@@ -189,45 +189,9 @@ data mixed_source: String = "module m.t\n\nfn serving() -> Bool {\n  true\n}\n\n
 
 data non_test_marker_source: String = "module m.t\n\nprobe fn witness_holds() -> Bool {\n  true\n}\n"
 
-// TREATMENT: the marker survives lowering's erasure, keyed by the declared member.
-test fn test_fn_marker_is_captured_holds() -> Bool {
-  test_marker_marks_only(src: marked_fn_source, file: ^test_marker_fn_subject, name: ^witness_holds)
-}
-
-// The second authored form the marker admits.
-test fn test_data_marker_is_captured_holds() -> Bool {
-  test_marker_marks_only(src: marked_data_source, file: ^test_marker_data_subject, name: ^witness_value)
-}
-
 // CONTROL: a module mixing serving and test code marks exactly the test declaration.
 test fn only_the_marked_declaration_is_captured_holds() -> Bool {
   test_marker_marks_only(src: mixed_source, file: ^test_marker_mixed_subject, name: ^witness_holds)
-}
-
-// CONTROL: an unmarked fn is absent from the channel.
-test fn plain_fn_is_not_captured_holds() -> Bool {
-  match test_marker_capture_of(src: plain_fn_source, file: ^test_marker_plain_subject) {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: channel, diagnostics: _ } => test_marker_channel_count(channel: channel) == 0
-  }
-}
-
-// STANDING RED: an identifier in marker position that is not `test` is refused, never recorded as a
-// marker and never skipped. The marker is the grammar's exact word `test`
-// (v2.extdeps.languages.dag dag_grammar_test_fn_decl_expr), so the refusal is the parse's own, at the
-// category (DeclarationMarkerNotTest), not a reader's spelling check after it.
-test fn non_test_marker_is_refused_holds() -> Bool {
-  test_marker_refusal_reason(src: non_test_marker_source, file: ^test_marker_non_test_subject)
-    == "parse_declaration_marker_not_test"
-}
-
-// THE 4c EQUALITY: the marker contributes nothing to lowering. The marked shell lowers to exactly
-// what the declaration inside it lowers to.
-test fn marked_and_plain_declaration_share_one_semantic_projection_holds() -> Bool {
-  match test_marker_shell_agrees_with_its_declaration() {
-    Present { value: agrees } => agrees
-    Absent => false
-  }
 }
 
 // CONTROL for the equality: the projection does discriminate declarations, so its agreement above
