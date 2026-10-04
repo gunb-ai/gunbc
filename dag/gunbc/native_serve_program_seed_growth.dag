@@ -1,0 +1,33 @@
+module gunbc.native_serve_program_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data native_serve_program_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.native_lane_runner",
+      decl_name: "NativeServeProgramRun",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.native_lane_runner",
+      decl_name: "run_native_serve_program",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.target_invocation_host",
+      decl_name: "run_native_serve_program",
+      field: WholeDeclaration
+    }
+  ],
+
+  reason: "The one producer arm for std.compiler_entry NativeServeDriver services (gunbc.target_binding NativeServeProgramProducer { entry }), the instrument the operator ruling of 2026-10-03 asked for beside the arm. Its host part is only what no .dag fold can do: emit and build through the existing prepare_emitted_compiler_for_entry, spawn the built service, read the address it announces, write the requests gunbc.native_serve_probe native_serve_probe_requests names to real TCP connections, and carry the bytes that came back out unjudged, plus one launch with gunbc.native_serve_probe native_serve_probe_refused_revision whose status and stderr it carries the same way. Every verdict -- the cases, what each owes, the join of responses to cases, the refused start -- is native_serve_probe_standing, evaluated by the host and mapped through cli_run classify_exit, so the host adds none. It is ONE arm generic over its entry: the approval broker's native service is a binding row, not another arm.",
+
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+
+  trigger: "Delete these declarations when gunbc test's producer dispatch is emitted rather than hand-mirrored (the capability gunbc.target_invocation_seed_growth names for target_invocation_host as a whole) AND an emitted driver can spawn a built service, exchange bytes with it over a socket and hand them to a .dag fold, SUFFICIENT FOR //gunbc/instruments:native-serve to run with no hand-authored producer body. WHAT DOES NOT RETIRE IT: moving the spawn or the socket exchange to another host file; folding the reader into Rust.",
+
+  current_boundary: "src/v1/stage0/src/cli_run/native_lane_runner.rs run_native_serve_program and NativeServeProgramRun, called once from src/v1/stage0/src/target_invocation_host.rs run_native_serve_program, behind gunbc test //gunbc/instruments:native-serve"
+}

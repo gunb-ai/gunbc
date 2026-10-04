@@ -13,7 +13,8 @@ import v2.extdeps.languages.bash_build {
 }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.cloudflare.r2 { R2S3Endpoint, r2_s3_endpoint_host, r2_s3_endpoint_url, r2_s3_sigv4_region }
-import extdeps.tools.curl { curl_sigv4_s3_upload_command, curl_sigv4_s3_download_command }
+import extdeps.tools.curl { curl_sigv4_s3_upload_command, curl_sigv4_s3_download_command, ReportStatus }
+import extdeps.object_storage { PutIfAbsent }
 import extdeps.exec.command { argv_words }
 import std.types { FilePath }
 import gunbc.cloudflare.r2_origin {
@@ -225,7 +226,7 @@ fn fabric_blob_get_statements(target: FabricBlobShellTarget) -> List<Node> {
   match target {
     FabricBlobShellUnreachable { cause: c } => [refuse(name: "CacheUnreachable", message: c as String)]
     FabricBlobShellReady { endpoint: e, bucket: _, read_key_id: rk, read_token: rt, write_key_id: _, write_token: _ } => {
-      let download = argv_words(command: curl_sigv4_s3_download_command(url: url_hole, destination: path_hole, netrc_path: netrc_hole as FilePath, sigv4_region: r2_s3_sigv4_region))
+      let download = argv_words(command: curl_sigv4_s3_download_command(url: url_hole, destination: path_hole, netrc_path: netrc_hole as FilePath, sigv4_region: r2_s3_sigv4_region, report: ReportStatus))
       concat(concat(bracket_open(), credential_statements(netrc_file: "read.netrc", host: r2_s3_endpoint_host(endpoint: e), key_id: rk, token: rt)), [
         assign_sub(name: "GET_CODE", body: bash_build_subshell_from_stmts(stmts: [bash_build_or_else(
             left: argv_node(argv: download, holes: [
@@ -278,8 +279,8 @@ fn fabric_blob_put_statements(target: FabricBlobShellTarget) -> List<Node> {
   match target {
     FabricBlobShellUnreachable { cause: c } => [refuse(name: "CacheUnreachable", message: c as String)]
     FabricBlobShellReady { endpoint: e, bucket: _, read_key_id: rk, read_token: rt, write_key_id: wk, write_token: wt } => {
-      let upload = argv_words(command: curl_sigv4_s3_upload_command(url: url_hole, local_path: path_hole, netrc_path: netrc_hole as FilePath, sigv4_region: r2_s3_sigv4_region, create_only: true))
-      let download = argv_words(command: curl_sigv4_s3_download_command(url: url_hole, destination: path_hole, netrc_path: netrc_hole as FilePath, sigv4_region: r2_s3_sigv4_region))
+      let upload = argv_words(command: curl_sigv4_s3_upload_command(url: url_hole, local_path: path_hole, netrc_path: netrc_hole as FilePath, sigv4_region: r2_s3_sigv4_region, precondition: PutIfAbsent, report: ReportStatus))
+      let download = argv_words(command: curl_sigv4_s3_download_command(url: url_hole, destination: path_hole, netrc_path: netrc_hole as FilePath, sigv4_region: r2_s3_sigv4_region, report: ReportStatus))
       let host = r2_s3_endpoint_host(endpoint: e)
       concat(concat(concat(bracket_open(), [
         assign_sub(name: "OFFERED_SIZE", body: bash_build_subshell_from_stmts(stmts: [cmd(ws: [lit(t: "stat"), lit(t: "-c"), lit(t: "%s"), lit(t: "--"), var(n: "FABRIC_BLOB_IN")])])),

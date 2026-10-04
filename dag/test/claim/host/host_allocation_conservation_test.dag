@@ -11,9 +11,7 @@ import std.types { String, Bool, Int, List }
 import std.measure { ByteSize, byte_size, hardware_thread_count_value }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network {
-  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
-}
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.live_deploy.served_slice_charge { host_served_deployment_claim, HostServedDeploymentClaim, ServedDeploymentNotPlaced, ServedDeploymentClaimResolved, ServedDeploymentClaimUnmeasured }
 import gunbc.fleet_host_budget {
   host_allocation_verdict,
@@ -37,7 +35,7 @@ import gunbc.host_memory_observation {
   gunbc_ci_host_usable_ram_for,
   gunbc_ci_host_fixed_overhead_for,
 }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_demand_sum_memory_max, gunbc_admitted_runner_slot_allocations, gunbc_runner_slice_cap_for_width, host_runner_pool_charge, host_memory_admitted_width, gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_slot_shape_standing, RunnerSlotShapeAdmitted, RunnerSlotShapeRefusedZeroMemoryMax, gunbc_runner_cores_per_slot, host_cpu_admitted_width, host_disk_admitted_width, DiskWidthUnconstrained, DiskAdmitsWidth }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_demand_sum_memory_max, gunbc_admitted_runner_slot_allocations, gunbc_runner_slice_cap_for_width, host_runner_pool_charge, host_memory_admitted_width, gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, runner_slot_shape_standing, RunnerSlotShapeAdmitted, RunnerSlotShapeRefusedZeroMemoryMax, gunbc_runner_cores_per_slot, host_cpu_admitted_width, CpuWidthDerived, CpuWidthOfferAbsent, host_disk_admitted_width, DiskWidthUnconstrained, DiskAdmitsWidth }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotDesired, RunnerSlotLabels, SlotCpuQuotaUnbounded }
 import gunbc.fabric_control_plane_charge {
   host_fabric_control_plane_claim,
@@ -1105,7 +1103,10 @@ test fn w_live_slot_shape_is_admitted() -> Bool {
 // axis at 128 the memory admission IS the committed width on every derived host.
 test fn w_cpu_axis_admits_the_catalog_core_count_at_one_core_per_slot() -> Bool {
   hardware_thread_count_value(t: gunbc_runner_cores_per_slot()) == 1
-    && host_cpu_admitted_width(host: operator_host_srv1) == altra_max_m12830_catalog.cores
+    && match host_cpu_admitted_width(host: operator_host_srv1) {
+      CpuWidthDerived { slots: n } => n == altra_max_m12830_catalog.cores
+      CpuWidthOfferAbsent { host: _ } => false
+    }
     && committed_equals_memory_admission(host: operator_host_srv1)
     && committed_equals_memory_admission(host: operator_host_srv3)
 }

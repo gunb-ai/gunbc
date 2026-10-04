@@ -1,0 +1,402 @@
+module test.claim.managed_host_unit_hold_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.durable_exclusive_hold {
+  DurableHoldOwnerRef, DurableHoldReleaseRef, HoldSlotAbsent, HoldSlotFree, HoldSlotHeld, HoldSlotUndecodable,
+  HoldReleaseAgainstAnotherGeneration, HoldReleaseHeldByAnotherOwner, HoldReleaseAlreadyFree,
+}
+import std.durable_compare_and_set { CasGeneration, cas_generation_first }
+import gunbc.durable_exclusive_hold_file_store {
+  FileHoldAcquireOutcome, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldSlotUndecodable,
+  FileHoldReleased, FileHoldReleaseLost,
+}
+import gunbc.fleet_host_identity { operator_host_mtcollins1, operator_host_srv1 }
+import gunbc.managed_host { ResetNoUnitHold, ResetUnitHoldRequired, managed_host_fixture, managed_hosts }
+import gunbc.managed_host_unit_hold {
+  UnitHoldOwner, OperatorMaintenance, BootRun, HostResetReturn, KvmObserverProbe, UnitHoldOwnerDecoded, UnitHoldOwnerUnrecognized,
+  unit_hold_owner_ref, decode_unit_hold_owner, unit_hold_owner_label,
+  unit_hold_refusal, operator_maintenance_owner, boot_run_owner, host_reset_owner,
+  ProbeHoldReleaseDecision, ProbeHoldReleaseAt, ProbeHoldFreeNoop, ProbeHoldForeignNoop, ProbeHoldUnobservable,
+  ProbeHoldReleaseOutcome, ProbeHoldReleased, ProbeHoldAlreadyFree, ProbeHoldNotOurs, ProbeHoldStale, ProbeHoldUnreleased,
+  probe_hold_release_decision, probe_hold_release_refused, probe_hold_release_committed,
+  HolderLivenessRoute, HolderObserveProcess, HolderNotObservable, holder_liveness_route,
+  UnitHoldSubjectAdmitted, UnitHoldNotRequired, admit_unit_hold_subject,
+  UnitHoldHostAdmitted, UnitHoldHostNotManaged, UnitHoldHostNotRequired,
+  unit_hold_admission_in, unit_hold_admission_for, unit_hold_host_admission_refusal,
+  unit_hold_store_hosts, unit_hold_store_hosts_of,
+  MaintenanceHoldAdmitted, MaintenanceHoldHostRefused, MaintenanceHoldNoReasonVariable, admit_maintenance_hold_in,
+  maintenance_hold_take, maintenance_hold_release,
+  UnitHoldExecutorIsStoreHost, UnitHoldExecutorElsewhere, UnitHoldStoreHostUnallocated, UnitHoldExecutorUnread,
+  unit_hold_store_executor_decision, unit_hold_store_executor_refusal,
+  UnitHoldOnStoreHost, UnitHoldNotOnStoreHost, unit_hold_store_executor,
+}
+import v2.std.optional { Present, Absent }
+import gunbc.build_cache_instance { ProcessIdentity }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── The admission: which hosts have a hold, read off the managed rows ──────────────────────────
+// THE INHABITANCE CLAIM, AND IT ASSERTS THE ROUTE. The real roster admits mtcollins1 to the hold
+// procedure with the key and store host its row declares, the store-host set the runner grants
+// provision from is exactly that store host, and the operator's maintenance admission carries the
+// variable its policy declares. Removing the row, or its hold decision, turns this red.
+test fn w_the_managed_row_is_admitted_to_its_hold_with_its_own_key_and_store() -> Bool {
+  let stores = unit_hold_store_hosts()
+  (match unit_hold_admission_for(host: operator_host_mtcollins1 as NonEmptyStr) {
+    UnitHoldHostAdmitted { subject: s } =>
+      (s.key as String) == (operator_host_mtcollins1 as String)
+        && (s.store_host as String) == (operator_host_srv1 as String)
+        && (s.host.host as String) == (operator_host_mtcollins1 as String)
+    UnitHoldHostNotManaged { host: _ } => false
+    UnitHoldHostNotRequired { host: _ } => false
+  })
+    && count(stores) == 1
+    && stores |> all(h => (h as String) == (operator_host_srv1 as String))
+    && (match admit_maintenance_hold_in(hosts: managed_hosts(), host: operator_host_mtcollins1 as NonEmptyStr) {
+      MaintenanceHoldAdmitted { hold: m } => (m.reason_env as String) == "GUNBC_MTCOLLINS1_MAINTENANCE_REASON" && (m.subject.key as String) == (operator_host_mtcollins1 as String)
+      MaintenanceHoldHostRefused { admission: _ } => false
+      MaintenanceHoldNoReasonVariable { host: _ } => false
+    })
+}
+
+fn refusal_names(admission_text: NonEmptyStr?, pattern: String) -> Bool {
+  match admission_text {
+    Present { value: t } => string_contains(s: t as String, pattern: pattern)
+    Absent => false
+  }
+}
+
+// RED: A HOST THAT IS NOT A MANAGED HOST. A label no row carries is refused as unmanaged, by name, on
+// the same fold the admitted host passes; and the same-path red for the row itself -- the real label
+// against a roster with the row removed -- refuses the same way. Nothing derives a key from the label.
+test fn w_a_host_that_is_not_a_managed_host_is_refused_by_name() -> Bool {
+  let unmanaged = unit_hold_admission_for(host: "mtjade1" as NonEmptyStr)
+  (match unmanaged {
+    UnitHoldHostNotManaged { host: h } => (h as String) == "mtjade1"
+    UnitHoldHostAdmitted { subject: _ } => false
+    UnitHoldHostNotRequired { host: _ } => false
+  })
+    && refusal_names(admission_text: unit_hold_host_admission_refusal(admission: unmanaged), pattern: "'mtjade1' is not a managed host")
+    && (match unit_hold_admission_in(hosts: [], host: operator_host_mtcollins1 as NonEmptyStr) {
+      UnitHoldHostNotManaged { host: h } => (h as String) == (operator_host_mtcollins1 as String)
+      UnitHoldHostAdmitted { subject: _ } => false
+      UnitHoldHostNotRequired { host: _ } => false
+    })
+    && (match admit_maintenance_hold_in(hosts: managed_hosts(), host: "mtjade1" as NonEmptyStr) {
+      MaintenanceHoldHostRefused { admission: a } => refusal_names(admission_text: unit_hold_host_admission_refusal(admission: a), pattern: "'mtjade1' is not a managed host")
+      MaintenanceHoldAdmitted { hold: _ } => false
+      MaintenanceHoldNoReasonVariable { host: _ } => false
+    })
+}
+
+// RED: A MANAGED HOST WHOSE ROW DECLARES NO HOLD. The real row's standings are kept and its hold
+// decision replaced by ResetNoUnitHold, under its own name and under another: both are refused as
+// hold-less, neither contributes a store host, and the operator's maintenance admission refuses it.
+test fn w_a_managed_host_with_no_unit_hold_is_refused_and_has_no_store() -> Bool {
+  managed_hosts() |> all(h => {
+    let unheld = managed_host_fixture(host: h.host, access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: ResetNoUnitHold, smpro: h.smpro)
+    let other = managed_host_fixture(host: "fixture-unheld-host", access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: ResetNoUnitHold, smpro: h.smpro)
+    let direct = match admit_unit_hold_subject(host: unheld) {
+      UnitHoldNotRequired { host: x } => (x as String) == (h.host as String)
+      UnitHoldSubjectAdmitted { subject: _ } => false
+    }
+    let by_label = unit_hold_admission_in(hosts: [unheld], host: h.host as NonEmptyStr)
+    let refused = match by_label {
+      UnitHoldHostNotRequired { host: x } => (x as String) == (h.host as String)
+      UnitHoldHostAdmitted { subject: _ } => false
+      UnitHoldHostNotManaged { host: _ } => false
+    }
+    let beside_a_held_row = match unit_hold_admission_in(hosts: [other, h], host: "fixture-unheld-host" as NonEmptyStr) {
+      UnitHoldHostNotRequired { host: x } => (x as String) == "fixture-unheld-host"
+      UnitHoldHostAdmitted { subject: _ } => false
+      UnitHoldHostNotManaged { host: _ } => false
+    }
+    let maintenance = match admit_maintenance_hold_in(hosts: [unheld], host: h.host as NonEmptyStr) {
+      MaintenanceHoldHostRefused { admission: a } => refusal_names(admission_text: unit_hold_host_admission_refusal(admission: a), pattern: "declares no unit hold")
+      MaintenanceHoldAdmitted { hold: _ } => false
+      MaintenanceHoldNoReasonVariable { host: _ } => false
+    }
+    let stores = unit_hold_store_hosts_of(hosts: [other, h])
+    direct && refused && beside_a_held_row && maintenance
+      && refusal_names(admission_text: unit_hold_host_admission_refusal(admission: by_label), pattern: "declares no unit hold")
+      && count(unit_hold_store_hosts_of(hosts: [unheld, other])) == 0
+      && count(stores) == 1
+      && stores |> all(s => (s as String) == (operator_host_srv1 as String))
+  }) && count(managed_hosts()) == 1
+}
+
+// RED: A HELD HOST WITH NO DECLARED REASON VARIABLE. The real row under a name
+// gunbc.host_maintenance_hold_reason has no variable for is admitted to the hold and refused for
+// maintenance, naming the host; no variable name is derived from the label.
+// Three rows naming one store host yield that host once (unit_hold_store_hosts_of).
+test fn w_a_held_host_with_no_reason_variable_is_refused_for_maintenance() -> Bool {
+  managed_hosts() |> all(h => {
+    let unnamed = managed_host_fixture(host: "fixture-no-reason-host", access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+    let held = match unit_hold_admission_in(hosts: [unnamed], host: "fixture-no-reason-host" as NonEmptyStr) {
+      UnitHoldHostAdmitted { subject: _ } => true
+      UnitHoldHostNotManaged { host: _ } => false
+      UnitHoldHostNotRequired { host: _ } => false
+    }
+    let maintenance = match admit_maintenance_hold_in(hosts: [unnamed], host: "fixture-no-reason-host" as NonEmptyStr) {
+      MaintenanceHoldNoReasonVariable { host: x } => (x as String) == "fixture-no-reason-host"
+      MaintenanceHoldAdmitted { hold: _ } => false
+      MaintenanceHoldHostRefused { admission: _ } => false
+    }
+    let shared = unit_hold_store_hosts_of(hosts: [unnamed, h, unnamed])
+    held && maintenance
+      && count(shared) == 1
+      && shared |> all(x => (x as String) == (operator_host_srv1 as String))
+  }) && count(managed_hosts()) == 1
+}
+
+fn exit_refused_naming(e: ProcessExit, pattern: String) -> Bool {
+  match e {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: pattern)
+  }
+}
+
+// THE OPERATOR'S ENTRIES REFUSE BEFORE THE STORE: an unnamed host and an unmanaged one each exit with
+// the admission's cause, on the entry an operator actually runs. The admission precedes the reason
+// read and every store call, so these exits touch nothing.
+test fn w_the_operator_entries_refuse_an_unnamed_or_unmanaged_host() -> Bool {
+  exit_refused_naming(e: maintenance_hold_take(host: ""), pattern: "no host named")
+    && exit_refused_naming(e: maintenance_hold_release(host: " "), pattern: "no host named")
+    && exit_refused_naming(e: maintenance_hold_take(host: "mtjade1"), pattern: "'mtjade1' is not a managed host")
+    && exit_refused_naming(e: maintenance_hold_release(host: "mtjade1"), pattern: "'mtjade1' is not a managed host")
+}
+
+// ── The store is local, so the process must be observed on the store host ─────────────────────
+// THE PAIR: the same admitted subject, with the process's own hostname supplied as each reading. A
+// process observing itself as srv2 is refused naming what it observed and where the store is; one
+// observing the store host's allocated hostname is admitted; an unreadable or empty reading is not a
+// match. The decision returns no carrier, so a supplied reading cannot reach a store effect.
+test fn w_a_process_observed_off_the_store_host_is_refused_and_one_on_it_is_admitted() -> Bool {
+  match unit_hold_admission_for(host: operator_host_mtcollins1 as NonEmptyStr) {
+    UnitHoldHostNotManaged { host: _ } => false
+    UnitHoldHostNotRequired { host: _ } => false
+    UnitHoldHostAdmitted { subject: s } => {
+      let elsewhere = unit_hold_store_executor_decision(subject: s, observed: Present { value: "srv2\n" })
+      let here = unit_hold_store_executor_decision(subject: s, observed: Present { value: "srv1\n" })
+      (match elsewhere {
+        UnitHoldExecutorElsewhere { observed: o, store_host: h, allocated: a } => (o as String) == "srv2" && (h as String) == (operator_host_srv1 as String) && (a as String) == "srv1"
+        UnitHoldExecutorIsStoreHost { observed: _ } => false
+        UnitHoldStoreHostUnallocated { store_host: _ } => false
+        UnitHoldExecutorUnread { store_host: _ } => false
+      })
+        && refusal_names(admission_text: unit_hold_store_executor_refusal(key: s.key, decision: elsewhere), pattern: "this process observes its own host as 'srv2'")
+        && refusal_names(admission_text: unit_hold_store_executor_refusal(key: s.key, decision: elsewhere), pattern: "nothing was read or written")
+        && (match here {
+          UnitHoldExecutorIsStoreHost { observed: o } => (o as String) == "srv1"
+          UnitHoldExecutorElsewhere { observed: _, store_host: _, allocated: _ } => false
+          UnitHoldStoreHostUnallocated { store_host: _ } => false
+          UnitHoldExecutorUnread { store_host: _ } => false
+        })
+        && not_refused(r: unit_hold_store_executor_refusal(key: s.key, decision: here))
+        && (match unit_hold_store_executor_decision(subject: s, observed: none) {
+          UnitHoldExecutorUnread { store_host: _ } => true
+          UnitHoldExecutorIsStoreHost { observed: _ } => false
+          UnitHoldExecutorElsewhere { observed: _, store_host: _, allocated: _ } => false
+          UnitHoldStoreHostUnallocated { store_host: _ } => false
+        })
+        && (match unit_hold_store_executor_decision(subject: s, observed: Present { value: " \n" }) {
+          UnitHoldExecutorUnread { store_host: _ } => true
+          UnitHoldExecutorIsStoreHost { observed: _ } => false
+          UnitHoldExecutorElsewhere { observed: _, store_host: _, allocated: _ } => false
+          UnitHoldStoreHostUnallocated { store_host: _ } => false
+        })
+    }
+  }
+}
+
+// THE REAL READ, AND IT ASSERTS THE ROUTE. unit_hold_store_executor reads this process's own hostname
+// and mints the carrier only on a match. Wherever this claim runs, a minted carrier must carry the
+// store host's allocated hostname, and anything else must be a refusal naming what was observed --
+// so a mint that stopped consulting the reading turns this red on every host that is not the store
+// host (the hermetic realization answers `localhost`). It only reads; it touches no store.
+test fn w_the_executor_carrier_is_minted_only_from_this_process_own_hostname() -> Bool {
+  match unit_hold_admission_for(host: operator_host_mtcollins1 as NonEmptyStr) {
+    UnitHoldHostNotManaged { host: _ } => false
+    UnitHoldHostNotRequired { host: _ } => false
+    UnitHoldHostAdmitted { subject: s } =>
+      match unit_hold_store_executor(subject: s) {
+        UnitHoldOnStoreHost { executor: e } => (e.observed_hostname as String) == "srv1" && (e.subject.key as String) == (s.key as String)
+        UnitHoldNotOnStoreHost { reason: r } => string_contains(s: r as String, pattern: "nothing was read or written")
+      }
+  }
+}
+
+// RED: A STORE HOST WITH NO ALLOCATED HOSTNAME. The real row with its store placed on a host
+// gunbc.hostname_allocation has no row for cannot establish where it runs, whatever it observes.
+test fn w_a_store_host_with_no_allocated_hostname_refuses_the_executor() -> Bool {
+  managed_hosts() |> all(h => {
+    let adrift = managed_host_fixture(host: h.host, access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: ResetUnitHoldRequired { key: h.host as NonEmptyStr, store_host: "fixture-unallocated-store" as NonEmptyStr }, smpro: h.smpro)
+    match unit_hold_admission_in(hosts: [adrift], host: h.host as NonEmptyStr) {
+      UnitHoldHostNotManaged { host: _ } => false
+      UnitHoldHostNotRequired { host: _ } => false
+      UnitHoldHostAdmitted { subject: s } => {
+        let d = unit_hold_store_executor_decision(subject: s, observed: Present { value: "fixture-unallocated-store" })
+        (match d {
+          UnitHoldStoreHostUnallocated { store_host: x } => (x as String) == "fixture-unallocated-store"
+          UnitHoldExecutorIsStoreHost { observed: _ } => false
+          UnitHoldExecutorElsewhere { observed: _, store_host: _, allocated: _ } => false
+          UnitHoldExecutorUnread { store_host: _ } => false
+        }) && refusal_names(admission_text: unit_hold_store_executor_refusal(key: s.key, decision: d), pattern: "no hostname allocated")
+      }
+    }
+  }) && count(managed_hosts()) == 1
+}
+
+// A slot key SUPPLIED to the pure folds below: they read outcomes and render text, and never reach a
+// store, so the key is this witness's own and names no unit.
+data fixture_slot_key: NonEmptyStr = "fixture-unit" as NonEmptyStr
+
+data holder_process: ProcessIdentity = ProcessIdentity { boot_id: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as NonEmptyStr, pid: 3975, start_time: "81234" as NonEmptyStr }
+
+// ── The interlock: the boot refuses under an active maintenance hold ──────────────────────────
+// Supplied at the interface (DESIGN §3, a witness discriminates at one interface), and only into the
+// PURE refusal fold: a supplied outcome yields text and never a UnitHoldProof, whose one mint is the
+// live acquire (the forged-carrier refusals are test.claim.managed_host_unit_hold_forged_probe_witness).
+// The store route itself is test.claim.durable_exclusive_hold_file_store_wet_witness.
+
+fn first_generation() -> CasGeneration {
+  cas_generation_first()
+}
+
+fn refused_naming(r: NonEmptyStr?, pattern: String) -> Bool {
+  match r {
+    Present { value: why } => string_contains(s: why as String, pattern: pattern) && string_contains(s: why as String, pattern: "controller untouched")
+    Absent => false
+  }
+}
+
+fn not_refused(r: NonEmptyStr?) -> Bool {
+  match r {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// THE RED: the operator holds the unit (DIMM reseat), and the acquire is refused naming the holder.
+// THE CONTROL beside it: the same unit acquired is no refusal.
+test fn the_boot_refuses_under_an_active_maintenance_hold_and_names_the_holder() -> Bool {
+  let held = FileHoldOccupied {
+    slot_key: fixture_slot_key,
+    holder: operator_maintenance_owner(reason: "reseating DIMMs"),
+    generation: first_generation(),
+  }
+  refused_naming(r: unit_hold_refusal(outcome: held), pattern: "operator-maintenance:reseating DIMMs")
+    && not_refused(r: unit_hold_refusal(outcome: FileHoldAcquired { slot_key: fixture_slot_key, owner: boot_run_owner(run_id: "42", process: holder_process, pid_namespace: "pid:[4026531836]"), generation: first_generation() }))
+}
+
+// ANOTHER HOLDER IS A HOLDER: a running boot, or a host reset-return, excludes the next writer.
+test fn a_second_writer_refuses_while_another_run_holds_the_unit() -> Bool {
+  refused_naming(r: unit_hold_refusal(outcome: FileHoldOccupied { slot_key: fixture_slot_key, holder: boot_run_owner(run_id: "41", process: holder_process, pid_namespace: "pid:[4026531836]"), generation: first_generation() }), pattern: "boot-run:41")
+    && refused_naming(r: unit_hold_refusal(outcome: FileHoldOccupied { slot_key: fixture_slot_key, holder: host_reset_owner(attempt: "srv1-mtcollins1"), generation: first_generation() }), pattern: "host-reset-return:srv1-mtcollins1")
+}
+
+// AN INTERLOCK THAT CANNOT BE READ IS NOT RELEASED: a lost race and an undecodable slot refuse.
+test fn an_unreadable_or_contended_hold_refuses_rather_than_proceeding() -> Bool {
+  refused_naming(r: unit_hold_refusal(outcome: FileHoldAcquireLost { slot_key: fixture_slot_key }), pattern: "lost the race")
+    && refused_naming(r: unit_hold_refusal(outcome: FileHoldSlotUndecodable { slot_key: fixture_slot_key, generation: first_generation(), detail: "garbage" }), pattern: "undecodable")
+}
+
+// THE HOLDER KIND IS A DECLARED SUM (review 70459), rendered and decoded in one place. Each kind round-
+// trips; a string no kind rendered is refused rather than guessed; and a host-reset holder is named as
+// one -- the defect the review found was a two-valued check naming it a boot run.
+fn round_trips(o: UnitHoldOwner, label: String) -> Bool {
+  match decode_unit_hold_owner(owner: unit_hold_owner_ref(o: o)) {
+    UnitHoldOwnerDecoded { owner: d } => unit_hold_owner_label(o: d) == label
+    UnitHoldOwnerUnrecognized { raw: _ } => false
+  }
+}
+
+test fn every_holder_kind_round_trips_and_a_foreign_owner_is_refused() -> Bool {
+  round_trips(o: OperatorMaintenance { reason: "reseating DIMMs" as NonEmptyStr }, label: "operator maintenance: reseating DIMMs")
+    && round_trips(o: BootRun { run_id: "41" as NonEmptyStr, process: holder_process, pid_namespace: "pid:[4026531836]" as NonEmptyStr }, label: "the boot run 41 (process 3975 on boot 73c8153e-0e0e-4480-a36c-bc7560c50e8b)")
+    && round_trips(o: HostResetReturn { attempt: "srv1-mtcollins1" as NonEmptyStr }, label: "host reset-return attempt srv1-mtcollins1")
+    && round_trips(o: KvmObserverProbe { run_id: "36800000000" as NonEmptyStr, process: holder_process, pid_namespace: "pid:[4026531836]" as NonEmptyStr }, label: "the KVM observer probe run 36800000000 (process 3975 on boot 73c8153e-0e0e-4480-a36c-bc7560c50e8b)")
+    && match decode_unit_hold_owner(owner: "someone-else:x" as DurableHoldOwnerRef) {
+      UnitHoldOwnerUnrecognized { raw: _ } => true
+      UnitHoldOwnerDecoded { owner: _ } => false
+    }
+    && match decode_unit_hold_owner(owner: "host-reset-return:" as DurableHoldOwnerRef) {
+      UnitHoldOwnerUnrecognized { raw: _ } => true
+      UnitHoldOwnerDecoded { owner: _ } => false
+    }
+}
+
+// ── The KVM probe's always() release: only this run's own hold, at the generation it observed ─────
+// Supplied observations into the PURE decision fold (the live release plan is minted only from a live
+// read of the slot, so a supplied observation can never free a real hold).
+fn probe_owner(run_id: NonEmptyStr) -> DurableHoldOwnerRef {
+  unit_hold_owner_ref(o: KvmObserverProbe { run_id: run_id, process: holder_process, pid_namespace: "pid:[4026531836]" as NonEmptyStr })
+}
+
+test fn the_release_targets_only_this_runs_probe_hold_at_its_observed_generation() -> Bool {
+  match probe_hold_release_decision(observed: HoldSlotHeld { generation: first_generation(), owner: probe_owner(run_id: "36800000000") }, run_id: "36800000000") {
+    ProbeHoldReleaseAt { owner: o, generation: g } => (o as String) == (probe_owner(run_id: "36800000000") as String) && g == first_generation()
+    _ => false
+  }
+}
+
+// THE FOREIGN-HOLDER REDS: another probe run, a boot, host reset-return, the operator, or an owner this
+// module never wrote -- each is a no-op naming the holder, never a release.
+fn foreign(observed_owner: DurableHoldOwnerRef, pattern: String) -> Bool {
+  match probe_hold_release_decision(observed: HoldSlotHeld { generation: first_generation(), owner: observed_owner }, run_id: "36800000000") {
+    ProbeHoldForeignNoop { holder: h } => string_contains(s: h, pattern: pattern)
+    _ => false
+  }
+}
+
+test fn a_foreign_holder_is_never_released() -> Bool {
+  foreign(observed_owner: probe_owner(run_id: "36800000001"), pattern: "36800000001")
+    && foreign(observed_owner: boot_run_owner(run_id: "36800000000", process: holder_process, pid_namespace: "pid:[4026531836]"), pattern: "boot run 36800000000")
+    && foreign(observed_owner: host_reset_owner(attempt: "srv1-mtcollins1"), pattern: "reset-return")
+    && foreign(observed_owner: operator_maintenance_owner(reason: "reseating DIMMs"), pattern: "reseating DIMMs")
+    && foreign(observed_owner: "someone-else:36800000000" as DurableHoldOwnerRef, pattern: "someone-else")
+}
+
+// A FREE OR UNREADABLE SLOT IS A REPORTED NO-OP.
+test fn a_free_or_unreadable_slot_is_not_released() -> Bool {
+  (match probe_hold_release_decision(observed: HoldSlotAbsent, run_id: "36800000000") { ProbeHoldFreeNoop => true  _ => false })
+    && (match probe_hold_release_decision(observed: HoldSlotFree { generation: first_generation(), released_by: "x" as DurableHoldReleaseRef }, run_id: "36800000000") { ProbeHoldFreeNoop => true  _ => false })
+    && (match probe_hold_release_decision(observed: HoldSlotUndecodable { generation: first_generation(), detail: "garbage" }, run_id: "36800000000") { ProbeHoldUnobservable { cause: c } => string_contains(s: c, pattern: "garbage")  _ => false })
+}
+
+// THE STALE-GENERATION REDS: the slot moved between the observation and the release -- assessed against
+// another generation, or lost at the commit -- and is left alone as stale; a slot re-taken by another
+// owner meanwhile is not ours; only a committed release at the observed generation is Released.
+test fn a_stale_generation_is_left_alone() -> Bool {
+  (match probe_hold_release_refused(refusal: HoldReleaseAgainstAnotherGeneration { acquired: first_generation(), observed: first_generation() }) { ProbeHoldStale { detail: _ } => true  _ => false })
+    && (match probe_hold_release_committed(outcome: FileHoldReleaseLost { slot_key: fixture_slot_key }) { ProbeHoldStale { detail: _ } => true  _ => false })
+    && (match probe_hold_release_refused(refusal: HoldReleaseHeldByAnotherOwner { generation: first_generation(), holder: boot_run_owner(run_id: "41", process: holder_process, pid_namespace: "pid:[4026531836]") }) { ProbeHoldNotOurs { holder: h } => string_contains(s: h, pattern: "boot-run:41")  _ => false })
+    && (match probe_hold_release_refused(refusal: HoldReleaseAlreadyFree { generation: first_generation(), released_by: "x" as DurableHoldReleaseRef }) { ProbeHoldAlreadyFree => true  _ => false })
+    && (match probe_hold_release_committed(outcome: FileHoldReleased { slot_key: fixture_slot_key, generation: first_generation() }) { ProbeHoldReleased => true  _ => false })
+}
+
+// ── A DEAD PROBE HOLDER IS RECOVERABLE (side-chat blocker 4b) ────────────────────────────────────────
+// The probe owner names its holding process -- boot id, pid, start time and the pid namespace it was
+// read in -- and decodes back to it, so the recovery route OBSERVES that process, exactly as for a boot
+// run; the std recovery fold then frees a hold whose holder is observed dead
+// (test.claim.durable_exclusive_hold_witness_test). A probe owner written WITHOUT a process (this
+// PR's earlier spelling) is not guessed into one: it is unobservable, and its hold is refused rather
+// than broken.
+test fn a_probe_holder_is_observed_by_its_process_and_a_processless_one_is_not() -> Bool {
+  let rendered = probe_owner(run_id: "36800000000") as String
+  rendered == "kvm-observer:36800000000@boot=73c8153e-0e0e-4480-a36c-bc7560c50e8b,pid=3975,start=81234,pidns=pid:[4026531836]"
+    && (match holder_liveness_route(holder: rendered as DurableHoldOwnerRef) {
+      HolderObserveProcess { process: p, pid_namespace: n } => p.pid == 3975 && (p.start_time as String) == "81234" && (n as String) == "pid:[4026531836]"
+      _ => false
+    })
+    && (match holder_liveness_route(holder: "kvm-observer:36800000000" as DurableHoldOwnerRef) {
+      HolderNotObservable { cause: _ } => true
+      _ => false
+    })
+    && (match holder_liveness_route(holder: operator_maintenance_owner(reason: "reseating DIMMs")) {
+      HolderNotObservable { cause: c } => string_contains(s: c as String, pattern: "only the operator")
+      _ => false
+    })
+}
