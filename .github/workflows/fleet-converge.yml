@@ -67,7 +67,11 @@ on:
         required: false
         type: string
       transaction_nonce:
-        description: Operator-minted unique nonce for one RLM transaction; echoed into run-name so each dispatched run is API-selectable by its displayTitle, closing the run-id correlation gap (review 5062738052 B4). Not consumed by any step
+        description: "Operator-minted unique nonce for one RLM transaction; echoed into run-name so each dispatched run is API-selectable by its displayTitle, closing the run-id correlation gap (review 5062738052 B4). mtcollins1_boot only, when attempt_receipt is named: it is the boot attempt's identity, joined to the receipt's attempt and consumed once (gunbc.host_boot_attempt_admission), so a nonce admits one boot; [A-Za-z0-9_-] only"
+        required: false
+        type: string
+      attempt_receipt:
+        description: "mtcollins1_boot only: a committed artifacts/receipts/*.json naming this attempt's plan and the operator's inspection (gunbc.host_boot_attempt_admission). Empty records the configuration as not recorded; a named receipt that fails any check refuses the boot before power-on. Requires transaction_nonce"
         required: false
         type: string
 jobs:
@@ -2379,6 +2383,8 @@ jobs:
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+          GUNBC_BOOT_ATTEMPT_RECEIPT: ${{ github.event.inputs.attempt_receipt }}
+          GUNBC_BOOT_ATTEMPT_NONCE: ${{ github.event.inputs.transaction_nonce }}
         if: github.event.inputs.mode == 'mtcollins1_boot'
         timeout-minutes: 134
       - name: Upload Mt. Collins unit 1 boot SOL capture and receipts
