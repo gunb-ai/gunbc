@@ -156,7 +156,7 @@ test fn witness_finish_line_variants_render_from_fixture() -> Bool {
   }
 }
 
-data daily_leads_operational_note: String = "The A1 placement wall (presentation recon, operator-signed 2026-08-01): the daily workspace's declared archetype is Operational (gunbc.design.archetype dashboard_archetype), so / may not open with the four strategic finish-line claims — the full narrative block lives on /roadmap only. The 'of 4' magnitude was structural, not a live-population transcription. SUPERSEDED 2026-09-28 by the owner ruling retiring the v1-exit framing from the workspace header: the one-line strip now carries only the readiness count ('N ready now'), and the program view's name reads 'workspace'."
+data daily_leads_operational_note: String = "The A1 placement wall (presentation recon, operator-signed 2026-08-01): the daily workspace's declared archetype is Operational (gunbc.design.archetype dashboard_archetype), so / may not open with the four strategic finish-line claims — the full narrative block lives on /roadmap only. The 'of 4' magnitude was structural, not a live-population transcription. SUPERSEDED 2026-09-28 by the owner ruling retiring the v1-exit framing from the workspace header: the one-line strip now carries only the readiness count ('N ready now'), and the program view's name reads 'workspace'. SUPERSEDED 2026-10-04: the owner removed the workspace readiness/instance strip and observation banner; the page starts with filter controls."
 
 // The / fold over the authority's live project and its root (the shared subtree fixture).
 fn live_project_daily_html() -> HtmlEmitResult {

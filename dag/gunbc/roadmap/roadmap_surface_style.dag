@@ -50,16 +50,13 @@ fn roadmap_surface_rules() -> List<BuildRule> {
     StaticRule { selector: RawSelector { text: ".daily-workspace" }, decls: [
       decl(prop: MinWidth, value: "0"),
       decl(prop: MaxWidth, value: "100%"),
-      decl(prop: Padding, value: "var(--space-24)")
+      decl(prop: Padding, value: scale_pair(a: space_12, b: space_24))
     ] },
-    StaticRule { selector: RawSelector { text: ".workspace-meta, .workspace-toolbar" }, decls: [
+    StaticRule { selector: RawSelector { text: ".workspace-toolbar" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: FlexWrap, value: "wrap"),
       decl(prop: AlignItems, value: "center"),
       decl(prop: Gap, value: scale_pair(a: space_4, b: space_12))
-    ] },
-    StaticRule { selector: RawSelector { text: ".workspace-meta .program-progress" }, decls: [
-      decl(prop: MarginLeft, value: "auto")
     ] },
     StaticRule { selector: RawSelector { text: ".issue-hidden-summary" }, decls: concat([
       role_decl(prop: Color, r: TextDimRole)

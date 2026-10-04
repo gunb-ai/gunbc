@@ -1550,28 +1550,6 @@ fn workspace_entries_ul(entries: List<WorkBandEntry>, observation: ObservationIm
 // renderers had no caller left once the served page dropped the forest; the entry renderer
 // (workspace_entries_ul and its chain) stays for the /sandbox exhibit.
 
-fn workspace_observation_banner(observation: ObservationImpactView) -> List<Fragment> {
-  match observation {
-    ObservationsNominal => []
-    WorkspaceObservationImpact { summary, located_reason } =>
-      [ el_class("section", "workspace-observation", [
-          el_class("span", "workspace-observation-summary", [ txt(summary) ]),
-          el_class("span", "workspace-observation-reason", [ txt(located_reason) ]),
-        ]) ]
-  }
-}
-
-// THE ISSUE TRACKER'S SURFACE (owner ruling 2026-09-22, "the frontend as an issue tracker",
-// amended 2026-09-25: "just copy buganizer for now"): ONE body, ONE container — the searchable
-// issue TABLE, the Buganizer results surface. The tree and bands VIEW TABS are RETIRED (owner:
-// they go back to the old UI, it's jarring): the forest they switched to — the banded taskbar
-// rendering of the same rows — no longer ships on this page at all, and the view chips, the
-// client view switch, and the stylesheet's view rules went with them. What survives of the band
-// vocabulary is the FILTER: the all/active/ready/not-ready/done/superseded chips filter THIS table
-// in place (the stylesheet hides non-matching data-band rows), and the search input filters by
-// the row's own data-search (headline · node id · owner). The table rows are dense lines, not
-// taskbars; the forest renderer itself lives on as the /sandbox exhibit's grouping path (a design
-// surface, not this product surface).
 fn issue_owner_value(view: WorkRowView) -> String {
   fold(view.supporting_facts, init: "", f: (acc, f) =>
     if f.label == "owner" { f.value } else { acc })
@@ -2865,14 +2843,6 @@ fn v1_exit_program_progress_view_for_accepted(accepted_ids: List<RoadmapNodeId>,
   }
 }
 
-fn program_progress_markup_of(v: ProgramProgressView) -> Fragment {
-  el_class("section", "program-progress", [
-    el_class("span", "program-progress-count", [
-      txt(join([to_string(v.ready_obligation_count), " ready now"], "")),
-    ]),
-  ])
-}
-
 fn daily_attempt_progress_for(node_id: String, attempts: List<WorkflowAttemptProgress>) -> WorkflowAttemptProgress? {
   fold(attempts, init: none, f: (acc, p) => match acc {
     Present { value: v } => Present { value: v }
@@ -3033,16 +3003,10 @@ fn roadmap_daily_workspace_page_impl_for_accepted_with_stylesheet(
     stale_nodes: stale_nodes,
     profiles: profiles,
       memberships: memberships)
-  let program_strip = match ws.program {
-    Present { value: v } => [ program_progress_markup_of(v: v) ]
-    Absent => []
-  }
   site_document(title: "gunbc — daily workspace", heading: "workspace", styles: stylesheet, content: [
-el_class("main", "daily-workspace", concat([el_class("div", "workspace-meta", concat(main_prefix, program_strip))], concat(
-          workspace_observation_banner(observation: ws.observation),
-          [ workspace_markup(ws: ws, edges: doc_all_edges(doc: doc), memberships: memberships)]))),
-dispatch_client_script()
-])
+    el_attrs("main", [attr(name: "class", value: "daily-workspace"), attr(name: "data-observation-banners", value: "off")], concat(main_prefix, [workspace_markup(ws: ws, edges: doc_all_edges(doc: doc), memberships: memberships)])),
+    dispatch_client_script()
+  ])
 }
 
 // THE MACHINE-STANDING SURFACE IS ITS OWN PAGE, NOT A PREFIX ON THE WORK SURFACE.
@@ -3280,7 +3244,6 @@ fn roadmap_daily_workspace_page_for_projection_observed_stale_with_stylesheet(
         accepted_ids: [],
         withheld: [],
         main_prefix: [
-          dashboard_instance_banner(),
           roadmap_authority_refusal_markup(detail: detail),
         ],
         attempts: attempts,
@@ -3298,7 +3261,6 @@ fn roadmap_daily_workspace_page_for_projection_observed_stale_with_stylesheet(
         accepted_ids: accepted,
         withheld: withheld,
         main_prefix: [
-          dashboard_instance_banner(),
         ],
         attempts: attempts,
         attempts_refused: attempts_refused,
