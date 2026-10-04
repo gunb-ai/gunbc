@@ -204,7 +204,7 @@ fn fixture_request(method: HttpMethod, path: String) -> ServeHttpRequest<Request
     method: method,
     path: path,
     body: "",
-    security: RequestSecurityContext { access_path: AccessPathLocalDev, ingress: IngressUnattested, authentication: AuthAbsent },
+    security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent },
   }
 }
 
@@ -999,11 +999,11 @@ test fn witness_inline_assignment_context_refuses_without_session_or_issue() -> 
   let anonymous = serve_issue_assignment_context_over(
     instance: srv2_preview_dashboard_instance(), plan: caller_supplied_plan_fixture(), params: [],
     request: ServeHttpRequest { method: GET, path: "/issue/missing/assignment", body: "",
-      security: RequestSecurityContext { access_path: AccessPathLocalDev, ingress: IngressUnattested, authentication: AuthAbsent } })
+      security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent } })
   let unknown = serve_issue_assignment_context_over(
     instance: srv2_preview_dashboard_instance(), plan: caller_supplied_plan_fixture(), params: [],
     request: ServeHttpRequest { method: GET, path: "/issue/missing/assignment", body: "",
-      security: RequestSecurityContext { access_path: AccessPathLocalDev, ingress: IngressUnattested, authentication: GoogleOidcSession { session: witness_auth_session() } } })
+      security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: GoogleOidcSession { session: witness_auth_session() } } })
   anonymous.status == 401
     && string_contains(s: anonymous.body, pattern: "Sign in")
     && !string_contains(s: anonymous.body, pattern: "csrf")
@@ -1118,8 +1118,8 @@ test fn the_served_entry_reads_the_cookie_field_from_its_declared_request_header
 
 
 test fn preference_routes_are_account_scoped_and_require_csrf_before_store_access() -> Bool {
-  let anonymous = ServeHttpRequest { method: GET, path: "/preferences/issues", body: "", security: RequestSecurityContext { access_path: AccessPathLocalDev, ingress: IngressUnattested, authentication: AuthAbsent } }
-  let no_csrf = ServeHttpRequest { method: POST, path: "/preferences/issues", body: "preferences=invalid", security: RequestSecurityContext { access_path: AccessPathLocalDev, ingress: IngressUnattested, authentication: GoogleOidcSession { session: witness_auth_session() } } }
+  let anonymous = ServeHttpRequest { method: GET, path: "/preferences/issues", body: "", ingress: IngressUnattested, security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent } }
+  let no_csrf = ServeHttpRequest { method: POST, path: "/preferences/issues", body: "preferences=invalid", ingress: IngressUnattested, security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: GoogleOidcSession { session: witness_auth_session() } } }
   selects(method: GET, path: "/preferences/issues", want: IssueViewPreferencesReadHandler)
     && selects(method: POST, path: "/preferences/issues", want: IssueViewPreferencesSaveHandler)
     && serve_issue_view_preferences_over(instance: srv2_preview_dashboard_instance(), request: anonymous, saving: false).status == 401
@@ -1131,7 +1131,7 @@ test fn preference_routes_are_account_scoped_and_require_csrf_before_store_acces
 }
 
 test fn issue_query_selects_read_only_route_and_refuses_invalid_views() -> Bool {
-  let request = ServeHttpRequest { method: POST, path: "/issues/query", body: "preferences=invalid&offset=0", security: RequestSecurityContext { access_path: AccessPathLocalDev, ingress: IngressUnattested, authentication: AuthAbsent } }
+  let request = ServeHttpRequest { method: POST, path: "/issues/query", body: "preferences=invalid&offset=0", ingress: IngressUnattested, security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent } }
   selects(method: POST, path: "/issues/query", want: IssueQueryHandler)
     && serve_issue_query(instance: srv2_preview_dashboard_instance(), request: request).status == 400
 }
