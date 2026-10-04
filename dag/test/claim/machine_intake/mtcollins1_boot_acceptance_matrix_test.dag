@@ -43,7 +43,7 @@ import gunbc.runner_browser_toolchain {
   runner_browser_toolchain_node, runner_browser_toolchain_automation, browser_toolchain_probe_title, browser_toolchain_probe_width_px,
 }
 import gunbc.managed_host_unit_hold { boot_run_owner, unit_hold_store_root }
-import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
