@@ -171,7 +171,7 @@ import v2.compiler.resolve {
   resolved_tree_of,
   ResolvedTree
 }
-import v2.compiler.tokenize { tokenize }
+import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules, tokenize }
 import v2.std.staging { then_outcome, CacheProbe, Miss }
 import v2.compiler.materialization_carriers {
   cached_stage_realization,
@@ -1536,14 +1536,14 @@ fn native_test_accepted_advisories_absorb(
 fn native_test_context_fold_step(
   state: NativeTestContextFoldState,
   read: DagSourceReadWitness,
-  lm: LanguageModel,
+  lex: PreparedLexRules,
   prepared: PreparedGrammar,
   residue: Diagnostics,
   scope: Fnv1a64Structural
 ) -> NativeTestContextFoldState {
   let result = program_assembly_read_to_normalized_root_seeded(
     read: read,
-    lm: lm,
+    lex: lex,
     prepared: prepared,
     residue: residue,
     seed: state.alloc,
@@ -1570,6 +1570,7 @@ fn native_test_context_fold_step(
 // call on the driver side would be the same recompute re-introduced at the realization layer.
 type NativeTestFrontEnd {
   lm: LanguageModel
+  lex: PreparedLexRules
   prepared: PreparedGrammar
   residue: Diagnostics
 }
@@ -1581,6 +1582,7 @@ fn native_test_front_end_prepare() -> Outcome<NativeTestFrontEnd> {
     Accepted { value: prepared, diagnostics: residue } =>
       outcome_accepted(value: NativeTestFrontEnd {
         lm: lm,
+        lex: prepare_lex_rules(rules: lm.lex),
         prepared: prepared,
         residue: residue
       })
@@ -1631,7 +1633,7 @@ fn native_test_context_from_ingest(ingest: SourceRootIngest) -> Outcome<NativeTe
             native_test_context_fold_step(
               state: state,
               read: read,
-              lm: front.lm,
+              lex: front.lex,
               prepared: front.prepared,
               residue: front.residue,
               scope: scope
@@ -3724,7 +3726,7 @@ fn native_demand_census_read(
     Absent => Empty
   }
   match bind_outcome(
-    o: program_assembly_phase_tokenize(read: read, lm: front.lm),
+    o: program_assembly_phase_tokenize(read: read, lex: front.lex),
     f: fn(tokens) {
       parse_module_prepared_seeded(tokens: tokens, prepared: front.prepared, validation_residue: front.residue, seed: state.context.alloc)
     }

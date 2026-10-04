@@ -940,7 +940,7 @@ fn lex_walk_finish(acc: LexWalkAcc) -> LexWalkAcc {
   }
 }
 
-fn lex_walk_init(src: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> LexWalkAcc {
+fn lex_walk_init(src: v2.std.text.String, file: Symbol, prepared: PreparedLexRuleSet) -> LexWalkAcc {
   LexWalkAcc {
     remaining: LexCursor { source: src, index: 0 },
     tokens: std.algebra.Empty,
@@ -950,8 +950,8 @@ fn lex_walk_init(src: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> Le
     done: false,
     error: false,
     file: file,
-    dispatch: lex_rule_dispatch(compiled_rules: lex_compile_rules(rules: rules.rules)),
-    modes: lex_mode_dispatches(rules: rules),
+    dispatch: prepared.dispatch,
+    modes: prepared.modes,
     mode_stack: Empty,
     mode_fault: optional_absent(),
     gap_start: 0,
@@ -1158,9 +1158,9 @@ fn lex_walk_emit_token(acc: LexWalkAcc, class: Symbol, lexeme: v2.std.text.Strin
   }
 }
 
-fn lex_walk_source_algebra(file: Symbol, rules: LexRuleSet) -> SourceFold<LexWalkAcc> {
+fn lex_walk_source_algebra(file: Symbol, prepared: PreparedLexRuleSet) -> SourceFold<LexWalkAcc> {
   SourceFold {
-    init: fn(src) { lex_walk_init(src: src, file: file, rules: rules) },
+    init: fn(src) { lex_walk_init(src: src, file: file, prepared: prepared) },
     is_done: lex_walk_is_done,
     step: lex_walk_step
   }
@@ -1177,10 +1177,14 @@ fn lex_unmatched_scalar_octets(remaining: LexCursor) -> Int {
 // lex_walk_artifact is the authored result; lex_walk is its SEMANTIC PROJECTION and is what every existing caller keeps using. The direction matters: the projection is derived from the artifact by dropping the annotation channel, never the reverse, so a semantic consumer cannot reach annotation text and an annotation-aware consumer does not have to re-lex. Both fold the same walk exactly once — this is one traversal read two ways, not two traversals (DESIGN 4c erasure boundary at the lexical layer, mirroring AuthoredParseArtifact at the parse layer).
 // Zero-width [pos, pos] is the caret BEFORE the unmatched character, so a refusal on an offending literal landed on the insertion point rather than covering the character. Cover one scalar, in octets, when remaining is nonempty.
 fn lex_walk_artifact(source: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> Outcome<LexArtifact> {
-  match lex_rule_set_mode_refusal(rules: rules) {
+  lex_walk_artifact_prepared(source: source, file: file, prepared: prepare_lex_rule_set(rules: rules))
+}
+
+fn lex_walk_artifact_prepared(source: v2.std.text.String, file: Symbol, prepared: PreparedLexRuleSet) -> Outcome<LexArtifact> {
+  match prepared.mode_refusal {
     Present { value: refusal } =>
       v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e5_mode_declaration_diagnostic(file: file, refusal: refusal)) }
-    Absent => lex_walk_artifact_walked(source: source, file: file, rules: rules)
+    Absent => lex_walk_artifact_walked(source: source, file: file, prepared: prepared)
   }
 }
 
@@ -1192,10 +1196,10 @@ fn lex_walk_mode_fault_diagnostic(file: Symbol, fault: LexWalkModeFault) -> Diag
   }
 }
 
-fn lex_walk_artifact_walked(source: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> Outcome<LexArtifact> {
+fn lex_walk_artifact_walked(source: v2.std.text.String, file: Symbol, prepared: PreparedLexRuleSet) -> Outcome<LexArtifact> {
   let result = fold_source(
     src: source,
-    algebra: lex_walk_source_algebra(file: file, rules: rules)
+    algebra: lex_walk_source_algebra(file: file, prepared: prepared)
   )
   let at = match lex_cursor_empty(cursor: result.remaining) {
     true => Textual { file: file, extent: ByteRange { start: result.pos, end: result.pos } }
@@ -1220,7 +1224,11 @@ fn lex_walk_artifact_walked(source: v2.std.text.String, file: Symbol, rules: Lex
 }
 
 fn lex_walk(source: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> Outcome<TokenStream> {
-  match lex_walk_artifact(source: source, file: file, rules: rules) {
+  lex_walk_prepared(source: source, file: file, prepared: prepare_lex_rule_set(rules: rules))
+}
+
+fn lex_walk_prepared(source: v2.std.text.String, file: Symbol, prepared: PreparedLexRuleSet) -> Outcome<TokenStream> {
+  match lex_walk_artifact_prepared(source: source, file: file, prepared: prepared) {
     v2.std.diagnostic.Rejected { diagnostics: ds } =>
       v2.std.diagnostic.Rejected { diagnostics: ds }
     v2.std.diagnostic.Accepted { value: artifact, diagnostics: ds } =>
@@ -1252,20 +1260,56 @@ fn lex_walk(source: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> Outc
 // structural-text boundary through permissive compatibility, and this named morphism does not
 // retire it. A green ingress here is not that wall coming down.
 fn tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream> {
+  tokenize_prepared(text: text, file: file, prepared: prepare_lex_rules(rules: rules))
+}
+
+// THE COMPILED RULES ARE A PROPERTY OF THE LANGUAGE, NOT OF THE TEXT. Compiling a rule set (each
+// rule's matcher, the first-character dispatch over them, one dispatch per declared mode) and
+// checking its mode declarations depend on the rules alone, so prepare_lex_rules does that once and
+// every tokenize of every text under the same rules reads the result. tokenize above is the
+// one-text door and prepares for that one call; a caller that tokenizes many texts under one
+// language (the per-file assembly fold, the front ends) prepares once beside prepare_grammar and
+// calls tokenize_prepared, exactly as the parse reads PreparedGrammar.
+type PreparedLexRuleSet {
+  dispatch: LexRuleDispatch
+  modes: Map<Symbol, LexRuleDispatch>
+  mode_refusal: Optional<LexModeDeclarationRefusal>
+}
+
+type PreparedLexRules
+  = PreparedVoidLexRules
+  | PreparedModeledLexRules { root: PreparedLexRuleSet }
+
+fn prepare_lex_rule_set(rules: LexRuleSet) -> PreparedLexRuleSet {
+  PreparedLexRuleSet {
+    dispatch: lex_rule_dispatch(compiled_rules: lex_compile_rules(rules: rules.rules)),
+    modes: lex_mode_dispatches(rules: rules),
+    mode_refusal: lex_rule_set_mode_refusal(rules: rules)
+  }
+}
+
+fn prepare_lex_rules(rules: LexRules) -> PreparedLexRules {
+  match rules {
+    VoidLexRules => PreparedVoidLexRules
+    ModeledLexRules { root: rule_set } => PreparedModeledLexRules { root: prepare_lex_rule_set(rules: rule_set) }
+  }
+}
+
+fn tokenize_prepared(text: String, file: Symbol, prepared: PreparedLexRules) -> Outcome<TokenStream> {
   let source = chars(s: text)
   let at = Textual {
     file: file,
     extent: WholeFile
   }
-  match rules {
-    VoidLexRules =>
+  match prepared {
+    PreparedVoidLexRules =>
       if is_empty(xs: source) {
         v2.std.diagnostic.Accepted { value: token_stream_empty(), diagnostics: v2.std.diagnostic.None }
       } else {
         v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e0_source_not_exhausted_diagnostic(at: at)) }
       }
-    ModeledLexRules { root: rule_set } =>
-      lex_walk(source: source, file: file, rules: rule_set)
+    PreparedModeledLexRules { root: prepared_set } =>
+      lex_walk_prepared(source: source, file: file, prepared: prepared_set)
   }
 }
 

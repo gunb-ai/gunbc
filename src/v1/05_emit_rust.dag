@@ -18877,7 +18877,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    for read in closure_ingest.iter() \{", "\n",
       "        let file_started = cpu_mark();", "\n",
       "        let tokenize_started = cpu_mark();", "\n",
-      "        let tokens = program_assembly_phase_tokenize(read.clone(), front_end.lm.clone());", "\n",
+      "        let tokens = program_assembly_phase_tokenize(read.clone(), front_end.lex.clone());", "\n",
       "        let file_tokenize_nanos = cpu_span_nanos(tokenize_started);", "\n",
       "        // The COUNT the time is read against: a span alone cannot separate a large file from a", "\n",
       "        // per-file constant. Counted outside every phase span so it prices none of them.", "\n",
