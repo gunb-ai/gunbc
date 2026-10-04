@@ -162,7 +162,7 @@ fn first_absent_gh_cli_operation_host_cli_dependency() -> HostCliDependencyAbsen
 
 // A DIRECT WALK, not a fold over a step function: the step observes the host, and a function value
 // carries no effect, so the probe is called by name here. It stops at the first absence, so no tool
-// after it is probed. The walk carries a position rather than a shrinking roster, so no step copies
+// after it is probed. The walk carries a position read by index rather than a shrinking roster, so no step copies
 // the remainder.
 fn first_absent_host_cli_dependency(
   tools: List<CliTool>,
@@ -171,7 +171,7 @@ fn first_absent_host_cli_dependency(
 }
 
 fn first_absent_host_cli_dependency_from(tools: List<CliTool>, index: Int) -> HostCliDependencyAbsence? {
-  match tools.skip(n: index).first() {
+  match tools.get(index: index) {
     Absent => none
     Present { value: tool } =>
       match observe_host_cli_dependency(tool: tool) {

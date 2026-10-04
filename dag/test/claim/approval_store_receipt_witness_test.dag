@@ -20,7 +20,7 @@ import gunbc.auth.approval_store_receipt {
   StoreReceiptIssuance, StoreReceiptIssued, StoreReceiptRefused,
   ReceiptEscalationNotFiled, ReceiptStillPending, ReceiptDenied, ReceiptAttemptMismatch, ReceiptRevisionMismatch, ReceiptKeyUnavailable, ReceiptFilingUnreadable,
   issue_store_receipt_over, store_receipt_claims,
-  authenticate_store_receipt_asker, StoreReceiptAskerAuthenticated, StoreReceiptAskerRefused, store_receipt_issuance_answer,
+  authenticate_store_receipt_asker, StoreReceiptAskerAuthenticated, StoreReceiptAskerRefused, store_receipt_authenticated_answer,
   store_receipt_request_message,
 }
 
@@ -132,7 +132,7 @@ fn sr_answer(body: String) -> Int {
   match authenticate_store_receipt_asker(escalation_id: "esc-d0-1" as NonEmptyStr, body: body, submission_keyring: ApprovalKeyLoaded { key: sr_submission_key() }) {
     StoreReceiptAskerRefused { answer: refused } => refused.status
     StoreReceiptAskerAuthenticated { attempt: attempt } =>
-      store_receipt_issuance_answer(issuance: issue_store_receipt_over(slot: sr_approved(revision: sr_revision), filing: sr_filing(), attempt: attempt, keyring: ApprovalKeyLoaded { key: sr_receipt_key() })).status
+      store_receipt_authenticated_answer(attempt: attempt, slot: sr_approved(revision: sr_revision), filing: sr_filing(), keyring: ApprovalKeyLoaded { key: sr_receipt_key() }).status
   }
 }
 

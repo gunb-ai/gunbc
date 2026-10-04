@@ -327,9 +327,15 @@ fn store_receipt_answer(escalation_id: NonEmptyStr, body: String) -> StoreReceip
       let slot = observe_escalation(root: approval_decision_store_root, escalation_id: escalation_id)
       let filing = cas_read_generation(root: approval_decision_store_root, key: escalation_id, generation: cas_generation_first())
       let keyring = read_store_receipt_keyring()
-      store_receipt_issuance_answer(issuance: issue_store_receipt_over(slot: slot, filing: filing, attempt: attempt, keyring: keyring))
+      store_receipt_authenticated_answer(attempt: attempt, slot: slot, filing: filing, keyring: keyring)
     }
   }
+}
+
+// The authenticated arm's composition, pure over the readings the route took: the one body both the
+// route and its witness answer through, so the witness does not carry a second copy of it.
+fn store_receipt_authenticated_answer(attempt: AttemptIdentity, slot: EscalationSlot, filing: CasGenerationRead, keyring: ApprovalKeyringRead) -> StoreReceiptAnswer {
+  store_receipt_issuance_answer(issuance: issue_store_receipt_over(slot: slot, filing: filing, attempt: attempt, keyring: keyring))
 }
 
 fn store_receipt_refusal_status(r: StoreReceiptRefusal) -> Int {
