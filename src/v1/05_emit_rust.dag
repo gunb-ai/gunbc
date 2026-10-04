@@ -3587,7 +3587,7 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
     crate_name: crate_name,
     demand: EmittedCrateDependencyDemand {
       renders_clap_cli: has_pipeline,
-      renders_async_services: has_services
+      renders_async_services: has_services || closure_renders_async_trait_resource(typed: typed)
     })
   let main_file = emit_main_rs(modules: typed.modules, has_services: has_services, crate_name: crate_name)
   let cli_dispatch_file = if has_pipeline { [emit_gunbc_cli_dispatch_generated(crate_name: crate_name)] } else { [] }
@@ -16634,10 +16634,23 @@ fn emit_local_call(op_name: String) -> String {
     "Ok(", emit_ident(name: op_name, target: Rust), "())")
 }
 
+// A RESOURCE WITH CAPABILITIES RENDERS AS AN #[async_trait] TRAIT, so the crate that carries one
+// demands the async-trait dependency. One predicate answers both questions -- emit_resource_def's
+// trait-or-unit choice and the manifest's demand -- so a closure whose only async surface is a
+// resource (no service) cannot emit the attribute into a crate that lacks the crate (E0433 on the
+// native-emission-controls closure, which declares a resource and no service).
+fn resource_item_renders_async_trait(item: Node) -> Bool {
+  item.children |> count > 0
+}
+
+fn closure_renders_async_trait_resource(typed: ResolvedGraph) -> Bool {
+  typed.modules |> any(tm => tm.items |> any(item => item.module_item_kind == ModuleItemResource && resource_item_renders_async_trait(item: item)))
+}
+
 fn emit_resource_def(item: Node, shared_types: Set<String>, env: TypeEnv) -> String {
   let item_text = authored_name(env: env, node: item)
   let cap_children = item.children
-  if cap_children |> count == 0 {
+  if !resource_item_renders_async_trait(item: item) {
     concat("#[derive(Debug, Clone)]\npub struct ", item_text, ";")
   } else {
     let depth = 0
