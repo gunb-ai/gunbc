@@ -23,9 +23,12 @@ import test.claim.github_app_registry {
   bot_installation_id, observed_grant, runner_grant, gunbai_org_ref, group_restricted_to, minted_outcome,
 }
 import gunbc.auth.github_apps { gunbai_bot_declared }
+import gunbc.runner.runner_qualification_ref_pin {
+  qualification_selected_workflow, qualification_workflow_path, qualification_branch_name, QualificationBranchNamed, QualificationBranchNameRefused,
+  qualification_ref_pin_of, QualificationRefPinned, QualificationRefPinRefused,
+}
 import gunbc.runner.runner_qualification_dispatch {
-  qualification_attempt_dispatch_input, qualification_dispatch_inputs, qualification_selected_workflow,
-  qualification_workflow_path, qualification_dispatch_effect,
+  qualification_attempt_dispatch_input, qualification_dispatch_inputs, qualification_dispatch_effect,
   QualificationSubjectAdmitted, QualificationSubjectRefused,
   SubjectSlotForAnotherWorkflow, SubjectAttemptInputUndeclared, SubjectFloorJobAbsent, SubjectFloorRunsOnNotTheAttemptInput,
   SubjectFloorNameNotUnique, SubjectDeliveryForAnotherDispatch,
@@ -37,7 +40,7 @@ import gunbc.runner.runner_qualification_dispatch {
   DispatchStandingSucceeded, DispatchStandingRefused, DispatchStandingCommitAmbiguous,
   hold_covers_slot_host,
   decide_qualification_run, QualificationRunVerdict, RunVerdictCollected, RunVerdictRefused,
-  RunReadUnreadable, RunSubjectMismatch, RunAdvancedPastDispatchedAttempt, RunRevisionNotPinned, RunNotCompleted,
+  RunReadUnreadable, RunSubjectMismatch, RunAdvancedPastDispatchedAttempt, RunRevisionNotPinned, RunOnAnotherBranch, RunNotCompleted,
   RunCompletedWithoutConclusion, RunJobsUnreadable, RunJobsTruncated, RunFloorJobNotUnique,
   RunNeverReachedAttemptRunner, RunRunnerNameDisagrees, RunRegisteredRunnerRanAnotherJob, RunFloorJobNotStarted,
 }
@@ -45,7 +48,7 @@ import gunbc.runner.runner_qualification_dispatch {
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data attempt: NonEmptyStr = "q-1"
-data branch: NonEmptyStr = "main"
+data pin_branch: NonEmptyStr = "qualification/q-1"
 data revision: CommitSha = "1111111111111111111111111111111111111111"
 data floor_job_id: NonEmptyStr = "qualification-floor"
 data registered_runner: NonEmptyStr = "gunbc-qualification-fixture-q-1.service"
@@ -100,18 +103,27 @@ test fn the_real_mint_admits_the_attempt_through_the_sealed_subject() -> Bool {
   match first(managed_hosts()) {
     Present { value: h } =>
       match dispatch_jit_mint(
-        binding: HostUnitSlotBinding { standing: host_unit_slot_for(host: managed_host_binding(host: h), attempt: attempt, workflow: qualification_selected_workflow(branch: branch)) },
+        binding: HostUnitSlotBinding { standing: host_unit_slot_for(host: managed_host_binding(host: h), attempt: attempt, workflow: qualification_selected_workflow(branch: pin_branch)) },
         authority: app_credential,
         control_plane: observed_grant(perms: runner_grant),
         organization: gunbai_org_ref,
-        runner_group: group_restricted_to(workflow: qualification_selected_workflow(branch: branch)),
+        runner_group: group_restricted_to(workflow: qualification_selected_workflow(branch: pin_branch)),
         attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
       ) {
-        JitMintDispatchAuthorized { dispatch: d } => {
+        JitMintDispatchAuthorized { dispatch: d } => match qualification_branch_name(attempt: attempt) {
+          QualificationBranchNameRefused { attempt: _, cause: _ } => false
+          QualificationBranchNamed { name: nm } =>
+            match qualification_ref_pin_of(
+              name: nm, revision: revision, readback: RestExchangeSucceeded, readback_sha: revision as String,
+              group: group_restricted_to(workflow: qualification_selected_workflow(branch: pin_branch)),
+            ) {
+              QualificationRefPinRefused { attempt: _, refusal: _ } => false
+              QualificationRefPinned { pin: p } =>
+  {
           let delivered = receive_jit_mint(dispatch: JitMintDispatchAuthorized { dispatch: d }, outcome: minted_outcome)
           (match qualification_dispatch_subject_over(
             dispatch: d, delivery: delivered,
-            workflow: workflow_with(declares_input: true, runs_on: attempt_runs_on), floor_job_id: floor_job_id, branch: branch, revision: revision,
+            workflow: workflow_with(declares_input: true, runs_on: attempt_runs_on), floor_job_id: floor_job_id, pin: p,
           ) {
             QualificationSubjectAdmitted { subject: s } => {
               let expected = qualification_run_expectation(subject: s)
@@ -135,6 +147,8 @@ test fn the_real_mint_admits_the_attempt_through_the_sealed_subject() -> Bool {
             QualificationSubjectRefused { refusal: _ } => false
           })
         }
+            }
+        }
         JitMintDispatchRefused { refusal: _ } => false
       }
     Absent => false
@@ -149,24 +163,34 @@ test fn the_production_mint_over_todays_fleet_converge_workflow_refuses_at_the_a
   match first(managed_hosts()) {
     Present { value: h } =>
       match dispatch_jit_mint(
-        binding: HostUnitSlotBinding { standing: host_unit_slot_for(host: managed_host_binding(host: h), attempt: attempt, workflow: qualification_selected_workflow(branch: branch)) },
+        binding: HostUnitSlotBinding { standing: host_unit_slot_for(host: managed_host_binding(host: h), attempt: attempt, workflow: qualification_selected_workflow(branch: pin_branch)) },
         authority: app_credential,
         control_plane: observed_grant(perms: runner_grant),
         organization: gunbai_org_ref,
-        runner_group: group_restricted_to(workflow: qualification_selected_workflow(branch: branch)),
+        runner_group: group_restricted_to(workflow: qualification_selected_workflow(branch: pin_branch)),
         attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
       ) {
-        JitMintDispatchAuthorized { dispatch: d } =>
+        JitMintDispatchAuthorized { dispatch: d } => match qualification_branch_name(attempt: attempt) {
+          QualificationBranchNameRefused { attempt: _, cause: _ } => false
+          QualificationBranchNamed { name: nm } =>
+            match qualification_ref_pin_of(
+              name: nm, revision: revision, readback: RestExchangeSucceeded, readback_sha: revision as String,
+              group: group_restricted_to(workflow: qualification_selected_workflow(branch: pin_branch)),
+            ) {
+              QualificationRefPinRefused { attempt: _, refusal: _ } => false
+              QualificationRefPinned { pin: p } =>
+  
           match qualification_dispatch_subject(
             dispatch: d,
             delivery: receive_jit_mint(dispatch: JitMintDispatchAuthorized { dispatch: d }, outcome: minted_outcome),
             floor_job_id: floor_job_id,
-            branch: branch,
-            revision: revision,
+            pin: p,
           ) {
             QualificationSubjectRefused { refusal: SubjectAttemptInputUndeclared { input: i } } => i == "runner_attempt_label"
             _ => false
           }
+            }
+        }
         JitMintDispatchRefused { refusal: _ } => false
       }
     Absent => false
@@ -177,7 +201,7 @@ test fn the_production_mint_over_todays_fleet_converge_workflow_refuses_at_the_a
 // The subject mint above composes exactly these two checks; these claims supply their inputs.
 
 fn slot_refused_as_another_workflow(slot_workflow: NonEmptyStr) -> Bool {
-  match qualification_slot_refusal(slot_workflow: slot_workflow, branch: branch) {
+  match qualification_slot_refusal(slot_workflow: slot_workflow, branch: pin_branch) {
     Present { value: SubjectSlotForAnotherWorkflow { slot_workflow: sw, qualification_workflow: _ } } => (sw as String) == (slot_workflow as String)
     _ => false
   }
@@ -188,7 +212,7 @@ fn slot_refused_as_another_workflow(slot_workflow: NonEmptyStr) -> Bool {
 test fn a_slot_for_another_workflow_or_branch_cannot_become_a_subject() -> Bool {
   slot_refused_as_another_workflow(slot_workflow: "gunb-ai/gunbc/.github/workflows/witnesses.yml@refs/heads/main")
     && slot_refused_as_another_workflow(slot_workflow: qualification_selected_workflow(branch: "feature"))
-    && (match qualification_slot_refusal(slot_workflow: qualification_selected_workflow(branch: branch), branch: branch) { Absent => true Present { value: _ } => false })
+    && (match qualification_slot_refusal(slot_workflow: qualification_selected_workflow(branch: pin_branch), branch: branch) { Absent => true Present { value: _ } => false })
 }
 
 fn runs_on_refused(runs_on: RunnerSpec) -> Bool {
@@ -281,22 +305,33 @@ test fn the_dispatch_authority_must_name_the_tokens_installation() -> Bool {
 test fn a_delivery_from_another_dispatch_on_the_same_slot_refuses() -> Bool {
   match first(managed_hosts()) {
     Present { value: h } => {
-      let binding = HostUnitSlotBinding { standing: host_unit_slot_for(host: managed_host_binding(host: h), attempt: attempt, workflow: qualification_selected_workflow(branch: branch)) }
-      let group = group_restricted_to(workflow: qualification_selected_workflow(branch: branch))
+      let binding = HostUnitSlotBinding { standing: host_unit_slot_for(host: managed_host_binding(host: h), attempt: attempt, workflow: qualification_selected_workflow(branch: pin_branch)) }
+      let group = group_restricted_to(workflow: qualification_selected_workflow(branch: pin_branch))
       match dispatch_jit_mint(binding: binding, authority: app_credential, control_plane: observed_grant(perms: runner_grant), organization: gunbai_org_ref, runner_group: group, attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis)) {
-        JitMintDispatchAuthorized { dispatch: a } =>
+        JitMintDispatchAuthorized { dispatch: a } => match qualification_branch_name(attempt: attempt) {
+          QualificationBranchNameRefused { attempt: _, cause: _ } => false
+          QualificationBranchNamed { name: nm } =>
+            match qualification_ref_pin_of(
+              name: nm, revision: revision, readback: RestExchangeSucceeded, readback_sha: revision as String,
+              group: group_restricted_to(workflow: qualification_selected_workflow(branch: pin_branch)),
+            ) {
+              QualificationRefPinRefused { attempt: _, refusal: _ } => false
+              QualificationRefPinned { pin: p } =>
+  
           match dispatch_jit_mint(binding: binding, authority: app_credential, control_plane: observed_grant(perms: runner_grant), organization: GitHubOrganizationRef { login: "another-org" }, runner_group: group, attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis)) {
             JitMintDispatchAuthorized { dispatch: b } =>
               a.slot == b.slot
                 && (match qualification_dispatch_subject_over(
                   dispatch: a, delivery: receive_jit_mint(dispatch: JitMintDispatchAuthorized { dispatch: b }, outcome: minted_outcome),
-                  workflow: workflow_with(declares_input: true, runs_on: attempt_runs_on), floor_job_id: floor_job_id, branch: branch, revision: revision,
+                  workflow: workflow_with(declares_input: true, runs_on: attempt_runs_on), floor_job_id: floor_job_id, pin: p,
                 ) {
                   QualificationSubjectRefused { refusal: SubjectDeliveryForAnotherDispatch } => true
                   _ => false
                 })
             JitMintDispatchRefused { refusal: _ } => false
           }
+            }
+        }
         JitMintDispatchRefused { refusal: _ } => false
       }
     }
@@ -334,15 +369,20 @@ data expect: QualificationRunExpectation = QualificationRunExpectation {
   registered_runner: registered_runner,
   floor_job_name: "qualification floor",
   revision: revision,
+  branch: pin_branch,
 }
 
 fn run(id: Int, attempt_n: Int, event: String, path: String, sha: CommitSha, completed: Bool, concluded: Bool) -> WorkflowRun {
+  run_on(id: id, attempt_n: attempt_n, event: event, path: path, sha: sha, completed: completed, concluded: concluded, on_branch: pin_branch as String)
+}
+
+fn run_on(id: Int, attempt_n: Int, event: String, path: String, sha: CommitSha, completed: Bool, concluded: Bool, on_branch: String) -> WorkflowRun {
   WorkflowRun {
     id: id,
     name: none,
     path: Present { value: path },
     head_sha: sha,
-    head_branch: Present { value: branch as String },
+    head_branch: Present { value: on_branch },
     event: event,
     status: if completed { Completed } else { InProgress },
     conclusion: if concluded { Present { value: Failure } } else { none },
@@ -435,9 +475,10 @@ test fn the_collection_joins_the_floor_job_to_the_registered_runner() -> Bool {
     })
 }
 
-// THE SUBJECT IS THE DISPATCHED RUN'S FIRST ATTEMPT. REDs: the run re-run to attempt 2 (whose floor
-// job carries the same labels and runner); a job of attempt 2 in the listing; another run id; another
-// event; another workflow path.
+// THE SUBJECT IS THE DISPATCHED RUN'S FIRST ATTEMPT ON THE PIN BRANCH. REDs: the run re-run to
+// attempt 2 (whose floor job carries the same labels and runner); a job of attempt 2 in the listing;
+// another run id; another event; another workflow path; a run on another branch (the default branch
+// after a move, which the pinned group would also refuse to hand our runner).
 test fn a_rerun_or_another_run_cannot_be_collected_as_the_dispatch() -> Bool {
   let floor = jobs(js: [floor_on(runner_id: registered_runner_id)])
   let path = qualification_workflow_path() as String
@@ -449,6 +490,10 @@ test fn a_rerun_or_another_run_cannot_be_collected_as_the_dispatch() -> Bool {
     && mismatch(v: decide_run(r: run(id: 78, attempt_n: 1, event: "workflow_dispatch", path: path, sha: revision, completed: true, concluded: true), js: floor))
     && mismatch(v: decide_run(r: run(id: 77, attempt_n: 1, event: "push", path: path, sha: revision, completed: true, concluded: true), js: floor))
     && mismatch(v: decide_run(r: run(id: 77, attempt_n: 1, event: "workflow_dispatch", path: ".github/workflows/witnesses.yml", sha: revision, completed: true, concluded: true), js: floor))
+    && (match decide_run(r: run_on(id: 77, attempt_n: 1, event: "workflow_dispatch", path: path, sha: revision, completed: true, concluded: true, on_branch: "main"), js: floor) {
+      RunVerdictRefused { refusal: RunOnAnotherBranch { pinned: _, observed: _ } } => true
+      _ => false
+    })
 }
 
 test fn an_unfinished_unpinned_or_unreadable_run_refuses() -> Bool {

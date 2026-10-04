@@ -25,7 +25,6 @@ import extdeps.github.workflow_runs {
   WorkflowRun, WorkflowRunStatus, Completed, WorkflowRunConclusion, WorkflowJobRun, WorkflowJobRunList,
 }
 import gunbc.repository { gunbc_repository }
-import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
 import gunbc.fleet_converge_workflow { fleet_converge_workflow, fleet_converge_dispatch_inputs }
 import gunbc.auth.github_apps { DeclaredGitHubApp, GitHubAppControlPlaneState }
 import gunbc.auth.github_credential {
@@ -39,6 +38,9 @@ import gunbc.github_effect_perform {
   ControllerInstallationToken, dispatch_workflow_with, read_run_with, read_attempt_jobs_with,
 }
 import gunbc.runner_throughput_qualification_route { QualificationInstrument, qualification_instruments }
+import gunbc.runner.runner_qualification_ref_pin {
+  QualificationRefPin, QualificationBranchName, qualification_workflow_path, qualification_selected_workflow,
+}
 
 // THE DISPATCH LEG OF THE QUALIFICATION ROUTE, AND THE COLLECT STAGE THAT READS ITS RUN BACK.
 //
@@ -80,21 +82,11 @@ data qualification_attempt_dispatch_input: DispatchInput = DispatchInput {
   type: InputString,
 }
 
-fn qualification_workflow_path() -> NonEmptyStr {
-  artifact_path(a: FleetConvergeYamlArtifact) as NonEmptyStr
-}
-
 fn qualification_workflow_file_name() -> NonEmptyStr {
   match last(split(qualification_workflow_path() as String, "/")) {
     Present { value: f } => f as NonEmptyStr
     Absent => qualification_workflow_path()
   }
-}
-
-// The selected-workflow spelling a restricted runner group carries (owner/repo/path@ref), the same
-// form gunbc.runner_group_restriction_observation microvm_shakedown_selected_workflow derives.
-fn qualification_selected_workflow(branch: NonEmptyStr) -> NonEmptyStr {
-  join([gunbc_repository.full_name, "/", qualification_workflow_path() as String, "@refs/heads/", branch as String], "") as NonEmptyStr
 }
 
 fn qualification_dispatch_inputs(attempt: NonEmptyStr) -> Map<String, String> {
@@ -108,14 +100,15 @@ type QualificationDispatchSubject sole_constructor {
   host: HostIdentity
   attempt: NonEmptyStr
   runner_id: Int
-  branch: NonEmptyStr
-  revision: CommitSha
+  pin: QualificationRefPin
   floor_job_name: NonEmptyStr
 }
 
 type QualificationSubjectRefusal
   = SubjectCredentialNotDelivered { delivery: JitCredentialDelivery }
   | SubjectNoRegistration
+  | SubjectMintedIntoAnotherGroup { minted_group: Int, pinned_group: Int }
+  | SubjectPinForAnotherAttempt { pin_attempt: NonEmptyStr, slot_attempt: NonEmptyStr }
   | SubjectDeliveryForAnotherDispatch
   | SubjectSlotNotHostUnit
   | SubjectSlotForAnotherWorkflow { slot_workflow: NonEmptyStr, qualification_workflow: NonEmptyStr }
@@ -240,8 +233,7 @@ fn qualification_dispatch_subject_over(
   delivery: JitCredentialDelivery,
   workflow: Workflow,
   floor_job_id: NonEmptyStr,
-  branch: NonEmptyStr,
-  revision: CommitSha,
+  pin: QualificationRefPin,
 ) -> QualificationSubjectStanding
   admit_callers: [
     decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "qualification_dispatch_subject"),
@@ -260,7 +252,12 @@ fn qualification_dispatch_subject_over(
         match registration.slot {
           MicroVmJitSlot { attempt: _ } => QualificationSubjectRefused { refusal: SubjectSlotNotHostUnit }
           HostUnitJitSlot { slot: h } =>
-            match qualification_slot_refusal(slot_workflow: h.workflow, branch: branch) {
+            if (pin.name.attempt as String) != (h.attempt as String) {
+              QualificationSubjectRefused { refusal: SubjectPinForAnotherAttempt { pin_attempt: pin.name.attempt, slot_attempt: h.attempt } }
+            } else if dispatch.request.runner_group_id.value != pin.group.group.value {
+              QualificationSubjectRefused { refusal: SubjectMintedIntoAnotherGroup { minted_group: dispatch.request.runner_group_id.value, pinned_group: pin.group.group.value } }
+            } else {
+            match qualification_slot_refusal(slot_workflow: h.workflow, branch: pin.name.branch) {
               Present { value: r } => QualificationSubjectRefused { refusal: r }
               Absent =>
                 match qualification_floor_admission(workflow: workflow, floor_job_id: floor_job_id) {
@@ -272,12 +269,12 @@ fn qualification_dispatch_subject_over(
                         host: h.host.host.host,
                         attempt: h.attempt,
                         runner_id: runner_id,
-                        branch: branch,
-                        revision: revision,
+                        pin: pin,
                         floor_job_name: n,
                       },
                     }
                 }
+            }
             }
         }
       }
@@ -301,8 +298,7 @@ fn qualification_dispatch_subject(
   dispatch: AuthorizedJitMintDispatch,
   delivery: JitCredentialDelivery,
   floor_job_id: NonEmptyStr,
-  branch: NonEmptyStr,
-  revision: CommitSha,
+  pin: QualificationRefPin,
 ) -> QualificationSubjectStanding {
   if !dispatch_inputs_declare(inputs: fleet_converge_dispatch_inputs, input: qualification_attempt_dispatch_input) {
     QualificationSubjectRefused { refusal: SubjectAttemptInputUndeclared { input: qualification_attempt_dispatch_input.name } }
@@ -312,8 +308,7 @@ fn qualification_dispatch_subject(
       delivery: delivery,
       workflow: fleet_converge_workflow,
       floor_job_id: floor_job_id,
-      branch: branch,
-      revision: revision,
+      pin: pin,
     )
   }
 }
@@ -322,7 +317,7 @@ fn qualification_dispatch_effect(subject: QualificationDispatchSubject) -> GitHu
   DispatchWorkflow {
     repository: gunbc_repository,
     workflow: GitHubWorkflowRef { file_name: qualification_workflow_file_name() },
-    subject: subject.revision,
+    subject: subject.pin.revision,
   }
 }
 
@@ -422,7 +417,7 @@ fn dispatch_qualification_floor(
             owner: gunbc_repository.owner as NonEmptyStr,
             repo: gunbc_repository.name as NonEmptyStr,
             workflow_id: qualification_workflow_file_name(),
-            git_ref: subject.branch,
+            git_ref: subject.pin.name.branch,
             inputs: qualification_dispatch_inputs(attempt: subject.attempt),
           )
           match qualification_dispatch_standing(performance: answer.performance) {
@@ -460,6 +455,7 @@ type QualificationRunRefusal
   | RunSubjectMismatch { observed_run_id: Int, observed_event: String, observed_path: String?, foreign_jobs: List<Int> }
   | RunAdvancedPastDispatchedAttempt { observed_attempt: Int }
   | RunRevisionNotPinned { pinned: CommitSha, observed: CommitSha }
+  | RunOnAnotherBranch { pinned: NonEmptyStr, observed: String? }
   | RunNotCompleted { status: WorkflowRunStatus }
   | RunCompletedWithoutConclusion
   | RunJobsUnreadable { performance: RestExchangePerformance }
@@ -523,6 +519,7 @@ type QualificationRunExpectation {
   registered_runner: NonEmptyStr
   floor_job_name: NonEmptyStr
   revision: CommitSha
+  branch: NonEmptyStr
 }
 
 fn qualification_run_expectation(subject: QualificationDispatchSubject) -> QualificationRunExpectation {
@@ -530,7 +527,8 @@ fn qualification_run_expectation(subject: QualificationDispatchSubject) -> Quali
     registered_runner_id: subject.runner_id,
     registered_runner: subject.registration.name.value,
     floor_job_name: subject.floor_job_name,
-    revision: subject.revision,
+    revision: subject.pin.revision,
+    branch: subject.pin.name.branch,
   }
 }
 
@@ -567,6 +565,8 @@ fn decide_qualification_run(
         RunVerdictRefused { refusal: RunSubjectMismatch { observed_run_id: run.id, observed_event: run.event, observed_path: run.path, foreign_jobs: [] } }
       } else if run.run_attempt != dispatched_run_attempt {
         RunVerdictRefused { refusal: RunAdvancedPastDispatchedAttempt { observed_attempt: run.run_attempt } }
+      } else if !optional_text_is(o: run.head_branch, expected: subject.branch as String) {
+        RunVerdictRefused { refusal: RunOnAnotherBranch { pinned: subject.branch, observed: run.head_branch } }
       } else if (run.head_sha as String) != (subject.revision as String) {
         RunVerdictRefused { refusal: RunRevisionNotPinned { pinned: subject.revision, observed: run.head_sha } }
       } else {

@@ -1,0 +1,164 @@
+module test.claim.runner_qualification_ref_pin_witness
+
+import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.transports.rest {
+  RestExchangePerformance, RestExchangeSucceeded, RestExchangeStatusRefused, RestExchangeCommitAmbiguous,
+}
+import extdeps.github.actions {
+  WorkflowTrigger, Push, PullRequest, Schedule, WorkflowDispatch, WorkflowCall, WorkflowRunCompleted, MergeGroup,
+}
+import gunbc.fleet.org_actions_inspection { RunnerGroupListDecoded, RunnerGroupIdentity }
+import gunbc.runner_group_restriction_observation { RunnerGroupRestrictionRefused, RunnerGroupAbsent }
+import gunbc.fleet_desired_admission_workflow { fleet_desired_admission_workflow }
+import test.claim.github_app_registry { group_restricted_to }
+import gunbc.runner.runner_qualification_ref_pin {
+  qualification_branch_name, QualificationBranchNamed, QualificationBranchNameRefused, branch_full_ref,
+  qualification_selected_workflow, qualification_runner_group_name,
+  qualification_group_target, QualificationGroupTargeted, QualificationGroupNotTargetable,
+  branch_create_refusal, PinBranchPreexisting, PinBranchCreateRefused, PinBranchCreateAmbiguous,
+  qualification_ref_pin_of, QualificationRefPinned, QualificationRefPinRefused, PinBranchReadbackMismatch, PinGroupReadbackRefused,
+  classify_branch_removal, QualificationBranchRemoved, QualificationBranchRemovalRefused, BranchStillPresent, BranchReadUnreadable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data revision: CommitSha = "1111111111111111111111111111111111111111"
+
+fn named_ok(attempt: NonEmptyStr) -> Bool {
+  match qualification_branch_name(attempt: attempt) {
+    QualificationBranchNamed { name: n } => (n.branch as String) == concat("qualification/", attempt as String) && (branch_full_ref(name: n) as String) == concat("refs/heads/qualification/", attempt as String)
+    QualificationBranchNameRefused { attempt: _, cause: _ } => false
+  }
+}
+
+fn named_refused(attempt: NonEmptyStr) -> Bool {
+  match qualification_branch_name(attempt: attempt) {
+    QualificationBranchNamed { name: _ } => false
+    QualificationBranchNameRefused { attempt: _, cause: _ } => true
+  }
+}
+
+// RED: OUT OF PREFIX. A label carrying a slash, a parent step, a ref metacharacter, a leading dot or
+// a .lock suffix cannot name refs/heads/qualification/<attempt> and refuses rather than escaping.
+// Positive control: an ordinary attempt label names exactly refs/heads/qualification/<attempt>.
+test fn a_ref_outside_refs_heads_qualification_cannot_be_named() -> Bool {
+  named_ok(attempt: "q-1")
+    && named_refused(attempt: "../main")
+    && named_refused(attempt: "q/1")
+    && named_refused(attempt: "main~1")
+    && named_refused(attempt: ".hidden")
+    && named_refused(attempt: "q-1.lock")
+    && named_refused(attempt: "q 1")
+}
+
+// RED: CREATE-ONCE. GitHub's 422 on CreateRef (the ref exists) is the pre-existing refusal, never an
+// adoption; a lost or undecodable answer is ambiguous (removal still owed); only a created ref
+// proceeds to readback.
+test fn a_preexisting_branch_refuses_and_a_lost_create_is_ambiguous() -> Bool {
+  (match branch_create_refusal(performance: RestExchangeStatusRefused { status: 422, body: "Reference already exists" }) {
+    Present { value: PinBranchPreexisting { observed_sha: _ } } => true
+    _ => false
+  })
+    && (match branch_create_refusal(performance: RestExchangeStatusRefused { status: 403, body: "fixture" }) {
+      Present { value: PinBranchCreateRefused { status: s, body: _ } } => s == 403
+      _ => false
+    })
+    && (match branch_create_refusal(performance: RestExchangeCommitAmbiguous { detail: "fixture: 502 after the write" }) {
+      Present { value: PinBranchCreateAmbiguous { detail: _ } } => true
+      _ => false
+    })
+    && (match branch_create_refusal(performance: RestExchangeSucceeded) { Absent => true Present { value: _ } => false })
+}
+
+fn group_row(id: Int, name: NonEmptyStr) -> RunnerGroupIdentity {
+  RunnerGroupIdentity { id: id, name: name, allows_public_repositories: false, restricted_to_workflows: true, selected_workflows: [] }
+}
+
+// RED: A WRITE TO ANY OTHER GROUP. Only the dedicated qualification group can become a write target:
+// the shakedown group refuses even when it is present, as do an absent or duplicated dedicated group.
+// Positive control: the dedicated group found once.
+test fn a_restriction_write_to_any_other_group_refuses() -> Bool {
+  let listed = RunnerGroupListDecoded { groups: [group_row(id: 1, name: "microvm-shakedown"), group_row(id: 3, name: qualification_runner_group_name)] }
+  (match qualification_group_target(requested: "microvm-shakedown", listed: listed) { QualificationGroupNotTargetable { cause: _ } => true _ => false })
+    && (match qualification_group_target(requested: "Default", listed: listed) { QualificationGroupNotTargetable { cause: _ } => true _ => false })
+    && (match qualification_group_target(requested: qualification_runner_group_name, listed: RunnerGroupListDecoded { groups: [group_row(id: 1, name: "microvm-shakedown")] }) {
+      QualificationGroupNotTargetable { cause: _ } => true
+      _ => false
+    })
+    && (match qualification_group_target(requested: qualification_runner_group_name, listed: RunnerGroupListDecoded { groups: [group_row(id: 3, name: qualification_runner_group_name), group_row(id: 4, name: qualification_runner_group_name)] }) {
+      QualificationGroupNotTargetable { cause: _ } => true
+      _ => false
+    })
+    && (match qualification_group_target(requested: qualification_runner_group_name, listed: listed) {
+      QualificationGroupTargeted { target: t } => t.group_id == 3
+      QualificationGroupNotTargetable { cause: _ } => false
+    })
+}
+
+// THE PIN IS MINTED ONLY FROM A READBACK AT THE EXACT REVISION AND A GROUP OBSERVED PINNED TO THE
+// BRANCH. REDs: the branch read back at another commit; the group not observed restricted to the
+// qualification workflow at the branch. Positive control: both hold.
+test fn the_pin_is_minted_only_from_the_exact_revision_and_the_pinned_group() -> Bool {
+  match qualification_branch_name(attempt: "q-1") {
+    QualificationBranchNameRefused { attempt: _, cause: _ } => false
+    QualificationBranchNamed { name: n } => {
+      let pinned_group = group_restricted_to(workflow: qualification_selected_workflow(branch: n.branch))
+      (match qualification_ref_pin_of(name: n, revision: revision, readback: RestExchangeSucceeded, readback_sha: revision as String, group: pinned_group) {
+        QualificationRefPinned { pin: p } => (p.name.branch as String) == "qualification/q-1" && (p.revision as String) == (revision as String) && p.group.group.value == 3
+        QualificationRefPinRefused { attempt: _, refusal: _ } => false
+      })
+        && (match qualification_ref_pin_of(name: n, revision: revision, readback: RestExchangeSucceeded, readback_sha: "2222222222222222222222222222222222222222", group: pinned_group) {
+          QualificationRefPinRefused { attempt: _, refusal: PinBranchReadbackMismatch { pinned: _, observed: _ } } => true
+          _ => false
+        })
+        && (match qualification_ref_pin_of(name: n, revision: revision, readback: RestExchangeSucceeded, readback_sha: revision as String, group: RunnerGroupRestrictionRefused { name: qualification_runner_group_name, cause: RunnerGroupAbsent }) {
+          QualificationRefPinRefused { attempt: _, refusal: PinGroupReadbackRefused { standing: _ } } => true
+          _ => false
+        })
+    }
+  }
+}
+
+// REMOVAL IS A READBACK. A read finding the branch absent (404) is removed; a branch still present
+// after the delete refuses BranchStillPresent; an unreadable read refuses rather than reporting it gone.
+test fn the_branch_is_removed_only_when_a_read_finds_it_absent() -> Bool {
+  match qualification_branch_name(attempt: "q-1") {
+    QualificationBranchNameRefused { attempt: _, cause: _ } => false
+    QualificationBranchNamed { name: n } =>
+      (match classify_branch_removal(name: n, readback: RestExchangeStatusRefused { status: 404, body: "Not Found" }, readback_sha: "", deleted: true, delete: RestExchangeSucceeded) {
+        QualificationBranchRemoved { name: _, deleted: d } => d
+        _ => false
+      })
+        && (match classify_branch_removal(name: n, readback: RestExchangeSucceeded, readback_sha: revision as String, deleted: true, delete: RestExchangeSucceeded) {
+          QualificationBranchRemovalRefused { name: _, cause: BranchStillPresent { observed_sha: _, delete: _ } } => true
+          _ => false
+        })
+        && (match classify_branch_removal(name: n, readback: RestExchangeStatusRefused { status: 500, body: "fixture" }, readback_sha: "", deleted: true, delete: RestExchangeSucceeded) {
+          QualificationBranchRemovalRefused { name: _, cause: BranchReadUnreadable { performance: _ } } => true
+          _ => false
+        })
+  }
+}
+
+// CREATING A QUALIFICATION BRANCH FIRES NO WORKFLOW. WorkflowTrigger has no `create` variant, so no
+// generated workflow can trigger on branch creation by construction; the one generated workflow with a
+// push trigger is gunbc.fleet_desired_admission_workflow, whose branch filter must not admit
+// qualification/<attempt>. A filter containing any glob is read as possibly matching (refused here
+// rather than evaluated), so a widened filter turns this red.
+fn push_trigger_could_fire_on(trigger: WorkflowTrigger, branch: String) -> Bool {
+  match trigger {
+    Push { branches: bs, paths: _ } => count(bs) == 0 || (bs |> any(b => b == branch || string_contains(s: b, pattern: "*")))
+    PullRequest { branches: _, types: _ } => false
+    Schedule { cron: _ } => false
+    WorkflowDispatch { inputs: _ } => false
+    WorkflowCall { inputs: _ } => false
+    WorkflowRunCompleted { workflows: _, branches: _ } => false
+    MergeGroup => false
+  }
+}
+
+test fn creating_a_qualification_branch_fires_no_generated_push_workflow() -> Bool {
+  !(fleet_desired_admission_workflow.on |> any(t => push_trigger_could_fire_on(trigger: t, branch: "qualification/q-1")))
+    && push_trigger_could_fire_on(trigger: Push { branches: ["qualification/**"], paths: [] }, branch: "qualification/q-1")
+}
