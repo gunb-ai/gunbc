@@ -1,9 +1,11 @@
 module test.claim.approval_request_client_witness_test
 
+import gunbc.auth.approval_cutover_posture { approval_cutover_posture, RoadmapServesAndWrites, BrokerServesAndWrites, BrokerOwnsAlone }
+import gunbc.auth.approval_broker_endpoint { approval_broker_loopback_base_url, approval_broker_listen_port }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String }
 import gunbc.auth.approval_request_client {
-  approval_submit_url, approval_status_url, approval_loopback_origin, approval_request_submit_path,
+  approval_submit_url, approval_status_url, approval_loopback_origin, approval_loopback_origin_for, approval_request_submit_path,
   approval_poll_standing, PollStillPending, PollApproved, PollExpired, PollUnreadable,
   StoredApprovalRequest,
 }
@@ -32,10 +34,15 @@ fn fixture_stored() -> StoredApprovalRequest {
   }
 }
 
-test fn submit_and_status_urls_follow_the_srv1_instance_listen_bind() -> Bool {
+test fn submit_and_status_urls_follow_the_writer_cutover() -> Bool {
   let instance = srv1_live_dashboard_instance()
   let origin = approval_loopback_origin() as String
-  origin == concat(concat("http://", instance.listen_host as String), concat(":", to_string(instance.listen_port)))
+  let roadmap = concat(concat("http://", instance.listen_host as String), concat(":", to_string(instance.listen_port)))
+  let broker = approval_broker_loopback_base_url(port: approval_broker_listen_port)
+  approval_loopback_origin_for(posture: RoadmapServesAndWrites) as String == roadmap
+    && approval_loopback_origin_for(posture: BrokerServesAndWrites) == broker
+    && approval_loopback_origin_for(posture: BrokerOwnsAlone) == broker
+    && origin == (approval_loopback_origin_for(posture: approval_cutover_posture) as String)
     && approval_submit_url() as String == concat(origin, approval_request_submit_path as String)
     && approval_status_url(escalation_id: "esc-1") as String == concat(concat(origin, concat(approval_request_submit_path as String, "/")), "esc-1")
 }
