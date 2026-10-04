@@ -1,6 +1,6 @@
 module gunbc.workspace_allocation
 
-import std.types { NonEmptyStr, String, Int, Bool, Timestamp }
+import std.types { NonEmptyStr, String, Int, Bool, Timestamp, List }
 import std.nat { Nat }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
@@ -9,7 +9,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import std.measure { ByteSize, byte_size, finite_byte_size, positive_measure_count, hardware_thread_count, Minute, minute, minutes_per_hour, minute_to_second, second_count }
 import gunbc.principal_projection { PrincipalRef, principal_ref_label, principal_ref_parse_label }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import product.fabric.identity { FabricIdentity, WorkKey, ExecutionAttemptKey, DemandKey, OfferKey, fabric_identity_eq }
 import product.fabric.budget { MoneyAccount }
 import gunbc.workspace_money_codec { workspace_money_json, workspace_money_from_json }
@@ -91,9 +91,11 @@ fn workspace_lease_bound_seconds() -> Nat { second_count(s: minute_to_second(m: 
 fn workspace_profile_wire(profile: WorkspaceProfile) -> NonEmptyStr {
   match profile { SmallWorkspace => "2cpu-4gib" LargeWorkspace => "4cpu-8gib" }
 }
+// THE OFFERED PROFILES, in the order a client presents them. Parsing and every rendered choice
+// read this one list, so a profile added here is offered and admitted together.
+fn workspace_profiles() -> List<WorkspaceProfile> { [SmallWorkspace, LargeWorkspace] }
 fn workspace_profile_parse(value: String) -> WorkspaceProfile? {
-  if value == "2cpu-4gib" { Present { value: SmallWorkspace } }
-  else if value == "4cpu-8gib" { Present { value: LargeWorkspace } } else { none }
+  first(filter(workspace_profiles(), p => workspace_profile_wire(profile: p) as String == value))
 }
 
 fn workspace_memory_policy() -> MicroVmMemoryGrantPolicy {

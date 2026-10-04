@@ -16,7 +16,7 @@ import extdeps.sudo.nopasswd_execute_probe {
   NopasswdGrantListCheck,
 }
 import std.types { NonEmptyStr, List, String, Bool, Int }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import std.disposition { Disposition, Terminal, Scaffold, ConstructionMechanism }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.effects { ExecuteEffect }

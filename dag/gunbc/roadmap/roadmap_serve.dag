@@ -9,21 +9,27 @@ import gunbc.roadmap.roadmap_event_carrier { roadmap_operation_identity_valid }
 
 import extdeps.http.form_urlencoded { form_decode, form_field, FormDecoded, FormRefused }
 
-import gunbc.roadmap_allocation_location { allocation_page_path }
-import gunbc.workspace_allocation_routes { workspace_route_list, workspace_route_get }
+import gunbc.roadmap_allocation_location { allocation_page_path, allocation_list_path, allocation_item_route, allocation_release_route }
+import gunbc.workspace_allocation_routes { workspace_route_create, workspace_route_list, workspace_route_get, workspace_route_release }
 import gunbc.auth.profile_projection {
   profile_store_layout_for_instance, profile_store_upsert_from_session, profile_store_read_all, ProfileStoreReadAll,
   ProfileStoreUpserted, ProfileStoreUpsertRefused, ProfileStoreRead, ProfileStoreUnread, PrincipalProfile,
 }
 import gunbc.roadmap_auth_route_paths { auth_login_route_path, auth_logout_route_path }
-import gunbc.roadmap_allocation_page { allocation_page_with_stylesheet, allocation_client_path }
+import gunbc.roadmap_allocation_page { allocation_page_with_stylesheet, allocation_client_path, AllocationViewerSignedIn, AllocationViewerSignedOut }
 import gunbc.roadmap_style { roadmap_css }
 import gunbc.roadmap_allocation_client { allocation_client_source }
 
 
 import gunbc.roadmap_inline_assignment { inline_assignment_context_body }
 
-import extdeps.tailscale.serve { ServeStatusUnreadable }
+import extdeps.tailscale.serve { TailscaleServeEndpoint }
+import gunbc.auth.tailnet_serve_readback {
+  TailnetServeReadback, TailnetServeReadbackTaken, TailnetServeReadbackUntaken, tailnet_serve_readback_take, tailnet_route_standing,
+}
+import gunbc.live_deploy.desired {
+  desired_deployment_for_instance_id, DesiredDeploymentFound, DesiredDeploymentUnknownInstanceId, DesiredDeploymentRosterRefused,
+}
 import gunbc.roadmap_auth_routes { auth_login_response, auth_google_callback_response, auth_logout_response, roadmap_serve_authentication_evidence }
 import extdeps.tailscale.acl { operator_tailscale_acl_policy }
 import gunbc.auth.request_authentication {
@@ -32,7 +38,9 @@ import gunbc.auth.request_authentication {
   GoogleOidcSession,
   FabricServiceEvidence,
   SessionStandingInvalid,
-  request_access_path_of,
+  request_access_path_of_standing,
+  TailnetReadbackNotDemanded,
+  RequestIngress, IngressUnattested, request_ingress_is_the_proxy,
   authenticated_viewer_label,
   human_write_admission,
   tracker_write_authorization_policy,
@@ -150,11 +158,13 @@ import gunbc.roadmap.roadmap_event_carrier {
   roadmap_events_read_all,
   EventsRead, EventsReadRefused, EventAppended, EventAlreadyPresent, EventAppendRefused,
   AllEventsRead, AllEventsReadRefused,
+  RoadmapEventsRead, RoadmapAllEventsRead, RoadmapEventAppend,
+  CarrierClosed, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed,
 }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent, RoadmapEventId, Claimed, CommentCreated,
   EventPrincipal, EventPrincipalAuthenticated,
-  roadmap_node_standing, roadmap_node_standing_key, roadmap_node_standing_text,
+  roadmap_node_standing, roadmap_node_standing_text, roadmap_history_unordered_reason,
   roadmap_recent_claimed_assignees,
   IssueComment, roadmap_issue_comments, roadmap_comment_created_key_present, roadmap_comment_retry_present,
 }
@@ -271,8 +281,10 @@ type RoadmapServeHandler
   = RoadmapDailyPageHandler
   | RoadmapFullPageHandler
   | AllocationPageHandler
+  | AllocationCreateHandler
   | AllocationListHandler
   | AllocationGetHandler
+  | AllocationReleaseHandler
   | AllocationClientHandler
   | FleetStandingPageHandler
   | RoadmapMdHandler
@@ -353,8 +365,10 @@ fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>>
   [
     ServedRouteSpec { method: GET, raw: roadmap_site_daily_url_path as String, handler: RoadmapDailyPageHandler },
     ServedRouteSpec { method: GET, raw: roadmap_site_full_url_path as String, handler: RoadmapFullPageHandler },
-    ServedRouteSpec { method: GET, raw: "/allocations.json", handler: AllocationListHandler },
-    ServedRouteSpec { method: GET, raw: "/allocations/\{allocation_id\}", handler: AllocationGetHandler },
+    ServedRouteSpec { method: POST, raw: allocation_page_path, handler: AllocationCreateHandler },
+    ServedRouteSpec { method: GET, raw: allocation_list_path, handler: AllocationListHandler },
+    ServedRouteSpec { method: GET, raw: allocation_item_route(), handler: AllocationGetHandler },
+    ServedRouteSpec { method: POST, raw: allocation_release_route(), handler: AllocationReleaseHandler },
     ServedRouteSpec { method: GET, raw: allocation_page_path, handler: AllocationPageHandler },
     ServedRouteSpec { method: GET, raw: allocation_client_path, handler: AllocationClientHandler },
     ServedRouteSpec { method: GET, raw: "/fleet", handler: FleetStandingPageHandler },
@@ -675,23 +689,23 @@ fn serve_issue_detail_response_over(
   let node_id = path_param_value(params: params, name: "node_id")
   let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
   if !issue_detail_node_exists(proj: plan, node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "issue not found") }
-  else { match roadmap_events_read(layout: layout, node: node_id as NonEmptyStr as RoadmapNodeId) {
+  else { match serve_history_after_snapshot_close(read: roadmap_events_read(layout: layout, node: node_id as NonEmptyStr as RoadmapNodeId)) {
     EventsReadRefused { node: _, step, reason } => serve_text_response(status: 503, content_type: text_plain_utf8,
       body: join(["Issue history unavailable at ", step, ": ", reason, ". No revision-pinned mutations are available."], ""))
     EventsRead { node: _, envelopes } => {
       let state = roadmap_issue_state(envs: envelopes)
       let standing = state.standing
-      let standing_key = roadmap_node_standing_key(s: standing)
-      if standing_key == "forked" || standing_key == "history_incomplete" {
-        serve_text_response(status: 503, content_type: text_plain_utf8, body: concat("Issue history unavailable: ", roadmap_node_standing_text(s: standing)))
-      } else {
+      match roadmap_history_unordered_reason(envs: envelopes) {
+      Present { value: why } =>
+        serve_text_response(status: 503, content_type: text_plain_utf8, body: concat("Issue history unavailable: ", why))
+      Absent => {
         let context = match request.security.authentication {
           GoogleOidcSession { session } => IssueFormContext { operation: match issue_operation_nonce() { Present { value: nonce } => nonce Absent => "" }, csrf: session.csrf.token as String }
           FabricServiceEvidence { kind: _, authenticated_at: _ } => IssueFormContext { operation: "", csrf: "" }
           SessionStandingInvalid { standing: _ } => IssueFormContext { operation: "", csrf: "" }
           AuthAbsent => IssueFormContext { operation: "", csrf: "" }
         }
-        let recents = match roadmap_events_read_all(layout: layout) { AllEventsRead { envelopes: all_events } => roadmap_recent_claimed_assignees(envs: all_events) AllEventsReadRefused { step: _, reason: _ } => [] }
+        let recents = match serve_all_events_after_snapshot_close(read: roadmap_events_read_all(layout: layout)) { AllEventsRead { envelopes: all_events } => roadmap_recent_claimed_assignees(envs: all_events) AllEventsReadRefused { step: _, reason: _ } => [] }
         let launch = belt_launch_host_standing_for_page_over(instance: instance, plan: plan)
         let observed = belt_workflow_attempts_observe_scoped(instance: instance, scope: WorkflowAttemptsOneNode { node_id: node_id })
         let attempts = match observed {
@@ -714,6 +728,7 @@ fn serve_issue_detail_response_over(
           profiles: serve_profiles_for_instance(instance: instance))
         let response = serve_page_response_with_status(page: page, status: 200)
         response
+      }
       }
     }
   } }
@@ -789,11 +804,11 @@ fn serve_issue_assignment_context_over(
         serve_text_response(status: 404, content_type: text_plain_utf8, body: "Issue not found.")
       } else {
         let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
-        match roadmap_events_read(layout: layout, node: node_id as NonEmptyStr as RoadmapNodeId) {
+        match serve_history_after_snapshot_close(read: roadmap_events_read(layout: layout, node: node_id as NonEmptyStr as RoadmapNodeId)) {
           EventsReadRefused { node: _, step, reason } =>
             serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["Cannot load assignment history at ", step, ": ", reason], ""))
           EventsRead { node: _, envelopes } =>
-            let recents = match roadmap_events_read_all(layout: layout) {
+            let recents = match serve_all_events_after_snapshot_close(read: roadmap_events_read_all(layout: layout)) {
               AllEventsRead { envelopes: all_events } => roadmap_recent_claimed_assignees(envs: all_events)
               AllEventsReadRefused { step: _, reason: _ } => []
             }
@@ -899,11 +914,11 @@ fn serve_issue_assign_response_over(
               Absent => serve_text_response(status: 400, content_type: text_plain_utf8, body: "return_to has no admitted principal")
               Present { value: return_to } => {
                 let expected = issue_form_field(body: request.body, name: "expected_revision")
-                let outcome = issue_command_apply(layout: roadmap_event_carrier_layout_for_instance(instance: instance),
+                let outcome = serve_append_after_snapshot_close(appended: issue_command_apply(layout: roadmap_event_carrier_layout_for_instance(instance: instance),
                   command: AssignIssue { subject: IssueCommandSubject { node: node_id as NonEmptyStr as RoadmapNodeId,
                     author: EventPrincipalAuthenticated { ref: author }, operation: issue_form_field(body: request.body, name: "key") as NonEmptyStr,
                     expected: if expected == "" { none } else { Present { value: expected as NonEmptyStr as RoadmapEventId } } },
-                    assignee: EventPrincipalAuthenticated { ref: assignee }, return_to: EventPrincipalAuthenticated { ref: return_to } }, recorded_at: observed_at)
+                    assignee: EventPrincipalAuthenticated { ref: assignee }, return_to: EventPrincipalAuthenticated { ref: return_to } }, recorded_at: observed_at))
                 match outcome {
                   EventAppended { id } => serve_assignment_launch_follow_through(instance: instance, plan: plan, node_id: node_id, assignee: assignee, event_id: id as String)
                   EventAlreadyPresent { id } => serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " (already recorded event ", id as String, ")\n"], ""))
@@ -1098,9 +1113,9 @@ fn serve_issue_comment_response_over(
             let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
             let expected = issue_form_field(body: request.body, name: "expected_revision")
             let operation = issue_form_field(body: request.body, name: "key")
-            let outcome = issue_command_apply(layout: layout, command: CreateComment { subject: IssueCommandSubject {
+            let outcome = serve_append_after_snapshot_close(appended: issue_command_apply(layout: layout, command: CreateComment { subject: IssueCommandSubject {
               node: node_id as NonEmptyStr as RoadmapNodeId, author: EventPrincipalAuthenticated { ref: author }, operation: operation as NonEmptyStr,
-              expected: if expected == "" { none } else { Present { value: expected as NonEmptyStr as RoadmapEventId } } }, body: body as NonEmptyStr }, recorded_at: observed_at)
+              expected: if expected == "" { none } else { Present { value: expected as NonEmptyStr as RoadmapEventId } } }, body: body as NonEmptyStr }, recorded_at: observed_at))
             match outcome {
               EventAppendRefused { id: _, step, reason } => issue_command_refusal_response(step: step, reason: reason)
               EventAppended { id } => issue_comment_readback_response(layout: layout, node_id: node_id, operation: operation, event_id: id as String, already_present: false)
@@ -1123,7 +1138,7 @@ fn serve_issue_comment_response_over(
 // A committed or already-present comment answers from the event log read back after the commit;
 // a refused readback is a 503 that names its step, never a page built from the request.
 fn issue_comment_readback_response(layout: RoadmapEventCarrierLayout, node_id: String, operation: String, event_id: String, already_present: Bool) -> ServeHttpResponse {
-  match roadmap_events_read(layout: layout, node: node_id as NonEmptyStr as RoadmapNodeId) {
+  match serve_history_after_snapshot_close(read: roadmap_events_read(layout: layout, node: node_id as NonEmptyStr as RoadmapNodeId)) {
     EventsReadRefused { node: _, step, reason } => serve_text_response(status: 503, content_type: text_plain_utf8,
       body: concat("comment commit acknowledged, but readback refused; retry with the same operation key: ", concat(step, concat(": ", reason))))
     EventsRead { node: _, envelopes } => serve_comment_recorded_response(node_id: node_id, comments: roadmap_issue_comments(envs: envelopes), comment: operation,
@@ -1298,7 +1313,9 @@ fn roadmap_serve_invoke_over(
       ))
     }
     AllocationPageHandler => allocation_page_response(request: request)
+    AllocationCreateHandler => workspace_route_create(request: request)
     AllocationListHandler => workspace_route_list(request: request)
+    AllocationReleaseHandler => workspace_route_release(request: request, allocation_id: path_param_value(params: params, name: "allocation_id") as NonEmptyStr)
     AllocationGetHandler => workspace_route_get(request: request, allocation_id: path_param_value(params: params, name: "allocation_id") as NonEmptyStr)
     AllocationClientHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: allocation_client_source())
     FleetStandingPageHandler => serve_page_response(page: roadmap_fleet_page())
@@ -1566,27 +1583,113 @@ fn roadmap_serve_selection_response(
 }
 
 // THE REQUEST-SECURITY CONTEXT, built at the one seam every route shares. The access path is
-// modeled from the instance bind and the tailnet header through the ACL and serve-route
-// authorities (a header alone mints no tailnet path -- the readback does, and this revision
-// performs none, so a tailnet header reads as transport absent). Authentication evidence is the
-// session cookie the seam passes through, resolved against the session store
-// (gunbc.roadmap_auth_routes roadmap_serve_authentication_evidence): an absent cookie is
-// AuthAbsent, a cookie that does not resolve to a live session is SessionStandingInvalid with its
-// cause. NO REQUEST IS AUTHENTICATED BY TAILNET TRANSPORT.
+// modeled from the instance bind, the tailnet header and the serve-route readback through the ACL
+// and serve-route authorities: a header alone mints no tailnet path, and neither does a reading
+// that is absent, stale, unreadable, or shows another backend at this instance's declared route.
+// Authentication evidence is the session cookie the seam passes through, resolved against the
+// session store (gunbc.roadmap_auth_routes roadmap_serve_authentication_evidence): an absent
+// cookie is AuthAbsent, a cookie that does not resolve to a live session is SessionStandingInvalid
+// with its cause. NO REQUEST IS AUTHENTICATED BY TAILNET TRANSPORT.
 fn roadmap_serve_request_security(
   instance: HostDashboardInstance,
   tailscale_identity: String,
+  ingress: RequestIngress,
+  readback: TailnetServeReadback,
+  decided_at: String,
   cookie_header: String = "",
 ) -> RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence> {
   RequestSecurityContext {
-    access_path: request_access_path_of(
-      listen_host: instance.listen_host,
-      tailscale_header: tailscale_identity,
-      serve_status: ServeStatusUnreadable,
-      serve_route: none,
-      acl_policy: operator_tailscale_acl_policy,
-    ),
+    access_path: roadmap_serve_access_path(instance: instance, tailscale_identity: tailscale_identity, ingress: ingress, readback: readback, decided_at: decided_at),
     authentication: roadmap_serve_authentication_evidence(instance: instance, cookie_header: cookie_header),
+  }
+}
+
+// THE ACCESS-PATH HALF OF THE SEAM. The route the reading is compared to is the one the
+// desired-deployment roster declares for this instance, so the route a write is admitted on and
+// the route the deployment installs are one value.
+fn roadmap_serve_access_path(
+  instance: HostDashboardInstance,
+  tailscale_identity: String,
+  ingress: RequestIngress,
+  readback: TailnetServeReadback,
+  decided_at: String,
+) -> RequestAccessPath {
+  roadmap_serve_access_path_over(
+    listen_host: instance.listen_host,
+    declared: roadmap_serve_declared_serve_endpoint(instance: instance),
+    tailscale_identity: tailscale_identity,
+    ingress: ingress,
+    readback: readback,
+    decided_at: decided_at,
+  )
+}
+
+// The same fold over a supplied bind and declared route.
+fn roadmap_serve_access_path_over(
+  listen_host: NonEmptyStr,
+  declared: TailscaleServeEndpoint?,
+  tailscale_identity: String,
+  ingress: RequestIngress,
+  readback: TailnetServeReadback,
+  decided_at: String,
+) -> RequestAccessPath {
+  request_access_path_of_standing(
+    listen_host: listen_host,
+    tailscale_header: tailscale_identity,
+    ingress: ingress,
+    standing: tailnet_route_standing(readback: readback, declared: declared, decided_at: decided_at),
+    acl_policy: operator_tailscale_acl_policy,
+  )
+}
+
+// An instance outside the desired-deployment roster, or one whose bind differs from its roster
+// row, has no declared serve route, so no reading can vouch for a tailnet path to it.
+fn roadmap_serve_declared_serve_endpoint(instance: HostDashboardInstance) -> TailscaleServeEndpoint? {
+  match desired_deployment_for_instance_id(instance_id: instance.instance_id as String) {
+    DesiredDeploymentFound { row } =>
+      if row.instance.listen_port == instance.listen_port && (row.instance.listen_host as String) == (instance.listen_host as String) {
+        Present { value: row.names.tailscale_serve_endpoint }
+      } else {
+        none
+      }
+    DesiredDeploymentUnknownInstanceId { instance_id: _ } => none
+    DesiredDeploymentRosterRefused { refusal: _ } => none
+  }
+}
+
+// WHICH SELECTED ROUTES DEMAND THE READING: the ones whose write law requires the tailnet path
+// (gunbc.workspace_allocation_routes workspace_allocation_deployment_access_policy). Every other
+// route decides nothing over the access path's tailnet arm, so it is handed an untaken reading
+// rather than paying a process spawn per request -- as is a connection whose ingress is not the
+// proxy, which no reading could vouch for.
+fn roadmap_serve_selection_requires_tailnet_path(sel: RouteSelection<RoadmapServeHandler>) -> Bool {
+  match sel {
+    SelectedDynamic { handler: h, params: _ } => h == AllocationCreateHandler || h == AllocationReleaseHandler
+    SelectedStatic { route: _ } => false
+    MethodNotAllowed { allowed: _ } => false
+    NoRouteMatched => false
+  }
+}
+
+fn roadmap_serve_tailnet_readback(sel: RouteSelection<RoadmapServeHandler>, tailscale_identity: String, ingress: RequestIngress) -> TailnetServeReadback {
+  if !roadmap_serve_selection_requires_tailnet_path(sel: sel) || tailscale_identity == "" || !request_ingress_is_the_proxy(ingress: ingress) {
+    TailnetServeReadbackUntaken { gap: TailnetReadbackNotDemanded }
+  } else {
+    tailnet_serve_readback_take()
+  }
+}
+
+// The instant the access path is decided at, read AFTER the readback so the reading's age is
+// measured rather than assumed. An unreadable clock is the empty instant, which no reading is
+// fresh against.
+fn roadmap_serve_decided_at(readback: TailnetServeReadback) -> String {
+  match readback {
+    TailnetServeReadbackUntaken { gap: _ } => ""
+    TailnetServeReadbackTaken { status_json: _, observed_at: _ } =>
+      match clock_now_probed_at() {
+        Present { value: now } => now as String
+        Absent => ""
+      }
   }
 }
 
@@ -1598,6 +1701,7 @@ fn roadmap_serve_respond_over(
   path: String,
   body: String,
   tailscale_identity: String,
+  ingress: RequestIngress,
   cookie_header: String = "",
   release_revision: CommitSha,
 ) -> ServeHttpResponse {
@@ -1621,12 +1725,14 @@ fn roadmap_serve_respond_over(
               " (fail-closed — fix the literal in gunbc.roadmap_serve.roadmap_serve_route_specs)\n",
             ], ""),
           )
-        ServedRouteTableBuilt { table: t } =>
+        ServedRouteTableBuilt { table: t } => {
+          let sel = serve_select_route(table: t, method: m, path: path)
+          let readback = roadmap_serve_tailnet_readback(sel: sel, tailscale_identity: tailscale_identity, ingress: ingress)
           roadmap_serve_selection_response_over(
             instance: instance,
             plan: plan,
             daily_body: daily_body,
-            sel: serve_select_route(table: t, method: m, path: path),
+            sel: sel,
             cookie_header: cookie_header,
             request: ServeHttpRequest {
               method: m,
@@ -1635,11 +1741,15 @@ fn roadmap_serve_respond_over(
               security: roadmap_serve_request_security(
                 instance: instance,
                 tailscale_identity: tailscale_identity,
+                ingress: ingress,
+                readback: readback,
+                decided_at: roadmap_serve_decided_at(readback: readback),
                 cookie_header: cookie_header,
               ),
             },
             release_revision: release_revision,
           )
+        }
       }
   }
 }
@@ -1661,6 +1771,7 @@ fn roadmap_serve_respond_for_instance(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    ingress: IngressUnattested,
     cookie_header: cookie_header,
     release_revision: release_revision,
   )
@@ -1730,6 +1841,7 @@ fn roadmap_serve_handle_over(
   path: String,
   body: String,
   tailscale_identity: String,
+  ingress: RequestIngress,
   request_headers: List<ServeRequestHeader>,
   release_revision: CommitSha,
 ) -> ServeWireResponse {
@@ -1739,16 +1851,19 @@ fn roadmap_serve_handle_over(
     ServeRequestHeaderAbsent =>
       serve_wire_response(r: roadmap_serve_respond_over(
         instance: instance, plan: plan, daily_body: daily_body, method_label: method, path: path, body: body,
-        tailscale_identity: tailscale_identity, cookie_header: "", release_revision: release_revision,
+        tailscale_identity: tailscale_identity, ingress: ingress, cookie_header: "", release_revision: release_revision,
       ))
     ServeRequestHeaderSingle { value: cookie_header } =>
       serve_wire_response(r: roadmap_serve_respond_over(
         instance: instance, plan: plan, daily_body: daily_body, method_label: method, path: path, body: body,
-        tailscale_identity: tailscale_identity, cookie_header: cookie_header, release_revision: release_revision,
+        tailscale_identity: tailscale_identity, ingress: ingress, cookie_header: cookie_header, release_revision: release_revision,
       ))
   }
 }
 
+// EVERY ENTRY BELOW IS LAUNCHED ON A TCP LISTENER, which attests no peer, so each hands the seam
+// IngressUnattested: its requests cannot mint the tailnet path and the tailnet-required writes
+// answer unavailable there.
 fn roadmap_serve_handle(
   method: String,
   path: String,
@@ -1765,6 +1880,7 @@ fn roadmap_serve_handle(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    ingress: IngressUnattested,
     request_headers: request_headers,
     release_revision: release_revision,
   )
@@ -1793,6 +1909,7 @@ fn roadmap_serve_handle_macbook_local(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    ingress: IngressUnattested,
     request_headers: request_headers,
     release_revision: release_revision,
   )
@@ -1814,6 +1931,7 @@ fn roadmap_serve_handle_srv1_lab(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    ingress: IngressUnattested,
     request_headers: request_headers,
     release_revision: release_revision,
   )
@@ -1835,6 +1953,7 @@ fn roadmap_serve_handle_srv2_preview(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    ingress: IngressUnattested,
     request_headers: request_headers,
     release_revision: release_revision,
   )
@@ -1859,6 +1978,7 @@ fn roadmap_serve_handle_srv2_deploy(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    ingress: IngressUnattested,
     request_headers: request_headers,
     release_revision: release_revision,
   )
@@ -1880,6 +2000,7 @@ fn roadmap_serve_handle_srv2_lab(
     path: path,
     body: body,
     tailscale_identity: tailscale_identity,
+    ingress: IngressUnattested,
     request_headers: request_headers,
     release_revision: release_revision,
   )
@@ -2049,14 +2170,48 @@ fn allocation_page_response(request: ServeHttpRequest<RequestAccessPath, Request
 // stylesheet, so a claim about them supplies it (gunbc.roadmap_allocation_page
 // allocation_page_with_stylesheet).
 fn allocation_page_response_over(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, roadmap_stylesheet: String) -> ServeHttpResponse {
-  let signed_in = match request.security.authentication {
-    GoogleOidcSession { session: _ } => true
-    AuthAbsent => false
-    SessionStandingInvalid { standing: _ } => false
-    FabricServiceEvidence { kind: _, authenticated_at: _ } => false
+  let viewer = match request.security.authentication {
+    GoogleOidcSession { session } => AllocationViewerSignedIn { csrf: session.csrf.token as String }
+    AuthAbsent => AllocationViewerSignedOut
+    SessionStandingInvalid { standing: _ } => AllocationViewerSignedOut
+    FabricServiceEvidence { kind: _, authenticated_at: _ } => AllocationViewerSignedOut
   }
-  match try_serialize_html_source(node: allocation_page_with_stylesheet(signed_in: signed_in, roadmap_stylesheet: roadmap_stylesheet)) {
+  match try_serialize_html_source(node: allocation_page_with_stylesheet(viewer: viewer, roadmap_stylesheet: roadmap_stylesheet)) {
     EmitOk { html } => serve_text_response(status: 200, content_type: text_html_utf8, body: html)
     EmitRejected { reason } => serve_text_response(status: 500, content_type: text_plain_utf8, body: page_render_refusal_body(reason: reason))
+  }
+}
+
+// A SERVED RESPONSE HAS NO SURFACE FOR A LEAKED EVENT-LOG SNAPSHOT. The body is the client's answer
+// to its own request -- a page, a redirect, a refusal it can act on -- and the path of a scratch
+// worktree on the host is neither the client's to act on nor the client's to see; the serve process
+// writes no operator log of its own. So in the three functions below the snapshot's standing is
+// matched by name and the carrier's result passes through unchanged. THIS FAILURE ITSELF IS
+// RECORDED NOWHERE. What exists is the instance's snapshot census
+// (gunbc.roadmap.roadmap_event_snapshot_census roadmap_snapshot_census_for_instance), taken by the
+// belt tick from the repository's worktree registry: a snapshot a served request left registered is
+// listed there for as long as it stays registered. The census does not know a removal failed, and
+// one whose worktree is gone before the next census appears nowhere.
+fn serve_history_after_snapshot_close(read: CarrierClosed<RoadmapEventsRead>) -> RoadmapEventsRead {
+  match read.close {
+    SnapshotNotOpened => read.result
+    SnapshotClosed => read.result
+    SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => read.result
+  }
+}
+
+fn serve_all_events_after_snapshot_close(read: CarrierClosed<RoadmapAllEventsRead>) -> RoadmapAllEventsRead {
+  match read.close {
+    SnapshotNotOpened => read.result
+    SnapshotClosed => read.result
+    SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => read.result
+  }
+}
+
+fn serve_append_after_snapshot_close(appended: CarrierClosed<RoadmapEventAppend>) -> RoadmapEventAppend {
+  match appended.close {
+    SnapshotNotOpened => appended.result
+    SnapshotClosed => appended.result
+    SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => appended.result
   }
 }

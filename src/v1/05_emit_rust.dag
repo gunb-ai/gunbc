@@ -2110,6 +2110,13 @@ fn type_leaf_is_unbound_in_closure_scope(name: String, generic_param_names: List
   }
 }
 
+// A DECLARATION'S OWN FORMALS ARE UNBOUND ATOMS TOO. A fold whose init is a bare constructor
+// (`init: Ok { value: .. }`) carries the parametric DECLARATION as its accumulator type, and its
+// renderer spells the declaration's formals as arguments: `Rc<Result<ok, err>>` on
+// extdeps.dns.domain_name parse_dns_label_list, two E0425s. The walk below read children and an
+// applied binding but never `params`, so a declaration node with no applied binding answered
+// "bound" and the closure annotation was written. With no applied binding, a formal outside the
+// fn's generic scope is as unbound as any other atom, and the annotation defers to `_`.
 fn type_node_has_closure_unbound_generic_atom(n: Node, generic_param_names: List<String>, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   let leaf_name = authored_name_at(source_indices: source_indices, node: n)
   if n.children |> count == 0 && leaf_name != "" {
@@ -2129,7 +2136,7 @@ fn type_node_has_closure_unbound_generic_atom(n: Node, generic_param_names: List
   } else {
     match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
       Present { value: applied } => applied.children |> any(c => type_node_has_closure_unbound_generic_atom(n: c, generic_param_names: generic_param_names, env: env, source_indices: source_indices))
-      Absent => false
+      Absent => n.params |> any(p => !type_var_in_fn_generic_scope(id: generic_param_name_at(n: p, source_indices: source_indices), generic_param_names: generic_param_names))
     }
   }
 }
@@ -8693,6 +8700,14 @@ fn v1_resolved_type_name_or_empty(e: Node, source_indices: Map<String, NewlineIn
 // that arrives as callee_bound_param_names. Forking this fold per trait would be the second
 // representation DESIGN.md S3 forbids -- the join it performs (callee param name -> call argument,
 // via call_args_by_name) is one fact about a call site, not a fact about Clone.
+//
+// AN ARROW-TYPED PARAMETER IS JOINED BY ITS ARGUMENT POSITIONS. The pair predicate below reads a
+// type's head and one type argument, and an arrow has neither -- its components are on `.params`
+// -- so a callee parameter `key_of: fn(Subject) -> Key` matched nothing and a wrapper passing its
+// own `fn(S) -> K` there stayed bare. The specimen is the hop the function-value rule manufactures:
+// std.key_relation key_resource_relation_global forwards its arrows into key_relation_global, which
+// owes `Subject: Clone` for the generic fn it stores, so the wrapper owes it too (E0277 one fn up
+// the moment the callee was bounded).
 fn v1_call_forwarding_forwarded_param_names(
   call: Node,
   callee_value_params: List<Node>,
@@ -8728,7 +8743,20 @@ fn v1_call_forwarding_forwarded_param_names(
         wrapper_generic_param_names: wrapper_generic_param_names
       )
     )
-    v1_union_bound_param_names(base: [], extra: forwarded)
+    let arrow_forwarded = callee_value_params
+    |> flat_map(cp =>
+      match map_get(arg_by_name, cp.name) {
+        Absent => []
+        Present { value: arg_node } =>
+          v1_positional_bound_forwarded_names(
+            callee_names: v1_arrow_arg_type_names(arrow: param_node_type_expr(n: cp), source_indices: si),
+            wrapper_names: v1_arrow_arg_type_names(arrow: resolved_type(n: arg_node), source_indices: si),
+            callee_bound_param_names: callee_bound_param_names,
+            wrapper_generic_param_names: wrapper_generic_param_names
+          )
+      }
+    )
+    v1_union_bound_param_names(base: v1_union_bound_param_names(base: [], extra: forwarded), extra: arrow_forwarded)
   }
 }
 
@@ -8787,6 +8815,242 @@ fn v1_call_forwarding_clone_bound_param_names(
   )
 }
 
+// THE CALLEE'S FULL CLONE BOUND: its own derivation unioned with what IT forwards, the visited list
+// carrying the cycle guard. Two sites instantiate a callee's generics at the wrapper's own and so
+// ask this -- a call, and a reference to the callee as a function value -- and they must get one
+// answer, so the derivation is here once rather than inline at the call site. It has three halves
+// because a callee earns a bound three ways: from its own body, from what it calls, and from the
+// generic fns it stores as values in its result.
+fn v1_callee_clone_bound_param_names(
+  callee_name: String,
+  callee_item: Node,
+  callee_body: Node,
+  fn_decl_items: Map<String, Node>,
+  emit_info: EmitGraphInfo,
+  shared_types: Set<String>,
+  source_indices: Map<String, NewlineIndex>,
+  visited: List<String>
+) -> List<String> {
+  let callee_params = callee_item.params
+  let callee_generic_param_names = function_type_params(params: callee_params) |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
+  v1_union_bound_param_names(
+    base: v1_fn_body_derived_clone_param_names(
+      params: callee_params,
+      inferred: resolved_type(n: callee_item),
+      body: callee_body,
+      emit_info: emit_info,
+      shared_types: shared_types,
+      source_indices: source_indices
+    ),
+    extra: v1_union_bound_param_names(
+      base: v1_call_forwarding_clone_bound_param_names(
+        generic_param_names: callee_generic_param_names,
+        body: callee_body,
+        fn_decl_items: fn_decl_items,
+        emit_info: emit_info,
+        shared_types: shared_types,
+        source_indices: source_indices,
+        visited: concat(visited, [callee_name])
+      ),
+      extra: v1_fn_result_fn_value_clone_forwarded_param_names(
+        generic_param_names: callee_generic_param_names,
+        ret: resolved_type(n: callee_item),
+        body: callee_body,
+        fn_decl_items: fn_decl_items,
+        emit_info: emit_info,
+        shared_types: shared_types,
+        source_indices: source_indices,
+        visited: concat(visited, [callee_name])
+      )
+    )
+  )
+}
+
+// A GENERIC FN STORED AS A FUNCTION VALUE IS INSTANTIATED AT THE ENCLOSING FN'S GENERICS, exactly
+// as a call instantiates it -- `KeyRelation { scope_of: key_relation_global_scope_of, .. }` names
+// `key_relation_global_scope_of::<Subject>` at the wrapper's Subject, so the callee's
+// `Subject: Clone` is owed by the wrapper (E0277 at std.key_relation key_relation_global, whose
+// header carried `Subject: 'static` and nothing else).
+//
+// THE JOIN CANNOT BE READ OFF THE REFERENCE, NOR OFF THE LITERAL. A call has arguments, and
+// v1_call_forwarding_forwarded_param_names joins callee parameter to argument type. A function
+// value has none, and inference types the reference with the CALLEE'S OWN signature, uninstantiated
+// (v1.compiler.infer: resolved_callable_type over the callee's params). The record literal does not
+// carry the instantiation either: MEASURED, its resolved type is the declaration's product with
+// the declaration's own slot names in its fields -- a first form of this rule read the field there
+// and bound std.key_relation correctly only because that module spells the slot and the wrapper's
+// generic identically (`Subject`); the control that spells them S and Subject stayed unbounded.
+//
+// What instantiates the literal is the type it is checked against, and at a fn's RESULT position
+// that type is the declared return type, whose arguments are authored. So the join is three
+// declared facts: the callee's i-th value parameter is a bounded callee generic; the record
+// declaration's field is an arrow whose i-th argument is the declaration's k-th slot; the fn's
+// return type passes one of the fn's own generics at slot k.
+//
+// DECLARED BOUNDARY: a record literal in RESULT position (the body, or the tail of a let / block /
+// if / match / return) whose type is the return type's head, bare-slot arrow arguments. A literal
+// anywhere else is checked against a type this walk does not hold, so it contributes nothing
+// rather than being guessed at from the return type. NEXT-RUNG TRIGGER: a specimen storing a
+// generic fn in a literal outside result position, which needs the expected type carried to the
+// literal (it exists at emission as emit_info.expected_type, not in this pre-walk).
+fn v1_record_decl_slot_arg_name(decl_params: List<Node>, type_args: List<Node>, slot_name: String, source_indices: Map<String, NewlineIndex>) -> String {
+  match decl_params |> first {
+    Absent => ""
+    Present { value: decl_param } =>
+      match type_args |> first {
+        Absent => ""
+        Present { value: type_arg } =>
+          if generic_param_name_at(n: decl_param, source_indices: source_indices) == slot_name {
+            authored_name_at(source_indices: source_indices, node: type_arg)
+          } else {
+            v1_record_decl_slot_arg_name(decl_params: decl_params |> skip(1), type_args: type_args |> skip(1), slot_name: slot_name, source_indices: source_indices)
+          }
+      }
+  }
+}
+
+// The argument type names of an arrow type expression, one per position. An arrow carries its
+// arguments on `.params` (v1.compiler.trait_derive_emit v1_callable_argument_and_return_type_exprs
+// reads them the same way); each is a parameter node whose type expression is its first child.
+fn v1_arrow_arg_type_names(arrow: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  arrow.params |> map(p =>
+    if (p.children |> count) > 0 {
+      authored_name_at(source_indices: source_indices, node: param_node_type_expr(n: p))
+    } else {
+      authored_name_at(source_indices: source_indices, node: p)
+    }
+  )
+}
+
+// Positional join shared by the two arrow-shaped instantiations below: `callee_names` are the
+// callee-side type names per position, `wrapper_names` the wrapper-side names at the same
+// positions. A position forwards when the callee side is a BOUNDED callee generic and the wrapper
+// side is one of the wrapper's own generics.
+fn v1_positional_bound_forwarded_names(
+  callee_names: List<String>,
+  wrapper_names: List<String>,
+  callee_bound_param_names: List<String>,
+  wrapper_generic_param_names: List<String>
+) -> List<String> {
+  match callee_names |> first {
+    Absent => []
+    Present { value: callee_name } =>
+      match wrapper_names |> first {
+        Absent => []
+        Present { value: wrapper_name } =>
+          let here = if (callee_bound_param_names |> any(g => g == callee_name))
+            && (wrapper_generic_param_names |> any(g => g == wrapper_name)) {
+            [wrapper_name]
+          } else {
+            []
+          }
+          concat(here, v1_positional_bound_forwarded_names(
+            callee_names: callee_names |> skip(1),
+            wrapper_names: wrapper_names |> skip(1),
+            callee_bound_param_names: callee_bound_param_names,
+            wrapper_generic_param_names: wrapper_generic_param_names
+          ))
+      }
+  }
+}
+
+fn v1_fn_result_record_lits(body: Node) -> List<Node> {
+  match body.expr_data {
+    ExprRecordLit { parent_enum: _ } => [body]
+    ExprIf =>
+      concat(
+        v1_fn_result_record_lits(body: if_then_branch(texpr: body)),
+        match if_else_branch(texpr: body) {
+          Present { value: e } => v1_fn_result_record_lits(body: e)
+          Absent => []
+        }
+      )
+    ExprMatch => match_arm_nodes(texpr: body) |> flat_map(arm_node => v1_fn_result_record_lits(body: arm_body(n: arm_node)))
+    ExprLet =>
+      match let_body(texpr: body) {
+        Present { value: b } => v1_fn_result_record_lits(body: b)
+        Absent => []
+      }
+    ExprBlock =>
+      match body.children |> last {
+        Present { value: last_expr } => v1_fn_result_record_lits(body: last_expr)
+        Absent => []
+      }
+    ExprReturn => body.children |> flat_map(child => v1_fn_result_record_lits(body: child))
+    _ => []
+  }
+}
+
+fn v1_fn_result_fn_value_clone_forwarded_param_names(
+  generic_param_names: List<String>,
+  ret: Node,
+  body: Node,
+  fn_decl_items: Map<String, Node>,
+  emit_info: EmitGraphInfo,
+  shared_types: Set<String>,
+  source_indices: Map<String, NewlineIndex>,
+  visited: List<String>
+) -> List<String> {
+  let si = source_indices
+  if (generic_param_names |> count) == 0 {
+    return []
+  }
+  let ret_head = qualified_last_segment(name: authored_name_at(source_indices: si, node: ret))
+  match map_get(emit_info.type_decl_items, ret_head) {
+    Absent => []
+    Present { value: decl } =>
+      let forwarded = v1_fn_result_record_lits(body: body)
+        |> filter(record => qualified_last_segment(name: authored_name_at(source_indices: si, node: record)) == ret_head)
+        |> flat_map(record =>
+          record.children |> flat_map(fi =>
+            let value = field_init_node_value(n: fi)
+            let callee_name = match value.expr_data {
+              ExprVar { binding_kind: bk } =>
+                match bk {
+                  Present { value: FunctionValueBinding } => authored_name_at(source_indices: si, node: value)
+                  _ => ""
+                }
+              _ => ""
+            }
+            if callee_name == "" || (visited |> any(v => v == callee_name)) {
+              []
+            } else {
+              match map_get(fn_decl_items, callee_name) {
+                Absent => []
+                Present { value: callee_item } =>
+                  match callee_item.body {
+                    Absent => []
+                    Present { value: callee_body } =>
+                      match find_child_named(n: decl, name: field_init_node_name_at(n: fi, source_indices: si), source_indices: si) {
+                        Absent => []
+                        Present { value: decl_field } =>
+                          v1_positional_bound_forwarded_names(
+                            callee_names: function_value_params(params: callee_item.params) |> map(cp => authored_name_at(source_indices: si, node: param_node_type_expr(n: cp))),
+                            wrapper_names: v1_arrow_arg_type_names(arrow: child_type_node(ch: decl_field), source_indices: si) |> map(slot =>
+                              v1_record_decl_slot_arg_name(decl_params: decl.params, type_args: ret.children, slot_name: slot, source_indices: si)
+                            ),
+                            callee_bound_param_names: v1_callee_clone_bound_param_names(
+                              callee_name: callee_name,
+                              callee_item: callee_item,
+                              callee_body: callee_body,
+                              fn_decl_items: fn_decl_items,
+                              emit_info: emit_info,
+                              shared_types: shared_types,
+                              source_indices: si,
+                              visited: visited
+                            ),
+                            wrapper_generic_param_names: generic_param_names
+                          )
+                      }
+                  }
+              }
+            }
+          )
+        )
+      v1_union_bound_param_names(base: [], extra: forwarded)
+  }
+}
+
 // One call site: resolve the callee's declaration, re-derive the callee's clone bound with the
 // same derivation emit_fn_def runs on itself (DESIGN.md S2 -- one derivation, two call sites, never
 // a re-implementation), then forward it onto the wrapper's params.
@@ -8827,24 +9091,15 @@ fn v1_call_site_clone_forwarded_param_names(
           let callee_params = callee_item.params
           let callee_type_params = function_type_params(params: callee_params)
           let callee_generic_param_names = callee_type_params |> map(p => generic_param_name_at(n: p, source_indices: si))
-          let callee_clone_param_names = v1_union_bound_param_names(
-            base: v1_fn_body_derived_clone_param_names(
-              params: callee_params,
-              inferred: resolved_type(n: callee_item),
-              body: callee_body,
-              emit_info: emit_info,
-              shared_types: shared_types,
-              source_indices: si
-            ),
-            extra: v1_call_forwarding_clone_bound_param_names(
-              generic_param_names: callee_generic_param_names,
-              body: callee_body,
-              fn_decl_items: fn_decl_items,
-              emit_info: emit_info,
-              shared_types: shared_types,
-              source_indices: si,
-              visited: concat(visited, [callee_name])
-            )
+          let callee_clone_param_names = v1_callee_clone_bound_param_names(
+            callee_name: callee_name,
+            callee_item: callee_item,
+            callee_body: callee_body,
+            fn_decl_items: fn_decl_items,
+            emit_info: emit_info,
+            shared_types: shared_types,
+            source_indices: si,
+            visited: visited
           )
           v1_call_forwarding_forwarded_param_names(
             call: call,
@@ -9211,9 +9466,22 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     source_indices: si,
     visited: [name]
   )
+  let result_fn_value_clone_param_names = v1_fn_result_fn_value_clone_forwarded_param_names(
+    generic_param_names: generic_param_names,
+    ret: inferred,
+    body: body,
+    fn_decl_items: emit_info.fn_decl_items,
+    emit_info: emit_info,
+    shared_types: shared_types,
+    source_indices: si,
+    visited: [name]
+  )
   let derived_clone_param_names_with_rc_match = v1_union_bound_param_names(
-    base: self_derived_clone_param_names,
-    extra: call_forwarding_clone_param_names
+    base: v1_union_bound_param_names(
+      base: self_derived_clone_param_names,
+      extra: call_forwarding_clone_param_names
+    ),
+    extra: result_fn_value_clone_param_names
   )
   let module_path = scope.type_env.module_path
   let clone_param_names = if (generic_param_names |> count) > 0 && (

@@ -57,7 +57,6 @@ use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
 use crate::module_path_index::{
     parse_module_binding, ModuleBindingOutcome, ModuleBindingRefusal, ParsedModuleBinding,
 };
-use crate::shared_typecheck_store::{self, SharedTypecheckCaches};
 use crate::std_node::compiler_recursive_types;
 use crate::std_syntax::LiteralValue;
 use crate::std_types::{kernel_type_set, SourceSpan};
@@ -388,46 +387,6 @@ pub fn witness_layer_roots_compile_clean_emit_check() -> bool {
             eprintln!("compile-clean emit: source load failed ({msg})");
             false
         }
-    }
-}
-
-/// The floor receipt's leg label, read from the memo primed by
-/// `prime_witness_execution_legs`. The label is a pure function of the entry path, derived
-/// from the `.dag` classification authority — there is no census carrier to read and none
-/// to keep in sync (§2/§3).
-///
-/// Fail-closed (§5): an unprimed entry refuses. It does not quietly derive on the spot,
-/// because doing so off the floor's own index costs a second whole-corpus index — measured
-/// at ~6GB of extra demand, which pushed the floor into swap and inflated batch 3 by 44%.
-/// A miss is a wiring bug in the caller, and it says so rather than paying that silently.
-pub fn witness_execution_leg_label(entry: &str) -> String {
-    let rel = repo_relative_dag_path(entry);
-    match witness_execution_leg_cached(&rel) {
-        Some(hit) => hit,
-        None => panic!(
-            "witness execution leg: entry {rel:?} was not primed (refuse — call \
-             prime_witness_execution_legs with the floor's index before running rows)"
-        ),
-    }
-}
-
-pub(crate) fn witness_execution_leg_cache() -> &'static std::sync::RwLock<HashMap<String, String>> {
-    WITNESS_EXECUTION_LEG_CACHE.get_or_init(|| std::sync::RwLock::new(HashMap::new()))
-}
-
-pub(crate) fn witness_execution_leg_cached(rel: &str) -> Option<String> {
-    match witness_execution_leg_cache().read() {
-        Ok(map) => map.get(rel).cloned(),
-        Err(e) => panic!("witness execution leg cache poisoned: {e} (refuse)"),
-    }
-}
-
-pub(crate) fn witness_execution_leg_cache_put(rel: &str, leg: &str) {
-    match witness_execution_leg_cache().write() {
-        Ok(mut map) => {
-            map.insert(rel.to_string(), leg.to_string());
-        }
-        Err(e) => panic!("witness execution leg cache poisoned: {e} (refuse)"),
     }
 }
 
