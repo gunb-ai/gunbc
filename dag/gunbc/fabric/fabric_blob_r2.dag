@@ -1,5 +1,6 @@
 module gunbc.fabric.fabric_blob_r2
 
+import extdeps.tools.curl { ReportStatus }
 import std.types { String, NonEmptyStr, Bool, FilePath }
 import extdeps.cloudflare.r2 { R2S3Endpoint, R2ObjectLocator }
 import gunbc.auth.access_token_source { AccessTokenSource }
@@ -7,21 +8,22 @@ import gunbc.cloudflare.r2_origin {
   CloudflareAccountAllocated, CloudflareAccountUnallocated, fleet_cloudflare_account_standing,
   R2OriginAllocated, R2OriginUnallocated, R2OriginStanding,
   OriginCredentialStanding, OriginCredentialPinned, OriginCredentialUnminted, OriginCredentialMintEntryUnbuilt,
-  FabricCacheBlobs, bucket_purpose_origin_standing, bucket_purpose_admission, origin_admission_is_create_only,
+  FabricCacheBlobs, bucket_purpose_origin_standing, bucket_purpose_admission, origin_admission_put_precondition,
 }
 import gunbc.cloudflare.r2_staged_transfer {
   R2TransferTarget,
-  R2Put, R2ObjectStored, R2ObjectAlreadyPresent, R2PutRefused, R2PutOutcomeUnknown,
+  R2Put, R2ObjectStored, R2ObjectAlreadyPresent, R2ObjectTagMoved, R2PutRefused, R2PutOutcomeUnknown,
   WriteCredentialCustody, WriteCredentialShredded,
   r2_put_staged_file,
-  R2FetchStaged, R2FetchObjectAbsent, R2FetchUnavailable,
+  R2FetchStaged, R2FetchObjectAbsent, R2FetchStoreRefused, R2FetchTransportUnanswered, R2FetchLocalFailure,
+  R2StagingCustody, R2StagingNotCreated, r2_release_staging,
   r2_fetch_into_staging,
 }
 import std.fabric_blob {
   FabricBlobAddress, FabricBlobReading, FabricBlobPut, FabricBlobGet,
   FabricBlobStored, FabricBlobOccupied, FabricBlobPutRefused, FabricBlobPutOutcomeUnknown, FabricBlobPutRefusedTooLarge,
   FabricBlobFetched, FabricBlobAbsent, FabricBlobGetUnavailable,
-  FabricBlobStoreUnreachable, FabricBlobStoreRefused, FabricBlobUnauthorized,
+  FabricBlobStoreUnreachable, FabricBlobStoreRefused, FabricBlobUnauthorized, FabricBlobStagingFailed,
   FabricBlobRead, FabricBlobReadRefused,
   FabricBlobPutPlan, FabricBlobPutAdmitted, FabricBlobPutTooLarge,
   read_staged_fabric_blob, fabric_blob_reading_path, fabric_blob_put_plan,
@@ -77,7 +79,8 @@ fn resolve_cache_blob_target_under(direction: CacheBlobDirection, key: NonEmptyS
                   },
                   access_key_id: access_key_id,
                   token_value: token_value,
-                  create_only: origin_admission_is_create_only(admission: bucket_purpose_admission(purpose: bucket.purpose)),
+                  precondition: origin_admission_put_precondition(admission: bucket_purpose_admission(purpose: bucket.purpose)),
+                  report: ReportStatus,
                 }
               }
           }
@@ -98,8 +101,9 @@ type CacheBlobPut {
 fn cache_blob_put_of(address: FabricBlobAddress, put: R2Put) -> CacheBlobPut {
   CacheBlobPut {
     verdict: match put.verdict {
-      R2ObjectStored => FabricBlobStored { address: address }
+      R2ObjectStored { tag: _ } => FabricBlobStored { address: address }
       R2ObjectAlreadyPresent => FabricBlobOccupied { address: address }
+      R2ObjectTagMoved => FabricBlobPutRefused { address: address, fault: FabricBlobStoreRefused { cause: "the store answered that an If-Match precondition failed; a blob put is create-only and never sends one" } }
       R2PutRefused { cause: cause } => FabricBlobPutRefused { address: address, fault: FabricBlobStoreRefused { cause: cause } }
       R2PutOutcomeUnknown { cause: cause } => FabricBlobPutOutcomeUnknown { address: address, cause: cause }
     },
@@ -122,19 +126,47 @@ fn put_cache_blob(address: FabricBlobAddress, reading: FabricBlobReading, token_
   }
 }
 
+// THE GET'S WHOLE ANSWER: the blob plane's verdict and what became of the staging directory, two
+// facts, as CacheBlobPut carries the credential's custody beside its verdict. Every arm that hands no
+// bytes over has already discharged its directory (released by the transfer, or released here when
+// the staged bytes could not be read), and says how. A fetched blob's reading POINTS INTO its
+// directory, so that directory is held for the consumer, who discharges it with
+// release_cache_blob_staging once it has used the bytes -- the obligation is carried, never dropped.
+type CacheBlobStaging
+  = CacheBlobStagingDischarged { custody: R2StagingCustody }
+  | CacheBlobStagingHeld { dir: NonEmptyStr }
+
+type CacheBlobGet {
+  verdict: FabricBlobGet
+  staging: CacheBlobStaging
+}
+
+fn release_cache_blob_staging(staging: CacheBlobStaging) -> R2StagingCustody {
+  match staging {
+    CacheBlobStagingDischarged { custody: c } => c
+    CacheBlobStagingHeld { dir: d } => r2_release_staging(dir: d)
+  }
+}
+
 // THE GET. The transfer stages the bytes in a directory it minted; they are read there and returned
-// with their reading. What the bytes MEAN is the consumer's to verify (a build pack's manifest).
-fn get_cache_blob(address: FabricBlobAddress, token_source: AccessTokenSource) -> FabricBlobGet {
+// with their reading. What the bytes MEAN is the consumer's to verify (a build pack's manifest). A
+// store that answered and refused is FabricBlobStoreRefused; no answer is FabricBlobStoreUnreachable;
+// a local failure (no transport, no private directory, the credential not placed or not shredded) is
+// FabricBlobStagingFailed, so a local disk or staging fault is never attributed to the store.
+fn get_cache_blob(address: FabricBlobAddress, token_source: AccessTokenSource) -> CacheBlobGet {
   match resolve_cache_blob_target(direction: CacheBlobRead, key: fabric_cache_blob_key(address: address)) {
-    CacheBlobTargetRefused { cause: cause } => FabricBlobGetUnavailable { address: address, fault: FabricBlobUnauthorized { cause: cause } }
+    CacheBlobTargetRefused { cause: cause } =>
+      CacheBlobGet { verdict: FabricBlobGetUnavailable { address: address, fault: FabricBlobUnauthorized { cause: cause } }, staging: CacheBlobStagingDischarged { custody: R2StagingNotCreated } }
     CacheBlobTargetReady { target: target } =>
       match r2_fetch_into_staging(target: target, token_source: token_source) {
-        R2FetchObjectAbsent => FabricBlobAbsent { address: address }
-        R2FetchUnavailable { cause: cause } => FabricBlobGetUnavailable { address: address, fault: FabricBlobStoreUnreachable { cause: cause } }
-        R2FetchStaged { staged_path: p } =>
+        R2FetchObjectAbsent { staging: c } => CacheBlobGet { verdict: FabricBlobAbsent { address: address }, staging: CacheBlobStagingDischarged { custody: c } }
+        R2FetchStoreRefused { cause: cause, staging: c } => CacheBlobGet { verdict: FabricBlobGetUnavailable { address: address, fault: FabricBlobStoreRefused { cause: cause } }, staging: CacheBlobStagingDischarged { custody: c } }
+        R2FetchTransportUnanswered { cause: cause, staging: c } => CacheBlobGet { verdict: FabricBlobGetUnavailable { address: address, fault: FabricBlobStoreUnreachable { cause: cause } }, staging: CacheBlobStagingDischarged { custody: c } }
+        R2FetchLocalFailure { cause: cause, staging: c } => CacheBlobGet { verdict: FabricBlobGetUnavailable { address: address, fault: FabricBlobStagingFailed { cause: cause } }, staging: CacheBlobStagingDischarged { custody: c } }
+        R2FetchStaged { staged_path: p, staging_dir: d, tag: _ } =>
           match read_staged_fabric_blob(path: p) {
-            FabricBlobReadRefused { fault: fault } => FabricBlobGetUnavailable { address: address, fault: fault }
-            FabricBlobRead { reading: reading } => FabricBlobFetched { address: address, reading: reading }
+            FabricBlobReadRefused { fault: fault } => CacheBlobGet { verdict: FabricBlobGetUnavailable { address: address, fault: fault }, staging: CacheBlobStagingDischarged { custody: r2_release_staging(dir: d) } }
+            FabricBlobRead { reading: reading } => CacheBlobGet { verdict: FabricBlobFetched { address: address, reading: reading }, staging: CacheBlobStagingHeld { dir: d } }
           }
       }
   }
