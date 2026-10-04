@@ -11,7 +11,7 @@ import std.durable_compare_and_set {
   CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, CasGenerationSpaceExhausted,
   cas_generation_count, cas_unreadable_slot_detail,
 }
-import gunbc.durable_cas_file_store {
+import gunbc.durable_cas_file_store { KeepAllGenerations,
   DefaultAccessCreateOnly, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
   admit_cas_attempt_for_derived_payload, file_compare_and_set,
 }
@@ -699,7 +699,7 @@ fn consume_attempt_slot(root: NonEmptyStr, key: NonEmptyStr, payload: NonEmptySt
   match admit_cas_attempt_for_derived_payload(key: key, expected: ExpectSlotAbsent, proposed: payload) {
     DerivedPayloadKeyNotSlotAddressable { key: k } => SlotRefused { cause: AttemptSlotKeyNotAddressable { slot: k } }
     DerivedPayloadAdmitted { verified: v } =>
-      match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v) {
+      match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v, retention: KeepAllGenerations).outcome {
         CasCommitted { committed: _ } => SlotConsumed { slot: key }
         CasPreconditionFailed { expected: _, observed: o } =>
           match o {
