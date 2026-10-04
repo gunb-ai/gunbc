@@ -4,6 +4,8 @@ import std.types { Bool, NonEmptyStr, List }
 import gunbc.principal_projection { PrincipalRef }
 import gunbc.workspace_allocation_admission { WorkspaceAuthorizationPolicy, WorkspaceOwnerEnrollment }
 import gunbc.workspace_allocation_policy { workspace_authorization_policy, workspace_public_key_catalog, workspace_operator_principal, workspace_operator_public_key_ref }
+import extdeps.ssh { ssh_public_key_line }
+import gunbc.fleet_ssh_access { operator_ssh_principal }
 import gunbc.workspace_microvm { WorkspacePublicKey, workspace_owner_public_key, WorkspacePublicKeyAdmitted, WorkspacePublicKeyNotAdmitted }
 
 fn alice() -> PrincipalRef { PrincipalRef { authority: "google-oidc", namespace: "accounts", subject: "alice-test" } }
@@ -65,6 +67,7 @@ test fn installed_policy_resolves_the_operator_enrollment() -> Bool {
   match workspace_owner_public_key(policy: workspace_authorization_policy(), catalog: workspace_public_key_catalog(),
     owner: workspace_operator_principal(), reference: workspace_operator_public_key_ref) {
     WorkspacePublicKeyAdmitted { key: k } => (k.reference as String) == (workspace_operator_public_key_ref as String)
+      && (k.line as String) == (ssh_public_key_line(k: operator_ssh_principal.public_key) as String)
     WorkspacePublicKeyNotAdmitted { reason: _ } => false
   }
 }
