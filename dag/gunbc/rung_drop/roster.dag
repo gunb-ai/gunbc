@@ -126,6 +126,7 @@ import gunbc.rung_drop.edited_bin_witness_wet_rows_not_executed_by_ci { edited_b
 import gunbc.rung_drop.shared_index_residency_asserted_after_the_run { shared_index_residency_asserted_after_the_run }
 import gunbc.rung_drop.match_arm_binder_typing_lost_to_lexical_carrier { match_arm_binder_typing_lost_to_lexical_carrier }
 import gunbc.rung_drop.fixture_closure_corpus_emit_refusals_lost_as_passenger { fixture_closure_corpus_emit_refusals_lost_as_passenger }
+import gunbc.rung_drop.native_serve_request_budget_unrealized { native_serve_request_budget_unrealized }
 
 data rung_drop_roster: List<RungDrop> = [
   floor_cut_heal,
@@ -234,6 +235,7 @@ data rung_drop_roster: List<RungDrop> = [
   dag_emit_real_grammar_round_trips_off_floor,
   match_arm_binder_typing_lost_to_lexical_carrier,
   fixture_closure_corpus_emit_refusals_lost_as_passenger,
+  native_serve_request_budget_unrealized,
   mtcollins1_bmc_secure_standing_predates_reflash,
 ]
 

@@ -1,0 +1,404 @@
+module gunbc.native_serve
+
+import std.types { Int, List, String, Bool, CommitSha }
+import std.measure { ByteSize, byte_size, byte_size_count, Millisecond, millisecond, millisecond_count }
+import std.algebra { Cons, Empty, trim }
+import extdeps.http.server { ServeWireResponse, ServeWireHeader, serve_wire_header_name_label }
+import gunbc.running_release_identity { release_revision_text_valid }
+import extdeps.tailscale.identity { tailscale_user_login_header }
+import gunbc.serve_liveness { serve_liveness_path, serve_liveness_document }
+
+// THE NATIVE SERVE DOOR: EVERYTHING A SERVED REQUEST DECIDES, AS FOLDS THE RENDERED MAIN CALLS.
+//
+// std.compiler_entry NativeServeDriver is the arm; this module is its contract. The rendered main
+// (v1.compiler.emit_rust emit_native_serve_driver_main_rs) performs only what no fold can -- read
+// argv, bind and accept the listener, read bytes off the connection within the limits THIS module
+// hands it, call the entry's handler, write the response value back -- and every decision between
+// those reads and writes is one of the folds below: which address to bind and which release this
+// process is (native_serve_start), whether a request head is admissible and how many body bytes to
+// read (native_serve_frame), and whether the request is answered before the handler is entered
+// (native_serve_route). The handler contract is the seed's `gunbc serve` contract unchanged --
+// `fn native_serve_handle(method, path, body, tailscale_identity, release_revision) ->
+// ServeWireResponse` -- so a program served by the seed today is served natively by declaring the
+// arm and naming its handler that.
+//
+// WHERE THIS DOOR IS BETTER THAN THE SEED'S, WHICH IS THE BAR (DESIGN section 7):
+// - the 40-hex release check is gunbc.running_release_identity release_revision_text_valid, the
+//   predicate that reads the identity back off the wire, not a second hand-Rust copy of it;
+// - head and body limits and the read timeout are VALUES in the contract the main reads, and the
+//   startup announcement prints them, where the seed buried them as `const`s inside its reader;
+// - every 400 is a typed refusal produced here, with the reason it names, not a Rust format string;
+// - /livez is answered from gunbc.serve_liveness serve_liveness_document, so the path and the
+//   member names are read from the graph rather than restated in hand Rust. That retires
+//   gunbc.serve_liveness_seed_growth's hand-written document AT THIS DOOR; the seed's own
+//   branch keeps that row standing until the seed seam is cut over too.
+//
+// WHAT THIS DOOR DOES NOT YET HAVE, DECLARED RATHER THAN SILENT:
+// - the evaluation budget: a compiled handler that does not return holds the serial loop, where the
+//   seed arms a CPU/wall deadline around each evaluation and answers a typed 500. That is the rung
+//   drop gunbc.rung_drop.native_serve_request_budget_unrealized, and the broker cut-over is gated
+//   on its restoration trigger;
+// - the unix-socket listener and its kernel-attested peer_user argument: TCP only. Declared
+//   frontier below.
+
+// THE UNIX-SOCKET FRONTIER. The seed's --unix-socket listener attests each peer by SO_PEERCRED and
+// passes peer_user to handlers that declare it (gunbc.fabric.fabric_storage_serve). This door binds
+// TCP only, and that is admitted as a frontier with a stated trigger, not as a property: it lands
+// when a second NativeServeDriver consumer needs an attested peer, as a listener arm in this
+// contract and a peer_user argument the main passes only on that arm.
+data native_serve_unix_socket_frontier_trigger: String = "a second NativeServeDriver consumer needs a kernel-attested peer (peer_user)"
+
+// The seed's limits, carried as values in the units std.measure owns. They are the seed's numbers
+// because the served programs were written against them; a change to either is a change to every
+// served program's contract.
+data native_serve_head_limit: ByteSize = byte_size(count: 16384)
+data native_serve_body_limit: ByteSize = byte_size(count: 1048576)
+data native_serve_read_timeout: Millisecond = millisecond(count: 10000)
+
+// The identity header is extdeps.tailscale.identity's fact (the header Tailscale Serve sets), read
+// from there rather than restated; Content-Length is RFC 9110 section 8.6's.
+data native_serve_content_length_header: String = "Content-Length"
+
+data native_serve_text_plain: String = "text/plain; charset=utf-8"
+data native_serve_application_json: String = "application/json; charset=utf-8"
+
+type NativeServeContract {
+  host: String
+  port: Int
+  release_revision: CommitSha
+  head_limit: ByteSize
+  body_limit: ByteSize
+  read_timeout: Millisecond
+}
+
+// A refused start binds nothing: the main prints the reason and exits 2 before any listener exists,
+// so a process that cannot say which release it is never becomes reachable.
+type NativeServeStart
+  = NativeServeListen { contract: NativeServeContract }
+  | NativeServeStartRefused { reason: String }
+
+// THE ARGV FOLD'S STATE IS A SUM, so "refused" and "still reading" cannot both hold, and a flag not
+// yet seen is Absent rather than an empty string standing for absence.
+type NativeServeArgs
+  = NativeServeArgsReading { host: String?, port: String?, release_revision: String? }
+  | NativeServeArgsRefused { reason: String }
+
+data native_serve_args_empty: NativeServeArgs = NativeServeArgsReading { host: none, port: none, release_revision: none }
+
+fn native_serve_args_set(host: String?, port: String?, release_revision: String?, flag: String, value: String) -> NativeServeArgs {
+  if flag == "--host" {
+    NativeServeArgsReading { host: value, port: port, release_revision: release_revision }
+  } else if flag == "--port" {
+    NativeServeArgsReading { host: host, port: value, release_revision: release_revision }
+  } else if flag == "--release-revision" {
+    NativeServeArgsReading { host: host, port: port, release_revision: value }
+  } else {
+    NativeServeArgsRefused { reason: concat("unknown flag ", flag) }
+  }
+}
+
+fn native_serve_args_fold(argv: List<String>, acc: NativeServeArgs) -> NativeServeArgs {
+  match acc {
+    NativeServeArgsRefused { reason: _ } => acc
+    NativeServeArgsReading { host: host, port: port, release_revision: revision } =>
+      match argv {
+        Empty => acc
+        Cons { head: flag, tail: rest } =>
+          match rest {
+            Empty => NativeServeArgsRefused { reason: concat("flag without a value: ", flag) }
+            Cons { head: value, tail: more } =>
+              native_serve_args_fold(argv: more, acc: native_serve_args_set(host: host, port: port, release_revision: revision, flag: flag, value: value))
+          }
+      }
+  }
+}
+
+fn native_serve_usage() -> String {
+  "usage: --host <addr> --port <0-65535> --release-revision <40 lowercase hex>"
+}
+
+fn native_serve_missing() -> NativeServeStart {
+  NativeServeStartRefused { reason: concat("--host, --port and --release-revision are all required; ", native_serve_usage()) }
+}
+
+fn native_serve_start_with(host: String, port: String, revision: String) -> NativeServeStart {
+  if !release_revision_text_valid(text: revision) {
+    NativeServeStartRefused { reason: concat("--release-revision must be exactly 40 lowercase hex digits (a git object name); got [", concat(revision, "]")) }
+  } else {
+    match parse_int(s: port) {
+      Present { value: p } =>
+        if p < 0 || p > 65535 {
+          NativeServeStartRefused { reason: concat("--port out of range: ", port) }
+        } else {
+          NativeServeListen { contract: NativeServeContract {
+            host: host,
+            port: p,
+            release_revision: revision as CommitSha,
+            head_limit: native_serve_head_limit,
+            body_limit: native_serve_body_limit,
+            read_timeout: native_serve_read_timeout,
+          } }
+        }
+      Absent => NativeServeStartRefused { reason: concat("--port is not an integer: ", port) }
+    }
+  }
+}
+
+fn native_serve_start_from(a: NativeServeArgs) -> NativeServeStart {
+  match a {
+    NativeServeArgsRefused { reason: r } => NativeServeStartRefused { reason: concat(r, concat("; ", native_serve_usage())) }
+    NativeServeArgsReading { host: h, port: p, release_revision: r } =>
+      match h {
+        Absent => native_serve_missing()
+        Present { value: host } =>
+          match p {
+            Absent => native_serve_missing()
+            Present { value: port } =>
+              match r {
+                Absent => native_serve_missing()
+                Present { value: revision } => native_serve_start_with(host: host, port: port, revision: revision)
+              }
+          }
+      }
+  }
+}
+
+fn native_serve_start(argv: List<String>) -> NativeServeStart {
+  native_serve_start_from(a: native_serve_args_fold(argv: argv, acc: native_serve_args_empty))
+}
+
+// The line the main prints once it has bound, naming the address ACTUALLY bound (a --port 0 caller
+// reads the chosen port from here) and every limit the process will enforce.
+fn native_serve_announcement(c: NativeServeContract, bound_host: String, bound_port: Int) -> String {
+  concat("native-serve listening on ", concat(bound_host, concat(":", concat(to_string(value: bound_port),
+    concat(" release_revision=", concat(c.release_revision as String,
+      concat(" head_limit_bytes=", concat(to_string(value: byte_size_count(b: c.head_limit)),
+        concat(" body_limit_bytes=", concat(to_string(value: byte_size_count(b: c.body_limit)),
+          concat(" read_timeout_ms=", to_string(value: millisecond_count(m: c.read_timeout)))))))))))))
+}
+
+// ── FRAMING: THE HEAD THE MAIN READ, JUDGED HERE ─────────────────────────────────────────────
+// The main hands over the request line and the header lines exactly as read (line terminators
+// stripped), having enforced only the byte limit it was given. Everything those lines MEAN is
+// decided below: the method and origin-form target, which headers are duplicated, how many body
+// bytes follow, and the identity header. The body length is returned so the main reads exactly
+// that many bytes and no more; the main never reads a header itself.
+
+type NativeServeRequestHead {
+  method: String
+  target: String
+  tailscale_identity: String
+}
+
+type NativeServeFrame
+  = NativeServeFramed { head: NativeServeRequestHead, body_length: Int }
+  | NativeServeFrameRefused { response: ServeWireResponse }
+
+fn native_serve_bad_request(reason: String) -> NativeServeFrame {
+  NativeServeFrameRefused { response: ServeWireResponse {
+    status: 400,
+    content_type_label: native_serve_text_plain,
+    body: concat("bad request: ", concat(reason, "\n")),
+    headers: [],
+  } }
+}
+
+fn ascii_lower_code_point(cp: Int) -> Int {
+  if cp >= 65 && cp <= 90 { cp + 32 } else { cp }
+}
+
+// RFC 9110 section 5.1: field names are case-insensitive. Compared code point by code point with
+// ASCII case folded on both sides, so no lowercased copy of every header is built.
+fn field_name_is_from(name: String, wanted: String, i: Int) -> Bool {
+  if i >= string_length(s: wanted) {
+    true
+  } else if ascii_lower_code_point(cp: code_point(substring(s: name, start: i, end: i + 1))) != ascii_lower_code_point(cp: code_point(substring(s: wanted, start: i, end: i + 1))) {
+    false
+  } else {
+    field_name_is_from(name: name, wanted: wanted, i: i + 1)
+  }
+}
+
+fn field_name_is(name: String, wanted: String) -> Bool {
+  string_length(s: name) == string_length(s: wanted) && field_name_is_from(name: name, wanted: wanted, i: 0)
+}
+
+type NativeServeHeaderField {
+  name: String
+  value: String
+}
+
+type NativeServeHeaderParse
+  = NativeServeHeaderParsed { field: NativeServeHeaderField }
+  | NativeServeHeaderMalformed { line: String }
+
+fn native_serve_header(line: String) -> NativeServeHeaderParse {
+  match split(s: line, delimiter: ":") {
+    Cons { head: name, tail: rest } =>
+      match rest {
+        Empty => NativeServeHeaderMalformed { line: line }
+        Cons { head: _, tail: _ } =>
+          if name == "" || trim(s: name) != name {
+            NativeServeHeaderMalformed { line: line }
+          } else {
+            NativeServeHeaderParsed { field: NativeServeHeaderField { name: name, value: trim(s: join(rest, ":")) } }
+          }
+      }
+    Empty => NativeServeHeaderMalformed { line: line }
+  }
+}
+
+type NativeServeHeaders
+  = NativeServeHeadersRead { fields: List<NativeServeHeaderField> }
+  | NativeServeHeadersRefused { reason: String }
+
+fn native_serve_headers(lines: List<String>, acc: List<NativeServeHeaderField>) -> NativeServeHeaders {
+  match lines {
+    Empty => NativeServeHeadersRead { fields: acc }
+    Cons { head: line, tail: rest } =>
+      match native_serve_header(line: line) {
+        NativeServeHeaderParsed { field: f } => native_serve_headers(lines: rest, acc: acc |> list_push(f))
+        NativeServeHeaderMalformed { line: bad } => NativeServeHeadersRefused { reason: concat("malformed header line: ", bad) }
+      }
+  }
+}
+
+fn native_serve_named(fields: List<NativeServeHeaderField>, wanted: String) -> List<String> {
+  fields |> filter(f => field_name_is(name: f.name, wanted: wanted)) |> map(f => f.value)
+}
+
+fn native_serve_frame_fields(method: String, target: String, fields: List<NativeServeHeaderField>, body_limit: Int) -> NativeServeFrame {
+  let identity_header = tailscale_user_login_header as String
+  let lengths = native_serve_named(fields: fields, wanted: native_serve_content_length_header)
+  let identities = native_serve_named(fields: fields, wanted: identity_header)
+  if (lengths |> count) > 1 {
+    native_serve_bad_request(reason: "duplicate Content-Length header")
+  } else if (identities |> count) > 1 {
+    native_serve_bad_request(reason: concat("duplicate ", concat(identity_header, " header")))
+  } else {
+    let identity = match identities |> first {
+      Present { value: v } => v
+      Absent => ""
+    }
+    match lengths |> first {
+      Absent => NativeServeFramed { head: NativeServeRequestHead { method: method, target: target, tailscale_identity: identity }, body_length: 0 }
+      Present { value: text } =>
+        match parse_int(s: text) {
+          Absent => native_serve_bad_request(reason: concat("bad Content-Length: ", text))
+          Present { value: n } =>
+            if n < 0 {
+              native_serve_bad_request(reason: concat("bad Content-Length: ", text))
+            } else if n > body_limit {
+              native_serve_bad_request(reason: concat("body of ", concat(to_string(value: n), concat(" bytes exceeds the ", concat(to_string(value: body_limit), " byte serve limit")))))
+            } else {
+              NativeServeFramed { head: NativeServeRequestHead { method: method, target: target, tailscale_identity: identity }, body_length: n }
+            }
+        }
+    }
+  }
+}
+
+fn native_serve_frame(contract: NativeServeContract, request_line: String, header_lines: List<String>) -> NativeServeFrame {
+  match split(s: request_line, delimiter: " ") |> filter(p => p != "") {
+    Cons { head: method, tail: r1 } =>
+      match r1 {
+        Cons { head: target, tail: _ } =>
+          if !starts_with(s: target, prefix: "/") {
+            native_serve_bad_request(reason: concat("request target must be origin-form, got ", target))
+          } else {
+            match native_serve_headers(lines: header_lines, acc: []) {
+              NativeServeHeadersRefused { reason: r } => native_serve_bad_request(reason: r)
+              NativeServeHeadersRead { fields: fields } => native_serve_frame_fields(method: method, target: target, fields: fields, body_limit: byte_size_count(b: contract.body_limit))
+            }
+          }
+        Empty => native_serve_bad_request(reason: "missing request target")
+      }
+    Empty => native_serve_bad_request(reason: "empty request line")
+  }
+}
+
+// The refusal the main writes when the head outgrew its limit or the bytes were not text: the
+// main observes those (it is the one counting bytes), and this fold says what they mean.
+fn native_serve_read_refused(reason: String) -> ServeWireResponse {
+  ServeWireResponse { status: 400, content_type_label: native_serve_text_plain, body: concat("bad request: ", concat(reason, "\n")), headers: [] }
+}
+
+// ── ROUTING BEFORE THE HANDLER ──────────────────────────────────────────────────────────────
+// GET /livez is answered without entering the handler, for the reason gunbc.serve_liveness
+// states: the conditions that make a served process unhealthy are the conditions under which its
+// handler fails, so a health answer behind the handler answers "healthy" or nothing.
+type NativeServeRoute
+  = NativeServeAnswered { response: ServeWireResponse }
+  | NativeServeToHandler
+
+fn native_serve_route(contract: NativeServeContract, head: NativeServeRequestHead, entry_function: String, bound_host: String, bound_port: Int) -> NativeServeRoute {
+  let liveness_path = serve_liveness_path as String
+  if head.method == "GET" && head.target == liveness_path {
+    NativeServeAnswered { response: ServeWireResponse {
+      status: 200,
+      content_type_label: native_serve_application_json,
+      body: serve_liveness_document(revision: contract.release_revision, entry_function: entry_function, bound_host: bound_host, bound_port: bound_port),
+      headers: [],
+    } }
+  } else {
+    NativeServeToHandler
+  }
+}
+
+// The name the rendered main calls; one name for every NativeServeDriver entry, so the liveness
+// document's entry_function member is this literal rather than whatever the main was told.
+data native_serve_handler_name: String = "native_serve_handle"
+
+// ── WHAT LEAVES THE PROCESS ─────────────────────────────────────────────────────────────────
+// Every response the main writes passes here first, whoever produced it. The status must be an
+// HTTP status (RFC 9110 section 15: three digits, 100-599), and the content type and every header
+// value must be free of CR, LF and NUL (the content type is an unrestricted String the main writes
+// into the header block just like a header value), because a value is handler data and one carrying a line break would split the
+// header block. The seed makes the same two checks in hand Rust after evaluation; here they are a
+// fold, and a response that fails them is answered as a typed 500 naming why, never written.
+// Header NAMES need no check: ServeWireHeaderName is closed, and its spelling is
+// extdeps.http.server serve_wire_header_name_label's, so the framing headers the main writes
+// itself (Content-Type, Content-Length, Connection) cannot be set by a handler.
+type NativeServeOutgoing {
+  status: Int
+  content_type_label: String
+  header_lines: List<String>
+  body: String
+}
+
+fn native_serve_value_is_field_safe(value: String) -> Bool {
+  (split(s: value, delimiter: "\r") |> count) == 1
+    && (split(s: value, delimiter: "\n") |> count) == 1
+    && (split(s: value, delimiter: from_code_point(0)) |> count) == 1
+}
+
+fn native_serve_unwritable(reason: String) -> NativeServeOutgoing {
+  NativeServeOutgoing {
+    status: 500,
+    content_type_label: native_serve_text_plain,
+    header_lines: [],
+    body: concat("the handler's response cannot be written: ", concat(reason, "\n")),
+  }
+}
+
+fn native_serve_header_line(h: ServeWireHeader) -> String {
+  concat(serve_wire_header_name_label(name: h.name), concat(": ", h.value))
+}
+
+fn native_serve_outgoing(r: ServeWireResponse) -> NativeServeOutgoing {
+  let unsafe_headers = r.headers |> filter(h => !native_serve_value_is_field_safe(value: h.value))
+  if r.status < 100 || r.status > 599 {
+    native_serve_unwritable(reason: concat("status ", concat(to_string(value: r.status), " is not an HTTP status")))
+  } else if !native_serve_value_is_field_safe(value: r.content_type_label) {
+    native_serve_unwritable(reason: "the content type carries CR, LF or NUL")
+  } else if (unsafe_headers |> count) > 0 {
+    native_serve_unwritable(reason: "a header value carries CR, LF or NUL")
+  } else {
+    NativeServeOutgoing {
+      status: r.status,
+      content_type_label: r.content_type_label,
+      header_lines: r.headers |> map(h => native_serve_header_line(h: h)),
+      body: r.body,
+    }
+  }
+}
