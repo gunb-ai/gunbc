@@ -2051,6 +2051,7 @@ fn floor_route_gap_expectation_chunk_34() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_dogfood_route_wet_witness.an_invalid_receipt_in_the_slot_refuses_rather_than_reading_as_recorded", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
   }  }  }  }
+}
 
 // The #12505 workspace lifecycle storage witnesses: their first effect is shell.Mktemp.Dir with no
 // mock_response. Each file carries a gunbc.ci_layer_roots LocalRepoWetLane row and every function in
