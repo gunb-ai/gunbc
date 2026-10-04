@@ -16,8 +16,12 @@ import gunbc.fleet_multi_principal_probe { spark_converge_target_selection, Spar
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.process { ExitSuccess }
-import gunbc.spark.v41_group_a_launch { v41_group_a_dry_plan, v41_group_a_wet_session }
-import gunbc.spark.glm53_arm_staircase { Glm53StaircaseStep, Glm53IncumbentChoice, glm53_staircase_steps, glm53_step_wire, glm53_step_of_wire, glm53_incumbent_choices, glm53_incumbent_choice_wire, glm53_incumbent_choice_of_wire, glm53_step_dry_plan, glm53_step_wet_session }
+import gunbc.spark.v41_group_a_launch { v41_group_a_dry_plan, v41_group_a_wet_session, v41_group_a_deployment_env }
+import gunbc.spark.arm_memory_fit { engine_ready_timeout_for, EngineReadyTimeoutResolved, EngineReadyTimeoutUnreadable }
+import std.measure { second_count }
+import std.types { Duration }
+import extdeps.docker.cli { DockerEnvAssignment }
+import gunbc.spark.glm53_arm_staircase { glm53_step_deployment_env, Glm53StaircaseStep, Glm53IncumbentChoice, glm53_staircase_steps, glm53_step_wire, glm53_step_of_wire, glm53_incumbent_choices, glm53_incumbent_choice_wire, glm53_incumbent_choice_of_wire, glm53_step_dry_plan, glm53_step_wet_session }
 
 // ── WHICH ARM A GROUP-LAUNCH MODE RUNS, FROM CLOSED WORKFLOW INPUTS (deforking cut 8a) ────────────
 //
@@ -240,4 +244,32 @@ fn arm_group_load_ci() -> ProcessExit {
         }
     }
   }
+}
+
+// ── THE LAUNCH STEP'S TIMEOUT IS DERIVED, NOT A LITERAL (gunbc.recurring_failure_mode
+// a_step_timeout_shorter_than_the_wait_it_encloses; nvfp4-8, fleet-converge 37190290418) ─────────────
+//
+// The transaction encloses a front-door wait bounded by each arm's own VLLM_ENGINE_READY_TIMEOUT_S, read by
+// the SAME reader the front door uses (gunbc.spark.arm_memory_fit engine_ready_timeout_for over the arm's
+// deployment env) -- one authority. The step must outlast the longest of those plus the transaction's work
+// before the wait (preflight, preserve, head-first apply, container readback) and its rollback after it.
+// Those two budgets are declared, not measured from one run: the apply-to-readback span measured 10-14 min
+// on Group A (launches 37178826027, 37181793223, 37185803198, 37187675945) and a four-host rollback ~15 min.
+data arm_launch_apply_budget_minutes: Duration = 30
+data arm_launch_rollback_budget_minutes: Duration = 20
+
+fn arm_launch_readiness_minutes(env: List<DockerEnvAssignment>) -> Duration {
+  match engine_ready_timeout_for(env: env) {
+    EngineReadyTimeoutResolved { timeout: t } => ((second_count(s: t) + 59) / 60) as Duration
+    EngineReadyTimeoutUnreadable { cause: _ } => 0
+  }
+}
+
+// Every arm the step can launch: the GLM staircase's steps and the V4.1 arm. An unreadable timeout
+// contributes nothing here and is refused by that arm's own front-door plan before any wait.
+fn arm_launch_step_timeout_minutes() -> Duration {
+  let glm = map(glm53_staircase_steps, s => arm_launch_readiness_minutes(env: glm53_step_deployment_env(s: s)))
+  let v41 = arm_launch_readiness_minutes(env: v41_group_a_deployment_env())
+  let longest = fold(concat(glm, [v41]), init: 0, f: fn(a, m) { if m > a { m } else { a } })
+  longest + arm_launch_apply_budget_minutes + arm_launch_rollback_budget_minutes
 }
