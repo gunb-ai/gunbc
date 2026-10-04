@@ -25,7 +25,6 @@ import v2.std.diagnostic {
   node_locus,
   outcome_accepted
 }
-import v2.std.logic { Bool }
 import v2.std.node {
   Edge,
   Node,

@@ -13,12 +13,11 @@ import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.collection { list_at_optional }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.communication.medium { Medium }
-import v2.std.diagnostic { Accepted, Rejected, Outcome, Diagnostic, NonEmptyDiagnostics, Textual, diagnostics_fatal_reason }
+import v2.std.diagnostic { Accepted, Rejected, Outcome, DeclarationLocus, Diagnostic, InvariantPortLocus, NodeLocus, NonEmptyDiagnostics, SourcePortLocus, Textual, diagnostics_fatal, diagnostics_fatal_reason }
 import v2.std.node { Node, Edge, TypeNode, Arrow, Conj, Authored, Symbol, node_synthetic, symbol_lexeme }
 import v2.std.optional { Optional, Present, Absent }
 import v2.std.algebra { fold_list, length }
 import std.algebra { Cons, Empty }
-import v2.std.logic { Bool }
 import std.types { Int, List, NonEmptyStr, String }
 import v2.compiler.refinement_discharge { infer_and_discharge }
 
@@ -70,6 +69,12 @@ type EntryRealizationAttempt {
   standing: RealizationAttemptStanding
 }
 
+// The exact cause is the chain's FATAL element (its last), never its head: an advisory prepended
+// to the refusal by rejected_with_pending only rode along.
+fn first_located_cause(ds: NonEmptyDiagnostics) -> Symbol {
+  diagnostics_fatal_reason(d: ds)
+}
+
 fn attempt_refused(entry: String, phase: RealizationPhase, cause: Symbol) -> EntryRealizationAttempt {
   attempt_refused_at(entry: entry, phase: phase, cause: cause, located: "")
 }
@@ -82,23 +87,26 @@ fn attempt_refused_at(entry: String, phase: RealizationPhase, cause: Symbol, loc
   }
 }
 
-fn first_located_file(ds: NonEmptyDiagnostics) -> String {
-  let head_file = match ds.head.at {
+// The file is the FATAL element's when its locus names one; otherwise the first file any element
+// of the WHOLE chain names, head included, so a cause located only by port does not lose the file
+// an advisory ahead of it recorded.
+fn diagnostic_textual_file(d: Diagnostic) -> String {
+  match d.at {
     Textual { file: f, extent: _ } => symbol_lexeme(sym: f)
-    _ => ""
+    NodeLocus { anchor: _ } => ""
+    SourcePortLocus { anchor: _, file: _, extent: _ } => ""
+    InvariantPortLocus { anchor: _, invariant: _ } => ""
+    DeclarationLocus { declaration: _ } => ""
   }
-  if head_file != "" {
-    head_file
+}
+
+fn first_located_file(ds: NonEmptyDiagnostics) -> String {
+  let fatal_file = diagnostic_textual_file(d: diagnostics_fatal(d: ds))
+  if fatal_file != "" {
+    fatal_file
   } else {
-    fold_list(xs: ds.tail, empty: "", cons: fn(acc, d) {
-      if acc != "" {
-        acc
-      } else {
-        match d.at {
-          Textual { file: f, extent: _ } => symbol_lexeme(sym: f)
-          _ => ""
-        }
-      }
+    fold_list(xs: ds.tail, empty: diagnostic_textual_file(d: ds.head), cons: fn(acc, d) {
+      if acc != "" { acc } else { diagnostic_textual_file(d: d) }
     })
   }
 }
@@ -139,7 +147,7 @@ fn attempt_entry_source(entry: String, source: String) -> EntryRealizationAttemp
       attempt_refused_at(
         entry: entry,
         phase: PhaseFrontend,
-        cause: diagnostics_fatal_reason(d: ds),
+        cause: first_located_cause(ds: ds),
         located: first_located_file(ds: ds)
       )
     Accepted { value: resolved, diagnostics: _ } => {
@@ -160,7 +168,7 @@ fn attempt_entry_source(entry: String, source: String) -> EntryRealizationAttemp
               arrow_count: length(xs: arrows),
               standing: V2RealizationRefused {
                 phase: PhaseTranslate,
-                exact_cause: diagnostics_fatal_reason(d: ds),
+                exact_cause: first_located_cause(ds: ds),
                 located: first_located_file(ds: ds)
               }
             }
@@ -275,11 +283,11 @@ fn attempt_joined(program: ResolvedTree, fn_name: Symbol, entry: String) -> Entr
       Present { value: decl } =>
         match infer_and_discharge(tree: ResolvedTree { root: decl, symbol_index: program.symbol_index, resolved_declarations: program.resolved_declarations, lexical_bindings: program.lexical_bindings, unavailable_providers: program.unavailable_providers }) {
           Rejected { diagnostics: ds } =>
-            attempt_refused_at(entry: entry, phase: PhaseInfer, cause: diagnostics_fatal_reason(d: ds), located: first_located_file(ds: ds))
+            attempt_refused_at(entry: entry, phase: PhaseInfer, cause: first_located_cause(ds: ds), located: first_located_file(ds: ds))
           Accepted { value: inferred, diagnostics: _ } =>
             match compile_inferred(inferred: inferred, mode: TranslateTo { target: rust_target_model_staging() }) {
               Rejected { diagnostics: ds } =>
-                attempt_refused_at(entry: entry, phase: PhaseTranslate, cause: diagnostics_fatal_reason(d: ds), located: first_located_file(ds: ds))
+                attempt_refused_at(entry: entry, phase: PhaseTranslate, cause: first_located_cause(ds: ds), located: first_located_file(ds: ds))
               Accepted { value: out, diagnostics: _ } =>
                 match out {
                   TranslateResult { source: emitted } =>
@@ -305,7 +313,7 @@ fn attempt_assembled(
 ) -> EntryRealizationAttempt {
   match assemble_program_from_ingest(ingest: ingest, admission: admission, lm: dag_language_model()) {
     Rejected { diagnostics: ds } => {
-      let cause = diagnostics_fatal_reason(d: ds)
+      let cause = first_located_cause(ds: ds)
       attempt_refused_at(entry: entry, phase: phase_for_reason(reason: cause, fallback: PhaseResolve), cause: cause, located: first_located_file(ds: ds))
     }
     Accepted { value: program, diagnostics: _ } =>
@@ -345,7 +353,7 @@ fn attempt_closure_rows(
 ) -> List<EntryRealizationAttempt> {
   match assemble_program_from_ingest(ingest: ingest, admission: admission, lm: dag_language_model()) {
     Rejected { diagnostics: ds } => {
-      let cause = diagnostics_fatal_reason(d: ds)
+      let cause = first_located_cause(ds: ds)
       let phase = phase_for_reason(reason: cause, fallback: PhaseResolve)
       let located = first_located_file(ds: ds)
       fold_list(xs: fn_names, empty: no_attempt_rows(), cons: fn(acc, _name) {

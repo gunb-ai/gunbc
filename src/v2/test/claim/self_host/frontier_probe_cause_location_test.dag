@@ -5,7 +5,7 @@ import v2.compiler.self_host.frontier_probe_assemble_detail {
 }
 import v2.compiler.self_host.frontier_probe_types {
   AssembleRejectionDetail,
-  NonEmptySymbolChain,
+  OtherAssembleRefusal,
   CauseLocationDeclaration,
   CauseLocationNodeNotSerializable,
   CauseLocationInvariantPort,
@@ -27,7 +27,6 @@ import v2.std.diagnostic {
   invariant_port_locus
 }
 import v2.std.node { Atom, Node, TypeNode }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 
@@ -41,7 +40,7 @@ import v2.std.text { String }
 // data and keeps its symbol, and only a Node, which has no manifest rendering, reaches the
 // not-serializable arm. A two-diagnostic control pins the PAIRING: with a second diagnostic
 // carrying a different reason at a different position, the reason and the location must both come
-// from the head, so neither field can be drawn from a diagnostic the other did not come from. The
+// from the FATAL (the last), so neither field can be drawn from a diagnostic the other did not come from. The
 // location is asserted on the DETAIL and never inside the cause, because a clustering key reads the
 // cause and two modules refusing for the same reason at different positions are the same detailed
 // cause.
@@ -152,15 +151,16 @@ fn paired_start_of_two() -> Int {
 fn paired_reason_of_two() -> Symbol {
   match frontier_probe_assemble_detail_from_rejection(d: two_diagnostic_stage()) {
     NoFrontierProbeDetail => ^no_detail
-    AssembleRejectionDetail { rejection_chain: c, cause: _, at: _ } =>
-      match c {
-        NonEmptySymbolChain { head: h, tail: _ } => h
+    AssembleRejectionDetail { rejection_chain: _, cause: cause, at: _ } =>
+      match cause {
+        OtherAssembleRefusal { reason: r } => r
+        _ => ^cause_not_other
       }
   }
 }
 
 test fn location_and_reason_are_drawn_from_the_same_diagnostic_holds() -> Bool {
-  paired_start_of_two() == 7 && paired_reason_of_two() == ^cause_location_probe_unclassified_reason
+  paired_start_of_two() == 99 && paired_reason_of_two() == ^cause_location_probe_second_reason
 }
 
 test fn textual_locus_reaches_the_textual_arm_holds() -> Bool {

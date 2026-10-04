@@ -8,7 +8,7 @@ import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_attribute_condition
 
 // ── THE GCP IAM CONVERGE JOB'S OBSERVE FEDERATION ────────────────────────────────────────────
 // The plan must read before anyone approves, so the job needs a credential of its own; it gets the
-// Mt. Collins boot's construction (gunbc.auth.mtcollins1_boot_federation) for the same reasons -- a
+// managed-host boot's construction (gunbc.auth.managed_host_boot_federation) for the same reasons -- a
 // DEDICATED POOL WITH ONE PROVIDER, the job pinned by its `environment` claim beside the workflow
 // file at main and a dispatch on main, never the repo-wide pool whose principals every job in the
 // repository can become. The accounts it reaches are iam-observe, which reads policies and changes

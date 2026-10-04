@@ -16,7 +16,7 @@ import v2.compiler.self_host.frontier_probe_types {
   frontier_probe_cause_location_from_locus,
   ProbeStageAssemble
 }
-import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics }
+import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics, diagnostics_fatal, diagnostics_fatal_reason }
 import v2.std.optional { Absent, Optional, Present, optional_absent }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
@@ -45,16 +45,20 @@ fn diagnostic_module_root_missing_qn_optional(d: Diagnostic) -> Optional<Qualifi
   optional_absent()
 }
 
+// THE CAUSE IS THE FATAL DIAGNOSTIC, THE CHAIN'S LAST (advisories step 2, gunbc#13103). An advisory
+// rejected_with_pending prepended is not the cause, so the cause, its location and the receipt's
+// located reason are all read from the fatal element; the chain keeps the whole ordered list.
 fn assemble_rejection_cause_from_diagnostics(
   d: NonEmptyDiagnostics
 ) -> AssembleRejectionCause {
-  if d.head.reason == ^resolve_module_not_found {
-    match diagnostic_module_root_missing_qn_optional(d: d.head) {
+  let fatal = diagnostics_fatal(d: d)
+  if fatal.reason == ^resolve_module_not_found {
+    match diagnostic_module_root_missing_qn_optional(d: fatal) {
       Present { value: requested } => AssembleMissingModule { requested: requested }
       Absent => MissingModuleIdentityUnavailable
     }
   } else {
-    OtherAssembleRefusal { reason: d.head.reason }
+    OtherAssembleRefusal { reason: fatal.reason }
   }
 }
 
@@ -64,7 +68,7 @@ fn frontier_probe_assemble_detail_from_rejection(
   AssembleRejectionDetail {
     rejection_chain: non_empty_symbol_chain_from_non_empty_diagnostics(d: d),
     cause: assemble_rejection_cause_from_diagnostics(d: d),
-    at: frontier_probe_cause_location_from_locus(at: d.head.at)
+    at: frontier_probe_cause_location_from_locus(at: diagnostics_fatal(d: d).at)
   }
 }
 
@@ -75,9 +79,9 @@ fn frontier_probe_receipt_from_assemble_rejection(
 ) -> FrontierProbeReceipt {
   FrontierProbeReceipt {
     module_path: module_path,
-    blocker_class: frontier_classify_rejection_reason(reason: diagnostics.head.reason),
+    blocker_class: frontier_classify_rejection_reason(reason: diagnostics_fatal_reason(d: diagnostics)),
     located_stage: ProbeStageAssemble,
-    located_reason: diagnostics.head.reason,
+    located_reason: diagnostics_fatal_reason(d: diagnostics),
     detail: detail,
     assemble_detail: frontier_probe_assemble_detail_from_rejection(d: diagnostics)
   }

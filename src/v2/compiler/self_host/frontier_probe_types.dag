@@ -33,7 +33,6 @@ import std.content_hash {
 import std.types { CommitSha, GitRef, List }
 import v2.std.algebra { fold_list }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.diagnostic { DeclarationLocus, Extent, InvariantPortLocus, Locus, NodeLocus, SourcePortLocus, Textual }
 import v2.std.node { Symbol, symbol_lexeme }
 import v2.std.optional { Absent, Optional, Present }

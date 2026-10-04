@@ -14,13 +14,12 @@ import v2.compiler.self_host.frontier_probe_types {
   AssembleRejectionDetail,
   FrontierProbeDetailAbsent,
   NoFrontierProbeDetail,
-  OtherAssembleRefusal,
+  MissingModuleIdentityUnavailable,
   ProbeStageEmit,
   frontier_probe_receipt_without_assemble_detail,
   RealizationGap
 }
 import v2.std.algebra { Cons, Empty, length }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 
 fn assemble_detail_test_diagnostic(reason: Symbol) -> Diagnostic {
@@ -44,9 +43,9 @@ test fn emit_stage_receipt_has_no_assemble_detail() -> Bool {
   }
 }
 
-// The receipt's located reason, its chain and its cause all come from the rejection's own head,
-// and the chain keeps the whole tail in order: a two-diagnostic rejection reads as head then tail.
-test fn assemble_receipt_carries_the_whole_rejection_chain_from_its_head() -> Bool {
+// The receipt's located reason and its cause come from the rejection's FATAL (last) diagnostic, and
+// the chain keeps the whole list in order: a two-diagnostic rejection reads as head then tail.
+test fn assemble_receipt_carries_the_whole_rejection_chain_and_its_fatal_cause() -> Bool {
   let receipt = frontier_probe_receipt_from_assemble_rejection(
     module_path: "src/v2/compiler/example.dag",
     diagnostics: NonEmptyDiagnostics {
@@ -55,13 +54,13 @@ test fn assemble_receipt_carries_the_whole_rejection_chain_from_its_head() -> Bo
     },
     detail: FrontierProbeDetailAbsent
   )
-  (receipt.located_reason == ^normalize_rejected)
+  (receipt.located_reason == ^resolve_module_not_found)
     && match receipt.assemble_detail {
       AssembleRejectionDetail { rejection_chain: chain, cause: cause, at: _ } =>
         (chain.head == ^normalize_rejected)
           && (length(xs: chain.tail) == 1)
           && match cause {
-            OtherAssembleRefusal { reason: r } => r == ^normalize_rejected
+            MissingModuleIdentityUnavailable => true
             _ => false
           }
       _ => false
