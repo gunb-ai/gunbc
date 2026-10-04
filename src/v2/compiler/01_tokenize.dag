@@ -1,5 +1,6 @@
 module v2.compiler.tokenize
 
+import std.coercion { unicode_scalar_unfold, unicode_scalar_fold }
 import std.types { List }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup, list_at_optional }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
@@ -1074,7 +1075,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
                 annotations: Cons {
                   head: UnboundSourceAnnotation {
                     annotation_class: class,
-                    lexeme: chars_to_string(chars: lexeme, start: 0, end: length(xs: lexeme)),
+                    lexeme: unicode_scalar_fold(xs: lexeme),
                     placement: placement_from_line_prefix(indent_only: acc.line_prefix_indent_only),
                     file: acc.file,
                     start: acc.pos,
@@ -1134,7 +1135,7 @@ fn lex_walk_emit_token(acc: LexWalkAcc, class: Symbol, lexeme: v2.std.text.Strin
         tokens: Cons {
           head: Token {
             class: class,
-            lexeme: chars_to_string(chars: lexeme, start: 0, end: length(xs: lexeme)),
+            lexeme: unicode_scalar_fold(xs: lexeme),
             file: acc.file,
             start: acc.pos,
             end: acc.pos + lexeme_utf8_octet_count(lexeme: lexeme)
@@ -1243,7 +1244,9 @@ fn lex_walk_prepared(source: v2.std.text.String, file: Symbol, prepared: Prepare
 // hands over exactly the value it hashed, and the read boundary performs no lexical interpretation
 // — deciding what a character IS belongs to the lexer, which is here.
 //
-// `chars` is the SAME scalar decomposition the literal elaborator uses. v1.compiler.infer
+// The crossing is the declared route std.coercion unicode_scalar_unfold, the value form of the
+// UnicodeScalarSequenceUnfold row (gunbc.structural_realization_bindings conversion_plan_rows); its
+// body is the SAME scalar decomposition the literal elaborator uses. v1.compiler.infer
 // unfold_scalar_sequence_image builds the UnicodeScalarSequenceUnfold image by calling it, so the
 // runtime converter and the literal elaborator are two producers deriving one meaning from one
 // authority rather than two loops that agree by coincidence. Scalar values, never UTF-8 bytes and
@@ -1254,7 +1257,7 @@ fn lex_walk_prepared(source: v2.std.text.String, file: Symbol, prepared: Prepare
 // prefix operation, walk state or fold ever receives the host form. A second conversion further in
 // would be a second answer to a question already answered.
 //
-// THIS AUTHORIZES ONE CONVERSION AT ONE INGRESS AND NOTHING WIDER. It is not permission for
+// THIS IS ONE CONVERSION AT ONE INGRESS AND NOTHING WIDER. It is not permission for
 // arbitrary host Strings to inhabit structural text: gunbc.rung_drop's
 // text_boundary_identity_wall stands, its subject is the non-literal host value crossing an exact
 // structural-text boundary through permissive compatibility, and this named morphism does not
@@ -1296,7 +1299,7 @@ fn prepare_lex_rules(rules: LexRules) -> PreparedLexRules {
 }
 
 fn tokenize_prepared(text: String, file: Symbol, prepared: PreparedLexRules) -> Outcome<TokenStream> {
-  let source = chars(s: text)
+  let source = unicode_scalar_unfold(s: text)
   let at = Textual {
     file: file,
     extent: WholeFile

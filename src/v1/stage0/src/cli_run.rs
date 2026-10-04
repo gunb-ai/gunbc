@@ -25872,14 +25872,12 @@ pub fn measure_selected_entry_closure_overlap(
     for path in &changed_paths {
         line_ranges_by_file.entry(path.clone()).or_default();
     }
-    let changed_new_lines_by_file = parse_unified_diff_changed_new_lines(&diff_text);
     let added_paths = parse_unified_diff_added_paths(&diff_text);
 
     let index = process_shared_index(source_roots);
     let diff_edits = floor_diff_edits_from_line_ranges(
         &index,
         &line_ranges_by_file,
-        &changed_new_lines_by_file,
         &departed_paths,
         &added_paths,
         None,
@@ -26264,14 +26262,15 @@ pub(crate) fn refuse_on_module_graph_read_refusals(
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FileLineRange {
-    start: i64,
-    end: i64,
-    /// A zero-width new-side range (`+L,0` under `-U0`): a PURE DELETION whose gap sits between
-    /// new-side lines L and L+1 (`start` = `end` = L+1). It names no surviving line, so
-    /// attribution charges it to a declaration only when the gap falls strictly INSIDE that
-    /// declaration's span; a gap between declarations removed whole declarations, which no
-    /// longer exist to select (`a_pure_deletion_force_runs_its_unchanged_neighbour`).
-    deletion_gap: bool,
+    /// The hunk's new-side `+start,count` as git printed it. A zero `new_count` is a PURE
+    /// DELETION that sits AFTER new-side line `new_start` (0 = before the first line).
+    new_start: i64,
+    new_count: i64,
+    /// The old-side lines the hunk removed, in order. With the new-side content they
+    /// reconstruct the file at the diff base exactly, which is what lets declaration
+    /// attribution compare each declaration's OWN text at base and head instead of asking
+    /// which lines a hunk happened to name (`a_pure_deletion_force_runs_its_unchanged_neighbour`).
+    removed: Vec<String>,
 }
 
 fn string_list_from_value(val: &v1_interpreter::Value, field: &str) -> Result<Vec<String>, String> {
@@ -26301,6 +26300,7 @@ fn diff_file_matches_entry(diff_file: &str, entry_path: &str) -> bool {
 fn parse_unified_diff_line_ranges(diff_text: &str) -> HashMap<String, Vec<FileLineRange>> {
     let mut out: HashMap<String, Vec<FileLineRange>> = HashMap::new();
     let mut current_file: Option<String> = None;
+    let mut in_hunk = false;
     for line in diff_text.lines() {
         if line.starts_with("diff --git ") {
             // Section boundary: a file only becomes attributable after its own
@@ -26313,34 +26313,37 @@ fn parse_unified_diff_line_ranges(diff_text: &str) -> HashMap<String, Vec<FileLi
             // Departed paths are carried by the name-status observation, never
             // by hunk attribution.
             current_file = None;
-        } else if let Some(rest) = line.strip_prefix("+++ b/") {
-            current_file = Some(normalize_repo_path(rest));
+            in_hunk = false;
         } else if line.starts_with("@@ ") {
+            in_hunk = false;
             let Some(file) = current_file.clone() else {
                 continue;
             };
             let plus = line.split_whitespace().nth(2).unwrap_or("");
             let plus = plus.trim_start_matches('+');
-            let (start, count) = if let Some((s, c)) = plus.split_once(',') {
+            let (new_start, new_count) = if let Some((s, c)) = plus.split_once(',') {
                 (s.parse::<i64>().unwrap_or(1), c.parse::<i64>().unwrap_or(1))
             } else {
                 (plus.parse::<i64>().unwrap_or(1), 1)
             };
-            // Zero-width new range (`+L,0`): the deletion gap sits between L and
-            // L+1 — attribute the single following line, mirroring
-            // parse_unified_diff_changed_new_lines (anchoring at L false-fired
-            // the module-line refusal for import strips under a module header).
-            let deletion_gap = count <= 0;
-            let (start, end) = if deletion_gap {
-                (start + 1, start + 1)
-            } else {
-                (start, start + count - 1)
-            };
             out.entry(file).or_default().push(FileLineRange {
-                start,
-                end,
-                deletion_gap,
+                new_start,
+                new_count,
+                removed: Vec::new(),
             });
+            in_hunk = true;
+        } else if in_hunk {
+            if let Some(removed) = line.strip_prefix('-') {
+                if let Some(range) = current_file
+                    .as_ref()
+                    .and_then(|f| out.get_mut(f))
+                    .and_then(|v| v.last_mut())
+                {
+                    range.removed.push(removed.to_string());
+                }
+            }
+        } else if let Some(rest) = line.strip_prefix("+++ b/") {
+            current_file = Some(normalize_repo_path(rest));
         }
     }
     out
@@ -26408,18 +26411,6 @@ fn parse_unified_diff_changed_new_lines(diff_text: &str) -> HashMap<String, Hash
         }
     }
     out
-}
-
-fn changed_new_lines_for_file(
-    changed_new_lines_by_file: &HashMap<String, HashSet<i64>>,
-    file_path: &str,
-    file_norm: &str,
-) -> HashSet<i64> {
-    changed_new_lines_by_file
-        .get(file_norm)
-        .or_else(|| changed_new_lines_by_file.get(file_path))
-        .cloned()
-        .unwrap_or_default()
 }
 
 fn newline_index_for_span<'a>(
@@ -27755,7 +27746,7 @@ mod floor_skip_frontier_tests {
         floor_diff_edits_from_diff_text_with_base_names_and_sources, list_value_from_vec,
         parse_unified_diff_added_paths, parse_unified_diff_changed_new_lines,
         parse_unified_diff_line_ranges, parse_unified_diff_rename_sources,
-        rerun_frontier_nodes_for_entry, scan_test_decl_lines, FileLineRange,
+        rerun_frontier_nodes_for_entry, scan_test_decl_lines, FileLineRange, FloorDiffEdits,
     };
     use crate::v1_compiler_infer_items::{item_kind, ItemKind, ResolvedGraph};
     use crate::v1_interpreter::ExecutionMode;
@@ -27891,9 +27882,9 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
         assert_eq!(
             ranges.get(file),
             Some(&vec![FileLineRange {
-                start: 101,
-                end: 103,
-                deletion_gap: false
+                new_start: 101,
+                new_count: 3,
+                removed: Vec::new(),
             }])
         );
     }
@@ -28117,28 +28108,40 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
         std::collections::HashMap::from([(dest.to_string(), content)])
     }
 
-    // A PURE DELETION IS CHARGED BY WHERE ITS GAP LIES (`gunbc.recurring_failure_mode`
-    // `a_pure_deletion_force_runs_its_unchanged_neighbour`). The head file is supplied; the
-    // `-U0` diff removes a whole test fn that sat between `a` and `c`, then (second case) one
-    // line inside `a`. The between-declarations gap must charge NEITHER neighbour -- before the
-    // fix it charged `c`, the line after the gap -- and the interior gap must still charge `a`.
-    fn deletion_gap_sources(path: &str) -> std::collections::HashMap<String, String> {
-        std::collections::HashMap::from([(
-            path.to_string(),
-            "module m.gap\n\ntest fn a() -> Bool {\n  true\n}\n\ntest fn c() -> Bool {\n  true\n}\n"
-                .to_string(),
-        )])
+    // A DECLARATION IS CHARGED BY ITS OWN TEXT AT BASE AND HEAD, NOT BY WHICH LINES A HUNK NAMES
+    // (`gunbc.recurring_failure_mode` `a_pure_deletion_force_runs_its_unchanged_neighbour`). The
+    // head file is supplied; each `-U0` diff below is reverse-applied to it to recover the base.
+    fn text_attribution_sources(
+        path: &str,
+        head: &str,
+    ) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::from([(path.to_string(), head.to_string())])
     }
 
-    fn deletion_gap_edited(diff: &str, path: &str) -> HashSet<String> {
+    fn text_attribution_edits(
+        diff: &str,
+        path: &str,
+        head: &str,
+        at_base: &[&str],
+    ) -> FloorDiffEdits {
         let index = build_multi_entry_index(&[]);
-        let edits = floor_diff_edits_from_diff_text_with_base_names_and_sources(
+        let census = std::collections::HashMap::from([(
+            path.to_string(),
+            at_base
+                .iter()
+                .map(|n| n.to_string())
+                .collect::<HashSet<String>>(),
+        )]);
+        floor_diff_edits_from_diff_text_with_base_names_and_sources(
             &index,
             diff,
-            &std::collections::HashMap::new(),
-            &deletion_gap_sources(path),
+            &census,
+            &text_attribution_sources(path, head),
         )
-        .expect("a deletion-only diff must attribute, not refuse");
+        .expect("a modify diff must attribute, not refuse")
+    }
+
+    fn edited_in(edits: &FloorDiffEdits, path: &str) -> HashSet<String> {
         edits
             .edited_test_fns
             .iter()
@@ -28147,14 +28150,21 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
             .collect()
     }
 
+    const GAP_HEAD: &str =
+        "module m.gap\n\ntest fn a() -> Bool {\n  true\n}\n\ntest fn c() -> Bool {\n  true\n}\n";
+    const GAP_PATH: &str = "src/v2/test/claim/gap_fixture_test.dag";
+
     #[test]
     fn a_deletion_between_declarations_charges_neither_neighbour() {
-        let path = "src/v2/test/claim/gap_fixture_test.dag";
+        let path = GAP_PATH;
         let diff = format!(
             "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -7,4 +6,0 @@\n-test fn b() -> Bool {{\n-  true\n-}}\n-\n"
         );
         assert_eq!(
-            deletion_gap_edited(&diff, path),
+            edited_in(
+                &text_attribution_edits(&diff, path, GAP_HEAD, &["a", "b", "c"]),
+                path
+            ),
             HashSet::new(),
             "a whole declaration deleted between `a` and `c` must not select either"
         );
@@ -28162,14 +28172,80 @@ rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
 
     #[test]
     fn a_deletion_inside_a_declaration_still_charges_it() {
-        let path = "src/v2/test/claim/gap_fixture_test.dag";
+        let path = GAP_PATH;
         let diff = format!(
             "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -5 +4,0 @@\n-  && false\n"
         );
         assert_eq!(
-            deletion_gap_edited(&diff, path),
+            edited_in(
+                &text_attribution_edits(&diff, path, GAP_HEAD, &["a", "c"]),
+                path
+            ),
             HashSet::from(["a".to_string()]),
             "a line removed inside `a` edits `a`"
+        );
+    }
+
+    #[test]
+    fn a_genuinely_edited_claim_is_still_charged() {
+        let path = GAP_PATH;
+        let diff = format!(
+            "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -8 +8 @@\n-  false\n+  true\n"
+        );
+        assert_eq!(
+            edited_in(
+                &text_attribution_edits(&diff, path, GAP_HEAD, &["a", "c"]),
+                path
+            ),
+            HashSet::from(["c".to_string()]),
+            "a changed body line edits exactly its own declaration"
+        );
+    }
+
+    #[test]
+    fn a_renamed_claim_counts_as_new() {
+        let path = GAP_PATH;
+        let head =
+            "module m.gap\n\ntest fn a() -> Bool {\n  true\n}\n\ntest fn c2() -> Bool {\n  true\n}\n";
+        let diff = format!(
+            "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -7 +7 @@\n-test fn c() -> Bool {{\n+test fn c2() -> Bool {{\n"
+        );
+        let edits = text_attribution_edits(&diff, path, head, &["a", "c"]);
+        assert_eq!(edited_in(&edits, path), HashSet::from(["c2".to_string()]));
+        assert!(
+            edits
+                .enrolled_test_fns
+                .contains(&(path.to_string(), "c2".to_string())),
+            "a name absent at base is a new enrolment"
+        );
+    }
+
+    // THE EXPECTING-RED FIXTURE, pinned from gunbc#13126 (head 587c8338b9, base f680b955a1, floor
+    // run 37192630595): trimming five claims out of `test_marker_channel` left a deletion gap at
+    // new-side line 197, inside the line span `only_the_marked_declaration_is_captured_holds`
+    // owned because that span ran on through the NEXT claim's leading comment. The floor billed
+    // it as a changed new witness (90388 eval steps against 72300) though its text never moved.
+    // No surviving declaration's own text changed, so nothing is charged.
+    #[test]
+    fn the_13126_claim_trim_charges_no_surviving_claim() {
+        let path = "src/v2/test/claim/parse/test_marker_channel_test.dag";
+        let head = include_str!("../testdata/test_marker_channel_head_587c833.dag.txt");
+        let diff = include_str!("../testdata/test_marker_channel_trim_587c833.diff");
+        let edits = text_attribution_edits(
+            diff,
+            path,
+            head,
+            &[
+                "only_the_marked_declaration_is_captured_holds",
+                "a_different_declaration_moves_the_semantic_projection_holds",
+            ],
+        );
+        assert_eq!(edited_in(&edits, path), HashSet::new());
+        assert!(
+            edits.overlapping_data_items.is_empty() && edits.touched_entry_files.is_empty(),
+            "no surviving declaration changed: data {:?}, entries {:?}",
+            edits.overlapping_data_items,
+            edits.touched_entry_files
         );
     }
 
@@ -28317,9 +28393,9 @@ deleted file mode 100644
         assert_eq!(
             ranges.get(kept),
             Some(&vec![FileLineRange {
-                start: 9,
-                end: 9,
-                deletion_gap: false
+                new_start: 9,
+                new_count: 1,
+                removed: vec!["old_import_row".to_string()],
             }]),
             "deleted-file hunk must not extend the preceding file's ranges"
         );
