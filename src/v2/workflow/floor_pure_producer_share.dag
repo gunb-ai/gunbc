@@ -851,6 +851,13 @@ import v2.std.algebra { any }
 // eval-step cap. The rows now read five nullary producers, one per program -- the map-over-records program's
 // producer, a record of three Bools, serving three rows -- and the others a Symbol and three Bools. WARM: one
 // assembly is more than one claim's budget.
+// THE LIVE COMPILER-GATE JOB IDS ARE DERIVED ONCE. gunbc.compiler_gate_workflow
+// compiler_gate_non_aggregate_job_ids maps the whole live Workflow's jobs to their ids; two claims read it in
+// test.claim.compiler_gate_emit_build_lane_witness_test (the live standings join and the emit-build-is-a-job
+// inhabitance claim) and the emission conjunct reads it too. gunbc#13018's floor (run 37213019300) refused the
+// inhabitance claim COMPLETED-OVER-COST-REQUIREMENT at 84850 marginal eval steps once emit-build moved onto the
+// fleet prelude. Its value is a list of Strings. WARM: the live workflow is built once, outside the fold, and both
+// claims still read the LIVE value rather than a supplied one.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.parameter_reference.pr_program_parameter_paths",
   "v2.test.claim.parameter_reference.pr_program_grounding",
@@ -1521,7 +1528,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.compiler.collection_callback_realization.ccr_map_undeclared_field_reason",
   "v2.test.claim.compiler.collection_callback_realization.ccr_piped_map_binds_its_row",
   "v2.test.claim.compiler.collection_callback_realization.ccr_all_binds_its_row",
-  "v2.test.claim.compiler.collection_callback_realization.ccr_declared_any_lowers_no_loop"
+  "v2.test.claim.compiler.collection_callback_realization.ccr_declared_any_lowers_no_loop",
+  "gunbc.compiler_gate_workflow.compiler_gate_non_aggregate_job_ids"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.

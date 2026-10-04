@@ -267,16 +267,16 @@ test fn w_RED_an_announced_lane_binds_no_variable_and_is_read_by_no_clause() -> 
     && string_contains(s: blocking_script, pattern: "[ \"$PROBE_LANE\" != success ]")
 }
 
-// AND THE ANNOUNCED LANES REACH NEITHER SURFACE. Without this the two claims above would be
-// satisfied by a gate that also read a lane it must not yet block on -- whose variable would
-// render EMPTY, compare unequal to `success`, and refuse every run. Both announced lanes are named:
-// emit-build, and since 2026-09-28 the unit-test lane.
-test fn w_RED_the_live_announced_lanes_reach_neither_surface() -> Bool {
+// AND THE DELETED UNIT-TEST LANE REACHES NEITHER SURFACE. Without this the gate could read a lane
+// that no longer runs -- whose variable would render EMPTY, compare unequal to `success`, and refuse
+// every run. emit-build left this claim on the 2026-10-02 sign-off: it now BLOCKS, and
+// the_emit_build_lane_blocks_and_is_read_by_the_gate asserts the opposite of what this claim
+// asserted about it. No live lane is announced today, so the announced-lane mechanism itself is held by
+// the supplied-row claim w_RED_an_announced_lane_binds_no_variable_and_is_read_by_no_clause.
+test fn w_RED_the_deleted_unit_test_lane_reaches_neither_surface() -> Bool {
   let script = join(compiler_gate_aggregate_script_lines(), "\n")
   let env = compiler_gate_aggregate_step_env()
-  (any(env, e => e.key == "EMIT_BUILD") == false)
-    && (string_contains(s: script, pattern: "EMIT_BUILD") == false)
-    && (any(env, e => e.key == "RUST_UNIT_TESTS") == false)
+  (any(env, e => e.key == "RUST_UNIT_TESTS") == false)
     && (string_contains(s: script, pattern: "RUST_UNIT_TESTS") == false)
 }
 
