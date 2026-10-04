@@ -13,6 +13,10 @@ fn seal_violations(source: String, subject: String) -> Int {
   blocking_subject_count_for(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
 }
 
+fn admission_refusals(source: String, callee: String) -> Int {
+  blocking_subject_count_for(source: source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: callee)
+}
+
 data forged_family_hold_source: String = "module probe_store_forged_family_hold\nimport extdeps.realization.materialization_store_local { LocalStoreFamilyHeld }\nfn forged(h: LocalStoreFamilyHeld) -> LocalStoreFamilyHeld {\n  LocalStoreFamilyHeld { root_path: h.root_path, family: h.family, owner: h.owner, generation: h.generation, retention: h.retention }\n}\n"
 
 data forged_all_families_source: String = "module probe_store_forged_all_families\nimport extdeps.realization.materialization_store_local { LocalStoreAllFamiliesHeld }\nfn forged(a: LocalStoreAllFamiliesHeld) -> LocalStoreAllFamiliesHeld {\n  LocalStoreAllFamiliesHeld { root_path: a.root_path, held: a.held }\n}\n"
@@ -23,4 +27,27 @@ test fn a_forged_family_hold_is_refused_at_compile() -> Bool {
 
 test fn a_forged_all_families_hold_is_refused_at_compile() -> Bool {
   seal_violations(source: forged_all_families_source, subject: "LocalStoreAllFamiliesHeld") == 1
+}
+
+
+// FORGED ADMISSION: the publish half takes what a reservation admitted, and only local_store_reserve
+// mints it, so skipping admission means spelling one.
+data forged_admission_source: String = "module probe_store_forged_admission\nimport extdeps.realization.materialization_store_local { LocalStoreAdmission }\nfn forged(a: LocalStoreAdmission) -> LocalStoreAdmission {\n  LocalStoreAdmission { budget: a.budget, evicted: a.evicted, retired: a.retired, reclamation: a.reclamation }\n}\n"
+
+test fn a_forged_reservation_admission_is_refused_at_compile() -> Bool {
+  seal_violations(source: forged_admission_source, subject: "LocalStoreAdmission") == 1
+}
+
+// THE RAW HELPERS ARE SEALED TO THE BRACKET'S OWN PATH: a caller outside it is an admission refusal,
+// even holding a real held value.
+data direct_write_index_source: String = "module probe_store_direct_write_index\nimport extdeps.realization.materialization_store_local { LocalStoreFamilyHeld, LocalStoreIndex, LocalStoreIndexWrite, local_store_write_index }\nimport std.durable_compare_and_set { CasExpectation }\nfn direct(h: LocalStoreFamilyHeld, e: CasExpectation, i: LocalStoreIndex) -> LocalStoreIndexWrite {\n  local_store_write_index(held: h, expected: e, index: i)\n}\n"
+
+data direct_acquire_settled_source: String = "module probe_store_direct_acquire_settled\nimport std.types { Bool, NonEmptyStr }\nimport std.materialization_store_grant { MaterializationStoreRoot }\nimport std.cache_identity { ArtifactKindId }\nimport std.durable_exclusive_hold { DurableHoldOwnerRef }\nimport gunbc.durable_cas_file_store { CasSlotRetention }\nimport extdeps.realization.materialization_store_local { LocalStoreHoldAcquisition, local_store_acquire_settled }\nfn direct(r: MaterializationStoreRoot, f: ArtifactKindId, k: NonEmptyStr, o: DurableHoldOwnerRef, t: CasSlotRetention) -> LocalStoreHoldAcquisition {\n  local_store_acquire_settled(root: r, family: f, key: k, owner: o, retention: t, recovered: false)\n}\n"
+
+test fn a_direct_index_write_is_an_admission_refusal() -> Bool {
+  admission_refusals(source: direct_write_index_source, callee: "local_store_write_index") == 1
+}
+
+test fn a_direct_settled_acquire_is_an_admission_refusal() -> Bool {
+  admission_refusals(source: direct_acquire_settled_source, callee: "local_store_acquire_settled") == 1
 }
