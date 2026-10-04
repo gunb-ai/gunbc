@@ -1,6 +1,12 @@
 module gunbc.tools.ebay_listing
 
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestExchangeRefusal, RestMutationExchange, classify_rest_refusal }
+import extdeps.ebay.ebay { EbayUs, MarketplaceEnum }
+import extdeps.ebay.inventory { ConditionEnum, EbayAmount, EbayOfferDetailsWithKeys, FixedPrice, FormatTypeEnum, InventoryItem, InventoryItemAvailability, InventoryItemProduct, ListingPolicies, PricingSummary, ShipToLocationAvailability }
+import extdeps.ebay.inventory
+import extdeps.ebay.oauth { sell_inventory_scope }
+import extdeps.ebay.oauth
+import std.credentials { CredentialSource }
 
 data ebay_client_id_source: CredentialSource = std.credentials.EnvVar { name: "EBAY_CLIENT_ID" }
 

@@ -1,6 +1,7 @@
 module gunbc.auth.optional_impersonation
 
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal }
+import extdeps.cloud.gcp.iam
 
 // The token a caller proceeds with, or the refusal of the impersonation it asked for. With no
 // service account the operator token is the answer and no call is made; with one, the token exists

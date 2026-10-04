@@ -168,7 +168,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "dag/extdeps/dns/domain_name.dag", name: "ends_with", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/dns/domain_name.dag", name: "skip", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/docker/cgroup.dag", name: "filter", standing: ActiveDebt },
-  UnimportedBareProviderDisposition { file: "dag/extdeps/docker/container_inspect.dag", name: "filter", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "dag/extdeps/docker/container_inspect.dag", name: "filter", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/exec/command.dag", name: "append", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/external_authority.dag", name: "filter", standing: Retired { cause: NotAReference } },
   UnimportedBareProviderDisposition { file: "dag/extdeps/filesystem/filesystem_io.dag", name: "Read", standing: Retired { cause: NotAReference } },
