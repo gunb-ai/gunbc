@@ -1,0 +1,82 @@
+module tools.read_outcome_probe
+
+// THROWAWAY SHAPE PROBE for tools.read_outcome_census development. Dumps, for one known
+// declaration that contains a Filesystem.Read site and a filesystem_read_outcome fold, the
+// callee texts the structural reader sees and the operand atom populations at each fold call
+// and each read site. Deleted before the census PR lands.
+
+import std.types { Bool, Int, List, String }
+import std.process { ProcessExit, exit_failure }
+import std.algebra { list_snoc_item }
+import v2.std.algebra { fold_list }
+import v2.std.node { Node, NodeFold, fold_node }
+import v2.std.fn_index { FnArrowDecl, callee_text_read, fn_arrow_decl_facts_live }
+import v2.std.compilers.body_lowering { application_head_read }
+
+data probe_pool_roots: List<String> = ["dag", "src/v2"]
+data probe_empty_strings: List<String> = []
+data probe_empty_hits: List<ProbeFoldHit> = []
+
+type ProbeFoldHit = {
+  callee: String,
+  operand_populations: List<String>,
+}
+
+fn probe_texts_at(node: Node) -> List<String> {
+  match callee_text_read(node: node) {
+    CalleeText { text: t } => [t]
+    _ => probe_empty_strings
+  }
+}
+
+fn probe_merge(left: List<String>, right: List<String>) -> List<String> {
+  fold_list(xs: right, empty: left, cons: fn(acc, s) { list_snoc_item(xs: acc, item: s) })
+}
+
+fn probe_texts_of_subtree(node: Node) -> List<String> {
+  fold_node(
+    n: node,
+    algebra: NodeFold {
+      init: fn(self) { probe_texts_at(node: self) },
+      step: fn(acc, _edge, sub) { probe_merge(left: acc, right: sub) },
+    },
+  )
+}
+
+fn probe_fold_hits(node: Node, acc: List<ProbeFoldHit>) -> List<ProbeFoldHit> {
+  match callee_text_read(node: node) {
+    CalleeText { text: t } =>
+      if t == "filesystem_read_outcome" || t == "Read" || t == "Filesystem.Read" {
+        match application_head_read(site: node) {
+          ApplicationHeadFound { head: _, head_identity: _, operands } => list_snoc_item(xs: acc, item: ProbeFoldHit {
+            callee: t,
+            operand_populations: fold_list(
+              xs: operands,
+              empty: probe_empty_strings,
+              cons: fn(inner, op) { list_snoc_item(xs: inner, item: probe_texts_of_subtree(node: op)) },
+            ),
+          })
+          _ => acc
+        }
+      } else {
+        acc
+      }
+    _ => fold_list(xs: node.children, empty: acc, cons: fn(inner, e) { probe_fold_hits(node: e.target, acc: inner) })
+  }
+}
+
+fn probe_line(hit: ProbeFoldHit) -> String {
+  concat(hit.callee, concat(" -> ", join(fold_list(xs: hit.operand_populations, empty: probe_empty_strings, cons: fn(acc, p) { list_snoc_item(xs: acc, item: concat("[", concat(p, "]"))) }), " | ")))
+}
+
+fn probe_gate() -> ProcessExit {
+  let decls = fn_arrow_decl_facts_live(pool_roots: probe_pool_roots, pool_files: [])
+  let lines = fold_list(xs: decls, empty: probe_empty_strings, cons: fn(acc, d) {
+    if d.name == "observe_app_key_mint_record" || d.name == "app_key_mint_record_from_observation" {
+      list_snoc_item(xs: acc, item: concat(d.name, concat(": ", join(fold_list(xs: probe_fold_hits(node: d.output, acc: probe_empty_hits), empty: probe_empty_strings, cons: fn(inner, h) { list_snoc_item(xs: inner, item: probe_line(hit: h)) }), " ;; "))))
+    } else {
+      acc
+    }
+  })
+  exit_failure(reason: join(lines, "\n"))
+}
