@@ -8,6 +8,7 @@ import extdeps.languages.rust.emit {
   rust_value_binding_candidate,
   fresh_rust_value_binding_name
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

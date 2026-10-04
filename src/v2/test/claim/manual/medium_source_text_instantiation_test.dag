@@ -1,6 +1,7 @@
 module v2.test.manual.medium_source_text_instantiation
 
 import v2.std.artifact { Artifact, SourceFile }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

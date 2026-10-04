@@ -1,6 +1,7 @@
 module test.claim.budget_tree_witness
 
 import std.measure { Memory, One, byte_size }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
