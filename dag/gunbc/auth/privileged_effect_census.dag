@@ -674,6 +674,21 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
+    site: site(module_path: "gunbc.runner.runner_qualification_ruleset", decl_name: "ensure_qualification_ruleset"),
+    effect: PrivilegedEffect {
+      subject: "ensure the repository ruleset runner-qualification-pins (refs/heads/qualification/**, update + non_fast_forward, enforced active, no bypass actors): read every provision, created only when absent and read back, never edited; under the gunbai-ci installation token, gated in code on the App holding repository administration:write (extdeps.github.effect ManageRepositoryRulesets) -- the permission evidence is the App registration read by fleet-converge app_control_plane_observe run 37215976003; approved by the operator by default through this ensure, conditional on that permission (eager-gull-22, 2026-10-04). administration:write reaches every repository setting, not only rulesets; the confinement to this one ruleset is this module's construction" as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: convergence_principal(),
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
     site: site(module_path: "gunbc.runner_group_restriction_ensure_run", decl_name: "microvm_runner_group_after_gate"),
     effect: PrivilegedEffect {
       subject: "create the microVM runner group restricted to the shakedown workflow, under an org-admin installation token" as NonEmptyStr,

@@ -1,0 +1,202 @@
+module gunbc.runner.runner_qualification_ruleset
+
+import std.types { Int, List, NonEmptyStr }
+import std.decl_ref { decl_ref }
+import std.resources { Network }
+import extdeps.transports.rest { RestExchangePerformance, RestExchangeSucceeded }
+import extdeps.github.effect { ManageRepositoryRulesets }
+import extdeps.github.rulesets {
+  RulesetWire, RulesetSummaryWire, RulesetRuleWire, RulesetConditionsWire,
+  RulesetActive, BranchTarget, UpdateRule, NonFastForwardRule,
+  parse_ruleset_enforcement, parse_ruleset_target, ruleset_rule_types, ruleset_rule_type_wire_label,
+  ruleset_target_wire_label, ruleset_enforcement_wire_label, parameterless_rule, ref_name_conditions,
+}
+import gunbc.repository { gunbc_repository }
+import gunbc.auth.github_apps { GitHubAppControlPlaneState }
+import gunbc.auth.github_credential { GitHubCredentialAuthority, CredentialCapability, credential_authorizes, unsatisfied_capabilities }
+import gunbc.runner.runner_jit_perform { authority_installation }
+import gunbc.github_effect_perform {
+  ControllerInstallationToken, list_rulesets_with, get_ruleset_with, create_ruleset_with,
+}
+
+// THE QUALIFICATION BRANCHES ARE IMMUTABLE BETWEEN CREATION AND DELETION, BY A REPOSITORY RULESET.
+//
+// A per-attempt branch refs/heads/qualification/<attempt> is created once at the pinned revision and
+// read back (gunbc.runner.runner_qualification_ref_pin), and the dispatch sends the branch name. A
+// readback proves the branch named the revision when it was read; only a control-plane rule makes it
+// unable to move afterwards. This ruleset is that rule: it targets refs/heads/qualification/** with
+// the `update` rule (no matching ref may be updated) and `non_fast_forward`, ENFORCED ACTIVE, with
+// NO bypass actors -- so nobody, the App included, can move a qualification branch, while creating
+// and deleting one stay allowed (no `creation` or `deletion` rule). The pin refuses unless this
+// ruleset reads back with exactly that shape.
+//
+// ENSURE, NEVER EDIT. The ruleset is found by its exact name; created when absent and read back; a
+// same-named ruleset of any other shape is refused, never updated, because an update is an effect
+// nobody has approved.
+//
+// THE WRITE IS GATED ON THE APP'S ADMINISTRATION PERMISSION. Creating a repository ruleset needs the
+// repository Administration (write) permission (extdeps.github.effect ManageRepositoryRulesets). The
+// ensure asks credential_authorizes of the authority -- whose App and installation must be the
+// token's -- over the observed control-plane state, before any request. Approval: the operator,
+// by default through this ensure, conditional on gunbai-ci already holding administration:write;
+// the evidence is the App registration read by fleet-converge app_control_plane_observe run
+// 37215976003 (gunbc.auth.privileged_effect_census).
+
+data qualification_ruleset_name: NonEmptyStr = "runner-qualification-pins"
+data qualification_ruleset_include: NonEmptyStr = "refs/heads/qualification/**"
+
+fn qualification_ruleset_rules() -> List<RulesetRuleWire> {
+  [parameterless_rule(t: UpdateRule), parameterless_rule(t: NonFastForwardRule)]
+}
+
+fn qualification_ruleset_conditions() -> RulesetConditionsWire {
+  ref_name_conditions(include: [qualification_ruleset_include as String], exclude: [])
+}
+
+// THE SHAPE, JUDGED OVER A READBACK. Every member must be exactly the qualification shape; the
+// bypass roster must be READ (an administration token sees it) and empty. Absent means the shape holds.
+fn qualification_ruleset_shape_refusal(r: RulesetWire) -> NonEmptyStr? {
+  let rule_labels = ruleset_rule_types(rules: r.rules) |> map(t => ruleset_rule_type_wire_label(t: t))
+  if r.name != (qualification_ruleset_name as String) {
+    Present { value: concat("ruleset name is ", r.name) as NonEmptyStr }
+  } else if ruleset_target_wire_label(t: parse_ruleset_target(raw: r.target)) != ruleset_target_wire_label(t: BranchTarget) {
+    Present { value: concat("ruleset target is ", r.target) as NonEmptyStr }
+  } else if ruleset_enforcement_wire_label(e: parse_ruleset_enforcement(raw: r.enforcement)) != ruleset_enforcement_wire_label(e: RulesetActive) {
+    Present { value: concat("ruleset enforcement is ", r.enforcement) as NonEmptyStr }
+  } else if r.conditions.ref_name.include != [qualification_ruleset_include as String] || count(r.conditions.ref_name.exclude) != 0 {
+    Present { value: "ruleset conditions are not exactly include [refs/heads/qualification/**], exclude []" as NonEmptyStr }
+  } else if count(rule_labels) != 2 || !(rule_labels |> any(l => l == ruleset_rule_type_wire_label(t: UpdateRule))) || !(rule_labels |> any(l => l == ruleset_rule_type_wire_label(t: NonFastForwardRule))) {
+    Present { value: concat("ruleset rules are not exactly update and non_fast_forward: ", join(rule_labels, ",")) as NonEmptyStr }
+  } else {
+    match r.bypass_actors {
+      Absent => Present { value: "ruleset bypass_actors were not returned, so an empty roster is not established" as NonEmptyStr }
+      Present { value: actors } =>
+        if count(actors) != 0 { Present { value: concat("ruleset has bypass actors: ", to_string(count(actors))) as NonEmptyStr } } else { none }
+    }
+  }
+}
+
+// THE STANDING THE PIN CONSUMES, sealed: only qualification_ruleset_standing_of mints it, and only
+// from a readback whose shape holds.
+type QualificationRulesetActive sole_constructor {
+  ruleset_id: Int
+}
+
+type QualificationRulesetRefusal
+  = RulesetAbsent
+  | RulesetDuplicated { count: Int }
+  | RulesetListUnreadable { performance: RestExchangePerformance }
+  | RulesetReadUnreadable { performance: RestExchangePerformance }
+  | RulesetOtherShape { ruleset_id: Int, cause: NonEmptyStr }
+  | RulesetCreateRefused { performance: RestExchangePerformance }
+  | RulesetCredentialRefused { unsatisfied: List<CredentialCapability> }
+  | RulesetAuthorityForAnotherInstallation
+
+type QualificationRulesetStanding
+  = QualificationRulesetEnforced { active: QualificationRulesetActive }
+  | QualificationRulesetRefused { refusal: QualificationRulesetRefusal }
+
+// THE ENFORCED STANDING'S ONLY MINT, sealed to its callers by name: the two reads above and the
+// witness claims that supply a readback at this interface and return Bool. An open mint would let any
+// module claim the branches immutable from a readback it fabricated.
+fn qualification_ruleset_standing_of(read: RestExchangePerformance, ruleset: RulesetWire) -> QualificationRulesetStanding
+  admit_callers: [
+    decl_ref(module_path: "gunbc.runner.runner_qualification_ruleset", decl_name: "read_qualification_ruleset"),
+    decl_ref(module_path: "gunbc.runner.runner_qualification_ruleset", decl_name: "ensure_qualification_ruleset"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_real_mint_admits_the_attempt_through_the_sealed_subject"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "the_production_mint_over_todays_fleet_converge_workflow_refuses_at_the_attempt_input"),
+    decl_ref(module_path: "test.claim.runner_qualification_dispatch_witness", decl_name: "a_delivery_from_another_dispatch_on_the_same_slot_refuses"),
+    decl_ref(module_path: "test.claim.runner_qualification_ref_pin_witness", decl_name: "the_pin_is_minted_only_from_the_exact_revision_and_the_pinned_group"),
+    decl_ref(module_path: "test.claim.runner_qualification_ruleset_witness", decl_name: "only_the_exact_ruleset_shape_is_enforced"),
+  ]
+{
+  match read {
+    RestExchangeSucceeded =>
+      match qualification_ruleset_shape_refusal(r: ruleset) {
+        Present { value: c } => QualificationRulesetRefused { refusal: RulesetOtherShape { ruleset_id: ruleset.id, cause: c } }
+        Absent => QualificationRulesetEnforced { active: QualificationRulesetActive { ruleset_id: ruleset.id } }
+      }
+    other => QualificationRulesetRefused { refusal: RulesetReadUnreadable { performance: other } }
+  }
+}
+
+// WHICH RULESET THE NAME RESOLVES TO in a complete listing: exactly one, or a refusal.
+type QualificationRulesetLookup
+  = RulesetFound { ruleset_id: Int }
+  | RulesetNotFound { refusal: QualificationRulesetRefusal }
+
+fn qualification_ruleset_lookup(listed: RestExchangePerformance, rulesets: List<RulesetSummaryWire>) -> QualificationRulesetLookup {
+  match listed {
+    RestExchangeSucceeded => {
+      let rows = rulesets |> filter(r => r.name == (qualification_ruleset_name as String))
+      match first(rows) {
+        Absent => RulesetNotFound { refusal: RulesetAbsent }
+        Present { value: row } =>
+          if count(rows) != 1 { RulesetNotFound { refusal: RulesetDuplicated { count: count(rows) } } }
+          else { RulesetFound { ruleset_id: row.id } }
+      }
+    }
+    other => RulesetNotFound { refusal: RulesetListUnreadable { performance: other } }
+  }
+}
+
+// THE READ THE PIN CONSUMES: find by name, get, judge the shape. No write.
+fn read_qualification_ruleset(token: ControllerInstallationToken) -> QualificationRulesetStanding uses net: Network {
+  let owner = gunbc_repository.owner as NonEmptyStr
+  let repo = gunbc_repository.name as NonEmptyStr
+  let listed = list_rulesets_with(token: token, owner: owner, repo: repo)
+  match qualification_ruleset_lookup(listed: listed.performance, rulesets: listed.rulesets) {
+    RulesetNotFound { refusal: r } => QualificationRulesetRefused { refusal: r }
+    RulesetFound { ruleset_id: id } => {
+      let got = get_ruleset_with(token: token, owner: owner, repo: repo, ruleset_id: id)
+      qualification_ruleset_standing_of(read: got.performance, ruleset: got.ruleset)
+    }
+  }
+}
+
+// THE ENSURE: authority bound to the token and holding administration:write before any request;
+// then found -> judged (never edited); absent -> created, then read back and judged.
+fn ensure_qualification_ruleset(
+  token: ControllerInstallationToken,
+  authority: GitHubCredentialAuthority,
+  control_plane: GitHubAppControlPlaneState,
+) -> QualificationRulesetStanding uses net: Network {
+  let effect = ManageRepositoryRulesets { repository: gunbc_repository }
+  let bound = match authority_installation(authority: authority) {
+    Absent => false
+    Present { value: held } => held.app == token.app && held.installation == token.installation
+  }
+  if !bound {
+    QualificationRulesetRefused { refusal: RulesetAuthorityForAnotherInstallation }
+  } else if !credential_authorizes(authority: authority, control_plane: control_plane, effect: effect) {
+    QualificationRulesetRefused { refusal: RulesetCredentialRefused { unsatisfied: unsatisfied_capabilities(authority: authority, control_plane: control_plane, effect: effect) } }
+  } else {
+    let owner = gunbc_repository.owner as NonEmptyStr
+    let repo = gunbc_repository.name as NonEmptyStr
+    let listed = list_rulesets_with(token: token, owner: owner, repo: repo)
+    match qualification_ruleset_lookup(listed: listed.performance, rulesets: listed.rulesets) {
+      RulesetFound { ruleset_id: id } => {
+        let got = get_ruleset_with(token: token, owner: owner, repo: repo, ruleset_id: id)
+        qualification_ruleset_standing_of(read: got.performance, ruleset: got.ruleset)
+      }
+      RulesetNotFound { refusal: RulesetAbsent } => {
+        let created = create_ruleset_with(
+          token: token, owner: owner, repo: repo,
+          name: qualification_ruleset_name as String,
+          target: ruleset_target_wire_label(t: BranchTarget),
+          enforcement: ruleset_enforcement_wire_label(e: RulesetActive),
+          conditions: qualification_ruleset_conditions(),
+          rules: qualification_ruleset_rules(),
+        )
+        match created.performance {
+          RestExchangeSucceeded => {
+            let got = get_ruleset_with(token: token, owner: owner, repo: repo, ruleset_id: created.ruleset_id)
+            qualification_ruleset_standing_of(read: got.performance, ruleset: got.ruleset)
+          }
+          other => QualificationRulesetRefused { refusal: RulesetCreateRefused { performance: other } }
+        }
+      }
+      RulesetNotFound { refusal: r } => QualificationRulesetRefused { refusal: r }
+    }
+  }
+}
