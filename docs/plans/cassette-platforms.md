@@ -37,6 +37,19 @@ Sources: [Mt. Jade OCP specification](https://www.opencompute.org/documents/open
 
 A board-only rectangular 180 mm grid needs 3 × 3 cells for Jade. That is an envelope calculation, not a print plan: margin, joint overlap, supports, retained hardware and structural members must be included before choosing actual pieces. With the current shared 14 mm edge allowance, the board-only tray reservation is 456 × 507.36 mm. It is not a released tray or final whole-system footprint.
 
+## PVT/DVT guide inspection — 4 October 2026
+
+Both publisher PDFs were downloaded and their SHA-256 digests matched the existing subject rows. Local review copies are under `/home/briansrls/print-prep-2026-10-04/milk-crate/manuals/`; the repository retains publisher locators and document identities rather than adding PDF binaries.
+
+| Guide | Pages checked for physical layout | Result for cassette design |
+| --- | --- | --- |
+| Mt. Collins DVT/PVT/MP GSG, issue 1.05, 43 pages | p. 6 Table 7 connector/riser routing; p. 32 Figure 11 board overview; pp. 36–37 revision identification | Useful placement and harness evidence; no dimensioned mounting-hole map found. Table 15 distinguishes DVT BX/DX/EX, PVT IX/KX and MP 0B, so a future drawing must be matched to revision. |
+| Mt. Jade PVT/DVT NVMe GSG, issue 1.00, 48 pages | p. 4 rear interfaces; p. 35 Figure 11 board overview | Useful connector and board photographs; no dimensioned mounting-hole map found. |
+
+Publisher locators and hashes are owned by `extdeps.ampere.mt_collins_getting_started_guide.subject` and `extdeps.ampere.mt_jade_getting_started_guide.subject`. The Jade outline already modeled from OCP §7.2 is 428 × 479.36 mm; it is not a hole pattern. The OCP specification also lists a §12 Mechanical section, but its figures could not be retrieved for visual verification in this pass (publisher download returned HTTP 403). That section and the revision-matched mechanical design package remain the next drawing sources to inspect.
+
+Neither guide inspection closes the support-coordinate obligation. Visible screw rings in perspective photographs are discovery evidence, not fabrication coordinates. Retain the unknown mounting-map standing for both profiles and the unknown outline standing for Collins until a dimensioned drawing supplies them.
+
 ## Preserve the functional platform assembly
 
 For the new transplant profiles, prefer retaining the platform's original power distribution and PSU cage with the node, rather than requiring the separate generic power cassette. This is design intent, not proof that a loose baseboard includes every required part. Model and place:

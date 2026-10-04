@@ -185,12 +185,12 @@ fn tip_acceleration(unit: Gram, station: PowerCassette, node_count: Nat) -> Micr
   if h == 0 { micrometre_per_second_squared(count: no_mass) } else { micrometre_per_second_squared(count: micrometre_per_second_squared_count(a: standard_gravity) * (footprint_half_width() / 1000) / h) }
 }
 
+// Bending strength is not a compressive allowable. Bearing stress is reported, not admitted.
 fn first_limit(unit: Gram, station: PowerCassette, sheet: FilamentTechnicalDataSheetRow, policy: StackPolicy, node_count: Nat) -> StackLimit? {
   let per_pillar = millinewton(count: millinewton_count(f: weight_mn(m: mass_above_level(unit: unit, station: station, node_count: node_count, level: 0))) / 4)
   let critical = pillar_critical_load(sheet: sheet, policy: policy)
   let tip = tip_force(unit: unit, station: station, node_count: node_count)
   let tip_a = tip_acceleration(unit: unit, station: station, node_count: node_count)
-  // Bending strength is not a compressive allowable. Bearing stress is reported, not admitted.
   if millinewton_count(f: per_pillar) > millinewton_count(f: critical) { Present { value: PillarBucklingExceeded { level_from_bottom: 0, pillar_load: per_pillar, critical: critical } } }
   else { if newton_count(f: tip) < newton_count(f: policy.service_push) { Present { value: TipsUnderServicePush { tip_force: tip, push: policy.service_push } } }
   else { if micrometre_per_second_squared_count(a: tip_a) < micrometre_per_second_squared_count(a: policy.service_acceleration) { Present { value: TipsUnderServiceAcceleration { tip_acceleration: tip_a, required: policy.service_acceleration } } } else { none } } }
