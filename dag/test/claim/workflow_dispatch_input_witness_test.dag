@@ -4,7 +4,7 @@ import extdeps.github.actions {
   WorkflowDispatch, DispatchInput, InputString, InputChoice, Step, RunStep, UsesStep
 }
 import gunbc.fleet_converge_plan {
-  LiveDeploy, FullHost, LaunchEnvironment, FabricExecutionCellsOnly, FabricAllocationStoreOnly,
+  LiveDeploy, FullHost, LaunchEnvironment, FabricExecutionCellsOnly, FabricAllocationStoreOnly, WorkspaceAllocationOnly,
 }
 import v2.std.collection { Present, Absent }
 import gunbc.fleet_converge_workflow {
@@ -666,6 +666,7 @@ test fn dashboard_deploy_selects_live_deploy_scope_while_the_plan_modes_do() -> 
       LaunchEnvironment => false
       FabricExecutionCellsOnly => false
       FabricAllocationStoreOnly => false
+    WorkspaceAllocationOnly => false
     }
   }
   let plans_present = all(
@@ -881,8 +882,12 @@ test fn the_approval_keyring_converge_prelude_carries_the_shared_total_bound() -
   string_contains(s: gunbc_ci_approval_keyring_converge_invoke(), pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
 }
 
+// The boot prelude is bash_build nodes rendered by v2.workflow.bash_emit bash_emit_stmts, which quotes
+// every literal word, so the bound is read as the two quoted words that render emits -- the same
+// argv pair the committed fleet-converge.yml boot step carries -- not as the space-joined spelling
+// the hand-composed preludes above print. A prelude that drops or rebinds the bound still goes red.
 test fn the_mtcollins1_boot_prelude_carries_the_shared_total_bound() -> Bool {
-  string_contains(s: gunbc_ci_mtcollins1_boot_invoke(), pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
+  string_contains(s: gunbc_ci_mtcollins1_boot_invoke(), pattern: join(["'--max-time' '", to_string(second_count(s: gunbc_ci_sm_max_time)), "'"], ""))
 }
 
 test fn the_mtcollins1_fan_observe_prelude_carries_the_shared_total_bound() -> Bool {

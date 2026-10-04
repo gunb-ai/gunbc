@@ -3,7 +3,8 @@ module gunbc.machine_intake_mtcollins1_actuate
 import std.types { NonEmptyStr, String }
 import std.decl_ref { decl_ref }
 import v2.std.optional { Present, Absent }
-import gunbc.machine_intake_mtcollins1_maintenance_hold { UnitHoldProof, unit_hold_proof_refusal, mtcollins1_unit_hold_key }
+import gunbc.managed_host_unit_hold { UnitHoldProof, unit_hold_proof_refusal }
+import gunbc.fleet_intent_network { operator_host_mtcollins1 }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
 import gunbc.machine_intake_mtcollins1_access_observation {
@@ -130,7 +131,7 @@ fn mtcollins1_render_outcome(label: NonEmptyStr, outcome: OobBootHandoffOutcome)
 // (gunbc.machine_intake_mtcollins1_boot_run) is the CD route's production root and nothing serves
 // PXE on this segment. drive_handoff is now sealed to the boot's actuation and takes the unit-hold
 // proof, so the only roots that reach this unit's boot device or power are the ones rostered in
-// gunbc.machine_intake_mtcollins1_maintenance_hold mtcollins1_bmc_write_roots.
+// gunbc.auth.privileged_effect_census mtcollins1_hold_owning_roots.
 //
 fn mtcollins1_drive_handoff(
   proof: UnitHoldProof,
@@ -143,7 +144,7 @@ fn mtcollins1_drive_handoff(
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_handoff_when_media_ready"),
   ]
 {
-  match unit_hold_proof_refusal(proof: proof, key: mtcollins1_unit_hold_key, label: label as String) {
+  match unit_hold_proof_refusal(proof: proof, host: operator_host_mtcollins1, label: label as String) {
     Present { value: why } => return handoff_not_issued(outcome: exit_failure(reason: why))
     Absent => {}
   }

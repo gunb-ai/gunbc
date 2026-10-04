@@ -71,7 +71,10 @@ import v2.std.diagnostic {
   diagnostics_fatal_reason,
   diagnostics_singleton,
   bind_outcome,
-  rejected_with_pending
+  rejected_with_pending,
+  ExternalContractUnknown,
+  Rejected,
+  outcome_with_diagnostics
 }
 import v2.compiler.fold_lowering { FoldRealization, FoldRealizesDeclaration, FoldRealizesRosterOperation, fold_family_realization }
 import v2.std.qualified_name {
@@ -96,6 +99,7 @@ import v2.std.resolution_policy {
 }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations }
 import v2.std.symbol_index {
+  symbol_index_entry_at,
   LexicalAmbiguous,
   LexicalBindingCandidate,
   LexicalHit,
@@ -202,7 +206,7 @@ import v2.std.node_query {
   pattern_wildcard_name,
   find_core_child,
 }
-import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic, OccurrencePending }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.map_introduction {
   MapIntroductionEntryNodes,
@@ -216,6 +220,7 @@ import v2.std.map_introduction {
   map_introduction_duplicate_key,
   map_introduction_expected_head_is_map
 }
+import std.types { List }
 
 // RESOLVE'S OUTPUT IS THE RESOLVED ROOT AND THE INDEX IT WAS RESOLVED AGAINST, one record. A later
 // stage that needs a reference's declaration asks the SAME authority resolution asked
@@ -690,11 +695,22 @@ data resolve_variant_visibility_disposition: Disposition = Scaffold {
   }
 }
 
+// THE ONE ANSWER TO "WHAT DOES THIS MODULE'S ROOT BIND", for every door that builds a Namespace. A module
+// root's own declarations live under its grafted body, not as direct children of the root, so the harvest
+// reads both: the root's direct named members and, where the graft collected one, the body's. Two doors
+// built a Namespace -- build_program_namespace grafted the body, v2.compiler.name_resolve
+// admitted_subject_from_bindings did not -- so on the admission route a module's own `data` value was
+// absent from the scope chain and `cfg.field` answered ScopeUnbound. One harvest here is what keeps the two
+// from disagreeing again.
 fn namespace_bindings_augment_from_module_atoms(
   root: Node,
   bindings: Map<Symbol, Symbol>
 ) -> Map<Symbol, Symbol> {
-  harvest_module_root_named_bindings(root: root, acc: bindings)
+  let root_bindings = harvest_module_root_named_bindings(root: root, acc: bindings)
+  match namespace_graft_module_body_optional(root: root) {
+    Present { value: body } => harvest_module_root_named_bindings(root: body, acc: root_bindings)
+    Absent => root_bindings
+  }
 }
 
 // A MODULE ROOT'S BARE BINDINGS OMIT ITS SERVICE NAMESPACES (the operator's nesting ban; XL-2 service
@@ -830,14 +846,10 @@ fn bind_frame_binders(n: Node) -> FrameBinders {
 // the index each resolves through -- one authority, not a second table beside it.
 fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace {
   let declared_in = namespace_tree_module_qn(tree: tree)
-  let root_bindings = namespace_bindings_augment_from_module_atoms(
+  let bindings = namespace_bindings_augment_from_module_atoms(
     root: tree.root,
     bindings: empty_map()
   )
-  let bindings = match namespace_graft_module_body_optional(root: tree.root) {
-    Present { value: body } => harvest_module_root_named_bindings(root: body, acc: root_bindings)
-    Absent => root_bindings
-  }
   Namespace {
     bindings: bindings,
     canonical_symbols: lm.canonical_symbols,
@@ -1559,10 +1571,12 @@ fn resolve_projection_base(ctx: ResolveContext, head_segment: Node) -> Optional<
                 pending: None
               ))
             BoundAtRoot { canonical: canonical } =>
-              optional_present(value: resolved_atom_plain(o: Accepted {
-                value: canonical_atom(identity: canonical, occurrence_id: head_segment.occurrence_id),
-                diagnostics: None
-              }))
+              optional_present(value: resolved_atom_plain(o: resolve_atom_bound(
+                ctx: ctx,
+                n: head_segment,
+                path: root_binding_declaration_path(namespace: ctx.namespace, name: canonical),
+                pending: None
+              )))
             ScopeUnbound => optional_absent()
           }
       }
@@ -1623,26 +1637,47 @@ fn try_resolve_qualified_name_node(ctx: ResolveContext, n: Node) -> Optional<Out
 // ScopeUnbound IS THE DECLARATION PATH, with no fallback: there is no value to project from, so an
 // undeclared path is an unbound name and says so.
 //
-// BoundAtRoot READS AS A DECLARATION PATH, which is the arm that previously had no decision at all. A name
-// bound at the module root is a declaration or a namespace segment, so a path THROUGH it is a qualified
-// name; when the corpus declares no such name the answer is an unbound symbol with its own locus, and NOT a
-// re-reading of the path as a projection -- see resolve_declared_path_reading for why that fallback is
-// forbidden.
-//
-// A ROOT-BOUND VALUE PROJECTED THROUGH IS A REAL FORM THIS DOES NOT YET SERVE. `data cfg: Config = ...`
-// followed by `cfg.field` is legitimate source, and the fail-closed cut above does not legislate that
-// module-level values may never be projected -- it declines to guess which reading a path takes when the
-// declaration reading fails. That frontier is held by
-// v2.test.claim.field_projection.field_projection_stages
-// fps_a_root_bound_data_value_is_not_yet_projectable, written AT THE REFUSAL so it flips the moment the form
-// is served; its head is not in the scope chain at all, so closing it means making module-level value
-// bindings answerable there rather than adding an arm here.
+// BoundAtRoot DEPENDS ON WHAT THE ROOT NAME DECLARES. A name bound at the module root is a declaration or a
+// namespace segment, and a path THROUGH a type or a namespace is a qualified name; when the corpus declares
+// no such name the answer is an unbound symbol with its own locus, and NOT a re-reading of the path as a
+// projection -- see resolve_declared_path_reading for why that fallback is forbidden. A root name whose
+// declaration is a VALUE (`data cfg: Config = ...`, realized as an Arrow; root_binding_names_value) is the
+// head of a projection, exactly as a frame binder is: `cfg.field` projects. That is decided up front from
+// the declaration the binding names, not tried after the declaration reading fails, so it is a reading and
+// not a fallback. Held by v2.test.claim.field_projection.field_projection_stages
+// fps_a_root_bound_data_value_projects (the value projects) and
+// fps_a_root_bound_type_projected_as_value_refuses (a type still does not).
 //
 // FIELD INFERENCE IS NOT RELAXED BY ANY OF THIS. Committing to the projection reading commits to the SHAPE
 // only; whether the field exists on the receiver's type is still refused later by the stage that can see
 // the type, exactly as resolve_bound_head_projection's own header says. A path admitted here as a
 // projection off a fieldless receiver still refuses at infer -- this change moves which paths are READ as
 // projections, and changes nothing about what a projection must satisfy.
+// A ROOT BINDING NAMES A VALUE EXACTLY WHEN THE DECLARATION IT NAMES IS AN ARROW. Body lowering realizes a
+// `data` item as the nullary function that returns it (v2.compiler.body_lowering_fold
+// body_lower_data_decl_to_member), so a module-level value is an Arrow declaration, while a type or a
+// namespace is not. The kind is READ OFF THE DECLARATION the binding already names -- the same declaring path
+// resolve_atom_bound mints from -- and is not stored beside the binding, so the two cannot drift. A root head
+// whose path has no indexed declaration names no value and keeps the declaration reading.
+fn root_binding_names_value(namespace: Namespace, canonical: Symbol) -> Bool {
+  match symbol_index_entry_at(
+    index: namespace.symbol_index,
+    qualified_path: root_binding_declaration_path(namespace: namespace, name: canonical)
+  ) {
+    Absent => false
+    Present { value: decl } =>
+      match decl.kind {
+        TypeNode { connective: Arrow } => true
+        TypeNode { connective: _ } => false
+        ComputationNode { behavior: _ } => false
+      }
+  }
+}
+
+fn root_binding_declaration_path(namespace: Namespace, name: Symbol) -> QualifiedName {
+  qualified_name_snoc(qn: root_binding_origin(namespace: namespace, name: name), segment: name)
+}
+
 fn resolve_dotted_path_reading(
   ctx: ResolveContext,
   n: Node,
@@ -1652,7 +1687,12 @@ fn resolve_dotted_path_reading(
 ) -> Outcome<ResolvedAtom> {
   match head_binding {
     BoundInFrame { canonical: _, kind: _ } => resolve_bound_head_projection(ctx: ctx, n: n, pending: pending)
-    BoundAtRoot { canonical: _ } => resolved_atom_plain(o: resolve_declared_path_reading(ctx: ctx, n: n, path: path, pending: pending))
+    BoundAtRoot { canonical: canonical } =>
+      if root_binding_names_value(namespace: ctx.namespace, canonical: canonical) {
+        resolve_bound_head_projection(ctx: ctx, n: n, pending: pending)
+      } else {
+        resolved_atom_plain(o: resolve_declared_path_reading(ctx: ctx, n: n, path: path, pending: pending))
+      }
     ScopeUnbound => resolved_atom_plain(o: resolve_declared_path_reading(ctx: ctx, n: n, path: path, pending: pending))
   }
 }

@@ -28,6 +28,7 @@ import v2.compiler.fold_lowering {
   FunctionValueKind,
   function_value_kind_of,
   FunctionLiteralBlockBody,
+  FunctionLiteralStatementBody,
   FunctionLiteralBody,
   FunctionLiteralExprBody,
   function_value_parts_optional,
@@ -738,6 +739,7 @@ fn body_lower_is_pass_through_emitted(emitted: Symbol) -> Bool {
     || (emitted == ^dag_surface_postfix_expr)
     || (emitted == ^dag_surface_block_expr)
     || (emitted == ^dag_surface_stmt)
+    || (emitted == ^dag_surface_lambda_let_stmt)
     || (emitted == ^dag_surface_stmt_seq)
     || (emitted == ^dag_surface_arg)
 }
@@ -5068,6 +5070,11 @@ fn body_lower_function_value_body(body: FunctionLiteralBody) -> Outcome<Optional
             Present { value: stmt_seq } => body_lower_function_value_lowered_whole(o: body_lower_stmt_seq(shell: stmt_seq))
           }
       }
+    FunctionLiteralStatementBody { body: b } =>
+      match body_lower_exit_outside_tail_optional(node: b, tail: true) {
+        Present { value: refused } => body_lower_function_value_lowered_whole(o: refused)
+        Absent => body_lower_function_value_lowered_whole(o: body_lower_stmt_seq(shell: b))
+      }
   }
 }
 
@@ -5100,6 +5107,7 @@ fn body_lower_function_value_body_node(body: FunctionLiteralBody) -> Node {
   match body {
     FunctionLiteralExprBody { expr: e } => e
     FunctionLiteralBlockBody { fn_body: b } => b
+    FunctionLiteralStatementBody { body: b } => b
   }
 }
 
@@ -11827,7 +11835,7 @@ fn body_lower_exit_walk(node: Node, tail: Bool, arm_tail: Bool) -> Optional<Outc
           Present { value: spine } => body_lower_exit_walk_spine(spine: spine, tail: tail)
           Absent => optional_absent()
         }
-      } else if id == ^dag_surface_match_arm_stmt_body {
+      } else if id == ^dag_surface_match_arm_stmt_body || id == ^dag_surface_lambda_stmt_body {
         match body_lower_unwrap_captured(shell: node) {
           Present { value: spine } => body_lower_exit_walk_spine(spine: spine, tail: tail)
           Absent => optional_absent()

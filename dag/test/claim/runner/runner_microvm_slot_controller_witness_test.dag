@@ -1,5 +1,6 @@
 module test.claim.runner.runner_microvm_slot_controller_witness_test
 
+import v2.std.algebra { any }
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.nat { Nat }
 import std.measure { byte_size_count, byte_size, gibibyte, gibibyte_to_byte_size, second_count }
@@ -34,7 +35,7 @@ import gunbc.runner_attempt_launch {
   reservation_agreement,
 }
 import gunbc.runner_microvm_slot_unit {
-  microvm_slot_unit_file, microvm_slot_unit_execs_controller, microvm_slot_unit_timeout_stop,
+  microvm_slot_unit_file, microvm_slot_unit_text, microvm_slot_unit_execs_controller, microvm_slot_unit_timeout_stop,
   microvm_slot_controller_entry_function, microvm_controller_slice_unit_name, microvm_controller_slice_unit_file,
   microvm_controller_slice_memory_max,
 }
@@ -354,4 +355,11 @@ test fn a_reservation_refusal_names_why_the_store_could_not_be_read() -> Bool {
   })
   string_contains(s: unreadable, pattern: "No such file or directory")
     && string_contains(s: undecodable, pattern: "not a hold payload")
+}
+
+// Launch directives are captured as inert credentials, never interpreted as root environment.
+test fn workspace_launch_directive_uses_the_optional_credential_store() -> Bool {
+  let unit = microvm_slot_unit_text(release_dir: "/opt/release", timeout_stop_sec: "60")
+  string_contains(s: unit, pattern: "LoadCredential=workspace-launch:gunbc-workspace-%i")
+    && !string_contains(s: unit, pattern: "EnvironmentFile=")
 }
