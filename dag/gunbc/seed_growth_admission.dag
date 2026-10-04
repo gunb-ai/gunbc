@@ -63,6 +63,7 @@ import gunbc.emitted_build_failure_retention_seed_growth { emitted_build_failure
 import gunbc.native_claim_program_seed_growth { native_claim_program_seed_growth_justification }
 import gunbc.native_serve_program_seed_growth { native_serve_program_seed_growth_justification }
 import gunbc.dependency_demand_census_seed_growth { dependency_demand_census_seed_growth_justification }
+import gunbc.generic_identity_census_seed_growth { generic_identity_census_seed_growth_justification }
 import gunbc.native_route_refusal_summary_seed_growth { native_route_refusal_summary_seed_growth_justification }
 import gunbc.native_route_advisory_summary_seed_growth { native_route_advisory_summary_seed_growth_justification }
 import gunbc.observation_file_effect_seed_growth { observation_file_effect_seed_growth_justification }
@@ -300,6 +301,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     native_claim_program_seed_growth_justification,
     native_serve_program_seed_growth_justification,
     dependency_demand_census_seed_growth_justification,
+    generic_identity_census_seed_growth_justification,
     native_route_refusal_summary_seed_growth_justification,
     native_route_advisory_summary_seed_growth_justification,
     census_memo_seed_growth_justification,

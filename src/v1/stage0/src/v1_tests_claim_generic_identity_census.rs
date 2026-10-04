@@ -772,27 +772,38 @@ pub fn generic_identity_census_tsv(rows: Rc<Vec<Rc<GenericIdentityRow>>>) -> Str
                 __result
             }),
             Rc::new({
-                let mut __result = Vec::new();
-                for r in rows.iter().cloned() {
-                    __result.push(gi_row_tsv(r.clone()));
-                }
-                __result
+                let mut __sorted: Vec<_> = Rc::new({
+                    let mut __result = Vec::new();
+                    for r in rows.iter().cloned() {
+                        __result.push(gi_row_tsv(r.clone()));
+                    }
+                    __result
+                })
+                .iter()
+                .cloned()
+                .collect();
+                __sorted.sort_by(|a: &String, b: &String| {
+                    let __ka = (|l: String| l.clone())(a.clone());
+                    let __kb = (|l: String| l.clone())(b.clone());
+                    __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+                });
+                __sorted
             }),
         ),
     )
     .join(&"\n".to_string())
 }
 
-pub fn generic_identity_census_from_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> String {
+pub fn gi_rows_from_sources(
+    sources: Rc<Vec<Rc<SourceFile>>>,
+) -> Option<Rc<Vec<Rc<GenericIdentityRow>>>> {
     {
         let result = crate::v1_compiler_compile::compile_to_resolved(sources.clone());
         match result.graph.clone() {
-            std::option::Option::None => {
-                "REFUSED\tcompile_to_resolved produced no graph".to_string()
-            }
+            std::option::Option::None => std::option::Option::None,
             Some(g) => {
                 let sigs = gi_all_sigs(g.modules.clone(), result.source_indices.clone());
-                generic_identity_census_tsv(Rc::new({
+                Some(Rc::new({
                     let mut __result = Vec::new();
                     for m in g.modules.clone().iter().cloned() {
                         __result.extend(
@@ -809,6 +820,277 @@ pub fn generic_identity_census_from_sources(sources: Rc<Vec<Rc<SourceFile>>>) ->
                 }))
             }
         }
+    }
+}
+
+pub fn gi_tally(keys: Rc<Vec<String>>) -> Rc<HashMap<String, i64>> {
+    keys.iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, i64>(),
+        |acc: Rc<HashMap<String, i64>>, k: String| match v1_rt::map_get(&acc, k.clone()) {
+            Some(n) => v1_rt::rc_map_insert(acc.clone(), k.clone(), v1_rt::int_add(n.clone(), 1)),
+            std::option::Option::None => v1_rt::rc_map_insert(acc.clone(), k.clone(), 1),
+        },
+    )
+}
+
+pub fn gi_tally_lines(prefix: String, tally: Rc<HashMap<String, i64>>) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for k in Rc::new({
+            let mut __sorted: Vec<_> = Rc::new(v1_rt::map_keys(&tally)).iter().cloned().collect();
+            __sorted.sort_by(|a: &String, b: &String| {
+                let __ka = (|k: String| k.clone())(a.clone());
+                let __kb = (|k: String| k.clone())(b.clone());
+                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+            });
+            __sorted
+        })
+        .iter()
+        .cloned()
+        {
+            __result.push(match v1_rt::map_get(&tally, k.clone()) {
+                Some(n) => v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(v1_rt::concat(prefix.clone(), " ".to_string()), k.clone()),
+                        " ".to_string(),
+                    ),
+                    (n.clone()).to_string(),
+                ),
+                std::option::Option::None => {
+                    v1_rt::concat(v1_rt::concat(prefix.clone(), " ".to_string()), k.clone())
+                }
+            });
+        }
+        __result
+    })
+}
+
+pub fn gi_is_kernel_spelled_child(r: Rc<GenericIdentityRow>) -> bool {
+    ((((r.parent_label.clone() != "".to_string()) && (r.resolved_label.clone() != "".to_string()))
+        && (r.spelled.clone() != r.resolved_label.clone()))
+        && (gi_mark_label(r.clone()) == "neither".to_string()))
+}
+
+pub fn generic_identity_census_summary_lines(
+    rows: Rc<Vec<Rc<GenericIdentityRow>>>,
+) -> Rc<Vec<String>> {
+    {
+        let in_scope = Rc::new({
+            let mut __result = Vec::new();
+            for r in rows.iter().cloned() {
+                if r.spelled_as_in_scope_generic.clone() {
+                    __result.push(r);
+                }
+            }
+            __result
+        });
+        let foreign = Rc::new({
+            let mut __result = Vec::new();
+            for r in rows.iter().cloned() {
+                if (gi_foreign_label(r.foreign.clone()) != "own_or_unmarked".to_string()) {
+                    __result.push(r);
+                }
+            }
+            __result
+        });
+        let kernel_children = Rc::new({
+            let mut __result = Vec::new();
+            for r in rows.iter().cloned() {
+                if gi_is_kernel_spelled_child(r.clone()) {
+                    __result.push(r);
+                }
+            }
+            __result
+        });
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for u in generic_identity_unobserved().iter().cloned() {
+                            __result.push(v1_rt::concat(
+                                "unobserved ".to_string(),
+                                u.population.clone(),
+                            ));
+                        }
+                        __result
+                    }),
+                    gi_tally_lines(
+                        "in_scope_generic".to_string(),
+                        gi_tally(Rc::new({
+                            let mut __result = Vec::new();
+                            for r in in_scope.iter().cloned() {
+                                __result.push(v1_rt::concat(
+                                    v1_rt::concat(r.carrier.clone(), " ".to_string()),
+                                    gi_mark_label(r.clone()),
+                                ));
+                            }
+                            __result
+                        })),
+                    ),
+                ),
+                gi_tally_lines(
+                    "foreign_parameter".to_string(),
+                    gi_tally(Rc::new({
+                        let mut __result = Vec::new();
+                        for r in foreign.iter().cloned() {
+                            __result.push(gi_foreign_label(r.foreign.clone()));
+                        }
+                        __result
+                    })),
+                ),
+            ),
+            Rc::new(vec![
+                v1_rt::concat(
+                    "renamed_argument_child_unmarked ".to_string(),
+                    (kernel_children.clone().len() as i64).to_string(),
+                ),
+                v1_rt::concat(
+                    "renamed_argument_child_unmarked_spelled_as_in_scope_generic ".to_string(),
+                    (Rc::new({
+                        let mut __result = Vec::new();
+                        for r in kernel_children.iter().cloned() {
+                            if r.spelled_as_in_scope_generic.clone() {
+                                __result.push(r);
+                            }
+                        }
+                        __result
+                    })
+                    .len() as i64)
+                        .to_string(),
+                ),
+            ]),
+        )
+    }
+}
+
+pub fn generic_identity_census_summary_from_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> String {
+    match gi_rows_from_sources(sources.clone()) {
+        std::option::Option::None => "REFUSED\tcompile_to_resolved produced no graph".to_string(),
+        Some(rows) => generic_identity_census_summary_lines(rows.clone()).join(&"\n".to_string()),
+    }
+}
+
+pub fn gi_control_line(name: String, held: bool) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat("control ".to_string(), name.clone()),
+            ": ".to_string(),
+        ),
+        if held.clone() {
+            "held".to_string()
+        } else {
+            "UNMET".to_string()
+        },
+    )
+}
+
+pub fn generic_identity_fixture_standing(sources: Rc<Vec<Rc<SourceFile>>>) -> String {
+    match gi_rows_from_sources(sources.clone()) {
+        std::option::Option::None => "REFUSED\tcompile_to_resolved produced no graph".to_string(),
+        Some(rows) => {
+            let marked_signature_leaf = {
+                let mut __found = false;
+                for r in rows.iter().cloned() {
+                    if ((((r.enclosing.clone() == "head_of".to_string())
+                        && (r.carrier.clone() == "signature_param_type".to_string()))
+                        && (r.path.clone() == "xs/arg".to_string()))
+                        && (gi_declaration_label(r.declaration.clone())
+                            == "gic.a::head_of::<T>".to_string()))
+                    {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            };
+            let minted_container_child = {
+                let mut __found = false;
+                for r in rows.iter().cloned() {
+                    if (((((r.enclosing.clone() == "ints".to_string())
+                        && (r.parent_label.clone() == "List".to_string()))
+                        && (r.spelled.clone() == "T".to_string()))
+                        && (r.resolved_label.clone() == "Int".to_string()))
+                        && (gi_mark_label(r.clone()) == "neither".to_string()))
+                    {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            };
+            let bound_call_is_clean = !{
+                let mut __found = false;
+                for r in rows.iter().cloned() {
+                    if ((r.enclosing.clone() == "caller_function".to_string())
+                        && (gi_foreign_label(r.foreign.clone()) != "own_or_unmarked".to_string()))
+                    {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            };
+            let unobserved_declared = ((generic_identity_unobserved().len() as i64) == 4);
+            let collision_lost = {
+                let mut __found = false;
+                for r in rows.iter().cloned() {
+                    if ((r.enclosing.clone() == "caller_literal".to_string())
+                        && (gi_foreign_label(r.foreign.clone())
+                            == "foreign_in_a_value_argument".to_string()))
+                    {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            };
+            let held = (((marked_signature_leaf.clone() && minted_container_child.clone())
+                && bound_call_is_clean.clone())
+                && unobserved_declared.clone());
+            Rc::new(vec![
+                v1_rt::concat(
+                    "STANDING ".to_string(),
+                    if held.clone() {
+                        "held".to_string()
+                    } else {
+                        "unmet".to_string()
+                    },
+                ),
+                gi_control_line(
+                    "marked_signature_leaf".to_string(),
+                    marked_signature_leaf.clone(),
+                ),
+                gi_control_line(
+                    "minted_container_child".to_string(),
+                    minted_container_child.clone(),
+                ),
+                gi_control_line(
+                    "bound_call_is_clean".to_string(),
+                    bound_call_is_clean.clone(),
+                ),
+                gi_control_line(
+                    "unobserved_populations_declared".to_string(),
+                    unobserved_declared.clone(),
+                ),
+                v1_rt::concat(
+                    "reading spelling_collision_call: ".to_string(),
+                    if collision_lost.clone() {
+                        "parameter left unsubstituted".to_string()
+                    } else {
+                        "substituted".to_string()
+                    },
+                ),
+            ])
+            .join(&"\n".to_string())
+        }
+    }
+}
+
+pub fn generic_identity_census_from_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> String {
+    match gi_rows_from_sources(sources.clone()) {
+        std::option::Option::None => "REFUSED\tcompile_to_resolved produced no graph".to_string(),
+        Some(rows) => generic_identity_census_tsv(rows.clone()),
     }
 }
 

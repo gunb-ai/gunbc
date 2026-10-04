@@ -424,19 +424,112 @@ fn gi_unobserved_tsv(u: GenericIdentityUnobserved) -> String {
 }
 
 fn generic_identity_census_tsv(rows: List<GenericIdentityRow>) -> String {
-  concat([generic_identity_census_header()], concat(generic_identity_unobserved() |> map(u => gi_unobserved_tsv(u: u)), rows |> map(r => gi_row_tsv(r: r))))
+  concat([generic_identity_census_header()], concat(generic_identity_unobserved() |> map(u => gi_unobserved_tsv(u: u)), rows |> map(r => gi_row_tsv(r: r)) |> sort_by(l => l)))
     |> join(separator: "\n")
+}
+
+
+fn gi_rows_from_sources(sources: List<SourceFile>) -> List<GenericIdentityRow>? {
+  let result = compile_to_resolved(sources: sources)
+  match result.graph {
+    Absent => none
+    Present { value: g } =>
+      let sigs = gi_all_sigs(modules: g.modules, si: result.source_indices)
+      Present { value: g.modules |> flat_map(m => gi_module_rows(m: m, si: result.source_indices, sigs: sigs)) }
+  }
+}
+
+fn gi_tally(keys: List<String>) -> Map<String, Int> {
+  fold(keys, init: empty_map(), f: (acc, k) =>
+    match map_get(acc, k) {
+      Present { value: n } => map_insert(acc, k, n + 1)
+      Absent => map_insert(acc, k, 1)
+    })
+}
+
+// Tally lines in key order, so two runs over one subject render the same bytes.
+fn gi_tally_lines(prefix: String, tally: Map<String, Int>) -> List<String> {
+  map_keys(tally) |> sort_by(k => k) |> map(k =>
+    match map_get(tally, k) {
+      Present { value: n } => concat(concat(concat(concat(prefix, " "), k), " "), to_string(n))
+      Absent => concat(concat(prefix, " "), k)
+    })
+}
+
+fn gi_is_kernel_spelled_child(r: GenericIdentityRow) -> Bool {
+  r.parent_label != "" && r.resolved_label != "" && r.spelled != r.resolved_label && gi_mark_label(r: r) == "neither"
+}
+
+// THE REPORT: counts at the three grains the step-2 decisions read. It is a rendering of the rows
+// and judges nothing; the UNOBSERVED populations are restated at its head.
+fn generic_identity_census_summary_lines(rows: List<GenericIdentityRow>) -> List<String> {
+  let in_scope = rows |> filter(r => r.spelled_as_in_scope_generic)
+  let foreign = rows |> filter(r => gi_foreign_label(f: r.foreign) != "own_or_unmarked")
+  let kernel_children = rows |> filter(r => gi_is_kernel_spelled_child(r: r))
+  concat(
+    concat(
+      concat(
+        generic_identity_unobserved() |> map(u => concat("unobserved ", u.population)),
+        gi_tally_lines(prefix: "in_scope_generic", tally: gi_tally(keys: in_scope |> map(r => concat(concat(r.carrier, " "), gi_mark_label(r: r)))))
+      ),
+      gi_tally_lines(prefix: "foreign_parameter", tally: gi_tally(keys: foreign |> map(r => gi_foreign_label(f: r.foreign))))
+    ),
+    [
+      concat("renamed_argument_child_unmarked ", to_string(kernel_children |> count)),
+      concat("renamed_argument_child_unmarked_spelled_as_in_scope_generic ", to_string(kernel_children |> filter(r => r.spelled_as_in_scope_generic) |> count))
+    ]
+  )
+}
+
+fn generic_identity_census_summary_from_sources(sources: List<SourceFile>) -> String {
+  match gi_rows_from_sources(sources: sources) {
+    Absent => "REFUSED\tcompile_to_resolved produced no graph"
+    Present { value: rows } => generic_identity_census_summary_lines(rows: rows) |> join(separator: "\n")
+  }
+}
+
+// THE INSTRUMENT'S OWN CONTROLS, over fixtures/generic_identity_census. Each asks whether the READER
+// sees a shape that is on the page, at identity grain, and none depends on a defect staying
+// unrepaired: a marked signature leaf (positive), a minted container's renamed child (the population
+// KernelElementPosition replaces), and a call whose argument does bind the parameter carrying no
+// foreign mark (negative). The call the spelling collision leaves unsubstituted is reported as a
+// READING beside them and never gates, because repairing it is the point of step 2.
+fn gi_control_line(name: String, held: Bool) -> String {
+  concat(concat(concat("control ", name), ": "), if held { "held" } else { "UNMET" })
+}
+
+fn generic_identity_fixture_standing(sources: List<SourceFile>) -> String {
+  match gi_rows_from_sources(sources: sources) {
+    Absent => "REFUSED\tcompile_to_resolved produced no graph"
+    Present { value: rows } =>
+      let marked_signature_leaf = rows |> any(r =>
+        r.enclosing == "head_of" && r.carrier == "signature_param_type" && r.path == "xs/arg"
+          && gi_declaration_label(d: r.declaration) == "gic.a::head_of::<T>")
+      let minted_container_child = rows |> any(r =>
+        r.enclosing == "ints" && r.parent_label == "List" && r.spelled == "T" && r.resolved_label == "Int" && gi_mark_label(r: r) == "neither")
+      let bound_call_is_clean = !(rows |> any(r =>
+        r.enclosing == "caller_function" && gi_foreign_label(f: r.foreign) != "own_or_unmarked"))
+      let unobserved_declared = (generic_identity_unobserved() |> count) == 4
+      let collision_lost = rows |> any(r =>
+        r.enclosing == "caller_literal" && gi_foreign_label(f: r.foreign) == "foreign_in_a_value_argument")
+      let held = marked_signature_leaf && minted_container_child && bound_call_is_clean && unobserved_declared
+      [
+        concat("STANDING ", if held { "held" } else { "unmet" }),
+        gi_control_line(name: "marked_signature_leaf", held: marked_signature_leaf),
+        gi_control_line(name: "minted_container_child", held: minted_container_child),
+        gi_control_line(name: "bound_call_is_clean", held: bound_call_is_clean),
+        gi_control_line(name: "unobserved_populations_declared", held: unobserved_declared),
+        concat("reading spelling_collision_call: ", if collision_lost { "parameter left unsubstituted" } else { "substituted" })
+      ] |> join(separator: "\n")
+  }
 }
 
 // THE ENTRY THE DRIVER CALLS. Sources in as data, receipt out as a String. A compile that produces
 // no graph REFUSES in the return value, so a receipt that could not be produced and a receipt with no
 // observed rows do not share a spelling.
 fn generic_identity_census_from_sources(sources: List<SourceFile>) -> String {
-  let result = compile_to_resolved(sources: sources)
-  match result.graph {
+  match gi_rows_from_sources(sources: sources) {
     Absent => "REFUSED\tcompile_to_resolved produced no graph"
-    Present { value: g } =>
-      let sigs = gi_all_sigs(modules: g.modules, si: result.source_indices)
-      generic_identity_census_tsv(rows: g.modules |> flat_map(m => gi_module_rows(m: m, si: result.source_indices, sigs: sigs)))
+    Present { value: rows } => generic_identity_census_tsv(rows: rows)
   }
 }
