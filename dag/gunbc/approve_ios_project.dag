@@ -14,7 +14,8 @@ import extdeps.apple.build_settings {
   MarketingVersion, CurrentProjectVersion
 }
 import gunbc.auth.approval_app_attest_config { approval_app_bundle_id, approval_app_bundle_version }
-import gunbc.auth.approval_broker_endpoint { approval_broker_public_host_from, approval_broker_public_port, ApprovalBrokerAddressResolved, ApprovalBrokerAddressRefused, approval_broker_address_refusal_detail }
+import gunbc.auth.approval_broker_endpoint { approval_broker_public_port, ApprovalBrokerAddressResolved, ApprovalBrokerAddressRefused }
+import gunbc.auth.approval_broker_placement { approval_broker_public_host_from }
 import gunbc.fleet_intent_network { fleet_intent_network }
 import extdeps.apple.xcode { xcode_26_6 }
 import extdeps.xcodegen.project_spec {
@@ -45,7 +46,7 @@ import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, ya
 //   server_host        ApproveServerHost -- read by ServerConfig at launch.
 //   apns_environment   ApproveApnsEnvironment -- read by ServerConfig at launch.
 // apns_environment is xcconfig-substituted from Config/Team.xcconfig. server_host is NOT: it is the
-// broker's public host (gunbc.auth.approval_broker_endpoint approval_broker_public_host_from), the
+// broker's public host (gunbc.auth.approval_broker_placement approval_broker_public_host_from), the
 // same composition the approval links are issued against, written into the spec as a value. It was
 // an operator-typed APPROVE_SERVER_HOST, a second authority for where the broker answers.
 type ApproveAppInfo {
@@ -195,7 +196,7 @@ fn approve_ios_project_yml_from(domain: NonEmptyStr?, port: Port?) -> ApproveIos
       " and the app's ServerConfig carries no port; project it (an ApproveServerPort Info.plist key read by gunbc.approve_ios_swift_wire ServerConfig) before publishing the broker off the default TLS listener"
     ], "") }
     Absent => match approval_broker_public_host_from(domain: domain) {
-      ApprovalBrokerAddressRefused { cause } => ApproveIosProjectRefused { reason: join(["gunbc.approve_ios_project: ", approval_broker_address_refusal_detail(cause: cause) as String], "") }
+      ApprovalBrokerAddressRefused { detail } => ApproveIosProjectRefused { reason: join(["gunbc.approve_ios_project: ", detail as String], "") }
       ApprovalBrokerAddressResolved { value: host } => match emit_yaml(v: project_spec_yaml(p: approve_ios_project_spec(server_host: host))) {
         EmittedYaml { text: t } => ApproveIosProjectGenerated { content: concat(approve_ios_project_header, t) }
         YamlEmitRefused { path: p, reason: r } => ApproveIosProjectRefused { reason: yaml_emit_refusal_text(module_path: "gunbc.approve_ios_project", path: p, reason: r) }

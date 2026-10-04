@@ -7,10 +7,8 @@ import extdeps.tailscale.serve {
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
 import gunbc.fleet_tailnet { fleet_tailnet_domain, tailnet_base_url_from, tailnet_host_from }
 import gunbc.serve_liveness { serve_liveness_path }
-import gunbc.roadmap_dashboard_instance {
-  ProdRoleRealization, ProdRoleRealizedBy, ProdRoleRealizationRefused, ProdRoleRealizationRefusal, prod_role_realization,
-  prod_role_realization_refusal_detail,
-}
+import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
+import gunbc.host_effect { LocalShell }
 import gunbc.auth.approval_device_wire { approval_device_request_path_prefix, approval_device_enrollment_path_prefix }
 
 // ── WHERE THE APPROVAL BROKER ANSWERS ────────────────────────────────────────────────────────
@@ -98,20 +96,6 @@ data approval_broker_listen_port: Port = 8085
 // door is the only public path" true rather than merely intended.
 data approval_broker_listen_host: NonEmptyStr = "127.0.0.1"
 
-// THE HOST THE BROKER RUNS ON, derived from the prod-role holder that owns its unit (the same
-// resolution the loopback client origin follows): a run that files and polls over that client (the
-// GCP IAM converge job) has to run there. Under a refused realization there is no such host, and the
-// refusal is carried so the job that needs it is emitted refused rather than pinned to srv1.
-type ApprovalBrokerHost
-  = ApprovalBrokerHostResolved { host: NonEmptyStr }
-  | ApprovalBrokerHostRefused { cause: ProdRoleRealizationRefusal }
-
-fn approval_broker_host_under(realization: ProdRoleRealization) -> ApprovalBrokerHost {
-  match realization {
-    ProdRoleRealizedBy { holder } => ApprovalBrokerHostResolved { host: holder.instance.host_identity }
-    ProdRoleRealizationRefused { cause } => ApprovalBrokerHostRefused { cause: cause }
-  }
-}
 
 fn approval_broker_loopback_base_url(port: Port) -> NonEmptyStr {
   join(["http://", approval_broker_listen_host as String, ":", to_string(port)], "") as NonEmptyStr
@@ -246,37 +230,33 @@ data approval_broker_front_door_path_preservation: CitedFigureStanding = Transcr
 // (gunbc.approve_ios_project) -- read one port rather than each assuming 443.
 data approval_broker_public_port: Port? = none
 
-// THE ADDRESS FOLLOWS THE BROKER'S HOST, which follows the prod role (approval_broker_host_under):
-// the links, the device enrolment notification and the approvals app all name the host the broker
-// actually runs on, and under a refused realization there is no address -- each reader carries the
-// refusal into its own refusal arm rather than naming srv1.
+// THE BROKER'S PUBLIC ADDRESS ON A GIVEN HOST. Which host is a placement fact, not this module's:
+// the prod role decides WHERE the broker is installed (gunbc.auth.approval_broker_placement, over
+// gunbc.live_deploy.spec RoleSingletonHolding), and a broker-side reader receives the host it was
+// installed on rather than resolving the role -- so the broker's closure never reaches the instance
+// roster (#13132).
 type ApprovalBrokerAddress
   = ApprovalBrokerAddressResolved { value: NonEmptyStr }
-  | ApprovalBrokerAddressRefused { cause: ProdRoleRealizationRefusal }
+  | ApprovalBrokerAddressRefused { detail: NonEmptyStr }
 
-fn approval_broker_address_refusal_detail(cause: ProdRoleRealizationRefusal) -> NonEmptyStr {
-  join(["approval broker address unresolved: ", prod_role_realization_refusal_detail(cause: cause)], "") as NonEmptyStr
-}
-
-fn approval_broker_base_url_under(realization: ProdRoleRealization, domain: NonEmptyStr?) -> ApprovalBrokerAddress {
-  match approval_broker_host_under(realization: realization) {
-    ApprovalBrokerHostResolved { host } => ApprovalBrokerAddressResolved { value: tailnet_base_url_from(host: host, domain: domain, port: approval_broker_public_port) }
-    ApprovalBrokerHostRefused { cause } => ApprovalBrokerAddressRefused { cause: cause }
-  }
-}
-
-fn approval_broker_base_url() -> ApprovalBrokerAddress {
-  approval_broker_base_url_under(realization: prod_role_realization(), domain: fleet_tailnet_domain)
+fn approval_broker_base_url_on(host: NonEmptyStr, domain: NonEmptyStr?) -> NonEmptyStr {
+  tailnet_base_url_from(host: host, domain: domain, port: approval_broker_public_port)
 }
 
 // THE BARE HOST OF THAT SAME ADDRESS, for a client that composes scheme, host and path itself.
-fn approval_broker_public_host_under(realization: ProdRoleRealization, domain: NonEmptyStr?) -> ApprovalBrokerAddress {
-  match approval_broker_host_under(realization: realization) {
-    ApprovalBrokerHostResolved { host } => ApprovalBrokerAddressResolved { value: tailnet_host_from(host: host, domain: domain) }
-    ApprovalBrokerHostRefused { cause } => ApprovalBrokerAddressRefused { cause: cause }
-  }
+fn approval_broker_public_host_on(host: NonEmptyStr, domain: NonEmptyStr?) -> NonEmptyStr {
+  tailnet_host_from(host: host, domain: domain)
 }
 
-fn approval_broker_public_host_from(domain: NonEmptyStr?) -> ApprovalBrokerAddress {
-  approval_broker_public_host_under(realization: prod_role_realization(), domain: domain)
+// THE SERVING BROKER'S OWN ADDRESS, received at serve time: the short hostname of the machine the
+// process runs on, which is the host its unit was installed on. An unreadable hostname refuses; it
+// is never replaced by a spelled host.
+fn approval_broker_serving_base_url() -> ApprovalBrokerAddress {
+  match hostname_short_read(transport: LocalShell) {
+    HostnameShortCaptured { value: v } =>
+      if v == "" { ApprovalBrokerAddressRefused { detail: "approval broker address unresolved: the serving host's short hostname read back empty" } }
+      else { ApprovalBrokerAddressResolved { value: approval_broker_base_url_on(host: v as NonEmptyStr, domain: fleet_tailnet_domain) } }
+    HostnameShortCaptureRefused { reason } =>
+      ApprovalBrokerAddressRefused { detail: join(["approval broker address unresolved: the serving host's hostname could not be read: ", reason], "") as NonEmptyStr }
+  }
 }

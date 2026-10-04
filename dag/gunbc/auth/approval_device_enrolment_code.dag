@@ -20,7 +20,7 @@ import gunbc.auth.approval_ntfy_access_readback {
   AclEstablished, AclRefused,
   approval_ntfy_runtime_reading, approval_ntfy_channel_verdict, approval_ntfy_acl_deviation_sentence,
 }
-import gunbc.auth.approval_broker_endpoint { approval_broker_base_url, ApprovalBrokerAddressResolved, ApprovalBrokerAddressRefused, approval_broker_address_refusal_detail }
+import gunbc.auth.approval_broker_endpoint { approval_broker_serving_base_url, ApprovalBrokerAddressResolved, ApprovalBrokerAddressRefused }
 import gunbc.auth.approval_request_submission { PublisherTokenRead, read_publisher_token, publish_notification, NotificationPublish, NotificationAttempted, NotificationPublisherTokenUnavailable }
 import gunbc.auth.approval_device_redemption {
   approval_device_store_root, issue_enrolment_code,
@@ -161,8 +161,8 @@ fn deliver_enrolment_code(code: NonEmptyStr, expires_at: Timestamp, publisher: P
   decl_ref(module_path: "gunbc.auth.approval_device_enrolment_code", decl_name: "issue_and_deliver_enrolment_code_until"),
   decl_ref(module_path: "test.claim.approval_device_enrolment_code_witness_test", decl_name: "the_delivered_receipt_comes_from_the_published_message_and_its_line_never_carries_the_code"),
 ] {
-  match approval_broker_base_url() {
-    ApprovalBrokerAddressRefused { cause } => EnrolmentCodeIssuanceRefused { cause: approval_broker_address_refusal_detail(cause: cause) as String }
+  match approval_broker_serving_base_url() {
+    ApprovalBrokerAddressRefused { detail } => EnrolmentCodeIssuanceRefused { cause: detail as String }
     ApprovalBrokerAddressResolved { value: url } => {
       let message = enrolment_code_notification(code: code, expires_at: expires_at, approval_url: url)
       EnrolmentCodeIssued { topic: message.topic as NonEmptyStr, expires_at: expires_at, delivery: enrolment_code_delivery_of(publish: publish_notification(message: message, publisher: publisher)) }

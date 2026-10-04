@@ -1,0 +1,51 @@
+module gunbc.auth.approval_broker_placement
+
+import std.types { NonEmptyStr }
+import gunbc.roadmap_dashboard_instance {
+  ProdRoleRealization,
+  ProdRoleRealizedBy,
+  ProdRoleRealizationRefused,
+  ProdRoleRealizationRefusal,
+  prod_role_realization,
+  prod_role_realization_refusal_detail,
+}
+import gunbc.auth.approval_broker_endpoint {
+  ApprovalBrokerAddress,
+  ApprovalBrokerAddressResolved,
+  ApprovalBrokerAddressRefused,
+  approval_broker_public_host_on,
+}
+
+// WHERE THE APPROVAL BROKER IS INSTALLED, for readers OUTSIDE the broker process: the GCP IAM
+// converge job that must run beside it (gunbc.fleet_converge_workflow) and the approvals app's build
+// config (gunbc.approve_ios_project). It is the host of the prod-role holder -- the same token
+// (gunbc.roadmap_dashboard_instance ProdRoleHolder) from which gunbc.live_deploy.spec builds the
+// broker's unit, so the job and the app name the host the unit is actually on. Under a refused
+// realization there is no such host and each reader refuses through its own arm.
+//
+// This module is deliberately NOT imported by any broker-side module (gunbc.auth.approval_broker_endpoint,
+// approval_decision_store, approval_request_submission, approval_device_enrolment_code): the broker
+// receives its own host at serve time (approval_broker_serving_base_url) and never reaches the
+// instance roster, which keeps the native broker's closure as #13132 narrowed it.
+type ApprovalBrokerHost
+  = ApprovalBrokerHostResolved { host: NonEmptyStr }
+  | ApprovalBrokerHostRefused { cause: ProdRoleRealizationRefusal }
+
+fn approval_broker_host_under(realization: ProdRoleRealization) -> ApprovalBrokerHost {
+  match realization {
+    ProdRoleRealizedBy { holder } => ApprovalBrokerHostResolved { host: holder.instance.host_identity }
+    ProdRoleRealizationRefused { cause } => ApprovalBrokerHostRefused { cause: cause }
+  }
+}
+
+fn approval_broker_public_host_under(realization: ProdRoleRealization, domain: NonEmptyStr?) -> ApprovalBrokerAddress {
+  match approval_broker_host_under(realization: realization) {
+    ApprovalBrokerHostResolved { host } => ApprovalBrokerAddressResolved { value: approval_broker_public_host_on(host: host, domain: domain) }
+    ApprovalBrokerHostRefused { cause } =>
+      ApprovalBrokerAddressRefused { detail: ("approval broker address unresolved: " + prod_role_realization_refusal_detail(cause: cause)) as NonEmptyStr }
+  }
+}
+
+fn approval_broker_public_host_from(domain: NonEmptyStr?) -> ApprovalBrokerAddress {
+  approval_broker_public_host_under(realization: prod_role_realization(), domain: domain)
+}

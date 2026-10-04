@@ -11,7 +11,10 @@ import extdeps.apple.xcode { XcodeRelease, xcode_26_6, xcode_release_text }
 import extdeps.xcodegen.project_spec { xcodegen_last_upgrade_check }
 import gunbc.approve_ios_app { approve_ios_build_standing, NotExecutedByAnyRequiredLane, approve_ios_build_unexecuted_frontier }
 import gunbc.approve_ios_project { expected_approve_ios_project_yml, approve_ios_project_yml_from, ApproveIosProjectGeneration, ApproveIosProjectGenerated, ApproveIosProjectRefused }
-import gunbc.auth.approval_broker_endpoint { approval_broker_base_url, ApprovalBrokerAddressResolved, ApprovalBrokerAddressRefused }
+import gunbc.auth.approval_broker_endpoint { approval_broker_base_url_on }
+import gunbc.auth.approval_broker_placement { approval_broker_host_under, ApprovalBrokerHostResolved, ApprovalBrokerHostRefused }
+import gunbc.roadmap_dashboard_instance { prod_role_realization }
+import gunbc.fleet_tailnet { fleet_tailnet_domain }
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.auth.approval_ntfy_publish { approval_ntfy_serve_port }
 
@@ -238,7 +241,8 @@ fn generated_server_host(g: ApproveIosProjectGeneration) -> String? {
 }
 
 // The host the app dials and the base the approval links are issued against are one address:
-// https:// plus the projected host IS gunbc.auth.approval_broker_endpoint approval_broker_base_url.
+// https:// plus the projected host IS the broker's base URL on the host it is placed on
+// (gunbc.auth.approval_broker_placement), i.e. what the serving broker issues its links against.
 test fn the_committed_projection_names_the_brokers_public_host() -> Bool {
   match generated_server_host(g: expected_approve_ios_project_yml()) {
     Present { value: h } => concat("https://", h) == approval_broker_base_url_text()
@@ -273,10 +277,11 @@ test fn red_a_non_default_public_port_refuses_the_projection() -> Bool {
   }
 }
 
-// The resolved link base under today's selection; a refused one is "" and fails every comparison.
+// The link base on the placed broker's host under today's selection; a refused placement is "" and
+// fails every equality.
 fn approval_broker_base_url_text() -> String {
-  match approval_broker_base_url() {
-    ApprovalBrokerAddressResolved { value } => value as String
-    ApprovalBrokerAddressRefused { cause: _ } => ""
+  match approval_broker_host_under(realization: prod_role_realization()) {
+    ApprovalBrokerHostResolved { host } => approval_broker_base_url_on(host: host, domain: fleet_tailnet_domain) as String
+    ApprovalBrokerHostRefused { cause: _ } => ""
   }
 }
