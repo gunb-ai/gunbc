@@ -674,7 +674,7 @@ import v2.std.algebra { any }
 // v2.test.claim.cli.if_arm_reader_differential iard_fixture_censuses tokenizes and parses four inline
 // modules and stores three censuses (counts and rendered rows, no Node), portable for the same reason.
 // THE ARROW-LAMBDA BLOCK-BODY ROW IS THE SAME GROUND AT FIVE SPECIMENS: v2.test.claim.body_lowering.arrow_lambda_block_body
-// alb_verdicts normalizes eight inline modules (one twice for its route) and stores nine Bools; each would otherwise be over the floor's
+// alb_verdicts normalizes five inline modules and stores five Bools; each would otherwise be over the floor's
 // new-witness enrolment margin (the required floor's claim_eval_step_budget_for_identity).
 // THE XL-2 REIFY-OPERAND ROW: v2.test.claim.body_lowering.reify_operand_refusal ror_verdicts tokenizes
 // and parses two inline modules and reifies two supplied bodies over each; the stored value is four
